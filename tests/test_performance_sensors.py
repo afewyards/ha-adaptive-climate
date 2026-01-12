@@ -57,7 +57,7 @@ def test_duty_cycle_calculation():
     )
 
     # Test heater ON - should report 100% duty cycle
-    result = asyncio.get_event_loop().run_until_complete(sensor._calculate_duty_cycle())
+    result = asyncio.run(sensor._calculate_duty_cycle())
     assert result == 100.0
 
     # Mock heater state - OFF
@@ -71,7 +71,7 @@ def test_duty_cycle_calculation():
     )
 
     # Test heater OFF - should report 0% duty cycle
-    result = asyncio.get_event_loop().run_until_complete(sensor._calculate_duty_cycle())
+    result = asyncio.run(sensor._calculate_duty_cycle())
     assert result == 0.0
 
 
@@ -129,19 +129,19 @@ def test_power_m2_estimation():
     mock_hass.states.get.return_value = duty_cycle_state
 
     # Calculate power/m2
-    result = asyncio.get_event_loop().run_until_complete(sensor._calculate_power_m2())
+    result = asyncio.run(sensor._calculate_power_m2())
 
     # Expected: 50% duty cycle * 100 W/m² = 50 W/m²
     assert result == pytest.approx(50.0, rel=1e-2)
 
     # Test with 25% duty cycle
     duty_cycle_state.state = "25.0"
-    result = asyncio.get_event_loop().run_until_complete(sensor._calculate_power_m2())
+    result = asyncio.run(sensor._calculate_power_m2())
     assert result == pytest.approx(25.0, rel=1e-2)
 
     # Test with 0% duty cycle
     duty_cycle_state.state = "0.0"
-    result = asyncio.get_event_loop().run_until_complete(sensor._calculate_power_m2())
+    result = asyncio.run(sensor._calculate_power_m2())
     assert result == pytest.approx(0.0, rel=1e-2)
 
 
@@ -189,7 +189,7 @@ def test_average_cycle_time():
     mock_hass.states.get.return_value = climate_state
 
     # Calculate average cycle time
-    result = asyncio.get_event_loop().run_until_complete(sensor._calculate_average_cycle_time())
+    result = asyncio.run(sensor._calculate_average_cycle_time())
 
     # Should return a default value for now (implementation placeholder)
     # In production, this would be calculated from actual cycle history
@@ -197,5 +197,5 @@ def test_average_cycle_time():
 
     # Test with missing climate entity
     mock_hass.states.get.return_value = None
-    result = asyncio.get_event_loop().run_until_complete(sensor._calculate_average_cycle_time())
+    result = asyncio.run(sensor._calculate_average_cycle_time())
     assert result is None

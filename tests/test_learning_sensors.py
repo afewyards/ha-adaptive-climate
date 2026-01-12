@@ -77,7 +77,7 @@ def test_overshoot_sensor_value():
     )
 
     # Run async update
-    result = asyncio.get_event_loop().run_until_complete(sensor.async_update())
+    result = asyncio.run(sensor.async_update())
 
     # Should be average of 0.5, 0.3, 0.4 = 0.4
     assert sensor.native_value == pytest.approx(0.4, abs=0.01)
@@ -158,7 +158,7 @@ def test_settling_time_in_minutes_conversion():
     )
 
     # Run async update
-    result = asyncio.get_event_loop().run_until_complete(sensor.async_update())
+    result = asyncio.run(sensor.async_update())
 
     # Should be average of 45.0, 50.0, 40.0 = 45.0 minutes
     assert sensor.native_value == pytest.approx(45.0, abs=0.1)
