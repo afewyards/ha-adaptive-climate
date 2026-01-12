@@ -86,6 +86,7 @@ class AdaptiveThermostatSensor(SensorEntity):
         self._climate_entity_id = climate_entity_id
         self._attr_should_poll = False
         self._attr_available = True
+        self._attr_entity_registry_visible_default = False
 
 
 class DutyCycleSensor(AdaptiveThermostatSensor):
@@ -499,6 +500,7 @@ class SystemHealthSensor(SensorEntity):
         self._attr_icon = "mdi:heart-pulse"
         self._attr_should_poll = False
         self._attr_available = True
+        self._attr_entity_registry_visible_default = False
         self._state = "healthy"
         self._health_monitor = SystemHealthMonitor(exception_zones or [])
         self._zone_issues = {}
@@ -618,6 +620,7 @@ class TotalPowerSensor(SensorEntity):
         self._attr_icon = "mdi:lightning-bolt"
         self._attr_should_poll = False
         self._attr_available = True
+        self._attr_entity_registry_visible_default = False
         self._value = 0.0
         self._zone_powers = {}
 
@@ -696,6 +699,7 @@ class WeeklyCostSensor(SensorEntity):
         self._attr_icon = "mdi:currency-eur"
         self._attr_should_poll = False
         self._attr_available = True
+        self._attr_entity_registry_visible_default = False
         self._value = 0.0
         self._weekly_energy_kwh = 0.0
         self._price_per_kwh = None
