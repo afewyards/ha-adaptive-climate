@@ -1,9 +1,11 @@
 """Thermal rate learning and adaptive PID adjustments for Adaptive Thermostat."""
 
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 import statistics
 import logging
+import json
+import os
 
 from ..const import PID_LIMITS, MIN_CYCLES_FOR_LEARNING
 
@@ -793,3 +795,234 @@ class ValveCycleTracker:
         """Reset cycle counter."""
         self._cycle_count = 0
         self._last_state = None
+
+
+class LearningDataStore:
+    """Persist learning data across Home Assistant restarts."""
+
+    def __init__(self, storage_path: str):
+        """
+        Initialize the LearningDataStore.
+
+        Args:
+            storage_path: Path to storage directory (typically .storage/)
+        """
+        self.storage_path = storage_path
+        self.storage_file = os.path.join(storage_path, "adaptive_thermostat_learning.json")
+
+    def save(
+        self,
+        thermal_learner: Optional[ThermalRateLearner] = None,
+        adaptive_learner: Optional[AdaptiveLearner] = None,
+        valve_tracker: Optional[ValveCycleTracker] = None,
+    ) -> bool:
+        """
+        Save learning data to storage.
+
+        Args:
+            thermal_learner: ThermalRateLearner instance to save
+            adaptive_learner: AdaptiveLearner instance to save
+            valve_tracker: ValveCycleTracker instance to save
+
+        Returns:
+            True if save successful, False otherwise
+        """
+        try:
+            # Ensure storage directory exists
+            os.makedirs(self.storage_path, exist_ok=True)
+
+            data: Dict[str, Any] = {
+                "version": 1,
+                "last_updated": datetime.now().isoformat(),
+            }
+
+            # Save ThermalRateLearner data
+            if thermal_learner is not None:
+                data["thermal_learner"] = {
+                    "cooling_rates": thermal_learner._cooling_rates,
+                    "heating_rates": thermal_learner._heating_rates,
+                    "outlier_threshold": thermal_learner.outlier_threshold,
+                }
+
+            # Save AdaptiveLearner data
+            if adaptive_learner is not None:
+                cycle_history = []
+                for cycle in adaptive_learner._cycle_history:
+                    cycle_history.append({
+                        "overshoot": cycle.overshoot,
+                        "undershoot": cycle.undershoot,
+                        "settling_time": cycle.settling_time,
+                        "oscillations": cycle.oscillations,
+                        "rise_time": cycle.rise_time,
+                    })
+
+                data["adaptive_learner"] = {
+                    "zone_name": adaptive_learner.zone_name,
+                    "cycle_history": cycle_history,
+                }
+
+            # Save ValveCycleTracker data
+            if valve_tracker is not None:
+                data["valve_tracker"] = {
+                    "cycle_count": valve_tracker._cycle_count,
+                    "last_state": valve_tracker._last_state,
+                }
+
+            # Write to file atomically
+            temp_file = f"{self.storage_file}.tmp"
+            with open(temp_file, "w") as f:
+                json.dump(data, f, indent=2)
+
+            # Atomic rename
+            os.replace(temp_file, self.storage_file)
+
+            _LOGGER.info(f"Learning data saved to {self.storage_file}")
+            return True
+
+        except Exception as e:
+            _LOGGER.error(f"Failed to save learning data: {e}")
+            return False
+
+    def load(self) -> Optional[Dict[str, Any]]:
+        """
+        Load learning data from storage.
+
+        Returns:
+            Dictionary with learning data, or None if file doesn't exist or is corrupt
+        """
+        if not os.path.exists(self.storage_file):
+            _LOGGER.info(f"No existing learning data found at {self.storage_file}")
+            return None
+
+        try:
+            with open(self.storage_file, "r") as f:
+                data = json.load(f)
+
+            # Validate version
+            if "version" not in data:
+                _LOGGER.warning("Learning data missing version field, treating as corrupt")
+                return None
+
+            _LOGGER.info(f"Learning data loaded from {self.storage_file}")
+            return data
+
+        except json.JSONDecodeError as e:
+            _LOGGER.error(f"Corrupt learning data (invalid JSON): {e}")
+            return None
+        except Exception as e:
+            _LOGGER.error(f"Failed to load learning data: {e}")
+            return None
+
+    def restore_thermal_learner(self, data: Dict[str, Any]) -> Optional[ThermalRateLearner]:
+        """
+        Restore ThermalRateLearner from saved data.
+
+        Args:
+            data: Loaded data dictionary from load()
+
+        Returns:
+            Restored ThermalRateLearner instance, or None if data missing
+        """
+        if "thermal_learner" not in data:
+            return None
+
+        try:
+            thermal_data = data["thermal_learner"]
+            learner = ThermalRateLearner(
+                outlier_threshold=thermal_data.get("outlier_threshold", 2.0)
+            )
+
+            # Validate data types
+            cooling_rates = thermal_data.get("cooling_rates", [])
+            heating_rates = thermal_data.get("heating_rates", [])
+
+            if not isinstance(cooling_rates, list):
+                raise TypeError("cooling_rates must be a list")
+            if not isinstance(heating_rates, list):
+                raise TypeError("heating_rates must be a list")
+
+            learner._cooling_rates = cooling_rates
+            learner._heating_rates = heating_rates
+
+            _LOGGER.info(
+                f"Restored ThermalRateLearner: "
+                f"{len(learner._cooling_rates)} cooling rates, "
+                f"{len(learner._heating_rates)} heating rates"
+            )
+            return learner
+
+        except Exception as e:
+            _LOGGER.error(f"Failed to restore ThermalRateLearner: {e}")
+            return None
+
+    def restore_adaptive_learner(self, data: Dict[str, Any]) -> Optional[AdaptiveLearner]:
+        """
+        Restore AdaptiveLearner from saved data.
+
+        Args:
+            data: Loaded data dictionary from load()
+
+        Returns:
+            Restored AdaptiveLearner instance, or None if data missing
+        """
+        if "adaptive_learner" not in data:
+            return None
+
+        try:
+            adaptive_data = data["adaptive_learner"]
+            learner = AdaptiveLearner(zone_name=adaptive_data.get("zone_name"))
+
+            # Validate cycle history is a list
+            cycle_history = adaptive_data.get("cycle_history", [])
+            if not isinstance(cycle_history, list):
+                raise TypeError("cycle_history must be a list")
+
+            # Restore cycle history
+            for cycle_data in cycle_history:
+                if not isinstance(cycle_data, dict):
+                    raise TypeError("cycle_data must be a dictionary")
+
+                metrics = CycleMetrics(
+                    overshoot=cycle_data.get("overshoot"),
+                    undershoot=cycle_data.get("undershoot"),
+                    settling_time=cycle_data.get("settling_time"),
+                    oscillations=cycle_data.get("oscillations", 0),
+                    rise_time=cycle_data.get("rise_time"),
+                )
+                learner.add_cycle_metrics(metrics)
+
+            _LOGGER.info(
+                f"Restored AdaptiveLearner for zone '{learner.zone_name}': "
+                f"{learner.get_cycle_count()} cycles"
+            )
+            return learner
+
+        except Exception as e:
+            _LOGGER.error(f"Failed to restore AdaptiveLearner: {e}")
+            return None
+
+    def restore_valve_tracker(self, data: Dict[str, Any]) -> Optional[ValveCycleTracker]:
+        """
+        Restore ValveCycleTracker from saved data.
+
+        Args:
+            data: Loaded data dictionary from load()
+
+        Returns:
+            Restored ValveCycleTracker instance, or None if data missing
+        """
+        if "valve_tracker" not in data:
+            return None
+
+        try:
+            valve_data = data["valve_tracker"]
+            tracker = ValveCycleTracker()
+            tracker._cycle_count = valve_data.get("cycle_count", 0)
+            tracker._last_state = valve_data.get("last_state")
+
+            _LOGGER.info(f"Restored ValveCycleTracker: {tracker._cycle_count} cycles")
+            return tracker
+
+        except Exception as e:
+            _LOGGER.error(f"Failed to restore ValveCycleTracker: {e}")
+            return None
