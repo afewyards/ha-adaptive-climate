@@ -73,8 +73,9 @@ _LOGGER = logging.getLogger(__name__)
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
     {
-        vol.Required(const.CONF_HEATER): cv.entity_ids,
+        vol.Optional(const.CONF_HEATER): cv.entity_ids,
         vol.Optional(const.CONF_COOLER): cv.entity_ids,
+        vol.Optional(const.CONF_DEMAND_SWITCH): cv.entity_ids,
         vol.Required(const.CONF_INVERT_HEATER, default=False): cv.boolean,
         vol.Required(const.CONF_SENSOR): cv.entity_id,
         vol.Optional(const.CONF_OUTDOOR_SENSOR): cv.entity_id,
@@ -168,11 +169,23 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     name = config.get(CONF_NAME)
     zone_id = slugify(name)
 
+    # Validate that at least one output entity is configured
+    heater = config.get(const.CONF_HEATER)
+    cooler = config.get(const.CONF_COOLER)
+    demand_switch = config.get(const.CONF_DEMAND_SWITCH)
+    if not heater and not cooler and not demand_switch:
+        _LOGGER.error(
+            "%s: At least one of heater, cooler, or demand_switch must be configured",
+            name
+        )
+        return
+
     parameters = {
         'name': name,
         'unique_id': config.get(CONF_UNIQUE_ID),
         'heater_entity_id': config.get(const.CONF_HEATER),
         'cooler_entity_id': config.get(const.CONF_COOLER),
+        'demand_switch_entity_id': config.get(const.CONF_DEMAND_SWITCH),
         'invert_heater': config.get(const.CONF_INVERT_HEATER),
         'sensor_entity_id': config.get(const.CONF_SENSOR),
         'ext_sensor_entity_id': config.get(const.CONF_OUTDOOR_SENSOR),
@@ -337,6 +350,7 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
         self._unique_id = kwargs.get('unique_id')
         self._heater_entity_id = kwargs.get('heater_entity_id')
         self._cooler_entity_id = kwargs.get('cooler_entity_id', None)
+        self._demand_switch_entity_id = kwargs.get('demand_switch_entity_id', None)
         self._heater_polarity_invert = kwargs.get('invert_heater')
         self._sensor_entity_id = kwargs.get('sensor_entity_id')
         self._ext_sensor_entity_id = kwargs.get('ext_sensor_entity_id')
@@ -1028,10 +1042,24 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
 
     @property
     def heater_or_cooler_entity(self):
-        """Return the entity to be controlled based on HVAC MODE"""
+        """Return the entities to be controlled based on HVAC MODE.
+
+        Returns heater or cooler entities based on mode, plus any demand_switch
+        entities which are controlled regardless of heat/cool mode.
+        """
+        entities = []
+
+        # Add heater or cooler based on mode
         if self.hvac_mode == HVACMode.COOL and self._cooler_entity_id is not None:
-            return self._cooler_entity_id
-        return self._heater_entity_id
+            entities.extend(self._cooler_entity_id)
+        elif self._heater_entity_id is not None:
+            entities.extend(self._heater_entity_id)
+
+        # Add demand_switch entities (controlled in both heat and cool modes)
+        if self._demand_switch_entity_id is not None:
+            entities.extend(self._demand_switch_entity_id)
+
+        return entities
 
     async def _async_heater_turn_on(self):
         """Turn heater toggleable device on."""
