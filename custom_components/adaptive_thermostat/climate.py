@@ -129,9 +129,9 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Optional(const.CONF_OUTPUT_MAX, default=const.DEFAULT_OUTPUT_MAX): vol.Coerce(float),
         vol.Optional(const.CONF_OUT_CLAMP_LOW, default=const.DEFAULT_OUT_CLAMP_LOW): vol.Coerce(float),
         vol.Optional(const.CONF_OUT_CLAMP_HIGH, default=const.DEFAULT_OUT_CLAMP_HIGH): vol.Coerce(float),
-        vol.Optional(const.CONF_KP, default=const.DEFAULT_KP): vol.Coerce(float),
-        vol.Optional(const.CONF_KI, default=const.DEFAULT_KI): vol.Coerce(float),
-        vol.Optional(const.CONF_KD, default=const.DEFAULT_KD): vol.Coerce(float),
+        vol.Optional(const.CONF_KP): vol.Coerce(float),
+        vol.Optional(const.CONF_KI): vol.Coerce(float),
+        vol.Optional(const.CONF_KD): vol.Coerce(float),
         vol.Optional(const.CONF_KE, default=const.DEFAULT_KE): vol.Coerce(float),
         vol.Optional(const.CONF_PWM, default=const.DEFAULT_PWM): vol.All(
             cv.time_period, cv.positive_timedelta
