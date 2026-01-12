@@ -602,3 +602,173 @@ class SystemHealthSensor(SensorEntity):
             }
 
         return zones_data
+
+
+class TotalPowerSensor(SensorEntity):
+    """Sensor for total heating power across all zones."""
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        """Initialize the total power sensor."""
+        self.hass = hass
+        self._attr_name = "Heating Total Power"
+        self._attr_unique_id = "heating_total_power"
+        self._attr_native_unit_of_measurement = UnitOfPower.WATT
+        self._attr_device_class = SensorDeviceClass.POWER
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_icon = "mdi:lightning-bolt"
+        self._attr_should_poll = False
+        self._attr_available = True
+        self._value = 0.0
+        self._zone_powers = {}
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the total power in Watts."""
+        return round(self._value, 1)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return additional state attributes."""
+        return {
+            "zone_powers": self._zone_powers,
+            "zone_count": len(self._zone_powers),
+        }
+
+    async def async_update(self) -> None:
+        """Update the sensor by aggregating power from all zones."""
+        total_power = 0.0
+        zone_powers = {}
+
+        # Get coordinator
+        coordinator = self.hass.data.get(DOMAIN, {}).get("coordinator")
+        if not coordinator:
+            self._value = 0.0
+            self._zone_powers = {}
+            return
+
+        # Get all zones from coordinator
+        all_zones = coordinator.get_all_zones()
+
+        for zone_id in all_zones:
+            zone_data = coordinator.get_zone_data(zone_id)
+            if not zone_data:
+                continue
+
+            # Get area for this zone
+            area_m2 = zone_data.get("area_m2", 0)
+            if area_m2 <= 0:
+                continue
+
+            # Get power/m2 sensor value
+            power_m2_sensor_id = f"sensor.{zone_id}_power_m2"
+            power_m2_state = self.hass.states.get(power_m2_sensor_id)
+
+            if power_m2_state and power_m2_state.state not in ("unknown", "unavailable"):
+                try:
+                    power_m2 = float(power_m2_state.state)
+                    zone_power = power_m2 * area_m2
+                    zone_powers[zone_id] = round(zone_power, 1)
+                    total_power += zone_power
+                except (ValueError, TypeError):
+                    pass
+
+        self._value = total_power
+        self._zone_powers = zone_powers
+
+
+class WeeklyCostSensor(SensorEntity):
+    """Sensor for weekly heating energy cost."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        energy_meter_entity: str | None = None,
+        energy_cost_entity: str | None = None,
+    ) -> None:
+        """Initialize the weekly cost sensor."""
+        self.hass = hass
+        self._energy_meter_entity = energy_meter_entity
+        self._energy_cost_entity = energy_cost_entity
+        self._attr_name = "Heating Weekly Cost"
+        self._attr_unique_id = "heating_weekly_cost"
+        self._attr_device_class = SensorDeviceClass.MONETARY
+        self._attr_state_class = SensorStateClass.TOTAL
+        self._attr_icon = "mdi:currency-eur"
+        self._attr_should_poll = False
+        self._attr_available = True
+        self._value = 0.0
+        self._weekly_energy_kwh = 0.0
+        self._price_per_kwh = None
+        self._currency = "EUR"
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the weekly cost."""
+        return round(self._value, 2)
+
+    @property
+    def native_unit_of_measurement(self) -> str:
+        """Return the currency unit."""
+        return self._currency
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return additional state attributes."""
+        return {
+            "weekly_energy_kwh": round(self._weekly_energy_kwh, 2),
+            "price_per_kwh": self._price_per_kwh,
+            "energy_meter_entity": self._energy_meter_entity,
+            "cost_entity": self._energy_cost_entity,
+        }
+
+    async def async_update(self) -> None:
+        """Update the sensor with weekly cost calculation."""
+        if not self._energy_meter_entity:
+            self._attr_available = False
+            return
+
+        # Get current energy price
+        if self._energy_cost_entity:
+            cost_state = self.hass.states.get(self._energy_cost_entity)
+            if cost_state and cost_state.state not in ("unknown", "unavailable"):
+                try:
+                    self._price_per_kwh = float(cost_state.state)
+                    # Try to get currency from unit_of_measurement
+                    uom = cost_state.attributes.get("unit_of_measurement", "")
+                    if "/" in uom:
+                        self._currency = uom.split("/")[0]
+                except (ValueError, TypeError):
+                    pass
+
+        # Get energy meter reading
+        meter_state = self.hass.states.get(self._energy_meter_entity)
+        if not meter_state or meter_state.state in ("unknown", "unavailable"):
+            self._attr_available = False
+            return
+
+        self._attr_available = True
+
+        # For now, we track the current meter value
+        # A full implementation would store historical readings
+        # and calculate the 7-day difference
+        try:
+            current_reading = float(meter_state.state)
+            unit = meter_state.attributes.get("unit_of_measurement", "kWh").upper()
+
+            # Convert to kWh
+            from .analytics.energy import UNIT_CONVERSIONS
+            conversion = UNIT_CONVERSIONS.get(unit.replace("KWH", "KWH").replace("GJ", "GJ"), 1.0)
+            current_kwh = current_reading * conversion
+
+            # Store the weekly energy (this is simplified - production would track 7-day delta)
+            self._weekly_energy_kwh = current_kwh
+
+            # Calculate cost if price is available
+            if self._price_per_kwh is not None:
+                self._value = self._weekly_energy_kwh * self._price_per_kwh
+            else:
+                self._value = 0.0
+
+        except (ValueError, TypeError) as e:
+            _LOGGER.error("Error calculating weekly cost: %s", e)
+            self._value = 0.0

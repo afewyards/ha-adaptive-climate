@@ -64,6 +64,7 @@ from homeassistant.components.climate import (
 from . import DOMAIN, PLATFORMS
 from . import const
 from . import pid_controller
+from .adaptive.learning import AdaptiveLearner, ThermalRateLearner
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -133,6 +134,23 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         ),
         vol.Optional(const.CONF_BOOST_PID_OFF, default=False): cv.boolean,
         vol.Optional(const.CONF_DEBUG, default=False): cv.boolean,
+        # Adaptive learning options
+        vol.Optional(const.CONF_HEATING_TYPE): vol.In(const.VALID_HEATING_TYPES),
+        vol.Optional(const.CONF_AREA_M2): vol.Coerce(float),
+        vol.Optional(const.CONF_CEILING_HEIGHT, default=const.DEFAULT_CEILING_HEIGHT): vol.Coerce(float),
+        vol.Optional(const.CONF_WINDOW_AREA_M2): vol.Coerce(float),
+        vol.Optional(const.CONF_WINDOW_ORIENTATION): vol.In(const.VALID_WINDOW_ORIENTATIONS),
+        vol.Optional(const.CONF_LEARNING_ENABLED, default=const.DEFAULT_LEARNING_ENABLED): cv.boolean,
+        # Zone linking
+        vol.Optional(const.CONF_LINKED_ZONES): cv.entity_ids,
+        vol.Optional(const.CONF_LINK_DELAY_MINUTES, default=const.DEFAULT_LINK_DELAY_MINUTES): vol.Coerce(int),
+        # Contact sensors
+        vol.Optional(const.CONF_CONTACT_SENSORS): cv.entity_ids,
+        vol.Optional(const.CONF_CONTACT_ACTION, default=const.CONTACT_ACTION_PAUSE): vol.In(const.VALID_CONTACT_ACTIONS),
+        vol.Optional(const.CONF_CONTACT_DELAY, default=const.DEFAULT_CONTACT_DELAY): vol.Coerce(int),
+        # Health monitoring
+        vol.Optional(const.CONF_HEALTH_ALERTS_ENABLED, default=const.DEFAULT_HEALTH_ALERTS_ENABLED): cv.boolean,
+        vol.Optional(const.CONF_HIGH_POWER_EXCEPTION, default=const.DEFAULT_HIGH_POWER_EXCEPTION): cv.boolean,
     }
 )
 
@@ -144,8 +162,12 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     platform = entity_platform.current_platform.get()
     assert platform
 
+    # Get name and create zone_id
+    name = config.get(CONF_NAME)
+    zone_id = slugify(name)
+
     parameters = {
-        'name': config.get(CONF_NAME),
+        'name': name,
         'unique_id': config.get(CONF_UNIQUE_ID),
         'heater_entity_id': config.get(const.CONF_HEATER),
         'cooler_entity_id': config.get(const.CONF_COOLER),
@@ -191,10 +213,74 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         'pwm': config.get(const.CONF_PWM),
         'boost_pid_off': config.get(const.CONF_BOOST_PID_OFF),
         const.CONF_DEBUG: config.get(const.CONF_DEBUG),
+        # New adaptive learning parameters
+        'zone_id': zone_id,
+        'heating_type': config.get(const.CONF_HEATING_TYPE),
+        'area_m2': config.get(const.CONF_AREA_M2),
+        'ceiling_height': config.get(const.CONF_CEILING_HEIGHT),
+        'window_area_m2': config.get(const.CONF_WINDOW_AREA_M2),
+        'window_orientation': config.get(const.CONF_WINDOW_ORIENTATION),
+        'learning_enabled': config.get(const.CONF_LEARNING_ENABLED),
+        'linked_zones': config.get(const.CONF_LINKED_ZONES),
+        'link_delay_minutes': config.get(const.CONF_LINK_DELAY_MINUTES),
+        'contact_sensors': config.get(const.CONF_CONTACT_SENSORS),
+        'contact_action': config.get(const.CONF_CONTACT_ACTION),
+        'contact_delay': config.get(const.CONF_CONTACT_DELAY),
+        'health_alerts_enabled': config.get(const.CONF_HEALTH_ALERTS_ENABLED),
+        'high_power_exception': config.get(const.CONF_HIGH_POWER_EXCEPTION),
     }
 
     smart_thermostat = SmartThermostat(**parameters)
     async_add_entities([smart_thermostat])
+
+    # Register zone with coordinator
+    coordinator = hass.data.get(DOMAIN, {}).get("coordinator")
+    if coordinator:
+        # Create adaptive learner for this zone
+        adaptive_learner = None
+        if config.get(const.CONF_LEARNING_ENABLED, const.DEFAULT_LEARNING_ENABLED):
+            adaptive_learner = AdaptiveLearner(zone_id)
+
+        zone_data = {
+            "climate_entity_id": f"climate.{zone_id}",
+            "zone_name": name,
+            "area_m2": config.get(const.CONF_AREA_M2, 0),
+            "heating_type": config.get(const.CONF_HEATING_TYPE),
+            "learning_enabled": config.get(const.CONF_LEARNING_ENABLED, const.DEFAULT_LEARNING_ENABLED),
+            "adaptive_learner": adaptive_learner,
+            "linked_zones": config.get(const.CONF_LINKED_ZONES, []),
+            "high_power_exception": config.get(const.CONF_HIGH_POWER_EXCEPTION, False),
+        }
+        coordinator.register_zone(zone_id, zone_data)
+        _LOGGER.info("Registered zone %s with coordinator", zone_id)
+
+        # Trigger sensor platform discovery for this zone
+        hass.async_create_task(
+            hass.helpers.discovery.async_load_platform(
+                "sensor",
+                DOMAIN,
+                {
+                    "zone_id": zone_id,
+                    "zone_name": name,
+                    "climate_entity_id": f"climate.{zone_id}",
+                },
+                config,
+            )
+        )
+
+        # Trigger switch platform discovery for demand switch
+        hass.async_create_task(
+            hass.helpers.discovery.async_load_platform(
+                "switch",
+                DOMAIN,
+                {
+                    "zone_id": zone_id,
+                    "zone_name": name,
+                    "climate_entity_id": f"climate.{zone_id}",
+                },
+                config,
+            )
+        )
 
     platform.async_register_entity_service(  # type: ignore
         "set_pid_gain",

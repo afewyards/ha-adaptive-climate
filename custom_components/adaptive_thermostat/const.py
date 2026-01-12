@@ -116,3 +116,99 @@ PID_LIMITS = {
 
 # Minimum number of cycles required before adaptive learning can recommend PID changes
 MIN_CYCLES_FOR_LEARNING = 3
+
+# System-level configuration
+CONF_MAIN_HEATER_SWITCH = "main_heater_switch"
+CONF_MAIN_COOLER_SWITCH = "main_cooler_switch"
+CONF_SOURCE_STARTUP_DELAY = "source_startup_delay"
+CONF_SYNC_MODES = "sync_modes"
+CONF_LEARNING_WINDOW_DAYS = "learning_window_days"
+CONF_WEATHER_ENTITY = "weather_entity"
+CONF_NOTIFY_SERVICE = "notify_service"
+CONF_HOUSE_ENERGY_RATING = "house_energy_rating"
+CONF_SUPPLY_TEMP_SENSOR = "supply_temp_sensor"
+CONF_RETURN_TEMP_SENSOR = "return_temp_sensor"
+CONF_FLOW_RATE_SENSOR = "flow_rate_sensor"
+CONF_VOLUME_METER_ENTITY = "volume_meter_entity"
+CONF_FALLBACK_FLOW_RATE = "fallback_flow_rate"
+CONF_ENERGY_METER_ENTITY = "energy_meter_entity"
+CONF_ENERGY_COST_ENTITY = "energy_cost_entity"
+
+# Per-zone configuration
+CONF_AREA_M2 = "area_m2"
+CONF_CEILING_HEIGHT = "ceiling_height"
+CONF_WINDOW_AREA_M2 = "window_area_m2"
+CONF_WINDOW_ORIENTATION = "window_orientation"
+CONF_DEMAND_SWITCH = "demand_switch"
+CONF_LINKED_ZONES = "linked_zones"
+CONF_LINK_DELAY_MINUTES = "link_delay_minutes"
+CONF_LEARNING_ENABLED = "learning_enabled"
+CONF_MIN_LEARNING_EVENTS = "min_learning_events"
+CONF_HEALTH_ALERTS_ENABLED = "health_alerts_enabled"
+CONF_MIN_CYCLE_TIME_WARNING = "min_cycle_time_warning"
+CONF_MIN_CYCLE_TIME_CRITICAL = "min_cycle_time_critical"
+CONF_MAX_POWER_M2 = "max_power_m2"
+CONF_HIGH_POWER_EXCEPTION = "high_power_exception"
+
+# Contact sensor configuration
+CONF_CONTACT_SENSORS = "contact_sensors"
+CONF_CONTACT_ACTION = "contact_action"
+CONF_CONTACT_DELAY = "contact_delay"
+CONF_CONTACT_LEARNING_GRACE = "contact_learning_grace"
+
+# Night setback configuration
+CONF_NIGHT_SETBACK = "night_setback"
+CONF_NIGHT_SETBACK_ENABLED = "enabled"
+CONF_NIGHT_SETBACK_DELTA = "delta"
+CONF_NIGHT_SETBACK_START = "start"
+CONF_NIGHT_SETBACK_SOLAR_RECOVERY = "solar_recovery"
+CONF_NIGHT_SETBACK_RECOVERY_DEADLINE = "recovery_deadline"
+
+# Contact action types
+CONTACT_ACTION_PAUSE = "pause"
+CONTACT_ACTION_FROST = "frost_protection"
+CONTACT_ACTION_NONE = "none"
+
+VALID_CONTACT_ACTIONS = [
+    CONTACT_ACTION_PAUSE,
+    CONTACT_ACTION_FROST,
+    CONTACT_ACTION_NONE,
+]
+
+# Window orientations
+WINDOW_ORIENTATION_NORTH = "north"
+WINDOW_ORIENTATION_EAST = "east"
+WINDOW_ORIENTATION_SOUTH = "south"
+WINDOW_ORIENTATION_WEST = "west"
+
+VALID_WINDOW_ORIENTATIONS = [
+    WINDOW_ORIENTATION_NORTH,
+    WINDOW_ORIENTATION_EAST,
+    WINDOW_ORIENTATION_SOUTH,
+    WINDOW_ORIENTATION_WEST,
+]
+
+# Energy ratings
+VALID_ENERGY_RATINGS = [
+    "A+++", "A++", "A+", "A", "B", "C", "D", "E", "F", "G"
+]
+
+# Default values for new configuration options
+DEFAULT_SOURCE_STARTUP_DELAY = 30
+DEFAULT_LINK_DELAY_MINUTES = 10
+DEFAULT_CONTACT_DELAY = 120
+DEFAULT_CONTACT_LEARNING_GRACE = 300
+DEFAULT_LEARNING_WINDOW_DAYS = 7
+DEFAULT_LEARNING_ENABLED = True
+DEFAULT_MIN_LEARNING_EVENTS = 3
+DEFAULT_HEALTH_ALERTS_ENABLED = True
+DEFAULT_MIN_CYCLE_TIME_WARNING = 15
+DEFAULT_MIN_CYCLE_TIME_CRITICAL = 10
+DEFAULT_MAX_POWER_M2 = 20
+DEFAULT_HIGH_POWER_EXCEPTION = False
+DEFAULT_CEILING_HEIGHT = 2.5
+DEFAULT_FALLBACK_FLOW_RATE = 0.5
+DEFAULT_NIGHT_SETBACK_DELTA = 2.0
+DEFAULT_VACATION_TARGET_TEMP = 12.0
+DEFAULT_FROST_PROTECTION_TEMP = 5.0
+DEFAULT_SYNC_MODES = True
