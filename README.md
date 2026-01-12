@@ -76,7 +76,7 @@ climate:
     linked_zones:
       - climate.kitchen
       - climate.hallway
-    link_delay_minutes: 10
+    link_delay_minutes: 20
 
     # Contact sensors (pause heating when windows/doors open)
     contact_sensors:
@@ -462,7 +462,7 @@ Configure as a nested block under `night_setback`:
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `linked_zones` | - | List of thermally connected zone entity IDs |
-| `link_delay_minutes` | 10 | Delay before linked zone starts heating |
+| `link_delay_minutes` | 20 | Delay (minutes) before linked zone starts heating |
 | `contact_sensors` | - | List of window/door sensor entity IDs |
 | `contact_action` | pause | Action when open: pause, frost_protection, none |
 | `contact_delay` | 120 | Seconds before taking action |
