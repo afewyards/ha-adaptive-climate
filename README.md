@@ -82,7 +82,7 @@ climate:
     contact_sensors:
       - binary_sensor.gf_window
       - binary_sensor.gf_door
-    contact_action: pause  # pause, frost_protection
+    contact_action: pause  # pause, frost_protection, none
     contact_delay: 120
 
     # Health monitoring
@@ -96,28 +96,79 @@ climate:
     comfort_temp: 21
     home_temp: 20
     sleep_temp: 18
+    activity_temp: 20
+```
+
+### Cooling/AC Example
+```yaml
+climate:
+  - platform: adaptive_thermostat
+    name: Living Room AC
+    heater: switch.heating_living
+    cooler: switch.ac_living
+    ac_mode: true
+    target_sensor: sensor.temp_living
+    min_temp: 16
+    max_temp: 30
+    target_temp: 22
+    hot_tolerance: 0.5
+    cold_tolerance: 0.5
+    keep_alive:
+      seconds: 60
+```
+
+### Night Setback Example
+```yaml
+climate:
+  - platform: adaptive_thermostat
+    name: Bedroom
+    heater: switch.heating_bedroom
+    target_sensor: sensor.temp_bedroom
+    keep_alive:
+      seconds: 60
+
+    # Night setback configuration
+    night_setback:
+      enabled: true
+      delta: 2.0              # Reduce by 2°C at night
+      start: "22:00"          # Or "sunset+30" for 30 min after sunset
+      solar_recovery: true    # Use solar gain to recover in morning
+      recovery_deadline: "07:00"
 ```
 
 ### System Configuration
 ```yaml
 adaptive_thermostat:
-  # Central heat source control
-  main_heater_switch: switch.boiler
-  main_cooler_switch: switch.ac_compressor
-  source_startup_delay: 30
+  # House properties (for physics-based initialization)
+  house_energy_rating: A+++  # A+++ to G
 
-  # Mode synchronization across zones
-  sync_modes: true
+  # Learning
+  learning_window_days: 7  # Adjustable via number entity
 
-  # Notifications
-  notify_service: notify.mobile_app
+  # Weather for solar gain prediction
+  weather_entity: weather.home
+
+  # Heat output sensors (optional - for detailed analytics)
+  supply_temp_sensor: sensor.heating_supply
+  return_temp_sensor: sensor.heating_return
+  flow_rate_sensor: sensor.heating_flow
+  volume_meter_entity: sensor.heating_volume_m3
+  fallback_flow_rate: 0.5  # L/min fallback when meter unavailable
 
   # Energy tracking (optional)
   energy_meter_entity: sensor.heating_energy
   energy_cost_entity: input_number.energy_price
 
-  # Weather for solar gain prediction
-  weather_entity: weather.home
+  # Central heat source control
+  main_heater_switch: switch.boiler
+  main_cooler_switch: switch.ac_compressor
+  source_startup_delay: 30  # Seconds delay before firing heat source
+
+  # Mode synchronization across zones
+  sync_modes: true  # Sync HEAT/COOL mode changes across zones
+
+  # Notifications for health alerts and reports
+  notify_service: notify.mobile_app
 ```
 
 ## Heating Types
@@ -258,6 +309,7 @@ Learns solar heating patterns per zone based on:
 Pauses heating or switches to frost protection when windows/doors are open:
 - `pause` - Stops heating completely
 - `frost_protection` - Maintains minimum safe temperature (5°C)
+- `none` - No action (useful if you only want logging)
 
 ### Heating Curves
 Outdoor temperature compensation using the Ke parameter:
@@ -277,9 +329,18 @@ Recommended Ke values by insulation:
 Aggregates demand from all zones to control the main boiler/heat pump:
 - Startup delay allows valves to open before firing heat source
 - Immediate off when no zone has demand
+- Configured via `main_heater_switch`, `main_cooler_switch`, and `source_startup_delay`
 
 ### Mode Synchronization
 When one zone switches to HEAT or COOL mode, other zones follow (OFF mode remains independent).
+- Enable with `sync_modes: true` in system configuration
+- Prevents conflicting heat/cool modes across zones
+
+### Zone Demand Tracking
+Each zone creates a demand switch (`switch.{zone}_demand`) that indicates heating demand:
+- ON when PID output exceeds threshold
+- Used by central controller to aggregate demand
+- Can also be used in custom automations
 
 ### Zone Linking
 For thermally connected zones (e.g., open floor plan):
@@ -293,47 +354,135 @@ For thermally connected zones (e.g., open floor plan):
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
 | `name` | No | Adaptive Thermostat | Thermostat name |
-| `heater` | Yes | - | Switch/valve entity to control |
-| `cooler` | No | - | Cooling switch/valve entity |
+| `heater` | Yes | - | Switch/valve entity (or list) to control |
+| `cooler` | No | - | Cooling switch/valve entity (or list) |
+| `invert_heater` | No | false | Invert heater on/off polarity |
 | `target_sensor` | Yes | - | Temperature sensor entity |
-| `outdoor_sensor` | No | - | Outdoor temperature sensor |
-| `keep_alive` | Yes | - | PWM update interval |
-| `pwm` | No | 00:15:00 | PWM period (0 for valves) |
+| `outdoor_sensor` | No | - | Outdoor temperature sensor for Ke |
+| `min_temp` | No | 7 | Minimum setpoint temperature |
+| `max_temp` | No | 35 | Maximum setpoint temperature |
+| `target_temp` | No | 20 | Initial target temperature |
+| `ac_mode` | No | false | Enable cooling mode support |
+
+### Timing & Cycle Parameters
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `keep_alive` | Yes | - | Interval to refresh heater state |
+| `pwm` | No | 00:15:00 | PWM period (set to 0 for valves) |
+| `min_cycle_duration` | No | 00:00:00 | Minimum heater on-time |
+| `min_off_cycle_duration` | No | - | Minimum heater off-time |
+| `min_cycle_duration_pid_off` | No | - | Min on-time when PID disabled |
+| `min_off_cycle_duration_pid_off` | No | - | Min off-time when PID disabled |
+| `sampling_period` | No | 00:00:00 | PID calculation interval (0 = on sensor change) |
+
+### Temperature Tolerance Parameters
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `hot_tolerance` | 0.3 | Tolerance above setpoint before cooling (°C) |
+| `cold_tolerance` | 0.3 | Tolerance below setpoint before heating (°C) |
+| `precision` | - | Display precision (tenths, halves, whole) |
+| `target_temp_step` | - | Setpoint adjustment step size |
 
 ### PID Parameters (Optional - Auto-calculated)
 PID values are automatically calculated from `heating_type` and zone properties. Only specify these to override the physics-based initialization.
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `kp` | Auto | Proportional gain |
-| `ki` | Auto | Integral gain |
-| `kd` | Auto | Derivative gain |
-| `ke` | 0 | Outdoor compensation gain |
+| `kp` | Auto | Proportional gain (10-500) |
+| `ki` | Auto | Integral gain (0-100) |
+| `kd` | Auto | Derivative gain (0-200) |
+| `ke` | 0 | Outdoor temperature compensation gain |
+
+### Output Control Parameters
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `output_min` | 0 | Minimum PID output value |
+| `output_max` | 100 | Maximum PID output value |
+| `out_clamp_low` | 0 | Lower output clamp limit |
+| `out_clamp_high` | 100 | Upper output clamp limit |
+| `output_precision` | 1 | Decimal places for output value |
+
+### Safety Parameters
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `sensor_stall` | 06:00:00 | Timeout before declaring sensor stalled |
+| `output_safety` | 5.0 | Safety output when sensor stalls (%) |
+| `force_off_state` | true | Force heater off when HVAC mode is OFF |
 
 ### Adaptive Learning Parameters
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `heating_type` | - | System type for physics-based init |
+| `heating_type` | - | System type: floor_hydronic, radiator, convector, forced_air |
 | `area_m2` | - | Zone floor area in m² |
 | `ceiling_height` | 2.5 | Ceiling height in meters |
 | `window_area_m2` | - | Total window area in m² |
-| `window_orientation` | - | Primary window direction |
+| `window_orientation` | - | Primary window direction (north, east, south, west) |
 | `learning_enabled` | true | Enable adaptive learning |
+
+### Preset Mode Parameters
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `away_temp` | - | Away mode temperature |
+| `eco_temp` | - | Eco mode temperature |
+| `boost_temp` | - | Boost mode temperature |
+| `comfort_temp` | - | Comfort mode temperature |
+| `home_temp` | - | Home mode temperature |
+| `sleep_temp` | - | Sleep mode temperature |
+| `activity_temp` | - | Activity mode temperature |
+| `preset_sync_mode` | none | Sync setpoint to preset ("sync" or "none") |
+| `boost_pid_off` | false | Disable PID control in boost mode |
+
+### Night Setback Parameters
+Configure as a nested block under `night_setback`:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `enabled` | false | Enable night setback |
+| `delta` | 2.0 | Temperature reduction at night (°C) |
+| `start` | - | Start time ("22:00" or "sunset+30") |
+| `solar_recovery` | false | Use solar gain for morning recovery |
+| `recovery_deadline` | - | Hard deadline for recovery ("07:00") |
 
 ### Zone Coordination Parameters
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `linked_zones` | - | List of thermally connected zones |
-| `link_delay_minutes` | 10 | Delay before linked zone heats |
-| `contact_sensors` | - | Window/door sensors |
-| `contact_action` | pause | Action when contact open |
+| `linked_zones` | - | List of thermally connected zone entity IDs |
+| `link_delay_minutes` | 10 | Delay before linked zone starts heating |
+| `contact_sensors` | - | List of window/door sensor entity IDs |
+| `contact_action` | pause | Action when open: pause, frost_protection, none |
 | `contact_delay` | 120 | Seconds before taking action |
 
 ### Health Monitoring Parameters
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `health_alerts_enabled` | true | Enable health monitoring |
-| `high_power_exception` | false | Exclude from high power warnings |
+| `health_alerts_enabled` | true | Enable health monitoring alerts |
+| `high_power_exception` | false | Exclude zone from high power warnings |
+
+### Debug Parameters
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `debug` | false | Expose debug attributes on entity |
+
+### System Configuration Parameters
+These are configured under the `adaptive_thermostat:` domain block, not per-zone.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `house_energy_rating` | - | Building energy rating (A+++ to G) for physics init |
+| `learning_window_days` | 7 | Days of data for adaptive learning |
+| `weather_entity` | - | Weather entity for solar gain prediction |
+| `main_heater_switch` | - | Main boiler/heat pump switch entity |
+| `main_cooler_switch` | - | Main AC/chiller switch entity |
+| `source_startup_delay` | 30 | Seconds to wait before activating heat source |
+| `sync_modes` | true | Synchronize HEAT/COOL modes across zones |
+| `notify_service` | - | Notification service for alerts/reports |
+| `energy_meter_entity` | - | Energy meter sensor for cost tracking |
+| `energy_cost_entity` | - | Energy price input for cost calculation |
+| `supply_temp_sensor` | - | Supply water temperature sensor |
+| `return_temp_sensor` | - | Return water temperature sensor |
+| `flow_rate_sensor` | - | Flow rate sensor (L/min) |
+| `volume_meter_entity` | - | Volume meter for flow rate calculation |
+| `fallback_flow_rate` | 0.5 | Fallback flow rate (L/min) when meter unavailable |
 
 ## Troubleshooting
 

@@ -7,6 +7,7 @@ from typing import Any
 from homeassistant.components.number import (
     NumberEntity,
     NumberMode,
+    RestoreNumber,
 )
 from homeassistant.const import UnitOfTime
 from homeassistant.core import HomeAssistant
@@ -36,7 +37,7 @@ async def async_setup_platform(
     async_add_entities(entities, True)
 
 
-class LearningWindowNumber(NumberEntity):
+class LearningWindowNumber(RestoreNumber):
     """Number entity for adjusting the learning window in days."""
 
     def __init__(self, hass: HomeAssistant) -> None:
@@ -47,11 +48,12 @@ class LearningWindowNumber(NumberEntity):
         self._attr_native_min_value = 1
         self._attr_native_max_value = 30
         self._attr_native_step = 1
-        self._attr_native_value = DEFAULT_LEARNING_WINDOW_DAYS
         self._attr_native_unit_of_measurement = "days"
         self._attr_mode = NumberMode.BOX
         self._attr_icon = "mdi:calendar-clock"
         self._attr_should_poll = False
+        # Will be set in async_added_to_hass after restoring state
+        self._attr_native_value = DEFAULT_LEARNING_WINDOW_DAYS
 
     @property
     def native_value(self) -> float | None:
@@ -71,8 +73,22 @@ class LearningWindowNumber(NumberEntity):
         _LOGGER.debug("Learning window set to %d days", int(value))
 
     async def async_added_to_hass(self) -> None:
-        """When entity is added to hass."""
+        """Restore state when entity is added to hass."""
         await super().async_added_to_hass()
+
+        # Try to restore previous state
+        last_number_data = await self.async_get_last_number_data()
+        if last_number_data and last_number_data.native_value is not None:
+            self._attr_native_value = int(last_number_data.native_value)
+            _LOGGER.debug(
+                "Restored learning window to %d days", self._attr_native_value
+            )
+        else:
+            # Fall back to configured value or default
+            if DOMAIN in self.hass.data:
+                configured_value = self.hass.data[DOMAIN].get("learning_window_days")
+                if configured_value is not None:
+                    self._attr_native_value = configured_value
 
         # Initialize the value in hass.data
         if DOMAIN not in self.hass.data:
