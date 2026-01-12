@@ -1,5 +1,5 @@
 {
-  "name": "Smart thermostat (PID)",
+  "name": "Adaptive Thermostat",
   "render_readme": true,
-  "homeassistant": "2024.2.0"
+  "homeassistant": "2026.1.0"
 }
