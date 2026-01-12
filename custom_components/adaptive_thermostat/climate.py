@@ -132,10 +132,6 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
             cv.time_period, cv.positive_timedelta
         ),
         vol.Optional(const.CONF_BOOST_PID_OFF, default=False): cv.boolean,
-        vol.Optional(const.CONF_AUTOTUNE, default=const.DEFAULT_AUTOTUNE): cv.string,
-        vol.Optional(const.CONF_NOISEBAND, default=const.DEFAULT_NOISEBAND): vol.Coerce(float),
-        vol.Optional(const.CONF_LOOKBACK, default=const.DEFAULT_LOOKBACK): vol.All(
-            cv.time_period, cv.positive_timedelta),
         vol.Optional(const.CONF_DEBUG, default=False): cv.boolean,
     }
 )
@@ -194,9 +190,6 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         'ke': config.get(const.CONF_KE),
         'pwm': config.get(const.CONF_PWM),
         'boost_pid_off': config.get(const.CONF_BOOST_PID_OFF),
-        'autotune': config.get(const.CONF_AUTOTUNE),
-        'noiseband': config.get(const.CONF_NOISEBAND),
-        'lookback': config.get(const.CONF_LOOKBACK),
         const.CONF_DEBUG: config.get(const.CONF_DEBUG),
     }
 
@@ -341,41 +334,18 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
         self._force_on = False
         self._force_off = False
         self._boost_pid_off = kwargs.get('boost_pid_off')
-        self._autotune = kwargs.get('autotune').lower()
-        if self._autotune.lower() not in [
-            "ziegler-nichols",
-            "tyreus-luyben",
-            "ciancone-marlin",
-            "pessen-integral",
-            "some-overshoot",
-            "no-overshoot",
-            "brewing"
-        ]:
-            self._autotune = "none"
-        self._lookback = kwargs.get('lookback').seconds + kwargs.get('lookback').days * 86400
-        self._noiseband = kwargs.get('noiseband')
         self._cold_tolerance = abs(kwargs.get('cold_tolerance'))
         self._hot_tolerance = abs(kwargs.get('hot_tolerance'))
         self._time_changed = 0
         self._last_sensor_update = time.time()
         self._last_ext_sensor_update = time.time()
-        if self._autotune != "none":
-            self._pid_controller = None
-            self._pid_autotune = pid_controller.PIDAutotune(self._difference, self._lookback,
-                                                            self._min_out, self._max_out,
-                                                            self._noiseband, time.time)
-            _LOGGER.warning("%s: Autotune will run with the target temperature "
-                            "set after 10 temperature samples from sensor. Changes submitted "
-                            "after doesn't have any effect until autotuning is finished",
-                            self.unique_id)
-        else:
-            _LOGGER.debug("%s: PID Gains kp = %s, ki = %s, kd = %s", self.unique_id, self._kp,
-                          self._ki, self._kd)
-            self._pid_controller = pid_controller.PID(self._kp, self._ki, self._kd, self._ke,
-                                                      self._min_out, self._max_out,
-                                                      self._sampling_period, self._cold_tolerance,
-                                                      self._hot_tolerance)
-            self._pid_controller.mode = "AUTO"
+        _LOGGER.debug("%s: PID Gains kp = %s, ki = %s, kd = %s", self.unique_id, self._kp,
+                      self._ki, self._kd)
+        self._pid_controller = pid_controller.PID(self._kp, self._ki, self._kd, self._ke,
+                                                  self._min_out, self._max_out,
+                                                  self._sampling_period, self._cold_tolerance,
+                                                  self._hot_tolerance)
+        self._pid_controller.mode = "AUTO"
 
     async def async_added_to_hass(self):
         """Run when entity about to be added."""
@@ -675,25 +645,14 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
             "kd": self._kd,
             "ke": self._ke,
             "pid_mode": self.pid_mode,
-            "pid_i": 0 if self._autotune != "none" else self.pid_control_i,
+            "pid_i": self.pid_control_i,
         }
         if self._debug:
             device_state_attributes.update({
-                "pid_p": 0 if self._autotune != "none" else self.pid_control_p,
-                "pid_d": 0 if self._autotune != "none" else self.pid_control_d,
-                "pid_e": 0 if self._autotune != "none" else self.pid_control_e,
-                "pid_dt": 0 if self._autotune != "none" else self._dt,
-            })
-
-        if self._autotune != "none":
-            device_state_attributes.update({
-                "autotune_status": self._pid_autotune.state,
-                "autotune_sample_time": self._pid_autotune.sample_time,
-                "autotune_tuning_rule": self._autotune,
-                "autotune_set_point": self._pid_autotune.set_point,
-                "autotune_peak_count": self._pid_autotune.peak_count,
-                "autotune_buffer_full": round(self._pid_autotune.buffer_full, 2),
-                "autotune_buffer_length": self._pid_autotune.buffer_length,
+                "pid_p": self.pid_control_p,
+                "pid_d": self.pid_control_d,
+                "pid_e": self.pid_control_e,
+                "pid_dt": self._dt,
             })
         return device_state_attributes
 
@@ -1060,7 +1019,7 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
             await self._async_control_heating(calc_pid=True)
 
     async def calc_output(self):
-        """calculate control output and handle autotune"""
+        """calculate control output"""
         update = False
         if self._previous_temp_time is None:
             self._previous_temp_time = time.time()
@@ -1068,50 +1027,27 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
             self._cur_temp_time = time.time()
         if self._previous_temp_time > self._cur_temp_time:
             self._previous_temp_time = self._cur_temp_time
-        if self._autotune != "none":
-            if self._trigger_source == "sensor":
-                self._trigger_source = None
-                if self._pid_autotune.run(self._current_temp, self._target_temp):
-                    for tuning_rule in self._pid_autotune.tuning_rules:
-                        params = self._pid_autotune.get_pid_parameters(tuning_rule)
-                        _LOGGER.warning("%s: Now running PID Autotuner with rule %s"
-                                        ": Kp=%s, Ki=%s, Kd=%s", self.entity_id,
-                                        tuning_rule, params.Kp, params.Ki, params.Kd)
-                    params = self._pid_autotune.get_pid_parameters(self._autotune)
-                    self._kp = params.Kp
-                    self._ki = params.Ki
-                    self._kd = params.Kd
-                    _LOGGER.warning("%s: Now running on PID Controller using "
-                                    "rule %s: Kp=%s, Ki=%s, Kd=%s", self.entity_id,
-                                    self._autotune, self._kp, self._ki, self._kd)
-                    self._pid_controller = pid_controller.PID(self._kp, self._ki, self._kd,
-                                                              self._ke, self._min_out,
-                                                              self._max_out, self._sampling_period,
-                                                              self._cold_tolerance,
-                                                              self._hot_tolerance)
-                    self._autotune = "none"
-            self._control_output = self._pid_autotune.output
-            self._p = self._i = self._d = error = self._dt = 0
+
+        if self._pid_controller.sampling_period == 0:
+            self._control_output, update = self._pid_controller.calc(self._current_temp,
+                                                                     self._target_temp,
+                                                                     self._cur_temp_time,
+                                                                     self._previous_temp_time,
+                                                                     self._ext_temp)
         else:
-            if self._pid_controller.sampling_period == 0:
-                self._control_output, update = self._pid_controller.calc(self._current_temp,
-                                                                         self._target_temp,
-                                                                         self._cur_temp_time,
-                                                                         self._previous_temp_time,
-                                                                         self._ext_temp)
-            else:
-                self._control_output, update = self._pid_controller.calc(self._current_temp,
-                                                                         self._target_temp,
-                                                                         ext_temp=self._ext_temp)
-            self._p = round(self._pid_controller.proportional, 1)
-            self._i = round(self._pid_controller.integral, 1)
-            self._d = round(self._pid_controller.derivative, 1)
-            self._e = round(self._pid_controller.external, 1)
-            self._control_output = round(self._control_output, self._output_precision)
-            if not self._output_precision:
-                self._control_output = int(self._control_output)
-            error = self._pid_controller.error
-            self._dt = self._pid_controller.dt
+            self._control_output, update = self._pid_controller.calc(self._current_temp,
+                                                                     self._target_temp,
+                                                                     ext_temp=self._ext_temp)
+        self._p = round(self._pid_controller.proportional, 1)
+        self._i = round(self._pid_controller.integral, 1)
+        self._d = round(self._pid_controller.derivative, 1)
+        self._e = round(self._pid_controller.external, 1)
+        self._control_output = round(self._control_output, self._output_precision)
+        if not self._output_precision:
+            self._control_output = int(self._control_output)
+        error = self._pid_controller.error
+        self._dt = self._pid_controller.dt
+
         if update:
             _LOGGER.debug("%s: New PID control output: %s (error = %.2f, dt = %.2f, "
                           "p=%.2f, i=%.2f, d=%.2f, e=%.2f)", self.entity_id,
