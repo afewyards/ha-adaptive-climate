@@ -48,6 +48,8 @@ from homeassistant.helpers.reload import async_setup_reload_service
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from .adaptive.physics import calculate_thermal_time_constant, calculate_initial_pid
+from .adaptive.night_setback import NightSetback
+from .adaptive.solar_recovery import SolarRecovery
 
 from homeassistant.components.climate import PLATFORM_SCHEMA, ClimateEntity, ClimateEntityFeature
 from homeassistant.components.climate import (
@@ -156,6 +158,14 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         # Health monitoring
         vol.Optional(const.CONF_HEALTH_ALERTS_ENABLED, default=const.DEFAULT_HEALTH_ALERTS_ENABLED): cv.boolean,
         vol.Optional(const.CONF_HIGH_POWER_EXCEPTION, default=const.DEFAULT_HIGH_POWER_EXCEPTION): cv.boolean,
+        # Night setback
+        vol.Optional(const.CONF_NIGHT_SETBACK): vol.Schema({
+            vol.Optional(const.CONF_NIGHT_SETBACK_START): cv.string,
+            vol.Optional(const.CONF_NIGHT_SETBACK_END): cv.string,
+            vol.Optional(const.CONF_NIGHT_SETBACK_DELTA, default=const.DEFAULT_NIGHT_SETBACK_DELTA): vol.Coerce(float),
+            vol.Optional(const.CONF_NIGHT_SETBACK_RECOVERY_DEADLINE): cv.string,
+            vol.Optional(const.CONF_NIGHT_SETBACK_SOLAR_RECOVERY, default=False): cv.boolean,
+        }),
     }
 )
 
@@ -247,6 +257,7 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         'contact_delay': config.get(const.CONF_CONTACT_DELAY),
         'health_alerts_enabled': config.get(const.CONF_HEALTH_ALERTS_ENABLED),
         'high_power_exception': config.get(const.CONF_HIGH_POWER_EXCEPTION),
+        'night_setback_config': config.get(const.CONF_NIGHT_SETBACK),
     }
 
     smart_thermostat = SmartThermostat(**parameters)
@@ -448,6 +459,32 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
         self._ceiling_height = kwargs.get('ceiling_height', 2.5)
         self._window_area_m2 = kwargs.get('window_area_m2')
         self._window_rating = kwargs.get('window_rating', 'hr++')
+        self._window_orientation = kwargs.get('window_orientation')
+
+        # Night setback
+        self._night_setback = None
+        self._solar_recovery = None
+        night_setback_config = kwargs.get('night_setback_config')
+        if night_setback_config:
+            start = night_setback_config.get(const.CONF_NIGHT_SETBACK_START)
+            end = night_setback_config.get(const.CONF_NIGHT_SETBACK_END)
+            if start and end:
+                self._night_setback = NightSetback(
+                    start_time=start,
+                    end_time=end,
+                    setback_delta=night_setback_config.get(
+                        const.CONF_NIGHT_SETBACK_DELTA,
+                        const.DEFAULT_NIGHT_SETBACK_DELTA
+                    ),
+                    recovery_deadline=night_setback_config.get(const.CONF_NIGHT_SETBACK_RECOVERY_DEADLINE),
+                )
+                # Solar recovery (uses window_orientation from zone config)
+                if night_setback_config.get(const.CONF_NIGHT_SETBACK_SOLAR_RECOVERY) and self._window_orientation:
+                    self._solar_recovery = SolarRecovery(
+                        window_orientation=self._window_orientation,
+                        base_recovery_time=end,
+                        recovery_deadline=night_setback_config.get(const.CONF_NIGHT_SETBACK_RECOVERY_DEADLINE),
+                    )
 
         # Get PID values from config or calculate from physics
         self._kp = kwargs.get('kp')
@@ -736,6 +773,19 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
                 presets.update({mode: preset_mode_temp})
         return presets
 
+    def _get_sunset_time(self):
+        """Get sunset time from Home Assistant sun component."""
+        from datetime import datetime
+        sun_state = self.hass.states.get("sun.sun")
+        if sun_state and sun_state.attributes.get("next_setting"):
+            try:
+                return datetime.fromisoformat(
+                    sun_state.attributes["next_setting"].replace("Z", "+00:00")
+                )
+            except (ValueError, TypeError):
+                return None
+        return None
+
     @property
     def _min_on_cycle_duration(self):
         if self.pid_mode == 'off':
@@ -811,6 +861,19 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
                 "pid_e": self.pid_control_e,
                 "pid_dt": self._dt,
             })
+        if self._night_setback:
+            from datetime import datetime
+            current_time = datetime.now()
+            sunset_time = self._get_sunset_time() if self._night_setback.use_sunset else None
+            device_state_attributes["night_setback_active"] = self._night_setback.is_night_period(
+                current_time, sunset_time
+            )
+            device_state_attributes["night_setback_delta"] = self._night_setback.setback_delta
+            if self._solar_recovery:
+                device_state_attributes["solar_recovery_active"] = self._solar_recovery.should_use_solar_recovery(
+                    current_time, self._current_temp or 0, self._target_temp or 0
+                )
+                device_state_attributes["solar_recovery_time"] = self._solar_recovery.adjusted_recovery_time.strftime("%H:%M")
         return device_state_attributes
 
     def set_hvac_mode(self, hvac_mode: (HVACMode, str)) -> None:
@@ -1304,15 +1367,38 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
         if self._previous_temp_time > self._cur_temp_time:
             self._previous_temp_time = self._cur_temp_time
 
+        # Apply night setback adjustment if configured
+        effective_target = self._target_temp
+        if self._night_setback:
+            from datetime import datetime
+            current_time = datetime.now()
+            sunset_time = self._get_sunset_time() if self._night_setback.use_sunset else None
+
+            # Check if we're in night period
+            in_night_period = self._night_setback.is_night_period(current_time, sunset_time)
+
+            if in_night_period:
+                # During night: apply setback
+                effective_target = self._target_temp - self._night_setback.setback_delta
+            elif self._solar_recovery:
+                # Morning recovery: check if we should delay heating for sun
+                if self._solar_recovery.should_use_solar_recovery(
+                    current_time,
+                    self._current_temp or 0,
+                    self._target_temp,
+                ):
+                    # Keep the lower setback temp to let sun warm the zone
+                    effective_target = self._target_temp - self._night_setback.setback_delta
+
         if self._pid_controller.sampling_period == 0:
             self._control_output, update = self._pid_controller.calc(self._current_temp,
-                                                                     self._target_temp,
+                                                                     effective_target,
                                                                      self._cur_temp_time,
                                                                      self._previous_temp_time,
                                                                      self._ext_temp)
         else:
             self._control_output, update = self._pid_controller.calc(self._current_temp,
-                                                                     self._target_temp,
+                                                                     effective_target,
                                                                      ext_temp=self._ext_temp)
         self._p = round(self._pid_controller.proportional, 1)
         self._i = round(self._pid_controller.integral, 1)
