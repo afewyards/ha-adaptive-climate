@@ -339,6 +339,11 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         {},
         "clear_integral",
     )
+    platform.async_register_entity_service(  # type: ignore
+        "reset_pid_to_physics",
+        {},
+        "async_reset_pid_to_physics",
+    )
 
 
 class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
@@ -893,7 +898,7 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
             )
             setattr(
                 self,
-                f'_{preset_name.replace('_disable', '')}',
+                f"_{preset_name.replace('_disable', '')}",
                 value
             )
         await self._async_control_heating(calc_pid=True)
@@ -902,6 +907,33 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
         """Clear the integral value."""
         self._pid_controller.integral = 0.0
         self._i = self._pid_controller.integral
+        self.async_write_ha_state()
+
+    async def async_reset_pid_to_physics(self, **kwargs):
+        """Reset PID values to physics-based defaults."""
+        if not self._area_m2:
+            _LOGGER.warning(
+                "%s: Cannot reset PID to physics - no area_m2 configured",
+                self.entity_id
+            )
+            return
+
+        volume_m3 = self._area_m2 * self._ceiling_height
+        tau = calculate_thermal_time_constant(volume_m3=volume_m3)
+        self._kp, self._ki, self._kd = calculate_initial_pid(tau, self._heating_type)
+
+        # Clear integral to avoid wind-up from old tuning
+        self._pid_controller.integral = 0.0
+        self._i = 0.0
+
+        self._pid_controller.set_pid_param(self._kp, self._ki, self._kd, self._ke)
+
+        _LOGGER.info(
+            "%s: Reset PID to physics defaults (tau=%.2f, type=%s): Kp=%.4f, Ki=%.5f, Kd=%.3f",
+            self.entity_id, tau, self._heating_type, self._kp, self._ki, self._kd
+        )
+
+        await self._async_control_heating(calc_pid=True)
         self.async_write_ha_state()
 
     @property

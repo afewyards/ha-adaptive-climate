@@ -229,6 +229,16 @@ set_preset_temp:
       example: true
       selector:
         boolean:
+reset_pid_to_physics:
+  name: Reset PID to Physics Defaults
+  description: >-
+    Recalculates PID values from the zone's physical properties (area_m2,
+    ceiling_height, heating_type) using physics-based initialization. Also
+    clears the integral term to avoid wind-up from previous tuning.
+  target:
+    entity:
+      integration: adaptive_thermostat
+      domain: climate
 
 # Domain-level services for system-wide operations
 run_learning:

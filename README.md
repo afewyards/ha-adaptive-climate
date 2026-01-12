@@ -257,6 +257,14 @@ target:
 
 **Clear integral:** `adaptive_thermostat.clear_integral`
 
+**Reset PID to physics defaults:** `adaptive_thermostat.reset_pid_to_physics`
+```yaml
+service: adaptive_thermostat.reset_pid_to_physics
+target:
+  entity_id: climate.living_room
+```
+Recalculates PID values from the zone's physical properties (`area_m2`, `ceiling_height`, `heating_type`) and clears the integral term. Useful when adaptive learning has drifted or you want a fresh start.
+
 ### Domain Services (system-wide)
 
 **Run adaptive learning:** `adaptive_thermostat.run_learning`
