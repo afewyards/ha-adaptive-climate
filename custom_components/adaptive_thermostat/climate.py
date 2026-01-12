@@ -409,6 +409,7 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
             self._min_out = self._output_clamp_low
             self._max_out = self._output_clamp_high
         # Zone properties for physics-based initialization
+        self._zone_id = kwargs.get('zone_id')
         self._heating_type = kwargs.get('heating_type', 'floor_hydronic')
         self._area_m2 = kwargs.get('area_m2')
         self._ceiling_height = kwargs.get('ceiling_height', 2.5)
@@ -1049,6 +1050,7 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Set new target hvac mode."""
+        old_mode = self._hvac_mode
         await self._async_heater_turn_off(force=True)
         if hvac_mode == HVACMode.HEAT:
             self._min_out = self._output_clamp_low
@@ -1091,6 +1093,17 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
             await self._async_control_heating(calc_pid=True)
         # Ensure we update the current operation after changing the mode
         self.async_write_ha_state()
+
+        # Trigger mode sync if configured
+        if self._zone_id and old_mode != self._hvac_mode:
+            mode_sync = self.hass.data.get(DOMAIN, {}).get("mode_sync")
+            if mode_sync:
+                await mode_sync.on_mode_change(
+                    zone_id=self._zone_id,
+                    old_mode=old_mode.value if old_mode else "off",
+                    new_mode=self._hvac_mode.value if self._hvac_mode else "off",
+                    climate_entity_id=self.entity_id,
+                )
 
     async def async_set_temperature(self, **kwargs):
         """Set new target temperature."""
