@@ -5,6 +5,7 @@ from custom_components.adaptive_thermostat.adaptive.physics import (
     calculate_thermal_time_constant,
     calculate_initial_pid,
     calculate_initial_pwm_period,
+    GLAZING_U_VALUES,
 )
 
 
@@ -55,6 +56,152 @@ class TestThermalTimeConstant:
         # Unknown rating should default to 4.0 (standard)
         tau_unknown = calculate_thermal_time_constant(energy_rating="X")
         assert tau_unknown == 4.0
+
+    def test_thermal_time_constant_no_window_params(self):
+        """Test that tau is unchanged when window params not provided."""
+        # Base tau without windows
+        tau_base = calculate_thermal_time_constant(volume_m3=200)
+        assert tau_base == pytest.approx(4.0, abs=0.01)
+
+        # With window_area but no floor_area - should be unchanged
+        tau_no_floor = calculate_thermal_time_constant(volume_m3=200, window_area_m2=5.0)
+        assert tau_no_floor == tau_base
+
+        # With floor_area but no window_area - should be unchanged
+        tau_no_window = calculate_thermal_time_constant(volume_m3=200, floor_area_m2=25.0)
+        assert tau_no_window == tau_base
+
+    def test_thermal_time_constant_with_hr_plus_plus_baseline(self):
+        """Test tau adjustment with HR++ glazing at 20% window ratio (baseline)."""
+        # 25 m2 floor, 5 m2 window = 20% ratio, HR++ (default)
+        # At baseline, expect 15% reduction
+        tau_base = 200 / 50.0  # 4.0
+        tau_with_windows = calculate_thermal_time_constant(
+            volume_m3=200,
+            window_area_m2=5.0,
+            floor_area_m2=25.0,
+            window_rating="hr++",
+        )
+        expected = tau_base * (1 - 0.15)  # 15% reduction at baseline
+        assert tau_with_windows == pytest.approx(expected, abs=0.01)
+
+    def test_thermal_time_constant_with_single_glazing(self):
+        """Test tau adjustment with single pane glass - significant reduction."""
+        # Single pane has U=5.8, much worse than HR++ (U=1.1)
+        tau_base = 200 / 50.0  # 4.0
+        tau_single = calculate_thermal_time_constant(
+            volume_m3=200,
+            window_area_m2=5.0,
+            floor_area_m2=25.0,
+            window_rating="single",
+        )
+        tau_hr_plus_plus = calculate_thermal_time_constant(
+            volume_m3=200,
+            window_area_m2=5.0,
+            floor_area_m2=25.0,
+            window_rating="hr++",
+        )
+        # Single glazing should result in lower tau (faster response/more heat loss)
+        assert tau_single < tau_hr_plus_plus
+        # Heat loss factor = (5.8/1.1) * 1.0 = 5.27, reduction = min(5.27 * 0.15, 0.4) = 0.4 (capped)
+        expected = tau_base * (1 - 0.4)
+        assert tau_single == pytest.approx(expected, abs=0.01)
+
+    def test_thermal_time_constant_with_triple_glazing(self):
+        """Test tau adjustment with triple glazing - minimal reduction."""
+        tau_base = 200 / 50.0  # 4.0
+        tau_triple = calculate_thermal_time_constant(
+            volume_m3=200,
+            window_area_m2=5.0,
+            floor_area_m2=25.0,
+            window_rating="hr+++",
+        )
+        tau_hr_plus_plus = calculate_thermal_time_constant(
+            volume_m3=200,
+            window_area_m2=5.0,
+            floor_area_m2=25.0,
+            window_rating="hr++",
+        )
+        # Triple glazing (U=0.6) should result in higher tau (less heat loss)
+        assert tau_triple > tau_hr_plus_plus
+        # Heat loss factor = (0.6/1.1) * 1.0 = 0.545, reduction = 0.545 * 0.15 = 0.082
+        expected = tau_base * (1 - 0.0818)
+        assert tau_triple == pytest.approx(expected, abs=0.01)
+
+    def test_thermal_time_constant_high_window_ratio(self):
+        """Test tau adjustment capped at 40% for high glass area."""
+        tau_base = 200 / 50.0  # 4.0
+        # 25 m2 floor, 15 m2 window = 60% ratio (very high!)
+        tau_high_glass = calculate_thermal_time_constant(
+            volume_m3=200,
+            window_area_m2=15.0,
+            floor_area_m2=25.0,
+            window_rating="hr++",
+        )
+        # Heat loss factor = 1.0 * (0.6/0.2) = 3.0, reduction = min(3.0 * 0.15, 0.4) = 0.4 (capped)
+        expected = tau_base * (1 - 0.4)
+        assert tau_high_glass == pytest.approx(expected, abs=0.01)
+
+    def test_thermal_time_constant_unknown_window_rating(self):
+        """Test fallback to HR++ for unknown window rating."""
+        tau_unknown = calculate_thermal_time_constant(
+            volume_m3=200,
+            window_area_m2=5.0,
+            floor_area_m2=25.0,
+            window_rating="unknown_type",
+        )
+        tau_hr_plus_plus = calculate_thermal_time_constant(
+            volume_m3=200,
+            window_area_m2=5.0,
+            floor_area_m2=25.0,
+            window_rating="hr++",
+        )
+        assert tau_unknown == tau_hr_plus_plus
+
+    def test_thermal_time_constant_window_rating_case_insensitive(self):
+        """Test that window rating is case insensitive."""
+        tau_lower = calculate_thermal_time_constant(
+            volume_m3=200,
+            window_area_m2=5.0,
+            floor_area_m2=25.0,
+            window_rating="hr++",
+        )
+        tau_upper = calculate_thermal_time_constant(
+            volume_m3=200,
+            window_area_m2=5.0,
+            floor_area_m2=25.0,
+            window_rating="HR++",
+        )
+        tau_mixed = calculate_thermal_time_constant(
+            volume_m3=200,
+            window_area_m2=5.0,
+            floor_area_m2=25.0,
+            window_rating="Hr++",
+        )
+        assert tau_lower == tau_upper == tau_mixed
+
+
+class TestGlazingUValues:
+    """Tests for GLAZING_U_VALUES constants."""
+
+    def test_glazing_u_values_exist(self):
+        """Test that all expected glazing types have U-values."""
+        expected_types = ["single", "double", "hr", "hr+", "hr++", "hr+++", "triple"]
+        for glazing_type in expected_types:
+            assert glazing_type in GLAZING_U_VALUES
+
+    def test_glazing_u_values_ordering(self):
+        """Test that better glazing has lower U-values."""
+        # Worse insulation = higher U-value
+        assert GLAZING_U_VALUES["single"] > GLAZING_U_VALUES["double"]
+        assert GLAZING_U_VALUES["double"] > GLAZING_U_VALUES["hr+"]
+        assert GLAZING_U_VALUES["hr+"] > GLAZING_U_VALUES["hr++"]
+        assert GLAZING_U_VALUES["hr++"] > GLAZING_U_VALUES["hr+++"]
+
+    def test_glazing_aliases(self):
+        """Test that aliases have same U-value."""
+        assert GLAZING_U_VALUES["hr"] == GLAZING_U_VALUES["double"]
+        assert GLAZING_U_VALUES["triple"] == GLAZING_U_VALUES["hr+++"]
 
 
 class TestInitialPID:

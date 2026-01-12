@@ -144,6 +144,7 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Optional(const.CONF_CEILING_HEIGHT, default=const.DEFAULT_CEILING_HEIGHT): vol.Coerce(float),
         vol.Optional(const.CONF_WINDOW_AREA_M2): vol.Coerce(float),
         vol.Optional(const.CONF_WINDOW_ORIENTATION): vol.In(const.VALID_WINDOW_ORIENTATIONS),
+        vol.Optional(const.CONF_WINDOW_RATING): cv.string,
         vol.Optional(const.CONF_LEARNING_ENABLED, default=const.DEFAULT_LEARNING_ENABLED): cv.boolean,
         # Zone linking
         vol.Optional(const.CONF_LINKED_ZONES): cv.entity_ids,
@@ -236,6 +237,8 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         'ceiling_height': config.get(const.CONF_CEILING_HEIGHT),
         'window_area_m2': config.get(const.CONF_WINDOW_AREA_M2),
         'window_orientation': config.get(const.CONF_WINDOW_ORIENTATION),
+        # Window rating: use zone-level config, fall back to controller default
+        'window_rating': config.get(const.CONF_WINDOW_RATING) or hass.data.get(DOMAIN, {}).get("window_rating", const.DEFAULT_WINDOW_RATING),
         'learning_enabled': config.get(const.CONF_LEARNING_ENABLED),
         'linked_zones': config.get(const.CONF_LINKED_ZONES),
         'link_delay_minutes': config.get(const.CONF_LINK_DELAY_MINUTES),
@@ -441,6 +444,8 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
         self._heating_type = kwargs.get('heating_type', 'floor_hydronic')
         self._area_m2 = kwargs.get('area_m2')
         self._ceiling_height = kwargs.get('ceiling_height', 2.5)
+        self._window_area_m2 = kwargs.get('window_area_m2')
+        self._window_rating = kwargs.get('window_rating', 'hr++')
 
         # Get PID values from config or calculate from physics
         self._kp = kwargs.get('kp')
@@ -452,13 +457,18 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
         if self._kp is None or self._ki is None or self._kd is None:
             if self._area_m2:
                 volume_m3 = self._area_m2 * self._ceiling_height
-                tau = calculate_thermal_time_constant(volume_m3=volume_m3)
+                tau = calculate_thermal_time_constant(
+                    volume_m3=volume_m3,
+                    window_area_m2=self._window_area_m2,
+                    floor_area_m2=self._area_m2,
+                    window_rating=self._window_rating,
+                )
                 calc_kp, calc_ki, calc_kd = calculate_initial_pid(tau, self._heating_type)
                 self._kp = self._kp if self._kp is not None else calc_kp
                 self._ki = self._ki if self._ki is not None else calc_ki
                 self._kd = self._kd if self._kd is not None else calc_kd
-                _LOGGER.info("%s: Physics-based PID init (tau=%.2f, type=%s): Kp=%.4f, Ki=%.5f, Kd=%.3f",
-                             self.unique_id, tau, self._heating_type, self._kp, self._ki, self._kd)
+                _LOGGER.info("%s: Physics-based PID init (tau=%.2f, type=%s, window=%s): Kp=%.4f, Ki=%.5f, Kd=%.3f",
+                             self.unique_id, tau, self._heating_type, self._window_rating, self._kp, self._ki, self._kd)
             else:
                 # Fallback defaults if no zone properties
                 self._kp = self._kp if self._kp is not None else 0.5
@@ -932,7 +942,12 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
             return
 
         volume_m3 = self._area_m2 * self._ceiling_height
-        tau = calculate_thermal_time_constant(volume_m3=volume_m3)
+        tau = calculate_thermal_time_constant(
+            volume_m3=volume_m3,
+            window_area_m2=self._window_area_m2,
+            floor_area_m2=self._area_m2,
+            window_rating=self._window_rating,
+        )
         self._kp, self._ki, self._kd = calculate_initial_pid(tau, self._heating_type)
 
         # Clear integral to avoid wind-up from old tuning
@@ -942,8 +957,8 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
         self._pid_controller.set_pid_param(self._kp, self._ki, self._kd, self._ke)
 
         _LOGGER.info(
-            "%s: Reset PID to physics defaults (tau=%.2f, type=%s): Kp=%.4f, Ki=%.5f, Kd=%.3f",
-            self.entity_id, tau, self._heating_type, self._kp, self._ki, self._kd
+            "%s: Reset PID to physics defaults (tau=%.2f, type=%s, window=%s): Kp=%.4f, Ki=%.5f, Kd=%.3f",
+            self.entity_id, tau, self._heating_type, self._window_rating, self._kp, self._ki, self._kd
         )
 
         await self._async_control_heating(calc_pid=True)

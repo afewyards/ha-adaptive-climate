@@ -114,6 +114,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         CONF_LEARNING_WINDOW_DAYS,
         CONF_WEATHER_ENTITY,
         CONF_HOUSE_ENERGY_RATING,
+        CONF_WINDOW_RATING,
         CONF_SUPPLY_TEMP_SENSOR,
         CONF_RETURN_TEMP_SENSOR,
         CONF_FLOW_RATE_SENSOR,
@@ -124,6 +125,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         DEFAULT_SYNC_MODES,
         DEFAULT_LEARNING_WINDOW_DAYS,
         DEFAULT_FALLBACK_FLOW_RATE,
+        DEFAULT_WINDOW_RATING,
     )
     from .coordinator import (
         AdaptiveThermostatCoordinator,
@@ -237,6 +239,11 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     hass.data[DOMAIN]["house_energy_rating"] = house_energy_rating
     if house_energy_rating:
         _LOGGER.info("House energy rating: %s", house_energy_rating)
+
+    # Default window rating for physics-based initialization (can be overridden per zone)
+    window_rating = domain_config.get(CONF_WINDOW_RATING, DEFAULT_WINDOW_RATING)
+    hass.data[DOMAIN]["window_rating"] = window_rating
+    _LOGGER.info("Default window rating: %s", window_rating)
 
     # Heat output sensors
     supply_temp_sensor = domain_config.get(CONF_SUPPLY_TEMP_SENSOR)

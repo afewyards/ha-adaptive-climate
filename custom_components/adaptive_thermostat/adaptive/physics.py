@@ -7,20 +7,40 @@ thermal properties of zones and heating system characteristics.
 from typing import Tuple, Optional
 
 
+# Glazing U-values in W/(m²·K) - lower is better insulation
+GLAZING_U_VALUES = {
+    "single": 5.8,      # Single pane glass
+    "double": 2.8,      # Standard double glazing
+    "hr": 2.8,          # HR (same as double)
+    "hr+": 1.8,         # HR+ improved
+    "hr++": 1.1,        # HR++ high performance
+    "hr+++": 0.6,       # Triple glazing
+    "triple": 0.6,      # Alias for HR+++
+}
+
+
 def calculate_thermal_time_constant(
     volume_m3: Optional[float] = None,
     energy_rating: Optional[str] = None,
+    window_area_m2: Optional[float] = None,
+    floor_area_m2: Optional[float] = None,
+    window_rating: str = "hr++",
 ) -> float:
     """Calculate thermal time constant (tau) in hours.
 
     The thermal time constant represents how quickly a zone responds to
-    heating changes. It can be estimated from zone volume or energy rating.
+    heating changes. It can be estimated from zone volume or energy rating,
+    and adjusted for window heat loss.
 
     Args:
         volume_m3: Zone volume in cubic meters. If provided, tau is estimated
                    as volume_m3 / 50 (larger spaces respond more slowly).
         energy_rating: Building energy efficiency rating (A+++, A++, A+, A, B, C, D).
                        Higher ratings mean better insulation and slower cooling.
+        window_area_m2: Total window/glass area in square meters.
+        floor_area_m2: Zone floor area in square meters (needed for window ratio).
+        window_rating: Glazing type (single, double, hr, hr+, hr++, hr+++, triple).
+                       Higher ratings mean better insulation. Default: hr++.
 
     Returns:
         Thermal time constant in hours.
@@ -31,9 +51,8 @@ def calculate_thermal_time_constant(
     if volume_m3 is not None:
         # Estimate tau based on zone volume
         # Larger spaces have higher thermal mass and respond more slowly
-        return volume_m3 / 50.0
-
-    if energy_rating is not None:
+        tau_base = volume_m3 / 50.0
+    elif energy_rating is not None:
         # Estimate tau based on energy efficiency rating
         # Better insulation = slower temperature changes = higher tau
         rating_map = {
@@ -45,9 +64,28 @@ def calculate_thermal_time_constant(
             "C": 2.5,     # Poor insulation
             "D": 2.0,     # Very poor insulation, fast response
         }
-        return rating_map.get(energy_rating.upper(), 4.0)
+        tau_base = rating_map.get(energy_rating.upper(), 4.0)
+    else:
+        raise ValueError("Either volume_m3 or energy_rating must be provided")
 
-    raise ValueError("Either volume_m3 or energy_rating must be provided")
+    # Adjust tau for window heat loss if window parameters provided
+    if window_area_m2 and floor_area_m2 and floor_area_m2 > 0:
+        # Get U-value for glazing type (default to HR++ if unknown)
+        u_value = GLAZING_U_VALUES.get(window_rating.lower(), 1.1)
+
+        # Window ratio: what fraction of floor area is glass
+        window_ratio = window_area_m2 / floor_area_m2
+
+        # Heat loss factor normalized to HR++ (U=1.1) at 20% window ratio as baseline
+        # Higher U-value (worse insulation) and more glass = more heat loss = lower tau
+        heat_loss_factor = (u_value / 1.1) * (window_ratio / 0.2)
+
+        # Reduce tau by up to 40% for high glass area / poor insulation
+        # Factor of 0.15 means: at baseline (HR++, 20% windows), reduction is 15%
+        tau_reduction = min(heat_loss_factor * 0.15, 0.4)
+        tau_base *= (1 - tau_reduction)
+
+    return tau_base
 
 
 def calculate_initial_pid(
