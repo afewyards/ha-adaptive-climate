@@ -345,3 +345,384 @@ class CentralController:
             True if cooler startup is pending
         """
         return self._cooler_waiting_for_startup
+
+
+class ModeSync:
+    """Mode synchronization across zones.
+
+    Features:
+    - Sync HEAT mode to all zones when one switches to HEAT
+    - Sync COOL mode to all zones when one switches to COOL
+    - Keep OFF mode independent per zone
+    - Support disabling sync per zone
+    """
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        coordinator: AdaptiveThermostatCoordinator,
+    ) -> None:
+        """Initialize mode synchronization.
+
+        Args:
+            hass: Home Assistant instance
+            coordinator: AdaptiveThermostatCoordinator instance
+        """
+        self.hass = hass
+        self.coordinator = coordinator
+        self._zone_modes: dict[str, str] = {}
+        self._sync_disabled_zones: set[str] = set()
+
+        _LOGGER.debug("ModeSync initialized")
+
+    def disable_sync_for_zone(self, zone_id: str) -> None:
+        """Disable mode synchronization for a specific zone.
+
+        Args:
+            zone_id: Zone identifier to disable sync for
+        """
+        self._sync_disabled_zones.add(zone_id)
+        _LOGGER.debug("Mode sync disabled for zone: %s", zone_id)
+
+    def enable_sync_for_zone(self, zone_id: str) -> None:
+        """Enable mode synchronization for a specific zone.
+
+        Args:
+            zone_id: Zone identifier to enable sync for
+        """
+        self._sync_disabled_zones.discard(zone_id)
+        _LOGGER.debug("Mode sync enabled for zone: %s", zone_id)
+
+    def is_sync_disabled(self, zone_id: str) -> bool:
+        """Check if sync is disabled for a zone.
+
+        Args:
+            zone_id: Zone identifier to check
+
+        Returns:
+            True if sync is disabled for this zone
+        """
+        return zone_id in self._sync_disabled_zones
+
+    async def on_mode_change(
+        self,
+        zone_id: str,
+        old_mode: str,
+        new_mode: str,
+        climate_entity_id: str,
+    ) -> None:
+        """Handle mode change for a zone.
+
+        When a zone changes to HEAT or COOL mode, synchronize all other zones
+        (except those with sync disabled) to the same mode.
+        OFF mode is kept independent per zone.
+
+        Args:
+            zone_id: Zone that changed mode
+            old_mode: Previous mode (heat, cool, off, etc.)
+            new_mode: New mode (heat, cool, off, etc.)
+            climate_entity_id: Entity ID of the climate entity that changed
+        """
+        # Update stored mode
+        self._zone_modes[zone_id] = new_mode.lower()
+
+        # Only sync HEAT and COOL modes (not OFF)
+        if new_mode.lower() not in ("heat", "cool"):
+            _LOGGER.debug(
+                "Zone %s changed to %s mode - no sync needed (not heat/cool)",
+                zone_id,
+                new_mode,
+            )
+            return
+
+        _LOGGER.info(
+            "Zone %s changed to %s mode - synchronizing other zones",
+            zone_id,
+            new_mode,
+        )
+
+        # Get all zones from coordinator
+        all_zones = self.coordinator.get_all_zones()
+
+        # Sync mode to all other zones (except sync-disabled ones)
+        for other_zone_id, zone_data in all_zones.items():
+            # Skip the originating zone
+            if other_zone_id == zone_id:
+                continue
+
+            # Skip if sync is disabled for this zone
+            if self.is_sync_disabled(other_zone_id):
+                _LOGGER.debug(
+                    "Skipping zone %s - sync disabled",
+                    other_zone_id,
+                )
+                continue
+
+            # Get climate entity ID for this zone
+            other_climate_entity_id = zone_data.get("climate_entity_id")
+            if not other_climate_entity_id:
+                _LOGGER.warning(
+                    "No climate entity ID found for zone %s",
+                    other_zone_id,
+                )
+                continue
+
+            # Set the mode for this zone
+            await self._set_zone_mode(
+                other_zone_id,
+                other_climate_entity_id,
+                new_mode.lower(),
+            )
+
+    async def _set_zone_mode(
+        self,
+        zone_id: str,
+        climate_entity_id: str,
+        mode: str,
+    ) -> None:
+        """Set mode for a specific zone.
+
+        Args:
+            zone_id: Zone identifier
+            climate_entity_id: Climate entity ID
+            mode: Mode to set (heat, cool, off, etc.)
+        """
+        try:
+            # Get current state
+            state = self.hass.states.get(climate_entity_id)
+            if state is None:
+                _LOGGER.warning(
+                    "Climate entity %s not found for zone %s",
+                    climate_entity_id,
+                    zone_id,
+                )
+                return
+
+            current_mode = state.state
+
+            # Only change if different
+            if current_mode == mode:
+                _LOGGER.debug(
+                    "Zone %s already in %s mode",
+                    zone_id,
+                    mode,
+                )
+                return
+
+            # Set the mode
+            await self.hass.services.async_call(
+                "climate",
+                "set_hvac_mode",
+                {
+                    "entity_id": climate_entity_id,
+                    "hvac_mode": mode,
+                },
+                blocking=True,
+            )
+
+            # Update stored mode
+            self._zone_modes[zone_id] = mode
+
+            _LOGGER.info(
+                "Synced zone %s (%s) to %s mode",
+                zone_id,
+                climate_entity_id,
+                mode,
+            )
+        except Exception as e:
+            _LOGGER.error(
+                "Error setting mode for zone %s: %s",
+                zone_id,
+                e,
+            )
+
+    def get_zone_mode(self, zone_id: str) -> str | None:
+        """Get the current mode for a zone.
+
+        Args:
+            zone_id: Zone identifier
+
+        Returns:
+            Current mode or None if not tracked
+        """
+        return self._zone_modes.get(zone_id)
+
+
+class ZoneLinker:
+    """Zone linking for thermally connected zones.
+
+    Features:
+    - Configure linked zones per zone
+    - Delay linked zone heating when primary heats
+    - Track delay remaining time
+    - Expire delay after configured minutes
+    - Support bidirectional linking
+    """
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        coordinator: AdaptiveThermostatCoordinator,
+    ) -> None:
+        """Initialize zone linker.
+
+        Args:
+            hass: Home Assistant instance
+            coordinator: AdaptiveThermostatCoordinator instance
+        """
+        self.hass = hass
+        self.coordinator = coordinator
+        # Map of zone_id -> list of linked zone_ids
+        self._zone_links: dict[str, list[str]] = {}
+        # Map of zone_id -> {start_time: datetime, delay_minutes: int}
+        self._active_delays: dict[str, dict[str, Any]] = {}
+
+        _LOGGER.debug("ZoneLinker initialized")
+
+    def configure_linked_zones(self, zone_id: str, linked_zones: list[str]) -> None:
+        """Configure which zones are thermally linked to a zone.
+
+        Args:
+            zone_id: Zone identifier
+            linked_zones: List of zone IDs that are thermally linked to this zone
+        """
+        self._zone_links[zone_id] = linked_zones.copy()
+        _LOGGER.debug("Configured linked zones for %s: %s", zone_id, linked_zones)
+
+    def get_linked_zones(self, zone_id: str) -> list[str]:
+        """Get the list of zones linked to a zone.
+
+        Args:
+            zone_id: Zone identifier
+
+        Returns:
+            List of linked zone IDs
+        """
+        return self._zone_links.get(zone_id, []).copy()
+
+    async def on_zone_heating_started(
+        self,
+        zone_id: str,
+        delay_minutes: int = 30,
+    ) -> None:
+        """Handle when a zone starts heating - delay linked zones.
+
+        When a zone starts heating, thermally connected zones may receive
+        heat transfer and should delay their own heating.
+
+        Args:
+            zone_id: Zone that started heating
+            delay_minutes: How long to delay linked zones (default 30 minutes)
+        """
+        linked_zones = self.get_linked_zones(zone_id)
+        if not linked_zones:
+            _LOGGER.debug("Zone %s has no linked zones", zone_id)
+            return
+
+        _LOGGER.info(
+            "Zone %s started heating - delaying linked zones %s for %d minutes",
+            zone_id,
+            linked_zones,
+            delay_minutes,
+        )
+
+        start_time = datetime.now()
+
+        # Apply delay to all linked zones
+        for linked_zone_id in linked_zones:
+            self._active_delays[linked_zone_id] = {
+                "start_time": start_time,
+                "delay_minutes": delay_minutes,
+                "source_zone": zone_id,
+            }
+            _LOGGER.debug(
+                "Applied %d minute delay to zone %s (heat from %s)",
+                delay_minutes,
+                linked_zone_id,
+                zone_id,
+            )
+
+    def is_zone_delayed(self, zone_id: str) -> bool:
+        """Check if a zone is currently delayed due to linked zone heating.
+
+        Args:
+            zone_id: Zone identifier to check
+
+        Returns:
+            True if zone heating should be delayed
+        """
+        if zone_id not in self._active_delays:
+            return False
+
+        delay_info = self._active_delays[zone_id]
+        start_time = delay_info["start_time"]
+        delay_minutes = delay_info["delay_minutes"]
+
+        # Calculate elapsed time
+        elapsed = datetime.now() - start_time
+        elapsed_minutes = elapsed.total_seconds() / 60
+
+        if elapsed_minutes >= delay_minutes:
+            # Delay has expired
+            _LOGGER.debug(
+                "Delay for zone %s has expired (%.1f >= %d minutes)",
+                zone_id,
+                elapsed_minutes,
+                delay_minutes,
+            )
+            del self._active_delays[zone_id]
+            return False
+
+        _LOGGER.debug(
+            "Zone %s is delayed: %.1f / %d minutes remaining",
+            zone_id,
+            delay_minutes - elapsed_minutes,
+            delay_minutes,
+        )
+        return True
+
+    def get_delay_remaining_minutes(self, zone_id: str) -> float | None:
+        """Get the remaining delay time for a zone.
+
+        Args:
+            zone_id: Zone identifier
+
+        Returns:
+            Remaining delay in minutes, or None if no delay active
+        """
+        if zone_id not in self._active_delays:
+            return None
+
+        delay_info = self._active_delays[zone_id]
+        start_time = delay_info["start_time"]
+        delay_minutes = delay_info["delay_minutes"]
+
+        # Calculate remaining time
+        elapsed = datetime.now() - start_time
+        elapsed_minutes = elapsed.total_seconds() / 60
+        remaining = delay_minutes - elapsed_minutes
+
+        if remaining <= 0:
+            # Delay expired
+            del self._active_delays[zone_id]
+            return None
+
+        return remaining
+
+    def clear_delay(self, zone_id: str) -> None:
+        """Clear any active delay for a zone.
+
+        Args:
+            zone_id: Zone identifier
+        """
+        if zone_id in self._active_delays:
+            _LOGGER.debug("Clearing delay for zone %s", zone_id)
+            del self._active_delays[zone_id]
+
+    def get_active_delays(self) -> dict[str, dict[str, Any]]:
+        """Get all active delays.
+
+        Returns:
+            Dictionary of zone_id -> delay_info
+        """
+        return self._active_delays.copy()
