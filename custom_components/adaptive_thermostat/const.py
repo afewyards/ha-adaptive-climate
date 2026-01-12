@@ -102,3 +102,17 @@ HEATING_TYPE_CHARACTERISTICS = {
         "description": "Forced air heating - very low thermal mass, fast response",
     },
 }
+
+# Adaptive learning PID limits
+# These ensure PID values stay within safe operating ranges
+PID_LIMITS = {
+    "kp_min": 10.0,
+    "kp_max": 500.0,
+    "ki_min": 0.0,
+    "ki_max": 100.0,
+    "kd_min": 0.0,
+    "kd_max": 200.0,
+}
+
+# Minimum number of cycles required before adaptive learning can recommend PID changes
+MIN_CYCLES_FOR_LEARNING = 3

@@ -5,6 +5,8 @@ from typing import Dict, List, Optional, Tuple
 import statistics
 import logging
 
+from ..const import PID_LIMITS, MIN_CYCLES_FOR_LEARNING
+
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -344,3 +346,358 @@ class ThermalRateLearner:
         """Clear all stored measurements."""
         self._cooling_rates.clear()
         self._heating_rates.clear()
+
+
+# Cycle analysis functions
+
+
+def calculate_overshoot(
+    temperature_history: List[Tuple[datetime, float]], target_temp: float
+) -> Optional[float]:
+    """
+    Calculate maximum overshoot beyond target temperature.
+
+    Args:
+        temperature_history: List of (timestamp, temperature) tuples
+        target_temp: Target temperature in °C
+
+    Returns:
+        Overshoot in °C (positive values only), or None if no data
+    """
+    if not temperature_history:
+        return None
+
+    max_temp = max(temp for _, temp in temperature_history)
+    overshoot = max_temp - target_temp
+
+    return max(0.0, overshoot)
+
+
+def calculate_undershoot(
+    temperature_history: List[Tuple[datetime, float]], target_temp: float
+) -> Optional[float]:
+    """
+    Calculate maximum undershoot below target temperature.
+
+    Args:
+        temperature_history: List of (timestamp, temperature) tuples
+        target_temp: Target temperature in °C
+
+    Returns:
+        Undershoot in °C (positive values only), or None if no data
+    """
+    if not temperature_history:
+        return None
+
+    min_temp = min(temp for _, temp in temperature_history)
+    undershoot = target_temp - min_temp
+
+    return max(0.0, undershoot)
+
+
+def count_oscillations(
+    temperature_history: List[Tuple[datetime, float]],
+    target_temp: float,
+    threshold: float = 0.1,
+) -> int:
+    """
+    Count number of oscillations around target temperature.
+
+    Args:
+        temperature_history: List of (timestamp, temperature) tuples
+        target_temp: Target temperature in °C
+        threshold: Hysteresis threshold in °C to avoid counting noise
+
+    Returns:
+        Number of oscillations (crossings of target)
+    """
+    if len(temperature_history) < 2:
+        return 0
+
+    # Track state: None, 'above', or 'below'
+    state = None
+    crossings = 0
+
+    for _, temp in temperature_history:
+        # Determine if above or below target (with threshold)
+        if temp > target_temp + threshold:
+            new_state = "above"
+        elif temp < target_temp - threshold:
+            new_state = "below"
+        else:
+            # Within threshold band, maintain current state
+            new_state = state
+
+        # Check for state change (crossing)
+        if state is not None and new_state != state and new_state is not None:
+            crossings += 1
+
+        if new_state is not None:
+            state = new_state
+
+    return crossings
+
+
+def calculate_settling_time(
+    temperature_history: List[Tuple[datetime, float]],
+    target_temp: float,
+    tolerance: float = 0.2,
+) -> Optional[float]:
+    """
+    Calculate time required for temperature to settle within tolerance band.
+
+    Args:
+        temperature_history: List of (timestamp, temperature) tuples
+        target_temp: Target temperature in °C
+        tolerance: Tolerance band in °C (±)
+
+    Returns:
+        Settling time in minutes, or None if never settles
+    """
+    if len(temperature_history) < 2:
+        return None
+
+    start_time = temperature_history[0][0]
+    settle_index = None
+
+    # Find first entry into tolerance band that persists
+    for i, (timestamp, temp) in enumerate(temperature_history):
+        within_tolerance = abs(temp - target_temp) <= tolerance
+
+        if within_tolerance:
+            # Check if it stays within tolerance
+            # Need at least 3 more samples or until the end
+            remaining = temperature_history[i:]
+            if len(remaining) >= 3:
+                # Check if next samples stay within tolerance
+                stays_settled = all(
+                    abs(t - target_temp) <= tolerance for _, t in remaining[:3]
+                )
+                if stays_settled:
+                    settle_index = i
+                    break
+            elif len(remaining) > 0:
+                # At end of history, check if all remaining stay within tolerance
+                stays_settled = all(
+                    abs(t - target_temp) <= tolerance for _, t in remaining
+                )
+                if stays_settled:
+                    settle_index = i
+                    break
+
+    if settle_index is None:
+        return None
+
+    settle_time = temperature_history[settle_index][0]
+    settling_minutes = (settle_time - start_time).total_seconds() / 60
+
+    return settling_minutes
+
+
+# Adaptive learning
+
+
+class CycleMetrics:
+    """Container for heating cycle performance metrics."""
+
+    def __init__(
+        self,
+        overshoot: Optional[float] = None,
+        undershoot: Optional[float] = None,
+        settling_time: Optional[float] = None,
+        oscillations: int = 0,
+        rise_time: Optional[float] = None,
+    ):
+        """
+        Initialize cycle metrics.
+
+        Args:
+            overshoot: Maximum overshoot in °C
+            undershoot: Maximum undershoot in °C
+            settling_time: Settling time in minutes
+            oscillations: Number of oscillations around target
+            rise_time: Time to reach target from start in minutes
+        """
+        self.overshoot = overshoot
+        self.undershoot = undershoot
+        self.settling_time = settling_time
+        self.oscillations = oscillations
+        self.rise_time = rise_time
+
+
+class AdaptiveLearner:
+    """Adaptive PID tuning based on observed heating cycle performance."""
+
+    def __init__(self, zone_name: Optional[str] = None):
+        """
+        Initialize the AdaptiveLearner.
+
+        Args:
+            zone_name: Optional zone name for zone-specific adjustments
+        """
+        self.zone_name = zone_name
+        self._cycle_history: List[CycleMetrics] = []
+
+    def add_cycle_metrics(self, metrics: CycleMetrics) -> None:
+        """
+        Add a cycle's performance metrics to history.
+
+        Args:
+            metrics: CycleMetrics object with performance data
+        """
+        self._cycle_history.append(metrics)
+
+    def get_cycle_count(self) -> int:
+        """
+        Get number of stored cycle metrics.
+
+        Returns:
+            Number of cycles in history
+        """
+        return len(self._cycle_history)
+
+    def calculate_pid_adjustment(
+        self,
+        current_kp: float,
+        current_ki: float,
+        current_kd: float,
+        min_cycles: int = MIN_CYCLES_FOR_LEARNING,
+    ) -> Optional[Dict[str, float]]:
+        """
+        Calculate PID adjustments based on observed cycle performance.
+
+        Implements rule-based adaptive tuning:
+        - High overshoot (>0.5°C): Reduce Kp by up to 15%, reduce Ki
+        - Moderate overshoot (>0.2°C): Reduce Kp by 5%
+        - Slow response (>60 min): Increase Kp by 10%
+        - Undershoot (>0.3°C): Increase Ki by up to 20%
+        - Many oscillations (>3): Reduce Kp by 10%, increase Kd by 20%
+        - Some oscillations (>1): Increase Kd by 10%
+        - Slow settling (>90 min): Increase Kd by 15%
+
+        Zone-specific adjustments:
+        - Kitchen: Lower Ki (oven/door disturbances)
+        - Bathroom: Higher Kp (skylight heat loss)
+        - Bedroom: Lower Ki (night ventilation)
+        - Ground Floor: Higher Ki (exterior doors)
+
+        Args:
+            current_kp: Current proportional gain
+            current_ki: Current integral gain
+            current_kd: Current derivative gain
+            min_cycles: Minimum cycles required before making recommendations
+
+        Returns:
+            Dictionary with recommended kp, ki, kd values, or None if insufficient data
+        """
+        if len(self._cycle_history) < min_cycles:
+            _LOGGER.debug(
+                f"Insufficient cycles for learning: {len(self._cycle_history)} < {min_cycles}"
+            )
+            return None
+
+        # Calculate average metrics from recent cycles
+        recent_cycles = self._cycle_history[-min_cycles:]
+
+        avg_overshoot = statistics.mean(
+            [c.overshoot for c in recent_cycles if c.overshoot is not None]
+        ) if any(c.overshoot is not None for c in recent_cycles) else 0.0
+
+        avg_undershoot = statistics.mean(
+            [c.undershoot for c in recent_cycles if c.undershoot is not None]
+        ) if any(c.undershoot is not None for c in recent_cycles) else 0.0
+
+        avg_settling_time = statistics.mean(
+            [c.settling_time for c in recent_cycles if c.settling_time is not None]
+        ) if any(c.settling_time is not None for c in recent_cycles) else 0.0
+
+        avg_oscillations = statistics.mean([c.oscillations for c in recent_cycles])
+
+        avg_rise_time = statistics.mean(
+            [c.rise_time for c in recent_cycles if c.rise_time is not None]
+        ) if any(c.rise_time is not None for c in recent_cycles) else 0.0
+
+        # Start with current values
+        new_kp = current_kp
+        new_ki = current_ki
+        new_kd = current_kd
+
+        # Apply rules based on performance metrics
+
+        # High overshoot: reduce Kp and Ki
+        if avg_overshoot > 0.5:
+            reduction = min(0.15, avg_overshoot * 0.2)  # Up to 15% reduction
+            new_kp *= (1.0 - reduction)
+            new_ki *= 0.9  # Reduce integral gain by 10%
+            _LOGGER.info(f"High overshoot ({avg_overshoot:.2f}°C): reducing Kp by {reduction*100:.1f}%")
+
+        # Moderate overshoot: reduce Kp slightly
+        elif avg_overshoot > 0.2:
+            new_kp *= 0.95
+            _LOGGER.info(f"Moderate overshoot ({avg_overshoot:.2f}°C): reducing Kp by 5%")
+
+        # Slow response: increase Kp
+        if avg_rise_time > 60:
+            new_kp *= 1.10
+            _LOGGER.info(f"Slow rise time ({avg_rise_time:.1f} min): increasing Kp by 10%")
+
+        # Undershoot: increase Ki
+        if avg_undershoot > 0.3:
+            increase = min(0.20, avg_undershoot * 0.4)  # Up to 20% increase
+            new_ki *= (1.0 + increase)
+            _LOGGER.info(f"Undershoot ({avg_undershoot:.2f}°C): increasing Ki by {increase*100:.1f}%")
+
+        # Many oscillations: reduce Kp, increase Kd
+        if avg_oscillations > 3:
+            new_kp *= 0.90
+            new_kd *= 1.20
+            _LOGGER.info(f"Many oscillations ({avg_oscillations:.1f}): reducing Kp by 10%, increasing Kd by 20%")
+
+        # Some oscillations: increase Kd
+        elif avg_oscillations > 1:
+            new_kd *= 1.10
+            _LOGGER.info(f"Some oscillations ({avg_oscillations:.1f}): increasing Kd by 10%")
+
+        # Slow settling: increase Kd
+        if avg_settling_time > 90:
+            new_kd *= 1.15
+            _LOGGER.info(f"Slow settling ({avg_settling_time:.1f} min): increasing Kd by 15%")
+
+        # Apply zone-specific adjustments
+        if self.zone_name:
+            zone_lower = self.zone_name.lower()
+
+            if "kitchen" in zone_lower:
+                # Kitchen: lower Ki due to oven/door disturbances
+                new_ki *= 0.8
+                _LOGGER.info(f"Kitchen zone: reducing Ki by 20% for disturbance handling")
+
+            elif "bathroom" in zone_lower:
+                # Bathroom: higher Kp for skylight heat loss
+                new_kp *= 1.1
+                _LOGGER.info(f"Bathroom zone: increasing Kp by 10% for heat loss compensation")
+
+            elif "bedroom" in zone_lower:
+                # Bedroom: lower Ki for night ventilation
+                new_ki *= 0.85
+                _LOGGER.info(f"Bedroom zone: reducing Ki by 15% for ventilation")
+
+            elif "ground" in zone_lower or "gf" in zone_lower:
+                # Ground floor: higher Ki for exterior door disturbances
+                new_ki *= 1.15
+                _LOGGER.info(f"Ground floor zone: increasing Ki by 15% for door disturbances")
+
+        # Enforce PID limits
+        new_kp = max(PID_LIMITS["kp_min"], min(PID_LIMITS["kp_max"], new_kp))
+        new_ki = max(PID_LIMITS["ki_min"], min(PID_LIMITS["ki_max"], new_ki))
+        new_kd = max(PID_LIMITS["kd_min"], min(PID_LIMITS["kd_max"], new_kd))
+
+        return {
+            "kp": new_kp,
+            "ki": new_ki,
+            "kd": new_kd,
+        }
+
+    def clear_history(self) -> None:
+        """Clear all stored cycle metrics."""
+        self._cycle_history.clear()
