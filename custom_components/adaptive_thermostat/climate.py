@@ -463,28 +463,43 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
 
         # Night setback
         self._night_setback = None
+        self._night_setback_config = None
         self._solar_recovery = None
+        self._night_setback_was_active = None  # Track previous state for transition detection
+        self._learning_grace_until = None  # Pause learning until this time after transitions
         night_setback_config = kwargs.get('night_setback_config')
+        _LOGGER.debug("%s: night_setback_config from kwargs: %s", self._name, night_setback_config)
         if night_setback_config:
             start = night_setback_config.get(const.CONF_NIGHT_SETBACK_START)
             end = night_setback_config.get(const.CONF_NIGHT_SETBACK_END)
-            if start and end:
-                self._night_setback = NightSetback(
-                    start_time=start,
-                    end_time=end,
-                    setback_delta=night_setback_config.get(
+            _LOGGER.info("%s: Night setback configured: start=%s, end=%s", self._name, start, end)
+            if start:
+                # Store config for dynamic end time calculation
+                self._night_setback_config = {
+                    'start': start,
+                    'end': end,  # May be None - will use dynamic calculation
+                    'delta': night_setback_config.get(
                         const.CONF_NIGHT_SETBACK_DELTA,
                         const.DEFAULT_NIGHT_SETBACK_DELTA
                     ),
-                    recovery_deadline=night_setback_config.get(const.CONF_NIGHT_SETBACK_RECOVERY_DEADLINE),
-                )
-                # Solar recovery (uses window_orientation from zone config)
-                if night_setback_config.get(const.CONF_NIGHT_SETBACK_SOLAR_RECOVERY) and self._window_orientation:
-                    self._solar_recovery = SolarRecovery(
-                        window_orientation=self._window_orientation,
-                        base_recovery_time=end,
-                        recovery_deadline=night_setback_config.get(const.CONF_NIGHT_SETBACK_RECOVERY_DEADLINE),
+                    'recovery_deadline': night_setback_config.get(const.CONF_NIGHT_SETBACK_RECOVERY_DEADLINE),
+                    'solar_recovery': night_setback_config.get(const.CONF_NIGHT_SETBACK_SOLAR_RECOVERY, False),
+                }
+                # Only create NightSetback if end is explicitly configured
+                if end:
+                    self._night_setback = NightSetback(
+                        start_time=start,
+                        end_time=end,
+                        setback_delta=self._night_setback_config['delta'],
+                        recovery_deadline=self._night_setback_config['recovery_deadline'],
                     )
+                    # Solar recovery (uses window_orientation from zone config)
+                    if self._night_setback_config['solar_recovery'] and self._window_orientation:
+                        self._solar_recovery = SolarRecovery(
+                            window_orientation=self._window_orientation,
+                            base_recovery_time=end,
+                            recovery_deadline=self._night_setback_config['recovery_deadline'],
+                        )
 
         # Get PID values from config or calculate from physics
         self._kp = kwargs.get('kp')
@@ -787,6 +802,98 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
         return None
 
     @property
+    def in_learning_grace_period(self) -> bool:
+        """Check if learning should be paused due to recent night setback transition."""
+        if self._learning_grace_until is None:
+            return False
+        from datetime import datetime
+        return datetime.now() < self._learning_grace_until
+
+    def _set_learning_grace_period(self, minutes: int = 60):
+        """Set a grace period to pause learning after night setback transitions."""
+        from datetime import datetime, timedelta
+        self._learning_grace_until = datetime.now() + timedelta(minutes=minutes)
+        _LOGGER.info(
+            "%s: Learning grace period set for %d minutes (until %s)",
+            self.entity_id, minutes, self._learning_grace_until.strftime("%H:%M")
+        )
+
+    def _get_sunrise_time(self):
+        """Get sunrise time from Home Assistant sun component."""
+        from datetime import datetime
+        sun_state = self.hass.states.get("sun.sun")
+        if sun_state and sun_state.attributes.get("next_rising"):
+            try:
+                return datetime.fromisoformat(
+                    sun_state.attributes["next_rising"].replace("Z", "+00:00")
+                )
+            except (ValueError, TypeError):
+                return None
+        return None
+
+    def _get_weather_condition(self):
+        """Get current weather condition from coordinator's weather entity."""
+        coordinator = self.hass.data.get(DOMAIN, {}).get("coordinator")
+        if coordinator and hasattr(coordinator, '_weather_entity'):
+            weather_state = self.hass.states.get(coordinator._weather_entity)
+            if weather_state:
+                return weather_state.state
+        # Try common weather entity names as fallback
+        for entity_id in ["weather.home", "weather.knmi_home", "weather.forecast_home"]:
+            weather_state = self.hass.states.get(entity_id)
+            if weather_state:
+                return weather_state.state
+        return None
+
+    def _calculate_dynamic_night_end(self):
+        """Calculate dynamic night setback end time based on sunrise, orientation, weather.
+
+        Returns time object for when night setback should end, or None if cannot calculate.
+
+        Logic:
+        - Base: sunrise + 60 min (sun needs time to rise high enough to heat windows)
+        - Orientation: adjusts based on when direct sun reaches windows
+        - Weather: cloudy = need active heating sooner, clear = can wait for sun
+        """
+        from datetime import time, timedelta
+
+        sunrise = self._get_sunrise_time()
+        if not sunrise:
+            return None
+
+        # Base: sunrise + 60 min (sun needs to rise high enough to provide heat)
+        end_time = sunrise + timedelta(minutes=60)
+
+        # Orientation offsets - when does direct sun actually hit these windows?
+        # South: sun hits when higher in sky, can rely on solar gain longer
+        # East: gets early morning sun, moderate delay
+        # West: no morning sun at all, need active heating
+        # North: minimal direct sun ever, need active heating
+        orientation_offsets = {
+            "south": +30,   # Wait longer - sun will heat this room well once high enough
+            "east": +15,    # Gets morning sun fairly soon
+            "west": -30,    # No morning sun - start heating earlier
+            "north": -45,   # No direct sun - need heating earliest
+        }
+
+        if self._window_orientation:
+            offset = orientation_offsets.get(self._window_orientation.lower(), 0)
+            end_time = end_time + timedelta(minutes=offset)
+
+        # Weather adjustment
+        weather = self._get_weather_condition()
+        if weather:
+            weather_lower = weather.lower().replace("-", "").replace("_", "")
+            if any(c in weather_lower for c in ["cloud", "rain", "snow", "fog", "hail", "storm"]):
+                # Cloudy: no solar gain expected - end setback earlier to allow heating
+                end_time = end_time - timedelta(minutes=30)
+            elif any(c in weather_lower for c in ["sunny", "clear"]):
+                # Clear: good solar gain - can delay heating longer
+                end_time = end_time + timedelta(minutes=15)
+
+        return end_time.time()
+
+    @property
     def _min_on_cycle_duration(self):
         if self.pid_mode == 'off':
             return self._min_on_cycle_duration_pid_off
@@ -869,11 +976,65 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
                 current_time, sunset_time
             )
             device_state_attributes["night_setback_delta"] = self._night_setback.setback_delta
+            device_state_attributes["night_setback_end"] = self._night_setback.end_time.strftime("%H:%M")
             if self._solar_recovery:
                 device_state_attributes["solar_recovery_active"] = self._solar_recovery.should_use_solar_recovery(
                     current_time, self._current_temp or 0, self._target_temp or 0
                 )
                 device_state_attributes["solar_recovery_time"] = self._solar_recovery.adjusted_recovery_time.strftime("%H:%M")
+        elif self._night_setback_config:
+            # Dynamic end time mode
+            from datetime import datetime, time as dt_time
+            current_time = datetime.now()
+            current_time_only = current_time.time()
+
+            # Parse start time
+            start_str = self._night_setback_config['start']
+            if start_str.lower().startswith("sunset"):
+                sunset = self._get_sunset_time()
+                if sunset:
+                    from datetime import timedelta
+                    offset = 0
+                    if "+" in start_str:
+                        offset = int(start_str.split("+")[1])
+                    elif "-" in start_str:
+                        offset = -int(start_str.split("-")[1])
+                    start_time = (sunset + timedelta(minutes=offset)).time()
+                else:
+                    start_time = dt_time(21, 0)
+            else:
+                hour, minute = map(int, start_str.split(":"))
+                start_time = dt_time(hour, minute)
+
+            # Calculate dynamic end time
+            end_time = self._calculate_dynamic_night_end()
+            if not end_time:
+                deadline = self._night_setback_config.get('recovery_deadline')
+                if deadline:
+                    hour, minute = map(int, deadline.split(":"))
+                    end_time = dt_time(hour, minute)
+                else:
+                    end_time = dt_time(7, 0)
+
+            # Check if in night period
+            if start_time > end_time:
+                in_night_period = current_time_only >= start_time or current_time_only < end_time
+            else:
+                in_night_period = start_time <= current_time_only < end_time
+
+            device_state_attributes["night_setback_active"] = in_night_period
+            device_state_attributes["night_setback_delta"] = self._night_setback_config['delta']
+            device_state_attributes["night_setback_end"] = end_time.strftime("%H:%M")
+            device_state_attributes["night_setback_end_dynamic"] = True
+            # Include weather for debugging
+            weather = self._get_weather_condition()
+            if weather:
+                device_state_attributes["weather_condition"] = weather
+
+        # Learning grace period (after night setback transitions)
+        if self.in_learning_grace_period:
+            device_state_attributes["learning_paused"] = True
+            device_state_attributes["learning_resumes"] = self._learning_grace_until.strftime("%H:%M")
         return device_state_attributes
 
     def set_hvac_mode(self, hvac_mode: (HVACMode, str)) -> None:
@@ -1369,26 +1530,98 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
 
         # Apply night setback adjustment if configured
         effective_target = self._target_temp
+        in_night_period = False
+
         if self._night_setback:
+            # Static end time configured - use NightSetback object
             from datetime import datetime
             current_time = datetime.now()
             sunset_time = self._get_sunset_time() if self._night_setback.use_sunset else None
-
-            # Check if we're in night period
             in_night_period = self._night_setback.is_night_period(current_time, sunset_time)
 
+            # Detect night setback transitions and set learning grace period
+            if self._night_setback_was_active is not None and in_night_period != self._night_setback_was_active:
+                transition = "started" if in_night_period else "ended"
+                _LOGGER.info("%s: Night setback %s - setting learning grace period", self.entity_id, transition)
+                self._set_learning_grace_period(minutes=60)
+            self._night_setback_was_active = in_night_period
+
             if in_night_period:
-                # During night: apply setback
                 effective_target = self._target_temp - self._night_setback.setback_delta
             elif self._solar_recovery:
-                # Morning recovery: check if we should delay heating for sun
                 if self._solar_recovery.should_use_solar_recovery(
                     current_time,
                     self._current_temp or 0,
                     self._target_temp,
                 ):
-                    # Keep the lower setback temp to let sun warm the zone
                     effective_target = self._target_temp - self._night_setback.setback_delta
+
+        elif self._night_setback_config:
+            # Dynamic end time - calculate based on sunrise, orientation, weather
+            from datetime import datetime, time as dt_time
+            current_time = datetime.now()
+            current_time_only = current_time.time()
+
+            # Parse start time
+            start_str = self._night_setback_config['start']
+            if start_str.lower().startswith("sunset"):
+                sunset = self._get_sunset_time()
+                if sunset:
+                    from datetime import timedelta
+                    offset = 0
+                    if "+" in start_str:
+                        offset = int(start_str.split("+")[1])
+                    elif "-" in start_str:
+                        offset = -int(start_str.split("-")[1])
+                    start_time = (sunset + timedelta(minutes=offset)).time()
+                else:
+                    start_time = dt_time(21, 0)  # Fallback to 21:00
+            else:
+                hour, minute = map(int, start_str.split(":"))
+                start_time = dt_time(hour, minute)
+
+            # Calculate dynamic end time
+            end_time = self._calculate_dynamic_night_end()
+            if not end_time:
+                # Fallback: use recovery_deadline or default 07:00
+                deadline = self._night_setback_config.get('recovery_deadline')
+                if deadline:
+                    hour, minute = map(int, deadline.split(":"))
+                    end_time = dt_time(hour, minute)
+                else:
+                    end_time = dt_time(7, 0)
+
+            # Check if in night period (handles midnight crossing)
+            if start_time > end_time:
+                in_night_period = current_time_only >= start_time or current_time_only < end_time
+            else:
+                in_night_period = start_time <= current_time_only < end_time
+
+            _LOGGER.debug(
+                "%s: Night setback check: current=%s, start=%s, end=%s, in_night=%s, target=%s, delta=%s",
+                self.entity_id, current_time_only, start_time, end_time, in_night_period,
+                self._target_temp, self._night_setback_config['delta']
+            )
+
+            # Detect night setback transitions and set learning grace period
+            if self._night_setback_was_active is not None and in_night_period != self._night_setback_was_active:
+                transition = "started" if in_night_period else "ended"
+                _LOGGER.info("%s: Night setback %s - setting learning grace period", self.entity_id, transition)
+                self._set_learning_grace_period(minutes=60)
+            self._night_setback_was_active = in_night_period
+
+            if in_night_period:
+                effective_target = self._target_temp - self._night_setback_config['delta']
+                _LOGGER.info("%s: Night setback active, effective_target=%s", self.entity_id, effective_target)
+            elif self._night_setback_config.get('solar_recovery') and self._window_orientation:
+                # Check solar recovery even without NightSetback object
+                sunrise = self._get_sunrise_time()
+                if sunrise and current_time_only < end_time:
+                    # We're in morning recovery window - check weather
+                    weather = self._get_weather_condition()
+                    if weather and any(c in weather.lower() for c in ["sunny", "clear"]):
+                        # Clear sky: delay heating to let sun warm zone
+                        effective_target = self._target_temp - self._night_setback_config['delta']
 
         if self._pid_controller.sampling_period == 0:
             self._control_output, update = self._pid_controller.calc(self._current_temp,
