@@ -25,6 +25,7 @@ from homeassistant.const import (
     SERVICE_TURN_ON,
     STATE_ON,
     STATE_OFF,
+    STATE_UNAVAILABLE,
     STATE_UNKNOWN,
 )
 from homeassistant.components.number.const import (
@@ -992,6 +993,10 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
     @callback
     def _async_update_temp(self, state):
         """Update thermostat with latest state from sensor."""
+        if state.state in (STATE_UNKNOWN, STATE_UNAVAILABLE, None):
+            _LOGGER.debug("%s: Sensor %s is %s, skipping update",
+                          self.entity_id, self._sensor_entity_id, state.state)
+            return
         try:
             self._previous_temp = self._current_temp
             self._current_temp = float(state.state)
@@ -1003,6 +1008,10 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
     @callback
     def _async_update_ext_temp(self, state):
         """Update thermostat with latest state from sensor."""
+        if state.state in (STATE_UNKNOWN, STATE_UNAVAILABLE, None):
+            _LOGGER.debug("%s: External sensor %s is %s, skipping update",
+                          self.entity_id, self._ext_sensor_entity_id, state.state)
+            return
         try:
             self._ext_temp = float(state.state)
             self._last_ext_sensor_update = time.time()
