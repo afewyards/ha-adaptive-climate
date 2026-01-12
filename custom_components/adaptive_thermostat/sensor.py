@@ -14,6 +14,7 @@ from homeassistant.const import (
     PERCENTAGE,
     UnitOfPower,
     UnitOfTime,
+    UnitOfTemperature,
 )
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -50,6 +51,9 @@ async def async_setup_platform(
         DutyCycleSensor(hass, zone_id, zone_name, climate_entity_id),
         PowerPerM2Sensor(hass, zone_id, zone_name, climate_entity_id),
         CycleTimeSensor(hass, zone_id, zone_name, climate_entity_id),
+        OvershootSensor(hass, zone_id, zone_name, climate_entity_id),
+        SettlingTimeSensor(hass, zone_id, zone_name, climate_entity_id),
+        OscillationsSensor(hass, zone_id, zone_name, climate_entity_id),
     ]
 
     async_add_entities(sensors, True)
@@ -272,3 +276,208 @@ class CycleTimeSensor(AdaptiveThermostatSensor):
 
         # Typical cycle time for floor heating is 15-30 minutes
         return 20.0
+
+
+class OvershootSensor(AdaptiveThermostatSensor):
+    """Sensor for temperature overshoot from adaptive learning."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        zone_id: str,
+        zone_name: str,
+        climate_entity_id: str,
+    ) -> None:
+        """Initialize the overshoot sensor."""
+        super().__init__(hass, zone_id, zone_name, climate_entity_id)
+        self._attr_name = f"{zone_name} Overshoot"
+        self._attr_unique_id = f"{zone_id}_overshoot"
+        self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+        self._attr_device_class = SensorDeviceClass.TEMPERATURE
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_icon = "mdi:thermometer-alert"
+        self._state = 0.0
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the state of the sensor."""
+        return self._state
+
+    async def async_update(self) -> None:
+        """Update the sensor state."""
+        # Get overshoot from adaptive learner
+        overshoot = await self._get_overshoot()
+        self._state = round(overshoot, 2) if overshoot is not None else 0.0
+
+    async def _get_overshoot(self) -> float | None:
+        """Get overshoot value from adaptive learner.
+
+        Returns:
+            Overshoot in °C, or None if no data available
+        """
+        # Get coordinator data
+        coordinator = self.hass.data.get(DOMAIN, {}).get("coordinator")
+        if not coordinator:
+            return None
+
+        # Get zone data
+        zone_data = coordinator.get_zone_data(self._zone_id)
+        if not zone_data:
+            return None
+
+        # Get adaptive learner from zone data
+        adaptive_learner = zone_data.get("adaptive_learner")
+        if not adaptive_learner:
+            return None
+
+        # Get cycle history
+        if not hasattr(adaptive_learner, "cycle_history") or not adaptive_learner.cycle_history:
+            return 0.0
+
+        # Calculate average overshoot from recent cycles
+        overshoots = [
+            cycle.overshoot
+            for cycle in adaptive_learner.cycle_history
+            if cycle.overshoot is not None
+        ]
+
+        if not overshoots:
+            return 0.0
+
+        return sum(overshoots) / len(overshoots)
+
+
+class SettlingTimeSensor(AdaptiveThermostatSensor):
+    """Sensor for settling time from adaptive learning."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        zone_id: str,
+        zone_name: str,
+        climate_entity_id: str,
+    ) -> None:
+        """Initialize the settling time sensor."""
+        super().__init__(hass, zone_id, zone_name, climate_entity_id)
+        self._attr_name = f"{zone_name} Settling Time"
+        self._attr_unique_id = f"{zone_id}_settling_time"
+        self._attr_native_unit_of_measurement = UnitOfTime.MINUTES
+        self._attr_device_class = SensorDeviceClass.DURATION
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_icon = "mdi:timer-sand"
+        self._state = 0.0
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the state of the sensor."""
+        return self._state
+
+    async def async_update(self) -> None:
+        """Update the sensor state."""
+        # Get settling time from adaptive learner
+        settling_time = await self._get_settling_time()
+        self._state = round(settling_time, 1) if settling_time is not None else 0.0
+
+    async def _get_settling_time(self) -> float | None:
+        """Get settling time value from adaptive learner.
+
+        Returns:
+            Settling time in minutes, or None if no data available
+        """
+        # Get coordinator data
+        coordinator = self.hass.data.get(DOMAIN, {}).get("coordinator")
+        if not coordinator:
+            return None
+
+        # Get zone data
+        zone_data = coordinator.get_zone_data(self._zone_id)
+        if not zone_data:
+            return None
+
+        # Get adaptive learner from zone data
+        adaptive_learner = zone_data.get("adaptive_learner")
+        if not adaptive_learner:
+            return None
+
+        # Get cycle history
+        if not hasattr(adaptive_learner, "cycle_history") or not adaptive_learner.cycle_history:
+            return 0.0
+
+        # Calculate average settling time from recent cycles
+        settling_times = [
+            cycle.settling_time
+            for cycle in adaptive_learner.cycle_history
+            if cycle.settling_time is not None
+        ]
+
+        if not settling_times:
+            return 0.0
+
+        return sum(settling_times) / len(settling_times)
+
+
+class OscillationsSensor(AdaptiveThermostatSensor):
+    """Sensor for oscillation count from adaptive learning."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        zone_id: str,
+        zone_name: str,
+        climate_entity_id: str,
+    ) -> None:
+        """Initialize the oscillations sensor."""
+        super().__init__(hass, zone_id, zone_name, climate_entity_id)
+        self._attr_name = f"{zone_name} Oscillations"
+        self._attr_unique_id = f"{zone_id}_oscillations"
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_icon = "mdi:sine-wave"
+        self._state = 0
+
+    @property
+    def native_value(self) -> int | None:
+        """Return the state of the sensor."""
+        return self._state
+
+    async def async_update(self) -> None:
+        """Update the sensor state."""
+        # Get oscillations from adaptive learner
+        oscillations = await self._get_oscillations()
+        self._state = int(oscillations) if oscillations is not None else 0
+
+    async def _get_oscillations(self) -> int | None:
+        """Get oscillations count from adaptive learner.
+
+        Returns:
+            Average oscillation count, or None if no data available
+        """
+        # Get coordinator data
+        coordinator = self.hass.data.get(DOMAIN, {}).get("coordinator")
+        if not coordinator:
+            return None
+
+        # Get zone data
+        zone_data = coordinator.get_zone_data(self._zone_id)
+        if not zone_data:
+            return None
+
+        # Get adaptive learner from zone data
+        adaptive_learner = zone_data.get("adaptive_learner")
+        if not adaptive_learner:
+            return None
+
+        # Get cycle history
+        if not hasattr(adaptive_learner, "cycle_history") or not adaptive_learner.cycle_history:
+            return 0
+
+        # Calculate average oscillations from recent cycles
+        oscillations = [
+            cycle.oscillations
+            for cycle in adaptive_learner.cycle_history
+            if cycle.oscillations is not None
+        ]
+
+        if not oscillations:
+            return 0
+
+        return int(sum(oscillations) / len(oscillations))
