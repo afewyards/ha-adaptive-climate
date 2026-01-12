@@ -212,63 +212,66 @@ class TestInitialPID:
         tau = 4.0  # Standard thermal time constant
         Kp, Ki, Kd = calculate_initial_pid(tau, "floor_hydronic")
 
-        # Floor heating should use conservative values (0.5 modifier)
-        # Expected: Kp = 0.6/4 * 0.5 = 0.075
-        assert Kp == pytest.approx(0.075, abs=0.001)
+        # Floor heating uses empirical base values with tau adjustment
+        # Base: kp=0.3, ki=0.012, kd=7.0
+        # tau_factor = 1.5/4.0 = 0.375, clamped to 0.7
+        # Kp = 0.3 * 0.7 = 0.21
+        assert Kp == pytest.approx(0.21, abs=0.01)
 
-        # Ki should be small for slow integration
-        # Expected: Ki = 2*0.075/4 * 0.5 = 0.01875
-        assert Ki == pytest.approx(0.01875, abs=0.001)
+        # Ki = 0.012 * 0.7 = 0.0084
+        assert Ki == pytest.approx(0.0084, abs=0.001)
 
-        # Kd should provide damping
-        # Expected: Kd = 0.075*4/8 * 0.5 = 0.01875
-        assert Kd == pytest.approx(0.019, abs=0.001)
+        # Kd = 7.0 / 0.7 = 10.0 (inverse: slower systems need more damping)
+        assert Kd == pytest.approx(10.0, abs=0.1)
 
     def test_convector_pid_aggressive(self):
         """Test that convector heating gets more aggressive PID values."""
         tau = 4.0  # Standard thermal time constant
         Kp_conv, Ki_conv, Kd_conv = calculate_initial_pid(tau, "convector")
 
-        # Convector uses standard modifier (1.0)
-        # Expected: Kp = 0.6/4 * 1.0 = 0.15
-        assert Kp_conv == pytest.approx(0.15, abs=0.001)
+        # Convector uses empirical base values: kp=0.8, ki=0.04, kd=3.0
+        # tau_factor = 0.7 (clamped)
+        # Kp = 0.8 * 0.7 = 0.56
+        assert Kp_conv == pytest.approx(0.56, abs=0.01)
 
-        # Ki should be larger than floor heating
-        # Expected: Ki = 2*0.15/4 * 1.0 = 0.075
-        assert Ki_conv == pytest.approx(0.075, abs=0.001)
+        # Ki = 0.04 * 0.7 = 0.028
+        assert Ki_conv == pytest.approx(0.028, abs=0.001)
 
-        # Kd should be larger than floor heating
-        # Expected: Kd = 0.15*4/8 * 1.0 = 0.075
-        assert Kd_conv == pytest.approx(0.075, abs=0.001)
+        # Kd = 3.0 / 0.7 = 4.29
+        assert Kd_conv == pytest.approx(4.29, abs=0.1)
 
-        # Compare with floor heating - convector should be more aggressive
+        # Compare with floor heating - convector should have higher Kp/Ki (more aggressive)
+        # but LOWER Kd (faster systems need less damping)
         Kp_floor, Ki_floor, Kd_floor = calculate_initial_pid(tau, "floor_hydronic")
         assert Kp_conv > Kp_floor
         assert Ki_conv > Ki_floor
-        assert Kd_conv > Kd_floor
+        assert Kd_conv < Kd_floor  # Inverse: slower systems need more damping
 
     def test_forced_air_pid_most_aggressive(self):
         """Test that forced air heating gets most aggressive PID values."""
         tau = 4.0  # Standard thermal time constant
         Kp_air, Ki_air, Kd_air = calculate_initial_pid(tau, "forced_air")
 
-        # Forced air uses aggressive modifier (1.3)
-        # Expected: Kp = 0.6/4 * 1.3 = 0.195
-        assert Kp_air == pytest.approx(0.195, abs=0.001)
+        # Forced air uses empirical base values: kp=1.2, ki=0.08, kd=2.0
+        # tau_factor = 0.7 (clamped)
+        # Kp = 1.2 * 0.7 = 0.84
+        assert Kp_air == pytest.approx(0.84, abs=0.01)
 
-        # Should be most aggressive of all heating types
+        # Should be most aggressive of all heating types (highest Kp/Ki, lowest Kd)
         Kp_conv, Ki_conv, Kd_conv = calculate_initial_pid(tau, "convector")
         assert Kp_air > Kp_conv
         assert Ki_air > Ki_conv
-        assert Kd_air > Kd_conv
+        assert Kd_air < Kd_conv  # Fastest system needs least damping
 
     def test_radiator_pid_moderate(self):
         """Test that radiator heating gets moderate PID values."""
         tau = 4.0  # Standard thermal time constant
         Kp_rad, Ki_rad, Kd_rad = calculate_initial_pid(tau, "radiator")
 
-        # Radiator uses moderate modifier (0.7)
-        assert Kp_rad == pytest.approx(0.105, abs=0.001)
+        # Radiator uses empirical base values: kp=0.5, ki=0.02, kd=5.0
+        # tau_factor = 0.7 (clamped)
+        # Kp = 0.5 * 0.7 = 0.35
+        assert Kp_rad == pytest.approx(0.35, abs=0.01)
 
         # Should be between floor and convector
         Kp_floor, _, _ = calculate_initial_pid(tau, "floor_hydronic")
