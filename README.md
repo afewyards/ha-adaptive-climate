@@ -117,6 +117,26 @@ climate:
       seconds: 60
 ```
 
+### Valve Control Example
+For systems with a single valve that controls flow regardless of heating or cooling mode (e.g., fan coil units, zone valves on a shared hydronic loop):
+
+```yaml
+climate:
+  - platform: adaptive_thermostat
+    name: Fan Coil Unit
+    demand_switch: switch.fcunit_valve
+    target_sensor: sensor.temp_fcunit
+    ac_mode: true
+    pwm: 0  # Direct valve control (0-100%)
+    min_temp: 16
+    max_temp: 28
+    target_temp: 21
+    keep_alive:
+      seconds: 60
+```
+
+Unlike `heater` (active only in heat mode) or `cooler` (active only in cool mode), `demand_switch` is controlled in both modes—useful when the same valve regulates flow from a shared hot/cold source.
+
 ### Night Setback Example
 ```yaml
 climate:
@@ -354,8 +374,9 @@ For thermally connected zones (e.g., open floor plan):
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
 | `name` | No | Adaptive Thermostat | Thermostat name |
-| `heater` | Yes | - | Switch/valve entity (or list) to control |
-| `cooler` | No | - | Cooling switch/valve entity (or list) |
+| `heater` | No* | - | Switch/valve entity (or list) for heating mode |
+| `cooler` | No | - | Switch/valve entity (or list) for cooling mode |
+| `demand_switch` | No* | - | Switch/valve entity (or list) controlled in both modes |
 | `invert_heater` | No | false | Invert heater on/off polarity |
 | `target_sensor` | Yes | - | Temperature sensor entity |
 | `outdoor_sensor` | No | - | Outdoor temperature sensor for Ke |
@@ -363,6 +384,8 @@ For thermally connected zones (e.g., open floor plan):
 | `max_temp` | No | 35 | Maximum setpoint temperature |
 | `target_temp` | No | 20 | Initial target temperature |
 | `ac_mode` | No | false | Enable cooling mode support |
+
+\* At least one of `heater`, `cooler`, or `demand_switch` is required.
 
 ### Timing & Cycle Parameters
 | Parameter | Required | Default | Description |
