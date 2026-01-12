@@ -44,7 +44,6 @@ from homeassistant.helpers.event import (
     async_track_state_change_event,
     async_track_time_interval,
 )
-from homeassistant.helpers.reload import async_setup_reload_service
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from .adaptive.physics import calculate_thermal_time_constant, calculate_initial_pid
@@ -172,8 +171,6 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
 
 async def async_setup_platform(hass, config, async_add_entities, discovery_info=None):
     """Set up the generic thermostat platform."""
-    await async_setup_reload_service(hass, DOMAIN, PLATFORMS)
-
     platform = entity_platform.current_platform.get()
     assert platform
 
@@ -314,48 +311,6 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
             )
         )
 
-    platform.async_register_entity_service(  # type: ignore
-        "set_pid_gain",
-        {
-            vol.Optional("kp"): vol.Coerce(float),
-            vol.Optional("ki"): vol.Coerce(float),
-            vol.Optional("kd"): vol.Coerce(float),
-            vol.Optional("ke"): vol.Coerce(float),
-        },
-        "async_set_pid",
-    )
-    platform.async_register_entity_service(  # type: ignore
-        "set_pid_mode",
-        {
-            vol.Required("mode"): vol.In(['auto', 'off']),
-        },
-        "async_set_pid_mode",
-    )
-    platform.async_register_entity_service(  # type: ignore
-        "set_preset_temp",
-        {
-            vol.Optional("away_temp"): vol.Coerce(float),
-            vol.Optional("away_temp_disable"): vol.Coerce(bool),
-            vol.Optional("eco_temp"): vol.Coerce(float),
-            vol.Optional("eco_temp_disable"): vol.Coerce(bool),
-            vol.Optional("boost_temp"): vol.Coerce(float),
-            vol.Optional("boost_temp_disable"): vol.Coerce(bool),
-            vol.Optional("comfort_temp"): vol.Coerce(float),
-            vol.Optional("comfort_temp_disable"): vol.Coerce(bool),
-            vol.Optional("home_temp"): vol.Coerce(float),
-            vol.Optional("home_temp_disable"): vol.Coerce(bool),
-            vol.Optional("sleep_temp"): vol.Coerce(float),
-            vol.Optional("sleep_temp_disable"): vol.Coerce(bool),
-            vol.Optional("activity_temp"): vol.Coerce(float),
-            vol.Optional("activity_temp_disable"): vol.Coerce(bool),
-        },
-        "async_set_preset_temp",
-    )
-    platform.async_register_entity_service(  # type: ignore
-        "clear_integral",
-        {},
-        "clear_integral",
-    )
     platform.async_register_entity_service(  # type: ignore
         "reset_pid_to_physics",
         {},
@@ -541,8 +496,8 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
         self._time_changed = 0
         self._last_sensor_update = time.time()
         self._last_ext_sensor_update = time.time()
-        _LOGGER.debug("%s: PID Gains kp = %s, ki = %s, kd = %s, ke = %s", self.unique_id, self._kp,
-                      self._ki, self._kd, self._ke)
+        _LOGGER.info("%s: Active PID values - Kp=%.4f, Ki=%.5f, Kd=%.3f, Ke=%s",
+                     self.unique_id, self._kp, self._ki, self._kd, self._ke or 0)
         self._pid_controller = pid_controller.PID(self._kp, self._ki, self._kd, self._ke,
                                                   self._min_out, self._max_out,
                                                   self._sampling_period, self._cold_tolerance,
@@ -656,6 +611,8 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
             elif old_state.attributes.get('Ke') is not None and self._pid_controller is not None:
                 self._ke = float(old_state.attributes.get('Ke'))
                 self._pid_controller.set_pid_param(ke=self._ke)
+            _LOGGER.info("%s: Restored PID values - Kp=%.4f, Ki=%.5f, Kd=%.3f, Ke=%s",
+                         self.entity_id, self._kp, self._ki, self._kd, self._ke or 0)
             if old_state.attributes.get('pid_mode') is not None and \
                     self._pid_controller is not None:
                 self._pid_controller.mode = old_state.attributes.get('pid_mode')

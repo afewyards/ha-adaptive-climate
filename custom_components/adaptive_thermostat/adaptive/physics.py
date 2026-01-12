@@ -92,51 +92,49 @@ def calculate_initial_pid(
     thermal_time_constant: float,
     heating_type: str = "floor_hydronic",
 ) -> Tuple[float, float, float]:
-    """Calculate initial PID parameters using modified Ziegler-Nichols method.
+    """Calculate initial PID parameters using empirical heating system values.
 
-    The Ziegler-Nichols method provides baseline PID tuning based on system
-    dynamics. We modify it based on heating system type for better initial values.
+    Uses empirically-derived base values for each heating type, with minor
+    adjustments based on thermal time constant. These values are calibrated
+    for real-world HVAC systems rather than theoretical Ziegler-Nichols.
 
     Args:
         thermal_time_constant: System thermal time constant in hours (tau).
         heating_type: Type of heating system. Valid values:
-            - "floor_hydronic": Floor heating with water (very conservative)
-            - "radiator": Traditional radiators (moderately conservative)
-            - "convector": Convection heaters (more aggressive)
-            - "forced_air": Forced air heating (most aggressive)
+            - "floor_hydronic": Floor heating with water (very slow, high mass)
+            - "radiator": Traditional radiators (moderate response)
+            - "convector": Convection heaters (faster response)
+            - "forced_air": Forced air heating (fast response)
 
     Returns:
         Tuple of (Kp, Ki, Kd) PID parameters.
 
     Notes:
-        - Floor heating uses very conservative tuning (high tau, slow response)
-        - Convectors use more aggressive tuning (faster response)
-        - Modified Ziegler-Nichols: Kp = 0.6/tau, Ki = 2*Kp/tau, Kd = Kp*tau/8
+        - Floor heating needs very low Ki (slow integration, avoid wind-up)
+        - Floor heating needs high Kd (dampen slow oscillations)
+        - Faster systems (convector, forced_air) can use higher Ki, lower Kd
     """
-    # Heating type modifiers for PID aggressiveness
-    # Lower modifier = more conservative = slower response
-    heating_modifiers = {
-        "floor_hydronic": 0.5,   # Very slow response, high thermal mass
-        "radiator": 0.7,          # Moderate response
-        "convector": 1.0,         # Standard response
-        "forced_air": 1.3,        # Fast response, low thermal mass
+    # Empirical base values per heating type
+    # Calibrated from real-world A+++ house with floor hydronic heating
+    heating_params = {
+        "floor_hydronic": {"kp": 0.3, "ki": 0.012, "kd": 7.0},   # Very slow, needs strong damping
+        "radiator": {"kp": 0.5, "ki": 0.02, "kd": 5.0},          # Moderate response
+        "convector": {"kp": 0.8, "ki": 0.04, "kd": 3.0},         # Faster response
+        "forced_air": {"kp": 1.2, "ki": 0.08, "kd": 2.0},        # Fast response, low mass
     }
 
-    modifier = heating_modifiers.get(heating_type, 0.7)
+    params = heating_params.get(heating_type, heating_params["radiator"])
 
-    # Modified Ziegler-Nichols tuning
-    # Base formula: Kp = 0.6 / tau
-    Kp = (0.6 / thermal_time_constant) * modifier
+    # Minor tau-based adjustment (normalized to tau=1.5 as baseline)
+    # Higher tau = slower system = slightly lower Kp/Ki, slightly higher Kd
+    tau_factor = 1.5 / thermal_time_constant if thermal_time_constant > 0 else 1.0
+    tau_factor = max(0.7, min(1.3, tau_factor))  # Clamp to ±30%
 
-    # Ki should integrate slowly for heating systems
-    # Base formula: Ki = 2 * Kp / tau
-    Ki = (2 * Kp / thermal_time_constant) * modifier
+    Kp = params["kp"] * tau_factor
+    Ki = params["ki"] * tau_factor
+    Kd = params["kd"] / tau_factor  # Inverse: slower systems need more damping
 
-    # Kd provides damping to reduce overshoot
-    # Base formula: Kd = Kp * tau / 8
-    Kd = (Kp * thermal_time_constant / 8.0) * modifier
-
-    return (round(Kp, 3), round(Ki, 5), round(Kd, 3))
+    return (round(Kp, 4), round(Ki, 5), round(Kd, 2))
 
 
 def calculate_initial_pwm_period(heating_type: str = "floor_hydronic") -> int:

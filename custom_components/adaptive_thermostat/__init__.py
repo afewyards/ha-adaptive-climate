@@ -91,7 +91,6 @@ async def async_send_notification(
 
 # Service names
 SERVICE_RUN_LEARNING = "run_learning"
-SERVICE_APPLY_RECOMMENDED_PID = "apply_recommended_pid"
 SERVICE_HEALTH_CHECK = "health_check"
 SERVICE_WEEKLY_REPORT = "weekly_report"
 SERVICE_COST_REPORT = "cost_report"
@@ -137,10 +136,6 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     from .analytics.reports import WeeklyReport
 
     # Service schemas
-    APPLY_PID_SCHEMA = vol.Schema({
-        vol.Required("entity_id"): cv.entity_id,
-    })
-
     VACATION_MODE_SCHEMA = vol.Schema({
         vol.Required("enabled"): cv.boolean,
         vol.Optional("target_temp", default=DEFAULT_VACATION_TARGET_TEMP): vol.Coerce(float),
@@ -374,94 +369,6 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
         return results
 
-    async def async_handle_apply_recommended_pid(call: ServiceCall) -> dict:
-        """Handle the apply_recommended_pid service call.
-
-        Returns:
-            Dictionary with applied PID values and changes
-        """
-        entity_id = call.data["entity_id"]
-        _LOGGER.info("Applying recommended PID to %s", entity_id)
-
-        # Find the zone for this entity
-        all_zones = coordinator.get_all_zones()
-        zone_data = None
-        zone_id = None
-
-        for zid, zdata in all_zones.items():
-            if zdata.get("climate_entity_id") == entity_id:
-                zone_data = zdata
-                zone_id = zid
-                break
-
-        if not zone_data:
-            _LOGGER.error("Zone not found for entity %s", entity_id)
-            return {"success": False, "error": f"Zone not found for entity {entity_id}"}
-
-        adaptive_learner = zone_data.get("adaptive_learner")
-        if not adaptive_learner:
-            _LOGGER.error("No adaptive learner for zone %s", zone_id)
-            return {"success": False, "error": f"No adaptive learner for zone {zone_id}"}
-
-        # Get current PID values from climate entity
-        state = hass.states.get(entity_id)
-        if not state:
-            _LOGGER.error("Cannot get state for %s", entity_id)
-            return {"success": False, "error": f"Cannot get state for {entity_id}"}
-
-        current_kp = state.attributes.get("kp", 100.0)
-        current_ki = state.attributes.get("ki", 0.01)
-        current_kd = state.attributes.get("kd", 0.0)
-
-        # Get recommended PID values
-        recommendation = adaptive_learner.calculate_pid_adjustment(
-            current_kp=current_kp,
-            current_ki=current_ki,
-            current_kd=current_kd,
-        )
-
-        if recommendation is None:
-            cycle_count = adaptive_learner.get_cycle_count()
-            _LOGGER.warning(
-                "No recommendation available for %s (cycles: %d)",
-                entity_id,
-                cycle_count,
-            )
-            return {
-                "success": False,
-                "error": f"Insufficient data for recommendations (cycles: {cycle_count})",
-                "cycle_count": cycle_count,
-            }
-
-        new_kp = recommendation["kp"]
-        new_ki = recommendation["ki"]
-        new_kd = recommendation["kd"]
-
-        # Apply via set_pid_gain service
-        await hass.services.async_call(
-            DOMAIN,
-            "set_pid_gain",
-            {
-                "entity_id": entity_id,
-                "kp": new_kp,
-                "ki": new_ki,
-                "kd": new_kd,
-            },
-            blocking=True,
-        )
-        _LOGGER.info(
-            "Applied PID to %s: Kp=%.2f, Ki=%.4f, Kd=%.2f",
-            entity_id, new_kp, new_ki, new_kd,
-        )
-
-        return {
-            "success": True,
-            "entity_id": entity_id,
-            "zone_id": zone_id,
-            "previous_pid": {"kp": current_kp, "ki": current_ki, "kd": current_kd},
-            "applied_pid": {"kp": new_kp, "ki": new_ki, "kd": new_kd},
-        }
-
     async def async_handle_health_check(call: ServiceCall) -> None:
         """Handle the health_check service call."""
         _LOGGER.info("Running health check for all zones")
@@ -686,10 +593,6 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     # Register all services
     hass.services.async_register(
         DOMAIN, SERVICE_RUN_LEARNING, async_handle_run_learning
-    )
-    hass.services.async_register(
-        DOMAIN, SERVICE_APPLY_RECOMMENDED_PID, async_handle_apply_recommended_pid,
-        schema=APPLY_PID_SCHEMA,
     )
     hass.services.async_register(
         DOMAIN, SERVICE_HEALTH_CHECK, async_handle_health_check
