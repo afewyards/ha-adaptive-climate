@@ -46,6 +46,8 @@ from homeassistant.helpers.event import (
 from homeassistant.helpers.reload import async_setup_reload_service
 from homeassistant.helpers.restore_state import RestoreEntity
 
+from .adaptive.physics import calculate_thermal_time_constant, calculate_initial_pid
+
 from homeassistant.components.climate import PLATFORM_SCHEMA, ClimateEntity, ClimateEntityFeature
 from homeassistant.components.climate import (
     ATTR_PRESET_MODE,
@@ -410,10 +412,35 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
             self._attr_hvac_modes = [HVACMode.HEAT, HVACMode.OFF]
             self._min_out = self._output_clamp_low
             self._max_out = self._output_clamp_high
+        # Zone properties for physics-based initialization
+        self._heating_type = kwargs.get('heating_type', 'floor_hydronic')
+        self._area_m2 = kwargs.get('area_m2')
+        self._ceiling_height = kwargs.get('ceiling_height', 2.5)
+
+        # Get PID values from config or calculate from physics
         self._kp = kwargs.get('kp')
         self._ki = kwargs.get('ki')
         self._kd = kwargs.get('kd')
         self._ke = kwargs.get('ke')
+
+        # If PID values not configured, calculate from physics
+        if self._kp is None or self._ki is None or self._kd is None:
+            if self._area_m2:
+                volume_m3 = self._area_m2 * self._ceiling_height
+                tau = calculate_thermal_time_constant(volume_m3=volume_m3)
+                calc_kp, calc_ki, calc_kd = calculate_initial_pid(tau, self._heating_type)
+                self._kp = self._kp if self._kp is not None else calc_kp
+                self._ki = self._ki if self._ki is not None else calc_ki
+                self._kd = self._kd if self._kd is not None else calc_kd
+                _LOGGER.info("%s: Physics-based PID init (tau=%.2f, type=%s): Kp=%.4f, Ki=%.5f, Kd=%.3f",
+                             self.unique_id, tau, self._heating_type, self._kp, self._ki, self._kd)
+            else:
+                # Fallback defaults if no zone properties
+                self._kp = self._kp if self._kp is not None else 0.5
+                self._ki = self._ki if self._ki is not None else 0.01
+                self._kd = self._kd if self._kd is not None else 5.0
+                _LOGGER.warning("%s: No area_m2 configured, using default PID values", self.unique_id)
+
         self._pwm = kwargs.get('pwm').seconds
         self._p = self._i = self._d = self._e = self._dt = 0
         self._control_output = self._output_min
@@ -425,8 +452,8 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
         self._time_changed = 0
         self._last_sensor_update = time.time()
         self._last_ext_sensor_update = time.time()
-        _LOGGER.debug("%s: PID Gains kp = %s, ki = %s, kd = %s", self.unique_id, self._kp,
-                      self._ki, self._kd)
+        _LOGGER.debug("%s: PID Gains kp = %s, ki = %s, kd = %s, ke = %s", self.unique_id, self._kp,
+                      self._ki, self._kd, self._ke)
         self._pid_controller = pid_controller.PID(self._kp, self._ki, self._kd, self._ke,
                                                   self._min_out, self._max_out,
                                                   self._sampling_period, self._cold_tolerance,
@@ -1136,9 +1163,10 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
 
         if update:
             _LOGGER.debug("%s: New PID control output: %s (error = %.2f, dt = %.2f, "
-                          "p=%.2f, i=%.2f, d=%.2f, e=%.2f)", self.entity_id,
-                          str(self._control_output), error, self._dt, self._p, self._i, self._d,
-                          self._e)
+                          "p=%.2f, i=%.2f, d=%.2f, e=%.2f) [Kp=%.4f, Ki=%.4f, Kd=%.2f, Ke=%.2f]",
+                          self.entity_id, str(self._control_output), error, self._dt,
+                          self._p, self._i, self._d, self._e,
+                          self._kp or 0, self._ki or 0, self._kd or 0, self._ke or 0)
 
     async def set_control_value(self):
         """Set Output value for heater"""

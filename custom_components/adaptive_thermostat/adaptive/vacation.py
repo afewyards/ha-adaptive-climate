@@ -5,7 +5,8 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.core import HomeAssistant
-from homeassistant.const import SERVICE_SET_TEMPERATURE
+
+SERVICE_SET_TEMPERATURE = "set_temperature"
 
 if TYPE_CHECKING:
     from ..coordinator import AdaptiveThermostatCoordinator
