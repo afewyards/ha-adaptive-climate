@@ -496,16 +496,23 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
                     self.hass,
                     self._ext_sensor_entity_id,
                     self._async_ext_sensor_changed))
-        self.async_on_remove(
-            async_track_state_change_event(
-                self.hass,
-                self._heater_entity_id,
-                self._async_switch_changed))
+        if self._heater_entity_id is not None:
+            self.async_on_remove(
+                async_track_state_change_event(
+                    self.hass,
+                    self._heater_entity_id,
+                    self._async_switch_changed))
         if self._cooler_entity_id is not None:
             self.async_on_remove(
                 async_track_state_change_event(
                     self.hass,
                     self._cooler_entity_id,
+                    self._async_switch_changed))
+        if self._demand_switch_entity_id is not None:
+            self.async_on_remove(
+                async_track_state_change_event(
+                    self.hass,
+                    self._demand_switch_entity_id,
                     self._async_switch_changed))
         if self._keep_alive:
             self.async_on_remove(
