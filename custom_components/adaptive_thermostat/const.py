@@ -62,3 +62,43 @@ CONF_KE = "ke"
 CONF_PWM = "pwm"
 CONF_BOOST_PID_OFF = 'boost_pid_off'
 CONF_DEBUG = 'debug'
+CONF_HEATING_TYPE = "heating_type"
+
+# Heating system types
+HEATING_TYPE_FLOOR_HYDRONIC = "floor_hydronic"
+HEATING_TYPE_RADIATOR = "radiator"
+HEATING_TYPE_CONVECTOR = "convector"
+HEATING_TYPE_FORCED_AIR = "forced_air"
+
+# Valid heating types
+VALID_HEATING_TYPES = [
+    HEATING_TYPE_FLOOR_HYDRONIC,
+    HEATING_TYPE_RADIATOR,
+    HEATING_TYPE_CONVECTOR,
+    HEATING_TYPE_FORCED_AIR,
+]
+
+# Heating type characteristics lookup table
+# Used by adaptive/physics.py for PID initialization
+HEATING_TYPE_CHARACTERISTICS = {
+    HEATING_TYPE_FLOOR_HYDRONIC: {
+        "pid_modifier": 0.5,      # Very conservative
+        "pwm_period": 900,        # 15 minutes
+        "description": "Floor heating with water - high thermal mass, slow response",
+    },
+    HEATING_TYPE_RADIATOR: {
+        "pid_modifier": 0.7,      # Moderately conservative
+        "pwm_period": 600,        # 10 minutes
+        "description": "Traditional radiators - moderate thermal mass",
+    },
+    HEATING_TYPE_CONVECTOR: {
+        "pid_modifier": 1.0,      # Standard
+        "pwm_period": 300,        # 5 minutes
+        "description": "Convection heaters - low thermal mass, faster response",
+    },
+    HEATING_TYPE_FORCED_AIR: {
+        "pid_modifier": 1.3,      # Aggressive
+        "pwm_period": 180,        # 3 minutes
+        "description": "Forced air heating - very low thermal mass, fast response",
+    },
+}
