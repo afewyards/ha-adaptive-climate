@@ -3,14 +3,14 @@ clear_integral:
   description: Clears the integrating part of the PID.
   target:
     entity:
-      integration: smart_thermostat
+      integration: adaptive_thermostat
       domain: climate
 set_pid_mode:
   name: Set PID mode
   description: Selects the PID regulation auto or off.
   target:
     entity:
-      integration: smart_thermostat
+      integration: adaptive_thermostat
       domain: climate
   fields:
     mode:
@@ -30,7 +30,7 @@ set_pid_gain:
   description: Sets the kp, ki and kd gains for the PID.
   target:
     entity:
-      integration: smart_thermostat
+      integration: adaptive_thermostat
       domain: climate
   fields:
     kp:
@@ -86,7 +86,7 @@ set_preset_temp:
   description: Sets the temperature for the preset modes.
   target:
     entity:
-      integration: smart_thermostat
+      integration: adaptive_thermostat
       domain: climate
   fields:
     away_temp:
@@ -233,7 +233,11 @@ set_preset_temp:
 # Domain-level services for system-wide operations
 run_learning:
   name: Run Learning
-  description: Trigger adaptive learning analysis for all zones. Analyzes heating cycles and calculates recommended PID adjustments.
+  description: >-
+    Trigger adaptive learning analysis for all zones. Analyzes heating cycles
+    and calculates recommended PID adjustments based on observed performance
+    metrics (overshoot, undershoot, settling time, oscillations). Results are
+    returned and also logged for review.
 
 apply_recommended_pid:
   name: Apply Recommended PID
@@ -259,6 +263,19 @@ weekly_report:
 cost_report:
   name: Cost Report
   description: Generate an energy cost report showing consumption and costs for each zone and the total system.
+  fields:
+    period:
+      name: Period
+      description: The reporting period (daily, weekly, or monthly)
+      required: false
+      default: weekly
+      example: weekly
+      selector:
+        select:
+          options:
+            - daily
+            - weekly
+            - monthly
 
 set_vacation_mode:
   name: Set Vacation Mode
