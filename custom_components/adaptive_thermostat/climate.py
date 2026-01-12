@@ -345,6 +345,11 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         {},
         "async_reset_pid_to_physics",
     )
+    platform.async_register_entity_service(  # type: ignore
+        "apply_adaptive_pid",
+        {},
+        "async_apply_adaptive_pid",
+    )
 
 
 class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
@@ -939,6 +944,71 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
         _LOGGER.info(
             "%s: Reset PID to physics defaults (tau=%.2f, type=%s): Kp=%.4f, Ki=%.5f, Kd=%.3f",
             self.entity_id, tau, self._heating_type, self._kp, self._ki, self._kd
+        )
+
+        await self._async_control_heating(calc_pid=True)
+        self.async_write_ha_state()
+
+    async def async_apply_adaptive_pid(self, **kwargs):
+        """Apply adaptive PID values based on learned metrics."""
+        # Get coordinator and find our zone's adaptive learner
+        coordinator = self.hass.data.get(DOMAIN, {}).get("coordinator")
+        if not coordinator:
+            _LOGGER.warning(
+                "%s: Cannot apply adaptive PID - no coordinator",
+                self.entity_id
+            )
+            return
+
+        all_zones = coordinator.get_all_zones()
+        adaptive_learner = None
+
+        for zone_id, zone_data in all_zones.items():
+            if zone_data.get("climate_entity_id") == self.entity_id:
+                adaptive_learner = zone_data.get("adaptive_learner")
+                break
+
+        if not adaptive_learner:
+            _LOGGER.warning(
+                "%s: Cannot apply adaptive PID - no adaptive learner (learning_enabled: false?)",
+                self.entity_id
+            )
+            return
+
+        # Calculate recommendation based on current PID values
+        recommendation = adaptive_learner.calculate_pid_adjustment(
+            current_kp=self._kp,
+            current_ki=self._ki,
+            current_kd=self._kd,
+        )
+
+        if recommendation is None:
+            cycle_count = adaptive_learner.get_cycle_count()
+            _LOGGER.warning(
+                "%s: Insufficient data for adaptive PID (cycles: %d, need >= 3)",
+                self.entity_id,
+                cycle_count,
+            )
+            return
+
+        # Apply the recommended values
+        old_kp, old_ki, old_kd = self._kp, self._ki, self._kd
+        self._kp = recommendation["kp"]
+        self._ki = recommendation["ki"]
+        self._kd = recommendation["kd"]
+
+        # Clear integral to avoid wind-up from old tuning
+        self._pid_controller.integral = 0.0
+        self._i = 0.0
+
+        self._pid_controller.set_pid_param(self._kp, self._ki, self._kd, self._ke)
+
+        _LOGGER.info(
+            "%s: Applied adaptive PID: Kp=%.4f (was %.4f), Ki=%.5f (was %.5f), Kd=%.3f (was %.3f)",
+            self.entity_id,
+            self._kp, old_kp,
+            self._ki, old_ki,
+            self._kd, old_kd,
         )
 
         await self._async_control_heating(calc_pid=True)
