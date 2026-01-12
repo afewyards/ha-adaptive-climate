@@ -37,16 +37,16 @@ climate:
     name: Living Room
     heater: switch.heating_living_room
     target_sensor: sensor.temp_living_room
+    heating_type: radiator
+    area_m2: 20
     min_temp: 7
     max_temp: 28
     target_temp: 20
     keep_alive:
       seconds: 60
-    kp: 50
-    ki: 0.01
-    kd: 2000
-    pwm: 00:15:00
 ```
+
+PID values are automatically calculated from `heating_type` and `area_m2`, then refined through adaptive learning. No manual tuning required.
 
 ### Full Example with Adaptive Features
 ```yaml
@@ -62,14 +62,7 @@ climate:
     keep_alive:
       seconds: 60
 
-    # PID settings (or let physics-based initialization handle it)
-    kp: 50
-    ki: 0.01
-    kd: 2000
-    ke: 0.6
-    pwm: 00:15:00
-
-    # Zone properties for physics-based tuning
+    # Zone properties for physics-based PID initialization
     heating_type: floor_hydronic  # floor_hydronic, radiator, convector, forced_air
     area_m2: 28
     ceiling_height: 2.5
@@ -307,12 +300,14 @@ For thermally connected zones (e.g., open floor plan):
 | `keep_alive` | Yes | - | PWM update interval |
 | `pwm` | No | 00:15:00 | PWM period (0 for valves) |
 
-### PID Parameters
+### PID Parameters (Optional - Auto-calculated)
+PID values are automatically calculated from `heating_type` and zone properties. Only specify these to override the physics-based initialization.
+
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `kp` | 100 | Proportional gain |
-| `ki` | 0 | Integral gain |
-| `kd` | 0 | Derivative gain |
+| `kp` | Auto | Proportional gain |
+| `ki` | Auto | Integral gain |
+| `kd` | Auto | Derivative gain |
 | `ke` | 0 | Outdoor compensation gain |
 
 ### Adaptive Learning Parameters
@@ -342,18 +337,18 @@ For thermally connected zones (e.g., open floor plan):
 
 ## Troubleshooting
 
-### PID Tuning Tips
-- Start with low Kp to avoid oscillations
-- Increase Kp for faster response if stable
-- Use Kd to dampen overshoot
-- Keep Ki small for heating systems (slow thermal mass)
-- Let adaptive learning fine-tune over time
+### Let Adaptive Learning Do the Work
+The thermostat automatically learns and adjusts PID parameters. Give it time:
+- Initial values come from physics-based calculation (heating_type + area)
+- After 3+ heating cycles, adaptive learning starts recommending adjustments
+- Use `adaptive_thermostat.run_learning` to trigger analysis
+- Use `adaptive_thermostat.apply_recommended_pid` to apply suggestions
 
 ### Common Issues
-- **Slow response**: Increase Kp or check sensor update rate
-- **Oscillations**: Reduce Kp, increase Kd
-- **Never reaches setpoint**: Increase Ki
-- **Overshoots then settles**: Normal for PID, reduce Kp slightly
+- **Slow response**: Check `heating_type` is correct, or wait for adaptive learning
+- **Oscillations**: Usually resolves after adaptive learning detects the pattern
+- **Never reaches setpoint**: Ensure `area_m2` is accurate
+- **Overshoots then settles**: Normal initially, adaptive learning will reduce Kp
 
 ### Health Warnings
 - **Critical cycle time (<10 min)**: System cycling too fast, check PID tuning
