@@ -10,7 +10,7 @@ from abc import ABC
 import voluptuous as vol
 
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import condition, entity_platform
+from homeassistant.helpers import condition, entity_platform, discovery
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 from homeassistant.const import (
     ATTR_ENTITY_ID,
@@ -275,7 +275,8 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
 
         # Trigger sensor platform discovery for this zone
         hass.async_create_task(
-            hass.helpers.discovery.async_load_platform(
+            discovery.async_load_platform(
+                hass,
                 "sensor",
                 DOMAIN,
                 {
@@ -289,7 +290,8 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
 
         # Trigger switch platform discovery for demand switch
         hass.async_create_task(
-            hass.helpers.discovery.async_load_platform(
+            discovery.async_load_platform(
+                hass,
                 "switch",
                 DOMAIN,
                 {
