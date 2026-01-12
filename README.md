@@ -144,17 +144,25 @@ climate:
     name: Bedroom
     heater: switch.heating_bedroom
     target_sensor: sensor.temp_bedroom
+    window_orientation: south  # Required for dynamic end time
     keep_alive:
       seconds: 60
 
     # Night setback configuration
     night_setback:
-      enabled: true
-      delta: 2.0              # Reduce by 2°C at night
       start: "22:00"          # Or "sunset+30" for 30 min after sunset
-      solar_recovery: true    # Use solar gain to recover in morning
-      recovery_deadline: "07:00"
+      delta: 2.0              # Reduce by 2°C at night
+      # end: "06:30"          # Optional - if omitted, calculated dynamically
+      solar_recovery: true    # Delay morning heating to let sun warm zone
+      recovery_deadline: "08:00"  # Hard deadline for recovery
 ```
+
+When `end` is omitted, the end time is calculated dynamically based on:
+- **Sunrise** + 60 minutes base offset
+- **Window orientation**: south +30min, east +15min, west -30min, north -45min
+- **Weather**: cloudy -30min, clear +15min
+
+This allows south-facing rooms to benefit from solar gain while north-facing rooms start heating earlier.
 
 ### System Configuration
 ```yaml
@@ -193,14 +201,16 @@ adaptive_thermostat:
 
 ## Heating Types
 
-The `heating_type` parameter helps the system calculate appropriate PID values:
+The `heating_type` parameter determines PID values using empirical base values calibrated from real-world HVAC systems:
 
-| Type | Description | Response | PWM Period |
-|------|-------------|----------|------------|
-| `floor_hydronic` | Underfloor water heating | Very slow | 15 min |
-| `radiator` | Traditional radiators | Moderate | 10 min |
-| `convector` | Convection heaters | Fast | 5 min |
-| `forced_air` | Forced air / HVAC | Very fast | 3 min |
+| Type | Description | Kp | Ki | Kd | PWM Period |
+|------|-------------|-----|-------|-----|------------|
+| `floor_hydronic` | Underfloor water heating | 0.3 | 0.012 | 7.0 | 15 min |
+| `radiator` | Traditional radiators | 0.5 | 0.02 | 5.0 | 10 min |
+| `convector` | Convection heaters | 0.8 | 0.04 | 3.0 | 5 min |
+| `forced_air` | Forced air / HVAC | 1.2 | 0.08 | 2.0 | 3 min |
+
+Values are adjusted ±30% based on thermal time constant (zone volume and window area). Floor heating needs very low Ki (to avoid integral wind-up) and high Kd (to dampen slow oscillations).
 
 ## Created Entities
 
@@ -223,47 +233,21 @@ The `heating_type` parameter helps the system calculate appropriate PID values:
 
 ### Entity Services (target a specific thermostat)
 
-**Set PID gains:** `adaptive_thermostat.set_pid_gain`
-```yaml
-service: adaptive_thermostat.set_pid_gain
-data:
-  kp: 50
-  ki: 0.01
-  kd: 2000
-  ke: 0.6
-target:
-  entity_id: climate.living_room
-```
-
-**Set PID mode:** `adaptive_thermostat.set_pid_mode`
-```yaml
-service: adaptive_thermostat.set_pid_mode
-data:
-  mode: 'auto'  # or 'off' for hysteresis mode
-target:
-  entity_id: climate.living_room
-```
-
-**Set preset temperatures:** `adaptive_thermostat.set_preset_temp`
-```yaml
-service: adaptive_thermostat.set_preset_temp
-data:
-  away_temp: 14
-  eco_temp: 18
-  boost_temp: 23
-target:
-  entity_id: climate.living_room
-```
-
-**Clear integral:** `adaptive_thermostat.clear_integral`
-
 **Reset PID to physics defaults:** `adaptive_thermostat.reset_pid_to_physics`
 ```yaml
 service: adaptive_thermostat.reset_pid_to_physics
 target:
   entity_id: climate.living_room
 ```
-Recalculates PID values from the zone's physical properties (`area_m2`, `ceiling_height`, `heating_type`) and clears the integral term. Useful when adaptive learning has drifted or you want a fresh start.
+Recalculates PID values from the zone's physical properties (`area_m2`, `ceiling_height`, `heating_type`) using empirical values calibrated for real-world HVAC systems. Clears the integral term to avoid wind-up.
+
+**Apply adaptive PID:** `adaptive_thermostat.apply_adaptive_pid`
+```yaml
+service: adaptive_thermostat.apply_adaptive_pid
+target:
+  entity_id: climate.living_room
+```
+Calculates and applies PID values based on learned performance metrics (overshoot, undershoot, settling time, oscillations). Requires at least 3 analyzed heating cycles.
 
 ### Domain Services (system-wide)
 
@@ -271,13 +255,7 @@ Recalculates PID values from the zone's physical properties (`area_m2`, `ceiling
 ```yaml
 service: adaptive_thermostat.run_learning
 ```
-
-**Apply recommended PID:** `adaptive_thermostat.apply_recommended_pid`
-```yaml
-service: adaptive_thermostat.apply_recommended_pid
-data:
-  entity_id: climate.living_room
-```
+Triggers adaptive learning analysis for all zones.
 
 **Health check:** `adaptive_thermostat.health_check`
 ```yaml
@@ -292,6 +270,8 @@ service: adaptive_thermostat.weekly_report
 **Cost report:** `adaptive_thermostat.cost_report`
 ```yaml
 service: adaptive_thermostat.cost_report
+data:
+  period: weekly  # daily, weekly, or monthly
 ```
 
 **Vacation mode:** `adaptive_thermostat.set_vacation_mode`
@@ -325,7 +305,11 @@ Learning requires a minimum of 3 heating cycles before making recommendations.
 ## Energy Optimization Features
 
 ### Night Setback
-Automatically lowers temperature during sleeping hours with optional solar recovery in the morning.
+Automatically lowers temperature during sleeping hours. Features include:
+- **Sunset-relative start**: Use "sunset+30" to start 30 minutes after sunset
+- **Dynamic end time**: When `end` is omitted, calculates optimal wake time from sunrise, window orientation, and weather
+- **Solar recovery**: Delays morning heating to let the sun warm south-facing zones naturally
+- **Learning grace period**: Excludes night setback transitions from adaptive learning to avoid confusion
 
 ### Solar Gain Prediction
 Learns solar heating patterns per zone based on:
@@ -468,11 +452,11 @@ Configure as a nested block under `night_setback`:
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `enabled` | false | Enable night setback |
-| `delta` | 2.0 | Temperature reduction at night (°C) |
 | `start` | - | Start time ("22:00" or "sunset+30") |
-| `solar_recovery` | false | Use solar gain for morning recovery |
-| `recovery_deadline` | - | Hard deadline for recovery ("07:00") |
+| `end` | dynamic | End time ("06:30") - if omitted, calculated from sunrise/orientation/weather |
+| `delta` | 2.0 | Temperature reduction at night (°C) |
+| `solar_recovery` | false | Delay morning heating to let sun warm the zone |
+| `recovery_deadline` | - | Hard deadline for active heating recovery ("08:00") |
 
 ### Zone Coordination Parameters
 | Parameter | Default | Description |
@@ -519,10 +503,10 @@ These are configured under the `adaptive_thermostat:` domain block, not per-zone
 
 ### Let Adaptive Learning Do the Work
 The thermostat automatically learns and adjusts PID parameters. Give it time:
-- Initial values come from physics-based calculation (heating_type + area)
-- After 3+ heating cycles, adaptive learning starts recommending adjustments
-- Use `adaptive_thermostat.run_learning` to trigger analysis
-- Use `adaptive_thermostat.apply_recommended_pid` to apply suggestions
+- Initial values come from empirical base values (calibrated per heating_type)
+- Values are adjusted based on zone volume and window area
+- After 3+ heating cycles, use `adaptive_thermostat.apply_adaptive_pid` to apply learned adjustments
+- Use `adaptive_thermostat.reset_pid_to_physics` to reset to initial values if needed
 
 ### Common Issues
 - **Slow response**: Check `heating_type` is correct, or wait for adaptive learning
