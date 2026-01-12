@@ -14,6 +14,7 @@ class WindowOrientation(Enum):
     SOUTH = "south"
     EAST = "east"
     WEST = "west"
+    ROOF = "roof"  # Skylights
     NONE = "none"  # No windows or unknown
 
 
@@ -35,6 +36,7 @@ class SolarRecovery:
         WindowOrientation.EAST: -20,   # 20 min earlier - morning sun
         WindowOrientation.WEST: +20,   # 20 min later - afternoon sun only
         WindowOrientation.NORTH: +30,  # 30 min later - minimal sun
+        WindowOrientation.ROOF: -30,   # 30 min earlier - skylights get good midday sun
         WindowOrientation.NONE: 0,     # No adjustment - no windows
     }
 

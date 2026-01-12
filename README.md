@@ -82,7 +82,7 @@ climate:
     area_m2: 28
     ceiling_height: 2.5
     window_area_m2: 4.0
-    window_orientation: south  # north, east, south, west
+    window_orientation: south  # north, east, south, west, roof
 
     # Adaptive learning
     learning_enabled: true
@@ -446,7 +446,7 @@ PID values are automatically calculated from `heating_type` and zone properties.
 | `area_m2` | - | Zone floor area in m² |
 | `ceiling_height` | 2.5 | Ceiling height in meters |
 | `window_area_m2` | - | Total window area in m² |
-| `window_orientation` | - | Primary window direction (north, east, south, west) |
+| `window_orientation` | - | Primary window direction (north, east, south, west, roof) |
 | `learning_enabled` | true | Enable adaptive learning |
 
 ### Preset Mode Parameters
