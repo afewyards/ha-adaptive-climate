@@ -1,7 +1,7 @@
-"""Constants for Smart Thermostat"""
-DOMAIN = "smart_thermostat"
+"""Constants for Adaptive Thermostat"""
+DOMAIN = "adaptive_thermostat"
 
-DEFAULT_NAME = "Smart Thermostat"
+DEFAULT_NAME = "Adaptive Thermostat"
 DEFAULT_OUTPUT_PRECISION = 1
 DEFAULT_OUTPUT_MIN = 0
 DEFAULT_OUTPUT_MAX = 100
