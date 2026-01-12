@@ -456,6 +456,12 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
                             recovery_deadline=self._night_setback_config['recovery_deadline'],
                         )
 
+        # Zone linking for thermally connected zones
+        self._linked_zones = kwargs.get('linked_zones', [])
+        self._link_delay_minutes = kwargs.get('link_delay_minutes', 10)
+        self._zone_linker = None  # Will be set in async_added_to_hass
+        self._is_heating = False  # Track heating state for zone linking
+
         # Get PID values from config or calculate from physics
         self._kp = kwargs.get('kp')
         self._ki = kwargs.get('ki')
@@ -507,6 +513,17 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
     async def async_added_to_hass(self):
         """Run when entity about to be added."""
         await super().async_added_to_hass()
+
+        # Configure zone linking if linked zones are defined
+        if self._linked_zones:
+            zone_linker = self.hass.data.get(DOMAIN, {}).get("zone_linker")
+            if zone_linker:
+                self._zone_linker = zone_linker
+                zone_linker.configure_linked_zones(self._unique_id, self._linked_zones)
+                _LOGGER.info(
+                    "%s: Zone linking configured with %s (delay=%d min)",
+                    self.entity_id, self._linked_zones, self._link_delay_minutes
+                )
 
         # Add listener
         self.async_on_remove(
@@ -992,6 +1009,17 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
         if self.in_learning_grace_period:
             device_state_attributes["learning_paused"] = True
             device_state_attributes["learning_resumes"] = self._learning_grace_until.strftime("%H:%M")
+
+        # Zone linking status
+        if self._zone_linker:
+            is_delayed = self._zone_linker.is_zone_delayed(self._unique_id)
+            device_state_attributes["zone_link_delayed"] = is_delayed
+            if is_delayed:
+                remaining = self._zone_linker.get_delay_remaining_minutes(self._unique_id)
+                device_state_attributes["zone_link_delay_remaining"] = round(remaining, 1) if remaining else 0
+            if self._linked_zones:
+                device_state_attributes["linked_zones"] = self._linked_zones
+
         return device_state_attributes
 
     def set_hvac_mode(self, hvac_mode: (HVACMode, str)) -> None:
@@ -1379,6 +1407,15 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
 
     async def _async_heater_turn_on(self):
         """Turn heater toggleable device on."""
+        # Check if zone is delayed due to linked zone heating
+        if self._zone_linker and self._zone_linker.is_zone_delayed(self._unique_id):
+            remaining = self._zone_linker.get_delay_remaining_minutes(self._unique_id)
+            _LOGGER.info(
+                "%s: Zone linking delay active - heating delayed for %.1f more minutes",
+                self.entity_id, remaining or 0
+            )
+            return
+
         if self._is_device_active:
             # It's a state refresh call from keep_alive, just force switch ON.
             _LOGGER.info("%s: Refresh state ON %s", self.entity_id,
@@ -1387,6 +1424,13 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
             _LOGGER.info("%s: Turning ON %s", self.entity_id,
                          ", ".join([entity for entity in self.heater_or_cooler_entity]))
             self._last_heat_cycle_time = time.time()
+
+            # Notify zone linker that this zone started heating (for linked zones)
+            if self._zone_linker and self._linked_zones and not self._is_heating:
+                self._is_heating = True
+                await self._zone_linker.on_zone_heating_started(
+                    self._unique_id, self._link_delay_minutes
+                )
         else:
             _LOGGER.info("%s: Reject request turning ON %s: Cycle is too short",
                          self.entity_id, ", ".join([entity for entity in self.heater_or_cooler_entity]))
@@ -1409,6 +1453,8 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
             _LOGGER.info("%s: Turning OFF %s", self.entity_id,
                          ", ".join([entity for entity in self.heater_or_cooler_entity]))
             self._last_heat_cycle_time = time.time()
+            # Reset heating state for zone linking
+            self._is_heating = False
         else:
             _LOGGER.info("%s: Reject request turning OFF %s: Cycle is too short",
                          self.entity_id, ", ".join([entity for entity in self.heater_or_cooler_entity]))
