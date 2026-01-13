@@ -137,8 +137,6 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Optional(const.CONF_CONTACT_SENSORS): cv.entity_ids,
         vol.Optional(const.CONF_CONTACT_ACTION, default=const.CONTACT_ACTION_PAUSE): vol.In(const.VALID_CONTACT_ACTIONS),
         vol.Optional(const.CONF_CONTACT_DELAY, default=const.DEFAULT_CONTACT_DELAY): vol.Coerce(int),
-        # Health monitoring
-        vol.Optional(const.CONF_HIGH_POWER_EXCEPTION, default=const.DEFAULT_HIGH_POWER_EXCEPTION): cv.boolean,
         # Night setback
         vol.Optional(const.CONF_NIGHT_SETBACK): vol.Schema({
             vol.Optional(const.CONF_NIGHT_SETBACK_START): cv.string,
@@ -228,7 +226,6 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         'contact_sensors': config.get(const.CONF_CONTACT_SENSORS),
         'contact_action': config.get(const.CONF_CONTACT_ACTION),
         'contact_delay': config.get(const.CONF_CONTACT_DELAY),
-        'high_power_exception': config.get(const.CONF_HIGH_POWER_EXCEPTION),
         'night_setback_config': config.get(const.CONF_NIGHT_SETBACK),
     }
 
@@ -246,7 +243,6 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
             "learning_enabled": True,  # Always enabled, vacation mode can toggle
             "adaptive_learner": AdaptiveLearner(),
             "linked_zones": config.get(const.CONF_LINKED_ZONES, []),
-            "high_power_exception": config.get(const.CONF_HIGH_POWER_EXCEPTION, False),
         }
         coordinator.register_zone(zone_id, zone_data)
         _LOGGER.info("Registered zone %s with coordinator", zone_id)

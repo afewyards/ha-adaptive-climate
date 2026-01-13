@@ -96,9 +96,6 @@ climate:
       - binary_sensor.gf_door
     contact_action: pause  # pause, frost_protection, none
     contact_delay: 120
-
-    # Health monitoring
-    high_power_exception: false
 ```
 
 ### Cooling/AC Example
@@ -470,11 +467,6 @@ Configure as a nested block under `night_setback`:
 | `contact_sensors` | - | List of window/door sensor entity IDs |
 | `contact_action` | pause | Action when open: pause, frost_protection, none |
 | `contact_delay` | 120 | Seconds before taking action |
-
-### Health Monitoring Parameters
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `high_power_exception` | false | Exclude zone from high power warnings |
 
 ### System Configuration Parameters
 These are configured under the `adaptive_thermostat:` domain block, not per-zone.
