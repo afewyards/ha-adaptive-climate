@@ -38,6 +38,9 @@ UPDATE_INTERVAL = timedelta(minutes=5)
 # Default measurement window for duty cycle calculation (1 hour)
 DEFAULT_DUTY_CYCLE_WINDOW = timedelta(hours=1)
 
+# Default number of cycles to average for CycleTimeSensor
+DEFAULT_ROLLING_AVERAGE_SIZE = 10
+
 
 @dataclass
 class HeaterStateChange:
@@ -454,7 +457,12 @@ class PowerPerM2Sensor(AdaptiveThermostatSensor):
 
 
 class CycleTimeSensor(AdaptiveThermostatSensor):
-    """Sensor for average heating cycle time."""
+    """Sensor for average heating cycle time.
+
+    Tracks heater state transitions (on->off->on) and calculates
+    the cycle time as the duration between consecutive ON states.
+    Maintains a rolling average of recent cycle times.
+    """
 
     def __init__(
         self,
@@ -462,8 +470,17 @@ class CycleTimeSensor(AdaptiveThermostatSensor):
         zone_id: str,
         zone_name: str,
         climate_entity_id: str,
+        rolling_average_size: int = DEFAULT_ROLLING_AVERAGE_SIZE,
     ) -> None:
-        """Initialize the cycle time sensor."""
+        """Initialize the cycle time sensor.
+
+        Args:
+            hass: Home Assistant instance
+            zone_id: Unique identifier for the zone
+            zone_name: Human-readable zone name
+            climate_entity_id: Entity ID of the climate entity
+            rolling_average_size: Number of cycles to average (default 10)
+        """
         super().__init__(hass, zone_id, zone_name, climate_entity_id)
         self._attr_name = f"{zone_name} Cycle Time"
         self._attr_unique_id = f"{zone_id}_cycle_time"
@@ -471,37 +488,142 @@ class CycleTimeSensor(AdaptiveThermostatSensor):
         self._attr_device_class = SensorDeviceClass.DURATION
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_icon = "mdi:timer-outline"
-        self._state = 0.0
-        self._cycle_times: list[float] = []
+        self._state: float | None = None
+
+        # Rolling average configuration
+        self._rolling_average_size = rolling_average_size
+
+        # State tracking
+        self._heater_entity_id: str | None = None
+        self._current_heater_state: bool = False
+        self._state_listener_unsub: Any = None
+        self._last_on_timestamp: datetime | None = None
+        self._cycle_times: deque[float] = deque(maxlen=rolling_average_size)
 
     @property
     def native_value(self) -> float | None:
         """Return the state of the sensor."""
         return self._state
 
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return additional state attributes."""
+        last_cycle_time = self._cycle_times[-1] if self._cycle_times else None
+        return {
+            "cycle_count": len(self._cycle_times),
+            "rolling_average_size": self._rolling_average_size,
+            "heater_entity_id": self._heater_entity_id,
+            "last_cycle_time_minutes": round(last_cycle_time, 1) if last_cycle_time else None,
+        }
+
+    async def async_added_to_hass(self) -> None:
+        """Set up state change tracking when added to hass."""
+        await super().async_added_to_hass()
+
+        # Get heater entity ID from climate entity
+        climate_state = self.hass.states.get(self._climate_entity_id)
+        if climate_state:
+            # Try to get heater entity from attributes
+            heater_ids = climate_state.attributes.get("heater_entity_id")
+            if heater_ids:
+                # heater_entity_id can be a list or single entity
+                if isinstance(heater_ids, list) and heater_ids:
+                    self._heater_entity_id = heater_ids[0]
+                elif isinstance(heater_ids, str):
+                    self._heater_entity_id = heater_ids
+
+        # If we found a heater entity, track its state changes
+        if self._heater_entity_id:
+            # Record initial state
+            heater_state = self.hass.states.get(self._heater_entity_id)
+            if heater_state:
+                self._current_heater_state = heater_state.state == STATE_ON
+                # If heater is currently ON, record this as the start of a cycle
+                if self._current_heater_state:
+                    self._last_on_timestamp = datetime.now()
+
+            # Set up state change listener
+            self._state_listener_unsub = async_track_state_change_event(
+                self.hass,
+                [self._heater_entity_id],
+                self._async_heater_state_changed,
+            )
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Clean up when removed from hass."""
+        if self._state_listener_unsub:
+            self._state_listener_unsub()
+            self._state_listener_unsub = None
+
+    @callback
+    def _async_heater_state_changed(self, event: Event) -> None:
+        """Handle heater state changes and detect cycles."""
+        new_state = event.data.get("new_state")
+        if new_state is None:
+            return
+
+        is_on = new_state.state == STATE_ON
+        now = datetime.now()
+
+        # Only process if state actually changed
+        if is_on == self._current_heater_state:
+            return
+
+        old_state = self._current_heater_state
+        self._current_heater_state = is_on
+
+        # Detect ON transition (cycle start)
+        if is_on and not old_state:
+            # Heater just turned ON
+            if self._last_on_timestamp is not None:
+                # Calculate cycle time as duration since last ON
+                cycle_duration = now - self._last_on_timestamp
+                cycle_minutes = cycle_duration.total_seconds() / 60.0
+
+                # Record cycle time (filter out unreasonably short cycles < 1 min)
+                if cycle_minutes >= 1.0:
+                    self._cycle_times.append(cycle_minutes)
+                    _LOGGER.debug(
+                        "%s: Recorded cycle time: %.1f minutes (total cycles: %d)",
+                        self._attr_unique_id,
+                        cycle_minutes,
+                        len(self._cycle_times),
+                    )
+
+            # Update last ON timestamp
+            self._last_on_timestamp = now
+            _LOGGER.debug(
+                "%s: Heater turned ON at %s",
+                self._attr_unique_id,
+                now.isoformat(),
+            )
+
+        elif not is_on and old_state:
+            # Heater just turned OFF
+            _LOGGER.debug(
+                "%s: Heater turned OFF at %s",
+                self._attr_unique_id,
+                now.isoformat(),
+            )
+
     async def async_update(self) -> None:
         """Update the sensor state."""
-        # Calculate average cycle time from recent cycles
-        avg_cycle_time = await self._calculate_average_cycle_time()
-        self._state = round(avg_cycle_time, 1) if avg_cycle_time is not None else 0.0
+        avg_cycle_time = self._calculate_average_cycle_time()
+        if avg_cycle_time is not None:
+            self._state = round(avg_cycle_time, 1)
+        else:
+            self._state = None
 
-    async def _calculate_average_cycle_time(self) -> float | None:
+    def _calculate_average_cycle_time(self) -> float | None:
         """Calculate average heating cycle time.
 
         Returns:
-            Average cycle time in minutes, or None if insufficient data
+            Average cycle time in minutes, or None if no complete cycles yet.
         """
-        # Get the climate entity state
-        climate_state = self.hass.states.get(self._climate_entity_id)
-        if not climate_state:
+        if not self._cycle_times:
             return None
 
-        # For now, return a default value
-        # In production, this would analyze heating on/off cycles from history
-        # and calculate the average time between cycles
-
-        # Typical cycle time for floor heating is 15-30 minutes
-        return 20.0
+        return sum(self._cycle_times) / len(self._cycle_times)
 
 
 class OvershootSensor(AdaptiveThermostatSensor):

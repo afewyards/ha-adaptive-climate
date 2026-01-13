@@ -163,9 +163,15 @@ def test_power_m2_estimation():
 
 
 def test_average_cycle_time():
-    """Test average cycle time calculation."""
+    """Test average cycle time calculation.
+
+    Note: The CycleTimeSensor implementation has been updated to track
+    actual heater on/off cycles and calculate rolling averages.
+    For comprehensive cycle time tests, see tests/test_sensor.py.
+    """
     import sys
     from unittest.mock import Mock
+    from collections import deque
 
     # Create mock modules
     mock_sensor_module = Mock()
@@ -175,11 +181,17 @@ def test_average_cycle_time():
     mock_sensor_module.SensorStateClass = Mock()
     mock_sensor_module.SensorStateClass.MEASUREMENT = "measurement"
 
+    mock_core = Mock()
+    mock_core.HomeAssistant = Mock
+    mock_core.callback = lambda f: f
+    mock_core.Event = Mock
+
     sys.modules['homeassistant'] = Mock()
-    sys.modules['homeassistant.core'] = Mock()
+    sys.modules['homeassistant.core'] = mock_core
     sys.modules['homeassistant.components'] = Mock()
     sys.modules['homeassistant.components.sensor'] = mock_sensor_module
     sys.modules['homeassistant.const'] = Mock()
+    sys.modules['homeassistant.const'].STATE_ON = "on"
     sys.modules['homeassistant.helpers'] = Mock()
     sys.modules['homeassistant.helpers.entity_platform'] = Mock()
     sys.modules['homeassistant.helpers.typing'] = Mock()
@@ -200,19 +212,16 @@ def test_average_cycle_time():
         climate_entity_id="climate.living_room",
     )
 
-    # Mock climate entity state
-    climate_state = Mock()
-    climate_state.attributes = {}
-    mock_hass.states.get.return_value = climate_state
+    # Test with no cycles - should return None
+    result = sensor._calculate_average_cycle_time()
+    assert result is None
 
-    # Calculate average cycle time
-    result = asyncio.run(sensor._calculate_average_cycle_time())
-
-    # Should return a default value for now (implementation placeholder)
-    # In production, this would be calculated from actual cycle history
+    # Test with recorded cycles
+    sensor._cycle_times = deque([15.0, 20.0, 25.0])  # Average: 20 minutes
+    result = sensor._calculate_average_cycle_time()
     assert result == 20.0
 
-    # Test with missing climate entity
-    mock_hass.states.get.return_value = None
-    result = asyncio.run(sensor._calculate_average_cycle_time())
-    assert result is None
+    # Test with single cycle
+    sensor._cycle_times = deque([30.0])
+    result = sensor._calculate_average_cycle_time()
+    assert result == 30.0

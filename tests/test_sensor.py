@@ -63,8 +63,10 @@ _setup_mocks()
 # Now we can safely import the module under test
 from custom_components.adaptive_thermostat.sensor import (
     DutyCycleSensor,
+    CycleTimeSensor,
     HeaterStateChange,
     DEFAULT_DUTY_CYCLE_WINDOW,
+    DEFAULT_ROLLING_AVERAGE_SIZE,
 )
 
 
@@ -636,3 +638,410 @@ def test_duty_cycle():
     assert duty_cycle == pytest.approx(42.0, rel=0.01), "Control output fallback failed"
 
     print("All duty cycle tests passed!")
+
+
+# ============================================================================
+# CycleTimeSensor Tests
+# ============================================================================
+
+
+class TestCycleTimeCalculation:
+    """Tests for CycleTimeSensor cycle time calculation."""
+
+    @pytest.fixture
+    def mock_hass(self):
+        """Create a mock Home Assistant instance."""
+        hass = Mock()
+        hass.states = Mock()
+        hass.data = {}
+        return hass
+
+    @pytest.fixture
+    def cycle_time_sensor(self, mock_hass):
+        """Create a CycleTimeSensor instance for testing."""
+        sensor = CycleTimeSensor(
+            hass=mock_hass,
+            zone_id="living_room",
+            zone_name="Living Room",
+            climate_entity_id="climate.living_room",
+            rolling_average_size=10,
+        )
+        return sensor
+
+    def test_cycle_time_single_cycle(self, cycle_time_sensor):
+        """Test cycle time with one complete cycle (ON->OFF->ON)."""
+        # Simulate one complete cycle of 20 minutes
+        cycle_time_sensor._cycle_times = deque([20.0])
+
+        avg_time = cycle_time_sensor._calculate_average_cycle_time()
+
+        assert avg_time == pytest.approx(20.0, rel=0.01)
+
+    def test_cycle_time_no_complete_cycles(self, cycle_time_sensor):
+        """Test returns None when no complete cycles yet."""
+        # No cycles recorded
+        cycle_time_sensor._cycle_times = deque()
+
+        avg_time = cycle_time_sensor._calculate_average_cycle_time()
+
+        assert avg_time is None
+
+    def test_cycle_time_multiple_cycles(self, cycle_time_sensor):
+        """Test average calculation with multiple cycles."""
+        # Multiple cycles: 15, 20, 25 minutes = average 20 minutes
+        cycle_time_sensor._cycle_times = deque([15.0, 20.0, 25.0])
+
+        avg_time = cycle_time_sensor._calculate_average_cycle_time()
+
+        assert avg_time == pytest.approx(20.0, rel=0.01)
+
+    def test_cycle_time_varied_cycles(self, cycle_time_sensor):
+        """Test with varied cycle times."""
+        # Cycles: 10, 15, 20, 25, 30 minutes = average 20 minutes
+        cycle_time_sensor._cycle_times = deque([10.0, 15.0, 20.0, 25.0, 30.0])
+
+        avg_time = cycle_time_sensor._calculate_average_cycle_time()
+
+        assert avg_time == pytest.approx(20.0, rel=0.01)
+
+
+class TestCycleTimeRollingAverage:
+    """Tests for CycleTimeSensor rolling average behavior."""
+
+    @pytest.fixture
+    def mock_hass(self):
+        """Create a mock Home Assistant instance."""
+        hass = Mock()
+        hass.states = Mock()
+        hass.data = {}
+        return hass
+
+    def test_rolling_average_maxlen(self, mock_hass):
+        """Test old cycles are evicted when maxlen exceeded."""
+        sensor = CycleTimeSensor(
+            hass=mock_hass,
+            zone_id="test",
+            zone_name="Test",
+            climate_entity_id="climate.test",
+            rolling_average_size=5,
+        )
+
+        # Add more cycles than maxlen
+        for i in range(10):
+            sensor._cycle_times.append(float(i * 10))
+
+        # Should only keep last 5: 50, 60, 70, 80, 90
+        assert len(sensor._cycle_times) == 5
+        assert list(sensor._cycle_times) == [50.0, 60.0, 70.0, 80.0, 90.0]
+
+    def test_rolling_average_updates_correctly(self, mock_hass):
+        """Test rolling average updates correctly with new cycles."""
+        sensor = CycleTimeSensor(
+            hass=mock_hass,
+            zone_id="test",
+            zone_name="Test",
+            climate_entity_id="climate.test",
+            rolling_average_size=3,
+        )
+
+        # First 3 cycles
+        sensor._cycle_times.append(10.0)
+        sensor._cycle_times.append(20.0)
+        sensor._cycle_times.append(30.0)
+        assert sensor._calculate_average_cycle_time() == pytest.approx(20.0, rel=0.01)
+
+        # Add one more, first gets evicted
+        sensor._cycle_times.append(40.0)
+        # Now: 20, 30, 40 = average 30
+        assert sensor._calculate_average_cycle_time() == pytest.approx(30.0, rel=0.01)
+
+    def test_rolling_average_varied_cycle_times(self, mock_hass):
+        """Test average with varied cycle times."""
+        sensor = CycleTimeSensor(
+            hass=mock_hass,
+            zone_id="test",
+            zone_name="Test",
+            climate_entity_id="climate.test",
+            rolling_average_size=10,
+        )
+
+        # Varied cycle times representing realistic floor heating
+        cycle_times = [18.5, 22.3, 19.8, 21.0, 20.5, 23.1, 17.9, 20.2, 21.5, 19.2]
+        for ct in cycle_times:
+            sensor._cycle_times.append(ct)
+
+        avg = sensor._calculate_average_cycle_time()
+        expected = sum(cycle_times) / len(cycle_times)
+        assert avg == pytest.approx(expected, rel=0.01)
+
+
+class TestCycleTimeStateTracking:
+    """Tests for CycleTimeSensor state change tracking."""
+
+    @pytest.fixture
+    def mock_hass(self):
+        """Create a mock Home Assistant instance."""
+        hass = Mock()
+        hass.states = Mock()
+        hass.data = {}
+        return hass
+
+    @pytest.fixture
+    def cycle_time_sensor(self, mock_hass):
+        """Create a CycleTimeSensor instance for testing."""
+        sensor = CycleTimeSensor(
+            hass=mock_hass,
+            zone_id="test",
+            zone_name="Test",
+            climate_entity_id="climate.test",
+        )
+        return sensor
+
+    def test_heater_state_change_on_to_off(self, cycle_time_sensor):
+        """Test heater state change from ON to OFF."""
+        cycle_time_sensor._current_heater_state = True
+        cycle_time_sensor._last_on_timestamp = datetime.now() - timedelta(minutes=10)
+
+        # Simulate OFF event
+        event = Mock()
+        event.data = {"new_state": Mock(state="off")}
+
+        cycle_time_sensor._async_heater_state_changed(event)
+
+        # State should be OFF now
+        assert cycle_time_sensor._current_heater_state is False
+        # No cycle recorded yet (need ON->OFF->ON)
+        assert len(cycle_time_sensor._cycle_times) == 0
+
+    def test_heater_state_change_off_to_on_first_time(self, cycle_time_sensor):
+        """Test first heater state change from OFF to ON (no previous ON timestamp)."""
+        cycle_time_sensor._current_heater_state = False
+        cycle_time_sensor._last_on_timestamp = None
+
+        # Simulate ON event
+        event = Mock()
+        event.data = {"new_state": Mock(state="on")}
+
+        cycle_time_sensor._async_heater_state_changed(event)
+
+        # State should be ON now
+        assert cycle_time_sensor._current_heater_state is True
+        # last_on_timestamp should be set
+        assert cycle_time_sensor._last_on_timestamp is not None
+        # No cycle recorded (this is the first ON)
+        assert len(cycle_time_sensor._cycle_times) == 0
+
+    def test_heater_state_change_records_cycle(self, cycle_time_sensor):
+        """Test complete cycle recording (ON->OFF->ON)."""
+        now = datetime.now()
+        # Set up: heater was ON 20 minutes ago, then turned OFF, now turning ON again
+        cycle_time_sensor._current_heater_state = False
+        cycle_time_sensor._last_on_timestamp = now - timedelta(minutes=20)
+
+        # Simulate ON event (completing a cycle)
+        event = Mock()
+        event.data = {"new_state": Mock(state="on")}
+
+        cycle_time_sensor._async_heater_state_changed(event)
+
+        # Should have recorded 1 cycle of ~20 minutes
+        assert len(cycle_time_sensor._cycle_times) == 1
+        # Allow some tolerance for test execution time
+        assert cycle_time_sensor._cycle_times[0] == pytest.approx(20.0, rel=0.1)
+
+    def test_heater_state_change_short_cycle_filtered(self, cycle_time_sensor):
+        """Test short cycles (< 1 min) are filtered out."""
+        now = datetime.now()
+        # Set up: heater was ON just 30 seconds ago
+        cycle_time_sensor._current_heater_state = False
+        cycle_time_sensor._last_on_timestamp = now - timedelta(seconds=30)
+
+        # Simulate ON event
+        event = Mock()
+        event.data = {"new_state": Mock(state="on")}
+
+        cycle_time_sensor._async_heater_state_changed(event)
+
+        # Should NOT record this cycle (too short)
+        assert len(cycle_time_sensor._cycle_times) == 0
+
+    def test_heater_state_no_change_ignored(self, cycle_time_sensor):
+        """Test same state events are ignored."""
+        cycle_time_sensor._current_heater_state = True
+        cycle_time_sensor._last_on_timestamp = datetime.now() - timedelta(minutes=10)
+
+        # Simulate ON event when already ON
+        event = Mock()
+        event.data = {"new_state": Mock(state="on")}
+
+        cycle_time_sensor._async_heater_state_changed(event)
+
+        # State should still be ON, no cycle recorded
+        assert cycle_time_sensor._current_heater_state is True
+        assert len(cycle_time_sensor._cycle_times) == 0
+
+    def test_heater_state_new_state_none_ignored(self, cycle_time_sensor):
+        """Test events with None new_state are ignored."""
+        cycle_time_sensor._current_heater_state = True
+
+        # Simulate event with no new_state
+        event = Mock()
+        event.data = {"new_state": None}
+
+        cycle_time_sensor._async_heater_state_changed(event)
+
+        # State should be unchanged
+        assert cycle_time_sensor._current_heater_state is True
+
+
+class TestCycleTimeExtraAttributes:
+    """Tests for CycleTimeSensor extra state attributes."""
+
+    @pytest.fixture
+    def mock_hass(self):
+        """Create a mock Home Assistant instance."""
+        hass = Mock()
+        hass.states = Mock()
+        hass.data = {}
+        return hass
+
+    def test_extra_attributes_empty(self, mock_hass):
+        """Test extra_state_attributes when no cycles recorded."""
+        sensor = CycleTimeSensor(
+            hass=mock_hass,
+            zone_id="test",
+            zone_name="Test",
+            climate_entity_id="climate.test",
+        )
+
+        attrs = sensor.extra_state_attributes
+
+        assert attrs["cycle_count"] == 0
+        assert attrs["rolling_average_size"] == DEFAULT_ROLLING_AVERAGE_SIZE
+        assert attrs["last_cycle_time_minutes"] is None
+
+    def test_extra_attributes_with_cycles(self, mock_hass):
+        """Test extra_state_attributes with cycles recorded."""
+        sensor = CycleTimeSensor(
+            hass=mock_hass,
+            zone_id="test",
+            zone_name="Test",
+            climate_entity_id="climate.test",
+            rolling_average_size=5,
+        )
+        sensor._heater_entity_id = "switch.test_heater"
+        sensor._cycle_times = deque([15.0, 20.0, 25.0])
+
+        attrs = sensor.extra_state_attributes
+
+        assert attrs["cycle_count"] == 3
+        assert attrs["rolling_average_size"] == 5
+        assert attrs["heater_entity_id"] == "switch.test_heater"
+        assert attrs["last_cycle_time_minutes"] == 25.0
+
+
+class TestCycleTimeDefaults:
+    """Tests for CycleTimeSensor default values."""
+
+    @pytest.fixture
+    def mock_hass(self):
+        """Create a mock Home Assistant instance."""
+        hass = Mock()
+        hass.states = Mock()
+        hass.data = {}
+        return hass
+
+    def test_default_rolling_average_size(self, mock_hass):
+        """Test default rolling average size is 10."""
+        sensor = CycleTimeSensor(
+            hass=mock_hass,
+            zone_id="test",
+            zone_name="Test",
+            climate_entity_id="climate.test",
+        )
+
+        assert sensor._rolling_average_size == DEFAULT_ROLLING_AVERAGE_SIZE
+        assert sensor._rolling_average_size == 10
+
+    def test_custom_rolling_average_size(self, mock_hass):
+        """Test custom rolling average size."""
+        sensor = CycleTimeSensor(
+            hass=mock_hass,
+            zone_id="test",
+            zone_name="Test",
+            climate_entity_id="climate.test",
+            rolling_average_size=20,
+        )
+
+        assert sensor._rolling_average_size == 20
+
+    def test_initial_state_is_none(self, mock_hass):
+        """Test initial native_value is None."""
+        sensor = CycleTimeSensor(
+            hass=mock_hass,
+            zone_id="test",
+            zone_name="Test",
+            climate_entity_id="climate.test",
+        )
+
+        assert sensor.native_value is None
+
+
+def test_cycle_time():
+    """Integration test for cycle time calculation.
+
+    This is the main test that verifies the full cycle time calculation
+    works correctly end-to-end.
+    """
+    # Create mock hass
+    mock_hass = Mock()
+    mock_hass.states = Mock()
+    mock_hass.data = {}
+
+    # Create sensor
+    sensor = CycleTimeSensor(
+        hass=mock_hass,
+        zone_id="living_room",
+        zone_name="Living Room",
+        climate_entity_id="climate.living_room",
+        rolling_average_size=5,
+    )
+
+    # Test 1: No cycles - should return None
+    avg = sensor._calculate_average_cycle_time()
+    assert avg is None, "No cycles should return None"
+
+    # Test 2: Single cycle
+    sensor._cycle_times.append(20.0)
+    avg = sensor._calculate_average_cycle_time()
+    assert avg == pytest.approx(20.0, rel=0.01), "Single cycle average failed"
+
+    # Test 3: Multiple cycles - average
+    sensor._cycle_times.clear()
+    sensor._cycle_times.extend([15.0, 20.0, 25.0])
+    avg = sensor._calculate_average_cycle_time()
+    assert avg == pytest.approx(20.0, rel=0.01), "Multiple cycle average failed"
+
+    # Test 4: Rolling average eviction
+    sensor._cycle_times.clear()
+    # Add 7 cycles to a size-5 deque
+    for ct in [10.0, 15.0, 20.0, 25.0, 30.0, 35.0, 40.0]:
+        sensor._cycle_times.append(ct)
+    # Should only have last 5: 20, 25, 30, 35, 40 = avg 30
+    assert len(sensor._cycle_times) == 5, "Rolling window size failed"
+    avg = sensor._calculate_average_cycle_time()
+    assert avg == pytest.approx(30.0, rel=0.01), "Rolling average failed"
+
+    # Test 5: State transition recording
+    sensor._cycle_times.clear()
+    sensor._current_heater_state = False
+    sensor._last_on_timestamp = datetime.now() - timedelta(minutes=25)
+
+    event = Mock()
+    event.data = {"new_state": Mock(state="on")}
+    sensor._async_heater_state_changed(event)
+
+    assert len(sensor._cycle_times) == 1, "Cycle should be recorded"
+    assert sensor._cycle_times[0] == pytest.approx(25.0, rel=0.1), "Recorded cycle time incorrect"
+
+    print("All cycle time tests passed!")
