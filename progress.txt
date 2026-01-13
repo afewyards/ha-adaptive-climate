@@ -19,3 +19,35 @@ Added 6 integration tests to tests/test_zone_linking.py:
 ### Test Results
 All 16 tests in tests/test_zone_linking.py pass (10 existing + 6 new integration tests)
 All 233 project tests pass.
+
+## Story 1.2: Fix race condition in CentralController startup task - COMPLETED
+
+### Analysis
+The CentralController class had a potential race condition where concurrent calls to `update()` during the startup delay period could lead to:
+1. Multiple startup tasks being created
+2. Inconsistent state in `_heater_waiting_for_startup` and `_cooler_waiting_for_startup` flags
+3. Race conditions between task cancellation and the task's finally block
+
+### Work Done
+Added `asyncio.Lock` to protect all startup-related state:
+
+1. **Added `_startup_lock` field** to CentralController.__init__
+2. **Protected `_update_heater()` method** with lock to serialize heater state access
+3. **Protected `_update_cooler()` method** with lock to serialize cooler state access
+4. **Renamed internal methods to `_unlocked` suffix** to indicate they require caller to hold lock:
+   - `_start_heater_with_delay_unlocked()`
+   - `_start_cooler_with_delay_unlocked()`
+   - `_cancel_heater_startup_unlocked()`
+   - `_cancel_cooler_startup_unlocked()`
+5. **Protected delayed startup callbacks** to acquire lock when checking demand and resetting state
+6. **Added deadlock avoidance** in cancel methods by releasing lock while awaiting task cancellation
+
+Added 4 new tests to tests/test_central_controller.py:
+- test_concurrent_update_calls_during_startup_delay
+- test_task_cancellation_race_condition
+- test_concurrent_heater_and_cooler_updates
+- test_lock_released_after_cancellation
+
+### Test Results
+All 11 tests in tests/test_central_controller.py pass (7 existing + 4 new concurrency tests)
+All 237 project tests pass.

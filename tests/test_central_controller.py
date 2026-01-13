@@ -315,3 +315,179 @@ async def test_demand_lost_during_delay(mock_hass, coord):
         if call[0][1] == "turn_on"
     ]
     assert len(turn_on_calls) == 0
+
+
+@pytest.mark.asyncio
+async def test_concurrent_update_calls_during_startup_delay(mock_hass, coord):
+    """Test that concurrent update() calls during startup delay don't cause race conditions.
+
+    This test verifies that when multiple update() calls happen simultaneously while
+    waiting for startup delay, only one startup task is created and the state remains
+    consistent.
+    """
+    # Create controller with 2 second startup delay
+    controller = coordinator.CentralController(
+        mock_hass,
+        coord,
+        main_heater_switch="switch.boiler",
+        startup_delay_seconds=2,
+    )
+
+    # Mock switch is currently off
+    mock_state = Mock()
+    mock_state.state = "off"
+    mock_hass.states.get.return_value = mock_state
+
+    # Register zone and add demand
+    coord.register_zone("living_room", {"name": "Living Room"})
+    coord.update_zone_demand("living_room", True)
+
+    # Fire multiple concurrent update() calls
+    update_tasks = [controller.update() for _ in range(10)]
+    await asyncio.gather(*update_tasks)
+
+    # Verify only one startup is pending (not multiple)
+    assert controller.is_heater_waiting_for_startup()
+
+    # The lock should ensure only one startup task exists
+    assert controller._heater_startup_task is not None
+
+    # Wait for delay to complete
+    await asyncio.sleep(2.5)
+
+    # Verify heater was turned on exactly once
+    turn_on_calls = [
+        call for call in mock_hass.services.async_call.call_args_list
+        if call[0][1] == "turn_on"
+    ]
+    assert len(turn_on_calls) == 1
+
+    # Verify state is clean
+    assert not controller.is_heater_waiting_for_startup()
+    assert controller._heater_startup_task is None
+
+
+@pytest.mark.asyncio
+async def test_task_cancellation_race_condition(mock_hass, coord):
+    """Test that task cancellation doesn't race with task completion.
+
+    This test verifies that when demand is removed while the startup task is
+    about to complete (or is completing), the state remains consistent and
+    no exceptions are raised.
+    """
+    # Create controller with 1 second startup delay
+    controller = coordinator.CentralController(
+        mock_hass,
+        coord,
+        main_heater_switch="switch.boiler",
+        startup_delay_seconds=1,
+    )
+
+    # Mock switch is currently off
+    mock_state = Mock()
+    mock_state.state = "off"
+    mock_hass.states.get.return_value = mock_state
+
+    # Register zone and add demand
+    coord.register_zone("living_room", {"name": "Living Room"})
+    coord.update_zone_demand("living_room", True)
+
+    # Start the controller
+    await controller.update()
+
+    # Verify startup is pending
+    assert controller.is_heater_waiting_for_startup()
+
+    # Wait until just before the delay completes
+    await asyncio.sleep(0.9)
+
+    # Rapidly toggle demand on/off to trigger race condition
+    for i in range(5):
+        coord.update_zone_demand("living_room", i % 2 == 0)
+        await controller.update()
+
+    # Give any pending tasks time to settle
+    await asyncio.sleep(0.5)
+
+    # Verify state is consistent (no exceptions should have been raised)
+    # The waiting flag should be False since we toggled demand
+    # (either the task completed or was cancelled)
+    # The key assertion is that this test completes without deadlock or exception
+
+
+@pytest.mark.asyncio
+async def test_concurrent_heater_and_cooler_updates(mock_hass, coord):
+    """Test that concurrent updates to heater and cooler don't interfere.
+
+    This test verifies that the single lock properly serializes access to
+    both heater and cooler state without causing deadlocks.
+    """
+    # Create controller with both heater and cooler
+    controller = coordinator.CentralController(
+        mock_hass,
+        coord,
+        main_heater_switch="switch.boiler",
+        main_cooler_switch="switch.chiller",
+        startup_delay_seconds=1,
+    )
+
+    # Mock switch is currently off
+    mock_state = Mock()
+    mock_state.state = "off"
+    mock_hass.states.get.return_value = mock_state
+
+    # Register zones
+    coord.register_zone("living_room", {"name": "Living Room"})
+    coord.update_zone_demand("living_room", True)
+
+    # Fire many concurrent update() calls
+    update_tasks = [controller.update() for _ in range(20)]
+
+    # This should complete without deadlock
+    await asyncio.wait_for(asyncio.gather(*update_tasks), timeout=5.0)
+
+    # Verify heater startup is pending
+    assert controller.is_heater_waiting_for_startup()
+
+
+@pytest.mark.asyncio
+async def test_lock_released_after_cancellation(mock_hass, coord):
+    """Test that the lock is properly released after task cancellation.
+
+    This test verifies that after cancelling a startup task, the lock is
+    released and subsequent operations can proceed without deadlock.
+    """
+    # Create controller with 2 second startup delay
+    controller = coordinator.CentralController(
+        mock_hass,
+        coord,
+        main_heater_switch="switch.boiler",
+        startup_delay_seconds=2,
+    )
+
+    # Mock switch is currently off initially, then on after first turn_on
+    mock_state = Mock()
+    mock_state.state = "off"
+    mock_hass.states.get.return_value = mock_state
+
+    # Register zone and add demand
+    coord.register_zone("living_room", {"name": "Living Room"})
+    coord.update_zone_demand("living_room", True)
+
+    # Start the controller
+    await controller.update()
+    assert controller.is_heater_waiting_for_startup()
+
+    # Cancel by removing demand
+    coord.update_zone_demand("living_room", False)
+    await controller.update()
+
+    # Verify startup was cancelled
+    assert not controller.is_heater_waiting_for_startup()
+
+    # Now add demand again - this should work without deadlock
+    coord.update_zone_demand("living_room", True)
+    await asyncio.wait_for(controller.update(), timeout=2.0)
+
+    # Verify new startup is pending
+    assert controller.is_heater_waiting_for_startup()

@@ -156,6 +156,9 @@ class CentralController:
         self._heater_waiting_for_startup = False
         self._cooler_waiting_for_startup = False
 
+        # Lock to protect startup state from race conditions during concurrent updates
+        self._startup_lock = asyncio.Lock()
+
         _LOGGER.debug(
             "CentralController initialized: heater=%s, cooler=%s, delay=%ds",
             main_heater_switch,
@@ -185,15 +188,16 @@ class CentralController:
         Args:
             has_demand: Whether any zone has heating demand
         """
-        if has_demand:
-            # Zone(s) need heating
-            if not self._heater_waiting_for_startup and not await self._is_switch_on(self.main_heater_switch):
-                # Start heater with delay
-                await self._start_heater_with_delay()
-        else:
-            # No demand - turn off immediately
-            await self._cancel_heater_startup()
-            await self._turn_off_switch(self.main_heater_switch)
+        async with self._startup_lock:
+            if has_demand:
+                # Zone(s) need heating
+                if not self._heater_waiting_for_startup and not await self._is_switch_on(self.main_heater_switch):
+                    # Start heater with delay
+                    await self._start_heater_with_delay_unlocked()
+            else:
+                # No demand - turn off immediately
+                await self._cancel_heater_startup_unlocked()
+                await self._turn_off_switch(self.main_heater_switch)
 
     async def _update_cooler(self, has_demand: bool) -> None:
         """Update cooler state based on demand.
@@ -201,20 +205,24 @@ class CentralController:
         Args:
             has_demand: Whether any zone has cooling demand
         """
-        if has_demand:
-            # Zone(s) need cooling
-            if not self._cooler_waiting_for_startup and not await self._is_switch_on(self.main_cooler_switch):
-                # Start cooler with delay
-                await self._start_cooler_with_delay()
-        else:
-            # No demand - turn off immediately
-            await self._cancel_cooler_startup()
-            await self._turn_off_switch(self.main_cooler_switch)
+        async with self._startup_lock:
+            if has_demand:
+                # Zone(s) need cooling
+                if not self._cooler_waiting_for_startup and not await self._is_switch_on(self.main_cooler_switch):
+                    # Start cooler with delay
+                    await self._start_cooler_with_delay_unlocked()
+            else:
+                # No demand - turn off immediately
+                await self._cancel_cooler_startup_unlocked()
+                await self._turn_off_switch(self.main_cooler_switch)
 
-    async def _start_heater_with_delay(self) -> None:
-        """Start heater after startup delay."""
+    async def _start_heater_with_delay_unlocked(self) -> None:
+        """Start heater after startup delay.
+
+        Note: Must be called while holding _startup_lock.
+        """
         # Cancel any existing startup task
-        await self._cancel_heater_startup()
+        await self._cancel_heater_startup_unlocked()
 
         if self.startup_delay_seconds == 0:
             # No delay - turn on immediately
@@ -225,10 +233,13 @@ class CentralController:
             _LOGGER.debug("Heater startup scheduled in %d seconds", self.startup_delay_seconds)
             self._heater_startup_task = asyncio.create_task(self._delayed_heater_startup())
 
-    async def _start_cooler_with_delay(self) -> None:
-        """Start cooler after startup delay."""
+    async def _start_cooler_with_delay_unlocked(self) -> None:
+        """Start cooler after startup delay.
+
+        Note: Must be called while holding _startup_lock.
+        """
         # Cancel any existing startup task
-        await self._cancel_cooler_startup()
+        await self._cancel_cooler_startup_unlocked()
 
         if self.startup_delay_seconds == 0:
             # No delay - turn on immediately
@@ -244,56 +255,78 @@ class CentralController:
         try:
             await asyncio.sleep(self.startup_delay_seconds)
 
-            # Check if we still have demand
-            demand = self.coordinator.get_aggregate_demand()
-            if demand["heating"]:
-                await self._turn_on_switch(self.main_heater_switch)
-                _LOGGER.info("Heater started after %d second delay", self.startup_delay_seconds)
-            else:
-                _LOGGER.debug("Heater startup cancelled - no demand after delay")
+            # Check if we still have demand (under lock to prevent races)
+            async with self._startup_lock:
+                demand = self.coordinator.get_aggregate_demand()
+                if demand["heating"]:
+                    await self._turn_on_switch(self.main_heater_switch)
+                    _LOGGER.info("Heater started after %d second delay", self.startup_delay_seconds)
+                else:
+                    _LOGGER.debug("Heater startup cancelled - no demand after delay")
         except asyncio.CancelledError:
             _LOGGER.debug("Heater startup cancelled")
         finally:
-            self._heater_waiting_for_startup = False
-            self._heater_startup_task = None
+            async with self._startup_lock:
+                self._heater_waiting_for_startup = False
+                self._heater_startup_task = None
 
     async def _delayed_cooler_startup(self) -> None:
         """Delayed cooler startup task."""
         try:
             await asyncio.sleep(self.startup_delay_seconds)
 
-            # Check if we still have demand
-            demand = self.coordinator.get_aggregate_demand()
-            if demand["cooling"]:
-                await self._turn_on_switch(self.main_cooler_switch)
-                _LOGGER.info("Cooler started after %d second delay", self.startup_delay_seconds)
-            else:
-                _LOGGER.debug("Cooler startup cancelled - no demand after delay")
+            # Check if we still have demand (under lock to prevent races)
+            async with self._startup_lock:
+                demand = self.coordinator.get_aggregate_demand()
+                if demand["cooling"]:
+                    await self._turn_on_switch(self.main_cooler_switch)
+                    _LOGGER.info("Cooler started after %d second delay", self.startup_delay_seconds)
+                else:
+                    _LOGGER.debug("Cooler startup cancelled - no demand after delay")
         except asyncio.CancelledError:
             _LOGGER.debug("Cooler startup cancelled")
         finally:
-            self._cooler_waiting_for_startup = False
-            self._cooler_startup_task = None
+            async with self._startup_lock:
+                self._cooler_waiting_for_startup = False
+                self._cooler_startup_task = None
 
-    async def _cancel_heater_startup(self) -> None:
-        """Cancel pending heater startup."""
+    async def _cancel_heater_startup_unlocked(self) -> None:
+        """Cancel pending heater startup.
+
+        Note: Must be called while holding _startup_lock.
+        """
         if self._heater_startup_task and not self._heater_startup_task.done():
             self._heater_startup_task.cancel()
+            # Release the lock while waiting for cancellation to complete
+            # to avoid deadlock with the task's finally block
+            task = self._heater_startup_task
+            self._startup_lock.release()
             try:
-                await self._heater_startup_task
+                await task
             except asyncio.CancelledError:
                 pass
+            finally:
+                await self._startup_lock.acquire()
         self._heater_waiting_for_startup = False
         self._heater_startup_task = None
 
-    async def _cancel_cooler_startup(self) -> None:
-        """Cancel pending cooler startup."""
+    async def _cancel_cooler_startup_unlocked(self) -> None:
+        """Cancel pending cooler startup.
+
+        Note: Must be called while holding _startup_lock.
+        """
         if self._cooler_startup_task and not self._cooler_startup_task.done():
             self._cooler_startup_task.cancel()
+            # Release the lock while waiting for cancellation to complete
+            # to avoid deadlock with the task's finally block
+            task = self._cooler_startup_task
+            self._startup_lock.release()
             try:
-                await self._cooler_startup_task
+                await task
             except asyncio.CancelledError:
                 pass
+            finally:
+                await self._startup_lock.acquire()
         self._cooler_waiting_for_startup = False
         self._cooler_startup_task = None
 

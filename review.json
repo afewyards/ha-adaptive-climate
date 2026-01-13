@@ -30,7 +30,7 @@
         "Write test for task cancellation race condition",
         "VERIFY: pytest tests/test_central_controller.py passes"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "1.3",
