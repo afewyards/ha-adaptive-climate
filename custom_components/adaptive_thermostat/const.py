@@ -132,6 +132,15 @@ RULE_PRIORITY_SLOW_RESPONSE = 1  # Performance - improve comfort
 # Minimum number of cycles required before adaptive learning can recommend PID changes
 MIN_CYCLES_FOR_LEARNING = 3
 
+# Segment detection noise tolerance
+# Temperature fluctuations below this threshold are ignored as sensor noise
+SEGMENT_NOISE_TOLERANCE = 0.05  # 0.05C default
+
+# Rate bounds for segment validation (C/hour)
+# Rates outside these bounds are rejected as physically impossible
+SEGMENT_RATE_MIN = 0.1   # Minimum 0.1 C/hour (extremely slow, but physically possible)
+SEGMENT_RATE_MAX = 10.0  # Maximum 10 C/hour (very fast forced air systems)
+
 # System-level configuration
 CONF_MAIN_HEATER_SWITCH = "main_heater_switch"
 CONF_MAIN_COOLER_SWITCH = "main_cooler_switch"

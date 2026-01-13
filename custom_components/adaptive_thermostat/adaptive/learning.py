@@ -15,6 +15,9 @@ from ..const import (
     RULE_PRIORITY_OSCILLATION,
     RULE_PRIORITY_OVERSHOOT,
     RULE_PRIORITY_SLOW_RESPONSE,
+    SEGMENT_NOISE_TOLERANCE,
+    SEGMENT_RATE_MIN,
+    SEGMENT_RATE_MAX,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -50,14 +53,20 @@ class PIDRuleResult(NamedTuple):
 class ThermalRateLearner:
     """Learn thermal heating and cooling rates from observed temperature history."""
 
-    def __init__(self, outlier_threshold: float = 2.0):
+    def __init__(
+        self,
+        outlier_threshold: float = 2.0,
+        noise_tolerance: float = SEGMENT_NOISE_TOLERANCE,
+    ):
         """
         Initialize the ThermalRateLearner.
 
         Args:
             outlier_threshold: Number of standard deviations for outlier rejection
+            noise_tolerance: Temperature changes below this threshold are ignored as noise (default 0.05C)
         """
         self.outlier_threshold = outlier_threshold
+        self.noise_tolerance = noise_tolerance
         self._cooling_rates: List[float] = []
         self._heating_rates: List[float] = []
 
@@ -275,12 +284,15 @@ class ThermalRateLearner:
         """
         Find continuous cooling segments in temperature history.
 
+        Uses noise tolerance to ignore small reversals caused by sensor noise.
+        Validates segments against rate bounds to reject physically impossible rates.
+
         Args:
             temperature_history: List of (timestamp, temperature) tuples
             min_duration_minutes: Minimum segment duration
 
         Returns:
-            List of cooling segments
+            List of cooling segments (with physically impossible rates filtered out)
         """
         segments = []
         current_segment = []
@@ -289,31 +301,31 @@ class ThermalRateLearner:
             current_time, current_temp = temperature_history[i]
             next_time, next_temp = temperature_history[i + 1]
 
-            # Check if temperature is decreasing
-            if next_temp < current_temp:
+            temp_change = current_temp - next_temp  # Positive = cooling
+
+            # Check if temperature is decreasing (with noise tolerance)
+            # A reversal below noise_tolerance is ignored and segment continues
+            if temp_change > -self.noise_tolerance:  # Cooling or within noise band
                 if not current_segment:
                     current_segment.append((current_time, current_temp))
                 current_segment.append((next_time, next_temp))
             else:
-                # End of cooling segment
+                # Significant reversal (warming beyond tolerance) - end segment
                 if current_segment:
-                    start_time = current_segment[0][0]
-                    end_time = current_segment[-1][0]
-                    duration = (end_time - start_time).total_seconds() / 60
-
-                    if duration >= min_duration_minutes:
-                        segments.append(current_segment)
-
+                    segment = self._validate_segment(
+                        current_segment, min_duration_minutes, is_cooling=True
+                    )
+                    if segment:
+                        segments.append(segment)
                     current_segment = []
 
         # Check final segment
         if current_segment:
-            start_time = current_segment[0][0]
-            end_time = current_segment[-1][0]
-            duration = (end_time - start_time).total_seconds() / 60
-
-            if duration >= min_duration_minutes:
-                segments.append(current_segment)
+            segment = self._validate_segment(
+                current_segment, min_duration_minutes, is_cooling=True
+            )
+            if segment:
+                segments.append(segment)
 
         return segments
 
@@ -325,12 +337,15 @@ class ThermalRateLearner:
         """
         Find continuous heating segments in temperature history.
 
+        Uses noise tolerance to ignore small reversals caused by sensor noise.
+        Validates segments against rate bounds to reject physically impossible rates.
+
         Args:
             temperature_history: List of (timestamp, temperature) tuples
             min_duration_minutes: Minimum segment duration
 
         Returns:
-            List of heating segments
+            List of heating segments (with physically impossible rates filtered out)
         """
         segments = []
         current_segment = []
@@ -339,33 +354,87 @@ class ThermalRateLearner:
             current_time, current_temp = temperature_history[i]
             next_time, next_temp = temperature_history[i + 1]
 
-            # Check if temperature is increasing
-            if next_temp > current_temp:
+            temp_change = next_temp - current_temp  # Positive = heating
+
+            # Check if temperature is increasing (with noise tolerance)
+            # A reversal below noise_tolerance is ignored and segment continues
+            if temp_change > -self.noise_tolerance:  # Heating or within noise band
                 if not current_segment:
                     current_segment.append((current_time, current_temp))
                 current_segment.append((next_time, next_temp))
             else:
-                # End of heating segment
+                # Significant reversal (cooling beyond tolerance) - end segment
                 if current_segment:
-                    start_time = current_segment[0][0]
-                    end_time = current_segment[-1][0]
-                    duration = (end_time - start_time).total_seconds() / 60
-
-                    if duration >= min_duration_minutes:
-                        segments.append(current_segment)
-
+                    segment = self._validate_segment(
+                        current_segment, min_duration_minutes, is_cooling=False
+                    )
+                    if segment:
+                        segments.append(segment)
                     current_segment = []
 
         # Check final segment
         if current_segment:
-            start_time = current_segment[0][0]
-            end_time = current_segment[-1][0]
-            duration = (end_time - start_time).total_seconds() / 60
-
-            if duration >= min_duration_minutes:
-                segments.append(current_segment)
+            segment = self._validate_segment(
+                current_segment, min_duration_minutes, is_cooling=False
+            )
+            if segment:
+                segments.append(segment)
 
         return segments
+
+    def _validate_segment(
+        self,
+        segment: List[Tuple[datetime, float]],
+        min_duration_minutes: int,
+        is_cooling: bool,
+    ) -> Optional[List[Tuple[datetime, float]]]:
+        """
+        Validate a segment meets duration and rate bounds requirements.
+
+        Args:
+            segment: List of (timestamp, temperature) tuples
+            min_duration_minutes: Minimum required segment duration
+            is_cooling: True for cooling segments, False for heating
+
+        Returns:
+            The segment if valid, None if rejected
+        """
+        if len(segment) < 2:
+            return None
+
+        start_time, start_temp = segment[0]
+        end_time, end_temp = segment[-1]
+
+        # Check minimum duration
+        duration_minutes = (end_time - start_time).total_seconds() / 60
+        if duration_minutes < min_duration_minutes:
+            return None
+
+        # Calculate rate
+        duration_hours = duration_minutes / 60
+        if duration_hours <= 0:
+            return None
+
+        if is_cooling:
+            temp_change = start_temp - end_temp
+        else:
+            temp_change = end_temp - start_temp
+
+        # Reject segments where overall temperature didn't change in expected direction
+        if temp_change <= 0:
+            return None
+
+        rate = temp_change / duration_hours  # C/hour
+
+        # Check rate bounds
+        if rate < SEGMENT_RATE_MIN or rate > SEGMENT_RATE_MAX:
+            _LOGGER.debug(
+                f"Rejected {'cooling' if is_cooling else 'heating'} segment: "
+                f"rate {rate:.2f} C/hour outside bounds [{SEGMENT_RATE_MIN}, {SEGMENT_RATE_MAX}]"
+            )
+            return None
+
+        return segment
 
     def get_measurement_counts(self) -> Dict[str, int]:
         """

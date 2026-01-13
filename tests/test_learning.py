@@ -728,3 +728,360 @@ def test_rule_conflicts_module_exists():
     assert PIDRule.HIGH_OVERSHOOT.priority == 2
     assert PIDRule.MANY_OSCILLATIONS.priority == 3
     assert PIDRule.SLOW_RESPONSE.priority == 1
+
+
+# ============================================================================
+# Segment Detection Tests (Story 3.4)
+# ============================================================================
+
+
+class TestSegmentNoiseToleranceConstants:
+    """Test that segment detection constants are properly defined."""
+
+    def test_noise_tolerance_constant_exists(self):
+        """Test SEGMENT_NOISE_TOLERANCE constant exists and has correct default."""
+        from custom_components.adaptive_thermostat.const import SEGMENT_NOISE_TOLERANCE
+        assert SEGMENT_NOISE_TOLERANCE == 0.05
+
+    def test_rate_bounds_constants_exist(self):
+        """Test SEGMENT_RATE_MIN and SEGMENT_RATE_MAX constants exist."""
+        from custom_components.adaptive_thermostat.const import (
+            SEGMENT_RATE_MIN,
+            SEGMENT_RATE_MAX,
+        )
+        assert SEGMENT_RATE_MIN == 0.1
+        assert SEGMENT_RATE_MAX == 10.0
+
+
+class TestNoisyTemperatureData:
+    """Tests for noisy temperature data handling in segment detection."""
+
+    def test_cooling_segment_with_noise_below_tolerance(self):
+        """Test that small temperature reversals below tolerance don't break segments."""
+        from custom_components.adaptive_thermostat.adaptive.learning import (
+            ThermalRateLearner,
+        )
+
+        learner = ThermalRateLearner(noise_tolerance=0.05)
+        base_time = datetime(2024, 1, 1, 12, 0, 0)
+
+        # Cooling trend with small noise reversals (< 0.05C)
+        history = [
+            (base_time, 22.0),
+            (base_time + timedelta(minutes=10), 21.8),
+            (base_time + timedelta(minutes=20), 21.82),   # +0.02 noise (below tolerance)
+            (base_time + timedelta(minutes=30), 21.6),
+            (base_time + timedelta(minutes=40), 21.63),   # +0.03 noise (below tolerance)
+            (base_time + timedelta(minutes=50), 21.4),
+            (base_time + timedelta(minutes=60), 21.2),
+        ]
+
+        # Should find ONE continuous segment despite noise
+        segments = learner._find_cooling_segments(history, min_duration_minutes=30)
+        assert len(segments) == 1
+        assert len(segments[0]) == 7  # All points included
+
+    def test_cooling_segment_broken_by_reversal_above_tolerance(self):
+        """Test that temperature reversals above tolerance DO break segments."""
+        from custom_components.adaptive_thermostat.adaptive.learning import (
+            ThermalRateLearner,
+        )
+
+        learner = ThermalRateLearner(noise_tolerance=0.05)
+        base_time = datetime(2024, 1, 1, 12, 0, 0)
+
+        # Cooling with significant warming reversal (> 0.05C)
+        history = [
+            (base_time, 22.0),
+            (base_time + timedelta(minutes=10), 21.8),
+            (base_time + timedelta(minutes=20), 21.6),
+            (base_time + timedelta(minutes=30), 21.4),
+            (base_time + timedelta(minutes=40), 21.5),    # +0.1C reversal (above tolerance)
+            (base_time + timedelta(minutes=50), 21.3),
+            (base_time + timedelta(minutes=60), 21.1),
+            (base_time + timedelta(minutes=70), 20.9),
+            (base_time + timedelta(minutes=80), 20.7),
+        ]
+
+        # Should find TWO segments due to reversal
+        segments = learner._find_cooling_segments(history, min_duration_minutes=30)
+        assert len(segments) == 2
+
+    def test_heating_segment_with_noise_below_tolerance(self):
+        """Test heating segment detection with noise tolerance."""
+        from custom_components.adaptive_thermostat.adaptive.learning import (
+            ThermalRateLearner,
+        )
+
+        learner = ThermalRateLearner(noise_tolerance=0.05)
+        base_time = datetime(2024, 1, 1, 12, 0, 0)
+
+        # Heating trend with small noise
+        history = [
+            (base_time, 18.0),
+            (base_time + timedelta(minutes=10), 18.5),
+            (base_time + timedelta(minutes=20), 18.48),   # -0.02 noise (below tolerance)
+            (base_time + timedelta(minutes=30), 19.0),
+            (base_time + timedelta(minutes=40), 19.5),
+            (base_time + timedelta(minutes=50), 19.47),   # -0.03 noise (below tolerance)
+            (base_time + timedelta(minutes=60), 20.0),
+        ]
+
+        # Should find ONE continuous heating segment
+        segments = learner._find_heating_segments(history, min_duration_minutes=30)
+        assert len(segments) == 1
+
+    def test_calculate_cooling_rate_with_noisy_data(self):
+        """Test full cooling rate calculation with noisy data."""
+        from custom_components.adaptive_thermostat.adaptive.learning import (
+            ThermalRateLearner,
+        )
+
+        learner = ThermalRateLearner(noise_tolerance=0.05)
+        base_time = datetime(2024, 1, 1, 12, 0, 0)
+
+        # 90 minutes of cooling with noise: 22.0 -> 20.0 = ~1.33 C/hour
+        history = [
+            (base_time, 22.0),
+            (base_time + timedelta(minutes=15), 21.52),
+            (base_time + timedelta(minutes=30), 21.54),  # noise
+            (base_time + timedelta(minutes=45), 21.0),
+            (base_time + timedelta(minutes=60), 20.52),
+            (base_time + timedelta(minutes=75), 20.0),
+            (base_time + timedelta(minutes=90), 20.03),  # noise at end
+        ]
+
+        rate = learner.calculate_cooling_rate(history, min_duration_minutes=30)
+        # Should get approximately 1.33 C/hour despite noise
+        assert rate is not None
+        # The actual rate depends on segment boundaries, allow some tolerance
+        assert 1.0 < rate < 2.0
+
+
+class TestRateBoundsRejection:
+    """Tests for rate bounds checking and rejection of impossible rates."""
+
+    def test_reject_rate_below_minimum(self):
+        """Test that rates below SEGMENT_RATE_MIN are rejected."""
+        from custom_components.adaptive_thermostat.adaptive.learning import (
+            ThermalRateLearner,
+        )
+
+        learner = ThermalRateLearner()
+        base_time = datetime(2024, 1, 1, 12, 0, 0)
+
+        # Very slow cooling: 0.01C over 1 hour = 0.01 C/hour (< 0.1 minimum)
+        history = [
+            (base_time, 20.0),
+            (base_time + timedelta(minutes=30), 19.995),
+            (base_time + timedelta(minutes=60), 19.99),
+        ]
+
+        segments = learner._find_cooling_segments(history, min_duration_minutes=30)
+        # Should be rejected due to rate below minimum
+        assert len(segments) == 0
+
+    def test_reject_rate_above_maximum(self):
+        """Test that rates above SEGMENT_RATE_MAX are rejected."""
+        from custom_components.adaptive_thermostat.adaptive.learning import (
+            ThermalRateLearner,
+        )
+
+        learner = ThermalRateLearner()
+        base_time = datetime(2024, 1, 1, 12, 0, 0)
+
+        # Impossibly fast cooling: 15C over 1 hour = 15 C/hour (> 10 maximum)
+        history = [
+            (base_time, 35.0),
+            (base_time + timedelta(minutes=30), 27.5),
+            (base_time + timedelta(minutes=60), 20.0),
+        ]
+
+        segments = learner._find_cooling_segments(history, min_duration_minutes=30)
+        # Should be rejected due to rate above maximum
+        assert len(segments) == 0
+
+    def test_accept_rate_within_bounds(self):
+        """Test that rates within bounds are accepted."""
+        from custom_components.adaptive_thermostat.adaptive.learning import (
+            ThermalRateLearner,
+        )
+
+        learner = ThermalRateLearner()
+        base_time = datetime(2024, 1, 1, 12, 0, 0)
+
+        # Normal cooling: 2C over 1 hour = 2 C/hour (within 0.1-10 bounds)
+        history = [
+            (base_time, 22.0),
+            (base_time + timedelta(minutes=30), 21.0),
+            (base_time + timedelta(minutes=60), 20.0),
+        ]
+
+        segments = learner._find_cooling_segments(history, min_duration_minutes=30)
+        assert len(segments) == 1
+
+    def test_reject_heating_rate_above_maximum(self):
+        """Test that impossibly fast heating rates are rejected."""
+        from custom_components.adaptive_thermostat.adaptive.learning import (
+            ThermalRateLearner,
+        )
+
+        learner = ThermalRateLearner()
+        base_time = datetime(2024, 1, 1, 12, 0, 0)
+
+        # Impossibly fast heating: 12C over 1 hour = 12 C/hour (> 10 maximum)
+        history = [
+            (base_time, 10.0),
+            (base_time + timedelta(minutes=30), 16.0),
+            (base_time + timedelta(minutes=60), 22.0),
+        ]
+
+        segments = learner._find_heating_segments(history, min_duration_minutes=30)
+        assert len(segments) == 0
+
+    def test_rate_bounds_at_boundaries(self):
+        """Test rates exactly at boundary values."""
+        from custom_components.adaptive_thermostat.adaptive.learning import (
+            ThermalRateLearner,
+        )
+        from custom_components.adaptive_thermostat.const import (
+            SEGMENT_RATE_MIN,
+            SEGMENT_RATE_MAX,
+        )
+
+        learner = ThermalRateLearner()
+        base_time = datetime(2024, 1, 1, 12, 0, 0)
+
+        # Rate exactly at minimum (0.1 C/hour)
+        # 0.1C over 1 hour
+        history_min = [
+            (base_time, 20.1),
+            (base_time + timedelta(minutes=30), 20.05),
+            (base_time + timedelta(minutes=60), 20.0),
+        ]
+        segments = learner._find_cooling_segments(history_min, min_duration_minutes=30)
+        assert len(segments) == 1  # Exactly at minimum should be accepted
+
+        # Rate exactly at maximum (10 C/hour)
+        # 10C over 1 hour
+        history_max = [
+            (base_time, 30.0),
+            (base_time + timedelta(minutes=30), 25.0),
+            (base_time + timedelta(minutes=60), 20.0),
+        ]
+        segments = learner._find_cooling_segments(history_max, min_duration_minutes=30)
+        assert len(segments) == 1  # Exactly at maximum should be accepted
+
+
+class TestSegmentDetectionEdgeCases:
+    """Edge cases for segment detection with noise tolerance."""
+
+    def test_all_noise_no_trend(self):
+        """Test data that is all noise with no clear trend."""
+        from custom_components.adaptive_thermostat.adaptive.learning import (
+            ThermalRateLearner,
+        )
+
+        learner = ThermalRateLearner(noise_tolerance=0.05)
+        base_time = datetime(2024, 1, 1, 12, 0, 0)
+
+        # Temperature oscillating within noise band
+        history = [
+            (base_time, 20.0),
+            (base_time + timedelta(minutes=10), 20.02),
+            (base_time + timedelta(minutes=20), 19.98),
+            (base_time + timedelta(minutes=30), 20.01),
+            (base_time + timedelta(minutes=40), 19.99),
+            (base_time + timedelta(minutes=50), 20.0),
+        ]
+
+        # Should not find valid segments (no net temperature change exceeds rate minimum)
+        cooling_segments = learner._find_cooling_segments(history, min_duration_minutes=30)
+        heating_segments = learner._find_heating_segments(history, min_duration_minutes=30)
+
+        # Segments should be rejected for having rate below minimum
+        assert len(cooling_segments) == 0
+        assert len(heating_segments) == 0
+
+    def test_custom_noise_tolerance(self):
+        """Test that custom noise tolerance value is respected."""
+        from custom_components.adaptive_thermostat.adaptive.learning import (
+            ThermalRateLearner,
+        )
+
+        base_time = datetime(2024, 1, 1, 12, 0, 0)
+
+        # Data with 0.1C reversals - longer first segment to ensure both meet duration
+        history = [
+            (base_time, 26.0),
+            (base_time + timedelta(minutes=15), 25.5),
+            (base_time + timedelta(minutes=30), 25.0),
+            (base_time + timedelta(minutes=45), 24.5),
+            (base_time + timedelta(minutes=60), 24.0),
+            (base_time + timedelta(minutes=75), 24.1),   # +0.1 reversal (above 0.05 tolerance)
+            (base_time + timedelta(minutes=90), 23.5),
+            (base_time + timedelta(minutes=105), 23.0),
+            (base_time + timedelta(minutes=120), 22.5),
+            (base_time + timedelta(minutes=135), 22.0),
+            (base_time + timedelta(minutes=150), 21.5),
+        ]
+
+        # With default tolerance (0.05), should break at reversal
+        # First segment: 26.0 -> 24.0 over 60 min = 2 C/hour (valid)
+        # Second segment: 24.1 -> 21.5 over 75 min = ~2.08 C/hour (valid)
+        learner_strict = ThermalRateLearner(noise_tolerance=0.05)
+        segments_strict = learner_strict._find_cooling_segments(history, min_duration_minutes=30)
+
+        # With higher tolerance (0.15), should be one segment (0.1C < 0.15 tolerance)
+        learner_lenient = ThermalRateLearner(noise_tolerance=0.15)
+        segments_lenient = learner_lenient._find_cooling_segments(history, min_duration_minutes=30)
+
+        assert len(segments_strict) == 2  # Broken by 0.1C reversal
+        assert len(segments_lenient) == 1  # 0.1C < 0.15 tolerance
+
+    def test_learner_uses_default_noise_tolerance(self):
+        """Test that ThermalRateLearner uses SEGMENT_NOISE_TOLERANCE by default."""
+        from custom_components.adaptive_thermostat.adaptive.learning import (
+            ThermalRateLearner,
+        )
+        from custom_components.adaptive_thermostat.const import SEGMENT_NOISE_TOLERANCE
+
+        learner = ThermalRateLearner()
+        assert learner.noise_tolerance == SEGMENT_NOISE_TOLERANCE
+        assert learner.noise_tolerance == 0.05
+
+    def test_validate_segment_rejects_no_net_change(self):
+        """Test that _validate_segment rejects segments with no net temperature change."""
+        from custom_components.adaptive_thermostat.adaptive.learning import (
+            ThermalRateLearner,
+        )
+
+        learner = ThermalRateLearner()
+        base_time = datetime(2024, 1, 1, 12, 0, 0)
+
+        # Segment that starts and ends at same temperature
+        segment = [
+            (base_time, 20.0),
+            (base_time + timedelta(minutes=30), 19.5),
+            (base_time + timedelta(minutes=60), 20.0),  # back to start
+        ]
+
+        result = learner._validate_segment(segment, min_duration_minutes=30, is_cooling=True)
+        assert result is None  # Should be rejected (no net cooling)
+
+
+# Marker test for segment detection feature
+def test_segment_detection_module():
+    """Marker test to ensure segment detection with noise tolerance works."""
+    from custom_components.adaptive_thermostat.adaptive.learning import ThermalRateLearner
+    from custom_components.adaptive_thermostat.const import (
+        SEGMENT_NOISE_TOLERANCE,
+        SEGMENT_RATE_MIN,
+        SEGMENT_RATE_MAX,
+    )
+
+    learner = ThermalRateLearner()
+    assert hasattr(learner, 'noise_tolerance')
+    assert learner.noise_tolerance == SEGMENT_NOISE_TOLERANCE
+    assert SEGMENT_RATE_MIN == 0.1
+    assert SEGMENT_RATE_MAX == 10.0
