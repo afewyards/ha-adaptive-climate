@@ -98,7 +98,6 @@ climate:
     contact_delay: 120
 
     # Health monitoring
-    health_alerts_enabled: true
     high_power_exception: false
 
     # Preset temperatures
@@ -474,13 +473,7 @@ Configure as a nested block under `night_setback`:
 ### Health Monitoring Parameters
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `health_alerts_enabled` | true | Enable health monitoring alerts |
 | `high_power_exception` | false | Exclude zone from high power warnings |
-
-### Debug Parameters
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `debug` | false | Expose debug attributes on entity |
 
 ### System Configuration Parameters
 These are configured under the `adaptive_thermostat:` domain block, not per-zone.
@@ -495,6 +488,7 @@ These are configured under the `adaptive_thermostat:` domain block, not per-zone
 | `source_startup_delay` | 30 | Seconds to wait before activating heat source |
 | `sync_modes` | true | Synchronize HEAT/COOL modes across zones |
 | `notify_service` | - | Notification service for alerts/reports |
+| `debug` | false | Expose additional PID debug attributes on entities |
 | `energy_meter_entity` | - | Energy meter sensor for cost tracking |
 | `energy_cost_entity` | - | Energy price input for cost calculation |
 | `supply_temp_sensor` | - | Supply water temperature sensor |

@@ -29,6 +29,7 @@ except ImportError:
 
 from .const import (
     DOMAIN,
+    CONF_DEBUG,
     CONF_NOTIFY_SERVICE,
     CONF_PERSISTENT_NOTIFICATION,
     CONF_ENERGY_METER_ENTITY,
@@ -46,6 +47,7 @@ from .const import (
     CONF_FLOW_RATE_SENSOR,
     CONF_VOLUME_METER_ENTITY,
     CONF_FALLBACK_FLOW_RATE,
+    DEFAULT_DEBUG,
     DEFAULT_SOURCE_STARTUP_DELAY,
     DEFAULT_SYNC_MODES,
     DEFAULT_LEARNING_WINDOW_DAYS,
@@ -126,6 +128,9 @@ if HAS_HOMEASSISTANT:
                     CONF_PERSISTENT_NOTIFICATION,
                     default=DEFAULT_PERSISTENT_NOTIFICATION
                 ): cv.boolean,
+
+                # Debug mode
+                vol.Optional(CONF_DEBUG, default=DEFAULT_DEBUG): cv.boolean,
 
                 # Energy tracking
                 vol.Optional(CONF_ENERGY_METER_ENTITY): cv.entity_id,
@@ -347,6 +352,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
     hass.data[DOMAIN]["notify_service"] = notify_service
     hass.data[DOMAIN]["persistent_notification"] = persistent_notification
+    hass.data[DOMAIN]["debug"] = domain_config.get(CONF_DEBUG, DEFAULT_DEBUG)
     hass.data[DOMAIN]["energy_meter_entity"] = energy_meter
     hass.data[DOMAIN]["energy_cost_entity"] = energy_cost
 

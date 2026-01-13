@@ -135,7 +135,6 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
             cv.time_period, cv.positive_timedelta
         ),
         vol.Optional(const.CONF_BOOST_PID_OFF, default=False): cv.boolean,
-        vol.Optional(const.CONF_DEBUG, default=False): cv.boolean,
         # Adaptive learning options
         vol.Optional(const.CONF_HEATING_TYPE): vol.In(const.VALID_HEATING_TYPES),
         vol.Optional(const.CONF_AREA_M2): vol.Coerce(float),
@@ -151,7 +150,6 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Optional(const.CONF_CONTACT_ACTION, default=const.CONTACT_ACTION_PAUSE): vol.In(const.VALID_CONTACT_ACTIONS),
         vol.Optional(const.CONF_CONTACT_DELAY, default=const.DEFAULT_CONTACT_DELAY): vol.Coerce(int),
         # Health monitoring
-        vol.Optional(const.CONF_HEALTH_ALERTS_ENABLED, default=const.DEFAULT_HEALTH_ALERTS_ENABLED): cv.boolean,
         vol.Optional(const.CONF_HIGH_POWER_EXCEPTION, default=const.DEFAULT_HIGH_POWER_EXCEPTION): cv.boolean,
         # Night setback
         vol.Optional(const.CONF_NIGHT_SETBACK): vol.Schema({
@@ -228,7 +226,6 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         'output_clamp_high': config.get(const.CONF_OUT_CLAMP_HIGH),
         'pwm': config.get(const.CONF_PWM),
         'boost_pid_off': config.get(const.CONF_BOOST_PID_OFF),
-        const.CONF_DEBUG: config.get(const.CONF_DEBUG),
         # New adaptive learning parameters
         'zone_id': zone_id,
         'heating_type': config.get(const.CONF_HEATING_TYPE),
@@ -243,7 +240,6 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         'contact_sensors': config.get(const.CONF_CONTACT_SENSORS),
         'contact_action': config.get(const.CONF_CONTACT_ACTION),
         'contact_delay': config.get(const.CONF_CONTACT_DELAY),
-        'health_alerts_enabled': config.get(const.CONF_HEALTH_ALERTS_ENABLED),
         'high_power_exception': config.get(const.CONF_HIGH_POWER_EXCEPTION),
         'night_setback_config': config.get(const.CONF_NIGHT_SETBACK),
     }
@@ -319,7 +315,6 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
         self._saved_target_temp = kwargs.get('target_temp', None) or kwargs.get('away_temp', None)
         self._temp_precision = kwargs.get('precision')
         self._target_temperature_step = kwargs.get('target_temp_step')
-        self._debug = kwargs.get(const.CONF_DEBUG)
         self._last_heat_cycle_time = None  # None means use device's last_changed time
         self._min_on_cycle_duration_pid_on = kwargs.get('min_cycle_duration')
         self._min_off_cycle_duration_pid_on = kwargs.get('min_off_cycle_duration')
@@ -1155,7 +1150,7 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
             "pid_mode": self.pid_mode,
             "pid_i": self.pid_control_i,
         }
-        if self._debug:
+        if self.hass.data.get(DOMAIN, {}).get("debug", False):
             device_state_attributes.update({
                 "pid_p": self.pid_control_p,
                 "pid_d": self.pid_control_d,
