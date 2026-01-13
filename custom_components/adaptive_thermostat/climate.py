@@ -320,7 +320,7 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
         self._temp_precision = kwargs.get('precision')
         self._target_temperature_step = kwargs.get('target_temp_step')
         self._debug = kwargs.get(const.CONF_DEBUG)
-        self._last_heat_cycle_time = 0  # Allow first cycle immediately on startup
+        self._last_heat_cycle_time = None  # None means use device's last_changed time
         self._min_on_cycle_duration_pid_on = kwargs.get('min_cycle_duration')
         self._min_off_cycle_duration_pid_on = kwargs.get('min_off_cycle_duration')
         self._min_on_cycle_duration_pid_off = kwargs.get('min_cycle_duration_pid_off')
@@ -1581,6 +1581,20 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
                 )
                 return False
 
+    def _get_cycle_start_time(self) -> float:
+        """Get the time when the current heating/cooling cycle started.
+
+        Returns our tracked time if available. If not yet tracked (startup),
+        returns 0 to allow immediate action since we have no reliable data
+        about when the cycle actually started (HA's last_changed reflects
+        restart time, not actual device state change time).
+        """
+        if self._last_heat_cycle_time is not None:
+            return self._last_heat_cycle_time
+
+        # No tracked time yet - allow immediate action on first cycle after startup
+        return 0
+
     @property
     def supported_features(self):
         """Return the list of supported features."""
@@ -1712,7 +1726,7 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
             # It's a state refresh call from keep_alive, just force switch ON.
             _LOGGER.info("%s: Refresh state ON %s", self.entity_id,
                          ", ".join([entity for entity in self.heater_or_cooler_entity]))
-        elif time.time() - self._last_heat_cycle_time >= self._min_off_cycle_duration.seconds:
+        elif time.time() - self._get_cycle_start_time() >= self._min_off_cycle_duration.seconds:
             _LOGGER.info("%s: Turning ON %s", self.entity_id,
                          ", ".join([entity for entity in self.heater_or_cooler_entity]))
             self._last_heat_cycle_time = time.time()
@@ -1743,7 +1757,7 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
             # It's a state refresh call from keep_alive, just force switch OFF.
             _LOGGER.info("%s: Refresh state OFF %s", self.entity_id,
                          ", ".join([entity for entity in self.heater_or_cooler_entity]))
-        elif time.time() - self._last_heat_cycle_time >= self._min_on_cycle_duration.seconds or force:
+        elif time.time() - self._get_cycle_start_time() >= self._min_on_cycle_duration.seconds or force:
             _LOGGER.info("%s: Turning OFF %s", self.entity_id,
                          ", ".join([entity for entity in self.heater_or_cooler_entity]))
             self._last_heat_cycle_time = time.time()
@@ -1753,18 +1767,15 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
             _LOGGER.info("%s: Reject request turning OFF %s: Cycle is too short",
                          self.entity_id, ", ".join([entity for entity in self.heater_or_cooler_entity]))
             return
-        for entity in [self._heater_entity_id, self._cooler_entity_id]:
-            if entity is None:
-                continue
-            for heater_or_cooler_entity in self.heater_or_cooler_entity:
-                data = {ATTR_ENTITY_ID: heater_or_cooler_entity}
-                if self._heater_polarity_invert:
-                    service = SERVICE_TURN_ON
-                else:
-                    service = SERVICE_TURN_OFF
-                await self._async_call_heater_service(
-                    heater_or_cooler_entity, HA_DOMAIN, service, data
-                )
+        for heater_or_cooler_entity in self.heater_or_cooler_entity:
+            data = {ATTR_ENTITY_ID: heater_or_cooler_entity}
+            if self._heater_polarity_invert:
+                service = SERVICE_TURN_ON
+            else:
+                service = SERVICE_TURN_OFF
+            await self._async_call_heater_service(
+                heater_or_cooler_entity, HA_DOMAIN, service, data
+            )
 
     async def _async_set_valve_value(self, value: float):
         _LOGGER.info("%s: Change state of %s to %s", self.entity_id,
