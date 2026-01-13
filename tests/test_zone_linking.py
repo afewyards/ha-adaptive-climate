@@ -1,6 +1,7 @@
 """Tests for ZoneLinker."""
 import asyncio
 import sys
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import Mock
@@ -15,6 +16,7 @@ sys.modules['homeassistant'] = Mock()
 sys.modules['homeassistant.core'] = Mock()
 sys.modules['homeassistant.helpers'] = Mock()
 sys.modules['homeassistant.helpers.update_coordinator'] = Mock()
+sys.modules['homeassistant.exceptions'] = Mock()
 
 # Create mock base class
 class MockDataUpdateCoordinator:
@@ -30,12 +32,22 @@ sys.modules['homeassistant.helpers.update_coordinator'].DataUpdateCoordinator = 
 from coordinator import AdaptiveThermostatCoordinator, ZoneLinker
 
 
+def run_async(coro):
+    """Helper function to run async code in tests without pytest-asyncio."""
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+
+
 @pytest.fixture
 def hass():
     """Mock Home Assistant instance."""
     mock_hass = Mock()
     mock_hass.states = Mock()
     mock_hass.services = Mock()
+    mock_hass.data = {}
     return mock_hass
 
 
@@ -51,14 +63,13 @@ def zone_linker(hass, coordinator):
     return ZoneLinker(hass, coordinator)
 
 
-@pytest.mark.asyncio
-async def test_linked_zone_delay(zone_linker):
+def test_linked_zone_delay(zone_linker):
     """Test that linked zones are delayed when primary zone heats."""
     # Configure: living_room is linked to bedroom
     zone_linker.configure_linked_zones("living_room", ["bedroom"])
 
     # Living room starts heating - should delay bedroom
-    await zone_linker.on_zone_heating_started("living_room", delay_minutes=30)
+    run_async(zone_linker.on_zone_heating_started("living_room", delay_minutes=30))
 
     # Bedroom should be delayed
     assert zone_linker.is_zone_delayed("bedroom") is True
@@ -72,34 +83,32 @@ async def test_linked_zone_delay(zone_linker):
     assert 29.9 < remaining <= 30.0
 
 
-@pytest.mark.asyncio
-async def test_delay_expiration(zone_linker):
+def test_delay_expiration(zone_linker):
     """Test that delay expires after configured time."""
     # Configure: living_room is linked to bedroom
     zone_linker.configure_linked_zones("living_room", ["bedroom"])
 
     # Start heating with very short delay for testing
-    await zone_linker.on_zone_heating_started("living_room", delay_minutes=0.01)  # 0.6 seconds
+    run_async(zone_linker.on_zone_heating_started("living_room", delay_minutes=0.01))  # 0.6 seconds
 
     # Initially delayed
     assert zone_linker.is_zone_delayed("bedroom") is True
 
     # Wait for delay to expire
-    await asyncio.sleep(0.7)
+    time.sleep(0.7)
 
     # Delay should have expired
     assert zone_linker.is_zone_delayed("bedroom") is False
     assert zone_linker.get_delay_remaining_minutes("bedroom") is None
 
 
-@pytest.mark.asyncio
-async def test_unlinked_zones_independence(zone_linker):
+def test_unlinked_zones_independence(zone_linker):
     """Test that unlinked zones are not affected by heating."""
     # Configure: living_room is linked to bedroom only
     zone_linker.configure_linked_zones("living_room", ["bedroom"])
 
     # Living room starts heating
-    await zone_linker.on_zone_heating_started("living_room", delay_minutes=30)
+    run_async(zone_linker.on_zone_heating_started("living_room", delay_minutes=30))
 
     # Kitchen (unlinked) should not be delayed
     assert zone_linker.is_zone_delayed("kitchen") is False
@@ -109,15 +118,14 @@ async def test_unlinked_zones_independence(zone_linker):
     assert zone_linker.is_zone_delayed("bedroom") is True
 
 
-@pytest.mark.asyncio
-async def test_bidirectional_linking(zone_linker):
+def test_bidirectional_linking(zone_linker):
     """Test bidirectional linking between zones."""
     # Configure bidirectional links
     zone_linker.configure_linked_zones("living_room", ["bedroom"])
     zone_linker.configure_linked_zones("bedroom", ["living_room"])
 
     # Scenario 1: Living room heats first
-    await zone_linker.on_zone_heating_started("living_room", delay_minutes=30)
+    run_async(zone_linker.on_zone_heating_started("living_room", delay_minutes=30))
     assert zone_linker.is_zone_delayed("bedroom") is True
     assert zone_linker.is_zone_delayed("living_room") is False
 
@@ -125,19 +133,18 @@ async def test_bidirectional_linking(zone_linker):
     zone_linker.clear_delay("bedroom")
 
     # Scenario 2: Bedroom heats first
-    await zone_linker.on_zone_heating_started("bedroom", delay_minutes=30)
+    run_async(zone_linker.on_zone_heating_started("bedroom", delay_minutes=30))
     assert zone_linker.is_zone_delayed("living_room") is True
     assert zone_linker.is_zone_delayed("bedroom") is False
 
 
-@pytest.mark.asyncio
-async def test_multiple_linked_zones(zone_linker):
+def test_multiple_linked_zones(zone_linker):
     """Test that one zone can delay multiple linked zones."""
     # Configure: living_room is linked to bedroom and study
     zone_linker.configure_linked_zones("living_room", ["bedroom", "study"])
 
     # Living room starts heating
-    await zone_linker.on_zone_heating_started("living_room", delay_minutes=30)
+    run_async(zone_linker.on_zone_heating_started("living_room", delay_minutes=30))
 
     # Both linked zones should be delayed
     assert zone_linker.is_zone_delayed("bedroom") is True
@@ -152,14 +159,13 @@ async def test_multiple_linked_zones(zone_linker):
     assert 29.9 < study_remaining <= 30.0
 
 
-@pytest.mark.asyncio
-async def test_clear_delay(zone_linker):
+def test_clear_delay(zone_linker):
     """Test manually clearing a delay."""
     # Configure: living_room is linked to bedroom
     zone_linker.configure_linked_zones("living_room", ["bedroom"])
 
     # Start heating
-    await zone_linker.on_zone_heating_started("living_room", delay_minutes=30)
+    run_async(zone_linker.on_zone_heating_started("living_room", delay_minutes=30))
 
     # Bedroom should be delayed
     assert zone_linker.is_zone_delayed("bedroom") is True
@@ -172,8 +178,7 @@ async def test_clear_delay(zone_linker):
     assert zone_linker.get_delay_remaining_minutes("bedroom") is None
 
 
-@pytest.mark.asyncio
-async def test_get_linked_zones(zone_linker):
+def test_get_linked_zones(zone_linker):
     """Test getting linked zones for a zone."""
     # Configure links
     zone_linker.configure_linked_zones("living_room", ["bedroom", "study"])
@@ -189,27 +194,25 @@ async def test_get_linked_zones(zone_linker):
     assert bathroom_links == []
 
 
-@pytest.mark.asyncio
-async def test_no_linked_zones(zone_linker):
+def test_no_linked_zones(zone_linker):
     """Test behavior when zone has no linked zones."""
     # Don't configure any links for living_room
 
     # Start heating
-    await zone_linker.on_zone_heating_started("living_room", delay_minutes=30)
+    run_async(zone_linker.on_zone_heating_started("living_room", delay_minutes=30))
 
     # No zones should be delayed
     assert zone_linker.is_zone_delayed("bedroom") is False
     assert zone_linker.is_zone_delayed("kitchen") is False
 
 
-@pytest.mark.asyncio
-async def test_get_active_delays(zone_linker):
+def test_get_active_delays(zone_linker):
     """Test getting all active delays."""
     # Configure links
     zone_linker.configure_linked_zones("living_room", ["bedroom", "study"])
 
     # Start heating
-    await zone_linker.on_zone_heating_started("living_room", delay_minutes=30)
+    run_async(zone_linker.on_zone_heating_started("living_room", delay_minutes=30))
 
     # Get active delays
     active_delays = zone_linker.get_active_delays()
@@ -227,14 +230,13 @@ async def test_get_active_delays(zone_linker):
     assert active_delays["bedroom"]["source_zone"] == "living_room"
 
 
-@pytest.mark.asyncio
-async def test_delay_remaining_decreases(zone_linker):
+def test_delay_remaining_decreases(zone_linker):
     """Test that delay remaining time decreases over time."""
     # Configure: living_room is linked to bedroom
     zone_linker.configure_linked_zones("living_room", ["bedroom"])
 
     # Start heating with 1 minute delay
-    await zone_linker.on_zone_heating_started("living_room", delay_minutes=1.0)
+    run_async(zone_linker.on_zone_heating_started("living_room", delay_minutes=1.0))
 
     # Get initial remaining time
     remaining_1 = zone_linker.get_delay_remaining_minutes("bedroom")
@@ -242,7 +244,7 @@ async def test_delay_remaining_decreases(zone_linker):
     assert 0.9 < remaining_1 <= 1.0
 
     # Wait a bit (at least 0.1 seconds to ensure measurable difference)
-    await asyncio.sleep(0.1)
+    time.sleep(0.1)
 
     # Remaining time should have decreased
     remaining_2 = zone_linker.get_delay_remaining_minutes("bedroom")
@@ -319,8 +321,7 @@ class MockThermostat:
         return attrs
 
 
-@pytest.mark.asyncio
-async def test_integration_heating_start_triggers_linked_zone_notification(zone_linker):
+def test_integration_heating_start_triggers_linked_zone_notification(zone_linker):
     """
     Integration test: When a zone starts heating, it notifies the ZoneLinker
     which then applies delay to linked zones.
@@ -335,7 +336,7 @@ async def test_integration_heating_start_triggers_linked_zone_notification(zone_
     bedroom = MockThermostat("bedroom", zone_linker)
 
     # Living room starts heating
-    await living_room._async_heater_turn_on()
+    run_async(living_room._async_heater_turn_on())
 
     # Verify living room heating actually started
     assert living_room._is_device_active is True
@@ -352,8 +353,7 @@ async def test_integration_heating_start_triggers_linked_zone_notification(zone_
     assert bedroom_attrs["zone_link_delay_remaining"] > 0
 
 
-@pytest.mark.asyncio
-async def test_integration_delayed_zone_skips_heating_activation(zone_linker):
+def test_integration_delayed_zone_skips_heating_activation(zone_linker):
     """
     Integration test: When a zone is delayed due to linked zone heating,
     its heater turn on request is blocked.
@@ -368,11 +368,11 @@ async def test_integration_delayed_zone_skips_heating_activation(zone_linker):
     bedroom = MockThermostat("bedroom", zone_linker)
 
     # Living room starts heating first
-    await living_room._async_heater_turn_on()
+    run_async(living_room._async_heater_turn_on())
     assert zone_linker.is_zone_delayed("bedroom") is True
 
     # Bedroom tries to start heating while delayed
-    await bedroom._async_heater_turn_on()
+    run_async(bedroom._async_heater_turn_on())
 
     # Verify bedroom heating was blocked
     assert bedroom._heater_turn_on_blocked is True
@@ -384,8 +384,7 @@ async def test_integration_delayed_zone_skips_heating_activation(zone_linker):
     assert living_room._is_device_active is True
 
 
-@pytest.mark.asyncio
-async def test_integration_delay_expiration_allows_heating_to_resume(zone_linker):
+def test_integration_delay_expiration_allows_heating_to_resume(zone_linker):
     """
     Integration test: After the zone linking delay expires, the previously
     delayed zone can start heating normally.
@@ -401,29 +400,28 @@ async def test_integration_delay_expiration_allows_heating_to_resume(zone_linker
     bedroom = MockThermostat("bedroom", zone_linker)
 
     # Living room starts heating - delays bedroom
-    await living_room._async_heater_turn_on()
+    run_async(living_room._async_heater_turn_on())
     assert zone_linker.is_zone_delayed("bedroom") is True
 
     # Bedroom tries to heat - should be blocked
-    await bedroom._async_heater_turn_on()
+    run_async(bedroom._async_heater_turn_on())
     assert bedroom._heater_turn_on_blocked is True
     assert bedroom._is_device_active is False
 
     # Wait for delay to expire
-    await asyncio.sleep(0.7)
+    time.sleep(0.7)
 
     # Verify delay has expired
     assert zone_linker.is_zone_delayed("bedroom") is False
 
     # Bedroom tries to heat again - should succeed now
-    await bedroom._async_heater_turn_on()
+    run_async(bedroom._async_heater_turn_on())
     assert bedroom._heater_turn_on_blocked is False
     assert bedroom._is_device_active is True
     assert bedroom._heater_turn_on_called is True
 
 
-@pytest.mark.asyncio
-async def test_integration_extra_state_attributes_show_delay_status(zone_linker):
+def test_integration_extra_state_attributes_show_delay_status(zone_linker):
     """
     Integration test: The zone_link_delayed and zone_link_delay_remaining
     attributes are correctly exposed in extra_state_attributes.
@@ -441,7 +439,7 @@ async def test_integration_extra_state_attributes_show_delay_status(zone_linker)
     assert "zone_link_delay_remaining" not in bedroom_attrs_before
 
     # Living room starts heating
-    await living_room._async_heater_turn_on()
+    run_async(living_room._async_heater_turn_on())
 
     # After heating starts - bedroom should show delay
     bedroom_attrs_after = bedroom.get_extra_state_attributes()
@@ -455,8 +453,7 @@ async def test_integration_extra_state_attributes_show_delay_status(zone_linker)
     assert living_attrs["linked_zones"] == ["bedroom"]
 
 
-@pytest.mark.asyncio
-async def test_integration_multiple_heating_starts_dont_re_notify(zone_linker):
+def test_integration_multiple_heating_starts_dont_re_notify(zone_linker):
     """
     Integration test: Multiple turn_on calls while already heating don't
     repeatedly notify the ZoneLinker (no duplicate delays).
@@ -470,7 +467,7 @@ async def test_integration_multiple_heating_starts_dont_re_notify(zone_linker):
     living_room = MockThermostat("living_room", zone_linker, linked_zones=["bedroom"])
 
     # First heating start
-    await living_room._async_heater_turn_on()
+    run_async(living_room._async_heater_turn_on())
     assert living_room._is_heating is True
 
     # Get initial delay info
@@ -479,19 +476,18 @@ async def test_integration_multiple_heating_starts_dont_re_notify(zone_linker):
     initial_start_time = initial_delays["bedroom"]["start_time"]
 
     # Wait a small amount
-    await asyncio.sleep(0.05)
+    time.sleep(0.05)
 
     # Second turn_on call (like keep_alive refresh) - should not re-notify
     # because _is_heating is already True
-    await living_room._async_heater_turn_on()
+    run_async(living_room._async_heater_turn_on())
 
     # Delay start time should remain unchanged
     current_delays = zone_linker.get_active_delays()
     assert current_delays["bedroom"]["start_time"] == initial_start_time
 
 
-@pytest.mark.asyncio
-async def test_integration_heater_off_resets_heating_state(zone_linker):
+def test_integration_heater_off_resets_heating_state(zone_linker):
     """
     Integration test: Turning off the heater resets the _is_heating state,
     allowing future heating cycles to properly notify linked zones.
@@ -503,15 +499,213 @@ async def test_integration_heater_off_resets_heating_state(zone_linker):
     living_room = MockThermostat("living_room", zone_linker, linked_zones=["bedroom"])
 
     # Start and stop heating
-    await living_room._async_heater_turn_on()
+    run_async(living_room._async_heater_turn_on())
     assert living_room._is_heating is True
-    await living_room._async_heater_turn_off()
+    run_async(living_room._async_heater_turn_off())
     assert living_room._is_heating is False
 
     # Clear delays to simulate time passing
     zone_linker.clear_delay("bedroom")
 
     # Start heating again - should re-notify and apply new delay
-    await living_room._async_heater_turn_on()
+    run_async(living_room._async_heater_turn_on())
     assert living_room._is_heating is True
     assert zone_linker.is_zone_delayed("bedroom") is True
+
+
+# =============================================================================
+# Story 7.3: Idempotent Query Methods Tests
+# =============================================================================
+
+
+def test_is_zone_delayed_is_idempotent(zone_linker):
+    """
+    Test that is_zone_delayed() is idempotent - it does not modify state.
+
+    Calling the method multiple times should return consistent results
+    without removing expired entries from _active_delays.
+    """
+    # Configure: living_room is linked to bedroom
+    zone_linker.configure_linked_zones("living_room", ["bedroom"])
+
+    # Start heating with very short delay
+    run_async(zone_linker.on_zone_heating_started("living_room", delay_minutes=0.01))  # 0.6 seconds
+
+    # Wait for delay to expire
+    time.sleep(0.7)
+
+    # First query - should return False (expired) but NOT delete the entry
+    result1 = zone_linker.is_zone_delayed("bedroom")
+    assert result1 is False
+
+    # The entry should still exist in _active_delays (not cleaned up by query)
+    assert "bedroom" in zone_linker._active_delays
+
+    # Second query - should also return False and entry should still exist
+    result2 = zone_linker.is_zone_delayed("bedroom")
+    assert result2 is False
+    assert "bedroom" in zone_linker._active_delays
+
+    # Third query - still idempotent
+    result3 = zone_linker.is_zone_delayed("bedroom")
+    assert result3 is False
+    assert "bedroom" in zone_linker._active_delays
+
+
+def test_get_delay_remaining_minutes_is_idempotent(zone_linker):
+    """
+    Test that get_delay_remaining_minutes() is idempotent - it does not modify state.
+
+    Calling the method multiple times should return consistent results
+    without removing expired entries from _active_delays.
+    """
+    # Configure: living_room is linked to bedroom
+    zone_linker.configure_linked_zones("living_room", ["bedroom"])
+
+    # Start heating with very short delay
+    run_async(zone_linker.on_zone_heating_started("living_room", delay_minutes=0.01))  # 0.6 seconds
+
+    # Wait for delay to expire
+    time.sleep(0.7)
+
+    # First query - should return None (expired) but NOT delete the entry
+    remaining1 = zone_linker.get_delay_remaining_minutes("bedroom")
+    assert remaining1 is None
+
+    # The entry should still exist in _active_delays (not cleaned up by query)
+    assert "bedroom" in zone_linker._active_delays
+
+    # Second query - should also return None and entry should still exist
+    remaining2 = zone_linker.get_delay_remaining_minutes("bedroom")
+    assert remaining2 is None
+    assert "bedroom" in zone_linker._active_delays
+
+
+def test_cleanup_expired_delays_removes_expired_entries(zone_linker):
+    """
+    Test that cleanup_expired_delays() removes expired delay entries.
+    """
+    # Configure: living_room is linked to bedroom and study
+    zone_linker.configure_linked_zones("living_room", ["bedroom", "study"])
+
+    # Start heating with very short delay
+    run_async(zone_linker.on_zone_heating_started("living_room", delay_minutes=0.01))  # 0.6 seconds
+
+    # Verify both delays are active
+    assert "bedroom" in zone_linker._active_delays
+    assert "study" in zone_linker._active_delays
+
+    # Wait for delays to expire
+    time.sleep(0.7)
+
+    # Both delays should still be in _active_delays (not cleaned up by queries)
+    assert "bedroom" in zone_linker._active_delays
+    assert "study" in zone_linker._active_delays
+
+    # Now call cleanup - should remove both expired entries
+    cleaned_count = zone_linker.cleanup_expired_delays()
+    assert cleaned_count == 2
+
+    # Entries should now be removed
+    assert "bedroom" not in zone_linker._active_delays
+    assert "study" not in zone_linker._active_delays
+
+
+def test_cleanup_expired_delays_preserves_active_entries(zone_linker):
+    """
+    Test that cleanup_expired_delays() preserves active (non-expired) delay entries.
+    """
+    # Configure two sets of linked zones
+    zone_linker.configure_linked_zones("living_room", ["bedroom"])
+    zone_linker.configure_linked_zones("kitchen", ["dining_room"])
+
+    # Start heating with different delays
+    run_async(zone_linker.on_zone_heating_started("living_room", delay_minutes=0.01))  # Will expire
+    run_async(zone_linker.on_zone_heating_started("kitchen", delay_minutes=30))  # Won't expire
+
+    # Wait for bedroom delay to expire (but not dining_room)
+    time.sleep(0.7)
+
+    # Verify both are still in _active_delays
+    assert "bedroom" in zone_linker._active_delays
+    assert "dining_room" in zone_linker._active_delays
+
+    # Call cleanup
+    cleaned_count = zone_linker.cleanup_expired_delays()
+    assert cleaned_count == 1
+
+    # Bedroom should be removed (expired), dining_room preserved (still active)
+    assert "bedroom" not in zone_linker._active_delays
+    assert "dining_room" in zone_linker._active_delays
+
+    # Verify dining_room is still delayed
+    assert zone_linker.is_zone_delayed("dining_room") is True
+
+
+def test_cleanup_expired_delays_returns_zero_when_nothing_expired(zone_linker):
+    """
+    Test that cleanup_expired_delays() returns 0 when no delays have expired.
+    """
+    # Configure: living_room is linked to bedroom
+    zone_linker.configure_linked_zones("living_room", ["bedroom"])
+
+    # Start heating with long delay
+    run_async(zone_linker.on_zone_heating_started("living_room", delay_minutes=30))
+
+    # Call cleanup immediately - nothing should be expired
+    cleaned_count = zone_linker.cleanup_expired_delays()
+    assert cleaned_count == 0
+
+    # Entry should still exist and be active
+    assert "bedroom" in zone_linker._active_delays
+    assert zone_linker.is_zone_delayed("bedroom") is True
+
+
+def test_cleanup_expired_delays_handles_empty_delays(zone_linker):
+    """
+    Test that cleanup_expired_delays() handles empty _active_delays gracefully.
+    """
+    # No delays configured - _active_delays is empty
+    cleaned_count = zone_linker.cleanup_expired_delays()
+    assert cleaned_count == 0
+
+
+def test_query_methods_combined_with_cleanup(zone_linker):
+    """
+    Integration test: Query methods are idempotent, cleanup removes expired entries.
+
+    This demonstrates the complete workflow: queries don't modify state,
+    but cleanup (called from coordinator update cycle) does.
+    """
+    # Configure: living_room is linked to bedroom
+    zone_linker.configure_linked_zones("living_room", ["bedroom"])
+
+    # Start heating with very short delay
+    run_async(zone_linker.on_zone_heating_started("living_room", delay_minutes=0.01))
+
+    # Initially delayed
+    assert zone_linker.is_zone_delayed("bedroom") is True
+    remaining = zone_linker.get_delay_remaining_minutes("bedroom")
+    assert remaining is not None and remaining > 0
+
+    # Wait for delay to expire
+    time.sleep(0.7)
+
+    # Query methods return "not delayed" but entry still exists
+    assert zone_linker.is_zone_delayed("bedroom") is False
+    assert zone_linker.get_delay_remaining_minutes("bedroom") is None
+    assert "bedroom" in zone_linker._active_delays
+
+    # Call multiple queries - all idempotent
+    for _ in range(5):
+        assert zone_linker.is_zone_delayed("bedroom") is False
+        assert zone_linker.get_delay_remaining_minutes("bedroom") is None
+        assert "bedroom" in zone_linker._active_delays
+
+    # Now cleanup (would be called from coordinator._async_update_data)
+    cleaned_count = zone_linker.cleanup_expired_delays()
+    assert cleaned_count == 1
+    assert "bedroom" not in zone_linker._active_delays
+
+    # Subsequent cleanups don't find anything
+    assert zone_linker.cleanup_expired_delays() == 0

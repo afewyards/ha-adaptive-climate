@@ -143,6 +143,11 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
         Returns:
             Dictionary containing current state of all zones.
         """
+        # Clean up expired zone linking delays
+        zone_linker = self.hass.data.get(DOMAIN, {}).get("zone_linker")
+        if zone_linker:
+            zone_linker.cleanup_expired_delays()
+
         # For now, we just return the current state
         # In the future, this could fetch additional data or perform calculations
         return {
@@ -868,6 +873,9 @@ class ZoneLinker:
     def is_zone_delayed(self, zone_id: str) -> bool:
         """Check if a zone is currently delayed due to linked zone heating.
 
+        This method is idempotent and does not modify state. Expired delays
+        are cleaned up separately by cleanup_expired_delays().
+
         Args:
             zone_id: Zone identifier to check
 
@@ -886,14 +894,14 @@ class ZoneLinker:
         elapsed_minutes = elapsed.total_seconds() / 60
 
         if elapsed_minutes >= delay_minutes:
-            # Delay has expired
+            # Delay has expired - return False but don't delete
+            # (cleanup is handled by cleanup_expired_delays)
             _LOGGER.debug(
                 "Delay for zone %s has expired (%.1f >= %d minutes)",
                 zone_id,
                 elapsed_minutes,
                 delay_minutes,
             )
-            del self._active_delays[zone_id]
             return False
 
         _LOGGER.debug(
@@ -906,6 +914,9 @@ class ZoneLinker:
 
     def get_delay_remaining_minutes(self, zone_id: str) -> float | None:
         """Get the remaining delay time for a zone.
+
+        This method is idempotent and does not modify state. Expired delays
+        are cleaned up separately by cleanup_expired_delays().
 
         Args:
             zone_id: Zone identifier
@@ -926,8 +937,8 @@ class ZoneLinker:
         remaining = delay_minutes - elapsed_minutes
 
         if remaining <= 0:
-            # Delay expired
-            del self._active_delays[zone_id]
+            # Delay expired - return None but don't delete
+            # (cleanup is handled by cleanup_expired_delays)
             return None
 
         return remaining
@@ -949,3 +960,32 @@ class ZoneLinker:
             Dictionary of zone_id -> delay_info
         """
         return self._active_delays.copy()
+
+    def cleanup_expired_delays(self) -> int:
+        """Remove expired delays from tracking.
+
+        This method should be called periodically (e.g., from the coordinator's
+        update cycle) to clean up expired delay entries. Query methods like
+        is_zone_delayed() and get_delay_remaining_minutes() are idempotent and
+        do not remove expired entries themselves.
+
+        Returns:
+            Number of expired delays that were removed.
+        """
+        now = datetime.now()
+        expired_zones = []
+
+        for zone_id, delay_info in self._active_delays.items():
+            start_time = delay_info["start_time"]
+            delay_minutes = delay_info["delay_minutes"]
+            elapsed = now - start_time
+            elapsed_minutes = elapsed.total_seconds() / 60
+
+            if elapsed_minutes >= delay_minutes:
+                expired_zones.append(zone_id)
+
+        for zone_id in expired_zones:
+            _LOGGER.debug("Cleaning up expired delay for zone %s", zone_id)
+            del self._active_delays[zone_id]
+
+        return len(expired_zones)
