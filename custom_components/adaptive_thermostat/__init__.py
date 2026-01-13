@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime, timedelta
 from typing import Any, TYPE_CHECKING
 
@@ -19,8 +20,37 @@ except ImportError:
     HomeAssistant = Any
     ServiceCall = Any
     ConfigType = Any
+    vol = None
+    cv = None
 
-from .const import DOMAIN
+from .const import (
+    DOMAIN,
+    CONF_NOTIFY_SERVICE,
+    CONF_PERSISTENT_NOTIFICATION,
+    CONF_ENERGY_METER_ENTITY,
+    CONF_ENERGY_COST_ENTITY,
+    CONF_MAIN_HEATER_SWITCH,
+    CONF_MAIN_COOLER_SWITCH,
+    CONF_SOURCE_STARTUP_DELAY,
+    CONF_SYNC_MODES,
+    CONF_LEARNING_WINDOW_DAYS,
+    CONF_WEATHER_ENTITY,
+    CONF_HOUSE_ENERGY_RATING,
+    CONF_WINDOW_RATING,
+    CONF_SUPPLY_TEMP_SENSOR,
+    CONF_RETURN_TEMP_SENSOR,
+    CONF_FLOW_RATE_SENSOR,
+    CONF_VOLUME_METER_ENTITY,
+    CONF_FALLBACK_FLOW_RATE,
+    DEFAULT_SOURCE_STARTUP_DELAY,
+    DEFAULT_SYNC_MODES,
+    DEFAULT_LEARNING_WINDOW_DAYS,
+    DEFAULT_FALLBACK_FLOW_RATE,
+    DEFAULT_WINDOW_RATING,
+    DEFAULT_PERSISTENT_NOTIFICATION,
+    DEFAULT_VACATION_TARGET_TEMP,
+    VALID_ENERGY_RATINGS,
+)
 from .services import (
     SERVICE_RUN_LEARNING,
     SERVICE_HEALTH_CHECK,
@@ -38,6 +68,132 @@ from .services import (
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS = ["climate", "sensor", "switch", "number"]
+
+
+def valid_notify_service(value: Any) -> str:
+    """Validate notify service format.
+
+    Accepts formats:
+    - "service_name" (will be called as notify.service_name)
+    - "notify.service_name" (explicit domain)
+
+    Args:
+        value: The config value to validate
+
+    Returns:
+        The validated service name string
+
+    Raises:
+        vol.Invalid: If the value is not a valid notify service format
+    """
+    if not isinstance(value, str):
+        raise vol.Invalid(
+            f"notify_service must be a string, got {type(value).__name__}"
+        )
+
+    value = value.strip()
+    if not value:
+        raise vol.Invalid("notify_service cannot be empty")
+
+    # Allow "service_name" or "notify.service_name" format
+    # Service names must start with a letter and contain only lowercase letters,
+    # numbers, and underscores
+    pattern = r"^(notify\.)?[a-z][a-z0-9_]*$"
+    if not re.match(pattern, value):
+        raise vol.Invalid(
+            f"Invalid notify_service format '{value}'. "
+            "Expected format: 'service_name' or 'notify.service_name' "
+            "(must start with a letter, contain only lowercase letters, numbers, and underscores). "
+            "Example: 'mobile_app_phone' or 'notify.mobile_app_phone'"
+        )
+    return value
+
+
+# Domain configuration schema
+# This validates the configuration under the adaptive_thermostat: key
+if HAS_HOMEASSISTANT:
+    CONFIG_SCHEMA = vol.Schema(
+        {
+            DOMAIN: vol.Schema({
+                # Notification settings
+                vol.Optional(CONF_NOTIFY_SERVICE): valid_notify_service,
+                vol.Optional(
+                    CONF_PERSISTENT_NOTIFICATION,
+                    default=DEFAULT_PERSISTENT_NOTIFICATION
+                ): cv.boolean,
+
+                # Energy tracking
+                vol.Optional(CONF_ENERGY_METER_ENTITY): cv.entity_id,
+                vol.Optional(CONF_ENERGY_COST_ENTITY): cv.entity_id,
+
+                # Central heat source control
+                vol.Optional(CONF_MAIN_HEATER_SWITCH): cv.entity_id,
+                vol.Optional(CONF_MAIN_COOLER_SWITCH): cv.entity_id,
+                vol.Optional(
+                    CONF_SOURCE_STARTUP_DELAY,
+                    default=DEFAULT_SOURCE_STARTUP_DELAY
+                ): vol.All(
+                    vol.Coerce(int),
+                    vol.Range(
+                        min=0,
+                        max=300,
+                        msg="source_startup_delay must be between 0 and 300 seconds"
+                    )
+                ),
+
+                # Mode synchronization
+                vol.Optional(
+                    CONF_SYNC_MODES,
+                    default=DEFAULT_SYNC_MODES
+                ): cv.boolean,
+
+                # Learning configuration
+                vol.Optional(
+                    CONF_LEARNING_WINDOW_DAYS,
+                    default=DEFAULT_LEARNING_WINDOW_DAYS
+                ): vol.All(
+                    vol.Coerce(int),
+                    vol.Range(
+                        min=1,
+                        max=30,
+                        msg="learning_window_days must be between 1 and 30 days"
+                    )
+                ),
+
+                # Weather and physics
+                vol.Optional(CONF_WEATHER_ENTITY): cv.entity_id,
+                vol.Optional(CONF_HOUSE_ENERGY_RATING): vol.In(
+                    VALID_ENERGY_RATINGS,
+                    msg=f"house_energy_rating must be one of: {', '.join(VALID_ENERGY_RATINGS)}"
+                ),
+                vol.Optional(
+                    CONF_WINDOW_RATING,
+                    default=DEFAULT_WINDOW_RATING
+                ): cv.string,
+
+                # Heat output sensors
+                vol.Optional(CONF_SUPPLY_TEMP_SENSOR): cv.entity_id,
+                vol.Optional(CONF_RETURN_TEMP_SENSOR): cv.entity_id,
+                vol.Optional(CONF_FLOW_RATE_SENSOR): cv.entity_id,
+                vol.Optional(CONF_VOLUME_METER_ENTITY): cv.entity_id,
+                vol.Optional(
+                    CONF_FALLBACK_FLOW_RATE,
+                    default=DEFAULT_FALLBACK_FLOW_RATE
+                ): vol.All(
+                    vol.Coerce(float),
+                    vol.Range(
+                        min=0.01,
+                        max=10.0,
+                        msg="fallback_flow_rate must be between 0.01 and 10.0 L/s"
+                    )
+                ),
+            })
+        },
+        extra=vol.ALLOW_EXTRA,  # Allow other domains in config
+    )
+else:
+    # Provide stub for testing without Home Assistant
+    CONFIG_SCHEMA = None
 
 
 async def async_send_notification(
@@ -143,33 +299,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     if not HAS_HOMEASSISTANT:
         return False
 
-    # Import modules that require Home Assistant
-    from .const import (
-        CONF_NOTIFY_SERVICE,
-        CONF_PERSISTENT_NOTIFICATION,
-        CONF_ENERGY_METER_ENTITY,
-        CONF_ENERGY_COST_ENTITY,
-        CONF_MAIN_HEATER_SWITCH,
-        CONF_MAIN_COOLER_SWITCH,
-        CONF_SOURCE_STARTUP_DELAY,
-        CONF_SYNC_MODES,
-        CONF_LEARNING_WINDOW_DAYS,
-        CONF_WEATHER_ENTITY,
-        CONF_HOUSE_ENERGY_RATING,
-        CONF_WINDOW_RATING,
-        CONF_SUPPLY_TEMP_SENSOR,
-        CONF_RETURN_TEMP_SENSOR,
-        CONF_FLOW_RATE_SENSOR,
-        CONF_VOLUME_METER_ENTITY,
-        CONF_FALLBACK_FLOW_RATE,
-        DEFAULT_VACATION_TARGET_TEMP,
-        DEFAULT_SOURCE_STARTUP_DELAY,
-        DEFAULT_SYNC_MODES,
-        DEFAULT_LEARNING_WINDOW_DAYS,
-        DEFAULT_FALLBACK_FLOW_RATE,
-        DEFAULT_WINDOW_RATING,
-        DEFAULT_PERSISTENT_NOTIFICATION,
-    )
+    # Import coordinator modules
     from .coordinator import (
         AdaptiveThermostatCoordinator,
         CentralController,
