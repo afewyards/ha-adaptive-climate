@@ -99,15 +99,6 @@ climate:
 
     # Health monitoring
     high_power_exception: false
-
-    # Preset temperatures
-    away_temp: 14
-    eco_temp: 18
-    boost_temp: 23
-    comfort_temp: 21
-    home_temp: 20
-    sleep_temp: 18
-    activity_temp: 20
 ```
 
 ### Cooling/AC Example
@@ -206,6 +197,16 @@ adaptive_thermostat:
 
   # Mode synchronization across zones
   sync_modes: true  # Sync HEAT/COOL mode changes across zones
+
+  # Preset temperatures (shared across all zones)
+  away_temp: 14
+  eco_temp: 18
+  boost_temp: 23
+  comfort_temp: 21
+  home_temp: 20
+  activity_temp: 20
+  preset_sync_mode: none  # "sync" or "none"
+  boost_pid_off: false  # Disable PID when in boost mode
 
   # Notifications for health alerts and reports
   notify_service: notify.mobile_app
@@ -437,6 +438,8 @@ For thermally connected zones (e.g., open floor plan):
 | `window_orientation` | - | Primary window direction (north, east, south, west, roof) |
 
 ### Preset Mode Parameters
+These are configured at the controller level under `adaptive_thermostat:` (shared across all zones).
+
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `away_temp` | - | Away mode temperature |
@@ -444,7 +447,6 @@ For thermally connected zones (e.g., open floor plan):
 | `boost_temp` | - | Boost mode temperature |
 | `comfort_temp` | - | Comfort mode temperature |
 | `home_temp` | - | Home mode temperature |
-| `sleep_temp` | - | Sleep mode temperature |
 | `activity_temp` | - | Activity mode temperature |
 | `preset_sync_mode` | none | Sync setpoint to preset ("sync" or "none") |
 | `boost_pid_off` | false | Disable PID control in boost mode |

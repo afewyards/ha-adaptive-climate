@@ -47,6 +47,14 @@ from .const import (
     CONF_FLOW_RATE_SENSOR,
     CONF_VOLUME_METER_ENTITY,
     CONF_FALLBACK_FLOW_RATE,
+    CONF_AWAY_TEMP,
+    CONF_ECO_TEMP,
+    CONF_BOOST_TEMP,
+    CONF_COMFORT_TEMP,
+    CONF_HOME_TEMP,
+    CONF_ACTIVITY_TEMP,
+    CONF_PRESET_SYNC_MODE,
+    CONF_BOOST_PID_OFF,
     DEFAULT_DEBUG,
     DEFAULT_SOURCE_STARTUP_DELAY,
     DEFAULT_SYNC_MODES,
@@ -55,6 +63,7 @@ from .const import (
     DEFAULT_WINDOW_RATING,
     DEFAULT_PERSISTENT_NOTIFICATION,
     DEFAULT_VACATION_TARGET_TEMP,
+    DEFAULT_PRESET_SYNC_MODE,
     VALID_ENERGY_RATINGS,
 )
 from .services import (
@@ -197,6 +206,19 @@ if HAS_HOMEASSISTANT:
                         msg="fallback_flow_rate must be between 0.01 and 10.0 L/s"
                     )
                 ),
+
+                # Preset temperatures
+                vol.Optional(CONF_AWAY_TEMP): vol.Coerce(float),
+                vol.Optional(CONF_ECO_TEMP): vol.Coerce(float),
+                vol.Optional(CONF_BOOST_TEMP): vol.Coerce(float),
+                vol.Optional(CONF_COMFORT_TEMP): vol.Coerce(float),
+                vol.Optional(CONF_HOME_TEMP): vol.Coerce(float),
+                vol.Optional(CONF_ACTIVITY_TEMP): vol.Coerce(float),
+                vol.Optional(
+                    CONF_PRESET_SYNC_MODE,
+                    default=DEFAULT_PRESET_SYNC_MODE
+                ): vol.In(['sync', 'none']),
+                vol.Optional(CONF_BOOST_PID_OFF, default=False): cv.boolean,
             })
         },
         extra=vol.ALLOW_EXTRA,  # Allow other domains in config
@@ -438,6 +460,18 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     hass.data[DOMAIN]["flow_rate_sensor"] = flow_rate_sensor
     hass.data[DOMAIN]["volume_meter_entity"] = volume_meter_entity
     hass.data[DOMAIN]["fallback_flow_rate"] = fallback_flow_rate
+
+    # Preset temperatures
+    hass.data[DOMAIN]["away_temp"] = domain_config.get(CONF_AWAY_TEMP)
+    hass.data[DOMAIN]["eco_temp"] = domain_config.get(CONF_ECO_TEMP)
+    hass.data[DOMAIN]["boost_temp"] = domain_config.get(CONF_BOOST_TEMP)
+    hass.data[DOMAIN]["comfort_temp"] = domain_config.get(CONF_COMFORT_TEMP)
+    hass.data[DOMAIN]["home_temp"] = domain_config.get(CONF_HOME_TEMP)
+    hass.data[DOMAIN]["activity_temp"] = domain_config.get(CONF_ACTIVITY_TEMP)
+    hass.data[DOMAIN]["preset_sync_mode"] = domain_config.get(
+        CONF_PRESET_SYNC_MODE, DEFAULT_PRESET_SYNC_MODE
+    )
+    hass.data[DOMAIN]["boost_pid_off"] = domain_config.get(CONF_BOOST_PID_OFF, False)
 
     if supply_temp_sensor and return_temp_sensor:
         _LOGGER.info(

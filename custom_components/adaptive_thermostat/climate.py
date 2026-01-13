@@ -109,16 +109,6 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Optional(const.CONF_INITIAL_HVAC_MODE): vol.In(
             [HVACMode.COOL, HVACMode.HEAT, HVACMode.OFF]
         ),
-        vol.Optional(const.CONF_PRESET_SYNC_MODE, default=const.DEFAULT_PRESET_SYNC_MODE): vol.In(
-            ['sync', 'none']
-        ),
-        vol.Optional(const.CONF_AWAY_TEMP): vol.Coerce(float),
-        vol.Optional(const.CONF_ECO_TEMP): vol.Coerce(float),
-        vol.Optional(const.CONF_BOOST_TEMP): vol.Coerce(float),
-        vol.Optional(const.CONF_COMFORT_TEMP): vol.Coerce(float),
-        vol.Optional(const.CONF_HOME_TEMP): vol.Coerce(float),
-        vol.Optional(const.CONF_SLEEP_TEMP): vol.Coerce(float),
-        vol.Optional(const.CONF_ACTIVITY_TEMP): vol.Coerce(float),
         vol.Optional(const.CONF_PRECISION): vol.In(
             [PRECISION_TENTHS, PRECISION_HALVES, PRECISION_WHOLE]
         ),
@@ -133,7 +123,6 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Optional(const.CONF_PWM, default=const.DEFAULT_PWM): vol.All(
             cv.time_period, cv.positive_timedelta
         ),
-        vol.Optional(const.CONF_BOOST_PID_OFF, default=False): cv.boolean,
         # Adaptive learning options
         vol.Optional(const.CONF_HEATING_TYPE): vol.In(const.VALID_HEATING_TYPES),
         vol.Optional(const.CONF_AREA_M2): vol.Coerce(float),
@@ -208,14 +197,13 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         'sensor_stall': config.get(const.CONF_SENSOR_STALL),
         'output_safety': config.get(const.CONF_OUTPUT_SAFETY),
         'initial_hvac_mode': config.get(const.CONF_INITIAL_HVAC_MODE),
-        'preset_sync_mode': config.get(const.CONF_PRESET_SYNC_MODE),
-        'away_temp': config.get(const.CONF_AWAY_TEMP),
-        'eco_temp': config.get(const.CONF_ECO_TEMP),
-        'boost_temp': config.get(const.CONF_BOOST_TEMP),
-        'comfort_temp': config.get(const.CONF_COMFORT_TEMP),
-        'home_temp': config.get(const.CONF_HOME_TEMP),
-        'sleep_temp': config.get(const.CONF_SLEEP_TEMP),
-        'activity_temp': config.get(const.CONF_ACTIVITY_TEMP),
+        'preset_sync_mode': hass.data.get(DOMAIN, {}).get("preset_sync_mode"),
+        'away_temp': hass.data.get(DOMAIN, {}).get("away_temp"),
+        'eco_temp': hass.data.get(DOMAIN, {}).get("eco_temp"),
+        'boost_temp': hass.data.get(DOMAIN, {}).get("boost_temp"),
+        'comfort_temp': hass.data.get(DOMAIN, {}).get("comfort_temp"),
+        'home_temp': hass.data.get(DOMAIN, {}).get("home_temp"),
+        'activity_temp': hass.data.get(DOMAIN, {}).get("activity_temp"),
         'precision': config.get(const.CONF_PRECISION),
         'target_temp_step': config.get(const.CONF_TARGET_TEMP_STEP),
         'unit': hass.config.units.temperature_unit,
@@ -225,7 +213,7 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         'output_clamp_low': config.get(const.CONF_OUT_CLAMP_LOW),
         'output_clamp_high': config.get(const.CONF_OUT_CLAMP_HIGH),
         'pwm': config.get(const.CONF_PWM),
-        'boost_pid_off': config.get(const.CONF_BOOST_PID_OFF),
+        'boost_pid_off': hass.data.get(DOMAIN, {}).get("boost_pid_off"),
         # New adaptive learning parameters
         'zone_id': zone_id,
         'heating_type': config.get(const.CONF_HEATING_TYPE),
@@ -603,9 +591,10 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
 
         This method restores:
         - Target temperature setpoint
-        - Preset mode temperatures (away, eco, boost, comfort, home, sleep, activity)
         - Active preset mode
         - HVAC mode
+
+        Note: Preset temperatures are not restored as they now come from controller config.
 
         Args:
             old_state: The restored state object from async_get_last_state(),
@@ -623,12 +612,6 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
                                 self.entity_id, self._target_temp)
             else:
                 self._target_temp = float(old_state.attributes.get(ATTR_TEMPERATURE))
-
-            # Restore preset mode temperatures
-            for preset_mode in ['away_temp', 'eco_temp', 'boost_temp', 'comfort_temp', 'home_temp',
-                                'sleep_temp', 'activity_temp']:
-                if old_state.attributes.get(preset_mode) is not None:
-                    setattr(self, f"_{preset_mode}", float(old_state.attributes.get(preset_mode)))
 
             # Restore preset mode
             if old_state.attributes.get(ATTR_PRESET_MODE) is not None:
