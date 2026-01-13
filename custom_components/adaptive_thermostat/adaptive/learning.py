@@ -353,8 +353,131 @@ class ThermalRateLearner:
 # Cycle analysis functions
 
 
+class PhaseAwareOvershootTracker:
+    """
+    Track temperature phases (rise vs settling) for accurate overshoot detection.
+
+    Overshoot should only be measured in the settling phase, which begins after
+    the temperature first crosses the setpoint. This prevents false overshoot
+    readings during the rise phase.
+    """
+
+    # Phase constants
+    PHASE_RISE = "rise"
+    PHASE_SETTLING = "settling"
+
+    def __init__(self, setpoint: float, tolerance: float = 0.05):
+        """
+        Initialize the phase-aware overshoot tracker.
+
+        Args:
+            setpoint: Target temperature in degrees C
+            tolerance: Small tolerance band for detecting setpoint crossing (default 0.05C)
+        """
+        self._setpoint = setpoint
+        self._tolerance = tolerance
+        self._phase = self.PHASE_RISE
+        self._setpoint_crossed = False
+        self._crossing_timestamp: Optional[datetime] = None
+        self._max_settling_temp: Optional[float] = None
+        self._settling_temps: List[Tuple[datetime, float]] = []
+
+    @property
+    def setpoint(self) -> float:
+        """Get the current setpoint."""
+        return self._setpoint
+
+    @property
+    def phase(self) -> str:
+        """Get the current phase (rise or settling)."""
+        return self._phase
+
+    @property
+    def setpoint_crossed(self) -> bool:
+        """Check if the setpoint has been crossed."""
+        return self._setpoint_crossed
+
+    @property
+    def crossing_timestamp(self) -> Optional[datetime]:
+        """Get the timestamp when setpoint was first crossed."""
+        return self._crossing_timestamp
+
+    def reset(self, new_setpoint: Optional[float] = None) -> None:
+        """
+        Reset tracking state. Call when setpoint changes.
+
+        Args:
+            new_setpoint: Optional new setpoint value. If None, keeps current setpoint.
+        """
+        if new_setpoint is not None:
+            self._setpoint = new_setpoint
+        self._phase = self.PHASE_RISE
+        self._setpoint_crossed = False
+        self._crossing_timestamp = None
+        self._max_settling_temp = None
+        self._settling_temps.clear()
+        _LOGGER.debug(f"Overshoot tracker reset, setpoint: {self._setpoint}°C")
+
+    def update(self, timestamp: datetime, temperature: float) -> None:
+        """
+        Update tracker with a new temperature reading.
+
+        Args:
+            timestamp: Time of the reading
+            temperature: Current temperature in degrees C
+        """
+        # Check for setpoint crossing (rise phase -> settling phase)
+        if self._phase == self.PHASE_RISE:
+            # Temperature has crossed or reached setpoint (with tolerance)
+            if temperature >= self._setpoint - self._tolerance:
+                self._phase = self.PHASE_SETTLING
+                self._setpoint_crossed = True
+                self._crossing_timestamp = timestamp
+                _LOGGER.debug(
+                    f"Setpoint crossed at {timestamp}, temp={temperature:.2f}°C, "
+                    f"setpoint={self._setpoint:.2f}°C - entering settling phase"
+                )
+
+        # Track maximum temperature in settling phase
+        if self._phase == self.PHASE_SETTLING:
+            self._settling_temps.append((timestamp, temperature))
+            if self._max_settling_temp is None or temperature > self._max_settling_temp:
+                self._max_settling_temp = temperature
+
+    def get_overshoot(self) -> Optional[float]:
+        """
+        Calculate overshoot based on settling phase data.
+
+        Returns:
+            Overshoot in degrees C (positive values only), or None if:
+            - Setpoint was never crossed (still in rise phase)
+            - No settling phase data available
+        """
+        # No overshoot if setpoint was never reached
+        if not self._setpoint_crossed:
+            _LOGGER.debug("No overshoot: setpoint was never crossed")
+            return None
+
+        if self._max_settling_temp is None:
+            return None
+
+        overshoot = self._max_settling_temp - self._setpoint
+        return max(0.0, overshoot)
+
+    def get_settling_temps(self) -> List[Tuple[datetime, float]]:
+        """
+        Get all temperature readings from the settling phase.
+
+        Returns:
+            List of (timestamp, temperature) tuples from settling phase
+        """
+        return list(self._settling_temps)
+
+
 def calculate_overshoot(
-    temperature_history: List[Tuple[datetime, float]], target_temp: float
+    temperature_history: List[Tuple[datetime, float]],
+    target_temp: float,
+    phase_aware: bool = True
 ) -> Optional[float]:
     """
     Calculate maximum overshoot beyond target temperature.
@@ -362,17 +485,30 @@ def calculate_overshoot(
     Args:
         temperature_history: List of (timestamp, temperature) tuples
         target_temp: Target temperature in °C
+        phase_aware: If True, only calculate overshoot from settling phase
+                    (after setpoint is first crossed). Default True.
 
     Returns:
-        Overshoot in °C (positive values only), or None if no data
+        Overshoot in °C (positive values only), or None if:
+        - No data provided
+        - phase_aware=True and setpoint was never reached
     """
     if not temperature_history:
         return None
 
-    max_temp = max(temp for _, temp in temperature_history)
-    overshoot = max_temp - target_temp
+    if not phase_aware:
+        # Legacy behavior: max temp minus setpoint
+        max_temp = max(temp for _, temp in temperature_history)
+        overshoot = max_temp - target_temp
+        return max(0.0, overshoot)
 
-    return max(0.0, overshoot)
+    # Phase-aware calculation: only consider temps after setpoint crossing
+    tracker = PhaseAwareOvershootTracker(target_temp)
+
+    for timestamp, temp in temperature_history:
+        tracker.update(timestamp, temp)
+
+    return tracker.get_overshoot()
 
 
 def calculate_undershoot(
