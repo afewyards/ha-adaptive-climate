@@ -569,3 +569,419 @@ def test_config_validation_module_exists():
     """Test that CONFIG_SCHEMA and valid_notify_service are importable."""
     from custom_components.adaptive_thermostat import valid_notify_service
     assert callable(valid_notify_service)
+
+
+# =============================================================================
+# Unload Tests (Do not require voluptuous)
+# =============================================================================
+
+
+# These tests don't require voluptuous - they only test mock functionality
+class TestAsyncUnload:
+    """Tests for async_unload function."""
+
+    @pytest.mark.skipif(not HAS_VOLUPTUOUS, reason="voluptuous not installed")
+    def test_unload_with_no_domain_data(self):
+        """Test unload when domain data doesn't exist."""
+        from custom_components.adaptive_thermostat import async_unload
+        from custom_components.adaptive_thermostat.const import DOMAIN
+        import asyncio
+
+        # Create mock hass without domain data
+        hass = MagicMock()
+        hass.data = {}
+
+        # Run unload
+        result = asyncio.get_event_loop().run_until_complete(async_unload(hass))
+
+        # Should succeed even if nothing to unload
+        assert result is True
+
+    @pytest.mark.skipif(not HAS_VOLUPTUOUS, reason="voluptuous not installed")
+    def test_unload_cancels_scheduled_tasks(self):
+        """Test that unload cancels all scheduled task callbacks."""
+        from custom_components.adaptive_thermostat import async_unload
+        from custom_components.adaptive_thermostat.const import DOMAIN
+        import asyncio
+
+        # Create mock callbacks
+        mock_unsub_1 = MagicMock()
+        mock_unsub_2 = MagicMock()
+        mock_unsub_3 = MagicMock()
+
+        # Create mock hass with domain data
+        hass = MagicMock()
+        hass.data = {
+            DOMAIN: {
+                "unsub_callbacks": [mock_unsub_1, mock_unsub_2, mock_unsub_3],
+                "coordinator": MagicMock(),
+            }
+        }
+        hass.services.has_service.return_value = False
+
+        # Run unload
+        result = asyncio.get_event_loop().run_until_complete(async_unload(hass))
+
+        # Verify all callbacks were called
+        assert result is True
+        mock_unsub_1.assert_called_once()
+        mock_unsub_2.assert_called_once()
+        mock_unsub_3.assert_called_once()
+
+    @pytest.mark.skipif(not HAS_VOLUPTUOUS, reason="voluptuous not installed")
+    def test_unload_handles_callback_errors_gracefully(self):
+        """Test that unload continues even if a callback raises an error."""
+        from custom_components.adaptive_thermostat import async_unload
+        from custom_components.adaptive_thermostat.const import DOMAIN
+        import asyncio
+
+        # Create mock callbacks - one that raises an error
+        mock_unsub_1 = MagicMock(side_effect=Exception("Test error"))
+        mock_unsub_2 = MagicMock()
+
+        # Create mock hass with domain data
+        hass = MagicMock()
+        hass.data = {
+            DOMAIN: {
+                "unsub_callbacks": [mock_unsub_1, mock_unsub_2],
+                "coordinator": MagicMock(),
+            }
+        }
+        hass.services.has_service.return_value = False
+
+        # Run unload - should not raise
+        result = asyncio.get_event_loop().run_until_complete(async_unload(hass))
+
+        # Should still succeed and call both
+        assert result is True
+        mock_unsub_1.assert_called_once()
+        mock_unsub_2.assert_called_once()
+
+    @pytest.mark.skipif(not HAS_VOLUPTUOUS, reason="voluptuous not installed")
+    def test_unload_handles_none_callbacks(self):
+        """Test that unload handles None values in callback list."""
+        from custom_components.adaptive_thermostat import async_unload
+        from custom_components.adaptive_thermostat.const import DOMAIN
+        import asyncio
+
+        # Create mock callbacks with None
+        mock_unsub = MagicMock()
+
+        # Create mock hass with domain data
+        hass = MagicMock()
+        hass.data = {
+            DOMAIN: {
+                "unsub_callbacks": [None, mock_unsub, None],
+                "coordinator": MagicMock(),
+            }
+        }
+        hass.services.has_service.return_value = False
+
+        # Run unload
+        result = asyncio.get_event_loop().run_until_complete(async_unload(hass))
+
+        # Should succeed and only call non-None callback
+        assert result is True
+        mock_unsub.assert_called_once()
+
+    @pytest.mark.skipif(not HAS_VOLUPTUOUS, reason="voluptuous not installed")
+    def test_unload_removes_domain_data(self):
+        """Test that unload removes all domain data from hass.data."""
+        from custom_components.adaptive_thermostat import async_unload
+        from custom_components.adaptive_thermostat.const import DOMAIN
+        import asyncio
+
+        # Create mock hass with domain data
+        hass = MagicMock()
+        hass.data = {
+            DOMAIN: {
+                "coordinator": MagicMock(),
+                "vacation_mode": MagicMock(),
+                "central_controller": None,
+                "mode_sync": MagicMock(),
+                "zone_linker": MagicMock(),
+                "unsub_callbacks": [],
+                "notify_service": "test",
+            },
+            "other_domain": {"keep": "this"},
+        }
+        hass.services.has_service.return_value = False
+
+        # Run unload
+        result = asyncio.get_event_loop().run_until_complete(async_unload(hass))
+
+        # Domain data should be removed, other domains preserved
+        assert result is True
+        assert DOMAIN not in hass.data
+        assert "other_domain" in hass.data
+
+    @pytest.mark.skipif(not HAS_VOLUPTUOUS, reason="voluptuous not installed")
+    def test_unload_clears_central_controller_reference(self):
+        """Test that unload clears central controller reference from coordinator."""
+        from custom_components.adaptive_thermostat import async_unload
+        from custom_components.adaptive_thermostat.const import DOMAIN
+        import asyncio
+
+        # Create mock coordinator and central controller
+        mock_coordinator = MagicMock()
+        mock_central_controller = MagicMock()
+
+        # Create mock hass with domain data
+        hass = MagicMock()
+        hass.data = {
+            DOMAIN: {
+                "coordinator": mock_coordinator,
+                "central_controller": mock_central_controller,
+                "unsub_callbacks": [],
+            }
+        }
+        hass.services.has_service.return_value = False
+
+        # Run unload
+        result = asyncio.get_event_loop().run_until_complete(async_unload(hass))
+
+        # Coordinator should have central controller cleared
+        assert result is True
+        mock_coordinator.set_central_controller.assert_called_once_with(None)
+
+
+class TestAsyncUnregisterServices:
+    """Tests for async_unregister_services function."""
+
+    @pytest.mark.skipif(not HAS_VOLUPTUOUS, reason="voluptuous not installed")
+    def test_unregister_services_removes_all_services(self):
+        """Test that all services are unregistered."""
+        from custom_components.adaptive_thermostat.services import (
+            async_unregister_services,
+            SERVICE_RUN_LEARNING,
+            SERVICE_HEALTH_CHECK,
+            SERVICE_WEEKLY_REPORT,
+            SERVICE_COST_REPORT,
+            SERVICE_SET_VACATION_MODE,
+            SERVICE_ENERGY_STATS,
+            SERVICE_PID_RECOMMENDATIONS,
+        )
+        from custom_components.adaptive_thermostat.const import DOMAIN
+
+        # Create mock hass where all services exist
+        hass = MagicMock()
+        hass.services.has_service.return_value = True
+
+        # Run unregister
+        async_unregister_services(hass)
+
+        # Verify async_remove was called for each service
+        expected_services = [
+            SERVICE_RUN_LEARNING,
+            SERVICE_HEALTH_CHECK,
+            SERVICE_WEEKLY_REPORT,
+            SERVICE_COST_REPORT,
+            SERVICE_SET_VACATION_MODE,
+            SERVICE_ENERGY_STATS,
+            SERVICE_PID_RECOMMENDATIONS,
+        ]
+
+        assert hass.services.async_remove.call_count == len(expected_services)
+        for service in expected_services:
+            hass.services.async_remove.assert_any_call(DOMAIN, service)
+
+    @pytest.mark.skipif(not HAS_VOLUPTUOUS, reason="voluptuous not installed")
+    def test_unregister_services_skips_nonexistent(self):
+        """Test that unregister skips services that don't exist."""
+        from custom_components.adaptive_thermostat.services import (
+            async_unregister_services,
+        )
+        from custom_components.adaptive_thermostat.const import DOMAIN
+
+        # Create mock hass where no services exist
+        hass = MagicMock()
+        hass.services.has_service.return_value = False
+
+        # Run unregister
+        async_unregister_services(hass)
+
+        # async_remove should not have been called
+        hass.services.async_remove.assert_not_called()
+
+
+class TestReloadWithoutLeftoverState:
+    """Tests for reload scenarios ensuring no leftover state."""
+
+    @pytest.mark.skipif(not HAS_VOLUPTUOUS, reason="voluptuous not installed")
+    def test_setup_then_unload_then_setup_is_clean(self):
+        """Test that after unload, setup can run cleanly again."""
+        from custom_components.adaptive_thermostat import async_unload
+        from custom_components.adaptive_thermostat.const import DOMAIN
+        import asyncio
+
+        # Simulate first setup by populating hass.data
+        hass = MagicMock()
+        hass.data = {
+            DOMAIN: {
+                "coordinator": MagicMock(),
+                "vacation_mode": MagicMock(),
+                "central_controller": MagicMock(),
+                "mode_sync": MagicMock(),
+                "zone_linker": MagicMock(),
+                "unsub_callbacks": [MagicMock(), MagicMock()],
+                "notify_service": "test_service",
+                "persistent_notification": True,
+                "energy_meter_entity": "sensor.energy",
+                "learning_window_days": 7,
+            }
+        }
+        hass.services.has_service.return_value = True
+
+        # Run unload
+        result = asyncio.get_event_loop().run_until_complete(async_unload(hass))
+        assert result is True
+
+        # After unload, domain should not exist in hass.data
+        assert DOMAIN not in hass.data
+
+        # A subsequent setup can now use setdefault without conflict
+        hass.data.setdefault(DOMAIN, {})
+        assert hass.data[DOMAIN] == {}
+
+    @pytest.mark.skipif(not HAS_VOLUPTUOUS, reason="voluptuous not installed")
+    def test_unload_clears_all_expected_keys(self):
+        """Test that unload removes all keys that setup creates."""
+        from custom_components.adaptive_thermostat import async_unload
+        from custom_components.adaptive_thermostat.const import DOMAIN
+        import asyncio
+
+        # All keys that async_setup creates
+        expected_keys = [
+            "coordinator",
+            "vacation_mode",
+            "notify_service",
+            "persistent_notification",
+            "energy_meter_entity",
+            "energy_cost_entity",
+            "main_heater_switch",
+            "main_cooler_switch",
+            "source_startup_delay",
+            "central_controller",
+            "sync_modes",
+            "mode_sync",
+            "zone_linker",
+            "learning_window_days",
+            "weather_entity",
+            "house_energy_rating",
+            "window_rating",
+            "supply_temp_sensor",
+            "return_temp_sensor",
+            "flow_rate_sensor",
+            "volume_meter_entity",
+            "fallback_flow_rate",
+            "unsub_callbacks",
+        ]
+
+        # Create mock hass with all keys populated
+        hass = MagicMock()
+        hass.data = {DOMAIN: {key: MagicMock() for key in expected_keys}}
+        hass.services.has_service.return_value = False
+
+        # Run unload
+        result = asyncio.get_event_loop().run_until_complete(async_unload(hass))
+
+        # All keys should be removed (entire domain entry removed)
+        assert result is True
+        assert DOMAIN not in hass.data
+
+    @pytest.mark.skipif(not HAS_VOLUPTUOUS, reason="voluptuous not installed")
+    def test_multiple_unloads_are_safe(self):
+        """Test that calling unload multiple times is safe."""
+        from custom_components.adaptive_thermostat import async_unload
+        from custom_components.adaptive_thermostat.const import DOMAIN
+        import asyncio
+
+        # Create mock hass with domain data
+        hass = MagicMock()
+        hass.data = {
+            DOMAIN: {
+                "coordinator": MagicMock(),
+                "unsub_callbacks": [],
+            }
+        }
+        hass.services.has_service.return_value = False
+
+        # First unload
+        result1 = asyncio.get_event_loop().run_until_complete(async_unload(hass))
+        assert result1 is True
+        assert DOMAIN not in hass.data
+
+        # Second unload should also succeed (idempotent)
+        result2 = asyncio.get_event_loop().run_until_complete(async_unload(hass))
+        assert result2 is True
+
+    @pytest.mark.skipif(not HAS_VOLUPTUOUS, reason="voluptuous not installed")
+    def test_services_not_duplicated_after_reload(self):
+        """Test that services aren't registered twice after reload."""
+        from custom_components.adaptive_thermostat.services import (
+            async_register_services,
+            async_unregister_services,
+            SERVICE_RUN_LEARNING,
+        )
+        from custom_components.adaptive_thermostat.const import DOMAIN
+
+        hass = MagicMock()
+
+        # Track service registrations
+        registered_services = {}
+
+        def mock_async_register(domain, service, handler, schema=None):
+            key = f"{domain}.{service}"
+            registered_services[key] = registered_services.get(key, 0) + 1
+
+        def mock_has_service(domain, service):
+            return f"{domain}.{service}" in registered_services
+
+        def mock_async_remove(domain, service):
+            key = f"{domain}.{service}"
+            if key in registered_services:
+                del registered_services[key]
+
+        hass.services.async_register = mock_async_register
+        hass.services.has_service = mock_has_service
+        hass.services.async_remove = mock_async_remove
+
+        # First registration
+        async_register_services(
+            hass=hass,
+            coordinator=MagicMock(),
+            vacation_mode=MagicMock(),
+            notify_service=None,
+            persistent_notification=True,
+            async_send_notification_func=MagicMock(),
+            async_send_persistent_notification_func=MagicMock(),
+            vacation_schema=None,
+            cost_report_schema=None,
+            default_vacation_target_temp=12.0,
+        )
+
+        # All services should be registered once
+        assert registered_services[f"{DOMAIN}.{SERVICE_RUN_LEARNING}"] == 1
+
+        # Unregister
+        async_unregister_services(hass)
+
+        # Services should be removed
+        assert f"{DOMAIN}.{SERVICE_RUN_LEARNING}" not in registered_services
+
+        # Re-register
+        async_register_services(
+            hass=hass,
+            coordinator=MagicMock(),
+            vacation_mode=MagicMock(),
+            notify_service=None,
+            persistent_notification=True,
+            async_send_notification_func=MagicMock(),
+            async_send_persistent_notification_func=MagicMock(),
+            vacation_schema=None,
+            cost_report_schema=None,
+            default_vacation_target_temp=12.0,
+        )
+
+        # Service should be registered exactly once again (not duplicated)
+        assert registered_services[f"{DOMAIN}.{SERVICE_RUN_LEARNING}"] == 1

@@ -60,6 +60,7 @@ from .services import (
     SERVICE_ENERGY_STATS,
     SERVICE_PID_RECOMMENDATIONS,
     async_register_services,
+    async_unregister_services,
     async_scheduled_health_check,
     async_scheduled_weekly_report,
     async_daily_learning,
@@ -449,13 +450,18 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         default_vacation_target_temp=DEFAULT_VACATION_TARGET_TEMP,
     )
 
+    # Store cancel callbacks for scheduled tasks (needed for unload)
+    unsub_callbacks = []
+
     # Schedule daily adaptive learning at 3:00 AM
     async def _async_daily_learning_callback(_now) -> None:
         """Wrapper for scheduled daily learning."""
         learning_window = hass.data[DOMAIN].get("learning_window_days", DEFAULT_LEARNING_WINDOW_DAYS)
         await async_daily_learning(hass, coordinator, learning_window, _now)
 
-    async_track_time_change(hass, _async_daily_learning_callback, hour=3, minute=0, second=0)
+    unsub_callbacks.append(
+        async_track_time_change(hass, _async_daily_learning_callback, hour=3, minute=0, second=0)
+    )
     _LOGGER.debug("Scheduled daily adaptive learning at 3:00 AM")
 
     # Schedule health check every 6 hours (at 0:00, 6:00, 12:00, 18:00)
@@ -467,7 +473,9 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         )
 
     for hour in [0, 6, 12, 18]:
-        async_track_time_change(hass, _async_scheduled_health_check_callback, hour=hour, minute=0, second=0)
+        unsub_callbacks.append(
+            async_track_time_change(hass, _async_scheduled_health_check_callback, hour=hour, minute=0, second=0)
+        )
     _LOGGER.debug("Scheduled health checks every 6 hours")
 
     # Schedule weekly report on Sunday at 9:00 AM
@@ -478,8 +486,78 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             async_send_notification, async_send_persistent_notification, _now,
         )
 
-    async_track_time_change(hass, _async_scheduled_weekly_report_callback, hour=9, minute=0, second=0)
+    unsub_callbacks.append(
+        async_track_time_change(hass, _async_scheduled_weekly_report_callback, hour=9, minute=0, second=0)
+    )
     _LOGGER.debug("Scheduled weekly report on Sundays at 9:00 AM")
 
+    # Store unsubscribe callbacks for cleanup during unload
+    hass.data[DOMAIN]["unsub_callbacks"] = unsub_callbacks
+
     _LOGGER.info("Adaptive Thermostat integration setup complete")
+    return True
+
+
+async def async_unload(hass: HomeAssistant) -> bool:
+    """Unload the Adaptive Thermostat integration.
+
+    This function handles cleanup when the integration is being unloaded or reloaded:
+    - Cancels all scheduled tasks (health checks, weekly reports, daily learning)
+    - Unregisters all services
+    - Cleans up coordinator and other component references
+    - Removes domain data from hass.data
+
+    Args:
+        hass: Home Assistant instance
+
+    Returns:
+        True if unload was successful, False otherwise
+    """
+    if DOMAIN not in hass.data:
+        _LOGGER.debug("Domain data not found, nothing to unload")
+        return True
+
+    _LOGGER.info("Unloading Adaptive Thermostat integration")
+
+    # Cancel all scheduled tasks
+    unsub_callbacks = hass.data[DOMAIN].get("unsub_callbacks", [])
+    for unsub in unsub_callbacks:
+        if unsub is not None:
+            try:
+                unsub()
+            except Exception as e:
+                _LOGGER.warning("Error cancelling scheduled task: %s", e)
+    _LOGGER.debug("Cancelled %d scheduled tasks", len(unsub_callbacks))
+
+    # Unregister all services
+    async_unregister_services(hass)
+
+    # Clean up central controller if it exists
+    central_controller = hass.data[DOMAIN].get("central_controller")
+    if central_controller is not None:
+        # Clear reference to coordinator
+        coordinator = hass.data[DOMAIN].get("coordinator")
+        if coordinator is not None:
+            coordinator.set_central_controller(None)
+        _LOGGER.debug("Cleaned up central controller")
+
+    # Clean up mode sync if it exists
+    mode_sync = hass.data[DOMAIN].get("mode_sync")
+    if mode_sync is not None:
+        _LOGGER.debug("Cleaned up mode sync")
+
+    # Clean up zone linker if it exists
+    zone_linker = hass.data[DOMAIN].get("zone_linker")
+    if zone_linker is not None:
+        _LOGGER.debug("Cleaned up zone linker")
+
+    # Clean up vacation mode if it exists
+    vacation_mode = hass.data[DOMAIN].get("vacation_mode")
+    if vacation_mode is not None:
+        _LOGGER.debug("Cleaned up vacation mode")
+
+    # Remove all domain data
+    hass.data.pop(DOMAIN, None)
+    _LOGGER.info("Adaptive Thermostat integration unloaded successfully")
+
     return True

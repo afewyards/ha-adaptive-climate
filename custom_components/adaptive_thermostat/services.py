@@ -963,3 +963,26 @@ def async_register_services(
     )
 
     _LOGGER.debug("Registered %d services for %s domain", 7, DOMAIN)
+
+
+def async_unregister_services(hass: HomeAssistant) -> None:
+    """Unregister all services for the Adaptive Thermostat integration.
+
+    Args:
+        hass: Home Assistant instance
+    """
+    services_to_remove = [
+        SERVICE_RUN_LEARNING,
+        SERVICE_HEALTH_CHECK,
+        SERVICE_WEEKLY_REPORT,
+        SERVICE_COST_REPORT,
+        SERVICE_SET_VACATION_MODE,
+        SERVICE_ENERGY_STATS,
+        SERVICE_PID_RECOMMENDATIONS,
+    ]
+
+    for service in services_to_remove:
+        if hass.services.has_service(DOMAIN, service):
+            hass.services.async_remove(DOMAIN, service)
+
+    _LOGGER.debug("Unregistered %d services for %s domain", len(services_to_remove), DOMAIN)
