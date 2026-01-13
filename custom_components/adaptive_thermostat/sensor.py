@@ -18,6 +18,8 @@ from homeassistant.const import (
     UnitOfTime,
     UnitOfTemperature,
     STATE_ON,
+    STATE_UNAVAILABLE,
+    STATE_UNKNOWN,
 )
 from homeassistant.core import HomeAssistant, callback, Event
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -28,8 +30,16 @@ from homeassistant.helpers.event import (
 )
 from homeassistant.helpers.restore_state import RestoreEntity
 
-from .const import DOMAIN
+from .const import (
+    DOMAIN,
+    CONF_SUPPLY_TEMP_SENSOR,
+    CONF_RETURN_TEMP_SENSOR,
+    CONF_FLOW_RATE_SENSOR,
+    CONF_FALLBACK_FLOW_RATE,
+    DEFAULT_FALLBACK_FLOW_RATE,
+)
 from .analytics.health import SystemHealthMonitor, HealthStatus
+from .analytics.heat_output import HeatOutputCalculator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -69,6 +79,12 @@ async def async_setup_platform(
         _LOGGER.error("Missing required discovery info for sensor platform")
         return
 
+    # Get supply/return temp sensor configuration from discovery_info
+    supply_temp_sensor = discovery_info.get("supply_temp_sensor")
+    return_temp_sensor = discovery_info.get("return_temp_sensor")
+    flow_rate_sensor = discovery_info.get("flow_rate_sensor")
+    fallback_flow_rate = discovery_info.get("fallback_flow_rate", DEFAULT_FALLBACK_FLOW_RATE)
+
     sensors = [
         DutyCycleSensor(hass, zone_id, zone_name, climate_entity_id),
         PowerPerM2Sensor(hass, zone_id, zone_name, climate_entity_id),
@@ -76,6 +92,16 @@ async def async_setup_platform(
         OvershootSensor(hass, zone_id, zone_name, climate_entity_id),
         SettlingTimeSensor(hass, zone_id, zone_name, climate_entity_id),
         OscillationsSensor(hass, zone_id, zone_name, climate_entity_id),
+        HeatOutputSensor(
+            hass,
+            zone_id,
+            zone_name,
+            climate_entity_id,
+            supply_temp_sensor,
+            return_temp_sensor,
+            flow_rate_sensor,
+            fallback_flow_rate,
+        ),
     ]
 
     async_add_entities(sensors, True)
@@ -830,6 +856,177 @@ class OscillationsSensor(AdaptiveThermostatSensor):
             return 0
 
         return int(sum(oscillations) / len(oscillations))
+
+
+class HeatOutputSensor(AdaptiveThermostatSensor):
+    """Sensor for heat output calculated from supply/return delta-T.
+
+    Uses the formula: Q = m x cp x delta-T
+    Where:
+    - Q = heat output (kW)
+    - m = mass flow rate (kg/s)
+    - cp = specific heat capacity of water (4.186 kJ/(kg.C))
+    - delta-T = temperature difference (C)
+
+    Requires supply temperature and return temperature sensors.
+    Flow rate can be from a sensor or use a configured fallback value.
+    """
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        zone_id: str,
+        zone_name: str,
+        climate_entity_id: str,
+        supply_temp_sensor: str | None = None,
+        return_temp_sensor: str | None = None,
+        flow_rate_sensor: str | None = None,
+        fallback_flow_rate: float = DEFAULT_FALLBACK_FLOW_RATE,
+    ) -> None:
+        """Initialize the heat output sensor.
+
+        Args:
+            hass: Home Assistant instance
+            zone_id: Unique identifier for the zone
+            zone_name: Human-readable zone name
+            climate_entity_id: Entity ID of the climate entity
+            supply_temp_sensor: Entity ID of supply temperature sensor
+            return_temp_sensor: Entity ID of return temperature sensor
+            flow_rate_sensor: Entity ID of flow rate sensor (optional)
+            fallback_flow_rate: Fallback flow rate in L/min (default 0.5)
+        """
+        super().__init__(hass, zone_id, zone_name, climate_entity_id)
+        self._attr_name = f"{zone_name} Heat Output"
+        self._attr_unique_id = f"{zone_id}_heat_output"
+        self._attr_native_unit_of_measurement = UnitOfPower.KILO_WATT
+        self._attr_device_class = SensorDeviceClass.POWER
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_icon = "mdi:radiator"
+        self._state: float | None = None
+
+        # Store sensor entity IDs
+        self._supply_temp_sensor = supply_temp_sensor
+        self._return_temp_sensor = return_temp_sensor
+        self._flow_rate_sensor = flow_rate_sensor
+        self._fallback_flow_rate = fallback_flow_rate
+
+        # Create heat output calculator with fallback flow rate
+        self._calculator = HeatOutputCalculator(
+            fallback_flow_rate_lpm=fallback_flow_rate
+        )
+
+        # Cached values for attributes
+        self._supply_temp: float | None = None
+        self._return_temp: float | None = None
+        self._flow_rate: float | None = None
+        self._delta_t: float | None = None
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the state of the sensor."""
+        return self._state
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return additional state attributes."""
+        return {
+            "supply_temp_sensor": self._supply_temp_sensor,
+            "return_temp_sensor": self._return_temp_sensor,
+            "flow_rate_sensor": self._flow_rate_sensor,
+            "fallback_flow_rate_lpm": self._fallback_flow_rate,
+            "supply_temp_c": self._supply_temp,
+            "return_temp_c": self._return_temp,
+            "flow_rate_lpm": self._flow_rate,
+            "delta_t_c": self._delta_t,
+        }
+
+    async def async_update(self) -> None:
+        """Update the sensor state."""
+        heat_output = await self._calculate_heat_output()
+        if heat_output is not None:
+            self._state = round(heat_output, 3)
+        else:
+            self._state = None
+
+    async def _calculate_heat_output(self) -> float | None:
+        """Calculate heat output from supply/return temperatures.
+
+        Returns:
+            Heat output in kW, or None if insufficient data
+        """
+        # Get supply temperature
+        supply_temp = self._get_sensor_value(self._supply_temp_sensor)
+        if supply_temp is None:
+            _LOGGER.debug(
+                "%s: Supply temperature unavailable from %s",
+                self._attr_unique_id,
+                self._supply_temp_sensor,
+            )
+            return None
+
+        # Get return temperature
+        return_temp = self._get_sensor_value(self._return_temp_sensor)
+        if return_temp is None:
+            _LOGGER.debug(
+                "%s: Return temperature unavailable from %s",
+                self._attr_unique_id,
+                self._return_temp_sensor,
+            )
+            return None
+
+        # Get flow rate (optional - calculator will use fallback if None)
+        flow_rate = self._get_sensor_value(self._flow_rate_sensor)
+
+        # Cache values for attributes
+        self._supply_temp = supply_temp
+        self._return_temp = return_temp
+        self._flow_rate = flow_rate or self._fallback_flow_rate
+        self._delta_t = supply_temp - return_temp if supply_temp > return_temp else None
+
+        # Calculate heat output using the calculator
+        heat_output = self._calculator.calculate_with_fallback(
+            supply_temp_c=supply_temp,
+            return_temp_c=return_temp,
+            measured_flow_rate_lpm=flow_rate,
+        )
+
+        if heat_output is not None:
+            _LOGGER.debug(
+                "%s: Heat output calculated: %.3f kW "
+                "(supply=%.1f C, return=%.1f C, delta_t=%.1f C, flow=%.2f L/min)",
+                self._attr_unique_id,
+                heat_output,
+                supply_temp,
+                return_temp,
+                supply_temp - return_temp,
+                flow_rate or self._fallback_flow_rate,
+            )
+
+        return heat_output
+
+    def _get_sensor_value(self, entity_id: str | None) -> float | None:
+        """Get numeric value from a sensor entity.
+
+        Args:
+            entity_id: Entity ID to read value from
+
+        Returns:
+            Float value or None if unavailable
+        """
+        if not entity_id:
+            return None
+
+        state = self.hass.states.get(entity_id)
+        if not state:
+            return None
+
+        if state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+            return None
+
+        try:
+            return float(state.state)
+        except (ValueError, TypeError):
+            return None
 
 
 class SystemHealthSensor(SensorEntity):

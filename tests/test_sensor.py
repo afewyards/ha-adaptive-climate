@@ -16,9 +16,13 @@ from collections import deque
 
 def _setup_mocks():
     """Set up mock modules for Home Assistant dependencies."""
+    # Create distinct base classes to avoid MRO conflicts
+    class MockSensorEntity:
+        pass
+
     # Create mock modules
     mock_sensor_module = Mock()
-    mock_sensor_module.SensorEntity = object
+    mock_sensor_module.SensorEntity = MockSensorEntity
     mock_sensor_module.SensorDeviceClass = Mock()
     mock_sensor_module.SensorDeviceClass.POWER = "power"
     mock_sensor_module.SensorDeviceClass.DURATION = "duration"
@@ -29,8 +33,11 @@ def _setup_mocks():
     mock_const = Mock()
     mock_const.PERCENTAGE = "%"
     mock_const.STATE_ON = "on"
+    mock_const.STATE_UNAVAILABLE = "unavailable"
+    mock_const.STATE_UNKNOWN = "unknown"
     mock_const.UnitOfPower = Mock()
     mock_const.UnitOfPower.WATT = "W"
+    mock_const.UnitOfPower.KILO_WATT = "kW"
     mock_const.UnitOfTime = Mock()
     mock_const.UnitOfTime.MINUTES = "min"
     mock_const.UnitOfTemperature = Mock()
@@ -45,6 +52,13 @@ def _setup_mocks():
     mock_core.callback = lambda f: f
     mock_core.Event = Mock
 
+    # Create a distinct class for RestoreEntity to avoid duplicate base class error
+    class MockRestoreEntity:
+        pass
+
+    mock_restore_state = Mock()
+    mock_restore_state.RestoreEntity = MockRestoreEntity
+
     sys.modules['homeassistant'] = Mock()
     sys.modules['homeassistant.core'] = mock_core
     sys.modules['homeassistant.components'] = Mock()
@@ -54,6 +68,7 @@ def _setup_mocks():
     sys.modules['homeassistant.helpers.entity_platform'] = Mock()
     sys.modules['homeassistant.helpers.typing'] = Mock()
     sys.modules['homeassistant.helpers.event'] = mock_event
+    sys.modules['homeassistant.helpers.restore_state'] = mock_restore_state
 
 
 # Set up mocks before importing the module
@@ -64,9 +79,15 @@ _setup_mocks()
 from custom_components.adaptive_thermostat.sensor import (
     DutyCycleSensor,
     CycleTimeSensor,
+    HeatOutputSensor,
     HeaterStateChange,
     DEFAULT_DUTY_CYCLE_WINDOW,
     DEFAULT_ROLLING_AVERAGE_SIZE,
+)
+from custom_components.adaptive_thermostat.analytics.heat_output import (
+    HeatOutputCalculator,
+    calculate_heat_output_kw,
+    SPECIFIC_HEAT_WATER,
 )
 
 
@@ -1045,3 +1066,404 @@ def test_cycle_time():
     assert sensor._cycle_times[0] == pytest.approx(25.0, rel=0.1), "Recorded cycle time incorrect"
 
     print("All cycle time tests passed!")
+
+
+# ============================================================================
+# HeatOutputSensor Tests
+# ============================================================================
+
+
+class TestHeatOutputCalculation:
+    """Tests for HeatOutputSensor heat output calculation."""
+
+    @pytest.fixture
+    def mock_hass(self):
+        """Create a mock Home Assistant instance."""
+        hass = Mock()
+        hass.states = Mock()
+        hass.data = {}
+        return hass
+
+    @pytest.fixture
+    def heat_output_sensor(self, mock_hass):
+        """Create a HeatOutputSensor instance for testing."""
+        sensor = HeatOutputSensor(
+            hass=mock_hass,
+            zone_id="living_room",
+            zone_name="Living Room",
+            climate_entity_id="climate.living_room",
+            supply_temp_sensor="sensor.supply_temp",
+            return_temp_sensor="sensor.return_temp",
+            flow_rate_sensor="sensor.flow_rate",
+            fallback_flow_rate=0.5,
+        )
+        return sensor
+
+    def test_heat_output_basic_calculation(self, heat_output_sensor, mock_hass):
+        """Test basic heat output calculation with typical values."""
+        # Set up mock states: supply=40C, return=30C, flow=0.5 L/min
+        def get_state(entity_id):
+            states = {
+                "sensor.supply_temp": Mock(state="40.0"),
+                "sensor.return_temp": Mock(state="30.0"),
+                "sensor.flow_rate": Mock(state="0.5"),
+            }
+            return states.get(entity_id)
+
+        mock_hass.states.get = get_state
+
+        # Get sensor value using internal method
+        supply_temp = heat_output_sensor._get_sensor_value("sensor.supply_temp")
+        return_temp = heat_output_sensor._get_sensor_value("sensor.return_temp")
+        flow_rate = heat_output_sensor._get_sensor_value("sensor.flow_rate")
+
+        assert supply_temp == 40.0
+        assert return_temp == 30.0
+        assert flow_rate == 0.5
+
+        # Calculate expected heat output: Q = m * cp * delta_T
+        # m = 0.5 L/min * (1 kg/L) / 60 = 0.00833 kg/s
+        # delta_T = 10 C
+        # Q = 0.00833 * 4.186 * 10 = 0.349 kW
+        expected_kw = calculate_heat_output_kw(40.0, 30.0, 0.5)
+        assert expected_kw == pytest.approx(0.349, rel=0.01)
+
+    def test_heat_output_with_fallback_flow_rate(self, mock_hass):
+        """Test heat output calculation using fallback flow rate."""
+        sensor = HeatOutputSensor(
+            hass=mock_hass,
+            zone_id="test",
+            zone_name="Test",
+            climate_entity_id="climate.test",
+            supply_temp_sensor="sensor.supply_temp",
+            return_temp_sensor="sensor.return_temp",
+            flow_rate_sensor=None,  # No flow rate sensor
+            fallback_flow_rate=1.0,  # 1 L/min fallback
+        )
+
+        # Set up mock states without flow rate sensor
+        def get_state(entity_id):
+            states = {
+                "sensor.supply_temp": Mock(state="45.0"),
+                "sensor.return_temp": Mock(state="35.0"),
+            }
+            return states.get(entity_id)
+
+        mock_hass.states.get = get_state
+
+        # Calculate using calculator with fallback
+        heat_output = sensor._calculator.calculate_with_fallback(
+            supply_temp_c=45.0,
+            return_temp_c=35.0,
+            measured_flow_rate_lpm=None,  # Will use fallback
+        )
+
+        # Expected: m = 1.0/60 kg/s, delta_T = 10, Q = (1/60) * 4.186 * 10 = 0.698 kW
+        expected = calculate_heat_output_kw(45.0, 35.0, 1.0)
+        assert heat_output == pytest.approx(expected, rel=0.01)
+
+    def test_heat_output_missing_supply_temp(self, heat_output_sensor, mock_hass):
+        """Test returns None when supply temperature is unavailable."""
+        def get_state(entity_id):
+            if entity_id == "sensor.supply_temp":
+                return None  # Unavailable
+            return Mock(state="30.0")
+
+        mock_hass.states.get = get_state
+
+        supply_temp = heat_output_sensor._get_sensor_value("sensor.supply_temp")
+        assert supply_temp is None
+
+    def test_heat_output_missing_return_temp(self, heat_output_sensor, mock_hass):
+        """Test returns None when return temperature is unavailable."""
+        def get_state(entity_id):
+            if entity_id == "sensor.return_temp":
+                return Mock(state="unavailable")
+            return Mock(state="40.0")
+
+        mock_hass.states.get = get_state
+
+        return_temp = heat_output_sensor._get_sensor_value("sensor.return_temp")
+        # "unavailable" should return None
+        assert return_temp is None
+
+    def test_heat_output_invalid_temperatures(self, mock_hass):
+        """Test returns None when supply <= return (invalid)."""
+        calculator = HeatOutputCalculator(fallback_flow_rate_lpm=0.5)
+
+        # Supply temp lower than return - invalid
+        result = calculator.calculate_with_fallback(
+            supply_temp_c=30.0,
+            return_temp_c=40.0,  # Higher than supply - invalid
+            measured_flow_rate_lpm=0.5,
+        )
+
+        assert result is None
+
+
+class TestHeatOutputEdgeCases:
+    """Tests for edge cases in HeatOutputSensor."""
+
+    @pytest.fixture
+    def mock_hass(self):
+        """Create a mock Home Assistant instance."""
+        hass = Mock()
+        hass.states = Mock()
+        hass.data = {}
+        return hass
+
+    def test_heat_output_sensor_unavailable_state(self, mock_hass):
+        """Test handling of unavailable sensor state."""
+        sensor = HeatOutputSensor(
+            hass=mock_hass,
+            zone_id="test",
+            zone_name="Test",
+            climate_entity_id="climate.test",
+            supply_temp_sensor="sensor.supply_temp",
+            return_temp_sensor="sensor.return_temp",
+        )
+
+        mock_hass.states.get.return_value = Mock(state="unavailable")
+
+        value = sensor._get_sensor_value("sensor.supply_temp")
+        assert value is None
+
+    def test_heat_output_sensor_unknown_state(self, mock_hass):
+        """Test handling of unknown sensor state."""
+        sensor = HeatOutputSensor(
+            hass=mock_hass,
+            zone_id="test",
+            zone_name="Test",
+            climate_entity_id="climate.test",
+            supply_temp_sensor="sensor.supply_temp",
+            return_temp_sensor="sensor.return_temp",
+        )
+
+        mock_hass.states.get.return_value = Mock(state="unknown")
+
+        value = sensor._get_sensor_value("sensor.supply_temp")
+        assert value is None
+
+    def test_heat_output_sensor_invalid_value(self, mock_hass):
+        """Test handling of non-numeric sensor value."""
+        sensor = HeatOutputSensor(
+            hass=mock_hass,
+            zone_id="test",
+            zone_name="Test",
+            climate_entity_id="climate.test",
+            supply_temp_sensor="sensor.supply_temp",
+            return_temp_sensor="sensor.return_temp",
+        )
+
+        mock_hass.states.get.return_value = Mock(state="not_a_number")
+
+        value = sensor._get_sensor_value("sensor.supply_temp")
+        assert value is None
+
+    def test_heat_output_sensor_no_entity_id(self, mock_hass):
+        """Test handling of None entity ID."""
+        sensor = HeatOutputSensor(
+            hass=mock_hass,
+            zone_id="test",
+            zone_name="Test",
+            climate_entity_id="climate.test",
+            supply_temp_sensor=None,
+            return_temp_sensor=None,
+        )
+
+        value = sensor._get_sensor_value(None)
+        assert value is None
+
+    def test_heat_output_small_delta_t(self, mock_hass):
+        """Test heat output with small temperature difference."""
+        calculator = HeatOutputCalculator(fallback_flow_rate_lpm=0.5)
+
+        # Small delta-T (1 degree)
+        result = calculator.calculate_with_fallback(
+            supply_temp_c=35.0,
+            return_temp_c=34.0,
+            measured_flow_rate_lpm=0.5,
+        )
+
+        # Q = (0.5/60) * 4.186 * 1 = 0.0349 kW
+        expected = calculate_heat_output_kw(35.0, 34.0, 0.5)
+        assert result == pytest.approx(expected, rel=0.01)
+
+    def test_heat_output_high_flow_rate(self, mock_hass):
+        """Test heat output with high flow rate."""
+        calculator = HeatOutputCalculator(fallback_flow_rate_lpm=5.0)
+
+        # High flow rate (5 L/min)
+        result = calculator.calculate_with_fallback(
+            supply_temp_c=45.0,
+            return_temp_c=35.0,
+            measured_flow_rate_lpm=5.0,
+        )
+
+        # Q = (5/60) * 4.186 * 10 = 3.49 kW
+        expected = calculate_heat_output_kw(45.0, 35.0, 5.0)
+        assert result == pytest.approx(expected, rel=0.01)
+
+
+class TestHeatOutputExtraAttributes:
+    """Tests for HeatOutputSensor extra state attributes."""
+
+    @pytest.fixture
+    def mock_hass(self):
+        """Create a mock Home Assistant instance."""
+        hass = Mock()
+        hass.states = Mock()
+        hass.data = {}
+        return hass
+
+    def test_extra_attributes_initial(self, mock_hass):
+        """Test extra_state_attributes when sensor is initialized."""
+        sensor = HeatOutputSensor(
+            hass=mock_hass,
+            zone_id="test",
+            zone_name="Test",
+            climate_entity_id="climate.test",
+            supply_temp_sensor="sensor.supply_temp",
+            return_temp_sensor="sensor.return_temp",
+            flow_rate_sensor="sensor.flow_rate",
+            fallback_flow_rate=0.5,
+        )
+
+        attrs = sensor.extra_state_attributes
+
+        assert attrs["supply_temp_sensor"] == "sensor.supply_temp"
+        assert attrs["return_temp_sensor"] == "sensor.return_temp"
+        assert attrs["flow_rate_sensor"] == "sensor.flow_rate"
+        assert attrs["fallback_flow_rate_lpm"] == 0.5
+        assert attrs["supply_temp_c"] is None
+        assert attrs["return_temp_c"] is None
+        assert attrs["flow_rate_lpm"] is None
+        assert attrs["delta_t_c"] is None
+
+    def test_extra_attributes_without_flow_sensor(self, mock_hass):
+        """Test extra_state_attributes without flow rate sensor."""
+        sensor = HeatOutputSensor(
+            hass=mock_hass,
+            zone_id="test",
+            zone_name="Test",
+            climate_entity_id="climate.test",
+            supply_temp_sensor="sensor.supply_temp",
+            return_temp_sensor="sensor.return_temp",
+            flow_rate_sensor=None,
+            fallback_flow_rate=1.0,
+        )
+
+        attrs = sensor.extra_state_attributes
+
+        assert attrs["flow_rate_sensor"] is None
+        assert attrs["fallback_flow_rate_lpm"] == 1.0
+
+
+class TestHeatOutputSensorDefaults:
+    """Tests for HeatOutputSensor default values."""
+
+    @pytest.fixture
+    def mock_hass(self):
+        """Create a mock Home Assistant instance."""
+        hass = Mock()
+        hass.states = Mock()
+        hass.data = {}
+        return hass
+
+    def test_sensor_attributes(self, mock_hass):
+        """Test sensor has correct attributes."""
+        sensor = HeatOutputSensor(
+            hass=mock_hass,
+            zone_id="living_room",
+            zone_name="Living Room",
+            climate_entity_id="climate.living_room",
+            supply_temp_sensor="sensor.supply",
+            return_temp_sensor="sensor.return",
+        )
+
+        assert sensor._attr_name == "Living Room Heat Output"
+        assert sensor._attr_unique_id == "living_room_heat_output"
+        assert sensor._attr_icon == "mdi:radiator"
+        assert sensor.native_value is None
+
+
+def test_heat_output():
+    """Integration test for heat output calculation.
+
+    This is the main test that verifies the full heat output calculation
+    works correctly end-to-end.
+    """
+    # Create mock hass
+    mock_hass = Mock()
+    mock_hass.states = Mock()
+    mock_hass.data = {}
+
+    # Create sensor
+    sensor = HeatOutputSensor(
+        hass=mock_hass,
+        zone_id="living_room",
+        zone_name="Living Room",
+        climate_entity_id="climate.living_room",
+        supply_temp_sensor="sensor.supply_temp",
+        return_temp_sensor="sensor.return_temp",
+        flow_rate_sensor="sensor.flow_rate",
+        fallback_flow_rate=0.5,
+    )
+
+    # Test 1: Basic heat output calculation using the calculator
+    calculator = HeatOutputCalculator(fallback_flow_rate_lpm=0.5)
+    heat_output = calculator.calculate_with_fallback(
+        supply_temp_c=40.0,
+        return_temp_c=30.0,
+        measured_flow_rate_lpm=0.5,
+    )
+    expected = calculate_heat_output_kw(40.0, 30.0, 0.5)
+    assert heat_output == pytest.approx(expected, rel=0.01), "Basic calculation failed"
+
+    # Test 2: Using fallback flow rate
+    heat_output = calculator.calculate_with_fallback(
+        supply_temp_c=45.0,
+        return_temp_c=35.0,
+        measured_flow_rate_lpm=None,  # Use fallback
+    )
+    expected = calculate_heat_output_kw(45.0, 35.0, 0.5)
+    assert heat_output == pytest.approx(expected, rel=0.01), "Fallback flow rate failed"
+
+    # Test 3: Invalid temperatures (supply <= return) should return None
+    heat_output = calculator.calculate_with_fallback(
+        supply_temp_c=30.0,
+        return_temp_c=40.0,  # Invalid: return > supply
+        measured_flow_rate_lpm=0.5,
+    )
+    assert heat_output is None, "Invalid temps should return None"
+
+    # Test 4: High delta-T scenario
+    heat_output = calculator.calculate_with_fallback(
+        supply_temp_c=60.0,
+        return_temp_c=30.0,  # 30 degree delta
+        measured_flow_rate_lpm=1.0,
+    )
+    expected = calculate_heat_output_kw(60.0, 30.0, 1.0)
+    assert heat_output == pytest.approx(expected, rel=0.01), "High delta-T failed"
+
+    # Test 5: Sensor value retrieval
+    def mock_get_state(entity_id):
+        states = {
+            "sensor.supply_temp": Mock(state="42.5"),
+            "sensor.return_temp": Mock(state="32.0"),
+            "sensor.flow_rate": Mock(state="0.75"),
+        }
+        return states.get(entity_id)
+
+    mock_hass.states.get = mock_get_state
+
+    supply = sensor._get_sensor_value("sensor.supply_temp")
+    assert supply == 42.5, "Supply temp retrieval failed"
+
+    return_t = sensor._get_sensor_value("sensor.return_temp")
+    assert return_t == 32.0, "Return temp retrieval failed"
+
+    flow = sensor._get_sensor_value("sensor.flow_rate")
+    assert flow == 0.75, "Flow rate retrieval failed"
+
+    print("All heat output tests passed!")
