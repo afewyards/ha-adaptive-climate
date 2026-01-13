@@ -78,3 +78,50 @@ Added 4 new tests to tests/test_mode_sync.py:
 ### Test Results
 All 11 tests in tests/test_mode_sync.py pass (7 existing + 4 new feedback loop tests)
 All 241 project tests pass.
+
+## Story 1.4: Add error handling and retry logic to CentralController - COMPLETED
+
+### Analysis
+The CentralController class makes service calls to turn on/off main heater and cooler switches. These calls could fail due to:
+1. Service not found (entity doesn't exist)
+2. Home Assistant errors (transient failures, communication issues)
+3. Unexpected exceptions
+
+Without error handling, failures would propagate and potentially crash the controller.
+
+### Work Done
+Added comprehensive error handling with retry logic:
+
+1. **Added imports** (coordinator.py:10): `HomeAssistantError`, `ServiceNotFound` from homeassistant.exceptions
+2. **Added constants** (coordinator.py:20-23):
+   - `MAX_SERVICE_CALL_RETRIES = 3`
+   - `BASE_RETRY_DELAY_SECONDS = 1.0`
+   - `CONSECUTIVE_FAILURE_WARNING_THRESHOLD = 3`
+3. **Added failure tracking** (coordinator.py:169): `_consecutive_failures: dict[str, int]` to track failures per entity
+4. **Refactored `_turn_on_switch` and `_turn_off_switch`** (coordinator.py:357-380): Return boolean success status, delegate to `_call_switch_service`
+5. **Added `_call_switch_service` method** (coordinator.py:382-470):
+   - Try/except for `ServiceNotFound` (no retry - immediate failure)
+   - Try/except for `HomeAssistantError` (retry with exponential backoff)
+   - Try/except for general `Exception` (retry with exponential backoff)
+   - Exponential backoff: 1s, 2s, 4s delays between retries
+   - Failure counter reset on success
+   - Appropriate logging at debug/warning/error levels
+6. **Added `_record_failure` method** (coordinator.py:472-489): Track consecutive failures and emit warnings at threshold
+7. **Added `get_consecutive_failures` method** (coordinator.py:491-500): For external monitoring
+
+Added 11 new tests to tests/test_central_controller.py:
+- test_service_call_success
+- test_service_not_found_no_retry
+- test_home_assistant_error_with_retry
+- test_all_retries_exhausted
+- test_consecutive_failure_warning_threshold
+- test_failure_counter_reset_on_success_after_failures
+- test_unexpected_exception_triggers_retry
+- test_turn_off_also_uses_retry_logic
+- test_get_consecutive_failures_returns_zero_for_unknown_entity
+- test_multiple_switches_independent_failure_tracking
+- test_exponential_backoff_timing
+
+### Test Results
+All 22 tests in tests/test_central_controller.py pass (11 existing + 11 new error handling tests)
+All 252 project tests pass.

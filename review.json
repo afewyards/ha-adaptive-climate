@@ -60,7 +60,7 @@
         "Write test for retry logic",
         "VERIFY: pytest tests/test_central_controller.py passes"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "2.1",

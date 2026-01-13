@@ -15,6 +15,23 @@ sys.modules['homeassistant.core'] = Mock()
 sys.modules['homeassistant.helpers'] = Mock()
 sys.modules['homeassistant.helpers.update_coordinator'] = Mock()
 
+# Create mock exception classes
+class MockServiceNotFound(Exception):
+    """Mock ServiceNotFound exception."""
+    pass
+
+
+class MockHomeAssistantError(Exception):
+    """Mock HomeAssistantError exception."""
+    pass
+
+
+# Set up exceptions module with mock classes
+mock_exceptions_module = Mock()
+mock_exceptions_module.ServiceNotFound = MockServiceNotFound
+mock_exceptions_module.HomeAssistantError = MockHomeAssistantError
+sys.modules['homeassistant.exceptions'] = mock_exceptions_module
+
 # Create mock base class
 class MockDataUpdateCoordinator:
     def __init__(self, hass, logger, name, update_interval):
@@ -491,3 +508,380 @@ async def test_lock_released_after_cancellation(mock_hass, coord):
 
     # Verify new startup is pending
     assert controller.is_heater_waiting_for_startup()
+
+
+# ============================================================================
+# Error Handling and Retry Logic Tests (Story 1.4)
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_service_call_success(mock_hass, coord):
+    """Test successful service call resets failure counter."""
+    controller = coordinator.CentralController(
+        mock_hass,
+        coord,
+        main_heater_switch="switch.boiler",
+        startup_delay_seconds=0,
+    )
+
+    # Mock switch is currently off
+    mock_state = Mock()
+    mock_state.state = "off"
+    mock_hass.states.get.return_value = mock_state
+
+    # Simulate previous failures
+    controller._consecutive_failures["switch.boiler"] = 2
+
+    # Register zone and add demand
+    coord.register_zone("living_room", {"name": "Living Room"})
+    coord.update_zone_demand("living_room", True)
+
+    # Update controller (should succeed)
+    await controller.update()
+
+    # Verify service was called
+    mock_hass.services.async_call.assert_called_with(
+        "switch",
+        "turn_on",
+        {"entity_id": "switch.boiler"},
+        blocking=True,
+    )
+
+    # Verify failure counter was reset
+    assert controller.get_consecutive_failures("switch.boiler") == 0
+
+
+@pytest.mark.asyncio
+async def test_service_not_found_no_retry(mock_hass, coord):
+    """Test ServiceNotFound exception does not trigger retry."""
+    controller = coordinator.CentralController(
+        mock_hass,
+        coord,
+        main_heater_switch="switch.boiler",
+        startup_delay_seconds=0,
+    )
+
+    # Mock switch is currently off
+    mock_state = Mock()
+    mock_state.state = "off"
+    mock_hass.states.get.return_value = mock_state
+
+    # Make service call raise ServiceNotFound
+    mock_hass.services.async_call = AsyncMock(
+        side_effect=MockServiceNotFound("Service not found")
+    )
+
+    # Register zone and add demand
+    coord.register_zone("living_room", {"name": "Living Room"})
+    coord.update_zone_demand("living_room", True)
+
+    # Update controller
+    await controller.update()
+
+    # Verify service was only called once (no retry for ServiceNotFound)
+    assert mock_hass.services.async_call.call_count == 1
+
+    # Verify failure was recorded
+    assert controller.get_consecutive_failures("switch.boiler") == 1
+
+
+@pytest.mark.asyncio
+async def test_home_assistant_error_with_retry(mock_hass, coord):
+    """Test HomeAssistantError triggers retry with exponential backoff."""
+    controller = coordinator.CentralController(
+        mock_hass,
+        coord,
+        main_heater_switch="switch.boiler",
+        startup_delay_seconds=0,
+    )
+
+    # Mock switch is currently off
+    mock_state = Mock()
+    mock_state.state = "off"
+    mock_hass.states.get.return_value = mock_state
+
+    # Make service call fail twice then succeed
+    call_count = [0]
+
+    async def mock_service_call(*args, **kwargs):
+        call_count[0] += 1
+        if call_count[0] < 3:
+            raise MockHomeAssistantError("Transient error")
+        return None
+
+    mock_hass.services.async_call = AsyncMock(side_effect=mock_service_call)
+
+    # Register zone and add demand
+    coord.register_zone("living_room", {"name": "Living Room"})
+    coord.update_zone_demand("living_room", True)
+
+    # Update controller
+    await controller.update()
+
+    # Verify service was called 3 times (2 failures + 1 success)
+    assert mock_hass.services.async_call.call_count == 3
+
+    # Verify failure counter was reset after success
+    assert controller.get_consecutive_failures("switch.boiler") == 0
+
+
+@pytest.mark.asyncio
+async def test_all_retries_exhausted(mock_hass, coord):
+    """Test all retries are exhausted and failure is recorded."""
+    controller = coordinator.CentralController(
+        mock_hass,
+        coord,
+        main_heater_switch="switch.boiler",
+        startup_delay_seconds=0,
+    )
+
+    # Mock switch is currently off
+    mock_state = Mock()
+    mock_state.state = "off"
+    mock_hass.states.get.return_value = mock_state
+
+    # Make service call always fail
+    mock_hass.services.async_call = AsyncMock(
+        side_effect=MockHomeAssistantError("Persistent error")
+    )
+
+    # Register zone and add demand
+    coord.register_zone("living_room", {"name": "Living Room"})
+    coord.update_zone_demand("living_room", True)
+
+    # Update controller
+    await controller.update()
+
+    # Verify service was called MAX_SERVICE_CALL_RETRIES times
+    assert mock_hass.services.async_call.call_count == coordinator.MAX_SERVICE_CALL_RETRIES
+
+    # Verify failure was recorded
+    assert controller.get_consecutive_failures("switch.boiler") == 1
+
+
+@pytest.mark.asyncio
+async def test_consecutive_failure_warning_threshold(mock_hass, coord):
+    """Test warning is emitted when consecutive failure threshold is reached."""
+    controller = coordinator.CentralController(
+        mock_hass,
+        coord,
+        main_heater_switch="switch.boiler",
+        startup_delay_seconds=0,
+    )
+
+    # Mock switch is currently off
+    mock_state = Mock()
+    mock_state.state = "off"
+    mock_hass.states.get.return_value = mock_state
+
+    # Make service call always fail with ServiceNotFound (immediate failure, no retry)
+    mock_hass.services.async_call = AsyncMock(
+        side_effect=MockServiceNotFound("Service not found")
+    )
+
+    # Register zone and add demand
+    coord.register_zone("living_room", {"name": "Living Room"})
+    coord.update_zone_demand("living_room", True)
+
+    # Call update multiple times to trigger threshold
+    for i in range(coordinator.CONSECUTIVE_FAILURE_WARNING_THRESHOLD):
+        mock_hass.services.async_call.reset_mock()
+        await controller.update()
+
+    # Verify consecutive failures equals threshold
+    assert (
+        controller.get_consecutive_failures("switch.boiler")
+        == coordinator.CONSECUTIVE_FAILURE_WARNING_THRESHOLD
+    )
+
+
+@pytest.mark.asyncio
+async def test_failure_counter_reset_on_success_after_failures(mock_hass, coord):
+    """Test failure counter resets after successful call following failures."""
+    controller = coordinator.CentralController(
+        mock_hass,
+        coord,
+        main_heater_switch="switch.boiler",
+        startup_delay_seconds=0,
+    )
+
+    # Mock switch is currently off
+    mock_state = Mock()
+    mock_state.state = "off"
+    mock_hass.states.get.return_value = mock_state
+
+    # Simulate 2 prior failures
+    controller._consecutive_failures["switch.boiler"] = 2
+
+    # Make service call succeed
+    mock_hass.services.async_call = AsyncMock(return_value=None)
+
+    # Register zone and add demand
+    coord.register_zone("living_room", {"name": "Living Room"})
+    coord.update_zone_demand("living_room", True)
+
+    # Update controller
+    await controller.update()
+
+    # Verify failure counter was reset
+    assert controller.get_consecutive_failures("switch.boiler") == 0
+
+
+@pytest.mark.asyncio
+async def test_unexpected_exception_triggers_retry(mock_hass, coord):
+    """Test unexpected exceptions trigger retry with backoff."""
+    controller = coordinator.CentralController(
+        mock_hass,
+        coord,
+        main_heater_switch="switch.boiler",
+        startup_delay_seconds=0,
+    )
+
+    # Mock switch is currently off
+    mock_state = Mock()
+    mock_state.state = "off"
+    mock_hass.states.get.return_value = mock_state
+
+    # Make service call fail with unexpected exception twice then succeed
+    call_count = [0]
+
+    async def mock_service_call(*args, **kwargs):
+        call_count[0] += 1
+        if call_count[0] < 3:
+            raise RuntimeError("Unexpected error")
+        return None
+
+    mock_hass.services.async_call = AsyncMock(side_effect=mock_service_call)
+
+    # Register zone and add demand
+    coord.register_zone("living_room", {"name": "Living Room"})
+    coord.update_zone_demand("living_room", True)
+
+    # Update controller
+    await controller.update()
+
+    # Verify service was called 3 times
+    assert mock_hass.services.async_call.call_count == 3
+
+    # Verify failure counter was reset after success
+    assert controller.get_consecutive_failures("switch.boiler") == 0
+
+
+@pytest.mark.asyncio
+async def test_turn_off_also_uses_retry_logic(mock_hass, coord):
+    """Test turn_off also uses retry logic when it fails."""
+    controller = coordinator.CentralController(
+        mock_hass,
+        coord,
+        main_heater_switch="switch.boiler",
+        startup_delay_seconds=0,
+    )
+
+    # Mock switch is currently ON (so turn_off will be called)
+    mock_state = Mock()
+    mock_state.state = "on"
+    mock_hass.states.get.return_value = mock_state
+
+    # Make service call fail twice then succeed
+    call_count = [0]
+
+    async def mock_service_call(*args, **kwargs):
+        call_count[0] += 1
+        if call_count[0] < 3:
+            raise MockHomeAssistantError("Transient error")
+        return None
+
+    mock_hass.services.async_call = AsyncMock(side_effect=mock_service_call)
+
+    # Register zone with no demand (to trigger turn_off)
+    coord.register_zone("living_room", {"name": "Living Room"})
+    coord.update_zone_demand("living_room", False)
+
+    # Update controller
+    await controller.update()
+
+    # Verify turn_off was eventually called successfully
+    assert mock_hass.services.async_call.call_count == 3
+
+    # Verify failure counter was reset
+    assert controller.get_consecutive_failures("switch.boiler") == 0
+
+
+@pytest.mark.asyncio
+async def test_get_consecutive_failures_returns_zero_for_unknown_entity(mock_hass, coord):
+    """Test get_consecutive_failures returns 0 for entities not tracked."""
+    controller = coordinator.CentralController(
+        mock_hass,
+        coord,
+        main_heater_switch="switch.boiler",
+        startup_delay_seconds=0,
+    )
+
+    # Entity not in failure tracking should return 0
+    assert controller.get_consecutive_failures("switch.unknown") == 0
+
+
+@pytest.mark.asyncio
+async def test_multiple_switches_independent_failure_tracking(mock_hass, coord):
+    """Test heater and cooler have independent failure tracking."""
+    controller = coordinator.CentralController(
+        mock_hass,
+        coord,
+        main_heater_switch="switch.boiler",
+        main_cooler_switch="switch.chiller",
+        startup_delay_seconds=0,
+    )
+
+    # Simulate failures for heater only
+    controller._consecutive_failures["switch.boiler"] = 3
+
+    # Verify cooler is still at 0
+    assert controller.get_consecutive_failures("switch.boiler") == 3
+    assert controller.get_consecutive_failures("switch.chiller") == 0
+
+
+@pytest.mark.asyncio
+async def test_exponential_backoff_timing(mock_hass, coord):
+    """Test exponential backoff delays are applied correctly."""
+    controller = coordinator.CentralController(
+        mock_hass,
+        coord,
+        main_heater_switch="switch.boiler",
+        startup_delay_seconds=0,
+    )
+
+    # Mock switch is currently off
+    mock_state = Mock()
+    mock_state.state = "off"
+    mock_hass.states.get.return_value = mock_state
+
+    # Track timing of calls
+    call_times = []
+
+    async def mock_service_call(*args, **kwargs):
+        call_times.append(asyncio.get_event_loop().time())
+        raise MockHomeAssistantError("Transient error")
+
+    mock_hass.services.async_call = AsyncMock(side_effect=mock_service_call)
+
+    # Register zone and add demand
+    coord.register_zone("living_room", {"name": "Living Room"})
+    coord.update_zone_demand("living_room", True)
+
+    # Update controller
+    await controller.update()
+
+    # Verify all retries were attempted
+    assert len(call_times) == coordinator.MAX_SERVICE_CALL_RETRIES
+
+    # Verify delays between attempts follow exponential backoff pattern
+    # Expected delays: 1s, 2s (based on BASE_RETRY_DELAY_SECONDS * 2^attempt)
+    if len(call_times) >= 2:
+        delay1 = call_times[1] - call_times[0]
+        assert delay1 >= coordinator.BASE_RETRY_DELAY_SECONDS * 0.9  # Allow 10% margin
+
+    if len(call_times) >= 3:
+        delay2 = call_times[2] - call_times[1]
+        expected_delay2 = coordinator.BASE_RETRY_DELAY_SECONDS * 2
+        assert delay2 >= expected_delay2 * 0.9  # Allow 10% margin

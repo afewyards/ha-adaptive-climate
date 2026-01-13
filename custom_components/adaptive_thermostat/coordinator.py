@@ -7,6 +7,7 @@ import logging
 from typing import Any
 
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError, ServiceNotFound
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 try:
@@ -15,6 +16,11 @@ except ImportError:
     from const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
+
+# Error handling constants for CentralController
+MAX_SERVICE_CALL_RETRIES = 3
+BASE_RETRY_DELAY_SECONDS = 1.0
+CONSECUTIVE_FAILURE_WARNING_THRESHOLD = 3
 
 
 class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
@@ -158,6 +164,9 @@ class CentralController:
 
         # Lock to protect startup state from race conditions during concurrent updates
         self._startup_lock = asyncio.Lock()
+
+        # Track consecutive failures per switch for health monitoring
+        self._consecutive_failures: dict[str, int] = {}
 
         _LOGGER.debug(
             "CentralController initialized: heater=%s, cooler=%s, delay=%ds",
@@ -345,35 +354,150 @@ class CentralController:
             return False
         return state.state == "on"
 
-    async def _turn_on_switch(self, entity_id: str) -> None:
-        """Turn on a switch.
+    async def _turn_on_switch(self, entity_id: str) -> bool:
+        """Turn on a switch with retry logic.
 
         Args:
             entity_id: Entity ID of the switch
+
+        Returns:
+            True if switch was turned on successfully, False otherwise
         """
-        await self.hass.services.async_call(
-            "switch",
-            "turn_on",
-            {"entity_id": entity_id},
-            blocking=True,
-        )
-        _LOGGER.debug("Turned on switch: %s", entity_id)
+        return await self._call_switch_service(entity_id, "turn_on")
 
-    async def _turn_off_switch(self, entity_id: str) -> None:
-        """Turn off a switch.
+    async def _turn_off_switch(self, entity_id: str) -> bool:
+        """Turn off a switch with retry logic.
 
         Args:
             entity_id: Entity ID of the switch
+
+        Returns:
+            True if switch was turned off successfully, False otherwise
         """
         # Only turn off if currently on
         if await self._is_switch_on(entity_id):
-            await self.hass.services.async_call(
-                "switch",
-                "turn_off",
-                {"entity_id": entity_id},
-                blocking=True,
+            return await self._call_switch_service(entity_id, "turn_off")
+        return True
+
+    async def _call_switch_service(
+        self,
+        entity_id: str,
+        service: str,
+    ) -> bool:
+        """Call a switch service with retry logic and error handling.
+
+        Implements exponential backoff retry logic for transient failures.
+        Tracks consecutive failures and emits warnings when threshold is reached.
+
+        Args:
+            entity_id: Entity ID of the switch
+            service: Service to call ("turn_on" or "turn_off")
+
+        Returns:
+            True if service call succeeded, False otherwise
+        """
+        last_exception: Exception | None = None
+
+        for attempt in range(MAX_SERVICE_CALL_RETRIES):
+            try:
+                await self.hass.services.async_call(
+                    "switch",
+                    service,
+                    {"entity_id": entity_id},
+                    blocking=True,
+                )
+                _LOGGER.debug("Successfully called %s on switch: %s", service, entity_id)
+
+                # Reset consecutive failure counter on success
+                self._consecutive_failures[entity_id] = 0
+                return True
+
+            except ServiceNotFound as e:
+                # Service doesn't exist - no point retrying
+                _LOGGER.error(
+                    "Service 'switch.%s' not found for %s: %s",
+                    service,
+                    entity_id,
+                    e,
+                )
+                self._record_failure(entity_id)
+                return False
+
+            except HomeAssistantError as e:
+                # Home Assistant error - may be transient, retry with backoff
+                last_exception = e
+                _LOGGER.warning(
+                    "Home Assistant error calling %s on %s (attempt %d/%d): %s",
+                    service,
+                    entity_id,
+                    attempt + 1,
+                    MAX_SERVICE_CALL_RETRIES,
+                    e,
+                )
+
+            except Exception as e:
+                # Unexpected error - log and retry
+                last_exception = e
+                _LOGGER.warning(
+                    "Unexpected error calling %s on %s (attempt %d/%d): %s",
+                    service,
+                    entity_id,
+                    attempt + 1,
+                    MAX_SERVICE_CALL_RETRIES,
+                    e,
+                )
+
+            # Wait before retrying with exponential backoff
+            if attempt < MAX_SERVICE_CALL_RETRIES - 1:
+                delay = BASE_RETRY_DELAY_SECONDS * (2 ** attempt)
+                _LOGGER.debug(
+                    "Retrying %s on %s in %.1f seconds",
+                    service,
+                    entity_id,
+                    delay,
+                )
+                await asyncio.sleep(delay)
+
+        # All retries exhausted
+        _LOGGER.error(
+            "Failed to call %s on %s after %d attempts: %s",
+            service,
+            entity_id,
+            MAX_SERVICE_CALL_RETRIES,
+            last_exception,
+        )
+        self._record_failure(entity_id)
+        return False
+
+    def _record_failure(self, entity_id: str) -> None:
+        """Record a failure for an entity and emit warning if threshold reached.
+
+        Args:
+            entity_id: Entity ID that failed
+        """
+        self._consecutive_failures[entity_id] = (
+            self._consecutive_failures.get(entity_id, 0) + 1
+        )
+        failure_count = self._consecutive_failures[entity_id]
+
+        if failure_count >= CONSECUTIVE_FAILURE_WARNING_THRESHOLD:
+            _LOGGER.warning(
+                "Switch %s has failed %d consecutive times. "
+                "Check entity availability and Home Assistant logs.",
+                entity_id,
+                failure_count,
             )
-            _LOGGER.debug("Turned off switch: %s", entity_id)
+
+    def get_consecutive_failures(self, entity_id: str) -> int:
+        """Get the number of consecutive failures for an entity.
+
+        Args:
+            entity_id: Entity ID to check
+
+        Returns:
+            Number of consecutive failures (0 if none)
+        """
+        return self._consecutive_failures.get(entity_id, 0)
 
     def is_heater_waiting_for_startup(self) -> bool:
         """Check if heater is waiting for startup delay.
