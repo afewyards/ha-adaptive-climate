@@ -27,3 +27,8 @@ htmlcov/
 # OS
 .DS_Store
 Thumbs.db
+
+run.sh
+once.sh
+review.json
+project.txt
