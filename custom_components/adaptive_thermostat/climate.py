@@ -143,7 +143,6 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Optional(const.CONF_WINDOW_AREA_M2): vol.Coerce(float),
         vol.Optional(const.CONF_WINDOW_ORIENTATION): vol.In(const.VALID_WINDOW_ORIENTATIONS),
         vol.Optional(const.CONF_WINDOW_RATING): cv.string,
-        vol.Optional(const.CONF_LEARNING_ENABLED, default=const.DEFAULT_LEARNING_ENABLED): cv.boolean,
         # Zone linking
         vol.Optional(const.CONF_LINKED_ZONES): cv.entity_ids,
         vol.Optional(const.CONF_LINK_DELAY_MINUTES, default=const.DEFAULT_LINK_DELAY_MINUTES): vol.Coerce(int),
@@ -239,7 +238,6 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         'window_orientation': config.get(const.CONF_WINDOW_ORIENTATION),
         # Window rating: use zone-level config, fall back to controller default
         'window_rating': config.get(const.CONF_WINDOW_RATING) or hass.data.get(DOMAIN, {}).get("window_rating", const.DEFAULT_WINDOW_RATING),
-        'learning_enabled': config.get(const.CONF_LEARNING_ENABLED),
         'linked_zones': config.get(const.CONF_LINKED_ZONES),
         'link_delay_minutes': config.get(const.CONF_LINK_DELAY_MINUTES),
         'contact_sensors': config.get(const.CONF_CONTACT_SENSORS),
@@ -256,18 +254,13 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     # Register zone with coordinator
     coordinator = hass.data.get(DOMAIN, {}).get("coordinator")
     if coordinator:
-        # Create adaptive learner for this zone
-        adaptive_learner = None
-        if config.get(const.CONF_LEARNING_ENABLED, const.DEFAULT_LEARNING_ENABLED):
-            adaptive_learner = AdaptiveLearner()
-
         zone_data = {
             "climate_entity_id": f"climate.{zone_id}",
             "zone_name": name,
             "area_m2": config.get(const.CONF_AREA_M2, 0),
             "heating_type": config.get(const.CONF_HEATING_TYPE),
-            "learning_enabled": config.get(const.CONF_LEARNING_ENABLED, const.DEFAULT_LEARNING_ENABLED),
-            "adaptive_learner": adaptive_learner,
+            "learning_enabled": True,  # Always enabled, vacation mode can toggle
+            "adaptive_learner": AdaptiveLearner(),
             "linked_zones": config.get(const.CONF_LINKED_ZONES, []),
             "high_power_exception": config.get(const.CONF_HIGH_POWER_EXCEPTION, False),
         }
