@@ -138,9 +138,12 @@ class AdaptiveThermostatSensor(SensorEntity):
 
     @property
     def device_info(self) -> DeviceInfo:
-        """Return device information to link sensor to parent thermostat."""
+        """Return device information to group sensors under a zone device."""
         return DeviceInfo(
             identifiers={(DOMAIN, self._zone_id)},
+            name=f"{self._zone_name} Sensors",
+            manufacturer="Adaptive Thermostat",
+            model="Zone Sensors",
         )
 
 

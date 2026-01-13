@@ -45,7 +45,6 @@ from homeassistant.helpers.event import (
     async_track_time_interval,
 )
 from homeassistant.helpers.restore_state import RestoreEntity
-from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.exceptions import HomeAssistantError, ServiceNotFound
 
 from .adaptive.physics import calculate_thermal_time_constant, calculate_initial_pid
@@ -750,16 +749,6 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
     def unique_id(self):
         """Return a unique ID."""
         return self._unique_id
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return device information for this thermostat."""
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._zone_id or self._unique_id)},
-            name=self._name,
-            manufacturer="Adaptive Thermostat",
-            model="PID Thermostat",
-        )
 
     @staticmethod
     def _get_number_entity_domain(entity_id):

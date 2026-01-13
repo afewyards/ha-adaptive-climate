@@ -64,6 +64,9 @@ def _setup_mocks():
     mock_restore_state = Mock()
     mock_restore_state.RestoreEntity = MockRestoreEntity
 
+    mock_device_registry = Mock()
+    mock_device_registry.DeviceInfo = dict
+
     sys.modules["homeassistant"] = Mock()
     sys.modules["homeassistant.core"] = mock_core
     sys.modules["homeassistant.components"] = Mock()
@@ -74,6 +77,7 @@ def _setup_mocks():
     sys.modules["homeassistant.helpers.typing"] = Mock()
     sys.modules["homeassistant.helpers.event"] = mock_event
     sys.modules["homeassistant.helpers.restore_state"] = mock_restore_state
+    sys.modules["homeassistant.helpers.device_registry"] = mock_device_registry
 
 
 # Set up mocks before importing the module
