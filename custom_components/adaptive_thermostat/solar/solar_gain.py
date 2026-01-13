@@ -9,9 +9,13 @@ import math
 class WindowOrientation(Enum):
     """Window orientation for solar gain calculation."""
     NORTH = "north"
-    SOUTH = "south"
+    NORTHEAST = "northeast"
     EAST = "east"
+    SOUTHEAST = "southeast"
+    SOUTH = "south"
+    SOUTHWEST = "southwest"
     WEST = "west"
+    NORTHWEST = "northwest"
     NONE = "none"
 
 
@@ -273,9 +277,13 @@ class SolarGainLearner:
         # Further adjust by orientation
         orientation_seasonal_impact = {
             WindowOrientation.SOUTH: 1.0,  # Most affected by season
-            WindowOrientation.NORTH: 0.3,  # Least affected
+            WindowOrientation.SOUTHEAST: 0.85,  # Between south and east
+            WindowOrientation.SOUTHWEST: 0.85,  # Between south and west
             WindowOrientation.EAST: 0.7,
             WindowOrientation.WEST: 0.7,
+            WindowOrientation.NORTHEAST: 0.5,  # Between north and east
+            WindowOrientation.NORTHWEST: 0.5,  # Between north and west
+            WindowOrientation.NORTH: 0.3,  # Least affected
             WindowOrientation.NONE: 0.0
         }
 

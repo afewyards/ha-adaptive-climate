@@ -11,9 +11,13 @@ from enum import Enum
 class WindowOrientation(Enum):
     """Window orientation enum."""
     NORTH = "north"
-    SOUTH = "south"
+    NORTHEAST = "northeast"
     EAST = "east"
+    SOUTHEAST = "southeast"
+    SOUTH = "south"
+    SOUTHWEST = "southwest"
     WEST = "west"
+    NORTHWEST = "northwest"
     ROOF = "roof"  # Skylights
     NONE = "none"  # No windows or unknown
 
@@ -32,12 +36,16 @@ class SolarRecovery:
 
     # Recovery time adjustments based on orientation (minutes from base time)
     ORIENTATION_OFFSETS = {
-        WindowOrientation.SOUTH: -30,  # 30 min earlier - best sun exposure
-        WindowOrientation.EAST: -20,   # 20 min earlier - morning sun
-        WindowOrientation.WEST: +20,   # 20 min later - afternoon sun only
-        WindowOrientation.NORTH: +30,  # 30 min later - minimal sun
-        WindowOrientation.ROOF: -30,   # 30 min earlier - skylights get good midday sun
-        WindowOrientation.NONE: 0,     # No adjustment - no windows
+        WindowOrientation.SOUTH: -30,      # 30 min earlier - best sun exposure
+        WindowOrientation.SOUTHEAST: -25,  # 25 min earlier - morning + midday sun
+        WindowOrientation.SOUTHWEST: -5,   # 5 min earlier - midday + afternoon sun
+        WindowOrientation.EAST: -20,       # 20 min earlier - morning sun
+        WindowOrientation.WEST: +20,       # 20 min later - afternoon sun only
+        WindowOrientation.NORTHEAST: +5,   # 5 min later - some morning sun
+        WindowOrientation.NORTHWEST: +25,  # 25 min later - some afternoon sun
+        WindowOrientation.NORTH: +30,      # 30 min later - minimal sun
+        WindowOrientation.ROOF: -30,       # 30 min earlier - skylights get good midday sun
+        WindowOrientation.NONE: 0,         # No adjustment - no windows
     }
 
     def __init__(
