@@ -51,6 +51,7 @@ from .adaptive.physics import calculate_thermal_time_constant, calculate_initial
 from .adaptive.night_setback import NightSetback
 from .adaptive.solar_recovery import SolarRecovery
 from .adaptive.sun_position import SunPositionCalculator
+from .adaptive.contact_sensors import ContactSensorHandler, ContactAction
 
 from homeassistant.components.climate import PLATFORM_SCHEMA, ClimateEntity, ClimateEntityFeature
 from homeassistant.components.climate import (
@@ -425,6 +426,26 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
         self._zone_linker = None  # Will be set in async_added_to_hass
         self._is_heating = False  # Track heating state for zone linking
 
+        # Contact sensors (window/door open detection)
+        self._contact_sensor_handler = None
+        contact_sensors = kwargs.get('contact_sensors')
+        if contact_sensors:
+            contact_action = kwargs.get('contact_action', 'pause')
+            contact_delay = kwargs.get('contact_delay', 300)  # Default 5 minutes
+            # Convert delay to seconds if it's a timedelta-like value
+            if hasattr(contact_delay, 'total_seconds'):
+                contact_delay = int(contact_delay.total_seconds())
+            action_enum = ContactAction.PAUSE if contact_action == 'pause' else ContactAction.FROST_PROTECTION
+            self._contact_sensor_handler = ContactSensorHandler(
+                contact_sensors=contact_sensors,
+                contact_delay_seconds=contact_delay,
+                action=action_enum,
+            )
+            _LOGGER.info(
+                "%s: Contact sensors configured: %s (action=%s, delay=%ds)",
+                self._name, contact_sensors, contact_action, contact_delay
+            )
+
         # Heater control failure tracking
         self._heater_control_failed = False
         self._last_heater_error: str | None = None
@@ -586,6 +607,16 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
                     self.hass,
                     self._demand_switch_entity_id,
                     self._async_switch_changed))
+
+        # Contact sensor listeners (window/door open detection)
+        if self._contact_sensor_handler:
+            self.async_on_remove(
+                async_track_state_change_event(
+                    self.hass,
+                    self._contact_sensor_handler.contact_sensors,
+                    self._async_contact_sensor_changed))
+            # Initialize contact sensor states on startup
+            self._update_contact_sensor_states()
 
         # Keep-alive interval timer
         if self._keep_alive:
@@ -1191,6 +1222,18 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
             device_state_attributes["heater_control_failed"] = True
             device_state_attributes["last_heater_error"] = self._last_heater_error
 
+        # Contact sensor status (window/door open detection)
+        if self._contact_sensor_handler:
+            is_open = self._contact_sensor_handler.is_any_contact_open()
+            is_paused = self._contact_sensor_handler.should_take_action()
+            device_state_attributes["contact_open"] = is_open
+            device_state_attributes["contact_paused"] = is_paused
+            if is_open and not is_paused:
+                # Contact is open but delay hasn't elapsed yet
+                time_until = self._contact_sensor_handler.get_time_until_action()
+                if time_until is not None and time_until > 0:
+                    device_state_attributes["contact_pause_in"] = time_until
+
         return device_state_attributes
 
     def set_hvac_mode(self, hvac_mode: (HVACMode, str)) -> None:
@@ -1484,6 +1527,44 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
         self.async_write_ha_state()
 
     @callback
+    async def _async_contact_sensor_changed(self, event: Event[EventStateChangedData]):
+        """Handle contact sensor (window/door) state changes."""
+        new_state = event.data["new_state"]
+        if new_state is None:
+            return
+
+        # Update all contact sensor states in the handler
+        self._update_contact_sensor_states()
+
+        entity_id = event.data["entity_id"]
+        is_open = new_state.state == STATE_ON
+        _LOGGER.debug(
+            "%s: Contact sensor %s changed to %s",
+            self.entity_id, entity_id, "open" if is_open else "closed"
+        )
+
+        # Trigger control heating to potentially pause/resume
+        await self._async_control_heating(calc_pid=False)
+
+    def _update_contact_sensor_states(self):
+        """Update contact sensor handler with current states from Home Assistant."""
+        if not self._contact_sensor_handler:
+            return
+
+        contact_states = {}
+        for sensor_id in self._contact_sensor_handler.contact_sensors:
+            state = self.hass.states.get(sensor_id)
+            if state:
+                # Contact sensors: 'on' = open, 'off' = closed
+                contact_states[sensor_id] = state.state == STATE_ON
+            else:
+                _LOGGER.warning(
+                    "%s: Contact sensor %s not found",
+                    self.entity_id, sensor_id
+                )
+        self._contact_sensor_handler.update_contact_states(contact_states)
+
+    @callback
     def _async_update_temp(self, state):
         """Update thermostat with latest state from sensor."""
         if state.state in (STATE_UNKNOWN, STATE_UNAVAILABLE, None):
@@ -1538,6 +1619,27 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
                         coordinator.update_zone_demand(self._zone_id, False)
                 self.async_write_ha_state()
                 return
+
+            # Contact sensor pause check (window/door open)
+            if self._contact_sensor_handler and self._contact_sensor_handler.should_take_action():
+                action = self._contact_sensor_handler.get_action()
+                if action == ContactAction.PAUSE:
+                    _LOGGER.info(
+                        "%s: Contact sensor open - pausing heating",
+                        self.entity_id
+                    )
+                    if self._pwm:
+                        await self._async_heater_turn_off(force=True)
+                    else:
+                        self._control_output = self._output_min
+                        await self._async_set_valve_value(self._control_output)
+                    # Update zone demand to False when paused
+                    if self._zone_id:
+                        coordinator = self.hass.data.get(const.DOMAIN, {}).get("coordinator")
+                        if coordinator:
+                            coordinator.update_zone_demand(self._zone_id, False)
+                    self.async_write_ha_state()
+                    return
 
             if self._sensor_stall != 0 and time.time() - self._last_sensor_update > \
                     self._sensor_stall:
