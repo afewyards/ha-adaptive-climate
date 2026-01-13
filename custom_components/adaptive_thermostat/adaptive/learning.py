@@ -11,6 +11,8 @@ import os
 from ..const import (
     PID_LIMITS,
     MIN_CYCLES_FOR_LEARNING,
+    MAX_CYCLE_HISTORY,
+    MIN_ADJUSTMENT_INTERVAL,
     CONVERGENCE_THRESHOLDS,
     RULE_PRIORITY_OSCILLATION,
     RULE_PRIORITY_OVERSHOOT,
@@ -770,18 +772,36 @@ class CycleMetrics:
 class AdaptiveLearner:
     """Adaptive PID tuning based on observed heating cycle performance."""
 
-    def __init__(self):
-        """Initialize the AdaptiveLearner."""
+    def __init__(self, max_history: int = MAX_CYCLE_HISTORY):
+        """
+        Initialize the AdaptiveLearner.
+
+        Args:
+            max_history: Maximum number of cycles to retain in history (FIFO eviction)
+        """
         self._cycle_history: List[CycleMetrics] = []
+        self._max_history = max_history
+        self._last_adjustment_time: Optional[datetime] = None
 
     def add_cycle_metrics(self, metrics: CycleMetrics) -> None:
         """
         Add a cycle's performance metrics to history.
 
+        Implements FIFO eviction when history exceeds max_history.
+
         Args:
             metrics: CycleMetrics object with performance data
         """
         self._cycle_history.append(metrics)
+
+        # FIFO eviction: remove oldest entries when exceeding max history
+        if len(self._cycle_history) > self._max_history:
+            evicted_count = len(self._cycle_history) - self._max_history
+            self._cycle_history = self._cycle_history[-self._max_history:]
+            _LOGGER.debug(
+                f"Cycle history exceeded max ({self._max_history}), "
+                f"evicted {evicted_count} oldest entries"
+            )
 
     def get_cycle_count(self) -> int:
         """
@@ -1017,12 +1037,44 @@ class AdaptiveLearner:
 
         return is_converged
 
+    def _check_rate_limit(
+        self,
+        min_interval_hours: int = MIN_ADJUSTMENT_INTERVAL,
+    ) -> bool:
+        """
+        Check if enough time has passed since the last PID adjustment.
+
+        Args:
+            min_interval_hours: Minimum hours between adjustments
+
+        Returns:
+            True if rate limited (adjustment should be skipped), False if OK to adjust
+        """
+        if self._last_adjustment_time is None:
+            return False
+
+        time_since_last = datetime.now() - self._last_adjustment_time
+        min_interval = timedelta(hours=min_interval_hours)
+
+        if time_since_last < min_interval:
+            hours_remaining = (min_interval - time_since_last).total_seconds() / 3600
+            _LOGGER.info(
+                f"PID adjustment rate limited: last adjustment was "
+                f"{time_since_last.total_seconds() / 3600:.1f}h ago, "
+                f"minimum interval is {min_interval_hours}h "
+                f"({hours_remaining:.1f}h remaining)"
+            )
+            return True
+
+        return False
+
     def calculate_pid_adjustment(
         self,
         current_kp: float,
         current_ki: float,
         current_kd: float,
         min_cycles: int = MIN_CYCLES_FOR_LEARNING,
+        min_interval_hours: int = MIN_ADJUSTMENT_INTERVAL,
     ) -> Optional[Dict[str, float]]:
         """
         Calculate PID adjustments based on observed cycle performance.
@@ -1036,17 +1088,23 @@ class AdaptiveLearner:
         the higher priority rule wins.
 
         Also detects convergence (system is well-tuned) and skips adjustments.
+        Rate limiting prevents adjustments too frequently.
 
         Args:
             current_kp: Current proportional gain
             current_ki: Current integral gain
             current_kd: Current derivative gain
             min_cycles: Minimum cycles required before making recommendations
+            min_interval_hours: Minimum hours between adjustments (rate limiting)
 
         Returns:
-            Dictionary with recommended kp, ki, kd values, or None if insufficient data
-            or system is converged
+            Dictionary with recommended kp, ki, kd values, or None if insufficient data,
+            system is converged, or rate limited
         """
+        # Check rate limiting first
+        if self._check_rate_limit(min_interval_hours):
+            return None
+
         if len(self._cycle_history) < min_cycles:
             _LOGGER.debug(
                 f"Insufficient cycles for learning: {len(self._cycle_history)} < {min_cycles}"
@@ -1119,15 +1177,28 @@ class AdaptiveLearner:
         new_ki = max(PID_LIMITS["ki_min"], min(PID_LIMITS["ki_max"], new_ki))
         new_kd = max(PID_LIMITS["kd_min"], min(PID_LIMITS["kd_max"], new_kd))
 
+        # Record adjustment time for rate limiting
+        self._last_adjustment_time = datetime.now()
+
         return {
             "kp": new_kp,
             "ki": new_ki,
             "kd": new_kd,
         }
 
+    def get_last_adjustment_time(self) -> Optional[datetime]:
+        """
+        Get the timestamp of the last PID adjustment.
+
+        Returns:
+            datetime of last adjustment, or None if no adjustment has been made
+        """
+        return self._last_adjustment_time
+
     def clear_history(self) -> None:
-        """Clear all stored cycle metrics."""
+        """Clear all stored cycle metrics and reset last adjustment time."""
         self._cycle_history.clear()
+        self._last_adjustment_time = None
 
 
 # PWM auto-tuning
@@ -1283,6 +1354,12 @@ class LearningDataStore:
 
                 data["adaptive_learner"] = {
                     "cycle_history": cycle_history,
+                    "last_adjustment_time": (
+                        adaptive_learner._last_adjustment_time.isoformat()
+                        if adaptive_learner._last_adjustment_time is not None
+                        else None
+                    ),
+                    "max_history": adaptive_learner._max_history,
                 }
 
             # Save ValveCycleTracker data
@@ -1394,7 +1471,8 @@ class LearningDataStore:
 
         try:
             adaptive_data = data["adaptive_learner"]
-            learner = AdaptiveLearner()
+            max_history = adaptive_data.get("max_history", MAX_CYCLE_HISTORY)
+            learner = AdaptiveLearner(max_history=max_history)
 
             # Validate cycle history is a list
             cycle_history = adaptive_data.get("cycle_history", [])
@@ -1415,8 +1493,14 @@ class LearningDataStore:
                 )
                 learner.add_cycle_metrics(metrics)
 
+            # Restore last adjustment time
+            last_adj_time_str = adaptive_data.get("last_adjustment_time")
+            if last_adj_time_str is not None:
+                learner._last_adjustment_time = datetime.fromisoformat(last_adj_time_str)
+
             _LOGGER.info(
-                f"Restored AdaptiveLearner: {learner.get_cycle_count()} cycles"
+                f"Restored AdaptiveLearner: {learner.get_cycle_count()} cycles, "
+                f"last adjustment: {learner._last_adjustment_time}"
             )
             return learner
 

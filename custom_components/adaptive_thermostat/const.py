@@ -132,6 +132,12 @@ RULE_PRIORITY_SLOW_RESPONSE = 1  # Performance - improve comfort
 # Minimum number of cycles required before adaptive learning can recommend PID changes
 MIN_CYCLES_FOR_LEARNING = 3
 
+# Maximum number of cycles to retain in history (FIFO eviction when exceeded)
+MAX_CYCLE_HISTORY = 100
+
+# Minimum interval between PID adjustments in hours (rate limiting)
+MIN_ADJUSTMENT_INTERVAL = 24
+
 # Segment detection noise tolerance
 # Temperature fluctuations below this threshold are ignored as sensor noise
 SEGMENT_NOISE_TOLERANCE = 0.05  # 0.05C default

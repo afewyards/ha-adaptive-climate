@@ -1085,3 +1085,351 @@ def test_segment_detection_module():
     assert learner.noise_tolerance == SEGMENT_NOISE_TOLERANCE
     assert SEGMENT_RATE_MIN == 0.1
     assert SEGMENT_RATE_MAX == 10.0
+
+
+# ============================================================================
+# Cycle History Bounding Tests (Story 3.5)
+# ============================================================================
+
+
+class TestCycleHistoryBounding:
+    """Tests for MAX_CYCLE_HISTORY and FIFO eviction."""
+
+    def test_max_cycle_history_constant_exists(self):
+        """Test MAX_CYCLE_HISTORY constant exists and has correct default."""
+        from custom_components.adaptive_thermostat.const import MAX_CYCLE_HISTORY
+        assert MAX_CYCLE_HISTORY == 100
+
+    def test_min_adjustment_interval_constant_exists(self):
+        """Test MIN_ADJUSTMENT_INTERVAL constant exists and has correct default."""
+        from custom_components.adaptive_thermostat.const import MIN_ADJUSTMENT_INTERVAL
+        assert MIN_ADJUSTMENT_INTERVAL == 24
+
+    def test_adaptive_learner_default_max_history(self):
+        """Test AdaptiveLearner uses MAX_CYCLE_HISTORY by default."""
+        from custom_components.adaptive_thermostat.const import MAX_CYCLE_HISTORY
+
+        learner = AdaptiveLearner()
+        assert learner._max_history == MAX_CYCLE_HISTORY
+        assert learner._max_history == 100
+
+    def test_adaptive_learner_custom_max_history(self):
+        """Test AdaptiveLearner accepts custom max_history."""
+        learner = AdaptiveLearner(max_history=50)
+        assert learner._max_history == 50
+
+    def test_fifo_eviction_when_exceeding_max(self):
+        """Test that FIFO eviction removes oldest entries when exceeding max."""
+        learner = AdaptiveLearner(max_history=5)
+
+        # Add 7 cycles
+        for i in range(7):
+            learner.add_cycle_metrics(CycleMetrics(
+                overshoot=float(i),  # Use overshoot to track which entry
+                oscillations=0,
+                settling_time=30,
+                rise_time=20,
+            ))
+
+        # Should only have 5 entries (max_history)
+        assert learner.get_cycle_count() == 5
+
+        # Oldest entries (0, 1) should be evicted, keeping 2, 3, 4, 5, 6
+        assert learner._cycle_history[0].overshoot == 2.0
+        assert learner._cycle_history[-1].overshoot == 6.0
+
+    def test_fifo_eviction_maintains_correct_order(self):
+        """Test that FIFO eviction maintains chronological order."""
+        learner = AdaptiveLearner(max_history=3)
+
+        # Add 5 cycles
+        for i in range(5):
+            learner.add_cycle_metrics(CycleMetrics(
+                overshoot=float(i * 0.1),
+                oscillations=i,
+                settling_time=float(i * 10),
+                rise_time=float(i * 5),
+            ))
+
+        # Should have cycles 2, 3, 4 (0 and 1 evicted)
+        assert learner.get_cycle_count() == 3
+        assert learner._cycle_history[0].oscillations == 2
+        assert learner._cycle_history[1].oscillations == 3
+        assert learner._cycle_history[2].oscillations == 4
+
+    def test_no_eviction_when_under_max(self):
+        """Test that no eviction occurs when under max_history."""
+        learner = AdaptiveLearner(max_history=10)
+
+        # Add only 5 cycles
+        for i in range(5):
+            learner.add_cycle_metrics(CycleMetrics(
+                overshoot=float(i),
+                oscillations=0,
+                settling_time=30,
+                rise_time=20,
+            ))
+
+        # Should have all 5 entries
+        assert learner.get_cycle_count() == 5
+        assert learner._cycle_history[0].overshoot == 0.0
+        assert learner._cycle_history[-1].overshoot == 4.0
+
+    def test_fifo_eviction_at_exact_boundary(self):
+        """Test behavior when adding entry that exactly reaches max_history."""
+        learner = AdaptiveLearner(max_history=5)
+
+        # Add exactly 5 cycles
+        for i in range(5):
+            learner.add_cycle_metrics(CycleMetrics(
+                overshoot=float(i),
+                oscillations=0,
+                settling_time=30,
+                rise_time=20,
+            ))
+
+        # Should have exactly 5 entries, no eviction
+        assert learner.get_cycle_count() == 5
+        assert learner._cycle_history[0].overshoot == 0.0
+
+        # Add one more - should trigger eviction
+        learner.add_cycle_metrics(CycleMetrics(
+            overshoot=5.0,
+            oscillations=0,
+            settling_time=30,
+            rise_time=20,
+        ))
+
+        assert learner.get_cycle_count() == 5
+        assert learner._cycle_history[0].overshoot == 1.0  # 0 evicted
+
+    def test_clear_history_resets_count(self):
+        """Test that clear_history removes all entries."""
+        learner = AdaptiveLearner(max_history=10)
+
+        # Add some cycles
+        for i in range(5):
+            learner.add_cycle_metrics(CycleMetrics(
+                overshoot=float(i),
+                oscillations=0,
+                settling_time=30,
+                rise_time=20,
+            ))
+
+        assert learner.get_cycle_count() == 5
+
+        learner.clear_history()
+        assert learner.get_cycle_count() == 0
+
+
+# ============================================================================
+# Rate Limiting Tests (Story 3.5)
+# ============================================================================
+
+
+class TestRateLimiting:
+    """Tests for MIN_ADJUSTMENT_INTERVAL and rate limiting."""
+
+    def test_first_adjustment_not_rate_limited(self):
+        """Test that first adjustment is not rate limited."""
+        learner = AdaptiveLearner()
+        assert learner._last_adjustment_time is None
+
+        # Rate limit check should return False (not limited)
+        assert learner._check_rate_limit(24) is False
+
+    def test_adjustment_updates_last_adjustment_time(self):
+        """Test that successful adjustment updates last_adjustment_time."""
+        learner = AdaptiveLearner()
+
+        # Add enough cycles to trigger adjustment
+        for _ in range(3):
+            learner.add_cycle_metrics(CycleMetrics(
+                overshoot=0.6,  # High overshoot triggers adjustment
+                oscillations=0,
+                settling_time=30,
+                rise_time=20,
+            ))
+
+        assert learner._last_adjustment_time is None
+
+        # Make adjustment
+        result = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
+        assert result is not None
+        assert learner._last_adjustment_time is not None
+
+    def test_rate_limited_when_too_recent(self):
+        """Test that adjustment is skipped when last adjustment was too recent."""
+        from unittest.mock import patch
+
+        learner = AdaptiveLearner()
+
+        # Add enough cycles
+        for _ in range(3):
+            learner.add_cycle_metrics(CycleMetrics(
+                overshoot=0.6,
+                oscillations=0,
+                settling_time=30,
+                rise_time=20,
+            ))
+
+        # First adjustment should work
+        result1 = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
+        assert result1 is not None
+
+        # Add more cycles for a potential second adjustment
+        for _ in range(3):
+            learner.add_cycle_metrics(CycleMetrics(
+                overshoot=0.6,
+                oscillations=0,
+                settling_time=30,
+                rise_time=20,
+            ))
+
+        # Second adjustment immediately after should be rate limited
+        result2 = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
+        assert result2 is None  # Rate limited
+
+    def test_adjustment_allowed_after_interval(self):
+        """Test that adjustment is allowed after minimum interval has passed."""
+        learner = AdaptiveLearner()
+
+        # Add enough cycles
+        for _ in range(3):
+            learner.add_cycle_metrics(CycleMetrics(
+                overshoot=0.6,
+                oscillations=0,
+                settling_time=30,
+                rise_time=20,
+            ))
+
+        # First adjustment
+        result1 = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
+        assert result1 is not None
+
+        # Manually set last adjustment time to 25 hours ago
+        learner._last_adjustment_time = datetime.now() - timedelta(hours=25)
+
+        # Add more cycles
+        for _ in range(3):
+            learner.add_cycle_metrics(CycleMetrics(
+                overshoot=0.6,
+                oscillations=0,
+                settling_time=30,
+                rise_time=20,
+            ))
+
+        # Should now be allowed (25h > 24h interval)
+        result2 = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
+        assert result2 is not None
+
+    def test_custom_rate_limit_interval(self):
+        """Test that custom min_interval_hours is respected."""
+        learner = AdaptiveLearner()
+
+        # Add enough cycles
+        for _ in range(3):
+            learner.add_cycle_metrics(CycleMetrics(
+                overshoot=0.6,
+                oscillations=0,
+                settling_time=30,
+                rise_time=20,
+            ))
+
+        # First adjustment with short interval
+        result1 = learner.calculate_pid_adjustment(100.0, 1.0, 10.0, min_interval_hours=1)
+        assert result1 is not None
+
+        # Set last adjustment to 2 hours ago
+        learner._last_adjustment_time = datetime.now() - timedelta(hours=2)
+
+        # Add more cycles
+        for _ in range(3):
+            learner.add_cycle_metrics(CycleMetrics(
+                overshoot=0.6,
+                oscillations=0,
+                settling_time=30,
+                rise_time=20,
+            ))
+
+        # Should be allowed with 1h interval (2h > 1h)
+        result2 = learner.calculate_pid_adjustment(100.0, 1.0, 10.0, min_interval_hours=1)
+        assert result2 is not None
+
+    def test_rate_limit_check_boundary(self):
+        """Test rate limit at exact boundary."""
+        learner = AdaptiveLearner()
+
+        # Set last adjustment to exactly 24 hours ago
+        learner._last_adjustment_time = datetime.now() - timedelta(hours=24)
+
+        # At exactly 24h, should NOT be rate limited (>= is allowed)
+        assert learner._check_rate_limit(24) is False
+
+        # At 23.99h, should be rate limited
+        learner._last_adjustment_time = datetime.now() - timedelta(hours=23, minutes=59)
+        assert learner._check_rate_limit(24) is True
+
+    def test_clear_history_resets_last_adjustment_time(self):
+        """Test that clear_history also resets last_adjustment_time."""
+        learner = AdaptiveLearner()
+
+        # Add cycles and make adjustment
+        for _ in range(3):
+            learner.add_cycle_metrics(CycleMetrics(
+                overshoot=0.6,
+                oscillations=0,
+                settling_time=30,
+                rise_time=20,
+            ))
+
+        result = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
+        assert result is not None
+        assert learner._last_adjustment_time is not None
+
+        # Clear history
+        learner.clear_history()
+        assert learner._last_adjustment_time is None
+
+    def test_get_last_adjustment_time(self):
+        """Test get_last_adjustment_time returns correct value."""
+        learner = AdaptiveLearner()
+
+        # Initially None
+        assert learner.get_last_adjustment_time() is None
+
+        # Add cycles and make adjustment
+        for _ in range(3):
+            learner.add_cycle_metrics(CycleMetrics(
+                overshoot=0.6,
+                oscillations=0,
+                settling_time=30,
+                rise_time=20,
+            ))
+
+        before = datetime.now()
+        result = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
+        after = datetime.now()
+
+        assert result is not None
+        last_time = learner.get_last_adjustment_time()
+        assert last_time is not None
+        assert before <= last_time <= after
+
+
+# Marker test for Story 3.5
+def test_story_3_5_features():
+    """Marker test to ensure Story 3.5 features are importable."""
+    from custom_components.adaptive_thermostat.const import (
+        MAX_CYCLE_HISTORY,
+        MIN_ADJUSTMENT_INTERVAL,
+    )
+    from custom_components.adaptive_thermostat.adaptive.learning import AdaptiveLearner
+
+    assert MAX_CYCLE_HISTORY == 100
+    assert MIN_ADJUSTMENT_INTERVAL == 24
+
+    learner = AdaptiveLearner()
+    assert hasattr(learner, '_max_history')
+    assert hasattr(learner, '_last_adjustment_time')
+    assert hasattr(learner, 'get_last_adjustment_time')
