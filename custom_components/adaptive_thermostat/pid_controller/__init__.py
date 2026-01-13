@@ -26,9 +26,9 @@ class PID:
             :type out_max: float
             :param sampling_period: time period between two PID calculations in seconds
             :type sampling_period: float
-            :param cold_tolerance: time period between two PID calculations in seconds
+            :param cold_tolerance: Temperature below setpoint to trigger heating when PID mode is OFF.
             :type cold_tolerance: float
-            :param hot_tolerance: time period between two PID calculations in seconds
+            :param hot_tolerance: Temperature above setpoint to trigger cooling when PID mode is OFF.
             :type hot_tolerance: float
         """
         if kp is None:
@@ -161,7 +161,7 @@ class PID:
             A value between `out_min` and `out_max`.
         """
         if self._sampling_period != 0 and self._last_input_time is not None and \
-                time() - self._input_time < self._sampling_period:
+                time() - self._last_input_time < self._sampling_period:
             return self._output, False  # If last sample is too young, keep last output value
 
         self._last_input = self._input
@@ -174,7 +174,14 @@ class PID:
         # Refresh with actual values
         self._input = input_val
         if self._sampling_period == 0:
-            self._input_time = input_time
+            if input_time is None:
+                _LOGGER.warning(
+                    "PID controller in event-driven mode (sampling_period=0) but no "
+                    "input_time provided. Using current time as fallback."
+                )
+                self._input_time = time()
+            else:
+                self._input_time = input_time
         else:
             self._input_time = time()
         self._last_set_point = self._set_point

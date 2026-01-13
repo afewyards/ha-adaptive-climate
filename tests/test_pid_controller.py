@@ -148,6 +148,101 @@ class TestPIDController:
         assert pid._last_input is None
         assert pid._last_input_time is None
 
+    def test_sampling_period_mode_respects_timing(self):
+        """Test that sampling period mode skips calculations when called too frequently.
+
+        This tests the fix for the timing bug where time() - self._input_time was
+        incorrectly used instead of time() - self._last_input_time.
+        """
+        from unittest.mock import patch
+
+        # Create PID with 60 second sampling period
+        pid = PID(kp=10, ki=0.5, kd=2, out_min=0, out_max=100, sampling_period=60)
+
+        # Mock time() to control the timing
+        mock_time = 1000.0
+
+        with patch('pid_controller.time', return_value=mock_time):
+            # First calculation should always run (no last_input_time yet)
+            output1, changed1 = pid.calc(input_val=20.0, set_point=22.0)
+            assert changed1 is True
+            assert pid._input_time == 1000.0
+            # After first call, _last_input_time is set from previous _input_time (was None)
+            assert pid._last_input_time is None
+
+        # Second call at t=1030 (30s later) - still runs because _last_input_time
+        # becomes set after this call (it gets the previous _input_time)
+        mock_time = 1030.0
+        with patch('pid_controller.time', return_value=mock_time):
+            output2, changed2 = pid.calc(input_val=20.5, set_point=22.0)
+            assert changed2 is True  # Runs because _last_input_time was still None
+            assert pid._last_input_time == 1000.0  # Now set from previous _input_time
+            assert pid._input_time == 1030.0
+
+        # Third call at t=1040 (10s after second call) - should be SKIPPED
+        # because 10s < 60s sampling period
+        mock_time = 1040.0
+        with patch('pid_controller.time', return_value=mock_time):
+            output3, changed3 = pid.calc(input_val=21.0, set_point=22.0)
+            assert changed3 is False  # Skipped - too soon
+            assert output3 == output2  # Returns cached output
+            # Timestamps should NOT be updated when skipped
+            assert pid._last_input_time == 1000.0
+            assert pid._input_time == 1030.0
+
+        # Fourth call at t=1100 (70s after second call's _last_input_time)
+        # Should run: 1100 - 1000 = 100s > 60s sampling period
+        mock_time = 1100.0
+        with patch('pid_controller.time', return_value=mock_time):
+            output4, changed4 = pid.calc(input_val=21.5, set_point=22.0)
+            assert changed4 is True
+            # Error is now 0.5 (22 - 21.5)
+            assert pid.error == 0.5
+            assert pid._last_input_time == 1030.0  # Updated to previous _input_time
+            assert pid._input_time == 1100.0
+
+    def test_event_driven_mode_timestamp_validation(self, caplog):
+        """Test that event-driven mode logs warning when timestamp not provided.
+
+        When sampling_period=0, the controller operates in event-driven mode
+        and expects timestamps to be provided via input_time parameter.
+        """
+        import logging
+
+        # Create PID in event-driven mode (sampling_period=0)
+        pid = PID(kp=10, ki=0.5, kd=2, out_min=0, out_max=100, sampling_period=0)
+
+        # Call without providing input_time - should log warning
+        with caplog.at_level(logging.WARNING):
+            output, changed = pid.calc(input_val=20.0, set_point=22.0)
+
+        # Should have logged a warning about missing timestamp
+        assert "event-driven mode" in caplog.text
+        assert "input_time" in caplog.text
+
+        # Should still calculate output (using time() as fallback)
+        assert changed is True
+        assert pid.error == 2.0
+
+        # Clear log for next test
+        caplog.clear()
+
+        # Call with input_time provided - should NOT log warning
+        with caplog.at_level(logging.WARNING):
+            output2, changed2 = pid.calc(
+                input_val=21.0,
+                set_point=22.0,
+                input_time=100.0,
+                last_input_time=0.0
+            )
+
+        # No warning should be logged when timestamp is provided
+        assert "event-driven mode" not in caplog.text
+        assert changed2 is True
+
+        # Verify dt was calculated correctly
+        assert pid.dt == 100.0  # input_time - last_input_time = 100 - 0
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
