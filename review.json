@@ -1,0 +1,410 @@
+{
+  "stories": [
+    {
+      "id": "1.1",
+      "category": "coordinator",
+      "description": "Wire up ZoneLinker integration to climate entity",
+      "steps": [
+        "Add call to on_zone_heating_started() when zone begins heating in climate.py",
+        "Add is_zone_delayed() check in _async_control_heating() before activating heater",
+        "Skip heating activation if zone is delayed by linked neighbor",
+        "Log when heating is delayed due to zone linking",
+        "Add get_delay_remaining_minutes() to extra_state_attributes for debugging",
+        "Write test for heating start triggering linked zone notification",
+        "Write test for delayed zone skipping heating activation",
+        "Write test for delay expiration allowing heating to resume",
+        "VERIFY: pytest tests/test_zone_linking.py passes with integration tests"
+      ],
+      "passes": true
+    },
+    {
+      "id": "1.2",
+      "category": "coordinator",
+      "description": "Fix race condition in CentralController startup task",
+      "steps": [
+        "Add asyncio.Lock to CentralController class",
+        "Protect _heater_waiting_for_startup flag access with lock",
+        "Protect _cooler_waiting_for_startup flag access with lock",
+        "Protect startup task creation and cancellation with lock",
+        "Write test for concurrent update() calls during startup delay",
+        "Write test for task cancellation race condition",
+        "VERIFY: pytest tests/test_central_controller.py passes"
+      ],
+      "passes": false
+    },
+    {
+      "id": "1.3",
+      "category": "coordinator",
+      "description": "Prevent ModeSync feedback loop",
+      "steps": [
+        "Add _sync_in_progress flag to ModeSync class",
+        "Set flag before syncing zones",
+        "Check flag in sync handler to skip if already syncing",
+        "Clear flag after sync completes (use try/finally)",
+        "Write test for sync not triggering reverse sync",
+        "Write test for multiple zones syncing without loop",
+        "VERIFY: pytest tests/test_mode_sync.py passes"
+      ],
+      "passes": false
+    },
+    {
+      "id": "1.4",
+      "category": "coordinator",
+      "description": "Add error handling and retry logic to CentralController",
+      "steps": [
+        "Wrap service calls in try/except for ServiceNotFound and other exceptions",
+        "Log errors when switch operations fail",
+        "Add retry logic with exponential backoff for failed switch operations",
+        "Track consecutive failures and emit warning after threshold",
+        "Write test for service call failure handling",
+        "Write test for retry logic",
+        "VERIFY: pytest tests/test_central_controller.py passes"
+      ],
+      "passes": false
+    },
+    {
+      "id": "2.1",
+      "category": "sensors",
+      "description": "Fix DutyCycleSensor to calculate real duty cycle",
+      "steps": [
+        "Track heater on/off state changes with timestamps",
+        "Calculate duty cycle as (on_time / total_time) over measurement window",
+        "Use configurable measurement window (default 1 hour)",
+        "Handle edge cases: no state changes, always on, always off",
+        "Alternatively use control_output from PID controller as duty cycle",
+        "Write test for duty cycle calculation with varied on/off patterns",
+        "Write test for edge case handling",
+        "VERIFY: pytest tests/test_sensor.py::test_duty_cycle passes"
+      ],
+      "passes": false
+    },
+    {
+      "id": "2.2",
+      "category": "sensors",
+      "description": "Fix CycleTimeSensor to calculate actual cycle time",
+      "steps": [
+        "Track heater state transitions (on->off->on)",
+        "Calculate cycle time as duration between consecutive on states",
+        "Maintain rolling average of recent cycle times",
+        "Handle edge case of no complete cycles yet",
+        "Write test for cycle time calculation",
+        "Write test for rolling average behavior",
+        "VERIFY: pytest tests/test_sensor.py::test_cycle_time passes"
+      ],
+      "passes": false
+    },
+    {
+      "id": "2.3",
+      "category": "sensors",
+      "description": "Fix WeeklyCostSensor to track weekly delta",
+      "steps": [
+        "Store meter reading at start of week",
+        "Calculate weekly energy as (current_reading - week_start_reading)",
+        "Persist week_start_reading across HA restarts",
+        "Reset week_start_reading on Sunday midnight",
+        "Handle meter reset/replacement scenarios",
+        "Write test for weekly delta calculation",
+        "Write test for persistence across restarts",
+        "Write test for week boundary reset",
+        "VERIFY: pytest tests/test_energy.py passes"
+      ],
+      "passes": false
+    },
+    {
+      "id": "2.4",
+      "category": "sensors",
+      "description": "Integrate unused heat_output.py module",
+      "steps": [
+        "Create HeatOutputSensor entity class in sensor.py",
+        "Wire up supply_temp and return_temp sensor inputs",
+        "Calculate heat output using delta-T formula from heat_output.py",
+        "Add sensor to platform setup",
+        "Write test for heat output calculation",
+        "VERIFY: pytest tests/test_sensor.py::test_heat_output passes"
+      ],
+      "passes": false
+    },
+    {
+      "id": "3.1",
+      "category": "adaptive-learning",
+      "description": "Fix overshoot detection to be phase-aware",
+      "steps": [
+        "Detect setpoint crossing (rise phase complete)",
+        "Track temperature only in settling phase after crossing",
+        "Calculate overshoot as max in settling phase minus setpoint",
+        "Reset tracking when setpoint changes",
+        "Handle case where setpoint is never reached",
+        "Write test for overshoot with setpoint changes",
+        "Write test for settling phase detection",
+        "Write test for setpoint never reached scenario",
+        "VERIFY: pytest tests/test_learning.py::test_overshoot passes"
+      ],
+      "passes": false
+    },
+    {
+      "id": "3.2",
+      "category": "adaptive-learning",
+      "description": "Fix compounding zone-specific adjustments",
+      "steps": [
+        "Change zone-specific adjustments to apply once at initialization",
+        "Store zone adjustment factor separately from learned adjustments",
+        "Apply zone factor as multiplier on final PID values",
+        "Remove zone adjustments from per-cycle calculation loop",
+        "Write test verifying zone adjustment applied once",
+        "Write test for multiple cycles not compounding",
+        "VERIFY: pytest tests/test_learning.py::test_zone_adjustments passes"
+      ],
+      "passes": false
+    },
+    {
+      "id": "3.3",
+      "category": "adaptive-learning",
+      "description": "Resolve PID rule conflicts",
+      "steps": [
+        "Define rule priority order (oscillation > overshoot > slow response)",
+        "Add conflict detection for opposing adjustments",
+        "When conflict detected, apply higher priority rule only",
+        "Log when rules conflict and which takes precedence",
+        "Add convergence detection to stop adjustments when tuned",
+        "Write test for conflicting rule scenarios",
+        "Write test for convergence detection",
+        "VERIFY: pytest tests/test_learning.py::test_rule_conflicts passes"
+      ],
+      "passes": false
+    },
+    {
+      "id": "3.4",
+      "category": "adaptive-learning",
+      "description": "Add noise tolerance to segment detection",
+      "steps": [
+        "Add NOISE_TOLERANCE constant (default 0.05C)",
+        "Modify _find_cooling_segments to ignore reversals below tolerance",
+        "Add rate bounds checking (0.1 to 10 C/hour)",
+        "Reject segments with physically impossible rates",
+        "Write test for noisy temperature data handling",
+        "Write test for rate bounds rejection",
+        "VERIFY: pytest tests/test_learning.py::test_segment_detection passes"
+      ],
+      "passes": false
+    },
+    {
+      "id": "3.5",
+      "category": "adaptive-learning",
+      "description": "Bound cycle history and add rate limiting",
+      "steps": [
+        "Add MAX_CYCLE_HISTORY constant (default 100)",
+        "Implement FIFO eviction when history exceeds max",
+        "Add MIN_ADJUSTMENT_INTERVAL constant (default 24 hours)",
+        "Skip PID adjustments if last adjustment was too recent",
+        "Log when adjustment skipped due to rate limiting",
+        "Write test for history size limiting",
+        "Write test for adjustment rate limiting",
+        "VERIFY: pytest tests/test_learning.py passes"
+      ],
+      "passes": false
+    },
+    {
+      "id": "4.1",
+      "category": "pid-controller",
+      "description": "Fix sampling period timing bug",
+      "steps": [
+        "Change time() - self._input_time to time() - self._last_input_time",
+        "Add validation for timestamps when sampling_period=0",
+        "Log warning when timestamp not provided in event-driven mode",
+        "Fix docstring for cold_tolerance and hot_tolerance parameters",
+        "Write test for sampling period mode behavior",
+        "Write test for event-driven mode timestamp validation",
+        "VERIFY: pytest tests/test_pid_controller.py passes"
+      ],
+      "passes": false
+    },
+    {
+      "id": "4.2",
+      "category": "pid-controller",
+      "description": "Fix inconsistent integral reset on setpoint change",
+      "steps": [
+        "Reset integral on setpoint change regardless of ext_temp presence",
+        "Auto-clear samples when switching from OFF to AUTO mode",
+        "Add input validation for NaN and Inf values",
+        "Return cached output for invalid inputs",
+        "Write test for setpoint change handling without ext_temp",
+        "Write test for mode switching integral behavior",
+        "Write test for NaN/Inf input handling",
+        "VERIFY: pytest tests/test_pid_controller.py passes"
+      ],
+      "passes": false
+    },
+    {
+      "id": "5.1",
+      "category": "climate-entity",
+      "description": "Fix bare exception handler",
+      "steps": [
+        "Replace bare except: with specific exceptions (AttributeError, KeyError, ValueError)",
+        "Add logging for caught exceptions",
+        "Review other exception handlers for similar issues",
+        "VERIFY: grep -r 'except:' finds no bare handlers"
+      ],
+      "passes": false
+    },
+    {
+      "id": "5.2",
+      "category": "climate-entity",
+      "description": "Add error handling for heater service calls",
+      "steps": [
+        "Wrap turn_on/turn_off service calls in try/except",
+        "Catch ServiceNotFound, HomeAssistantError exceptions",
+        "Log errors with entity_id and operation details",
+        "Emit event or set attribute when heater control fails",
+        "Write test for service call failure handling",
+        "VERIFY: pytest tests/test_climate.py::test_service_failure passes"
+      ],
+      "passes": false
+    },
+    {
+      "id": "5.3",
+      "category": "climate-entity",
+      "description": "Deduplicate night setback logic",
+      "steps": [
+        "Extract night setback logic to _calculate_night_setback_adjustment() method",
+        "Consolidate static and dynamic end time handling",
+        "Remove duplicate code blocks (lines 1555-1577 and 1579-1644)",
+        "Write test for static end time night setback",
+        "Write test for dynamic end time night setback",
+        "VERIFY: pytest tests/test_climate.py::test_night_setback passes"
+      ],
+      "passes": false
+    },
+    {
+      "id": "6.1",
+      "category": "initialization",
+      "description": "Extract service handlers to services.py",
+      "steps": [
+        "Create new services.py file",
+        "Move async_handle_health_check to services.py",
+        "Move async_handle_weekly_report to services.py",
+        "Move async_handle_cost_report to services.py",
+        "Move async_handle_energy_stats to services.py",
+        "Move async_handle_pid_recommendations to services.py",
+        "Import and register handlers from __init__.py",
+        "Deduplicate health check logic (scheduled vs manual)",
+        "Deduplicate weekly report logic (scheduled vs manual)",
+        "Write test for service registration",
+        "VERIFY: pytest tests/test_services.py passes"
+      ],
+      "passes": false
+    },
+    {
+      "id": "6.2",
+      "category": "initialization",
+      "description": "Add domain config schema validation",
+      "steps": [
+        "Define CONFIG_SCHEMA using vol.Schema in __init__.py",
+        "Validate notify_service is a valid service name",
+        "Validate optional parameters have correct types",
+        "Provide helpful error messages for invalid config",
+        "Write test for valid config acceptance",
+        "Write test for invalid config rejection with clear error",
+        "VERIFY: pytest tests/test_init.py::test_config_validation passes"
+      ],
+      "passes": false
+    },
+    {
+      "id": "6.3",
+      "category": "initialization",
+      "description": "Add unload support for clean integration reload",
+      "steps": [
+        "Implement async_unload_entry() function",
+        "Unregister all services on unload",
+        "Cancel all scheduled tasks on unload",
+        "Clean up coordinator references",
+        "Write test for clean unload",
+        "Write test for reload without leftover state",
+        "VERIFY: pytest tests/test_init.py::test_unload passes"
+      ],
+      "passes": false
+    },
+    {
+      "id": "6.4",
+      "category": "initialization",
+      "description": "Add history dependency to manifest",
+      "steps": [
+        "Add dependencies array to manifest.json",
+        "Include history in dependencies list",
+        "Add homeassistant version constraint if needed",
+        "VERIFY: manifest.json validates correctly"
+      ],
+      "passes": false
+    },
+    {
+      "id": "7.1",
+      "category": "code-quality",
+      "description": "Split async_added_to_hass into smaller methods",
+      "steps": [
+        "Extract _setup_state_listeners() method",
+        "Extract _restore_state() method",
+        "Extract _restore_pid_values() method",
+        "Call extracted methods from async_added_to_hass",
+        "Write tests for each extracted method",
+        "VERIFY: pytest tests/test_climate.py passes"
+      ],
+      "passes": false
+    },
+    {
+      "id": "7.2",
+      "category": "code-quality",
+      "description": "Add unregister_zone to coordinator",
+      "steps": [
+        "Add unregister_zone() method to AdaptiveThermostatCoordinator",
+        "Remove zone from _zones dict",
+        "Remove zone from _demand_states dict",
+        "Call method when climate entity is removed",
+        "Add duplicate registration warning",
+        "Write test for zone unregistration",
+        "Write test for duplicate registration warning",
+        "VERIFY: pytest tests/test_coordinator.py passes"
+      ],
+      "passes": false
+    },
+    {
+      "id": "7.3",
+      "category": "code-quality",
+      "description": "Fix ZoneLinker query side effects",
+      "steps": [
+        "Remove expired entry deletion from is_zone_delayed()",
+        "Remove expired entry deletion from get_delay_remaining_minutes()",
+        "Add separate cleanup_expired_delays() method",
+        "Call cleanup method from update cycle or scheduled task",
+        "Make query methods idempotent",
+        "Write test for idempotent query behavior",
+        "VERIFY: pytest tests/test_zone_linking.py passes"
+      ],
+      "passes": false
+    },
+    {
+      "id": "7.4",
+      "category": "code-quality",
+      "description": "Add Ke limits to PID_LIMITS constant",
+      "steps": [
+        "Add ke_min and ke_max to PID_LIMITS dict in const.py",
+        "Use reasonable bounds (0.0 to 2.0 based on usage)",
+        "Update adaptive learning to respect Ke limits",
+        "Write test for Ke limit enforcement",
+        "VERIFY: pytest tests/test_learning.py::test_pid_limits passes"
+      ],
+      "passes": false
+    },
+    {
+      "id": "7.5",
+      "category": "code-quality",
+      "description": "Group sensors under thermostat device",
+      "steps": [
+        "Add device_info property to AdaptiveThermostatSensor base class",
+        "Return device identifier matching parent thermostat",
+        "Include manufacturer and model in device_info",
+        "Write test for sensor device grouping",
+        "VERIFY: sensors appear under thermostat device in HA UI"
+      ],
+      "passes": false
+    }
+  ]
+}

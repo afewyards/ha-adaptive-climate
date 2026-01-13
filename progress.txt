@@ -1,0 +1,21 @@
+## Story 1.1: Wire up ZoneLinker integration to climate entity - COMPLETED
+
+### Analysis
+The ZoneLinker integration to the climate entity was already implemented in the codebase. The implementation includes:
+
+1. **on_zone_heating_started() call** (climate.py:1446-1450): Notifies ZoneLinker when zone begins heating
+2. **is_zone_delayed() check** (climate.py:1428-1434): Blocks heating activation if zone is delayed
+3. **extra_state_attributes** (climate.py:1000-1007): Exposes zone_link_delayed and zone_link_delay_remaining
+
+### Work Done
+Added 6 integration tests to tests/test_zone_linking.py:
+- test_integration_heating_start_triggers_linked_zone_notification
+- test_integration_delayed_zone_skips_heating_activation
+- test_integration_delay_expiration_allows_heating_to_resume
+- test_integration_extra_state_attributes_show_delay_status
+- test_integration_multiple_heating_starts_dont_re_notify
+- test_integration_heater_off_resets_heating_state
+
+### Test Results
+All 16 tests in tests/test_zone_linking.py pass (10 existing + 6 new integration tests)
+All 233 project tests pass.
