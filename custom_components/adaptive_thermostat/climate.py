@@ -45,6 +45,7 @@ from homeassistant.helpers.event import (
     async_track_time_interval,
 )
 from homeassistant.helpers.restore_state import RestoreEntity
+from homeassistant.exceptions import HomeAssistantError, ServiceNotFound
 
 from .adaptive.physics import calculate_thermal_time_constant, calculate_initial_pid
 from .adaptive.night_setback import NightSetback
@@ -447,6 +448,10 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
         self._link_delay_minutes = kwargs.get('link_delay_minutes', 10)
         self._zone_linker = None  # Will be set in async_added_to_hass
         self._is_heating = False  # Track heating state for zone linking
+
+        # Heater control failure tracking
+        self._heater_control_failed = False
+        self._last_heater_error: str | None = None
 
         # Get PID values from config or calculate from physics
         self._kp = kwargs.get('kp')
@@ -1006,6 +1011,11 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
             if self._linked_zones:
                 device_state_attributes["linked_zones"] = self._linked_zones
 
+        # Heater control failure status
+        if self._heater_control_failed:
+            device_state_attributes["heater_control_failed"] = True
+            device_state_attributes["last_heater_error"] = self._last_heater_error
+
         return device_state_attributes
 
     def set_hvac_mode(self, hvac_mode: (HVACMode, str)) -> None:
@@ -1426,6 +1436,96 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
 
         return entities
 
+    def _fire_heater_control_failed_event(
+        self,
+        entity_id: str,
+        operation: str,
+        error: str,
+    ) -> None:
+        """Fire an event when heater control fails.
+
+        Args:
+            entity_id: Entity that failed to control
+            operation: Operation that failed (turn_on, turn_off, set_value)
+            error: Error message
+        """
+        self.hass.bus.async_fire(
+            f"{DOMAIN}_heater_control_failed",
+            {
+                "climate_entity_id": self.entity_id,
+                "heater_entity_id": entity_id,
+                "operation": operation,
+                "error": error,
+            },
+        )
+
+    async def _async_call_heater_service(
+        self,
+        entity_id: str,
+        domain: str,
+        service: str,
+        data: dict,
+    ) -> bool:
+        """Call a heater/cooler service with error handling.
+
+        Args:
+            entity_id: Entity ID being controlled
+            domain: Service domain (homeassistant, light, valve, number, etc.)
+            service: Service name (turn_on, turn_off, set_value, etc.)
+            data: Service call data
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            await self.hass.services.async_call(domain, service, data)
+            # Clear failure state on success
+            self._heater_control_failed = False
+            self._last_heater_error = None
+            return True
+
+        except ServiceNotFound as e:
+            _LOGGER.error(
+                "%s: Service '%s.%s' not found for %s: %s",
+                self.entity_id,
+                domain,
+                service,
+                entity_id,
+                e,
+            )
+            self._heater_control_failed = True
+            self._last_heater_error = f"Service not found: {domain}.{service}"
+            self._fire_heater_control_failed_event(entity_id, service, str(e))
+            return False
+
+        except HomeAssistantError as e:
+            _LOGGER.error(
+                "%s: Home Assistant error calling %s.%s on %s: %s",
+                self.entity_id,
+                domain,
+                service,
+                entity_id,
+                e,
+            )
+            self._heater_control_failed = True
+            self._last_heater_error = str(e)
+            self._fire_heater_control_failed_event(entity_id, service, str(e))
+            return False
+
+        except Exception as e:
+            _LOGGER.error(
+                "%s: Unexpected error calling %s.%s on %s: %s",
+                self.entity_id,
+                domain,
+                service,
+                entity_id,
+                e,
+            )
+            self._heater_control_failed = True
+            self._last_heater_error = str(e)
+            self._fire_heater_control_failed_event(entity_id, service, str(e))
+            return False
+
     async def _async_heater_turn_on(self):
         """Turn heater toggleable device on."""
         # Check if zone is delayed due to linked zone heating
@@ -1462,7 +1562,9 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
                 service = SERVICE_TURN_OFF
             else:
                 service = SERVICE_TURN_ON
-            await self.hass.services.async_call(HA_DOMAIN, service, data)
+            await self._async_call_heater_service(
+                heater_or_cooler_entity, HA_DOMAIN, service, data
+            )
 
     async def _async_heater_turn_off(self, force=False):
         """Turn heater toggleable device off."""
@@ -1489,7 +1591,9 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
                     service = SERVICE_TURN_ON
                 else:
                     service = SERVICE_TURN_OFF
-                await self.hass.services.async_call(HA_DOMAIN, service, data)
+                await self._async_call_heater_service(
+                    heater_or_cooler_entity, HA_DOMAIN, service, data
+                )
 
     async def _async_set_valve_value(self, value: float):
         _LOGGER.info("%s: Change state of %s to %s", self.entity_id,
@@ -1497,22 +1601,28 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
         for heater_or_cooler_entity in self.heater_or_cooler_entity:
             if heater_or_cooler_entity[0:6] == 'light.':
                 data = {ATTR_ENTITY_ID: heater_or_cooler_entity, ATTR_BRIGHTNESS_PCT: value}
-                await self.hass.services.async_call(
+                await self._async_call_heater_service(
+                    heater_or_cooler_entity,
                     LIGHT_DOMAIN,
                     SERVICE_TURN_LIGHT_ON,
-                    data)
+                    data,
+                )
             elif heater_or_cooler_entity[0:6] == 'valve.':
                 data = {ATTR_ENTITY_ID: heater_or_cooler_entity, ATTR_POSITION: value}
-                await self.hass.services.async_call(
+                await self._async_call_heater_service(
+                    heater_or_cooler_entity,
                     VALVE_DOMAIN,
                     SERVICE_SET_VALVE_POSITION,
-                    data)
+                    data,
+                )
             else:
                 data = {ATTR_ENTITY_ID: heater_or_cooler_entity, ATTR_VALUE: value}
-                await self.hass.services.async_call(
+                await self._async_call_heater_service(
+                    heater_or_cooler_entity,
                     self._get_number_entity_domain(heater_or_cooler_entity),
                     SERVICE_SET_VALUE,
-                    data)
+                    data,
+                )
 
     async def async_set_preset_mode(self, preset_mode: str):
         """Set new preset mode.
