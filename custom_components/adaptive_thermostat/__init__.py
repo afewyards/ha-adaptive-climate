@@ -6,9 +6,14 @@ import re
 from datetime import datetime, timedelta
 from typing import Any, TYPE_CHECKING
 
-# These imports are only needed when running in Home Assistant
+# Import voluptuous separately as it's a standalone dependency
 try:
     import voluptuous as vol
+except ImportError:
+    vol = None
+
+# These imports are only needed when running in Home Assistant
+try:
     from homeassistant.core import HomeAssistant, ServiceCall
     from homeassistant.helpers import config_validation as cv
     from homeassistant.helpers.typing import ConfigType
@@ -20,7 +25,6 @@ except ImportError:
     HomeAssistant = Any
     ServiceCall = Any
     ConfigType = Any
-    vol = None
     cv = None
 
 from .const import (

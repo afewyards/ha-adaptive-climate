@@ -131,13 +131,14 @@ def test_undershoot_increases_ki():
     learner = AdaptiveLearner()
 
     # Undershoot cycles (system not reaching setpoint)
+    # Note: rise_time > 45 to avoid triggering convergence check
     for _ in range(3):
         metrics = CycleMetrics(
             overshoot=0.0,
             undershoot=0.5,  # Significant undershoot
             settling_time=50.0,
             oscillations=0,
-            rise_time=45.0,
+            rise_time=50.0,  # Above convergence threshold
         )
         learner.add_cycle_metrics(metrics)
 
@@ -542,12 +543,13 @@ def test_none_metrics_handled_gracefully():
     learner = AdaptiveLearner()
 
     # Add cycles with some None values
+    # Note: oscillations > 1 and undershoot > 0.3 to avoid convergence and trigger rules
     for _ in range(3):
         metrics = CycleMetrics(
             overshoot=None,  # None overshoot
-            undershoot=0.1,
+            undershoot=0.4,  # Above rule threshold
             settling_time=None,  # None settling time
-            oscillations=1,
+            oscillations=2,  # Above convergence threshold
             rise_time=None,  # None rise time
         )
         learner.add_cycle_metrics(metrics)

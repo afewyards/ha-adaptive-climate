@@ -14,7 +14,11 @@ class MockServiceCall:
 
 def _run_async(coro):
     """Run an async coroutine synchronously."""
-    return asyncio.get_event_loop().run_until_complete(coro)
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
 
 
 # =============================================================================

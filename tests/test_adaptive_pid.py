@@ -196,13 +196,14 @@ def test_undershoot_increases_ki():
     learner = AdaptiveLearner()
 
     # Add cycles with undershoot (0.4°C)
+    # Note: rise_time > 45 to avoid triggering convergence check
     for _ in range(3):
         metrics = CycleMetrics(
             overshoot=0.0,
             undershoot=0.4,  # Significant undershoot
             settling_time=50.0,
             oscillations=0,
-            rise_time=35.0,
+            rise_time=50.0,  # Above convergence threshold
         )
         learner.add_cycle_metrics(metrics)
 
