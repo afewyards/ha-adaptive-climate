@@ -243,6 +243,155 @@ class TestPIDController:
         # Verify dt was calculated correctly
         assert pid.dt == 100.0  # input_time - last_input_time = 100 - 0
 
+    def test_integral_reset_on_setpoint_change_without_ext_temp(self):
+        """Test that integral resets on setpoint change even without ext_temp.
+
+        This tests the fix for inconsistent integral reset behavior where
+        the integral was only reset when ext_temp was provided.
+        """
+        pid = PID(kp=10, ki=1.0, kd=0, out_min=0, out_max=100)
+
+        # Build up integral with constant setpoint over multiple cycles
+        pid.calc(input_val=20.0, set_point=22.0, input_time=0.0, last_input_time=None)
+        pid.calc(input_val=20.5, set_point=22.0, input_time=1.0, last_input_time=0.0)
+        pid.calc(input_val=21.0, set_point=22.0, input_time=2.0, last_input_time=1.0)
+
+        # Integral should have accumulated (Ki=1.0, error reduces over time)
+        integral_before = pid.integral
+        assert integral_before != 0, "Integral should have accumulated"
+
+        # Change setpoint WITHOUT providing ext_temp
+        pid.calc(input_val=21.0, set_point=25.0, input_time=3.0, last_input_time=2.0)
+
+        # Integral should be reset to 0 regardless of ext_temp presence
+        assert pid.integral == 0, "Integral should be reset on setpoint change"
+
+    def test_mode_switch_off_to_auto_clears_samples(self):
+        """Test that switching from OFF to AUTO clears samples.
+
+        When PID is in OFF mode, it uses simple bang-bang control. The timestamps
+        and input values from OFF mode are stale and should not be used for
+        derivative calculations when switching to AUTO mode.
+        """
+        pid = PID(kp=10, ki=0.5, kd=2, out_min=0, out_max=100)
+
+        # Run some calculations in AUTO mode to populate samples
+        pid.calc(input_val=20.0, set_point=22.0, input_time=0.0, last_input_time=None)
+        pid.calc(input_val=20.5, set_point=22.0, input_time=1.0, last_input_time=0.0)
+
+        # Verify samples exist
+        assert pid._input is not None
+        assert pid._input_time is not None
+        assert pid._last_input is not None
+
+        # Switch to OFF mode
+        pid.mode = 'OFF'
+
+        # Samples should still exist (OFF mode doesn't clear)
+        assert pid._input is not None
+
+        # Run in OFF mode (this won't update samples meaningfully)
+        pid.calc(input_val=19.0, set_point=22.0, input_time=100.0)
+
+        # Switch back to AUTO - this should clear samples
+        pid.mode = 'AUTO'
+
+        # Samples should be cleared for fresh PID calculation
+        assert pid._input is None
+        assert pid._input_time is None
+        assert pid._last_input is None
+        assert pid._last_input_time is None
+
+        # First calculation after mode switch should work correctly
+        output, changed = pid.calc(input_val=21.0, set_point=22.0, input_time=200.0)
+        assert changed is True
+        assert output > 0  # Should be heating
+
+    def test_nan_inf_input_validation(self):
+        """Test that NaN and Inf inputs return cached output without corrupting state.
+
+        Invalid sensor readings (NaN, Inf) should not corrupt the PID controller
+        state. Instead, the cached output should be returned.
+        """
+        import math
+
+        pid = PID(kp=10, ki=0.5, kd=2, out_min=0, out_max=100)
+
+        # First valid calculation to establish baseline
+        output1, changed1 = pid.calc(
+            input_val=20.0, set_point=22.0,
+            input_time=0.0, last_input_time=None
+        )
+        assert changed1 is True
+        baseline_output = output1
+
+        # NaN input_val should return cached output
+        output2, changed2 = pid.calc(
+            input_val=float('nan'), set_point=22.0,
+            input_time=1.0, last_input_time=0.0
+        )
+        assert changed2 is False
+        assert output2 == baseline_output
+
+        # Inf input_val should return cached output
+        output3, changed3 = pid.calc(
+            input_val=float('inf'), set_point=22.0,
+            input_time=2.0, last_input_time=1.0
+        )
+        assert changed3 is False
+        assert output3 == baseline_output
+
+        # Negative Inf input_val should return cached output
+        output4, changed4 = pid.calc(
+            input_val=float('-inf'), set_point=22.0,
+            input_time=3.0, last_input_time=2.0
+        )
+        assert changed4 is False
+        assert output4 == baseline_output
+
+        # NaN set_point should return cached output
+        output5, changed5 = pid.calc(
+            input_val=20.0, set_point=float('nan'),
+            input_time=4.0, last_input_time=3.0
+        )
+        assert changed5 is False
+        assert output5 == baseline_output
+
+        # Inf set_point should return cached output
+        output6, changed6 = pid.calc(
+            input_val=20.0, set_point=float('inf'),
+            input_time=5.0, last_input_time=4.0
+        )
+        assert changed6 is False
+        assert output6 == baseline_output
+
+        # NaN ext_temp should return cached output
+        output7, changed7 = pid.calc(
+            input_val=20.0, set_point=22.0,
+            input_time=6.0, last_input_time=5.0,
+            ext_temp=float('nan')
+        )
+        assert changed7 is False
+        assert output7 == baseline_output
+
+        # Inf ext_temp should return cached output
+        output8, changed8 = pid.calc(
+            input_val=20.0, set_point=22.0,
+            input_time=7.0, last_input_time=6.0,
+            ext_temp=float('inf')
+        )
+        assert changed8 is False
+        assert output8 == baseline_output
+
+        # Valid calculation after invalid inputs should work correctly
+        output9, changed9 = pid.calc(
+            input_val=21.0, set_point=22.0,
+            input_time=8.0, last_input_time=0.0  # Use last valid time
+        )
+        assert changed9 is True
+        # State should still be valid and produce reasonable output
+        assert 0 <= output9 <= 100
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

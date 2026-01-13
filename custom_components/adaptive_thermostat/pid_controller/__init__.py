@@ -1,4 +1,5 @@
 import logging
+import math
 from time import time
 
 _LOGGER = logging.getLogger(__name__)
@@ -76,7 +77,11 @@ class PID:
     @mode.setter
     def mode(self, mode):
         assert mode.upper() in ['AUTO', 'OFF']
-        self._mode = mode.upper()
+        new_mode = mode.upper()
+        # Clear samples when switching from OFF to AUTO to prevent stale data
+        if self._mode == 'OFF' and new_mode == 'AUTO':
+            self.clear_samples()
+        self._mode = new_mode
 
     @property
     def out_max(self):
@@ -160,6 +165,17 @@ class PID:
         Returns:
             A value between `out_min` and `out_max`.
         """
+        # Validate inputs for NaN and Inf values
+        if math.isnan(input_val) or math.isinf(input_val):
+            _LOGGER.warning("Invalid input_val received: %s. Returning cached output.", input_val)
+            return self._output, False
+        if math.isnan(set_point) or math.isinf(set_point):
+            _LOGGER.warning("Invalid set_point received: %s. Returning cached output.", set_point)
+            return self._output, False
+        if ext_temp is not None and (math.isnan(ext_temp) or math.isinf(ext_temp)):
+            _LOGGER.warning("Invalid ext_temp received: %s. Returning cached output.", ext_temp)
+            return self._output, False
+
         if self._sampling_period != 0 and self._last_input_time is not None and \
                 time() - self._last_input_time < self._sampling_period:
             return self._output, False  # If last sample is too young, keep last output value
@@ -224,7 +240,7 @@ class PID:
             self._integral += self._Ki * self._error * self._dt
             # Take external temperature compensation into account for integral clamping
             self._integral = max(min(self._integral, self._out_max - self._external), self._out_min - self._external)
-        if ext_temp is not None and self._last_set_point != self._set_point:
+        if self._last_set_point != self._set_point:
             self._integral = 0  # Reset integral if set point has changed as system will need to converge to a new value
 
         self._proportional = self._Kp * self._error
