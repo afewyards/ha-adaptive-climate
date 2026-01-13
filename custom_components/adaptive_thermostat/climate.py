@@ -1393,7 +1393,11 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
                         if state in ['on', 'open']:
                             is_active = True
                 return is_active
-            except:
+            except AttributeError as ex:
+                _LOGGER.debug(
+                    "Entity state not available during device active check: %s",
+                    ex
+                )
                 return False
 
     @property
