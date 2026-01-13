@@ -89,6 +89,42 @@ async def async_send_notification(
         )
         return False
 
+
+async def async_send_persistent_notification(
+    hass: HomeAssistant,
+    notification_id: str,
+    title: str,
+    message: str,
+) -> bool:
+    """Send a persistent notification that stays in HA until dismissed.
+
+    Args:
+        hass: Home Assistant instance
+        notification_id: Unique ID for the notification (allows updating/dismissing)
+        title: Notification title
+        message: Notification message (can be longer/detailed)
+
+    Returns:
+        True if notification was created successfully, False otherwise
+    """
+    try:
+        await hass.services.async_call(
+            "persistent_notification",
+            "create",
+            {
+                "notification_id": notification_id,
+                "title": title,
+                "message": message,
+            },
+            blocking=True,
+        )
+        _LOGGER.debug("Persistent notification created: %s", notification_id)
+        return True
+    except Exception as e:
+        _LOGGER.error("Failed to create persistent notification: %s", e)
+        return False
+
+
 # Service names
 SERVICE_RUN_LEARNING = "run_learning"
 SERVICE_HEALTH_CHECK = "health_check"
@@ -104,6 +140,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     # Import modules that require Home Assistant
     from .const import (
         CONF_NOTIFY_SERVICE,
+        CONF_PERSISTENT_NOTIFICATION,
         CONF_ENERGY_METER_ENTITY,
         CONF_ENERGY_COST_ENTITY,
         CONF_MAIN_HEATER_SWITCH,
@@ -125,6 +162,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         DEFAULT_LEARNING_WINDOW_DAYS,
         DEFAULT_FALLBACK_FLOW_RATE,
         DEFAULT_WINDOW_RATING,
+        DEFAULT_PERSISTENT_NOTIFICATION,
     )
     from .coordinator import (
         AdaptiveThermostatCoordinator,
@@ -162,10 +200,14 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
     # Notification and energy tracking
     notify_service = domain_config.get(CONF_NOTIFY_SERVICE)
+    persistent_notification = domain_config.get(
+        CONF_PERSISTENT_NOTIFICATION, DEFAULT_PERSISTENT_NOTIFICATION
+    )
     energy_meter = domain_config.get(CONF_ENERGY_METER_ENTITY)
     energy_cost = domain_config.get(CONF_ENERGY_COST_ENTITY)
 
     hass.data[DOMAIN]["notify_service"] = notify_service
+    hass.data[DOMAIN]["persistent_notification"] = persistent_notification
     hass.data[DOMAIN]["energy_meter_entity"] = energy_meter
     hass.data[DOMAIN]["energy_cost_entity"] = energy_cost
 
@@ -412,19 +454,38 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
         # Send notification if issues found
         if status != HealthStatus.HEALTHY:
-            # Build detailed message with zone-specific issues
-            message_parts = [summary]
             zone_issues = health_result.get("zone_issues", {})
+            issue_count = sum(len(issues) for issues in zone_issues.values())
+            zone_count = len(zone_issues)
+
+            # Short message for mobile notification
+            short_message = f"{zone_count} zone{'s' if zone_count != 1 else ''} need{'s' if zone_count == 1 else ''} attention"
+
+            # Detailed message for persistent notification
+            message_parts = [summary]
             for zone_name, issues in zone_issues.items():
                 for issue in issues:
                     message_parts.append(f"- {zone_name}: {issue.message}")
+            detailed_message = "\n".join(message_parts)
 
+            title = f"Heating System Health: {status.value.upper()}"
+
+            # Send mobile notification (short)
             await async_send_notification(
                 hass,
                 notify_service,
-                title=f"Heating System Health: {status.value.upper()}",
-                message="\n".join(message_parts),
+                title=title,
+                message=short_message,
             )
+
+            # Send persistent notification (detailed) if enabled
+            if persistent_notification:
+                await async_send_persistent_notification(
+                    hass,
+                    notification_id="adaptive_thermostat_health",
+                    title=title,
+                    message=detailed_message,
+                )
 
     async def async_handle_weekly_report(call: ServiceCall) -> None:
         """Handle the weekly_report service call."""
@@ -471,13 +532,33 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         report_text = report.format_report()
         _LOGGER.info("Weekly report generated:\n%s", report_text)
 
-        # Send notification
+        # Build short summary for mobile
+        avg_duty = report.get_average_duty_cycle() if hasattr(report, 'get_average_duty_cycle') else None
+        short_parts = []
+        if avg_duty is not None:
+            short_parts.append(f"Avg {avg_duty:.0f}% duty")
+        if has_energy_data and total_cost > 0:
+            short_parts.append(f"€{total_cost:.2f} cost")
+        short_message = ", ".join(short_parts) if short_parts else "Weekly summary ready"
+
+        title = "Heating System Weekly Report"
+
+        # Send mobile notification (short)
         await async_send_notification(
             hass,
             notify_service,
-            title="Heating System Weekly Report",
-            message=report_text,
+            title=title,
+            message=short_message,
         )
+
+        # Send persistent notification (detailed) if enabled
+        if persistent_notification:
+            await async_send_persistent_notification(
+                hass,
+                notification_id="adaptive_thermostat_weekly",
+                title=title,
+                message=report_text,
+            )
 
     async def async_handle_cost_report(call: ServiceCall) -> None:
         """Handle the cost_report service call.
@@ -569,13 +650,31 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         report_text = "\n".join(report_lines)
         _LOGGER.info("%s cost report:\n%s", period.capitalize(), report_text)
 
-        # Send notification
+        # Try to extract cost for short message
+        try:
+            # cost variable may be set above if data was available
+            short_message = f"€{cost:.2f} this {period}"
+        except NameError:
+            short_message = f"{period.capitalize()} cost report ready"
+
+        title = f"Heating System Cost Report ({period.capitalize()})"
+
+        # Send mobile notification (short)
         await async_send_notification(
             hass,
             notify_service,
-            title=f"Heating System Cost Report ({period.capitalize()})",
-            message=report_text,
+            title=title,
+            message=short_message,
         )
+
+        # Send persistent notification (detailed) if enabled
+        if persistent_notification:
+            await async_send_persistent_notification(
+                hass,
+                notification_id="adaptive_thermostat_cost",
+                title=title,
+                message=report_text,
+            )
 
     async def async_handle_set_vacation_mode(call: ServiceCall) -> None:
         """Handle the set_vacation_mode service call."""
@@ -733,19 +832,37 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         if status != HealthStatus.HEALTHY:
             _LOGGER.warning("Scheduled health check found issues: %s - %s", status.value, summary)
 
-            # Build detailed message with zone-specific issues
-            message_parts = [summary]
             zone_issues = health_result.get("zone_issues", {})
+            zone_count = len(zone_issues)
+
+            # Short message for mobile notification
+            short_message = f"{zone_count} zone{'s' if zone_count != 1 else ''} need{'s' if zone_count == 1 else ''} attention"
+
+            # Detailed message for persistent notification
+            message_parts = [summary]
             for zone_name, issues in zone_issues.items():
                 for issue in issues:
                     message_parts.append(f"- {zone_name}: {issue.message}")
+            detailed_message = "\n".join(message_parts)
 
+            title = f"Heating System Alert: {status.value.upper()}"
+
+            # Send mobile notification (short)
             await async_send_notification(
                 hass,
                 notify_service,
-                title=f"Heating System Alert: {status.value.upper()}",
-                message="\n".join(message_parts),
+                title=title,
+                message=short_message,
             )
+
+            # Send persistent notification (detailed) if enabled
+            if persistent_notification:
+                await async_send_persistent_notification(
+                    hass,
+                    notification_id="adaptive_thermostat_health",
+                    title=title,
+                    message=detailed_message,
+                )
         else:
             _LOGGER.debug("Scheduled health check: all zones healthy")
 
@@ -786,10 +903,13 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
         # Get system totals if available
         weekly_cost_state = hass.states.get("sensor.heating_weekly_cost")
+        has_energy_data = False
+        total_cost = 0.0
 
         if weekly_cost_state and weekly_cost_state.state not in ("unknown", "unavailable"):
             try:
                 total_cost = float(weekly_cost_state.state)
+                has_energy_data = True
                 weekly_energy = weekly_cost_state.attributes.get("weekly_energy_kwh", 0)
                 report.set_totals(weekly_energy, total_cost)
             except (ValueError, TypeError):
@@ -799,13 +919,33 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         report_text = report.format_report()
         _LOGGER.info("Weekly report generated:\n%s", report_text)
 
-        # Send notification
+        # Build short summary for mobile
+        avg_duty = report.get_average_duty_cycle() if hasattr(report, 'get_average_duty_cycle') else None
+        short_parts = []
+        if avg_duty is not None:
+            short_parts.append(f"Avg {avg_duty:.0f}% duty")
+        if has_energy_data and total_cost > 0:
+            short_parts.append(f"€{total_cost:.2f} cost")
+        short_message = ", ".join(short_parts) if short_parts else "Weekly summary ready"
+
+        title = "Heating System Weekly Report"
+
+        # Send mobile notification (short)
         await async_send_notification(
             hass,
             notify_service,
-            title="Heating System Weekly Report",
-            message=report_text,
+            title=title,
+            message=short_message,
         )
+
+        # Send persistent notification (detailed) if enabled
+        if persistent_notification:
+            await async_send_persistent_notification(
+                hass,
+                notification_id="adaptive_thermostat_weekly",
+                title=title,
+                message=report_text,
+            )
 
     # Register weekly report trigger at 9:00 AM (runs daily, but only executes on Sunday)
     async_track_time_change(hass, async_scheduled_weekly_report, hour=9, minute=0, second=0)

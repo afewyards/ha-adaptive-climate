@@ -68,6 +68,18 @@ class WeeklyReport:
         self.total_energy_kwh = total_energy_kwh
         self.total_cost = total_cost
 
+    def get_average_duty_cycle(self) -> Optional[float]:
+        """
+        Calculate the average duty cycle across all zones.
+
+        Returns:
+            Average duty cycle as percentage, or None if no zones
+        """
+        if not self.zones:
+            return None
+        total = sum(zone["duty_cycle"] for zone in self.zones.values())
+        return total / len(self.zones)
+
     def format_report(self, currency_symbol: str = "€") -> str:
         """
         Format the report as a human-readable string.
