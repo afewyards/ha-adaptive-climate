@@ -114,6 +114,21 @@ PID_LIMITS = {
     "kd_max": 200.0,
 }
 
+# Convergence thresholds for adaptive learning
+# System is considered "tuned" when ALL metrics are within these bounds
+CONVERGENCE_THRESHOLDS = {
+    "overshoot_max": 0.2,       # Maximum acceptable overshoot in °C
+    "oscillations_max": 1,      # Maximum acceptable oscillations
+    "settling_time_max": 60,    # Maximum settling time in minutes
+    "rise_time_max": 45,        # Maximum rise time in minutes
+}
+
+# Rule priority levels for PID adjustment conflict resolution
+# Higher priority = takes precedence when rules conflict
+RULE_PRIORITY_OSCILLATION = 3   # Safety - prevent oscillation damage
+RULE_PRIORITY_OVERSHOOT = 2     # Stability - avoid temperature swings
+RULE_PRIORITY_SLOW_RESPONSE = 1  # Performance - improve comfort
+
 # Minimum number of cycles required before adaptive learning can recommend PID changes
 MIN_CYCLES_FOR_LEARNING = 3
 

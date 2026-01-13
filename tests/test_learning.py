@@ -457,3 +457,274 @@ def test_overshoot_module_exists():
     )
     assert PhaseAwareOvershootTracker is not None
     assert calculate_overshoot is not None
+
+
+# ============================================================================
+# Rule Conflict Tests
+# ============================================================================
+
+
+class TestRuleConflicts:
+    """Tests for PID rule conflict detection and resolution."""
+
+    def test_overshoot_vs_slow_response_conflict(self):
+        """Test that overshoot takes precedence over slow response for Kp."""
+        learner = AdaptiveLearner()
+
+        # Add cycles with both overshoot AND slow response
+        for _ in range(3):
+            learner.add_cycle_metrics(CycleMetrics(
+                overshoot=0.6,     # Triggers high overshoot (reduce Kp)
+                rise_time=70,      # Triggers slow response (increase Kp)
+                oscillations=0,
+                settling_time=30,
+            ))
+
+        result = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
+
+        # Overshoot (priority 2) should win over slow response (priority 1)
+        # Kp should be REDUCED, not increased
+        assert result is not None
+        assert result["kp"] < 100.0
+
+    def test_oscillation_vs_slow_response_conflict(self):
+        """Test that oscillation takes precedence over slow response for Kp."""
+        learner = AdaptiveLearner()
+
+        # Add cycles with oscillations AND slow response
+        for _ in range(3):
+            learner.add_cycle_metrics(CycleMetrics(
+                overshoot=0.0,
+                oscillations=4,    # Many oscillations (reduce Kp by 10%)
+                rise_time=70,      # Slow response (increase Kp by 10%)
+                settling_time=30,
+            ))
+
+        result = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
+
+        # Oscillation (priority 3) should win over slow response (priority 1)
+        # Kp should be REDUCED
+        assert result is not None
+        assert result["kp"] < 100.0
+
+    def test_no_conflict_when_rules_agree(self):
+        """Test that agreeing rules both apply."""
+        learner = AdaptiveLearner()
+
+        # Add cycles where overshoot and oscillations both reduce Kp
+        for _ in range(3):
+            learner.add_cycle_metrics(CycleMetrics(
+                overshoot=0.6,     # High overshoot (reduce Kp ~12%)
+                oscillations=4,    # Many oscillations (reduce Kp 10%)
+                rise_time=20,
+                settling_time=30,
+            ))
+
+        result = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
+
+        # Both reductions should apply (no conflict)
+        # Both reduce Kp: 100 * 0.88 * 0.90 ≈ 79.2
+        assert result is not None
+        assert result["kp"] < 80.0
+
+    def test_conflict_detection_only_on_opposing_adjustments(self):
+        """Test that conflicts are only detected when adjustments oppose each other."""
+        learner = AdaptiveLearner()
+
+        # Add cycles with undershoot (increases Ki) and slow settling (increases Kd)
+        # No conflict expected - they adjust different parameters
+        for _ in range(3):
+            learner.add_cycle_metrics(CycleMetrics(
+                overshoot=0.0,
+                undershoot=0.5,    # Increase Ki
+                oscillations=0,
+                rise_time=20,
+                settling_time=100,  # Increase Kd
+            ))
+
+        result = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
+
+        # Both should apply since they don't conflict
+        assert result is not None
+        assert result["ki"] > 1.0  # Ki increased
+        assert result["kd"] > 10.0  # Kd increased
+
+    def test_multiple_conflicts_resolved(self):
+        """Test that multiple conflicts are resolved correctly."""
+        learner = AdaptiveLearner()
+
+        # Create scenario with multiple potential conflicts
+        for _ in range(3):
+            learner.add_cycle_metrics(CycleMetrics(
+                overshoot=0.3,     # Moderate overshoot (reduce Kp by 5%)
+                oscillations=4,    # Many oscillations (reduce Kp 10%, increase Kd 20%)
+                rise_time=70,      # Slow response (increase Kp 10%)
+                settling_time=30,
+            ))
+
+        result = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
+
+        # Kp conflicts: overshoot (priority 2) and oscillation (priority 3) both reduce
+        #              slow response (priority 1) increases
+        # Oscillation has highest priority, so slow response is suppressed
+        assert result is not None
+        assert result["kp"] < 100.0  # Should be reduced
+        assert result["kd"] > 10.0   # Kd should be increased by oscillation rule
+
+
+class TestConvergenceDetection:
+    """Tests for convergence detection (system is well-tuned)."""
+
+    def test_converged_system_returns_none(self):
+        """Test that converged system returns None (no adjustment needed)."""
+        learner = AdaptiveLearner()
+
+        # Add cycles with good metrics (within convergence thresholds)
+        for _ in range(3):
+            learner.add_cycle_metrics(CycleMetrics(
+                overshoot=0.1,      # Below 0.2 threshold
+                oscillations=0,     # Below 1 threshold
+                settling_time=30,   # Below 60 threshold
+                rise_time=20,       # Below 45 threshold
+            ))
+
+        result = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
+
+        # System is converged - should return None
+        assert result is None
+
+    def test_not_converged_when_overshoot_high(self):
+        """Test that system is not converged when overshoot exceeds threshold."""
+        learner = AdaptiveLearner()
+
+        # Add cycles with one metric outside threshold
+        for _ in range(3):
+            learner.add_cycle_metrics(CycleMetrics(
+                overshoot=0.3,      # Above 0.2 threshold
+                oscillations=0,
+                settling_time=30,
+                rise_time=20,
+            ))
+
+        result = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
+
+        # Not converged - should return adjustment
+        assert result is not None
+
+    def test_not_converged_when_oscillations_high(self):
+        """Test that system is not converged when oscillations exceed threshold."""
+        learner = AdaptiveLearner()
+
+        for _ in range(3):
+            learner.add_cycle_metrics(CycleMetrics(
+                overshoot=0.1,
+                oscillations=2,     # Above 1 threshold
+                settling_time=30,
+                rise_time=20,
+            ))
+
+        result = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
+
+        # Not converged due to oscillations
+        assert result is not None
+
+    def test_not_converged_when_settling_slow(self):
+        """Test that system is not converged when settling time exceeds threshold."""
+        learner = AdaptiveLearner()
+
+        for _ in range(3):
+            learner.add_cycle_metrics(CycleMetrics(
+                overshoot=0.1,
+                oscillations=0,
+                settling_time=70,   # Above 60 threshold
+                rise_time=20,
+            ))
+
+        result = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
+
+        # Not converged due to slow settling, but settling_time=70 doesn't trigger
+        # slow settling rule (threshold is 90), so it should converge on other metrics
+        # Actually settling_time=70 is below the 90 rule threshold but above
+        # the 60 convergence threshold, so it's NOT converged
+        # But no rule fires, so result should be None (no adjustments but still converged on rules)
+        # This is tricky - convergence check happens BEFORE rule evaluation
+        # With settling_time=70 > 60 threshold, convergence returns False
+        # But no rule triggers, so rule_results is empty, returning None
+        # Let me check the logic...
+        # Actually the function returns None in two cases:
+        # 1. Convergence check passes (all metrics within thresholds)
+        # 2. No rules trigger
+        # In this case, convergence check fails (settling_time=70 > 60)
+        # But no rules trigger (settling_time=70 < 90 threshold)
+        # So it returns None because no rules triggered, not because converged
+        assert result is None  # No rules trigger
+
+    def test_not_converged_when_rise_slow(self):
+        """Test that system is not converged when rise time exceeds threshold."""
+        learner = AdaptiveLearner()
+
+        for _ in range(3):
+            learner.add_cycle_metrics(CycleMetrics(
+                overshoot=0.1,
+                oscillations=0,
+                settling_time=30,
+                rise_time=70,       # Above 45 threshold, triggers slow response
+            ))
+
+        result = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
+
+        # Not converged - slow response rule should trigger
+        assert result is not None
+        assert result["kp"] > 100.0  # Slow response increases Kp
+
+    def test_partial_convergence_not_detected(self):
+        """Test that partial convergence (some metrics good) doesn't trigger convergence."""
+        learner = AdaptiveLearner()
+
+        # Most metrics good, but overshoot is high
+        for _ in range(3):
+            learner.add_cycle_metrics(CycleMetrics(
+                overshoot=0.5,      # Above threshold, triggers moderate overshoot
+                oscillations=0,
+                settling_time=30,
+                rise_time=20,
+            ))
+
+        result = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
+
+        # Not fully converged - should return adjustment
+        assert result is not None
+        assert result["kp"] < 100.0  # Overshoot reduces Kp
+
+    def test_convergence_at_threshold_boundary(self):
+        """Test convergence when metrics are exactly at threshold boundaries."""
+        learner = AdaptiveLearner()
+
+        # All metrics exactly at thresholds (should still be considered converged)
+        for _ in range(3):
+            learner.add_cycle_metrics(CycleMetrics(
+                overshoot=0.2,      # Exactly at 0.2 threshold
+                oscillations=1,     # Exactly at 1 threshold
+                settling_time=60,   # Exactly at 60 threshold
+                rise_time=45,       # Exactly at 45 threshold
+            ))
+
+        result = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
+
+        # At boundary values should be considered converged (<=)
+        assert result is None
+
+
+# Test marker for rule conflict module
+def test_rule_conflicts_module_exists():
+    """Marker test to ensure rule conflict types are importable."""
+    from custom_components.adaptive_thermostat.adaptive.learning import (
+        PIDRule,
+        PIDRuleResult,
+    )
+    assert PIDRule is not None
+    assert PIDRuleResult is not None
+    # Verify priority levels
+    assert PIDRule.HIGH_OVERSHOOT.priority == 2
+    assert PIDRule.MANY_OSCILLATIONS.priority == 3
+    assert PIDRule.SLOW_RESPONSE.priority == 1

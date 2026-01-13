@@ -1,15 +1,50 @@
 """Thermal rate learning and adaptive PID adjustments for Adaptive Thermostat."""
 
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple, Any
+from enum import Enum
+from typing import Dict, List, NamedTuple, Optional, Set, Tuple, Any
 import statistics
 import logging
 import json
 import os
 
-from ..const import PID_LIMITS, MIN_CYCLES_FOR_LEARNING
+from ..const import (
+    PID_LIMITS,
+    MIN_CYCLES_FOR_LEARNING,
+    CONVERGENCE_THRESHOLDS,
+    RULE_PRIORITY_OSCILLATION,
+    RULE_PRIORITY_OVERSHOOT,
+    RULE_PRIORITY_SLOW_RESPONSE,
+)
 
 _LOGGER = logging.getLogger(__name__)
+
+
+class PIDRule(Enum):
+    """PID adjustment rules with associated priority levels."""
+
+    HIGH_OVERSHOOT = ("high_overshoot", RULE_PRIORITY_OVERSHOOT)
+    MODERATE_OVERSHOOT = ("moderate_overshoot", RULE_PRIORITY_OVERSHOOT)
+    SLOW_RESPONSE = ("slow_response", RULE_PRIORITY_SLOW_RESPONSE)
+    UNDERSHOOT = ("undershoot", RULE_PRIORITY_SLOW_RESPONSE)
+    MANY_OSCILLATIONS = ("many_oscillations", RULE_PRIORITY_OSCILLATION)
+    SOME_OSCILLATIONS = ("some_oscillations", RULE_PRIORITY_OSCILLATION)
+    SLOW_SETTLING = ("slow_settling", RULE_PRIORITY_SLOW_RESPONSE)
+
+    def __init__(self, rule_name: str, priority: int):
+        """Initialize rule with name and priority."""
+        self.rule_name = rule_name
+        self.priority = priority
+
+
+class PIDRuleResult(NamedTuple):
+    """Result of a single PID rule evaluation."""
+
+    rule: PIDRule
+    kp_factor: float  # Multiplier for Kp (1.0 = no change)
+    ki_factor: float  # Multiplier for Ki (1.0 = no change)
+    kd_factor: float  # Multiplier for Kd (1.0 = no change)
+    reason: str       # Human-readable reason for adjustment
 
 
 class ThermalRateLearner:
@@ -688,6 +723,231 @@ class AdaptiveLearner:
         """
         return len(self._cycle_history)
 
+    def _evaluate_rules(
+        self,
+        avg_overshoot: float,
+        avg_undershoot: float,
+        avg_oscillations: float,
+        avg_rise_time: float,
+        avg_settling_time: float,
+    ) -> List[PIDRuleResult]:
+        """
+        Evaluate all PID tuning rules against current metrics.
+
+        Args:
+            avg_overshoot: Average overshoot in °C
+            avg_undershoot: Average undershoot in °C
+            avg_oscillations: Average number of oscillations
+            avg_rise_time: Average rise time in minutes
+            avg_settling_time: Average settling time in minutes
+
+        Returns:
+            List of applicable rule results (rules that would fire)
+        """
+        results: List[PIDRuleResult] = []
+
+        # Rule 1: High overshoot (>0.5C)
+        if avg_overshoot > 0.5:
+            reduction = min(0.15, avg_overshoot * 0.2)  # Up to 15% reduction
+            results.append(PIDRuleResult(
+                rule=PIDRule.HIGH_OVERSHOOT,
+                kp_factor=1.0 - reduction,
+                ki_factor=0.9,
+                kd_factor=1.0,
+                reason=f"High overshoot ({avg_overshoot:.2f}°C)"
+            ))
+        # Rule 2: Moderate overshoot (>0.2C, only if high overshoot didn't fire)
+        elif avg_overshoot > 0.2:
+            results.append(PIDRuleResult(
+                rule=PIDRule.MODERATE_OVERSHOOT,
+                kp_factor=0.95,
+                ki_factor=1.0,
+                kd_factor=1.0,
+                reason=f"Moderate overshoot ({avg_overshoot:.2f}°C)"
+            ))
+
+        # Rule 3: Slow response (rise time >60 min)
+        if avg_rise_time > 60:
+            results.append(PIDRuleResult(
+                rule=PIDRule.SLOW_RESPONSE,
+                kp_factor=1.10,
+                ki_factor=1.0,
+                kd_factor=1.0,
+                reason=f"Slow rise time ({avg_rise_time:.1f} min)"
+            ))
+
+        # Rule 4: Undershoot (>0.3C)
+        if avg_undershoot > 0.3:
+            increase = min(0.20, avg_undershoot * 0.4)  # Up to 20% increase
+            results.append(PIDRuleResult(
+                rule=PIDRule.UNDERSHOOT,
+                kp_factor=1.0,
+                ki_factor=1.0 + increase,
+                kd_factor=1.0,
+                reason=f"Undershoot ({avg_undershoot:.2f}°C)"
+            ))
+
+        # Rule 5: Many oscillations (>3)
+        if avg_oscillations > 3:
+            results.append(PIDRuleResult(
+                rule=PIDRule.MANY_OSCILLATIONS,
+                kp_factor=0.90,
+                ki_factor=1.0,
+                kd_factor=1.20,
+                reason=f"Many oscillations ({avg_oscillations:.1f})"
+            ))
+        # Rule 6: Some oscillations (>1, only if many didn't fire)
+        elif avg_oscillations > 1:
+            results.append(PIDRuleResult(
+                rule=PIDRule.SOME_OSCILLATIONS,
+                kp_factor=1.0,
+                ki_factor=1.0,
+                kd_factor=1.10,
+                reason=f"Some oscillations ({avg_oscillations:.1f})"
+            ))
+
+        # Rule 7: Slow settling (>90 min)
+        if avg_settling_time > 90:
+            results.append(PIDRuleResult(
+                rule=PIDRule.SLOW_SETTLING,
+                kp_factor=1.0,
+                ki_factor=1.0,
+                kd_factor=1.15,
+                reason=f"Slow settling ({avg_settling_time:.1f} min)"
+            ))
+
+        return results
+
+    def _detect_conflicts(
+        self,
+        rule_results: List[PIDRuleResult]
+    ) -> List[Tuple[PIDRuleResult, PIDRuleResult, str]]:
+        """
+        Detect conflicts between applicable rules.
+
+        A conflict occurs when two rules adjust the same parameter in opposite directions
+        (one increases, one decreases).
+
+        Args:
+            rule_results: List of applicable rule results
+
+        Returns:
+            List of (rule1, rule2, parameter_name) tuples for each conflict
+        """
+        conflicts: List[Tuple[PIDRuleResult, PIDRuleResult, str]] = []
+
+        for i, r1 in enumerate(rule_results):
+            for r2 in rule_results[i + 1:]:
+                # Check Kp conflicts (one increases, one decreases)
+                if (r1.kp_factor > 1.0 and r2.kp_factor < 1.0) or \
+                   (r1.kp_factor < 1.0 and r2.kp_factor > 1.0):
+                    conflicts.append((r1, r2, "kp"))
+
+                # Check Ki conflicts
+                if (r1.ki_factor > 1.0 and r2.ki_factor < 1.0) or \
+                   (r1.ki_factor < 1.0 and r2.ki_factor > 1.0):
+                    conflicts.append((r1, r2, "ki"))
+
+                # Check Kd conflicts
+                if (r1.kd_factor > 1.0 and r2.kd_factor < 1.0) or \
+                   (r1.kd_factor < 1.0 and r2.kd_factor > 1.0):
+                    conflicts.append((r1, r2, "kd"))
+
+        return conflicts
+
+    def _resolve_conflicts(
+        self,
+        rule_results: List[PIDRuleResult],
+        conflicts: List[Tuple[PIDRuleResult, PIDRuleResult, str]]
+    ) -> List[PIDRuleResult]:
+        """
+        Resolve conflicts by applying higher priority rules.
+
+        For each conflict, the lower priority rule's adjustment for that parameter
+        is neutralized (set to 1.0).
+
+        Args:
+            rule_results: List of applicable rule results
+            conflicts: List of detected conflicts from _detect_conflicts()
+
+        Returns:
+            Modified list of rule results with conflicts resolved
+        """
+        # Track which rules have parameters suppressed
+        suppressed: Dict[PIDRule, Set[str]] = {}
+
+        for r1, r2, param in conflicts:
+            # Determine winner (higher priority)
+            winner = r1 if r1.rule.priority >= r2.rule.priority else r2
+            loser = r2 if winner == r1 else r1
+
+            _LOGGER.info(
+                f"PID rule conflict on {param}: '{winner.rule.rule_name}' "
+                f"(priority {winner.rule.priority}) takes precedence over "
+                f"'{loser.rule.rule_name}' (priority {loser.rule.priority})"
+            )
+
+            # Mark loser's parameter as suppressed
+            if loser.rule not in suppressed:
+                suppressed[loser.rule] = set()
+            suppressed[loser.rule].add(param)
+
+        # Build resolved results
+        resolved: List[PIDRuleResult] = []
+        for result in rule_results:
+            if result.rule in suppressed:
+                # Create new result with suppressed parameters neutralized
+                suppressed_params = suppressed[result.rule]
+                resolved.append(PIDRuleResult(
+                    rule=result.rule,
+                    kp_factor=1.0 if "kp" in suppressed_params else result.kp_factor,
+                    ki_factor=1.0 if "ki" in suppressed_params else result.ki_factor,
+                    kd_factor=1.0 if "kd" in suppressed_params else result.kd_factor,
+                    reason=result.reason + " (partially suppressed)"
+                ))
+            else:
+                resolved.append(result)
+
+        return resolved
+
+    def _check_convergence(
+        self,
+        avg_overshoot: float,
+        avg_oscillations: float,
+        avg_settling_time: float,
+        avg_rise_time: float,
+    ) -> bool:
+        """
+        Check if the system has converged (is well-tuned).
+
+        Convergence occurs when ALL performance metrics are within acceptable bounds
+        defined by CONVERGENCE_THRESHOLDS.
+
+        Args:
+            avg_overshoot: Average overshoot in °C
+            avg_oscillations: Average number of oscillations
+            avg_settling_time: Average settling time in minutes
+            avg_rise_time: Average rise time in minutes
+
+        Returns:
+            True if converged, False otherwise
+        """
+        is_converged = (
+            avg_overshoot <= CONVERGENCE_THRESHOLDS["overshoot_max"] and
+            avg_oscillations <= CONVERGENCE_THRESHOLDS["oscillations_max"] and
+            avg_settling_time <= CONVERGENCE_THRESHOLDS["settling_time_max"] and
+            avg_rise_time <= CONVERGENCE_THRESHOLDS["rise_time_max"]
+        )
+
+        if is_converged:
+            _LOGGER.info(
+                f"PID convergence detected - system tuned: "
+                f"overshoot={avg_overshoot:.2f}°C, oscillations={avg_oscillations:.1f}, "
+                f"settling={avg_settling_time:.1f}min, rise={avg_rise_time:.1f}min"
+            )
+
+        return is_converged
+
     def calculate_pid_adjustment(
         self,
         current_kp: float,
@@ -698,14 +958,15 @@ class AdaptiveLearner:
         """
         Calculate PID adjustments based on observed cycle performance.
 
-        Implements rule-based adaptive tuning:
-        - High overshoot (>0.5C): Reduce Kp by up to 15%, reduce Ki
-        - Moderate overshoot (>0.2C): Reduce Kp by 5%
-        - Slow response (>60 min): Increase Kp by 10%
-        - Undershoot (>0.3C): Increase Ki by up to 20%
-        - Many oscillations (>3): Reduce Kp by 10%, increase Kd by 20%
-        - Some oscillations (>1): Increase Kd by 10%
-        - Slow settling (>90 min): Increase Kd by 15%
+        Implements priority-based rule conflict resolution:
+        - Priority 3 (highest): Oscillation rules (safety)
+        - Priority 2: Overshoot rules (stability)
+        - Priority 1 (lowest): Response time rules (performance)
+
+        When rules conflict (e.g., overshoot says decrease Kp, slow response says increase),
+        the higher priority rule wins.
+
+        Also detects convergence (system is well-tuned) and skips adjustments.
 
         Args:
             current_kp: Current proportional gain
@@ -715,6 +976,7 @@ class AdaptiveLearner:
 
         Returns:
             Dictionary with recommended kp, ki, kd values, or None if insufficient data
+            or system is converged
         """
         if len(self._cycle_history) < min_cycles:
             _LOGGER.debug(
@@ -743,51 +1005,45 @@ class AdaptiveLearner:
             [c.rise_time for c in recent_cycles if c.rise_time is not None]
         ) if any(c.rise_time is not None for c in recent_cycles) else 0.0
 
-        # Start with current values
+        # Check for convergence - skip adjustments if system is tuned
+        if self._check_convergence(
+            avg_overshoot, avg_oscillations, avg_settling_time, avg_rise_time
+        ):
+            _LOGGER.info("Skipping PID adjustment - system has converged")
+            return None
+
+        # Evaluate all applicable rules
+        rule_results = self._evaluate_rules(
+            avg_overshoot, avg_undershoot, avg_oscillations,
+            avg_rise_time, avg_settling_time
+        )
+
+        if not rule_results:
+            _LOGGER.debug("No PID rules triggered - metrics within acceptable ranges")
+            return None
+
+        # Detect and resolve conflicts
+        conflicts = self._detect_conflicts(rule_results)
+        if conflicts:
+            _LOGGER.info(f"Detected {len(conflicts)} PID rule conflict(s)")
+            rule_results = self._resolve_conflicts(rule_results, conflicts)
+
+        # Apply resolved rules
         new_kp = current_kp
         new_ki = current_ki
         new_kd = current_kd
 
-        # Apply rules based on performance metrics
+        for result in rule_results:
+            if result.kp_factor != 1.0:
+                _LOGGER.info(f"{result.reason}: Kp *= {result.kp_factor:.2f}")
+            if result.ki_factor != 1.0:
+                _LOGGER.info(f"{result.reason}: Ki *= {result.ki_factor:.2f}")
+            if result.kd_factor != 1.0:
+                _LOGGER.info(f"{result.reason}: Kd *= {result.kd_factor:.2f}")
 
-        # High overshoot: reduce Kp and Ki
-        if avg_overshoot > 0.5:
-            reduction = min(0.15, avg_overshoot * 0.2)  # Up to 15% reduction
-            new_kp *= (1.0 - reduction)
-            new_ki *= 0.9  # Reduce integral gain by 10%
-            _LOGGER.info(f"High overshoot ({avg_overshoot:.2f}C): reducing Kp by {reduction*100:.1f}%")
-
-        # Moderate overshoot: reduce Kp slightly
-        elif avg_overshoot > 0.2:
-            new_kp *= 0.95
-            _LOGGER.info(f"Moderate overshoot ({avg_overshoot:.2f}C): reducing Kp by 5%")
-
-        # Slow response: increase Kp
-        if avg_rise_time > 60:
-            new_kp *= 1.10
-            _LOGGER.info(f"Slow rise time ({avg_rise_time:.1f} min): increasing Kp by 10%")
-
-        # Undershoot: increase Ki
-        if avg_undershoot > 0.3:
-            increase = min(0.20, avg_undershoot * 0.4)  # Up to 20% increase
-            new_ki *= (1.0 + increase)
-            _LOGGER.info(f"Undershoot ({avg_undershoot:.2f}C): increasing Ki by {increase*100:.1f}%")
-
-        # Many oscillations: reduce Kp, increase Kd
-        if avg_oscillations > 3:
-            new_kp *= 0.90
-            new_kd *= 1.20
-            _LOGGER.info(f"Many oscillations ({avg_oscillations:.1f}): reducing Kp by 10%, increasing Kd by 20%")
-
-        # Some oscillations: increase Kd
-        elif avg_oscillations > 1:
-            new_kd *= 1.10
-            _LOGGER.info(f"Some oscillations ({avg_oscillations:.1f}): increasing Kd by 10%")
-
-        # Slow settling: increase Kd
-        if avg_settling_time > 90:
-            new_kd *= 1.15
-            _LOGGER.info(f"Slow settling ({avg_settling_time:.1f} min): increasing Kd by 15%")
+            new_kp *= result.kp_factor
+            new_ki *= result.ki_factor
+            new_kd *= result.kd_factor
 
         # Enforce PID limits
         new_kp = max(PID_LIMITS["kp_min"], min(PID_LIMITS["kp_max"], new_kp))
