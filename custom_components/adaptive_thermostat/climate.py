@@ -131,10 +131,6 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Optional(const.CONF_OUTPUT_MAX, default=const.DEFAULT_OUTPUT_MAX): vol.Coerce(float),
         vol.Optional(const.CONF_OUT_CLAMP_LOW, default=const.DEFAULT_OUT_CLAMP_LOW): vol.Coerce(float),
         vol.Optional(const.CONF_OUT_CLAMP_HIGH, default=const.DEFAULT_OUT_CLAMP_HIGH): vol.Coerce(float),
-        vol.Optional(const.CONF_KP): vol.Coerce(float),
-        vol.Optional(const.CONF_KI): vol.Coerce(float),
-        vol.Optional(const.CONF_KD): vol.Coerce(float),
-        vol.Optional(const.CONF_KE, default=const.DEFAULT_KE): vol.Coerce(float),
         vol.Optional(const.CONF_PWM, default=const.DEFAULT_PWM): vol.All(
             cv.time_period, cv.positive_timedelta
         ),
@@ -231,10 +227,6 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         'output_max': config.get(const.CONF_OUTPUT_MAX),
         'output_clamp_low': config.get(const.CONF_OUT_CLAMP_LOW),
         'output_clamp_high': config.get(const.CONF_OUT_CLAMP_HIGH),
-        'kp': config.get(const.CONF_KP),
-        'ki': config.get(const.CONF_KI),
-        'kd': config.get(const.CONF_KD),
-        'ke': config.get(const.CONF_KE),
         'pwm': config.get(const.CONF_PWM),
         'boost_pid_off': config.get(const.CONF_BOOST_PID_OFF),
         const.CONF_DEBUG: config.get(const.CONF_DEBUG),
@@ -453,34 +445,25 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
         self._heater_control_failed = False
         self._last_heater_error: str | None = None
 
-        # Get PID values from config or calculate from physics
-        self._kp = kwargs.get('kp')
-        self._ki = kwargs.get('ki')
-        self._kd = kwargs.get('kd')
-        self._ke = kwargs.get('ke')
-
-        # If PID values not configured, calculate from physics
-        if self._kp is None or self._ki is None or self._kd is None:
-            if self._area_m2:
-                volume_m3 = self._area_m2 * self._ceiling_height
-                tau = calculate_thermal_time_constant(
-                    volume_m3=volume_m3,
-                    window_area_m2=self._window_area_m2,
-                    floor_area_m2=self._area_m2,
-                    window_rating=self._window_rating,
-                )
-                calc_kp, calc_ki, calc_kd = calculate_initial_pid(tau, self._heating_type)
-                self._kp = self._kp if self._kp is not None else calc_kp
-                self._ki = self._ki if self._ki is not None else calc_ki
-                self._kd = self._kd if self._kd is not None else calc_kd
-                _LOGGER.info("%s: Physics-based PID init (tau=%.2f, type=%s, window=%s): Kp=%.4f, Ki=%.5f, Kd=%.3f",
-                             self.unique_id, tau, self._heating_type, self._window_rating, self._kp, self._ki, self._kd)
-            else:
-                # Fallback defaults if no zone properties
-                self._kp = self._kp if self._kp is not None else 0.5
-                self._ki = self._ki if self._ki is not None else 0.01
-                self._kd = self._kd if self._kd is not None else 5.0
-                _LOGGER.warning("%s: No area_m2 configured, using default PID values", self.unique_id)
+        # Calculate PID values from physics (adaptive learning will refine them)
+        if self._area_m2:
+            volume_m3 = self._area_m2 * self._ceiling_height
+            tau = calculate_thermal_time_constant(
+                volume_m3=volume_m3,
+                window_area_m2=self._window_area_m2,
+                floor_area_m2=self._area_m2,
+                window_rating=self._window_rating,
+            )
+            self._kp, self._ki, self._kd = calculate_initial_pid(tau, self._heating_type)
+            _LOGGER.info("%s: Physics-based PID init (tau=%.2f, type=%s, window=%s): Kp=%.4f, Ki=%.5f, Kd=%.3f",
+                         self.unique_id, tau, self._heating_type, self._window_rating, self._kp, self._ki, self._kd)
+        else:
+            # Fallback defaults if no zone properties
+            self._kp = 0.5
+            self._ki = 0.01
+            self._kd = 5.0
+            _LOGGER.warning("%s: No area_m2 configured, using default PID values", self.unique_id)
+        self._ke = const.DEFAULT_KE
 
         self._pwm = kwargs.get('pwm').seconds
         self._p = self._i = self._d = self._e = self._dt = 0
