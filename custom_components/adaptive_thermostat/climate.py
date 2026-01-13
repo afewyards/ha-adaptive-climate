@@ -404,15 +404,20 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
                         setback_delta=self._night_setback_config['delta'],
                         recovery_deadline=self._night_setback_config['recovery_deadline'],
                     )
-                    # Solar recovery (uses window_orientation from zone config)
-                    # Sun position calculator is set in async_added_to_hass
-                    if self._night_setback_config['solar_recovery'] and self._window_orientation:
-                        self._solar_recovery = SolarRecovery(
-                            window_orientation=self._window_orientation,
-                            base_recovery_time=end,
-                            recovery_deadline=self._night_setback_config['recovery_deadline'],
-                            min_effective_elevation=self._night_setback_config['min_effective_elevation'],
-                        )
+
+                # Solar recovery (uses window_orientation from zone config)
+                # Works with both explicit and dynamic end times
+                # Sun position calculator is set in async_added_to_hass
+                if self._night_setback_config['solar_recovery'] and self._window_orientation:
+                    # Use explicit end time or default to 07:00 for static fallback
+                    # (dynamic sun position calculator will override this)
+                    base_recovery = end if end else "07:00"
+                    self._solar_recovery = SolarRecovery(
+                        window_orientation=self._window_orientation,
+                        base_recovery_time=base_recovery,
+                        recovery_deadline=self._night_setback_config['recovery_deadline'],
+                        min_effective_elevation=self._night_setback_config['min_effective_elevation'],
+                    )
 
         # Zone linking for thermally connected zones
         self._linked_zones = kwargs.get('linked_zones', [])
