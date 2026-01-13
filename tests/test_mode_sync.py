@@ -293,3 +293,234 @@ async def test_zone_already_in_target_mode(mock_hass, coord):
 
     # Should NOT call service since bedroom is already in heat mode
     assert mock_hass.services.async_call.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_sync_not_triggering_reverse_sync(mock_hass, coord):
+    """Test that sync does not trigger a reverse sync (feedback loop prevention).
+
+    When zone A syncs zone B to HEAT mode, zone B's resulting mode change
+    should NOT trigger a sync back to zone A.
+    """
+    # Register zones
+    coord.register_zone("living_room", {"climate_entity_id": "climate.living_room"})
+    coord.register_zone("bedroom", {"climate_entity_id": "climate.bedroom"})
+
+    # Create mode sync
+    mode_sync = coordinator.ModeSync(mock_hass, coord)
+
+    # Initially, sync flag should be False
+    assert mode_sync.is_sync_in_progress() is False
+
+    # Mock climate entity states
+    def mock_get_state(entity_id):
+        state = Mock()
+        state.state = "off"
+        return state
+
+    mock_hass.states.get = mock_get_state
+
+    # Track calls to verify no reverse sync
+    call_count_before_reverse = 0
+
+    # Create a side effect that simulates the synced zone calling back
+    original_async_call = mock_hass.services.async_call
+
+    async def mock_async_call_with_callback(*args, **kwargs):
+        nonlocal call_count_before_reverse
+        # Call the original mock
+        await original_async_call(*args, **kwargs)
+
+        # Simulate the feedback: when bedroom is set to heat,
+        # it would normally trigger on_mode_change for bedroom
+        if args[0] == "climate" and args[1] == "set_hvac_mode":
+            entity_id = args[2].get("entity_id")
+            if entity_id == "climate.bedroom":
+                call_count_before_reverse = mock_hass.services.async_call.call_count
+                # This simulates the reverse sync attempt that should be blocked
+                await mode_sync.on_mode_change(
+                    zone_id="bedroom",
+                    old_mode="off",
+                    new_mode="heat",
+                    climate_entity_id="climate.bedroom",
+                )
+
+    mock_hass.services.async_call = AsyncMock(side_effect=mock_async_call_with_callback)
+
+    # Trigger initial mode change in living_room
+    await mode_sync.on_mode_change(
+        zone_id="living_room",
+        old_mode="off",
+        new_mode="heat",
+        climate_entity_id="climate.living_room",
+    )
+
+    # Should have only 1 service call (living_room -> bedroom)
+    # The reverse sync from bedroom should have been blocked
+    assert mock_hass.services.async_call.call_count == 1
+
+    # Verify the call was to sync bedroom to heat
+    call_obj = mock_hass.services.async_call.call_args
+    assert call_obj[0][2]["entity_id"] == "climate.bedroom"
+    assert call_obj[0][2]["hvac_mode"] == "heat"
+
+    # After sync completes, flag should be False
+    assert mode_sync.is_sync_in_progress() is False
+
+
+@pytest.mark.asyncio
+async def test_multiple_zones_syncing_without_loop(mock_hass, coord):
+    """Test that multiple zones can be synced without creating a feedback loop.
+
+    When zone A syncs zones B, C, and D to HEAT mode, none of those zones'
+    resulting mode changes should trigger additional syncs.
+    """
+    # Register multiple zones
+    coord.register_zone("living_room", {"climate_entity_id": "climate.living_room"})
+    coord.register_zone("bedroom", {"climate_entity_id": "climate.bedroom"})
+    coord.register_zone("kitchen", {"climate_entity_id": "climate.kitchen"})
+    coord.register_zone("bathroom", {"climate_entity_id": "climate.bathroom"})
+
+    # Create mode sync
+    mode_sync = coordinator.ModeSync(mock_hass, coord)
+
+    # Mock climate entity states
+    def mock_get_state(entity_id):
+        state = Mock()
+        state.state = "off"
+        return state
+
+    mock_hass.states.get = mock_get_state
+
+    # Track all on_mode_change calls
+    on_mode_change_calls = []
+    original_on_mode_change = mode_sync.on_mode_change
+
+    async def tracked_on_mode_change(zone_id, old_mode, new_mode, climate_entity_id):
+        on_mode_change_calls.append(zone_id)
+        return await original_on_mode_change(zone_id, old_mode, new_mode, climate_entity_id)
+
+    mode_sync.on_mode_change = tracked_on_mode_change
+
+    # Create a side effect that simulates all synced zones calling back
+    original_async_call = mock_hass.services.async_call
+
+    async def mock_async_call_with_callbacks(*args, **kwargs):
+        await original_async_call(*args, **kwargs)
+
+        # Simulate feedback from each synced zone
+        if args[0] == "climate" and args[1] == "set_hvac_mode":
+            entity_id = args[2].get("entity_id")
+            zone_id = entity_id.replace("climate.", "")
+            # Simulate the mode change event that would trigger on_mode_change
+            await mode_sync.on_mode_change(
+                zone_id=zone_id,
+                old_mode="off",
+                new_mode="heat",
+                climate_entity_id=entity_id,
+            )
+
+    mock_hass.services.async_call = AsyncMock(side_effect=mock_async_call_with_callbacks)
+
+    # Trigger initial mode change in living_room
+    await mode_sync.on_mode_change(
+        zone_id="living_room",
+        old_mode="off",
+        new_mode="heat",
+        climate_entity_id="climate.living_room",
+    )
+
+    # Should have exactly 3 service calls (living_room -> bedroom, kitchen, bathroom)
+    # No additional calls from the reverse syncs
+    assert mock_hass.services.async_call.call_count == 3
+
+    # Verify all expected zones were synced
+    entity_ids_called = {
+        call[0][2]["entity_id"]
+        for call in mock_hass.services.async_call.call_args_list
+    }
+    assert entity_ids_called == {
+        "climate.bedroom",
+        "climate.kitchen",
+        "climate.bathroom",
+    }
+
+    # After sync completes, flag should be False
+    assert mode_sync.is_sync_in_progress() is False
+
+
+@pytest.mark.asyncio
+async def test_sync_flag_cleared_on_exception(mock_hass, coord):
+    """Test that sync flag is cleared even if an exception occurs during sync."""
+    # Register zones
+    coord.register_zone("living_room", {"climate_entity_id": "climate.living_room"})
+    coord.register_zone("bedroom", {"climate_entity_id": "climate.bedroom"})
+
+    # Create mode sync
+    mode_sync = coordinator.ModeSync(mock_hass, coord)
+
+    # Mock climate entity states
+    def mock_get_state(entity_id):
+        state = Mock()
+        state.state = "off"
+        return state
+
+    mock_hass.states.get = mock_get_state
+
+    # Make the service call raise an exception
+    mock_hass.services.async_call = AsyncMock(side_effect=Exception("Service call failed"))
+
+    # Initially, sync flag should be False
+    assert mode_sync.is_sync_in_progress() is False
+
+    # Trigger mode change - should not raise (exception is caught in _set_zone_mode)
+    await mode_sync.on_mode_change(
+        zone_id="living_room",
+        old_mode="off",
+        new_mode="heat",
+        climate_entity_id="climate.living_room",
+    )
+
+    # After sync (even with exception), flag should be False
+    assert mode_sync.is_sync_in_progress() is False
+
+
+@pytest.mark.asyncio
+async def test_is_sync_in_progress_method(mock_hass, coord):
+    """Test that is_sync_in_progress correctly reports sync state."""
+    # Register zones
+    coord.register_zone("living_room", {"climate_entity_id": "climate.living_room"})
+    coord.register_zone("bedroom", {"climate_entity_id": "climate.bedroom"})
+
+    # Create mode sync
+    mode_sync = coordinator.ModeSync(mock_hass, coord)
+
+    # Initially should be False
+    assert mode_sync.is_sync_in_progress() is False
+
+    # Track sync state during the sync operation
+    sync_states_during_operation = []
+
+    def mock_get_state(entity_id):
+        # Record sync state during state lookup (happens during sync)
+        sync_states_during_operation.append(mode_sync.is_sync_in_progress())
+        state = Mock()
+        state.state = "off"
+        return state
+
+    mock_hass.states.get = mock_get_state
+
+    # Trigger mode change
+    await mode_sync.on_mode_change(
+        zone_id="living_room",
+        old_mode="off",
+        new_mode="heat",
+        climate_entity_id="climate.living_room",
+    )
+
+    # During sync, the flag should have been True
+    assert len(sync_states_during_operation) > 0
+    assert all(state is True for state in sync_states_during_operation)
+
+    # After sync, flag should be False again
+    assert mode_sync.is_sync_in_progress() is False

@@ -417,6 +417,7 @@ class ModeSync:
         self.coordinator = coordinator
         self._zone_modes: dict[str, str] = {}
         self._sync_disabled_zones: set[str] = set()
+        self._sync_in_progress: bool = False
 
         _LOGGER.debug("ModeSync initialized")
 
@@ -480,44 +481,59 @@ class ModeSync:
             )
             return
 
+        # Prevent feedback loop: skip if already syncing
+        if self._sync_in_progress:
+            _LOGGER.debug(
+                "Zone %s mode change to %s - skipping sync (already in progress)",
+                zone_id,
+                new_mode,
+            )
+            return
+
         _LOGGER.info(
             "Zone %s changed to %s mode - synchronizing other zones",
             zone_id,
             new_mode,
         )
 
-        # Get all zones from coordinator
-        all_zones = self.coordinator.get_all_zones()
+        # Set flag before syncing to prevent feedback loop
+        self._sync_in_progress = True
+        try:
+            # Get all zones from coordinator
+            all_zones = self.coordinator.get_all_zones()
 
-        # Sync mode to all other zones (except sync-disabled ones)
-        for other_zone_id, zone_data in all_zones.items():
-            # Skip the originating zone
-            if other_zone_id == zone_id:
-                continue
+            # Sync mode to all other zones (except sync-disabled ones)
+            for other_zone_id, zone_data in all_zones.items():
+                # Skip the originating zone
+                if other_zone_id == zone_id:
+                    continue
 
-            # Skip if sync is disabled for this zone
-            if self.is_sync_disabled(other_zone_id):
-                _LOGGER.debug(
-                    "Skipping zone %s - sync disabled",
+                # Skip if sync is disabled for this zone
+                if self.is_sync_disabled(other_zone_id):
+                    _LOGGER.debug(
+                        "Skipping zone %s - sync disabled",
+                        other_zone_id,
+                    )
+                    continue
+
+                # Get climate entity ID for this zone
+                other_climate_entity_id = zone_data.get("climate_entity_id")
+                if not other_climate_entity_id:
+                    _LOGGER.warning(
+                        "No climate entity ID found for zone %s",
+                        other_zone_id,
+                    )
+                    continue
+
+                # Set the mode for this zone
+                await self._set_zone_mode(
                     other_zone_id,
+                    other_climate_entity_id,
+                    new_mode.lower(),
                 )
-                continue
-
-            # Get climate entity ID for this zone
-            other_climate_entity_id = zone_data.get("climate_entity_id")
-            if not other_climate_entity_id:
-                _LOGGER.warning(
-                    "No climate entity ID found for zone %s",
-                    other_zone_id,
-                )
-                continue
-
-            # Set the mode for this zone
-            await self._set_zone_mode(
-                other_zone_id,
-                other_climate_entity_id,
-                new_mode.lower(),
-            )
+        finally:
+            # Always clear flag after sync completes (or on error)
+            self._sync_in_progress = False
 
     async def _set_zone_mode(
         self,
@@ -591,6 +607,14 @@ class ModeSync:
             Current mode or None if not tracked
         """
         return self._zone_modes.get(zone_id)
+
+    def is_sync_in_progress(self) -> bool:
+        """Check if a sync operation is currently in progress.
+
+        Returns:
+            True if sync is in progress
+        """
+        return self._sync_in_progress
 
 
 class ZoneLinker:

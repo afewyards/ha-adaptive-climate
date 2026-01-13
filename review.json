@@ -45,7 +45,7 @@
         "Write test for multiple zones syncing without loop",
         "VERIFY: pytest tests/test_mode_sync.py passes"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "1.4",
