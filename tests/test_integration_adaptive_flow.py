@@ -16,7 +16,7 @@ from custom_components.adaptive_thermostat.pid_controller import PID
 @pytest.fixture
 def adaptive_learner():
     """Create an adaptive learner instance."""
-    return AdaptiveLearner(zone_name="test_zone")
+    return AdaptiveLearner()
 
 
 @pytest.fixture
@@ -278,83 +278,6 @@ def test_progressive_learning_improves_tuning():
 
 
 # =============================================================================
-# Test: Zone-Specific Adjustments
-# =============================================================================
-
-
-def test_kitchen_zone_reduces_ki():
-    """
-    Integration test: Kitchen zone gets lower Ki due to disturbances.
-    """
-    learner = AdaptiveLearner(zone_name="kitchen")
-
-    for _ in range(3):
-        metrics = CycleMetrics(
-            overshoot=0.2,
-            undershoot=0.1,
-            settling_time=50.0,
-            oscillations=0,
-            rise_time=35.0,
-        )
-        learner.add_cycle_metrics(metrics)
-
-    kp, ki, kd = 100.0, 25.0, 30.0
-    result = learner.calculate_pid_adjustment(kp, ki, kd)
-
-    assert result is not None
-    # Kitchen: Ki reduced by 20%
-    assert result["ki"] < ki * 0.85, f"Expected Ki reduction for kitchen zone"
-
-
-def test_bathroom_zone_increases_kp():
-    """
-    Integration test: Bathroom zone gets higher Kp for heat loss.
-    """
-    learner = AdaptiveLearner(zone_name="bathroom")
-
-    for _ in range(3):
-        metrics = CycleMetrics(
-            overshoot=0.15,  # Low overshoot - won't trigger Kp reduction
-            undershoot=0.1,
-            settling_time=50.0,
-            oscillations=0,
-            rise_time=35.0,
-        )
-        learner.add_cycle_metrics(metrics)
-
-    kp, ki, kd = 100.0, 20.0, 30.0
-    result = learner.calculate_pid_adjustment(kp, ki, kd)
-
-    assert result is not None
-    # Bathroom: Kp increased by 10%
-    assert result["kp"] > kp, f"Expected Kp increase for bathroom zone"
-
-
-def test_ground_floor_zone_increases_ki():
-    """
-    Integration test: Ground floor zone gets higher Ki for door disturbances.
-    """
-    learner = AdaptiveLearner(zone_name="ground_floor")
-
-    for _ in range(3):
-        metrics = CycleMetrics(
-            overshoot=0.1,
-            undershoot=0.2,  # Some undershoot - but won't exceed 0.3 threshold
-            settling_time=50.0,
-            oscillations=0,
-            rise_time=35.0,
-        )
-        learner.add_cycle_metrics(metrics)
-
-    kp, ki, kd = 100.0, 20.0, 30.0
-    result = learner.calculate_pid_adjustment(kp, ki, kd)
-
-    assert result is not None
-    # Ground floor: Ki increased by 15%
-    assert result["ki"] > ki, f"Expected Ki increase for ground floor zone"
-
-
-# =============================================================================
 # Test: PID Limits Are Respected
 # =============================================================================
 
@@ -475,7 +398,7 @@ def test_end_to_end_adaptive_learning_flow():
     3. Get PID recommendation
     4. Verify recommendation respects limits and addresses issues
     """
-    learner = AdaptiveLearner(zone_name="living_room")
+    learner = AdaptiveLearner()
 
     # Simulate 3 heating cycles with moderate overshoot and some oscillations
     for cycle in range(3):
@@ -561,7 +484,7 @@ def test_combined_thermal_and_adaptive_learning():
     3. PID is adjusted based on both
     """
     thermal_learner = ThermalRateLearner()
-    adaptive_learner = AdaptiveLearner(zone_name="study")
+    adaptive_learner = AdaptiveLearner()
 
     # Phase 1: Learn thermal rates
     thermal_learner.add_cooling_measurement(0.8)

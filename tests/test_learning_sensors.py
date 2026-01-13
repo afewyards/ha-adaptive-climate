@@ -38,7 +38,7 @@ def test_overshoot_sensor_value():
     mock_hass.states = Mock()
 
     # Create adaptive learner with cycle history
-    learner = AdaptiveLearner("test_zone")
+    learner = AdaptiveLearner()
 
     # Add some cycle metrics
     cycle1 = CycleMetrics(
@@ -119,7 +119,7 @@ def test_settling_time_in_minutes_conversion():
     mock_hass.states = Mock()
 
     # Create adaptive learner with cycle history
-    learner = AdaptiveLearner("test_zone")
+    learner = AdaptiveLearner()
 
     # Add some cycle metrics
     cycle1 = CycleMetrics(

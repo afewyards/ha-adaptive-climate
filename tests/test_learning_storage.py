@@ -34,7 +34,7 @@ def test_data_saving(temp_storage_dir):
     thermal_learner.add_heating_measurement(2.2)
 
     # Create AdaptiveLearner with cycle metrics
-    adaptive_learner = AdaptiveLearner(zone_name="living_room")
+    adaptive_learner = AdaptiveLearner()
     for i in range(3):
         metrics = CycleMetrics(
             overshoot=0.3,
@@ -79,7 +79,6 @@ def test_data_saving(temp_storage_dir):
 
     # Check AdaptiveLearner data
     assert "adaptive_learner" in data
-    assert data["adaptive_learner"]["zone_name"] == "living_room"
     assert len(data["adaptive_learner"]["cycle_history"]) == 3
     assert data["adaptive_learner"]["cycle_history"][0]["overshoot"] == 0.3
     assert data["adaptive_learner"]["cycle_history"][0]["undershoot"] == 0.2
@@ -99,7 +98,7 @@ def test_data_loading(temp_storage_dir):
     thermal_learner.add_cooling_measurement(0.5)
     thermal_learner.add_heating_measurement(2.0)
 
-    adaptive_learner = AdaptiveLearner(zone_name="bedroom")
+    adaptive_learner = AdaptiveLearner()
     metrics = CycleMetrics(overshoot=0.4, undershoot=0.1, settling_time=50.0)
     adaptive_learner.add_cycle_metrics(metrics)
 
@@ -130,7 +129,6 @@ def test_data_loading(temp_storage_dir):
     # Restore AdaptiveLearner
     restored_adaptive = store.restore_adaptive_learner(data)
     assert restored_adaptive is not None
-    assert restored_adaptive.zone_name == "bedroom"
     assert restored_adaptive.get_cycle_count() == 1
 
     # Restore ValveCycleTracker
@@ -181,7 +179,6 @@ def test_corrupt_data_handling(temp_storage_dir):
     valid_data = {
         "version": 1,
         "adaptive_learner": {
-            "zone_name": "test",
             "cycle_history": "not_a_list",  # Invalid type
         }
     }

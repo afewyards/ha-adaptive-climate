@@ -266,7 +266,7 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         # Create adaptive learner for this zone
         adaptive_learner = None
         if config.get(const.CONF_LEARNING_ENABLED, const.DEFAULT_LEARNING_ENABLED):
-            adaptive_learner = AdaptiveLearner(zone_id)
+            adaptive_learner = AdaptiveLearner()
 
         zone_data = {
             "climate_entity_id": f"climate.{zone_id}",

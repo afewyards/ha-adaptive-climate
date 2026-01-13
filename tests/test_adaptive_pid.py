@@ -217,58 +217,6 @@ def test_undershoot_increases_ki():
     assert result["ki"] > ki
 
 
-def test_zone_specific_kitchen():
-    """Test kitchen zone gets lower Ki."""
-    learner = AdaptiveLearner(zone_name="kitchen")
-
-    # Add normal cycles
-    for _ in range(3):
-        metrics = CycleMetrics(
-            overshoot=0.1,
-            undershoot=0.1,
-            settling_time=45.0,
-            oscillations=0,
-            rise_time=30.0,
-        )
-        learner.add_cycle_metrics(metrics)
-
-    # Initial PID values
-    kp, ki, kd = 100.0, 20.0, 10.0
-
-    # Calculate adjustments
-    result = learner.calculate_pid_adjustment(kp, ki, kd)
-
-    assert result is not None
-    # Kitchen should have reduced Ki for disturbance handling
-    assert result["ki"] < ki
-
-
-def test_zone_specific_bathroom():
-    """Test bathroom zone gets higher Kp."""
-    learner = AdaptiveLearner(zone_name="bathroom")
-
-    # Add normal cycles
-    for _ in range(3):
-        metrics = CycleMetrics(
-            overshoot=0.1,
-            undershoot=0.1,
-            settling_time=45.0,
-            oscillations=0,
-            rise_time=30.0,
-        )
-        learner.add_cycle_metrics(metrics)
-
-    # Initial PID values
-    kp, ki, kd = 100.0, 20.0, 10.0
-
-    # Calculate adjustments
-    result = learner.calculate_pid_adjustment(kp, ki, kd)
-
-    assert result is not None
-    # Bathroom should have increased Kp for heat loss compensation
-    assert result["kp"] > kp
-
-
 def test_slow_settling_increases_kd():
     """Test that slow settling time increases Kd."""
     learner = AdaptiveLearner()
