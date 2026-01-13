@@ -1433,3 +1433,80 @@ def test_story_3_5_features():
     assert hasattr(learner, '_max_history')
     assert hasattr(learner, '_last_adjustment_time')
     assert hasattr(learner, 'get_last_adjustment_time')
+
+
+# ============================================================================
+# PID Limits Tests (Story 7.4)
+# ============================================================================
+
+
+class TestPIDLimitsConstants:
+    """Tests for PID_LIMITS constants including Ke limits."""
+
+    def test_pid_limits_constant_exists(self):
+        """Test PID_LIMITS constant exists with all required keys."""
+        from custom_components.adaptive_thermostat.const import PID_LIMITS
+
+        assert "kp_min" in PID_LIMITS
+        assert "kp_max" in PID_LIMITS
+        assert "ki_min" in PID_LIMITS
+        assert "ki_max" in PID_LIMITS
+        assert "kd_min" in PID_LIMITS
+        assert "kd_max" in PID_LIMITS
+        assert "ke_min" in PID_LIMITS
+        assert "ke_max" in PID_LIMITS
+
+    def test_ke_limits_values(self):
+        """Test Ke limits have correct default values (0.0 to 2.0)."""
+        from custom_components.adaptive_thermostat.const import PID_LIMITS
+
+        assert PID_LIMITS["ke_min"] == 0.0
+        assert PID_LIMITS["ke_max"] == 2.0
+
+    def test_ke_limits_range_is_valid(self):
+        """Test that ke_min is less than ke_max."""
+        from custom_components.adaptive_thermostat.const import PID_LIMITS
+
+        assert PID_LIMITS["ke_min"] < PID_LIMITS["ke_max"]
+
+    def test_all_pid_limits_are_numeric(self):
+        """Test all PID limits are numeric (int or float)."""
+        from custom_components.adaptive_thermostat.const import PID_LIMITS
+
+        for key, value in PID_LIMITS.items():
+            assert isinstance(value, (int, float)), f"{key} is not numeric"
+
+    def test_all_min_limits_less_than_max(self):
+        """Test all min limits are less than corresponding max limits."""
+        from custom_components.adaptive_thermostat.const import PID_LIMITS
+
+        assert PID_LIMITS["kp_min"] < PID_LIMITS["kp_max"]
+        assert PID_LIMITS["ki_min"] < PID_LIMITS["ki_max"]
+        assert PID_LIMITS["kd_min"] < PID_LIMITS["kd_max"]
+        assert PID_LIMITS["ke_min"] < PID_LIMITS["ke_max"]
+
+
+def test_pid_limits():
+    """Test that PID_LIMITS includes Ke limits with correct values.
+
+    Story 7.4: Add Ke limits to PID_LIMITS constant.
+    - ke_min = 0.0 (no weather compensation)
+    - ke_max = 2.0 (based on calculate_recommended_ke usage)
+    """
+    from custom_components.adaptive_thermostat.const import PID_LIMITS
+
+    # Verify Ke limits exist
+    assert "ke_min" in PID_LIMITS, "ke_min missing from PID_LIMITS"
+    assert "ke_max" in PID_LIMITS, "ke_max missing from PID_LIMITS"
+
+    # Verify Ke limits have correct values
+    assert PID_LIMITS["ke_min"] == 0.0, f"ke_min should be 0.0, got {PID_LIMITS['ke_min']}"
+    assert PID_LIMITS["ke_max"] == 2.0, f"ke_max should be 2.0, got {PID_LIMITS['ke_max']}"
+
+    # Verify existing limits are unchanged
+    assert PID_LIMITS["kp_min"] == 10.0
+    assert PID_LIMITS["kp_max"] == 500.0
+    assert PID_LIMITS["ki_min"] == 0.0
+    assert PID_LIMITS["ki_max"] == 100.0
+    assert PID_LIMITS["kd_min"] == 0.0
+    assert PID_LIMITS["kd_max"] == 200.0

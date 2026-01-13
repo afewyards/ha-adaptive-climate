@@ -112,6 +112,8 @@ PID_LIMITS = {
     "ki_max": 100.0,
     "kd_min": 0.0,
     "kd_max": 200.0,
+    "ke_min": 0.0,
+    "ke_max": 2.0,
 }
 
 # Convergence thresholds for adaptive learning

@@ -7,6 +7,8 @@ improve comfort and reduce energy consumption.
 
 from typing import Optional
 
+from ..const import PID_LIMITS
+
 
 def calculate_weather_compensation(
     indoor_setpoint: float,
@@ -99,8 +101,8 @@ def calculate_recommended_ke(
     # Calculate recommended ke
     recommended_ke = base_ke * factor
 
-    # Clamp to reasonable range (0.0-2.0)
-    return max(0.0, min(2.0, recommended_ke))
+    # Clamp to PID_LIMITS range
+    return max(PID_LIMITS["ke_min"], min(PID_LIMITS["ke_max"], recommended_ke))
 
 
 def apply_outdoor_compensation_to_pid_output(
