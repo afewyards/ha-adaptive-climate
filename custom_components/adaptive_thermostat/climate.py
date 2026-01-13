@@ -532,6 +532,25 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
             self._hvac_mode = HVACMode.OFF
         await self._async_control_heating(calc_pid=True)
 
+    async def async_will_remove_from_hass(self) -> None:
+        """Run when entity is being removed from Home Assistant.
+
+        This method unregisters the zone from the coordinator to ensure
+        clean removal and prevent stale zone data.
+        """
+        await super().async_will_remove_from_hass()
+
+        # Unregister zone from coordinator
+        if self._zone_id:
+            coordinator = self.hass.data.get(DOMAIN, {}).get("coordinator")
+            if coordinator:
+                coordinator.unregister_zone(self._zone_id)
+                _LOGGER.info(
+                    "%s: Unregistered zone %s from coordinator",
+                    self.entity_id,
+                    self._zone_id,
+                )
+
     def _setup_state_listeners(self) -> None:
         """Set up all state change listeners for sensors and controlled entities.
 

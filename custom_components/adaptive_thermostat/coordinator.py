@@ -49,9 +49,39 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
             zone_id: Unique identifier for the zone
             zone_data: Dictionary containing zone information
         """
+        if zone_id in self._zones:
+            _LOGGER.warning(
+                "Zone %s is already registered, overwriting existing registration",
+                zone_id,
+            )
         self._zones[zone_id] = zone_data
         self._demand_states[zone_id] = False
         _LOGGER.debug("Registered zone: %s", zone_id)
+
+    def unregister_zone(self, zone_id: str) -> None:
+        """Unregister a zone from the coordinator.
+
+        Removes the zone from both the zones dict and demand states dict.
+        This should be called when a climate entity is being removed.
+
+        Args:
+            zone_id: Unique identifier for the zone to unregister
+        """
+        if zone_id not in self._zones:
+            _LOGGER.debug(
+                "Zone %s not found in coordinator, nothing to unregister",
+                zone_id,
+            )
+            return
+
+        # Remove from zones dict
+        del self._zones[zone_id]
+
+        # Remove from demand states dict
+        if zone_id in self._demand_states:
+            del self._demand_states[zone_id]
+
+        _LOGGER.info("Unregistered zone: %s", zone_id)
 
     def update_zone_demand(self, zone_id: str, has_demand: bool) -> None:
         """Update the demand state for a zone.
