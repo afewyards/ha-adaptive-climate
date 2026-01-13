@@ -516,36 +516,74 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
                     self.entity_id, self._linked_zones, self._link_delay_minutes
                 )
 
-        # Add listener
+        # Set up state change listeners
+        self._setup_state_listeners()
+
+        # Restore state from previous session
+        old_state = await self.async_get_last_state()
+        self._restore_state(old_state)
+
+        # Restore PID values if we have old state
+        if old_state is not None:
+            self._restore_pid_values(old_state)
+
+        # Set default state to off
+        if not self._hvac_mode:
+            self._hvac_mode = HVACMode.OFF
+        await self._async_control_heating(calc_pid=True)
+
+    def _setup_state_listeners(self) -> None:
+        """Set up all state change listeners for sensors and controlled entities.
+
+        This method registers listeners for:
+        - Temperature sensor changes
+        - External temperature sensor changes (if configured)
+        - Heater entity state changes (if configured)
+        - Cooler entity state changes (if configured)
+        - Demand switch state changes (if configured)
+        - Keep-alive interval timer (if configured)
+        - Startup callback to initialize sensor values
+        """
+        # Temperature sensor listener
         self.async_on_remove(
             async_track_state_change_event(
                 self.hass,
                 self._sensor_entity_id,
                 self._async_sensor_changed))
+
+        # External temperature sensor listener
         if self._ext_sensor_entity_id is not None:
             self.async_on_remove(
                 async_track_state_change_event(
                     self.hass,
                     self._ext_sensor_entity_id,
                     self._async_ext_sensor_changed))
+
+        # Heater entity listener
         if self._heater_entity_id is not None:
             self.async_on_remove(
                 async_track_state_change_event(
                     self.hass,
                     self._heater_entity_id,
                     self._async_switch_changed))
+
+        # Cooler entity listener
         if self._cooler_entity_id is not None:
             self.async_on_remove(
                 async_track_state_change_event(
                     self.hass,
                     self._cooler_entity_id,
                     self._async_switch_changed))
+
+        # Demand switch entity listener
         if self._demand_switch_entity_id is not None:
             self.async_on_remove(
                 async_track_state_change_event(
                     self.hass,
                     self._demand_switch_entity_id,
                     self._async_switch_changed))
+
+        # Keep-alive interval timer
         if self._keep_alive:
             self.async_on_remove(
                 async_track_time_interval(
@@ -553,6 +591,7 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
                     self._async_control_heating,
                     self._keep_alive))
 
+        # Startup callback to initialize sensor values
         @callback
         def _async_startup(*_):
             """Init on startup."""
@@ -569,10 +608,21 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
         else:
             self.hass.bus.async_listen_once(EVENT_HOMEASSISTANT_START, _async_startup)
 
-        # Check If we have an old state
-        old_state = await self.async_get_last_state()
+    def _restore_state(self, old_state) -> None:
+        """Restore climate entity state from Home Assistant's state restoration.
+
+        This method restores:
+        - Target temperature setpoint
+        - Preset mode temperatures (away, eco, boost, comfort, home, sleep, activity)
+        - Active preset mode
+        - HVAC mode
+
+        Args:
+            old_state: The restored state object from async_get_last_state(),
+                      or None if no previous state exists.
+        """
         if old_state is not None:
-            # If we have a previously saved temperature
+            # Restore target temperature
             if old_state.attributes.get(ATTR_TEMPERATURE) is None:
                 if self._target_temp is None:
                     if self._ac_mode:
@@ -583,50 +633,22 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
                                 self.entity_id, self._target_temp)
             else:
                 self._target_temp = float(old_state.attributes.get(ATTR_TEMPERATURE))
+
+            # Restore preset mode temperatures
             for preset_mode in ['away_temp', 'eco_temp', 'boost_temp', 'comfort_temp', 'home_temp',
                                 'sleep_temp', 'activity_temp']:
                 if old_state.attributes.get(preset_mode) is not None:
                     setattr(self, f"_{preset_mode}", float(old_state.attributes.get(preset_mode)))
+
+            # Restore preset mode
             if old_state.attributes.get(ATTR_PRESET_MODE) is not None:
                 self._attr_preset_mode = old_state.attributes.get(ATTR_PRESET_MODE)
-            if isinstance(old_state.attributes.get('pid_i'), (float, int)) and \
-                    self._pid_controller is not None:
-                self._i = float(old_state.attributes.get('pid_i'))
-                self._pid_controller.integral = self._i
+
+            # Restore HVAC mode
             if not self._hvac_mode and old_state.state:
                 self.set_hvac_mode(old_state.state)
-            if old_state.attributes.get('kp') is not None and self._pid_controller is not None:
-                self._kp = float(old_state.attributes.get('kp'))
-                self._pid_controller.set_pid_param(kp=self._kp)
-            elif old_state.attributes.get('Kp') is not None and self._pid_controller is not None:
-                self._kp = float(old_state.attributes.get('Kp'))
-                self._pid_controller.set_pid_param(kp=self._kp)
-            if old_state.attributes.get('ki') is not None and self._pid_controller is not None:
-                self._ki = float(old_state.attributes.get('ki'))
-                self._pid_controller.set_pid_param(ki=self._ki)
-            elif old_state.attributes.get('Ki') is not None and self._pid_controller is not None:
-                self._ki = float(old_state.attributes.get('Ki'))
-                self._pid_controller.set_pid_param(ki=self._ki)
-            if old_state.attributes.get('kd') is not None and self._pid_controller is not None:
-                self._kd = float(old_state.attributes.get('kd'))
-                self._pid_controller.set_pid_param(kd=self._kd)
-            elif old_state.attributes.get('Kd') is not None and self._pid_controller is not None:
-                self._kd = float(old_state.attributes.get('Kd'))
-                self._pid_controller.set_pid_param(kd=self._kd)
-            if old_state.attributes.get('ke') is not None and self._pid_controller is not None:
-                self._ke = float(old_state.attributes.get('ke'))
-                self._pid_controller.set_pid_param(ke=self._ke)
-            elif old_state.attributes.get('Ke') is not None and self._pid_controller is not None:
-                self._ke = float(old_state.attributes.get('Ke'))
-                self._pid_controller.set_pid_param(ke=self._ke)
-            _LOGGER.info("%s: Restored PID values - Kp=%.4f, Ki=%.5f, Kd=%.3f, Ke=%s",
-                         self.entity_id, self._kp, self._ki, self._kd, self._ke or 0)
-            if old_state.attributes.get('pid_mode') is not None and \
-                    self._pid_controller is not None:
-                self._pid_controller.mode = old_state.attributes.get('pid_mode')
-
         else:
-            # No previous state, try and restore defaults
+            # No previous state, set defaults
             if self._target_temp is None:
                 if self._ac_mode:
                     self._target_temp = self.max_temp
@@ -635,10 +657,64 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
             _LOGGER.warning("%s: No setpoint to restore, setting to %s", self.entity_id,
                             self._target_temp)
 
-        # Set default state to off
-        if not self._hvac_mode:
-            self._hvac_mode = HVACMode.OFF
-        await self._async_control_heating(calc_pid=True)
+    def _restore_pid_values(self, old_state) -> None:
+        """Restore PID controller values from Home Assistant's state restoration.
+
+        This method restores:
+        - PID integral value (pid_i)
+        - PID gains: Kp, Ki, Kd, Ke (supports both lowercase and uppercase attribute names)
+        - PID mode (auto/off)
+
+        Args:
+            old_state: The restored state object from async_get_last_state().
+                      Must not be None.
+        """
+        if old_state is None or self._pid_controller is None:
+            return
+
+        # Restore PID integral value
+        if isinstance(old_state.attributes.get('pid_i'), (float, int)):
+            self._i = float(old_state.attributes.get('pid_i'))
+            self._pid_controller.integral = self._i
+
+        # Restore Kp (supports both 'kp' and 'Kp')
+        if old_state.attributes.get('kp') is not None:
+            self._kp = float(old_state.attributes.get('kp'))
+            self._pid_controller.set_pid_param(kp=self._kp)
+        elif old_state.attributes.get('Kp') is not None:
+            self._kp = float(old_state.attributes.get('Kp'))
+            self._pid_controller.set_pid_param(kp=self._kp)
+
+        # Restore Ki (supports both 'ki' and 'Ki')
+        if old_state.attributes.get('ki') is not None:
+            self._ki = float(old_state.attributes.get('ki'))
+            self._pid_controller.set_pid_param(ki=self._ki)
+        elif old_state.attributes.get('Ki') is not None:
+            self._ki = float(old_state.attributes.get('Ki'))
+            self._pid_controller.set_pid_param(ki=self._ki)
+
+        # Restore Kd (supports both 'kd' and 'Kd')
+        if old_state.attributes.get('kd') is not None:
+            self._kd = float(old_state.attributes.get('kd'))
+            self._pid_controller.set_pid_param(kd=self._kd)
+        elif old_state.attributes.get('Kd') is not None:
+            self._kd = float(old_state.attributes.get('Kd'))
+            self._pid_controller.set_pid_param(kd=self._kd)
+
+        # Restore Ke (supports both 'ke' and 'Ke')
+        if old_state.attributes.get('ke') is not None:
+            self._ke = float(old_state.attributes.get('ke'))
+            self._pid_controller.set_pid_param(ke=self._ke)
+        elif old_state.attributes.get('Ke') is not None:
+            self._ke = float(old_state.attributes.get('Ke'))
+            self._pid_controller.set_pid_param(ke=self._ke)
+
+        _LOGGER.info("%s: Restored PID values - Kp=%.4f, Ki=%.5f, Kd=%.3f, Ke=%s",
+                     self.entity_id, self._kp, self._ki, self._kd, self._ke or 0)
+
+        # Restore PID mode
+        if old_state.attributes.get('pid_mode') is not None:
+            self._pid_controller.mode = old_state.attributes.get('pid_mode')
 
     @property
     def should_poll(self):

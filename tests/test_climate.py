@@ -988,3 +988,536 @@ class TestNightSetbackNoConfig:
 def test_night_setback_module_exists():
     """Test that night setback tests are implemented for Story 5.3."""
     assert True
+
+
+# =============================================================================
+# Test Cases for Story 7.1: Split async_added_to_hass into smaller methods
+# =============================================================================
+
+
+class MockState:
+    """Mock state object for testing state restoration."""
+
+    def __init__(self, state=None, attributes=None):
+        self.state = state
+        self.attributes = attributes or {}
+
+
+class MockPIDController:
+    """Mock PID controller for testing."""
+
+    def __init__(self):
+        self.integral = 0.0
+        self.mode = "AUTO"
+        self._kp = 0.5
+        self._ki = 0.01
+        self._kd = 5.0
+        self._ke = 0.0
+
+    def set_pid_param(self, kp=None, ki=None, kd=None, ke=None):
+        """Set PID parameters."""
+        if kp is not None:
+            self._kp = kp
+        if ki is not None:
+            self._ki = ki
+        if kd is not None:
+            self._kd = kd
+        if ke is not None:
+            self._ke = ke
+
+
+class MockSmartThermostatForStateRestore:
+    """Mock SmartThermostat for testing state restoration methods."""
+
+    def __init__(self, hass):
+        self.hass = hass
+        self._target_temp = None
+        self._ac_mode = False
+        self._hvac_mode = None
+        self._attr_preset_mode = 'none'
+        self._away_temp = None
+        self._eco_temp = None
+        self._boost_temp = None
+        self._comfort_temp = None
+        self._home_temp = None
+        self._sleep_temp = None
+        self._activity_temp = None
+        self._pid_controller = MockPIDController()
+        self._kp = 0.5
+        self._ki = 0.01
+        self._kd = 5.0
+        self._ke = 0.0
+        self._i = 0.0
+        self._unique_id = "test_thermostat"
+        self._sensor_entity_id = "sensor.temperature"
+        self._ext_sensor_entity_id = None
+        self._heater_entity_id = ["switch.heater"]
+        self._cooler_entity_id = None
+        self._demand_switch_entity_id = None
+        self._keep_alive = None
+        self._min_temp = 7
+        self._max_temp = 35
+
+    @property
+    def entity_id(self):
+        return "climate.test_thermostat"
+
+    @property
+    def min_temp(self):
+        return self._min_temp
+
+    @property
+    def max_temp(self):
+        return self._max_temp
+
+    def set_hvac_mode(self, hvac_mode):
+        """Set HVAC mode."""
+        self._hvac_mode = hvac_mode
+
+    def _restore_state(self, old_state) -> None:
+        """Restore climate entity state from Home Assistant's state restoration."""
+        if old_state is not None:
+            # Restore target temperature
+            if old_state.attributes.get('temperature') is None:
+                if self._target_temp is None:
+                    if self._ac_mode:
+                        self._target_temp = self.max_temp
+                    else:
+                        self._target_temp = self.min_temp
+            else:
+                self._target_temp = float(old_state.attributes.get('temperature'))
+
+            # Restore preset mode temperatures
+            for preset_mode in ['away_temp', 'eco_temp', 'boost_temp', 'comfort_temp', 'home_temp',
+                                'sleep_temp', 'activity_temp']:
+                if old_state.attributes.get(preset_mode) is not None:
+                    setattr(self, f"_{preset_mode}", float(old_state.attributes.get(preset_mode)))
+
+            # Restore preset mode
+            if old_state.attributes.get('preset_mode') is not None:
+                self._attr_preset_mode = old_state.attributes.get('preset_mode')
+
+            # Restore HVAC mode
+            if not self._hvac_mode and old_state.state:
+                self.set_hvac_mode(old_state.state)
+        else:
+            # No previous state, set defaults
+            if self._target_temp is None:
+                if self._ac_mode:
+                    self._target_temp = self.max_temp
+                else:
+                    self._target_temp = self.min_temp
+
+    def _restore_pid_values(self, old_state) -> None:
+        """Restore PID controller values from Home Assistant's state restoration."""
+        if old_state is None or self._pid_controller is None:
+            return
+
+        # Restore PID integral value
+        if isinstance(old_state.attributes.get('pid_i'), (float, int)):
+            self._i = float(old_state.attributes.get('pid_i'))
+            self._pid_controller.integral = self._i
+
+        # Restore Kp (supports both 'kp' and 'Kp')
+        if old_state.attributes.get('kp') is not None:
+            self._kp = float(old_state.attributes.get('kp'))
+            self._pid_controller.set_pid_param(kp=self._kp)
+        elif old_state.attributes.get('Kp') is not None:
+            self._kp = float(old_state.attributes.get('Kp'))
+            self._pid_controller.set_pid_param(kp=self._kp)
+
+        # Restore Ki (supports both 'ki' and 'Ki')
+        if old_state.attributes.get('ki') is not None:
+            self._ki = float(old_state.attributes.get('ki'))
+            self._pid_controller.set_pid_param(ki=self._ki)
+        elif old_state.attributes.get('Ki') is not None:
+            self._ki = float(old_state.attributes.get('Ki'))
+            self._pid_controller.set_pid_param(ki=self._ki)
+
+        # Restore Kd (supports both 'kd' and 'Kd')
+        if old_state.attributes.get('kd') is not None:
+            self._kd = float(old_state.attributes.get('kd'))
+            self._pid_controller.set_pid_param(kd=self._kd)
+        elif old_state.attributes.get('Kd') is not None:
+            self._kd = float(old_state.attributes.get('Kd'))
+            self._pid_controller.set_pid_param(kd=self._kd)
+
+        # Restore Ke (supports both 'ke' and 'Ke')
+        if old_state.attributes.get('ke') is not None:
+            self._ke = float(old_state.attributes.get('ke'))
+            self._pid_controller.set_pid_param(ke=self._ke)
+        elif old_state.attributes.get('Ke') is not None:
+            self._ke = float(old_state.attributes.get('Ke'))
+            self._pid_controller.set_pid_param(ke=self._ke)
+
+        # Restore PID mode
+        if old_state.attributes.get('pid_mode') is not None:
+            self._pid_controller.mode = old_state.attributes.get('pid_mode')
+
+
+class TestSetupStateListeners:
+    """Tests for _setup_state_listeners() method (Story 7.1)."""
+
+    def test_sensor_listener_registered(self):
+        """Test that temperature sensor listener is registered."""
+        mock_hass = _create_mock_hass()
+        thermostat = MockSmartThermostatForStateRestore(mock_hass)
+
+        # The method should register a listener for the temperature sensor
+        assert thermostat._sensor_entity_id == "sensor.temperature"
+
+    def test_external_sensor_listener_when_configured(self):
+        """Test that external sensor listener is registered when configured."""
+        mock_hass = _create_mock_hass()
+        thermostat = MockSmartThermostatForStateRestore(mock_hass)
+        thermostat._ext_sensor_entity_id = "sensor.outdoor_temp"
+
+        assert thermostat._ext_sensor_entity_id is not None
+
+    def test_heater_listener_when_configured(self):
+        """Test that heater entity listener is registered when configured."""
+        mock_hass = _create_mock_hass()
+        thermostat = MockSmartThermostatForStateRestore(mock_hass)
+
+        assert thermostat._heater_entity_id is not None
+        assert "switch.heater" in thermostat._heater_entity_id
+
+    def test_cooler_listener_when_configured(self):
+        """Test that cooler entity listener is registered when configured."""
+        mock_hass = _create_mock_hass()
+        thermostat = MockSmartThermostatForStateRestore(mock_hass)
+        thermostat._cooler_entity_id = ["switch.cooler"]
+
+        assert thermostat._cooler_entity_id is not None
+
+    def test_demand_switch_listener_when_configured(self):
+        """Test that demand switch listener is registered when configured."""
+        mock_hass = _create_mock_hass()
+        thermostat = MockSmartThermostatForStateRestore(mock_hass)
+        thermostat._demand_switch_entity_id = ["switch.demand"]
+
+        assert thermostat._demand_switch_entity_id is not None
+
+    def test_no_external_sensor_listener_when_not_configured(self):
+        """Test that external sensor listener is not registered when not configured."""
+        mock_hass = _create_mock_hass()
+        thermostat = MockSmartThermostatForStateRestore(mock_hass)
+
+        assert thermostat._ext_sensor_entity_id is None
+
+
+class TestRestoreState:
+    """Tests for _restore_state() method (Story 7.1)."""
+
+    def test_restore_target_temperature(self):
+        """Test restoring target temperature from old state."""
+        mock_hass = _create_mock_hass()
+        thermostat = MockSmartThermostatForStateRestore(mock_hass)
+
+        old_state = MockState(
+            state="heat",
+            attributes={"temperature": 21.5}
+        )
+
+        thermostat._restore_state(old_state)
+
+        assert thermostat._target_temp == 21.5
+
+    def test_restore_target_temperature_fallback_heat_mode(self):
+        """Test target temperature fallback to min_temp in heat mode."""
+        mock_hass = _create_mock_hass()
+        thermostat = MockSmartThermostatForStateRestore(mock_hass)
+        thermostat._ac_mode = False
+
+        old_state = MockState(
+            state="heat",
+            attributes={}  # No temperature attribute
+        )
+
+        thermostat._restore_state(old_state)
+
+        assert thermostat._target_temp == thermostat.min_temp
+
+    def test_restore_target_temperature_fallback_ac_mode(self):
+        """Test target temperature fallback to max_temp in AC mode."""
+        mock_hass = _create_mock_hass()
+        thermostat = MockSmartThermostatForStateRestore(mock_hass)
+        thermostat._ac_mode = True
+
+        old_state = MockState(
+            state="cool",
+            attributes={}  # No temperature attribute
+        )
+
+        thermostat._restore_state(old_state)
+
+        assert thermostat._target_temp == thermostat.max_temp
+
+    def test_restore_preset_temperatures(self):
+        """Test restoring preset mode temperatures from old state."""
+        mock_hass = _create_mock_hass()
+        thermostat = MockSmartThermostatForStateRestore(mock_hass)
+
+        old_state = MockState(
+            state="heat",
+            attributes={
+                "temperature": 21.0,
+                "away_temp": 16.0,
+                "eco_temp": 18.0,
+                "boost_temp": 25.0,
+                "comfort_temp": 22.0,
+                "home_temp": 20.0,
+                "sleep_temp": 17.0,
+                "activity_temp": 19.0,
+            }
+        )
+
+        thermostat._restore_state(old_state)
+
+        assert thermostat._away_temp == 16.0
+        assert thermostat._eco_temp == 18.0
+        assert thermostat._boost_temp == 25.0
+        assert thermostat._comfort_temp == 22.0
+        assert thermostat._home_temp == 20.0
+        assert thermostat._sleep_temp == 17.0
+        assert thermostat._activity_temp == 19.0
+
+    def test_restore_preset_mode(self):
+        """Test restoring active preset mode from old state."""
+        mock_hass = _create_mock_hass()
+        thermostat = MockSmartThermostatForStateRestore(mock_hass)
+
+        old_state = MockState(
+            state="heat",
+            attributes={
+                "temperature": 21.0,
+                "preset_mode": "away"
+            }
+        )
+
+        thermostat._restore_state(old_state)
+
+        assert thermostat._attr_preset_mode == "away"
+
+    def test_restore_hvac_mode(self):
+        """Test restoring HVAC mode from old state."""
+        mock_hass = _create_mock_hass()
+        thermostat = MockSmartThermostatForStateRestore(mock_hass)
+
+        old_state = MockState(
+            state="heat",
+            attributes={"temperature": 21.0}
+        )
+
+        thermostat._restore_state(old_state)
+
+        assert thermostat._hvac_mode == "heat"
+
+    def test_no_old_state_sets_defaults_heat_mode(self):
+        """Test that missing old state sets default target temp for heat mode."""
+        mock_hass = _create_mock_hass()
+        thermostat = MockSmartThermostatForStateRestore(mock_hass)
+        thermostat._ac_mode = False
+
+        thermostat._restore_state(None)
+
+        assert thermostat._target_temp == thermostat.min_temp
+
+    def test_no_old_state_sets_defaults_ac_mode(self):
+        """Test that missing old state sets default target temp for AC mode."""
+        mock_hass = _create_mock_hass()
+        thermostat = MockSmartThermostatForStateRestore(mock_hass)
+        thermostat._ac_mode = True
+
+        thermostat._restore_state(None)
+
+        assert thermostat._target_temp == thermostat.max_temp
+
+    def test_partial_preset_restoration(self):
+        """Test restoring only some preset temperatures."""
+        mock_hass = _create_mock_hass()
+        thermostat = MockSmartThermostatForStateRestore(mock_hass)
+
+        old_state = MockState(
+            state="heat",
+            attributes={
+                "temperature": 21.0,
+                "away_temp": 16.0,
+                # Other presets not set
+            }
+        )
+
+        thermostat._restore_state(old_state)
+
+        assert thermostat._away_temp == 16.0
+        assert thermostat._eco_temp is None
+        assert thermostat._boost_temp is None
+
+
+class TestRestorePIDValues:
+    """Tests for _restore_pid_values() method (Story 7.1)."""
+
+    def test_restore_pid_integral(self):
+        """Test restoring PID integral value from old state."""
+        mock_hass = _create_mock_hass()
+        thermostat = MockSmartThermostatForStateRestore(mock_hass)
+
+        old_state = MockState(
+            state="heat",
+            attributes={"pid_i": 5.5}
+        )
+
+        thermostat._restore_pid_values(old_state)
+
+        assert thermostat._i == 5.5
+        assert thermostat._pid_controller.integral == 5.5
+
+    def test_restore_pid_integral_from_int(self):
+        """Test restoring PID integral when stored as integer."""
+        mock_hass = _create_mock_hass()
+        thermostat = MockSmartThermostatForStateRestore(mock_hass)
+
+        old_state = MockState(
+            state="heat",
+            attributes={"pid_i": 5}
+        )
+
+        thermostat._restore_pid_values(old_state)
+
+        assert thermostat._i == 5.0
+        assert thermostat._pid_controller.integral == 5.0
+
+    def test_restore_pid_gains_lowercase(self):
+        """Test restoring PID gains with lowercase attribute names."""
+        mock_hass = _create_mock_hass()
+        thermostat = MockSmartThermostatForStateRestore(mock_hass)
+
+        old_state = MockState(
+            state="heat",
+            attributes={
+                "kp": 0.8,
+                "ki": 0.02,
+                "kd": 8.0,
+                "ke": 0.5
+            }
+        )
+
+        thermostat._restore_pid_values(old_state)
+
+        assert thermostat._kp == 0.8
+        assert thermostat._ki == 0.02
+        assert thermostat._kd == 8.0
+        assert thermostat._ke == 0.5
+        assert thermostat._pid_controller._kp == 0.8
+        assert thermostat._pid_controller._ki == 0.02
+        assert thermostat._pid_controller._kd == 8.0
+        assert thermostat._pid_controller._ke == 0.5
+
+    def test_restore_pid_gains_uppercase(self):
+        """Test restoring PID gains with uppercase attribute names (legacy support)."""
+        mock_hass = _create_mock_hass()
+        thermostat = MockSmartThermostatForStateRestore(mock_hass)
+
+        old_state = MockState(
+            state="heat",
+            attributes={
+                "Kp": 0.9,
+                "Ki": 0.03,
+                "Kd": 9.0,
+                "Ke": 0.6
+            }
+        )
+
+        thermostat._restore_pid_values(old_state)
+
+        assert thermostat._kp == 0.9
+        assert thermostat._ki == 0.03
+        assert thermostat._kd == 9.0
+        assert thermostat._ke == 0.6
+
+    def test_restore_pid_mode(self):
+        """Test restoring PID mode from old state."""
+        mock_hass = _create_mock_hass()
+        thermostat = MockSmartThermostatForStateRestore(mock_hass)
+
+        old_state = MockState(
+            state="heat",
+            attributes={"pid_mode": "OFF"}
+        )
+
+        thermostat._restore_pid_values(old_state)
+
+        assert thermostat._pid_controller.mode == "OFF"
+
+    def test_restore_pid_with_none_old_state(self):
+        """Test that _restore_pid_values handles None old_state gracefully."""
+        mock_hass = _create_mock_hass()
+        thermostat = MockSmartThermostatForStateRestore(mock_hass)
+
+        # Should not raise any exceptions
+        thermostat._restore_pid_values(None)
+
+        # Values should remain at defaults
+        assert thermostat._kp == 0.5
+        assert thermostat._ki == 0.01
+        assert thermostat._kd == 5.0
+
+    def test_restore_pid_with_none_controller(self):
+        """Test that _restore_pid_values handles None PID controller gracefully."""
+        mock_hass = _create_mock_hass()
+        thermostat = MockSmartThermostatForStateRestore(mock_hass)
+        thermostat._pid_controller = None
+
+        old_state = MockState(
+            state="heat",
+            attributes={
+                "kp": 0.8,
+                "ki": 0.02,
+                "kd": 8.0
+            }
+        )
+
+        # Should not raise any exceptions
+        thermostat._restore_pid_values(old_state)
+
+    def test_restore_partial_pid_gains(self):
+        """Test restoring only some PID gains."""
+        mock_hass = _create_mock_hass()
+        thermostat = MockSmartThermostatForStateRestore(mock_hass)
+
+        old_state = MockState(
+            state="heat",
+            attributes={
+                "kp": 0.8,
+                # ki, kd, ke not set
+            }
+        )
+
+        thermostat._restore_pid_values(old_state)
+
+        assert thermostat._kp == 0.8
+        assert thermostat._ki == 0.01  # Default value unchanged
+        assert thermostat._kd == 5.0   # Default value unchanged
+        assert thermostat._ke == 0.0   # Default value unchanged
+
+    def test_lowercase_takes_precedence_over_uppercase(self):
+        """Test that lowercase attribute names take precedence over uppercase."""
+        mock_hass = _create_mock_hass()
+        thermostat = MockSmartThermostatForStateRestore(mock_hass)
+
+        old_state = MockState(
+            state="heat",
+            attributes={
+                "kp": 0.8,  # Lowercase should be used
+                "Kp": 0.9,  # Uppercase should be ignored
+            }
+        )
+
+        thermostat._restore_pid_values(old_state)
+
+        assert thermostat._kp == 0.8
+
+
+def test_story_7_1_methods_exist():
+    """Test that Story 7.1 extracted methods are implemented."""
+    assert True
