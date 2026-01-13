@@ -5,7 +5,13 @@ from unittest.mock import Mock, MagicMock
 
 
 def test_duty_cycle_calculation():
-    """Test duty cycle calculation from heater state."""
+    """Test duty cycle calculation from heater state.
+
+    Note: The DutyCycleSensor implementation has been updated to use
+    state change tracking with timestamps. This test verifies the
+    control_output fallback behavior when no state changes are tracked.
+    For comprehensive duty cycle tests, see tests/test_sensor.py.
+    """
     # Import with minimal mocking
     import sys
     from unittest.mock import Mock
@@ -17,15 +23,34 @@ def test_duty_cycle_calculation():
     mock_sensor_module.SensorStateClass = Mock()
     mock_sensor_module.SensorStateClass.MEASUREMENT = "measurement"
 
+    mock_const = Mock()
+    mock_const.PERCENTAGE = "%"
+    mock_const.STATE_ON = "on"
+    mock_const.UnitOfPower = Mock()
+    mock_const.UnitOfPower.WATT = "W"
+    mock_const.UnitOfTime = Mock()
+    mock_const.UnitOfTime.MINUTES = "min"
+    mock_const.UnitOfTemperature = Mock()
+    mock_const.UnitOfTemperature.CELSIUS = "°C"
+
+    mock_event = Mock()
+    mock_event.async_track_time_interval = Mock()
+    mock_event.async_track_state_change_event = Mock()
+
+    mock_core = Mock()
+    mock_core.HomeAssistant = Mock
+    mock_core.callback = lambda f: f
+    mock_core.Event = Mock
+
     sys.modules['homeassistant'] = Mock()
-    sys.modules['homeassistant.core'] = Mock()
+    sys.modules['homeassistant.core'] = mock_core
     sys.modules['homeassistant.components'] = Mock()
     sys.modules['homeassistant.components.sensor'] = mock_sensor_module
-    sys.modules['homeassistant.const'] = Mock()
+    sys.modules['homeassistant.const'] = mock_const
     sys.modules['homeassistant.helpers'] = Mock()
     sys.modules['homeassistant.helpers.entity_platform'] = Mock()
     sys.modules['homeassistant.helpers.typing'] = Mock()
-    sys.modules['homeassistant.helpers.event'] = Mock()
+    sys.modules['homeassistant.helpers.event'] = mock_event
 
     from custom_components.adaptive_thermostat.sensor import DutyCycleSensor
 
@@ -42,37 +67,29 @@ def test_duty_cycle_calculation():
         climate_entity_id="climate.living_room",
     )
 
-    # Mock climate entity state
+    # The new implementation uses control_output as a fallback when no state
+    # changes are tracked. Let's test that behavior.
+
+    # Mock climate entity with control_output at 100% (heater fully on)
     climate_state = Mock()
-    climate_state.attributes = {"heater_entity_id": "switch.heater_living_room"}
+    climate_state.attributes = {"control_output": 100.0}
+    mock_hass.states.get.return_value = climate_state
 
-    # Mock heater state - ON
-    heater_state_on = Mock()
-    heater_state_on.state = "on"
-
-    mock_hass.states.get.side_effect = lambda entity_id: (
-        climate_state if entity_id == "climate.living_room"
-        else heater_state_on if entity_id == "switch.heater_living_room"
-        else None
-    )
-
-    # Test heater ON - should report 100% duty cycle
-    result = asyncio.run(sensor._calculate_duty_cycle())
+    # Test control_output = 100 - should report 100% duty cycle
+    result = sensor._calculate_duty_cycle()
     assert result == 100.0
 
-    # Mock heater state - OFF
-    heater_state_off = Mock()
-    heater_state_off.state = "off"
+    # Mock climate entity with control_output at 0% (heater off)
+    climate_state.attributes = {"control_output": 0.0}
 
-    mock_hass.states.get.side_effect = lambda entity_id: (
-        climate_state if entity_id == "climate.living_room"
-        else heater_state_off if entity_id == "switch.heater_living_room"
-        else None
-    )
-
-    # Test heater OFF - should report 0% duty cycle
-    result = asyncio.run(sensor._calculate_duty_cycle())
+    # Test control_output = 0 - should report 0% duty cycle
+    result = sensor._calculate_duty_cycle()
     assert result == 0.0
+
+    # Test with 50% control_output
+    climate_state.attributes = {"control_output": 50.0}
+    result = sensor._calculate_duty_cycle()
+    assert result == 50.0
 
 
 def test_power_m2_estimation():
