@@ -29,6 +29,7 @@ from homeassistant.helpers.event import (
     async_track_state_change_event,
 )
 from homeassistant.helpers.restore_state import RestoreEntity
+from homeassistant.helpers.device_registry import DeviceInfo
 
 from .const import (
     DOMAIN,
@@ -134,6 +135,13 @@ class AdaptiveThermostatSensor(SensorEntity):
         self._attr_should_poll = False
         self._attr_available = True
         self._attr_entity_registry_visible_default = False
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device information to link sensor to parent thermostat."""
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._zone_id)},
+        )
 
 
 class DutyCycleSensor(AdaptiveThermostatSensor):

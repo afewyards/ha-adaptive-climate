@@ -16,6 +16,18 @@ from collections import deque
 
 def _setup_mocks():
     """Set up mock modules for Home Assistant dependencies."""
+    # Mock voluptuous FIRST to avoid issues when __init__.py is loaded
+    mock_vol = Mock()
+    mock_vol.Schema = Mock(return_value=Mock())
+    mock_vol.Optional = Mock(side_effect=lambda x, **kwargs: x)
+    mock_vol.Required = Mock(side_effect=lambda x, **kwargs: x)
+    mock_vol.Coerce = Mock(return_value=Mock())
+    mock_vol.Range = Mock(return_value=Mock())
+    mock_vol.In = Mock(return_value=Mock())
+    mock_vol.ALLOW_EXTRA = "ALLOW_EXTRA"
+    mock_vol.Invalid = Exception
+    sys.modules['voluptuous'] = mock_vol
+
     # Create distinct base classes to avoid MRO conflicts
     class MockSensorEntity:
         pass
@@ -59,6 +71,10 @@ def _setup_mocks():
     mock_restore_state = Mock()
     mock_restore_state.RestoreEntity = MockRestoreEntity
 
+    # Mock device_registry for DeviceInfo
+    mock_device_registry = Mock()
+    mock_device_registry.DeviceInfo = dict  # DeviceInfo is essentially a TypedDict
+
     sys.modules['homeassistant'] = Mock()
     sys.modules['homeassistant.core'] = mock_core
     sys.modules['homeassistant.components'] = Mock()
@@ -69,6 +85,7 @@ def _setup_mocks():
     sys.modules['homeassistant.helpers.typing'] = Mock()
     sys.modules['homeassistant.helpers.event'] = mock_event
     sys.modules['homeassistant.helpers.restore_state'] = mock_restore_state
+    sys.modules['homeassistant.helpers.device_registry'] = mock_device_registry
 
 
 # Set up mocks before importing the module
@@ -83,12 +100,16 @@ from custom_components.adaptive_thermostat.sensor import (
     HeaterStateChange,
     DEFAULT_DUTY_CYCLE_WINDOW,
     DEFAULT_ROLLING_AVERAGE_SIZE,
+    AdaptiveThermostatSensor,
 )
 from custom_components.adaptive_thermostat.analytics.heat_output import (
     HeatOutputCalculator,
     calculate_heat_output_kw,
     SPECIFIC_HEAT_WATER,
 )
+
+# Define DOMAIN inline to avoid importing __init__.py (which needs voluptuous mocks)
+DOMAIN = "adaptive_thermostat"
 
 
 class TestHeaterStateChange:
@@ -1467,3 +1488,145 @@ def test_heat_output():
     assert flow == 0.75, "Flow rate retrieval failed"
 
     print("All heat output tests passed!")
+
+
+# ============================================================================
+# Sensor Device Grouping Tests (Story 7.5)
+# ============================================================================
+
+
+class TestSensorDeviceGrouping:
+    """Tests for sensor device grouping under parent thermostat."""
+
+    @pytest.fixture
+    def mock_hass(self):
+        """Create a mock Home Assistant instance."""
+        hass = Mock()
+        hass.states = Mock()
+        hass.data = {}
+        return hass
+
+    def test_sensor_device_info_returns_correct_identifiers(self, mock_hass):
+        """Test that sensor device_info returns identifiers matching parent thermostat."""
+        sensor = DutyCycleSensor(
+            hass=mock_hass,
+            zone_id="living_room",
+            zone_name="Living Room",
+            climate_entity_id="climate.living_room",
+        )
+
+        device_info = sensor.device_info
+
+        # Device info should have identifiers matching the zone_id
+        assert device_info is not None
+        assert "identifiers" in device_info
+        assert (DOMAIN, "living_room") in device_info["identifiers"]
+
+    def test_all_sensor_types_have_device_info(self, mock_hass):
+        """Test that all sensor types return device_info with correct identifiers."""
+        zone_id = "test_zone"
+        zone_name = "Test Zone"
+        climate_entity_id = "climate.test_zone"
+
+        # Test all sensor types that inherit from AdaptiveThermostatSensor
+        sensors = [
+            DutyCycleSensor(mock_hass, zone_id, zone_name, climate_entity_id),
+            CycleTimeSensor(mock_hass, zone_id, zone_name, climate_entity_id),
+            HeatOutputSensor(
+                mock_hass,
+                zone_id,
+                zone_name,
+                climate_entity_id,
+                supply_temp_sensor="sensor.supply",
+                return_temp_sensor="sensor.return",
+            ),
+        ]
+
+        for sensor in sensors:
+            device_info = sensor.device_info
+            assert device_info is not None, f"{type(sensor).__name__} missing device_info"
+            assert (DOMAIN, zone_id) in device_info["identifiers"], (
+                f"{type(sensor).__name__} has wrong identifiers"
+            )
+
+    def test_sensor_device_info_minimal(self, mock_hass):
+        """Test that sensor device_info only contains identifiers."""
+        sensor = DutyCycleSensor(
+            hass=mock_hass,
+            zone_id="kitchen",
+            zone_name="Kitchen",
+            climate_entity_id="climate.kitchen",
+        )
+
+        device_info = sensor.device_info
+
+        # Sensor should provide identifiers
+        assert "identifiers" in device_info
+        assert (DOMAIN, "kitchen") in device_info["identifiers"]
+
+    def test_base_class_device_info_property_exists(self, mock_hass):
+        """Test that the base class has device_info property."""
+        # Verify the base class has the property
+        assert hasattr(AdaptiveThermostatSensor, 'device_info')
+
+        # Create an instance of a derived class
+        sensor = DutyCycleSensor(mock_hass, "zone1", "Zone 1", "climate.zone1")
+
+        # Verify it returns a dict-like object with identifiers
+        device_info = sensor.device_info
+        assert isinstance(device_info, dict)
+        assert "identifiers" in device_info
+
+
+def test_sensor_device_grouping():
+    """Test that sensors can be grouped under parent thermostat device."""
+    mock_hass = Mock()
+    mock_hass.states = Mock()
+    mock_hass.data = {}
+
+    # Test 1: DutyCycleSensor has device_info
+    sensor = DutyCycleSensor(
+        mock_hass, "zone_a", "Zone A", "climate.zone_a"
+    )
+    device_info = sensor.device_info
+    assert device_info is not None
+    assert "identifiers" in device_info
+    assert (DOMAIN, "zone_a") in device_info["identifiers"]
+    print("Test 1 passed: DutyCycleSensor has correct device_info")
+
+    # Test 2: CycleTimeSensor has device_info
+    sensor2 = CycleTimeSensor(
+        mock_hass, "zone_b", "Zone B", "climate.zone_b"
+    )
+    device_info2 = sensor2.device_info
+    assert device_info2 is not None
+    assert (DOMAIN, "zone_b") in device_info2["identifiers"]
+    print("Test 2 passed: CycleTimeSensor has correct device_info")
+
+    # Test 3: HeatOutputSensor has device_info
+    sensor3 = HeatOutputSensor(
+        mock_hass, "zone_c", "Zone C", "climate.zone_c",
+        supply_temp_sensor="sensor.supply",
+        return_temp_sensor="sensor.return",
+    )
+    device_info3 = sensor3.device_info
+    assert device_info3 is not None
+    assert (DOMAIN, "zone_c") in device_info3["identifiers"]
+    print("Test 3 passed: HeatOutputSensor has correct device_info")
+
+    # Test 4: All sensors for same zone have matching identifiers
+    zone_id = "shared_zone"
+    sensors = [
+        DutyCycleSensor(mock_hass, zone_id, "Shared", "climate.shared"),
+        CycleTimeSensor(mock_hass, zone_id, "Shared", "climate.shared"),
+        HeatOutputSensor(
+            mock_hass, zone_id, "Shared", "climate.shared",
+            supply_temp_sensor="sensor.supply",
+            return_temp_sensor="sensor.return",
+        ),
+    ]
+    for s in sensors:
+        assert (DOMAIN, zone_id) in s.device_info["identifiers"]
+    print("Test 4 passed: All sensors for same zone have matching identifiers")
+
+    print("All sensor device grouping tests passed!")
