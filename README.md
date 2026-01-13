@@ -84,9 +84,6 @@ climate:
     window_area_m2: 4.0
     window_orientation: south  # north, east, south, west, roof
 
-    # Adaptive learning
-    learning_enabled: true
-
     # Zone linking (for thermally connected zones)
     linked_zones:
       - climate.kitchen
@@ -202,9 +199,12 @@ adaptive_thermostat:
   energy_meter_entity: sensor.heating_energy
   energy_cost_entity: input_number.energy_price
 
-  # Central heat source control
-  main_heater_switch: switch.boiler
-  main_cooler_switch: switch.ac_compressor
+  # Central heat source control (single entity or list)
+  main_heater_switch:
+    - switch.boiler
+    - switch.circulation_pump
+  main_cooler_switch:
+    - switch.ac_compressor
   source_startup_delay: 30  # Seconds delay before firing heat source
 
   # Mode synchronization across zones
@@ -413,16 +413,6 @@ For thermally connected zones (e.g., open floor plan):
 | `precision` | - | Display precision (tenths, halves, whole) |
 | `target_temp_step` | - | Setpoint adjustment step size |
 
-### PID Parameters (Optional - Auto-calculated)
-PID values are automatically calculated from `heating_type` and zone properties. Only specify these to override the physics-based initialization.
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `kp` | Auto | Proportional gain (10-500) |
-| `ki` | Auto | Integral gain (0-100) |
-| `kd` | Auto | Derivative gain (0-200) |
-| `ke` | 0 | Outdoor temperature compensation gain |
-
 ### Output Control Parameters
 | Parameter | Default | Description |
 |-----------|---------|-------------|
@@ -447,7 +437,6 @@ PID values are automatically calculated from `heating_type` and zone properties.
 | `ceiling_height` | 2.5 | Ceiling height in meters |
 | `window_area_m2` | - | Total window area in m² |
 | `window_orientation` | - | Primary window direction (north, east, south, west, roof) |
-| `learning_enabled` | true | Enable adaptive learning |
 
 ### Preset Mode Parameters
 | Parameter | Default | Description |
@@ -501,8 +490,8 @@ These are configured under the `adaptive_thermostat:` domain block, not per-zone
 | `house_energy_rating` | - | Building energy rating (A+++ to G) for physics init |
 | `learning_window_days` | 7 | Days of data for adaptive learning |
 | `weather_entity` | - | Weather entity for solar gain prediction |
-| `main_heater_switch` | - | Main boiler/heat pump switch entity |
-| `main_cooler_switch` | - | Main AC/chiller switch entity |
+| `main_heater_switch` | - | Main heater switch(es) - single entity or list |
+| `main_cooler_switch` | - | Main cooler switch(es) - single entity or list |
 | `source_startup_delay` | 30 | Seconds to wait before activating heat source |
 | `sync_modes` | true | Synchronize HEAT/COOL modes across zones |
 | `notify_service` | - | Notification service for alerts/reports |
