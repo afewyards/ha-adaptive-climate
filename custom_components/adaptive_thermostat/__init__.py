@@ -11,7 +11,7 @@ try:
     from homeassistant.core import HomeAssistant, ServiceCall
     from homeassistant.helpers import config_validation as cv
     from homeassistant.helpers.typing import ConfigType
-    from homeassistant.helpers.event import async_track_time_change, async_track_time_interval
+    from homeassistant.helpers.event import async_track_time_change
     HAS_HOMEASSISTANT = True
 except ImportError:
     HAS_HOMEASSISTANT = False
@@ -191,21 +191,12 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             startup_delay_seconds=source_startup_delay,
         )
         hass.data[DOMAIN]["central_controller"] = central_controller
+        coordinator.set_central_controller(central_controller)
         _LOGGER.info(
             "Central controller configured: heater=%s, cooler=%s, delay=%ds",
             main_heater_switch,
             main_cooler_switch,
             source_startup_delay,
-        )
-
-        # Set up periodic update for central controller (every 30 seconds)
-        async def _update_central_controller(_now):
-            """Periodically update central controller."""
-            if central_controller:
-                await central_controller.update()
-
-        async_track_time_interval(
-            hass, _update_central_controller, timedelta(seconds=30)
         )
 
     # Mode synchronization

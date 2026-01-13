@@ -30,6 +30,11 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
         )
         self._zones: dict[str, dict[str, Any]] = {}
         self._demand_states: dict[str, bool] = {}
+        self._central_controller: "CentralController | None" = None
+
+    def set_central_controller(self, controller: "CentralController") -> None:
+        """Set the central controller reference for push-based updates."""
+        self._central_controller = controller
 
     def register_zone(self, zone_id: str, zone_data: dict[str, Any]) -> None:
         """Register a zone with the coordinator.
@@ -50,8 +55,15 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
             has_demand: Whether the zone currently has heating/cooling demand
         """
         if zone_id in self._demand_states:
+            old_demand = self._demand_states[zone_id]
             self._demand_states[zone_id] = has_demand
-            _LOGGER.debug("Updated demand for zone %s: %s", zone_id, has_demand)
+
+            # Only trigger central controller if demand actually changed
+            if old_demand != has_demand:
+                _LOGGER.info("Demand changed for zone %s: %s -> %s", zone_id, old_demand, has_demand)
+                if self._central_controller:
+                    _LOGGER.info("Triggering CentralController update")
+                    self.hass.async_create_task(self._central_controller.update())
 
     def get_aggregate_demand(self) -> dict[str, bool]:
         """Get aggregated demand across all zones.

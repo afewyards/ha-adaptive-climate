@@ -296,21 +296,6 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
             )
         )
 
-        # Trigger switch platform discovery for demand switch
-        hass.async_create_task(
-            discovery.async_load_platform(
-                hass,
-                "switch",
-                DOMAIN,
-                {
-                    "zone_id": zone_id,
-                    "zone_name": name,
-                    "climate_entity_id": f"climate.{zone_id}",
-                },
-                config,
-            )
-        )
-
     platform.async_register_entity_service(  # type: ignore
         "reset_pid_to_physics",
         {},
@@ -349,7 +334,7 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
         self._temp_precision = kwargs.get('precision')
         self._target_temperature_step = kwargs.get('target_temp_step')
         self._debug = kwargs.get(const.CONF_DEBUG)
-        self._last_heat_cycle_time = time.time()
+        self._last_heat_cycle_time = 0  # Allow first cycle immediately on startup
         self._min_on_cycle_duration_pid_on = kwargs.get('min_cycle_duration')
         self._min_off_cycle_duration_pid_on = kwargs.get('min_off_cycle_duration')
         self._min_on_cycle_duration_pid_off = kwargs.get('min_cycle_duration_pid_off')
@@ -1304,6 +1289,13 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
         new_state = event.data["new_state"]
         if new_state is None:
             return
+
+        # Update zone demand for CentralController when valve state changes
+        if self._zone_id:
+            coordinator = self.hass.data.get(const.DOMAIN, {}).get("coordinator")
+            if coordinator:
+                coordinator.update_zone_demand(self._zone_id, self._is_device_active)
+
         self.async_write_ha_state()
 
     @callback
@@ -1354,6 +1346,11 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
                     else:
                         self._control_output = self._output_min
                         await self._async_set_valve_value(self._control_output)
+                # Update zone demand to False when OFF/inactive
+                if self._zone_id:
+                    coordinator = self.hass.data.get(const.DOMAIN, {}).get("coordinator")
+                    if coordinator:
+                        coordinator.update_zone_demand(self._zone_id, False)
                 self.async_write_ha_state()
                 return
 
@@ -1364,6 +1361,13 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
             elif calc_pid or self._sampling_period != 0:
                 await self.calc_output()
             await self.set_control_value()
+
+            # Update zone demand for CentralController (based on actual device state, not PID output)
+            if self._zone_id:
+                coordinator = self.hass.data.get(const.DOMAIN, {}).get("coordinator")
+                if coordinator:
+                    coordinator.update_zone_demand(self._zone_id, self._is_device_active)
+
             self.async_write_ha_state()
 
     @property
