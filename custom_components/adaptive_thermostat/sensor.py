@@ -26,6 +26,7 @@ from homeassistant.helpers.event import (
     async_track_time_interval,
     async_track_state_change_event,
 )
+from homeassistant.helpers.restore_state import RestoreEntity
 
 from .const import DOMAIN
 from .analytics.health import SystemHealthMonitor, HealthStatus
@@ -1025,8 +1026,13 @@ class TotalPowerSensor(SensorEntity):
         self._zone_powers = zone_powers
 
 
-class WeeklyCostSensor(SensorEntity):
-    """Sensor for weekly heating energy cost."""
+class WeeklyCostSensor(SensorEntity, RestoreEntity):
+    """Sensor for weekly heating energy cost.
+
+    Tracks weekly energy consumption by storing the meter reading at the start
+    of each week and calculating the delta. Persists state across HA restarts
+    and handles meter reset/replacement scenarios.
+    """
 
     def __init__(
         self,
@@ -1048,8 +1054,109 @@ class WeeklyCostSensor(SensorEntity):
         self._attr_entity_registry_visible_default = False
         self._value = 0.0
         self._weekly_energy_kwh = 0.0
-        self._price_per_kwh = None
+        self._price_per_kwh: float | None = None
         self._currency = "EUR"
+        # Week tracking state
+        self._week_start_reading: float | None = None
+        self._week_start_timestamp: datetime | None = None
+        self._last_meter_reading: float | None = None
+
+    async def async_added_to_hass(self) -> None:
+        """Restore state when added to hass."""
+        await super().async_added_to_hass()
+
+        # Restore previous state
+        old_state = await self.async_get_last_state()
+        if old_state is not None:
+            # Restore week_start_reading from attributes
+            attrs = old_state.attributes
+            week_start = attrs.get("week_start_reading")
+            if week_start is not None:
+                try:
+                    self._week_start_reading = float(week_start)
+                except (ValueError, TypeError):
+                    pass
+
+            week_start_ts = attrs.get("week_start_timestamp")
+            if week_start_ts:
+                try:
+                    self._week_start_timestamp = datetime.fromisoformat(week_start_ts)
+                except (ValueError, TypeError):
+                    pass
+
+            last_reading = attrs.get("last_meter_reading")
+            if last_reading is not None:
+                try:
+                    self._last_meter_reading = float(last_reading)
+                except (ValueError, TypeError):
+                    pass
+
+            # Restore weekly energy
+            weekly_energy = attrs.get("weekly_energy_kwh")
+            if weekly_energy is not None:
+                try:
+                    self._weekly_energy_kwh = float(weekly_energy)
+                except (ValueError, TypeError):
+                    pass
+
+            # Restore price
+            price = attrs.get("price_per_kwh")
+            if price is not None:
+                try:
+                    self._price_per_kwh = float(price)
+                except (ValueError, TypeError):
+                    pass
+
+            _LOGGER.debug(
+                "Restored WeeklyCostSensor state: week_start_reading=%.2f, "
+                "week_start_timestamp=%s, weekly_energy_kwh=%.2f",
+                self._week_start_reading or 0.0,
+                self._week_start_timestamp,
+                self._weekly_energy_kwh,
+            )
+
+    def _check_week_boundary(self, current_reading: float) -> None:
+        """Check if we've crossed into a new week and reset if needed.
+
+        Resets on Sunday midnight (start of new week).
+        """
+        now = datetime.now()
+
+        if self._week_start_timestamp is None:
+            # First run or no previous data - initialize
+            self._start_new_week(current_reading, now)
+            return
+
+        # Check if we're in a new week (ISO week-based)
+        # Week number changed means new week
+        current_week = now.isocalendar()[1]
+        stored_week = self._week_start_timestamp.isocalendar()[1]
+        current_year = now.isocalendar()[0]
+        stored_year = self._week_start_timestamp.isocalendar()[0]
+
+        if current_year != stored_year or current_week != stored_week:
+            _LOGGER.info(
+                "New week detected (week %d/%d -> %d/%d). "
+                "Previous week energy: %.2f kWh, cost: %.2f",
+                stored_year,
+                stored_week,
+                current_year,
+                current_week,
+                self._weekly_energy_kwh,
+                self._value,
+            )
+            self._start_new_week(current_reading, now)
+
+    def _start_new_week(self, current_reading: float, now: datetime) -> None:
+        """Reset week tracking with new start reading."""
+        self._week_start_reading = current_reading
+        self._week_start_timestamp = now
+        self._weekly_energy_kwh = 0.0
+        _LOGGER.debug(
+            "Started new week at %s with reading %.2f kWh",
+            now.isoformat(),
+            current_reading,
+        )
 
     @property
     def native_value(self) -> float | None:
@@ -1069,6 +1176,14 @@ class WeeklyCostSensor(SensorEntity):
             "price_per_kwh": self._price_per_kwh,
             "energy_meter_entity": self._energy_meter_entity,
             "cost_entity": self._energy_cost_entity,
+            # Persistence attributes
+            "week_start_reading": self._week_start_reading,
+            "week_start_timestamp": (
+                self._week_start_timestamp.isoformat()
+                if self._week_start_timestamp
+                else None
+            ),
+            "last_meter_reading": self._last_meter_reading,
         }
 
     async def async_update(self) -> None:
@@ -1098,20 +1213,41 @@ class WeeklyCostSensor(SensorEntity):
 
         self._attr_available = True
 
-        # For now, we track the current meter value
-        # A full implementation would store historical readings
-        # and calculate the 7-day difference
         try:
             current_reading = float(meter_state.state)
             unit = meter_state.attributes.get("unit_of_measurement", "kWh").upper()
 
             # Convert to kWh
             from .analytics.energy import UNIT_CONVERSIONS
-            conversion = UNIT_CONVERSIONS.get(unit.replace("KWH", "KWH").replace("GJ", "GJ"), 1.0)
+
+            conversion = UNIT_CONVERSIONS.get(unit, 1.0)
             current_kwh = current_reading * conversion
 
-            # Store the weekly energy (this is simplified - production would track 7-day delta)
-            self._weekly_energy_kwh = current_kwh
+            # Check for week boundary reset
+            self._check_week_boundary(current_kwh)
+
+            # Handle meter reset scenarios (current reading less than week start)
+            if self._week_start_reading is not None:
+                if current_kwh < self._week_start_reading:
+                    # Meter reset detected - likely replacement or rollover
+                    _LOGGER.warning(
+                        "Meter reset detected: week_start=%.2f kWh, current=%.2f kWh. "
+                        "Resetting week start to current reading.",
+                        self._week_start_reading,
+                        current_kwh,
+                    )
+                    self._week_start_reading = current_kwh
+                    self._weekly_energy_kwh = 0.0
+                else:
+                    # Normal case: calculate delta
+                    self._weekly_energy_kwh = current_kwh - self._week_start_reading
+            else:
+                # First reading - initialize
+                self._week_start_reading = current_kwh
+                self._week_start_timestamp = datetime.now()
+                self._weekly_energy_kwh = 0.0
+
+            self._last_meter_reading = current_kwh
 
             # Calculate cost if price is available
             if self._price_per_kwh is not None:
