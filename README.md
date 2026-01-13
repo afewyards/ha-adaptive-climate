@@ -117,7 +117,6 @@ climate:
     name: Living Room AC
     heater: switch.heating_living
     cooler: switch.ac_living
-    ac_mode: true
     target_sensor: sensor.temp_living
     min_temp: 16
     max_temp: 30
@@ -137,7 +136,6 @@ climate:
     name: Fan Coil Unit
     demand_switch: switch.fcunit_valve
     target_sensor: sensor.temp_fcunit
-    ac_mode: true
     pwm: 0  # Direct valve control (0-100%)
     min_temp: 16
     max_temp: 28
@@ -389,9 +387,10 @@ For thermally connected zones (e.g., open floor plan):
 | `min_temp` | No | 7 | Minimum setpoint temperature |
 | `max_temp` | No | 35 | Maximum setpoint temperature |
 | `target_temp` | No | 20 | Initial target temperature |
-| `ac_mode` | No | false | Enable cooling mode support |
 
 \* At least one of `heater`, `cooler`, or `demand_switch` is required.
+
+**Note:** Cooling mode (COOL) is automatically enabled when `cooler` is configured at zone level or `main_cooler_switch` is configured at controller level.
 
 ### Timing & Cycle Parameters
 | Parameter | Required | Default | Description |

@@ -82,7 +82,6 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Required(const.CONF_INVERT_HEATER, default=False): cv.boolean,
         vol.Required(const.CONF_SENSOR): cv.entity_id,
         vol.Optional(const.CONF_OUTDOOR_SENSOR): cv.entity_id,
-        vol.Optional(const.CONF_AC_MODE): cv.boolean,
         vol.Optional(const.CONF_FORCE_OFF_STATE, default=True): cv.boolean,
         vol.Optional(const.CONF_MAX_TEMP): vol.Coerce(float),
         vol.Optional(const.CONF_MIN_TEMP): vol.Coerce(float),
@@ -197,7 +196,8 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         'target_temp': config.get(const.CONF_TARGET_TEMP),
         'hot_tolerance': config.get(const.CONF_HOT_TOLERANCE),
         'cold_tolerance': config.get(const.CONF_COLD_TOLERANCE),
-        'ac_mode': config.get(const.CONF_AC_MODE),
+        # Derive ac_mode from cooler presence (zone or controller level)
+        'ac_mode': bool(cooler) or bool(hass.data.get(DOMAIN, {}).get("main_cooler_switch")),
         'force_off_state': config.get(const.CONF_FORCE_OFF_STATE),
         'min_cycle_duration': config.get(const.CONF_MIN_CYCLE_DURATION),
         'min_off_cycle_duration': config.get(const.CONF_MIN_OFF_CYCLE_DURATION),
