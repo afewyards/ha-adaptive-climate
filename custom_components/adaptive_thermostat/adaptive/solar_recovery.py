@@ -2,10 +2,19 @@
 
 Implements energy-saving solar recovery based on window orientation,
 allowing the sun to warm zones instead of active heating when appropriate.
+
+Supports dynamic sun position-based timing when a SunPositionCalculator
+is provided, falling back to static orientation offsets otherwise.
 """
-from datetime import datetime, time, timedelta
-from typing import Optional
+from datetime import datetime, time, timedelta, date
+from typing import Optional, TYPE_CHECKING
 from enum import Enum
+import logging
+
+if TYPE_CHECKING:
+    from .sun_position import SunPositionCalculator
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class WindowOrientation(Enum):
@@ -52,7 +61,9 @@ class SolarRecovery:
         self,
         window_orientation: str,
         base_recovery_time: str = "06:00",
-        recovery_deadline: Optional[str] = None
+        recovery_deadline: Optional[str] = None,
+        sun_position_calculator: Optional["SunPositionCalculator"] = None,
+        min_effective_elevation: float = 10.0,
     ):
         """Initialize solar recovery.
 
@@ -60,6 +71,8 @@ class SolarRecovery:
             window_orientation: Window orientation ("north", "south", "east", "west", "none")
             base_recovery_time: Base recovery time as "HH:MM" (default 06:00)
             recovery_deadline: Hard deadline time "HH:MM" when temp must be restored
+            sun_position_calculator: Optional calculator for dynamic sun-based timing
+            min_effective_elevation: Minimum sun elevation (degrees) for effective solar gain
         """
         # Parse orientation
         orientation_str = window_orientation.lower()
@@ -68,7 +81,7 @@ class SolarRecovery:
         # Parse base recovery time
         self.base_recovery_time = self._parse_time(base_recovery_time)
 
-        # Calculate adjusted recovery time based on orientation
+        # Calculate adjusted recovery time based on orientation (static fallback)
         offset_minutes = self.ORIENTATION_OFFSETS[self.orientation]
         base_dt = datetime.combine(datetime.today(), self.base_recovery_time)
         adjusted_dt = base_dt + timedelta(minutes=offset_minutes)
@@ -76,6 +89,12 @@ class SolarRecovery:
 
         # Parse recovery deadline
         self.recovery_deadline = self._parse_time(recovery_deadline) if recovery_deadline else None
+
+        # Dynamic sun position support
+        self._sun_calculator = sun_position_calculator
+        self._min_effective_elevation = min_effective_elevation
+        self._cached_dynamic_time: Optional[time] = None
+        self._cache_date: Optional[date] = None
 
     def _parse_time(self, time_str: str) -> time:
         """Parse time string in HH:MM format.
@@ -89,12 +108,75 @@ class SolarRecovery:
         hour, minute = map(int, time_str.split(":"))
         return time(hour, minute)
 
-    def get_recovery_time(self) -> time:
-        """Get the adjusted recovery time for this zone.
+    def set_sun_calculator(self, calculator: Optional["SunPositionCalculator"]) -> None:
+        """Set or update the sun position calculator.
+
+        Args:
+            calculator: Sun position calculator instance or None
+        """
+        self._sun_calculator = calculator
+        # Clear cache when calculator changes
+        self._cached_dynamic_time = None
+        self._cache_date = None
+
+    def get_dynamic_recovery_time(self, target_date: date) -> Optional[time]:
+        """Calculate recovery time based on actual sun position.
+
+        Uses sun position calculator to find when sunlight first effectively
+        illuminates the window, rather than using static offsets.
+
+        Args:
+            target_date: Date to calculate for
 
         Returns:
-            Recovery time adjusted for window orientation
+            Dynamic recovery time, or None if calculation unavailable
         """
+        if not self._sun_calculator:
+            return None
+
+        # Use cached result if same day
+        if self._cache_date == target_date and self._cached_dynamic_time is not None:
+            return self._cached_dynamic_time
+
+        try:
+            entry_time = self._sun_calculator.calculate_window_sun_entry_time(
+                window_orientation=self.orientation.value,
+                target_date=target_date,
+                min_elevation=self._min_effective_elevation,
+            )
+
+            if entry_time:
+                # Cache result
+                self._cache_date = target_date
+                self._cached_dynamic_time = entry_time.time()
+                _LOGGER.debug(
+                    "Dynamic recovery time for %s window on %s: %s",
+                    self.orientation.value,
+                    target_date,
+                    self._cached_dynamic_time,
+                )
+                return self._cached_dynamic_time
+        except Exception as err:
+            _LOGGER.warning("Failed to calculate dynamic recovery time: %s", err)
+
+        return None
+
+    def get_recovery_time(self, current_time: Optional[datetime] = None) -> time:
+        """Get recovery time, preferring dynamic calculation when available.
+
+        Args:
+            current_time: Current datetime (used for dynamic calculation)
+
+        Returns:
+            Recovery time (dynamic if available and current_time provided,
+            otherwise static orientation-based time)
+        """
+        if current_time and self._sun_calculator:
+            dynamic_time = self.get_dynamic_recovery_time(current_time.date())
+            if dynamic_time:
+                return dynamic_time
+
+        # Fallback to static calculation
         return self.adjusted_recovery_time
 
     def should_use_solar_recovery(
@@ -107,7 +189,7 @@ class SolarRecovery:
         """Determine if solar recovery should be used instead of active heating.
 
         Solar recovery is used when:
-        1. Current time is before the adjusted recovery time
+        1. Current time is before the recovery time (dynamic or static)
         2. We have enough time for sun to warm the zone before deadline
         3. Recovery deadline (if set) is not approaching
 
@@ -141,8 +223,11 @@ class SolarRecovery:
             if recovery_hours_needed >= hours_until_deadline:
                 return False
 
-        # If we're past the adjusted recovery time, use active heating
-        if current_time_only >= self.adjusted_recovery_time:
+        # Get recovery time (dynamic if available, else static)
+        recovery_time = self.get_recovery_time(current_time)
+
+        # If we're past the recovery time, use active heating
+        if current_time_only >= recovery_time:
             return False
 
         # Otherwise, let the sun warm the zone
@@ -161,7 +246,9 @@ class SolarRecoveryManager:
         zone_id: str,
         window_orientation: str,
         base_recovery_time: str = "06:00",
-        recovery_deadline: Optional[str] = None
+        recovery_deadline: Optional[str] = None,
+        sun_position_calculator: Optional["SunPositionCalculator"] = None,
+        min_effective_elevation: float = 10.0,
     ):
         """Configure solar recovery for a zone.
 
@@ -170,11 +257,15 @@ class SolarRecoveryManager:
             window_orientation: Window orientation ("north", "south", "east", "west", "none")
             base_recovery_time: Base recovery time as "HH:MM" (default 06:00)
             recovery_deadline: Hard deadline time "HH:MM" when temp must be restored
+            sun_position_calculator: Optional calculator for dynamic sun-based timing
+            min_effective_elevation: Minimum sun elevation (degrees) for effective solar gain
         """
         self._zone_recoveries[zone_id] = SolarRecovery(
             window_orientation=window_orientation,
             base_recovery_time=base_recovery_time,
-            recovery_deadline=recovery_deadline
+            recovery_deadline=recovery_deadline,
+            sun_position_calculator=sun_position_calculator,
+            min_effective_elevation=min_effective_elevation,
         )
 
     def should_use_solar_recovery(
@@ -209,11 +300,16 @@ class SolarRecoveryManager:
             heating_rate_c_per_hour
         )
 
-    def get_zone_recovery_time(self, zone_id: str) -> Optional[time]:
+    def get_zone_recovery_time(
+        self,
+        zone_id: str,
+        current_time: Optional[datetime] = None,
+    ) -> Optional[time]:
         """Get the recovery time for a zone.
 
         Args:
             zone_id: Zone identifier
+            current_time: Current datetime for dynamic calculation
 
         Returns:
             Recovery time or None if not configured
@@ -222,7 +318,7 @@ class SolarRecoveryManager:
             return None
 
         recovery = self._zone_recoveries[zone_id]
-        return recovery.get_recovery_time()
+        return recovery.get_recovery_time(current_time)
 
     def get_zone_config(self, zone_id: str) -> Optional[dict]:
         """Get solar recovery configuration for a zone.

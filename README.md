@@ -82,7 +82,7 @@ climate:
     area_m2: 28
     ceiling_height: 2.5
     window_area_m2: 4.0
-    window_orientation: south  # north, east, south, west, roof
+    window_orientation: south  # north, northeast, east, southeast, south, southwest, west, northwest, roof
 
     # Zone linking (for thermally connected zones)
     linked_zones:
@@ -152,6 +152,7 @@ climate:
       # end: "06:30"          # Optional - if omitted, calculated dynamically
       solar_recovery: true    # Delay morning heating to let sun warm zone
       recovery_deadline: "08:00"  # Hard deadline for recovery
+      min_effective_elevation: 10  # Min sun angle (degrees) for effective solar gain
 ```
 
 When `end` is omitted, the end time is calculated dynamically based on:
@@ -160,6 +161,17 @@ When `end` is omitted, the end time is calculated dynamically based on:
 - **Weather**: cloudy -30min, clear +15min
 
 This allows south-facing rooms to benefit from solar gain while north-facing rooms start heating earlier.
+
+#### Dynamic Solar Recovery
+
+When `solar_recovery` is enabled and Home Assistant has a configured location, the system calculates when the sun's position will actually illuminate the window based on:
+- **Window orientation azimuth**: The sun must be within ±45° of the window's facing direction
+- **Minimum elevation**: Sun must be above `min_effective_elevation` (default 10°) to provide effective heating
+- **Date and location**: Calculations adapt automatically to seasonal changes and geographic location
+
+This replaces the static orientation offsets with accurate sun position calculations using the `astral` library. For example, a southeast-facing window will get sun earlier in summer (when sunrise is in the northeast) than in winter.
+
+If Home Assistant location is not configured, the system falls back to static orientation-based offsets.
 
 ### System Configuration
 ```yaml
@@ -432,7 +444,7 @@ For thermally connected zones (e.g., open floor plan):
 | `area_m2` | - | Zone floor area in m² |
 | `ceiling_height` | 2.5 | Ceiling height in meters |
 | `window_area_m2` | - | Total window area in m² |
-| `window_orientation` | - | Primary window direction (north, east, south, west, roof) |
+| `window_orientation` | - | Primary window direction (north, northeast, east, southeast, south, southwest, west, northwest, roof) |
 
 ### Preset Mode Parameters
 These are configured at the controller level under `adaptive_thermostat:` (shared across all zones).
@@ -456,8 +468,9 @@ Configure as a nested block under `night_setback`:
 | `start` | - | Start time ("22:00" or "sunset+30") |
 | `end` | dynamic | End time ("06:30") - if omitted, calculated from sunrise/orientation/weather |
 | `delta` | 2.0 | Temperature reduction at night (°C) |
-| `solar_recovery` | false | Delay morning heating to let sun warm the zone |
+| `solar_recovery` | false | Delay morning heating to let sun warm the zone (uses dynamic sun position when HA location configured) |
 | `recovery_deadline` | - | Hard deadline for active heating recovery ("08:00") |
+| `min_effective_elevation` | 10.0 | Minimum sun elevation (degrees) for effective solar gain through windows |
 
 ### Zone Coordination Parameters
 | Parameter | Default | Description |

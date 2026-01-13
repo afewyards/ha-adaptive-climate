@@ -50,6 +50,7 @@ from homeassistant.exceptions import HomeAssistantError, ServiceNotFound
 from .adaptive.physics import calculate_thermal_time_constant, calculate_initial_pid
 from .adaptive.night_setback import NightSetback
 from .adaptive.solar_recovery import SolarRecovery
+from .adaptive.sun_position import SunPositionCalculator
 
 from homeassistant.components.climate import PLATFORM_SCHEMA, ClimateEntity, ClimateEntityFeature
 from homeassistant.components.climate import (
@@ -390,6 +391,10 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
                     ),
                     'recovery_deadline': night_setback_config.get(const.CONF_NIGHT_SETBACK_RECOVERY_DEADLINE),
                     'solar_recovery': night_setback_config.get(const.CONF_NIGHT_SETBACK_SOLAR_RECOVERY, False),
+                    'min_effective_elevation': night_setback_config.get(
+                        const.CONF_MIN_EFFECTIVE_ELEVATION,
+                        const.DEFAULT_MIN_EFFECTIVE_ELEVATION
+                    ),
                 }
                 # Only create NightSetback if end is explicitly configured
                 if end:
@@ -400,11 +405,13 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
                         recovery_deadline=self._night_setback_config['recovery_deadline'],
                     )
                     # Solar recovery (uses window_orientation from zone config)
+                    # Sun position calculator is set in async_added_to_hass
                     if self._night_setback_config['solar_recovery'] and self._window_orientation:
                         self._solar_recovery = SolarRecovery(
                             window_orientation=self._window_orientation,
                             base_recovery_time=end,
                             recovery_deadline=self._night_setback_config['recovery_deadline'],
+                            min_effective_elevation=self._night_setback_config['min_effective_elevation'],
                         )
 
         # Zone linking for thermally connected zones
@@ -469,6 +476,24 @@ class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
                 _LOGGER.info(
                     "%s: Zone linking configured with %s (delay=%d min)",
                     self.entity_id, self._linked_zones, self._link_delay_minutes
+                )
+
+        # Initialize sun position calculator for dynamic solar recovery
+        if self._solar_recovery:
+            sun_calculator = SunPositionCalculator.from_hass(self.hass)
+            if sun_calculator:
+                self._solar_recovery.set_sun_calculator(sun_calculator)
+                _LOGGER.info(
+                    "%s: Dynamic solar recovery enabled using location (%.2f, %.2f)",
+                    self.entity_id,
+                    self.hass.config.latitude,
+                    self.hass.config.longitude,
+                )
+            else:
+                _LOGGER.warning(
+                    "%s: Could not initialize sun position calculator, "
+                    "using static orientation offsets for solar recovery",
+                    self.entity_id,
                 )
 
         # Set up state change listeners
