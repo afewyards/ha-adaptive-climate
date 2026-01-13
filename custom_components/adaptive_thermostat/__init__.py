@@ -132,8 +132,8 @@ if HAS_HOMEASSISTANT:
                 vol.Optional(CONF_ENERGY_COST_ENTITY): cv.entity_id,
 
                 # Central heat source control
-                vol.Optional(CONF_MAIN_HEATER_SWITCH): cv.entity_id,
-                vol.Optional(CONF_MAIN_COOLER_SWITCH): cv.entity_id,
+                vol.Optional(CONF_MAIN_HEATER_SWITCH): cv.entity_ids,
+                vol.Optional(CONF_MAIN_COOLER_SWITCH): cv.entity_ids,
                 vol.Optional(
                     CONF_SOURCE_STARTUP_DELAY,
                     default=DEFAULT_SOURCE_STARTUP_DELAY

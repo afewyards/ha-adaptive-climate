@@ -69,7 +69,7 @@ async def test_heater_on_when_zone_demands(mock_hass, coord):
     controller = coordinator.CentralController(
         mock_hass,
         coord,
-        main_heater_switch="switch.boiler",
+        main_heater_switch=["switch.boiler"],
         startup_delay_seconds=0,
     )
 
@@ -101,7 +101,7 @@ async def test_heater_off_when_no_demand(mock_hass, coord):
     controller = coordinator.CentralController(
         mock_hass,
         coord,
-        main_heater_switch="switch.boiler",
+        main_heater_switch=["switch.boiler"],
         startup_delay_seconds=0,
     )
 
@@ -133,7 +133,7 @@ async def test_startup_delay(mock_hass, coord):
     controller = coordinator.CentralController(
         mock_hass,
         coord,
-        main_heater_switch="switch.boiler",
+        main_heater_switch=["switch.boiler"],
         startup_delay_seconds=2,
     )
 
@@ -172,7 +172,7 @@ async def test_second_zone_during_delay(mock_hass, coord):
     controller = coordinator.CentralController(
         mock_hass,
         coord,
-        main_heater_switch="switch.boiler",
+        main_heater_switch=["switch.boiler"],
         startup_delay_seconds=2,
     )
 
@@ -218,8 +218,8 @@ async def test_heater_and_cooler_independence(mock_hass, coord):
     controller = coordinator.CentralController(
         mock_hass,
         coord,
-        main_heater_switch="switch.boiler",
-        main_cooler_switch="switch.chiller",
+        main_heater_switch=["switch.boiler"],
+        main_cooler_switch=["switch.chiller"],
         startup_delay_seconds=0,
     )
 
@@ -258,7 +258,7 @@ async def test_zero_startup_delay(mock_hass, coord):
     controller = coordinator.CentralController(
         mock_hass,
         coord,
-        main_heater_switch="switch.boiler",
+        main_heater_switch=["switch.boiler"],
         startup_delay_seconds=0,
     )
 
@@ -293,7 +293,7 @@ async def test_demand_lost_during_delay(mock_hass, coord):
     controller = coordinator.CentralController(
         mock_hass,
         coord,
-        main_heater_switch="switch.boiler",
+        main_heater_switch=["switch.boiler"],
         startup_delay_seconds=2,
     )
 
@@ -346,7 +346,7 @@ async def test_concurrent_update_calls_during_startup_delay(mock_hass, coord):
     controller = coordinator.CentralController(
         mock_hass,
         coord,
-        main_heater_switch="switch.boiler",
+        main_heater_switch=["switch.boiler"],
         startup_delay_seconds=2,
     )
 
@@ -396,7 +396,7 @@ async def test_task_cancellation_race_condition(mock_hass, coord):
     controller = coordinator.CentralController(
         mock_hass,
         coord,
-        main_heater_switch="switch.boiler",
+        main_heater_switch=["switch.boiler"],
         startup_delay_seconds=1,
     )
 
@@ -443,8 +443,8 @@ async def test_concurrent_heater_and_cooler_updates(mock_hass, coord):
     controller = coordinator.CentralController(
         mock_hass,
         coord,
-        main_heater_switch="switch.boiler",
-        main_cooler_switch="switch.chiller",
+        main_heater_switch=["switch.boiler"],
+        main_cooler_switch=["switch.chiller"],
         startup_delay_seconds=1,
     )
 
@@ -478,7 +478,7 @@ async def test_lock_released_after_cancellation(mock_hass, coord):
     controller = coordinator.CentralController(
         mock_hass,
         coord,
-        main_heater_switch="switch.boiler",
+        main_heater_switch=["switch.boiler"],
         startup_delay_seconds=2,
     )
 
@@ -521,7 +521,7 @@ async def test_service_call_success(mock_hass, coord):
     controller = coordinator.CentralController(
         mock_hass,
         coord,
-        main_heater_switch="switch.boiler",
+        main_heater_switch=["switch.boiler"],
         startup_delay_seconds=0,
     )
 
@@ -558,7 +558,7 @@ async def test_service_not_found_no_retry(mock_hass, coord):
     controller = coordinator.CentralController(
         mock_hass,
         coord,
-        main_heater_switch="switch.boiler",
+        main_heater_switch=["switch.boiler"],
         startup_delay_seconds=0,
     )
 
@@ -592,7 +592,7 @@ async def test_home_assistant_error_with_retry(mock_hass, coord):
     controller = coordinator.CentralController(
         mock_hass,
         coord,
-        main_heater_switch="switch.boiler",
+        main_heater_switch=["switch.boiler"],
         startup_delay_seconds=0,
     )
 
@@ -632,7 +632,7 @@ async def test_all_retries_exhausted(mock_hass, coord):
     controller = coordinator.CentralController(
         mock_hass,
         coord,
-        main_heater_switch="switch.boiler",
+        main_heater_switch=["switch.boiler"],
         startup_delay_seconds=0,
     )
 
@@ -666,7 +666,7 @@ async def test_consecutive_failure_warning_threshold(mock_hass, coord):
     controller = coordinator.CentralController(
         mock_hass,
         coord,
-        main_heater_switch="switch.boiler",
+        main_heater_switch=["switch.boiler"],
         startup_delay_seconds=0,
     )
 
@@ -702,7 +702,7 @@ async def test_failure_counter_reset_on_success_after_failures(mock_hass, coord)
     controller = coordinator.CentralController(
         mock_hass,
         coord,
-        main_heater_switch="switch.boiler",
+        main_heater_switch=["switch.boiler"],
         startup_delay_seconds=0,
     )
 
@@ -734,7 +734,7 @@ async def test_unexpected_exception_triggers_retry(mock_hass, coord):
     controller = coordinator.CentralController(
         mock_hass,
         coord,
-        main_heater_switch="switch.boiler",
+        main_heater_switch=["switch.boiler"],
         startup_delay_seconds=0,
     )
 
@@ -774,7 +774,7 @@ async def test_turn_off_also_uses_retry_logic(mock_hass, coord):
     controller = coordinator.CentralController(
         mock_hass,
         coord,
-        main_heater_switch="switch.boiler",
+        main_heater_switch=["switch.boiler"],
         startup_delay_seconds=0,
     )
 
@@ -814,7 +814,7 @@ async def test_get_consecutive_failures_returns_zero_for_unknown_entity(mock_has
     controller = coordinator.CentralController(
         mock_hass,
         coord,
-        main_heater_switch="switch.boiler",
+        main_heater_switch=["switch.boiler"],
         startup_delay_seconds=0,
     )
 
@@ -828,8 +828,8 @@ async def test_multiple_switches_independent_failure_tracking(mock_hass, coord):
     controller = coordinator.CentralController(
         mock_hass,
         coord,
-        main_heater_switch="switch.boiler",
-        main_cooler_switch="switch.chiller",
+        main_heater_switch=["switch.boiler"],
+        main_cooler_switch=["switch.chiller"],
         startup_delay_seconds=0,
     )
 
@@ -847,7 +847,7 @@ async def test_exponential_backoff_timing(mock_hass, coord):
     controller = coordinator.CentralController(
         mock_hass,
         coord,
-        main_heater_switch="switch.boiler",
+        main_heater_switch=["switch.boiler"],
         startup_delay_seconds=0,
     )
 
@@ -885,3 +885,258 @@ async def test_exponential_backoff_timing(mock_hass, coord):
         delay2 = call_times[2] - call_times[1]
         expected_delay2 = coordinator.BASE_RETRY_DELAY_SECONDS * 2
         assert delay2 >= expected_delay2 * 0.9  # Allow 10% margin
+
+
+# ========================================
+# Multiple Entity Tests
+# ========================================
+
+
+@pytest.mark.asyncio
+async def test_multiple_heaters_all_turn_on(mock_hass, coord):
+    """Test all heaters in a list turn on when there is demand."""
+    controller = coordinator.CentralController(
+        mock_hass,
+        coord,
+        main_heater_switch=["switch.boiler", "switch.pump", "switch.valve"],
+        startup_delay_seconds=0,
+    )
+
+    # Mock all switches are currently off
+    mock_state = Mock()
+    mock_state.state = "off"
+    mock_hass.states.get.return_value = mock_state
+
+    # Register zone and add demand
+    coord.register_zone("living_room", {"name": "Living Room"})
+    coord.update_zone_demand("living_room", True)
+
+    # Update controller
+    await controller.update()
+
+    # Verify all three switches were turned on
+    calls = mock_hass.services.async_call.call_args_list
+    assert len(calls) == 3
+
+    turned_on_entities = [call.args[2]["entity_id"] for call in calls]
+    assert "switch.boiler" in turned_on_entities
+    assert "switch.pump" in turned_on_entities
+    assert "switch.valve" in turned_on_entities
+
+
+@pytest.mark.asyncio
+async def test_multiple_heaters_all_turn_off(mock_hass, coord):
+    """Test all heaters in a list turn off when no demand."""
+    controller = coordinator.CentralController(
+        mock_hass,
+        coord,
+        main_heater_switch=["switch.boiler", "switch.pump"],
+        startup_delay_seconds=0,
+    )
+
+    # Mock all switches are currently on
+    mock_state = Mock()
+    mock_state.state = "on"
+    mock_hass.states.get.return_value = mock_state
+
+    # Register zone with no demand
+    coord.register_zone("living_room", {"name": "Living Room"})
+    coord.update_zone_demand("living_room", False)
+
+    # Update controller
+    await controller.update()
+
+    # Verify all switches were turned off
+    calls = mock_hass.services.async_call.call_args_list
+    assert len(calls) == 2
+
+    for call in calls:
+        assert call.args[1] == "turn_off"
+
+
+@pytest.mark.asyncio
+async def test_multiple_coolers_all_turn_on(mock_hass, coord):
+    """Test all coolers in a list turn on when there is cooling demand."""
+    controller = coordinator.CentralController(
+        mock_hass,
+        coord,
+        main_cooler_switch=["switch.chiller", "switch.fan"],
+        startup_delay_seconds=0,
+    )
+
+    # Mock all switches are currently off
+    mock_state = Mock()
+    mock_state.state = "off"
+    mock_hass.states.get.return_value = mock_state
+
+    # Mock cooling demand (since coordinator doesn't track cooling yet)
+    coord.get_aggregate_demand = Mock(return_value={"heating": False, "cooling": True})
+
+    # Update controller
+    await controller.update()
+
+    # Verify both cooler switches were turned on
+    calls = mock_hass.services.async_call.call_args_list
+    assert len(calls) == 2
+
+    turned_on_entities = [call.args[2]["entity_id"] for call in calls]
+    assert "switch.chiller" in turned_on_entities
+    assert "switch.fan" in turned_on_entities
+
+
+@pytest.mark.asyncio
+async def test_multiple_heaters_and_coolers(mock_hass, coord):
+    """Test multiple heaters and coolers operate independently."""
+    controller = coordinator.CentralController(
+        mock_hass,
+        coord,
+        main_heater_switch=["switch.boiler", "switch.pump"],
+        main_cooler_switch=["switch.chiller", "switch.fan"],
+        startup_delay_seconds=0,
+    )
+
+    # Mock all switches are currently off
+    mock_state = Mock()
+    mock_state.state = "off"
+    mock_hass.states.get.return_value = mock_state
+
+    # Register zone with heating demand only
+    coord.register_zone("living_room", {"name": "Living Room"})
+    coord.update_zone_demand("living_room", True)
+
+    # Update controller
+    await controller.update()
+
+    # Verify only heater switches were turned on (not coolers)
+    calls = mock_hass.services.async_call.call_args_list
+    assert len(calls) == 2
+
+    turned_on_entities = [call.args[2]["entity_id"] for call in calls]
+    assert "switch.boiler" in turned_on_entities
+    assert "switch.pump" in turned_on_entities
+    assert "switch.chiller" not in turned_on_entities
+    assert "switch.fan" not in turned_on_entities
+
+
+@pytest.mark.asyncio
+async def test_multiple_heaters_partial_failure_continues(mock_hass, coord):
+    """Test that if one heater fails, others still get controlled."""
+    controller = coordinator.CentralController(
+        mock_hass,
+        coord,
+        main_heater_switch=["switch.boiler", "switch.pump"],
+        startup_delay_seconds=0,
+    )
+
+    # Mock switches are currently off
+    mock_state = Mock()
+    mock_state.state = "off"
+    mock_hass.states.get.return_value = mock_state
+
+    # First call fails, second succeeds
+    call_count = [0]
+    async def mock_service_call(*args, **kwargs):
+        call_count[0] += 1
+        if call_count[0] <= coordinator.MAX_SERVICE_CALL_RETRIES:
+            # First entity fails all retries
+            raise MockHomeAssistantError("Transient error")
+        # Second entity succeeds
+        return None
+
+    mock_hass.services.async_call = AsyncMock(side_effect=mock_service_call)
+
+    # Register zone and add demand
+    coord.register_zone("living_room", {"name": "Living Room"})
+    coord.update_zone_demand("living_room", True)
+
+    # Update controller
+    await controller.update()
+
+    # Verify both entities were attempted
+    # First entity: 3 retries, second entity: 1 success
+    assert call_count[0] == coordinator.MAX_SERVICE_CALL_RETRIES + 1
+
+
+@pytest.mark.asyncio
+async def test_is_any_switch_on_with_mixed_states(mock_hass, coord):
+    """Test _is_any_switch_on returns True if any switch is on."""
+    controller = coordinator.CentralController(
+        mock_hass,
+        coord,
+        main_heater_switch=["switch.boiler", "switch.pump", "switch.valve"],
+        startup_delay_seconds=0,
+    )
+
+    # Set up mock states: boiler off, pump on, valve off
+    def mock_get_state(entity_id):
+        state = Mock()
+        if entity_id == "switch.pump":
+            state.state = "on"
+        else:
+            state.state = "off"
+        return state
+
+    mock_hass.states.get.side_effect = mock_get_state
+
+    # Check if any switch is on
+    result = await controller._is_any_switch_on(["switch.boiler", "switch.pump", "switch.valve"])
+
+    assert result is True
+
+
+@pytest.mark.asyncio
+async def test_is_any_switch_on_all_off(mock_hass, coord):
+    """Test _is_any_switch_on returns False if all switches are off."""
+    controller = coordinator.CentralController(
+        mock_hass,
+        coord,
+        main_heater_switch=["switch.boiler", "switch.pump"],
+        startup_delay_seconds=0,
+    )
+
+    # All switches are off
+    mock_state = Mock()
+    mock_state.state = "off"
+    mock_hass.states.get.return_value = mock_state
+
+    result = await controller._is_any_switch_on(["switch.boiler", "switch.pump"])
+
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_multiple_heaters_with_startup_delay(mock_hass, coord):
+    """Test multiple heaters respect startup delay."""
+    controller = coordinator.CentralController(
+        mock_hass,
+        coord,
+        main_heater_switch=["switch.boiler", "switch.pump"],
+        startup_delay_seconds=1,
+    )
+
+    # Mock all switches are currently off
+    mock_state = Mock()
+    mock_state.state = "off"
+    mock_hass.states.get.return_value = mock_state
+
+    # Register zone and add demand
+    coord.register_zone("living_room", {"name": "Living Room"})
+    coord.update_zone_demand("living_room", True)
+
+    # Update controller
+    await controller.update()
+
+    # Heaters should NOT be on immediately
+    assert controller.is_heater_waiting_for_startup()
+    assert mock_hass.services.async_call.call_count == 0
+
+    # Wait for delay
+    await asyncio.sleep(1.5)
+
+    # Now both heaters should be on
+    calls = mock_hass.services.async_call.call_args_list
+    assert len(calls) == 2
+
+    turned_on_entities = [call.args[2]["entity_id"] for call in calls]
+    assert "switch.boiler" in turned_on_entities
+    assert "switch.pump" in turned_on_entities

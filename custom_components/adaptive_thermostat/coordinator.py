@@ -172,8 +172,8 @@ class CentralController:
         self,
         hass: HomeAssistant,
         coordinator: AdaptiveThermostatCoordinator,
-        main_heater_switch: str | None = None,
-        main_cooler_switch: str | None = None,
+        main_heater_switch: list[str] | None = None,
+        main_cooler_switch: list[str] | None = None,
         startup_delay_seconds: int = 0,
     ) -> None:
         """Initialize the central controller.
@@ -181,8 +181,10 @@ class CentralController:
         Args:
             hass: Home Assistant instance
             coordinator: AdaptiveThermostatCoordinator instance
-            main_heater_switch: Entity ID of main heater switch (e.g., "switch.boiler")
-            main_cooler_switch: Entity ID of main cooler switch (e.g., "switch.chiller")
+            main_heater_switch: List of entity IDs for main heater switches
+                (e.g., ["switch.boiler"] or ["switch.boiler", "switch.pump"])
+            main_cooler_switch: List of entity IDs for main cooler switches
+                (e.g., ["switch.chiller"] or ["switch.chiller", "switch.fan"])
             startup_delay_seconds: Delay in seconds before activating heat source
         """
         self.hass = hass
@@ -235,13 +237,13 @@ class CentralController:
         async with self._startup_lock:
             if has_demand:
                 # Zone(s) need heating
-                if not self._heater_waiting_for_startup and not await self._is_switch_on(self.main_heater_switch):
+                if not self._heater_waiting_for_startup and not await self._is_any_switch_on(self.main_heater_switch):
                     # Start heater with delay
                     await self._start_heater_with_delay_unlocked()
             else:
                 # No demand - turn off immediately
                 await self._cancel_heater_startup_unlocked()
-                await self._turn_off_switch(self.main_heater_switch)
+                await self._turn_off_switches(self.main_heater_switch)
 
     async def _update_cooler(self, has_demand: bool) -> None:
         """Update cooler state based on demand.
@@ -252,13 +254,13 @@ class CentralController:
         async with self._startup_lock:
             if has_demand:
                 # Zone(s) need cooling
-                if not self._cooler_waiting_for_startup and not await self._is_switch_on(self.main_cooler_switch):
+                if not self._cooler_waiting_for_startup and not await self._is_any_switch_on(self.main_cooler_switch):
                     # Start cooler with delay
                     await self._start_cooler_with_delay_unlocked()
             else:
                 # No demand - turn off immediately
                 await self._cancel_cooler_startup_unlocked()
-                await self._turn_off_switch(self.main_cooler_switch)
+                await self._turn_off_switches(self.main_cooler_switch)
 
     async def _start_heater_with_delay_unlocked(self) -> None:
         """Start heater after startup delay.
@@ -270,7 +272,7 @@ class CentralController:
 
         if self.startup_delay_seconds == 0:
             # No delay - turn on immediately
-            await self._turn_on_switch(self.main_heater_switch)
+            await self._turn_on_switches(self.main_heater_switch)
         else:
             # Schedule delayed startup
             self._heater_waiting_for_startup = True
@@ -287,7 +289,7 @@ class CentralController:
 
         if self.startup_delay_seconds == 0:
             # No delay - turn on immediately
-            await self._turn_on_switch(self.main_cooler_switch)
+            await self._turn_on_switches(self.main_cooler_switch)
         else:
             # Schedule delayed startup
             self._cooler_waiting_for_startup = True
@@ -303,7 +305,7 @@ class CentralController:
             async with self._startup_lock:
                 demand = self.coordinator.get_aggregate_demand()
                 if demand["heating"]:
-                    await self._turn_on_switch(self.main_heater_switch)
+                    await self._turn_on_switches(self.main_heater_switch)
                     _LOGGER.info("Heater started after %d second delay", self.startup_delay_seconds)
                 else:
                     _LOGGER.debug("Heater startup cancelled - no demand after delay")
@@ -323,7 +325,7 @@ class CentralController:
             async with self._startup_lock:
                 demand = self.coordinator.get_aggregate_demand()
                 if demand["cooling"]:
-                    await self._turn_on_switch(self.main_cooler_switch)
+                    await self._turn_on_switches(self.main_cooler_switch)
                     _LOGGER.info("Cooler started after %d second delay", self.startup_delay_seconds)
                 else:
                     _LOGGER.debug("Cooler startup cancelled - no demand after delay")
@@ -389,6 +391,20 @@ class CentralController:
             return False
         return state.state == "on"
 
+    async def _is_any_switch_on(self, entity_ids: list[str]) -> bool:
+        """Check if any switch in the list is currently on.
+
+        Args:
+            entity_ids: List of entity IDs to check
+
+        Returns:
+            True if any switch is on, False if all are off
+        """
+        for entity_id in entity_ids:
+            if await self._is_switch_on(entity_id):
+                return True
+        return False
+
     async def _turn_on_switch(self, entity_id: str) -> bool:
         """Turn on a switch with retry logic.
 
@@ -413,6 +429,36 @@ class CentralController:
         if await self._is_switch_on(entity_id):
             return await self._call_switch_service(entity_id, "turn_off")
         return True
+
+    async def _turn_on_switches(self, entity_ids: list[str]) -> bool:
+        """Turn on all switches in the list.
+
+        Args:
+            entity_ids: List of entity IDs to turn on
+
+        Returns:
+            True if all switches were turned on successfully, False if any failed
+        """
+        success = True
+        for entity_id in entity_ids:
+            if not await self._turn_on_switch(entity_id):
+                success = False
+        return success
+
+    async def _turn_off_switches(self, entity_ids: list[str]) -> bool:
+        """Turn off all switches in the list.
+
+        Args:
+            entity_ids: List of entity IDs to turn off
+
+        Returns:
+            True if all switches were turned off successfully, False if any failed
+        """
+        success = True
+        for entity_id in entity_ids:
+            if not await self._turn_off_switch(entity_id):
+                success = False
+        return success
 
     async def _call_switch_service(
         self,

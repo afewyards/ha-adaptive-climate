@@ -105,7 +105,7 @@ def central_controller(mock_hass, coord):
     return coordinator.CentralController(
         mock_hass,
         coord,
-        main_heater_switch="switch.main_boiler",
+        main_heater_switch=["switch.main_boiler"],
         startup_delay_seconds=0,
     )
 
@@ -424,7 +424,7 @@ async def test_startup_delay_with_demand_changes(mock_hass, state_registry, coor
     controller = coordinator.CentralController(
         mock_hass,
         coord,
-        main_heater_switch="switch.main_boiler",
+        main_heater_switch=["switch.main_boiler"],
         startup_delay_seconds=1,
     )
 
