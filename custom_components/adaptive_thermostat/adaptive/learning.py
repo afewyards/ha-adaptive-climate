@@ -676,6 +676,81 @@ class AdaptiveLearner:
         self.zone_name = zone_name
         self._cycle_history: List[CycleMetrics] = []
 
+        # Calculate zone adjustment factors once at initialization
+        # These are stored separately and applied as final multipliers
+        self._zone_kp_factor, self._zone_ki_factor, self._zone_kd_factor = (
+            self._calculate_zone_factors()
+        )
+
+    def _calculate_zone_factors(self) -> Tuple[float, float, float]:
+        """
+        Calculate zone-specific adjustment factors based on zone name.
+
+        These factors are calculated once at initialization and applied
+        as multipliers on the final PID values to avoid compounding
+        adjustments across multiple cycles.
+
+        Zone-specific adjustments:
+        - Kitchen: Lower Ki (oven/door disturbances)
+        - Bathroom: Higher Kp (skylight heat loss)
+        - Bedroom: Lower Ki (night ventilation)
+        - Ground Floor: Higher Ki (exterior doors)
+
+        Returns:
+            Tuple of (kp_factor, ki_factor, kd_factor)
+        """
+        kp_factor = 1.0
+        ki_factor = 1.0
+        kd_factor = 1.0
+
+        if not self.zone_name:
+            return kp_factor, ki_factor, kd_factor
+
+        zone_lower = self.zone_name.lower()
+
+        if "kitchen" in zone_lower:
+            # Kitchen: lower Ki due to oven/door disturbances
+            ki_factor = 0.8
+            _LOGGER.info(
+                f"Zone '{self.zone_name}': Ki factor set to 0.8 for disturbance handling"
+            )
+
+        elif "bathroom" in zone_lower:
+            # Bathroom: higher Kp for skylight heat loss
+            kp_factor = 1.1
+            _LOGGER.info(
+                f"Zone '{self.zone_name}': Kp factor set to 1.1 for heat loss compensation"
+            )
+
+        elif "bedroom" in zone_lower:
+            # Bedroom: lower Ki for night ventilation
+            ki_factor = 0.85
+            _LOGGER.info(
+                f"Zone '{self.zone_name}': Ki factor set to 0.85 for ventilation"
+            )
+
+        elif "ground" in zone_lower or "gf" in zone_lower:
+            # Ground floor: higher Ki for exterior door disturbances
+            ki_factor = 1.15
+            _LOGGER.info(
+                f"Zone '{self.zone_name}': Ki factor set to 1.15 for door disturbances"
+            )
+
+        return kp_factor, ki_factor, kd_factor
+
+    def get_zone_factors(self) -> Dict[str, float]:
+        """
+        Get the zone-specific adjustment factors.
+
+        Returns:
+            Dictionary with kp_factor, ki_factor, kd_factor
+        """
+        return {
+            "kp_factor": self._zone_kp_factor,
+            "ki_factor": self._zone_ki_factor,
+            "kd_factor": self._zone_kd_factor,
+        }
+
     def add_cycle_metrics(self, metrics: CycleMetrics) -> None:
         """
         Add a cycle's performance metrics to history.
@@ -700,30 +775,30 @@ class AdaptiveLearner:
         current_ki: float,
         current_kd: float,
         min_cycles: int = MIN_CYCLES_FOR_LEARNING,
+        apply_zone_factors: bool = True,
     ) -> Optional[Dict[str, float]]:
         """
         Calculate PID adjustments based on observed cycle performance.
 
         Implements rule-based adaptive tuning:
-        - High overshoot (>0.5°C): Reduce Kp by up to 15%, reduce Ki
-        - Moderate overshoot (>0.2°C): Reduce Kp by 5%
+        - High overshoot (>0.5C): Reduce Kp by up to 15%, reduce Ki
+        - Moderate overshoot (>0.2C): Reduce Kp by 5%
         - Slow response (>60 min): Increase Kp by 10%
-        - Undershoot (>0.3°C): Increase Ki by up to 20%
+        - Undershoot (>0.3C): Increase Ki by up to 20%
         - Many oscillations (>3): Reduce Kp by 10%, increase Kd by 20%
         - Some oscillations (>1): Increase Kd by 10%
         - Slow settling (>90 min): Increase Kd by 15%
 
-        Zone-specific adjustments:
-        - Kitchen: Lower Ki (oven/door disturbances)
-        - Bathroom: Higher Kp (skylight heat loss)
-        - Bedroom: Lower Ki (night ventilation)
-        - Ground Floor: Higher Ki (exterior doors)
+        Zone-specific adjustments are applied as final multipliers (not compounded
+        per-cycle). The zone factors are calculated once at initialization and
+        stored in _zone_kp_factor, _zone_ki_factor, _zone_kd_factor.
 
         Args:
             current_kp: Current proportional gain
             current_ki: Current integral gain
             current_kd: Current derivative gain
             min_cycles: Minimum cycles required before making recommendations
+            apply_zone_factors: Whether to apply zone-specific factors (default True)
 
         Returns:
             Dictionary with recommended kp, ki, kd values, or None if insufficient data
@@ -767,12 +842,12 @@ class AdaptiveLearner:
             reduction = min(0.15, avg_overshoot * 0.2)  # Up to 15% reduction
             new_kp *= (1.0 - reduction)
             new_ki *= 0.9  # Reduce integral gain by 10%
-            _LOGGER.info(f"High overshoot ({avg_overshoot:.2f}°C): reducing Kp by {reduction*100:.1f}%")
+            _LOGGER.info(f"High overshoot ({avg_overshoot:.2f}C): reducing Kp by {reduction*100:.1f}%")
 
         # Moderate overshoot: reduce Kp slightly
         elif avg_overshoot > 0.2:
             new_kp *= 0.95
-            _LOGGER.info(f"Moderate overshoot ({avg_overshoot:.2f}°C): reducing Kp by 5%")
+            _LOGGER.info(f"Moderate overshoot ({avg_overshoot:.2f}C): reducing Kp by 5%")
 
         # Slow response: increase Kp
         if avg_rise_time > 60:
@@ -783,7 +858,7 @@ class AdaptiveLearner:
         if avg_undershoot > 0.3:
             increase = min(0.20, avg_undershoot * 0.4)  # Up to 20% increase
             new_ki *= (1.0 + increase)
-            _LOGGER.info(f"Undershoot ({avg_undershoot:.2f}°C): increasing Ki by {increase*100:.1f}%")
+            _LOGGER.info(f"Undershoot ({avg_undershoot:.2f}C): increasing Ki by {increase*100:.1f}%")
 
         # Many oscillations: reduce Kp, increase Kd
         if avg_oscillations > 3:
@@ -801,29 +876,12 @@ class AdaptiveLearner:
             new_kd *= 1.15
             _LOGGER.info(f"Slow settling ({avg_settling_time:.1f} min): increasing Kd by 15%")
 
-        # Apply zone-specific adjustments
-        if self.zone_name:
-            zone_lower = self.zone_name.lower()
-
-            if "kitchen" in zone_lower:
-                # Kitchen: lower Ki due to oven/door disturbances
-                new_ki *= 0.8
-                _LOGGER.info(f"Kitchen zone: reducing Ki by 20% for disturbance handling")
-
-            elif "bathroom" in zone_lower:
-                # Bathroom: higher Kp for skylight heat loss
-                new_kp *= 1.1
-                _LOGGER.info(f"Bathroom zone: increasing Kp by 10% for heat loss compensation")
-
-            elif "bedroom" in zone_lower:
-                # Bedroom: lower Ki for night ventilation
-                new_ki *= 0.85
-                _LOGGER.info(f"Bedroom zone: reducing Ki by 15% for ventilation")
-
-            elif "ground" in zone_lower or "gf" in zone_lower:
-                # Ground floor: higher Ki for exterior door disturbances
-                new_ki *= 1.15
-                _LOGGER.info(f"Ground floor zone: increasing Ki by 15% for door disturbances")
+        # Apply zone-specific adjustment factors as final multipliers
+        # These factors are calculated once at initialization, not compounded per-cycle
+        if apply_zone_factors:
+            new_kp *= self._zone_kp_factor
+            new_ki *= self._zone_ki_factor
+            new_kd *= self._zone_kd_factor
 
         # Enforce PID limits
         new_kp = max(PID_LIMITS["kp_min"], min(PID_LIMITS["kp_max"], new_kp))
