@@ -174,7 +174,7 @@ async def test_full_control_loop_temperature_triggers_heating(
     has_demand = output > demand_threshold
     assert has_demand, f"Expected demand with output {output}"
 
-    coord.update_zone_demand("living_room", has_demand)
+    coord.update_zone_demand("living_room", has_demand, hvac_mode="heat")
 
     # Central controller updates based on aggregate demand
     await central_controller.update()
@@ -208,7 +208,10 @@ async def test_control_loop_satisfied_turns_off_heater(
 
     # Register zone with initial demand
     coord.register_zone("living_room", {"zone_name": "Living Room"})
-    coord.update_zone_demand("living_room", True)
+    coord.update_zone_demand("living_room", True, hvac_mode="heat")
+
+    # Simulate that heater was previously activated by controller
+    central_controller._heater_activated_by_us = True
 
     # Simulate PID calculation with temp at setpoint
     current_temp = 21.0
@@ -220,7 +223,7 @@ async def test_control_loop_satisfied_turns_off_heater(
 
     # Update demand based on output
     has_demand = output > 5.0
-    coord.update_zone_demand("living_room", has_demand)
+    coord.update_zone_demand("living_room", has_demand, hvac_mode="heat")
 
     # Central controller updates
     await central_controller.update()
@@ -268,7 +271,7 @@ async def test_multi_zone_demand_aggregation(
     coord.register_zone("zone_b", {"zone_name": "Zone B"})
 
     # Step 1: Zone A has demand
-    coord.update_zone_demand("zone_a", True)
+    coord.update_zone_demand("zone_a", True, hvac_mode="heat")
     await central_controller.update()
 
     # Heater should be ON
@@ -279,18 +282,20 @@ async def test_multi_zone_demand_aggregation(
     assert any(c["service"] == "turn_on" for c in mock_hass._service_call_history)
 
     # Step 2: Zone B also has demand
-    coord.update_zone_demand("zone_b", True)
+    coord.update_zone_demand("zone_b", True, hvac_mode="heat")
     await central_controller.update()
     assert coord.get_aggregate_demand()["heating"] is True
 
     # Step 3: Zone A satisfied
     state_registry.set_state("switch.main_boiler", "on")  # Now it's on
-    coord.update_zone_demand("zone_a", False)
+    # Simulate that heater was previously activated by controller
+    central_controller._heater_activated_by_us = True
+    coord.update_zone_demand("zone_a", False, hvac_mode="heat")
     await central_controller.update()
     assert coord.get_aggregate_demand()["heating"] is True  # B still needs heat
 
     # Step 4: Zone B satisfied
-    coord.update_zone_demand("zone_b", False)
+    coord.update_zone_demand("zone_b", False, hvac_mode="heat")
     await central_controller.update()
     assert coord.get_aggregate_demand()["heating"] is False
 
@@ -443,12 +448,12 @@ async def test_startup_delay_with_demand_changes(mock_hass, state_registry, coor
     coord.register_zone("test_zone", {"zone_name": "Test"})
 
     # Add demand - starts delay timer
-    coord.update_zone_demand("test_zone", True)
+    coord.update_zone_demand("test_zone", True, hvac_mode="heat")
     await controller.update()
     assert controller.is_heater_waiting_for_startup()
 
     # Remove demand before delay expires - should cancel
-    coord.update_zone_demand("test_zone", False)
+    coord.update_zone_demand("test_zone", False, hvac_mode="heat")
     await controller.update()
     assert not controller.is_heater_waiting_for_startup()
 
@@ -456,7 +461,7 @@ async def test_startup_delay_with_demand_changes(mock_hass, state_registry, coor
     mock_hass._service_call_history.clear()
 
     # Re-add demand - starts new delay timer
-    coord.update_zone_demand("test_zone", True)
+    coord.update_zone_demand("test_zone", True, hvac_mode="heat")
     await controller.update()
     assert controller.is_heater_waiting_for_startup()
 
@@ -489,9 +494,9 @@ async def test_component_interaction_order(mock_hass, state_registry, coord, cen
     # Wrap coordinator methods to track calls
     original_update_demand = coord.update_zone_demand
 
-    def tracked_update_demand(zone_id, has_demand):
+    def tracked_update_demand(zone_id, has_demand, hvac_mode=None):
         operation_log.append(("demand_update", zone_id, has_demand))
-        return original_update_demand(zone_id, has_demand)
+        return original_update_demand(zone_id, has_demand, hvac_mode=hvac_mode)
 
     coord.update_zone_demand = tracked_update_demand
 
@@ -505,7 +510,7 @@ async def test_component_interaction_order(mock_hass, state_registry, coord, cen
 
     # Execute flow
     coord.register_zone("test", {"name": "Test"})
-    coord.update_zone_demand("test", True)  # Should log
+    coord.update_zone_demand("test", True, hvac_mode="heat")  # Should log
     await central_controller.update()  # Should log
 
     # Verify order
@@ -548,8 +553,8 @@ async def test_multiple_zones_with_independent_pid(
     has_demand_bedroom = output_bedroom > 5.0
 
     # Update demands
-    coord.update_zone_demand("living_room", has_demand_living)
-    coord.update_zone_demand("bedroom", has_demand_bedroom)
+    coord.update_zone_demand("living_room", has_demand_living, hvac_mode="heat")
+    coord.update_zone_demand("bedroom", has_demand_bedroom, hvac_mode="heat")
 
     # Verify aggregate demand
     demand = coord.get_aggregate_demand()

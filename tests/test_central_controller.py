@@ -80,7 +80,7 @@ async def test_heater_on_when_zone_demands(mock_hass, coord):
 
     # Register zone and add demand
     coord.register_zone("living_room", {"name": "Living Room"})
-    coord.update_zone_demand("living_room", True)
+    coord.update_zone_demand("living_room", True, hvac_mode="heat")
 
     # Update controller
     await controller.update()
@@ -113,9 +113,12 @@ async def test_heater_off_when_no_demand(mock_hass, coord, monkeypatch):
     mock_state.state = "on"
     mock_hass.states.get.return_value = mock_state
 
+    # Simulate that heater was previously activated by controller
+    controller._heater_activated_by_us = True
+
     # Register zone with no demand
     coord.register_zone("living_room", {"name": "Living Room"})
-    coord.update_zone_demand("living_room", False)
+    coord.update_zone_demand("living_room", False, hvac_mode="heat")
 
     # Update controller
     await controller.update()
@@ -150,7 +153,7 @@ async def test_startup_delay(mock_hass, coord):
 
     # Register zone and add demand
     coord.register_zone("living_room", {"name": "Living Room"})
-    coord.update_zone_demand("living_room", True)
+    coord.update_zone_demand("living_room", True, hvac_mode="heat")
 
     # Update controller
     await controller.update()
@@ -192,7 +195,7 @@ async def test_second_zone_during_delay(mock_hass, coord):
     coord.register_zone("bedroom", {"name": "Bedroom"})
 
     # First zone demands heating
-    coord.update_zone_demand("living_room", True)
+    coord.update_zone_demand("living_room", True, hvac_mode="heat")
     await controller.update()
 
     # Verify startup is pending
@@ -202,7 +205,7 @@ async def test_second_zone_during_delay(mock_hass, coord):
     await asyncio.sleep(1.0)
 
     # Second zone demands heating (should not restart delay)
-    coord.update_zone_demand("bedroom", True)
+    coord.update_zone_demand("bedroom", True, hvac_mode="heat")
     await controller.update()
 
     # Wait another 1.5 seconds (total 2.5 seconds from first demand)
@@ -236,7 +239,7 @@ async def test_heater_and_cooler_independence(mock_hass, coord):
 
     # Register zone with heating demand only
     coord.register_zone("living_room", {"name": "Living Room"})
-    coord.update_zone_demand("living_room", True)
+    coord.update_zone_demand("living_room", True, hvac_mode="heat")
 
     # Update controller
     await controller.update()
@@ -275,7 +278,7 @@ async def test_zero_startup_delay(mock_hass, coord):
 
     # Register zone and add demand
     coord.register_zone("living_room", {"name": "Living Room"})
-    coord.update_zone_demand("living_room", True)
+    coord.update_zone_demand("living_room", True, hvac_mode="heat")
 
     # Update controller
     await controller.update()
@@ -310,7 +313,7 @@ async def test_demand_lost_during_delay(mock_hass, coord):
 
     # Register zone and add demand
     coord.register_zone("living_room", {"name": "Living Room"})
-    coord.update_zone_demand("living_room", True)
+    coord.update_zone_demand("living_room", True, hvac_mode="heat")
 
     # Update controller
     await controller.update()
@@ -322,7 +325,7 @@ async def test_demand_lost_during_delay(mock_hass, coord):
     await asyncio.sleep(1.0)
 
     # Remove demand
-    coord.update_zone_demand("living_room", False)
+    coord.update_zone_demand("living_room", False, hvac_mode="heat")
     await controller.update()
 
     # Verify startup was cancelled
@@ -363,7 +366,7 @@ async def test_concurrent_update_calls_during_startup_delay(mock_hass, coord):
 
     # Register zone and add demand
     coord.register_zone("living_room", {"name": "Living Room"})
-    coord.update_zone_demand("living_room", True)
+    coord.update_zone_demand("living_room", True, hvac_mode="heat")
 
     # Fire multiple concurrent update() calls
     update_tasks = [controller.update() for _ in range(10)]
@@ -413,7 +416,7 @@ async def test_task_cancellation_race_condition(mock_hass, coord):
 
     # Register zone and add demand
     coord.register_zone("living_room", {"name": "Living Room"})
-    coord.update_zone_demand("living_room", True)
+    coord.update_zone_demand("living_room", True, hvac_mode="heat")
 
     # Start the controller
     await controller.update()
@@ -426,7 +429,7 @@ async def test_task_cancellation_race_condition(mock_hass, coord):
 
     # Rapidly toggle demand on/off to trigger race condition
     for i in range(5):
-        coord.update_zone_demand("living_room", i % 2 == 0)
+        coord.update_zone_demand("living_room", i % 2 == 0, hvac_mode="heat")
         await controller.update()
 
     # Give any pending tasks time to settle
@@ -461,7 +464,7 @@ async def test_concurrent_heater_and_cooler_updates(mock_hass, coord):
 
     # Register zones
     coord.register_zone("living_room", {"name": "Living Room"})
-    coord.update_zone_demand("living_room", True)
+    coord.update_zone_demand("living_room", True, hvac_mode="heat")
 
     # Fire many concurrent update() calls
     update_tasks = [controller.update() for _ in range(20)]
@@ -495,21 +498,21 @@ async def test_lock_released_after_cancellation(mock_hass, coord):
 
     # Register zone and add demand
     coord.register_zone("living_room", {"name": "Living Room"})
-    coord.update_zone_demand("living_room", True)
+    coord.update_zone_demand("living_room", True, hvac_mode="heat")
 
     # Start the controller
     await controller.update()
     assert controller.is_heater_waiting_for_startup()
 
     # Cancel by removing demand
-    coord.update_zone_demand("living_room", False)
+    coord.update_zone_demand("living_room", False, hvac_mode="heat")
     await controller.update()
 
     # Verify startup was cancelled
     assert not controller.is_heater_waiting_for_startup()
 
     # Now add demand again - this should work without deadlock
-    coord.update_zone_demand("living_room", True)
+    coord.update_zone_demand("living_room", True, hvac_mode="heat")
     await asyncio.wait_for(controller.update(), timeout=2.0)
 
     # Verify new startup is pending
@@ -541,7 +544,7 @@ async def test_service_call_success(mock_hass, coord):
 
     # Register zone and add demand
     coord.register_zone("living_room", {"name": "Living Room"})
-    coord.update_zone_demand("living_room", True)
+    coord.update_zone_demand("living_room", True, hvac_mode="heat")
 
     # Update controller (should succeed)
     await controller.update()
@@ -580,7 +583,7 @@ async def test_service_not_found_no_retry(mock_hass, coord):
 
     # Register zone and add demand
     coord.register_zone("living_room", {"name": "Living Room"})
-    coord.update_zone_demand("living_room", True)
+    coord.update_zone_demand("living_room", True, hvac_mode="heat")
 
     # Update controller
     await controller.update()
@@ -620,7 +623,7 @@ async def test_home_assistant_error_with_retry(mock_hass, coord):
 
     # Register zone and add demand
     coord.register_zone("living_room", {"name": "Living Room"})
-    coord.update_zone_demand("living_room", True)
+    coord.update_zone_demand("living_room", True, hvac_mode="heat")
 
     # Update controller
     await controller.update()
@@ -654,7 +657,7 @@ async def test_all_retries_exhausted(mock_hass, coord):
 
     # Register zone and add demand
     coord.register_zone("living_room", {"name": "Living Room"})
-    coord.update_zone_demand("living_room", True)
+    coord.update_zone_demand("living_room", True, hvac_mode="heat")
 
     # Update controller
     await controller.update()
@@ -688,7 +691,7 @@ async def test_consecutive_failure_warning_threshold(mock_hass, coord):
 
     # Register zone and add demand
     coord.register_zone("living_room", {"name": "Living Room"})
-    coord.update_zone_demand("living_room", True)
+    coord.update_zone_demand("living_room", True, hvac_mode="heat")
 
     # Call update multiple times to trigger threshold
     for i in range(coordinator.CONSECUTIVE_FAILURE_WARNING_THRESHOLD):
@@ -725,7 +728,7 @@ async def test_failure_counter_reset_on_success_after_failures(mock_hass, coord)
 
     # Register zone and add demand
     coord.register_zone("living_room", {"name": "Living Room"})
-    coord.update_zone_demand("living_room", True)
+    coord.update_zone_demand("living_room", True, hvac_mode="heat")
 
     # Update controller
     await controller.update()
@@ -762,7 +765,7 @@ async def test_unexpected_exception_triggers_retry(mock_hass, coord):
 
     # Register zone and add demand
     coord.register_zone("living_room", {"name": "Living Room"})
-    coord.update_zone_demand("living_room", True)
+    coord.update_zone_demand("living_room", True, hvac_mode="heat")
 
     # Update controller
     await controller.update()
@@ -804,9 +807,12 @@ async def test_turn_off_also_uses_retry_logic(mock_hass, coord, monkeypatch):
 
     mock_hass.services.async_call = AsyncMock(side_effect=mock_service_call)
 
+    # Simulate that heater was previously activated by controller
+    controller._heater_activated_by_us = True
+
     # Register zone with no demand (to trigger turn_off)
     coord.register_zone("living_room", {"name": "Living Room"})
-    coord.update_zone_demand("living_room", False)
+    coord.update_zone_demand("living_room", False, hvac_mode="heat")
 
     # Update controller
     await controller.update()
@@ -880,7 +886,7 @@ async def test_exponential_backoff_timing(mock_hass, coord):
 
     # Register zone and add demand
     coord.register_zone("living_room", {"name": "Living Room"})
-    coord.update_zone_demand("living_room", True)
+    coord.update_zone_demand("living_room", True, hvac_mode="heat")
 
     # Update controller
     await controller.update()
@@ -922,7 +928,7 @@ async def test_multiple_heaters_all_turn_on(mock_hass, coord):
 
     # Register zone and add demand
     coord.register_zone("living_room", {"name": "Living Room"})
-    coord.update_zone_demand("living_room", True)
+    coord.update_zone_demand("living_room", True, hvac_mode="heat")
 
     # Update controller
     await controller.update()
@@ -955,9 +961,12 @@ async def test_multiple_heaters_all_turn_off(mock_hass, coord, monkeypatch):
     mock_state.state = "on"
     mock_hass.states.get.return_value = mock_state
 
+    # Simulate that heater was previously activated by controller
+    controller._heater_activated_by_us = True
+
     # Register zone with no demand
     coord.register_zone("living_room", {"name": "Living Room"})
-    coord.update_zone_demand("living_room", False)
+    coord.update_zone_demand("living_room", False, hvac_mode="heat")
 
     # Update controller
     await controller.update()
@@ -1021,7 +1030,7 @@ async def test_multiple_heaters_and_coolers(mock_hass, coord):
 
     # Register zone with heating demand only
     coord.register_zone("living_room", {"name": "Living Room"})
-    coord.update_zone_demand("living_room", True)
+    coord.update_zone_demand("living_room", True, hvac_mode="heat")
 
     # Update controller
     await controller.update()
@@ -1066,7 +1075,7 @@ async def test_multiple_heaters_partial_failure_continues(mock_hass, coord):
 
     # Register zone and add demand
     coord.register_zone("living_room", {"name": "Living Room"})
-    coord.update_zone_demand("living_room", True)
+    coord.update_zone_demand("living_room", True, hvac_mode="heat")
 
     # Update controller
     await controller.update()
@@ -1140,7 +1149,7 @@ async def test_multiple_heaters_with_startup_delay(mock_hass, coord):
 
     # Register zone and add demand
     coord.register_zone("living_room", {"name": "Living Room"})
-    coord.update_zone_demand("living_room", True)
+    coord.update_zone_demand("living_room", True, hvac_mode="heat")
 
     # Update controller
     await controller.update()
@@ -1235,7 +1244,7 @@ async def test_heater_turns_on_when_one_switch_already_on(mock_hass, coord):
 
     # Register zone and add demand
     coord.register_zone("living_room", {"name": "Living Room"})
-    coord.update_zone_demand("living_room", True)
+    coord.update_zone_demand("living_room", True, hvac_mode="heat")
 
     # Update controller
     await controller.update()
@@ -1271,16 +1280,19 @@ async def test_turnoff_debounce_cancels_on_demand_return(mock_hass, coord, monke
     mock_state.state = "on"
     mock_hass.states.get.return_value = mock_state
 
+    # Simulate that heater was previously activated by controller
+    controller._heater_activated_by_us = True
+
     # Register zone with demand
     coord.register_zone("living_room", {"name": "Living Room"})
-    coord.update_zone_demand("living_room", True)
+    coord.update_zone_demand("living_room", True, hvac_mode="heat")
 
     # Initial update - switches stay on
     await controller.update()
     assert mock_hass.services.async_call.call_count == 0  # Already on, no calls
 
     # Demand drops - schedules turn-off
-    coord.update_zone_demand("living_room", False)
+    coord.update_zone_demand("living_room", False, hvac_mode="heat")
     await controller.update()
 
     # Wait less than debounce period
@@ -1290,7 +1302,7 @@ async def test_turnoff_debounce_cancels_on_demand_return(mock_hass, coord, monke
     assert mock_hass.services.async_call.call_count == 0
 
     # Demand returns before debounce completes
-    coord.update_zone_demand("living_room", True)
+    coord.update_zone_demand("living_room", True, hvac_mode="heat")
     await controller.update()
 
     # Wait past the original debounce period
