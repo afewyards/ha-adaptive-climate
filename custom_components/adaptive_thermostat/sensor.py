@@ -82,6 +82,40 @@ async def async_setup_platform(
         ),
     ]
 
+    # Create system-wide sensors on first zone setup
+    from .const import DOMAIN
+    if not hass.data[DOMAIN].get("system_sensors_created"):
+        _LOGGER.info("Creating system-wide sensors (TotalPowerSensor, WeeklyCostSensor)")
+
+        # Get energy configuration from domain data
+        energy_meter = hass.data[DOMAIN].get("energy_meter_entity")
+        energy_cost = hass.data[DOMAIN].get("energy_cost_entity")
+
+        # Create TotalPowerSensor
+        total_power_sensor = TotalPowerSensor(hass)
+        sensors.append(total_power_sensor)
+
+        # Create WeeklyCostSensor if energy meter configured
+        if energy_meter:
+            weekly_cost_sensor = WeeklyCostSensor(
+                hass,
+                energy_meter_entity=energy_meter,
+                energy_cost_entity=energy_cost,
+            )
+            sensors.append(weekly_cost_sensor)
+            _LOGGER.info(
+                "WeeklyCostSensor created with meter=%s, cost=%s",
+                energy_meter,
+                energy_cost,
+            )
+        else:
+            _LOGGER.warning(
+                "No energy_meter_entity configured - WeeklyCostSensor will not be created"
+            )
+
+        # Mark as created
+        hass.data[DOMAIN]["system_sensors_created"] = True
+
     async_add_entities(sensors, True)
 
     # Schedule updates every 5 minutes
