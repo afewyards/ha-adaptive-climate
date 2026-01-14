@@ -91,25 +91,39 @@ def test_demand_aggregation(coord):
     assert demand["heating"] is False
     assert demand["cooling"] is False
 
-    # One zone has demand
-    coord.update_zone_demand("zone1", True)
+    # One zone has heating demand
+    coord.update_zone_demand("zone1", True, "heat")
+    demand = coord.get_aggregate_demand()
+    assert demand["heating"] is True
+    assert demand["cooling"] is False
+
+    # Both zones have heating demand
+    coord.update_zone_demand("zone2", True, "heat")
     demand = coord.get_aggregate_demand()
     assert demand["heating"] is True
 
-    # Both zones have demand
-    coord.update_zone_demand("zone2", True)
-    demand = coord.get_aggregate_demand()
-    assert demand["heating"] is True
-
-    # One zone still has demand
-    coord.update_zone_demand("zone1", False)
+    # One zone still has heating demand
+    coord.update_zone_demand("zone1", False, "heat")
     demand = coord.get_aggregate_demand()
     assert demand["heating"] is True
 
     # No zones have demand
-    coord.update_zone_demand("zone2", False)
+    coord.update_zone_demand("zone2", False, "heat")
     demand = coord.get_aggregate_demand()
     assert demand["heating"] is False
+
+    # Test cooling demand
+    coord.update_zone_demand("zone1", True, "cool")
+    demand = coord.get_aggregate_demand()
+    assert demand["heating"] is False
+    assert demand["cooling"] is True
+
+    # Test that demand without mode doesn't count as heating or cooling
+    coord.update_zone_demand("zone1", False, "cool")
+    coord.update_zone_demand("zone2", True, None)
+    demand = coord.get_aggregate_demand()
+    assert demand["heating"] is False
+    assert demand["cooling"] is False
 
 
 def test_all_zone_states_retrieval(coord):
@@ -118,9 +132,9 @@ def test_all_zone_states_retrieval(coord):
     coord.register_zone("zone1", {"name": "Zone 1"})
     coord.register_zone("zone2", {"name": "Zone 2"})
 
-    # Set demand states
-    coord.update_zone_demand("zone1", True)
-    coord.update_zone_demand("zone2", False)
+    # Set demand states with HVAC mode
+    coord.update_zone_demand("zone1", True, "heat")
+    coord.update_zone_demand("zone2", False, "heat")
 
     # Since we can't easily await in tests without pytest-asyncio,
     # we'll test the internal state directly via the coordinator's methods
@@ -132,9 +146,11 @@ def test_all_zone_states_retrieval(coord):
     assert "zone2" in all_zones
     assert all_zones["zone1"]["name"] == "Zone 1"
 
-    # Verify demand states
-    assert coord._demand_states["zone1"] is True
-    assert coord._demand_states["zone2"] is False
+    # Verify demand states (now stored as dict with demand and mode)
+    assert coord._demand_states["zone1"]["demand"] is True
+    assert coord._demand_states["zone1"]["mode"] == "heat"
+    assert coord._demand_states["zone2"]["demand"] is False
+    assert coord._demand_states["zone2"]["mode"] == "heat"
 
     # Verify aggregate demand
     aggregate = coord.get_aggregate_demand()
@@ -147,8 +163,8 @@ def test_unregister_zone(coord):
     # Register zones
     coord.register_zone("zone1", {"name": "Zone 1"})
     coord.register_zone("zone2", {"name": "Zone 2"})
-    coord.update_zone_demand("zone1", True)
-    coord.update_zone_demand("zone2", True)
+    coord.update_zone_demand("zone1", True, "heat")
+    coord.update_zone_demand("zone2", True, "heat")
 
     # Verify initial state
     assert len(coord.get_all_zones()) == 2
@@ -179,9 +195,9 @@ def test_unregister_zone_cleans_up_demand_state(coord):
     coord.register_zone("zone1", {"name": "Zone 1"})
     coord.register_zone("zone2", {"name": "Zone 2"})
 
-    # Only zone1 has demand
-    coord.update_zone_demand("zone1", True)
-    coord.update_zone_demand("zone2", False)
+    # Only zone1 has heating demand
+    coord.update_zone_demand("zone1", True, "heat")
+    coord.update_zone_demand("zone2", False, "heat")
 
     # Verify aggregate demand is True (zone1 has demand)
     assert coord.get_aggregate_demand()["heating"] is True
@@ -249,24 +265,26 @@ def test_duplicate_registration_preserves_demand_state(coord):
     """Test that re-registering a zone resets demand state to False."""
     # Register a zone and set demand
     coord.register_zone("zone1", {"name": "Zone 1"})
-    coord.update_zone_demand("zone1", True)
+    coord.update_zone_demand("zone1", True, "heat")
 
-    # Verify demand is True
-    assert coord._demand_states["zone1"] is True
+    # Verify demand is True (now stored as dict)
+    assert coord._demand_states["zone1"]["demand"] is True
+    assert coord._demand_states["zone1"]["mode"] == "heat"
 
     # Re-register the zone
     coord.register_zone("zone1", {"name": "Zone 1 Updated"})
 
-    # Verify demand is reset to False
-    assert coord._demand_states["zone1"] is False
+    # Verify demand is reset to False (with new dict structure)
+    assert coord._demand_states["zone1"]["demand"] is False
+    assert coord._demand_states["zone1"]["mode"] is None
 
 
 def test_unregister_all_zones(coord):
     """Test unregistering all zones leaves coordinator in clean state."""
-    # Register multiple zones
+    # Register multiple zones with alternating heating demand
     for i in range(5):
         coord.register_zone(f"zone{i}", {"name": f"Zone {i}"})
-        coord.update_zone_demand(f"zone{i}", i % 2 == 0)
+        coord.update_zone_demand(f"zone{i}", i % 2 == 0, "heat")
 
     # Verify zones are registered
     assert len(coord.get_all_zones()) == 5

@@ -57,7 +57,7 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
                 zone_id,
             )
         self._zones[zone_id] = zone_data
-        self._demand_states[zone_id] = False
+        self._demand_states[zone_id] = {"demand": False, "mode": None}
         _LOGGER.debug("Registered zone: %s", zone_id)
 
     def unregister_zone(self, zone_id: str) -> None:
@@ -85,20 +85,26 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
 
         _LOGGER.info("Unregistered zone: %s", zone_id)
 
-    def update_zone_demand(self, zone_id: str, has_demand: bool) -> None:
+    def update_zone_demand(self, zone_id: str, has_demand: bool, hvac_mode: str | None = None) -> None:
         """Update the demand state for a zone.
 
         Args:
             zone_id: Unique identifier for the zone
             has_demand: Whether the zone currently has heating/cooling demand
+            hvac_mode: The zone's current HVAC mode ("heat", "cool", or "off")
         """
         if zone_id in self._demand_states:
-            old_demand = self._demand_states[zone_id]
-            self._demand_states[zone_id] = has_demand
+            old_state = self._demand_states[zone_id]
+            new_state = {"demand": has_demand, "mode": hvac_mode}
+            self._demand_states[zone_id] = new_state
 
-            # Only trigger central controller if demand actually changed
-            if old_demand != has_demand:
-                _LOGGER.info("Demand changed for zone %s: %s -> %s", zone_id, old_demand, has_demand)
+            # Only trigger central controller if demand or mode actually changed
+            if old_state != new_state:
+                _LOGGER.info(
+                    "Demand changed for zone %s: %s/%s -> %s/%s",
+                    zone_id, old_state.get("demand"), old_state.get("mode"),
+                    has_demand, hvac_mode
+                )
                 if self._central_controller:
                     _LOGGER.info("Triggering CentralController update")
                     self.hass.async_create_task(self._central_controller.update())
@@ -110,11 +116,17 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
             Dictionary with 'heating' and 'cooling' boolean values indicating
             if any zone has demand for that mode.
         """
-        has_heating_demand = any(self._demand_states.values())
-        # For now, we only track heating demand. Cooling will be added later.
+        has_heating_demand = any(
+            state.get("demand") and state.get("mode") == "heat"
+            for state in self._demand_states.values()
+        )
+        has_cooling_demand = any(
+            state.get("demand") and state.get("mode") == "cool"
+            for state in self._demand_states.values()
+        )
         return {
             "heating": has_heating_demand,
-            "cooling": False,
+            "cooling": has_cooling_demand,
         }
 
     def get_all_zones(self) -> dict[str, dict[str, Any]]:
@@ -211,6 +223,10 @@ class CentralController:
         # Track consecutive failures per switch for health monitoring
         self._consecutive_failures: dict[str, int] = {}
 
+        # Track whether we activated heater/cooler switches (for shared switch handling)
+        self._heater_activated_by_us = False
+        self._cooler_activated_by_us = False
+
         _LOGGER.debug(
             "CentralController initialized: heater=%s, cooler=%s, delay=%ds",
             main_heater_switch,
@@ -251,7 +267,10 @@ class CentralController:
             else:
                 # No demand - cancel startup and schedule debounced turn-off
                 await self._cancel_heater_startup_unlocked()
-                self._schedule_heater_turnoff_unlocked()
+                # Only schedule turn-off if we activated the heater
+                # (prevents turning off shared switches when cooler activated them)
+                if self._heater_activated_by_us:
+                    self._schedule_heater_turnoff_unlocked()
 
     async def _update_cooler(self, has_demand: bool) -> None:
         """Update cooler state based on demand.
@@ -270,7 +289,10 @@ class CentralController:
             else:
                 # No demand - cancel startup and schedule debounced turn-off
                 await self._cancel_cooler_startup_unlocked()
-                self._schedule_cooler_turnoff_unlocked()
+                # Only schedule turn-off if we activated the cooler
+                # (prevents turning off shared switches when heater activated them)
+                if self._cooler_activated_by_us:
+                    self._schedule_cooler_turnoff_unlocked()
 
     async def _start_heater_with_delay_unlocked(self) -> None:
         """Start heater after startup delay.
@@ -283,6 +305,7 @@ class CentralController:
         if self.startup_delay_seconds == 0:
             # No delay - turn on immediately
             await self._turn_on_switches(self.main_heater_switch)
+            self._heater_activated_by_us = True
         else:
             # Schedule delayed startup
             self._heater_waiting_for_startup = True
@@ -300,6 +323,7 @@ class CentralController:
         if self.startup_delay_seconds == 0:
             # No delay - turn on immediately
             await self._turn_on_switches(self.main_cooler_switch)
+            self._cooler_activated_by_us = True
         else:
             # Schedule delayed startup
             self._cooler_waiting_for_startup = True
@@ -316,6 +340,7 @@ class CentralController:
                 demand = self.coordinator.get_aggregate_demand()
                 if demand["heating"]:
                     await self._turn_on_switches(self.main_heater_switch)
+                    self._heater_activated_by_us = True
                     _LOGGER.info("Heater started after %d second delay", self.startup_delay_seconds)
                 else:
                     _LOGGER.debug("Heater startup cancelled - no demand after delay")
@@ -336,6 +361,7 @@ class CentralController:
                 demand = self.coordinator.get_aggregate_demand()
                 if demand["cooling"]:
                     await self._turn_on_switches(self.main_cooler_switch)
+                    self._cooler_activated_by_us = True
                     _LOGGER.info("Cooler started after %d second delay", self.startup_delay_seconds)
                 else:
                     _LOGGER.debug("Cooler startup cancelled - no demand after delay")
@@ -444,6 +470,7 @@ class CentralController:
                 demand = self.coordinator.get_aggregate_demand()
                 if not demand["heating"]:
                     await self._turn_off_switches(self.main_heater_switch)
+                    self._heater_activated_by_us = False
                     _LOGGER.info(
                         "Heater turned off after %d second debounce",
                         TURN_OFF_DEBOUNCE_SECONDS,
@@ -465,6 +492,7 @@ class CentralController:
                 demand = self.coordinator.get_aggregate_demand()
                 if not demand["cooling"]:
                     await self._turn_off_switches(self.main_cooler_switch)
+                    self._cooler_activated_by_us = False
                     _LOGGER.info(
                         "Cooler turned off after %d second debounce",
                         TURN_OFF_DEBOUNCE_SECONDS,

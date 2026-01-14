@@ -1720,7 +1720,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         if self._zone_id:
             coordinator = self.hass.data.get(const.DOMAIN, {}).get("coordinator")
             if coordinator:
-                coordinator.update_zone_demand(self._zone_id, self._is_device_active)
+                coordinator.update_zone_demand(self._zone_id, self._is_device_active, self._hvac_mode.value if self._hvac_mode else None)
 
         self.async_write_ha_state()
 
@@ -1814,7 +1814,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                 if self._zone_id:
                     coordinator = self.hass.data.get(const.DOMAIN, {}).get("coordinator")
                     if coordinator:
-                        coordinator.update_zone_demand(self._zone_id, False)
+                        coordinator.update_zone_demand(self._zone_id, False, self._hvac_mode.value if self._hvac_mode else None)
                 self.async_write_ha_state()
                 return
 
@@ -1835,7 +1835,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                     if self._zone_id:
                         coordinator = self.hass.data.get(const.DOMAIN, {}).get("coordinator")
                         if coordinator:
-                            coordinator.update_zone_demand(self._zone_id, False)
+                            coordinator.update_zone_demand(self._zone_id, False, self._hvac_mode.value if self._hvac_mode else None)
                     self.async_write_ha_state()
                     return
 
@@ -1852,7 +1852,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
             if self._zone_id:
                 coordinator = self.hass.data.get(const.DOMAIN, {}).get("coordinator")
                 if coordinator:
-                    coordinator.update_zone_demand(self._zone_id, self._is_device_active)
+                    coordinator.update_zone_demand(self._zone_id, self._is_device_active, self._hvac_mode.value if self._hvac_mode else None)
 
             # Record Ke observation if at steady state
             self._maybe_record_ke_observation()
