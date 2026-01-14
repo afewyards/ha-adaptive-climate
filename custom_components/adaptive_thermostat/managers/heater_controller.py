@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import time
+from datetime import datetime
 from typing import TYPE_CHECKING, Any, Callable, List, Optional
 
 # These imports are only needed when running in Home Assistant
@@ -370,6 +371,10 @@ class HeaterController:
             )
             set_last_heat_cycle_time(time.time())
 
+            # Notify cycle tracker that heating started
+            if hasattr(self._thermostat, '_cycle_tracker') and self._thermostat._cycle_tracker:
+                self._thermostat._cycle_tracker.on_heating_started(datetime.now())
+
             # Notify zone linker that this zone started heating (for linked zones)
             if zone_linker and linked_zones and not is_heating:
                 set_is_heating(True)
@@ -429,6 +434,11 @@ class HeaterController:
                 ", ".join(entities)
             )
             set_last_heat_cycle_time(time.time())
+
+            # Notify cycle tracker that heating stopped
+            if hasattr(self._thermostat, '_cycle_tracker') and self._thermostat._cycle_tracker:
+                self._thermostat._cycle_tracker.on_heating_stopped(datetime.now())
+
             # Reset heating state for zone linking
             set_is_heating(False)
         else:
@@ -463,6 +473,9 @@ class HeaterController:
         entities = self.get_entities(hvac_mode)
         thermostat_entity_id = self._thermostat.entity_id
 
+        # Track old active state for cycle tracker
+        old_active = self.is_active(hvac_mode)
+
         _LOGGER.info(
             "%s: Change state of %s to %s",
             thermostat_entity_id,
@@ -495,6 +508,16 @@ class HeaterController:
                     SERVICE_SET_VALUE,
                     data,
                 )
+
+        # Track new active state after valve change and notify cycle tracker
+        new_active = value > 0
+        if hasattr(self._thermostat, '_cycle_tracker') and self._thermostat._cycle_tracker:
+            # Detect heating started transition (was off, now on)
+            if not old_active and new_active:
+                self._thermostat._cycle_tracker.on_heating_started(datetime.now())
+            # Detect heating stopped transition (was on, now off)
+            elif old_active and not new_active:
+                self._thermostat._cycle_tracker.on_heating_stopped(datetime.now())
 
     async def async_set_control_value(
         self,

@@ -461,6 +461,39 @@ class TestCycleTrackerMetrics:
         assert cycle_tracker.state == CycleState.IDLE
 
 
+class TestCycleTrackerValveMode:
+    """Tests for cycle tracker integration with valve mode."""
+
+    def test_heater_controller_notifications(self, cycle_tracker):
+        """Test heater controller notifies cycle tracker on state changes."""
+        # Simulate HeaterController calling on_heating_started
+        start_time = datetime(2025, 1, 14, 10, 0, 0)
+        cycle_tracker.on_heating_started(start_time)
+
+        # Verify state transition
+        assert cycle_tracker.state == CycleState.HEATING
+        assert cycle_tracker.cycle_start_time == start_time
+
+        # Simulate HeaterController calling on_heating_stopped
+        stop_time = datetime(2025, 1, 14, 10, 15, 0)
+        cycle_tracker.on_heating_stopped(stop_time)
+
+        # Verify state transition
+        assert cycle_tracker.state == CycleState.SETTLING
+
+    def test_valve_mode_transitions(self, cycle_tracker):
+        """Test valve mode transitions trigger cycle tracker events."""
+        # Test heating started (valve 0 -> >0)
+        start_time = datetime(2025, 1, 14, 10, 0, 0)
+        cycle_tracker.on_heating_started(start_time)
+        assert cycle_tracker.state == CycleState.HEATING
+
+        # Test heating stopped (valve >0 -> 0)
+        stop_time = datetime(2025, 1, 14, 10, 15, 0)
+        cycle_tracker.on_heating_stopped(stop_time)
+        assert cycle_tracker.state == CycleState.SETTLING
+
+
 def test_cycle_tracker_module_exists():
     """Marker test to verify cycle tracker module exists."""
     assert CycleState is not None
