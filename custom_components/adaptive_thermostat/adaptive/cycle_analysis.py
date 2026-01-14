@@ -317,3 +317,57 @@ def calculate_settling_time(
     settling_minutes = (settle_time - start_time).total_seconds() / 60
 
     return settling_minutes
+
+
+def calculate_rise_time(
+    temperature_history: List[Tuple[datetime, float]],
+    start_temp: float,
+    target_temp: float,
+    threshold: float = 0.05,
+) -> Optional[float]:
+    """
+    Calculate time required for temperature to rise from start to target.
+
+    Rise time measures how quickly the heating system brings the temperature
+    from the initial value to the target setpoint. This is useful for
+    evaluating system responsiveness.
+
+    Args:
+        temperature_history: List of (timestamp, temperature) tuples
+        start_temp: Starting temperature in °C
+        target_temp: Target temperature in °C
+        threshold: Tolerance for detecting target (default 0.05°C)
+
+    Returns:
+        Rise time in minutes from first reading to reaching target,
+        or None if:
+        - Insufficient data (< 2 samples)
+        - Target temperature never reached
+        - Already at target (start_temp >= target_temp - threshold)
+
+    Example:
+        >>> history = [
+        ...     (datetime(2024, 1, 1, 10, 0), 18.0),
+        ...     (datetime(2024, 1, 1, 10, 15), 19.5),
+        ...     (datetime(2024, 1, 1, 10, 30), 21.0),
+        ... ]
+        >>> calculate_rise_time(history, 18.0, 21.0)
+        30.0
+    """
+    if len(temperature_history) < 2:
+        return None
+
+    # If already at or above target, no rise time needed
+    if start_temp >= target_temp - threshold:
+        return None
+
+    start_time = temperature_history[0][0]
+
+    # Find first temperature reading that reaches target
+    for timestamp, temp in temperature_history:
+        if temp >= target_temp - threshold:
+            rise_minutes = (timestamp - start_time).total_seconds() / 60
+            return rise_minutes
+
+    # Target never reached
+    return None

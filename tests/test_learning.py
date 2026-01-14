@@ -1510,3 +1510,199 @@ def test_pid_limits():
     assert PID_LIMITS["ki_max"] == 100.0
     assert PID_LIMITS["kd_min"] == 0.0
     assert PID_LIMITS["kd_max"] == 200.0
+
+
+# ============================================================================
+# calculate_rise_time Function Tests
+# ============================================================================
+
+
+class TestCalculateRiseTime:
+    """Tests for the calculate_rise_time function."""
+
+    def test_calculate_rise_time_basic(self):
+        """Test basic rise time calculation with normal temperature rise."""
+        from custom_components.adaptive_thermostat.adaptive.cycle_analysis import (
+            calculate_rise_time,
+        )
+
+        base_time = datetime(2024, 1, 1, 10, 0, 0)
+        history = [
+            (base_time, 18.0),
+            (base_time + timedelta(minutes=15), 19.5),
+            (base_time + timedelta(minutes=30), 21.0),
+        ]
+
+        rise_time = calculate_rise_time(history, start_temp=18.0, target_temp=21.0)
+        assert rise_time == 30.0
+
+    def test_calculate_rise_time_never_reached(self):
+        """Test rise time when target temperature is never reached."""
+        from custom_components.adaptive_thermostat.adaptive.cycle_analysis import (
+            calculate_rise_time,
+        )
+
+        base_time = datetime(2024, 1, 1, 10, 0, 0)
+        history = [
+            (base_time, 18.0),
+            (base_time + timedelta(minutes=15), 19.0),
+            (base_time + timedelta(minutes=30), 20.0),
+        ]
+
+        # Target of 22.0 never reached
+        rise_time = calculate_rise_time(history, start_temp=18.0, target_temp=22.0)
+        assert rise_time is None
+
+    def test_calculate_rise_time_insufficient_data(self):
+        """Test rise time with insufficient data (< 2 samples)."""
+        from custom_components.adaptive_thermostat.adaptive.cycle_analysis import (
+            calculate_rise_time,
+        )
+
+        base_time = datetime(2024, 1, 1, 10, 0, 0)
+
+        # Empty history
+        rise_time = calculate_rise_time([], start_temp=18.0, target_temp=21.0)
+        assert rise_time is None
+
+        # Single sample
+        history = [(base_time, 18.0)]
+        rise_time = calculate_rise_time(history, start_temp=18.0, target_temp=21.0)
+        assert rise_time is None
+
+    def test_calculate_rise_time_already_at_target(self):
+        """Test rise time when start temperature equals target."""
+        from custom_components.adaptive_thermostat.adaptive.cycle_analysis import (
+            calculate_rise_time,
+        )
+
+        base_time = datetime(2024, 1, 1, 10, 0, 0)
+        history = [
+            (base_time, 21.0),
+            (base_time + timedelta(minutes=15), 21.1),
+        ]
+
+        # Already at target, no rise time needed
+        rise_time = calculate_rise_time(history, start_temp=21.0, target_temp=21.0)
+        assert rise_time is None
+
+    def test_calculate_rise_time_threshold_variations(self):
+        """Test rise time with different threshold values."""
+        from custom_components.adaptive_thermostat.adaptive.cycle_analysis import (
+            calculate_rise_time,
+        )
+
+        base_time = datetime(2024, 1, 1, 10, 0, 0)
+        history = [
+            (base_time, 18.0),
+            (base_time + timedelta(minutes=15), 19.5),
+            (base_time + timedelta(minutes=30), 20.95),  # Just below 21.0
+            (base_time + timedelta(minutes=45), 21.1),
+        ]
+
+        # With default threshold (0.05), 20.95 should count as reaching 21.0
+        rise_time_default = calculate_rise_time(history, start_temp=18.0, target_temp=21.0)
+        assert rise_time_default == 30.0
+
+        # With stricter threshold (0.01), 20.95 doesn't count
+        rise_time_strict = calculate_rise_time(history, start_temp=18.0, target_temp=21.0, threshold=0.01)
+        assert rise_time_strict == 45.0
+
+        # With looser threshold (0.1), even earlier temps might count
+        rise_time_loose = calculate_rise_time(history, start_temp=18.0, target_temp=21.0, threshold=0.1)
+        assert rise_time_loose == 30.0
+
+    def test_calculate_rise_time_first_reading_at_target(self):
+        """Test when first reading already reaches target (within threshold)."""
+        from custom_components.adaptive_thermostat.adaptive.cycle_analysis import (
+            calculate_rise_time,
+        )
+
+        base_time = datetime(2024, 1, 1, 10, 0, 0)
+        history = [
+            (base_time, 20.96),  # Within 0.05 of 21.0
+            (base_time + timedelta(minutes=15), 21.0),
+        ]
+
+        # First reading is within threshold of target
+        rise_time = calculate_rise_time(history, start_temp=18.0, target_temp=21.0)
+        assert rise_time == 0.0
+
+    def test_calculate_rise_time_slow_rise(self):
+        """Test rise time with slow heating over longer duration."""
+        from custom_components.adaptive_thermostat.adaptive.cycle_analysis import (
+            calculate_rise_time,
+        )
+
+        base_time = datetime(2024, 1, 1, 10, 0, 0)
+        history = [
+            (base_time, 18.0),
+            (base_time + timedelta(minutes=30), 18.5),
+            (base_time + timedelta(minutes=60), 19.0),
+            (base_time + timedelta(minutes=90), 19.5),
+            (base_time + timedelta(minutes=120), 20.0),
+            (base_time + timedelta(minutes=150), 20.5),
+            (base_time + timedelta(minutes=180), 21.0),
+        ]
+
+        rise_time = calculate_rise_time(history, start_temp=18.0, target_temp=21.0)
+        assert rise_time == 180.0
+
+    def test_calculate_rise_time_fast_rise(self):
+        """Test rise time with rapid heating."""
+        from custom_components.adaptive_thermostat.adaptive.cycle_analysis import (
+            calculate_rise_time,
+        )
+
+        base_time = datetime(2024, 1, 1, 10, 0, 0)
+        history = [
+            (base_time, 18.0),
+            (base_time + timedelta(minutes=5), 21.0),
+        ]
+
+        rise_time = calculate_rise_time(history, start_temp=18.0, target_temp=21.0)
+        assert rise_time == 5.0
+
+    def test_calculate_rise_time_with_overshoot(self):
+        """Test that rise time is measured to first crossing, not peak."""
+        from custom_components.adaptive_thermostat.adaptive.cycle_analysis import (
+            calculate_rise_time,
+        )
+
+        base_time = datetime(2024, 1, 1, 10, 0, 0)
+        history = [
+            (base_time, 18.0),
+            (base_time + timedelta(minutes=20), 20.0),
+            (base_time + timedelta(minutes=30), 21.0),  # First crosses target
+            (base_time + timedelta(minutes=40), 22.0),  # Overshoot
+            (base_time + timedelta(minutes=50), 21.5),  # Settling
+        ]
+
+        # Should measure to first crossing at 30 minutes
+        rise_time = calculate_rise_time(history, start_temp=18.0, target_temp=21.0)
+        assert rise_time == 30.0
+
+    def test_calculate_rise_time_start_above_target(self):
+        """Test when start temperature is already above target."""
+        from custom_components.adaptive_thermostat.adaptive.cycle_analysis import (
+            calculate_rise_time,
+        )
+
+        base_time = datetime(2024, 1, 1, 10, 0, 0)
+        history = [
+            (base_time, 22.0),  # Start above target
+            (base_time + timedelta(minutes=15), 21.5),
+        ]
+
+        # No rise needed when starting above target
+        rise_time = calculate_rise_time(history, start_temp=22.0, target_temp=21.0)
+        assert rise_time is None
+
+
+# Marker test for rise time function
+def test_calculate_rise_time_module_exists():
+    """Marker test to ensure calculate_rise_time is importable."""
+    from custom_components.adaptive_thermostat.adaptive.cycle_analysis import (
+        calculate_rise_time,
+    )
+    assert calculate_rise_time is not None
