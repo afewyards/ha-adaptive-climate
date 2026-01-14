@@ -730,6 +730,15 @@ class ModeSync:
                     )
                     continue
 
+                # Skip zones that are currently OFF (OFF stays independent)
+                other_state = self.hass.states.get(other_climate_entity_id)
+                if other_state and other_state.state == "off":
+                    _LOGGER.debug(
+                        "Skipping zone %s - currently OFF (independent)",
+                        other_zone_id,
+                    )
+                    continue
+
                 # Set the mode for this zone
                 await self._set_zone_mode(
                     other_zone_id,
