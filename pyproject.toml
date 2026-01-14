@@ -1,0 +1,25 @@
+[tool.semantic_release]
+version_toml = ["pyproject.toml:project.version"]
+version_variables = [
+    "custom_components/adaptive_thermostat/manifest.json:version"
+]
+tag_format = "v{version}"
+branch = "main"
+commit_message = "chore(release): {version}"
+build_command = ""
+
+[tool.semantic_release.changelog]
+changelog_file = "CHANGELOG.md"
+
+[tool.semantic_release.commit_parser_options]
+allowed_tags = ["feat", "fix", "docs", "style", "refactor", "perf", "test", "chore"]
+minor_tags = ["feat"]
+patch_tags = ["fix", "perf"]
+
+[project]
+name = "adaptive-thermostat"
+version = "0.1.0"
+description = "Home Assistant custom component for PID-based thermostat control with adaptive learning"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.11"
