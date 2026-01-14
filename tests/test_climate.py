@@ -27,8 +27,8 @@ class MockHVACMode:
     HEAT_COOL = "heat_cool"
 
 
-class MockSmartThermostat:
-    """Mock SmartThermostat class for testing service call error handling."""
+class MockAdaptiveThermostat:
+    """Mock AdaptiveThermostat class for testing service call error handling."""
 
     def __init__(self, hass, heater_entity_id="switch.heater"):
         self.hass = hass
@@ -187,7 +187,7 @@ class TestServiceCallSuccess:
     def test_turn_on_success(self):
         """Test successful turn_on service call."""
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostat(mock_hass)
+        thermostat = MockAdaptiveThermostat(mock_hass)
 
         _run_async(thermostat._async_heater_turn_on())
 
@@ -202,7 +202,7 @@ class TestServiceCallSuccess:
     def test_turn_off_success(self):
         """Test successful turn_off service call."""
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostat(mock_hass)
+        thermostat = MockAdaptiveThermostat(mock_hass)
 
         _run_async(thermostat._async_heater_turn_off())
 
@@ -217,7 +217,7 @@ class TestServiceCallSuccess:
     def test_set_valve_value_success(self):
         """Test successful set_value service call for number entity."""
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostat(mock_hass)
+        thermostat = MockAdaptiveThermostat(mock_hass)
         thermostat._heater_entity_id = ["number.valve"]
 
         _run_async(thermostat._async_set_valve_value(50.0))
@@ -236,7 +236,7 @@ class TestServiceNotFoundError:
     def test_service_not_found_sets_failure_attribute(self):
         """Test ServiceNotFound exception sets heater_control_failed attribute."""
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostat(mock_hass)
+        thermostat = MockAdaptiveThermostat(mock_hass)
         mock_hass.services.async_call.side_effect = MockServiceNotFound(
             "Service homeassistant.turn_on not found"
         )
@@ -249,7 +249,7 @@ class TestServiceNotFoundError:
     def test_service_not_found_fires_event(self):
         """Test ServiceNotFound exception fires heater_control_failed event."""
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostat(mock_hass)
+        thermostat = MockAdaptiveThermostat(mock_hass)
         mock_hass.services.async_call.side_effect = MockServiceNotFound(
             "Service homeassistant.turn_on not found"
         )
@@ -267,7 +267,7 @@ class TestServiceNotFoundError:
     def test_service_not_found_returns_false(self):
         """Test ServiceNotFound exception returns False from helper method."""
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostat(mock_hass)
+        thermostat = MockAdaptiveThermostat(mock_hass)
         mock_hass.services.async_call.side_effect = MockServiceNotFound("not found")
 
         result = _run_async(thermostat._async_call_heater_service(
@@ -283,7 +283,7 @@ class TestHomeAssistantError:
     def test_home_assistant_error_sets_failure_attribute(self):
         """Test HomeAssistantError exception sets heater_control_failed attribute."""
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostat(mock_hass)
+        thermostat = MockAdaptiveThermostat(mock_hass)
         mock_hass.services.async_call.side_effect = MockHomeAssistantError(
             "Entity switch.heater is unavailable"
         )
@@ -296,7 +296,7 @@ class TestHomeAssistantError:
     def test_home_assistant_error_fires_event(self):
         """Test HomeAssistantError exception fires heater_control_failed event."""
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostat(mock_hass)
+        thermostat = MockAdaptiveThermostat(mock_hass)
         mock_hass.services.async_call.side_effect = MockHomeAssistantError(
             "Entity unavailable"
         )
@@ -315,7 +315,7 @@ class TestUnexpectedError:
     def test_unexpected_error_sets_failure_attribute(self):
         """Test unexpected exception sets heater_control_failed attribute."""
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostat(mock_hass)
+        thermostat = MockAdaptiveThermostat(mock_hass)
         mock_hass.services.async_call.side_effect = RuntimeError("Unexpected failure")
 
         _run_async(thermostat._async_heater_turn_on())
@@ -326,7 +326,7 @@ class TestUnexpectedError:
     def test_unexpected_error_fires_event(self):
         """Test unexpected exception fires heater_control_failed event."""
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostat(mock_hass)
+        thermostat = MockAdaptiveThermostat(mock_hass)
         mock_hass.services.async_call.side_effect = RuntimeError("Connection lost")
 
         _run_async(thermostat._async_heater_turn_on())
@@ -340,7 +340,7 @@ class TestSuccessfulCallClearsFailure:
     def test_success_clears_failure_state(self):
         """Test successful service call clears previous failure state."""
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostat(mock_hass)
+        thermostat = MockAdaptiveThermostat(mock_hass)
 
         # Set up previous failure state
         thermostat._heater_control_failed = True
@@ -360,7 +360,7 @@ class TestExtraStateAttributes:
     def test_failure_attributes_exposed_when_failed(self):
         """Test failure attributes are included in extra_state_attributes when failed."""
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostat(mock_hass)
+        thermostat = MockAdaptiveThermostat(mock_hass)
         thermostat._heater_control_failed = True
         thermostat._last_heater_error = "Service not found: homeassistant.turn_on"
 
@@ -372,7 +372,7 @@ class TestExtraStateAttributes:
     def test_failure_attributes_not_exposed_when_ok(self):
         """Test failure attributes not included when no failure."""
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostat(mock_hass)
+        thermostat = MockAdaptiveThermostat(mock_hass)
         thermostat._heater_control_failed = False
 
         attrs = thermostat.extra_state_attributes
@@ -387,7 +387,7 @@ class TestValveEntityTypes:
     def test_light_entity_service_failure(self):
         """Test error handling for light entity valve control."""
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostat(mock_hass)
+        thermostat = MockAdaptiveThermostat(mock_hass)
         thermostat._heater_entity_id = ["light.radiator_valve"]
         mock_hass.services.async_call.side_effect = MockHomeAssistantError(
             "Light unavailable"
@@ -401,7 +401,7 @@ class TestValveEntityTypes:
     def test_valve_entity_service_failure(self):
         """Test error handling for valve entity control."""
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostat(mock_hass)
+        thermostat = MockAdaptiveThermostat(mock_hass)
         thermostat._heater_entity_id = ["valve.radiator"]
         mock_hass.services.async_call.side_effect = MockHomeAssistantError(
             "Valve unavailable"
@@ -418,7 +418,7 @@ class TestMultipleEntities:
     def test_partial_failure_with_multiple_entities(self):
         """Test that failure is reported even if only some entities fail."""
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostat(mock_hass)
+        thermostat = MockAdaptiveThermostat(mock_hass)
         thermostat._heater_entity_id = ["switch.heater1", "switch.heater2"]
 
         # First call succeeds, second fails
@@ -445,7 +445,7 @@ class TestEventData:
     def test_event_contains_correct_entity_ids(self):
         """Test event contains correct climate and heater entity IDs."""
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostat(mock_hass)
+        thermostat = MockAdaptiveThermostat(mock_hass)
         mock_hass.services.async_call.side_effect = MockServiceNotFound("not found")
 
         _run_async(thermostat._async_heater_turn_on())
@@ -460,7 +460,7 @@ class TestEventData:
     def test_event_operation_matches_service_called(self):
         """Test event operation field matches the service that was called."""
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostat(mock_hass)
+        thermostat = MockAdaptiveThermostat(mock_hass)
         mock_hass.services.async_call.side_effect = MockServiceNotFound("not found")
 
         _run_async(thermostat._async_heater_turn_off())
@@ -511,8 +511,8 @@ class MockSolarRecovery:
         return self._should_use
 
 
-class MockSmartThermostatForNightSetback:
-    """Mock SmartThermostat for testing night setback logic."""
+class MockAdaptiveThermostatForNightSetback:
+    """Mock AdaptiveThermostat for testing night setback logic."""
 
     def __init__(self, hass):
         self.hass = hass
@@ -666,7 +666,7 @@ class TestStaticNightSetback:
         from datetime import datetime, time as dt_time
 
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostatForNightSetback(mock_hass)
+        thermostat = MockAdaptiveThermostatForNightSetback(mock_hass)
         thermostat._target_temp = 21.0
         thermostat._night_setback = MockNightSetback(
             start_time_str="22:00",
@@ -690,7 +690,7 @@ class TestStaticNightSetback:
         from datetime import datetime, time as dt_time
 
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostatForNightSetback(mock_hass)
+        thermostat = MockAdaptiveThermostatForNightSetback(mock_hass)
         thermostat._target_temp = 21.0
         thermostat._night_setback = MockNightSetback(
             start_time_str="22:00",
@@ -712,7 +712,7 @@ class TestStaticNightSetback:
         from datetime import datetime, time as dt_time
 
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostatForNightSetback(mock_hass)
+        thermostat = MockAdaptiveThermostatForNightSetback(mock_hass)
         thermostat._target_temp = 21.0
         thermostat._night_setback = MockNightSetback(
             start_time_str="22:00",
@@ -739,7 +739,7 @@ class TestStaticNightSetback:
         from datetime import datetime, time as dt_time
 
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostatForNightSetback(mock_hass)
+        thermostat = MockAdaptiveThermostatForNightSetback(mock_hass)
         thermostat._target_temp = 21.0
         thermostat._night_setback = MockNightSetback(
             start_time_str="22:00",
@@ -768,7 +768,7 @@ class TestDynamicNightSetback:
         from datetime import datetime, time as dt_time
 
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostatForNightSetback(mock_hass)
+        thermostat = MockAdaptiveThermostatForNightSetback(mock_hass)
         thermostat._target_temp = 21.0
         thermostat._night_setback_config = {
             'start': '22:00',
@@ -790,7 +790,7 @@ class TestDynamicNightSetback:
         from datetime import datetime, time as dt_time
 
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostatForNightSetback(mock_hass)
+        thermostat = MockAdaptiveThermostatForNightSetback(mock_hass)
         thermostat._target_temp = 21.0
         thermostat._night_setback_config = {
             'start': 'sunset+30',  # Sunset at 17:30 + 30 min = 18:00
@@ -810,7 +810,7 @@ class TestDynamicNightSetback:
         from datetime import datetime, time as dt_time
 
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostatForNightSetback(mock_hass)
+        thermostat = MockAdaptiveThermostatForNightSetback(mock_hass)
         thermostat._target_temp = 21.0
         thermostat._night_setback_config = {
             'start': '22:00',
@@ -848,7 +848,7 @@ class TestDynamicNightSetback:
         from datetime import datetime, time as dt_time
 
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostatForNightSetback(mock_hass)
+        thermostat = MockAdaptiveThermostatForNightSetback(mock_hass)
         thermostat._target_temp = 21.0
         thermostat._night_setback_config = {
             'start': '22:00',
@@ -869,7 +869,7 @@ class TestDynamicNightSetback:
         from datetime import datetime, time as dt_time
 
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostatForNightSetback(mock_hass)
+        thermostat = MockAdaptiveThermostatForNightSetback(mock_hass)
         thermostat._target_temp = 21.0
         thermostat._night_setback_config = {
             'start': '23:00',
@@ -893,7 +893,7 @@ class TestNightSetbackHelpers:
         from datetime import datetime
 
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostatForNightSetback(mock_hass)
+        thermostat = MockAdaptiveThermostatForNightSetback(mock_hass)
 
         start_time = thermostat._parse_night_start_time("22:30", datetime.now())
         assert start_time.hour == 22
@@ -904,7 +904,7 @@ class TestNightSetbackHelpers:
         from datetime import datetime
 
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostatForNightSetback(mock_hass)
+        thermostat = MockAdaptiveThermostatForNightSetback(mock_hass)
 
         # Sunset is mocked at 17:30
         start_time = thermostat._parse_night_start_time("sunset", datetime.now())
@@ -916,7 +916,7 @@ class TestNightSetbackHelpers:
         from datetime import datetime
 
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostatForNightSetback(mock_hass)
+        thermostat = MockAdaptiveThermostatForNightSetback(mock_hass)
 
         # Sunset is mocked at 17:30, +30 = 18:00
         start_time = thermostat._parse_night_start_time("sunset+30", datetime.now())
@@ -928,7 +928,7 @@ class TestNightSetbackHelpers:
         from datetime import datetime
 
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostatForNightSetback(mock_hass)
+        thermostat = MockAdaptiveThermostatForNightSetback(mock_hass)
 
         # Sunset is mocked at 17:30, -30 = 17:00
         start_time = thermostat._parse_night_start_time("sunset-30", datetime.now())
@@ -940,7 +940,7 @@ class TestNightSetbackHelpers:
         from datetime import time as dt_time
 
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostatForNightSetback(mock_hass)
+        thermostat = MockAdaptiveThermostatForNightSetback(mock_hass)
 
         # Period from 00:00 to 06:00
         start = dt_time(0, 0)
@@ -954,7 +954,7 @@ class TestNightSetbackHelpers:
         from datetime import time as dt_time
 
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostatForNightSetback(mock_hass)
+        thermostat = MockAdaptiveThermostatForNightSetback(mock_hass)
 
         # Period from 22:00 to 06:00
         start = dt_time(22, 0)
@@ -973,7 +973,7 @@ class TestNightSetbackNoConfig:
         from datetime import datetime
 
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostatForNightSetback(mock_hass)
+        thermostat = MockAdaptiveThermostatForNightSetback(mock_hass)
         thermostat._target_temp = 21.0
         # Neither _night_setback nor _night_setback_config is set
 
@@ -1026,8 +1026,8 @@ class MockPIDController:
             self._ke = ke
 
 
-class MockSmartThermostatForStateRestore:
-    """Mock SmartThermostat for testing state restoration methods."""
+class MockAdaptiveThermostatForStateRestore:
+    """Mock AdaptiveThermostat for testing state restoration methods."""
 
     def __init__(self, hass):
         self.hass = hass
@@ -1161,7 +1161,7 @@ class TestSetupStateListeners:
     def test_sensor_listener_registered(self):
         """Test that temperature sensor listener is registered."""
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostatForStateRestore(mock_hass)
+        thermostat = MockAdaptiveThermostatForStateRestore(mock_hass)
 
         # The method should register a listener for the temperature sensor
         assert thermostat._sensor_entity_id == "sensor.temperature"
@@ -1169,7 +1169,7 @@ class TestSetupStateListeners:
     def test_external_sensor_listener_when_configured(self):
         """Test that external sensor listener is registered when configured."""
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostatForStateRestore(mock_hass)
+        thermostat = MockAdaptiveThermostatForStateRestore(mock_hass)
         thermostat._ext_sensor_entity_id = "sensor.outdoor_temp"
 
         assert thermostat._ext_sensor_entity_id is not None
@@ -1177,7 +1177,7 @@ class TestSetupStateListeners:
     def test_heater_listener_when_configured(self):
         """Test that heater entity listener is registered when configured."""
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostatForStateRestore(mock_hass)
+        thermostat = MockAdaptiveThermostatForStateRestore(mock_hass)
 
         assert thermostat._heater_entity_id is not None
         assert "switch.heater" in thermostat._heater_entity_id
@@ -1185,7 +1185,7 @@ class TestSetupStateListeners:
     def test_cooler_listener_when_configured(self):
         """Test that cooler entity listener is registered when configured."""
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostatForStateRestore(mock_hass)
+        thermostat = MockAdaptiveThermostatForStateRestore(mock_hass)
         thermostat._cooler_entity_id = ["switch.cooler"]
 
         assert thermostat._cooler_entity_id is not None
@@ -1193,7 +1193,7 @@ class TestSetupStateListeners:
     def test_demand_switch_listener_when_configured(self):
         """Test that demand switch listener is registered when configured."""
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostatForStateRestore(mock_hass)
+        thermostat = MockAdaptiveThermostatForStateRestore(mock_hass)
         thermostat._demand_switch_entity_id = ["switch.demand"]
 
         assert thermostat._demand_switch_entity_id is not None
@@ -1201,7 +1201,7 @@ class TestSetupStateListeners:
     def test_no_external_sensor_listener_when_not_configured(self):
         """Test that external sensor listener is not registered when not configured."""
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostatForStateRestore(mock_hass)
+        thermostat = MockAdaptiveThermostatForStateRestore(mock_hass)
 
         assert thermostat._ext_sensor_entity_id is None
 
@@ -1212,7 +1212,7 @@ class TestRestoreState:
     def test_restore_target_temperature(self):
         """Test restoring target temperature from old state."""
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostatForStateRestore(mock_hass)
+        thermostat = MockAdaptiveThermostatForStateRestore(mock_hass)
 
         old_state = MockState(
             state="heat",
@@ -1226,7 +1226,7 @@ class TestRestoreState:
     def test_restore_target_temperature_fallback_heat_mode(self):
         """Test target temperature fallback to min_temp in heat mode."""
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostatForStateRestore(mock_hass)
+        thermostat = MockAdaptiveThermostatForStateRestore(mock_hass)
         thermostat._ac_mode = False
 
         old_state = MockState(
@@ -1241,7 +1241,7 @@ class TestRestoreState:
     def test_restore_target_temperature_fallback_ac_mode(self):
         """Test target temperature fallback to max_temp in AC mode."""
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostatForStateRestore(mock_hass)
+        thermostat = MockAdaptiveThermostatForStateRestore(mock_hass)
         thermostat._ac_mode = True
 
         old_state = MockState(
@@ -1256,7 +1256,7 @@ class TestRestoreState:
     def test_restore_preset_temperatures(self):
         """Test restoring preset mode temperatures from old state."""
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostatForStateRestore(mock_hass)
+        thermostat = MockAdaptiveThermostatForStateRestore(mock_hass)
 
         old_state = MockState(
             state="heat",
@@ -1285,7 +1285,7 @@ class TestRestoreState:
     def test_restore_preset_mode(self):
         """Test restoring active preset mode from old state."""
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostatForStateRestore(mock_hass)
+        thermostat = MockAdaptiveThermostatForStateRestore(mock_hass)
 
         old_state = MockState(
             state="heat",
@@ -1302,7 +1302,7 @@ class TestRestoreState:
     def test_restore_hvac_mode(self):
         """Test restoring HVAC mode from old state."""
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostatForStateRestore(mock_hass)
+        thermostat = MockAdaptiveThermostatForStateRestore(mock_hass)
 
         old_state = MockState(
             state="heat",
@@ -1316,7 +1316,7 @@ class TestRestoreState:
     def test_no_old_state_sets_defaults_heat_mode(self):
         """Test that missing old state sets default target temp for heat mode."""
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostatForStateRestore(mock_hass)
+        thermostat = MockAdaptiveThermostatForStateRestore(mock_hass)
         thermostat._ac_mode = False
 
         thermostat._restore_state(None)
@@ -1326,7 +1326,7 @@ class TestRestoreState:
     def test_no_old_state_sets_defaults_ac_mode(self):
         """Test that missing old state sets default target temp for AC mode."""
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostatForStateRestore(mock_hass)
+        thermostat = MockAdaptiveThermostatForStateRestore(mock_hass)
         thermostat._ac_mode = True
 
         thermostat._restore_state(None)
@@ -1336,7 +1336,7 @@ class TestRestoreState:
     def test_partial_preset_restoration(self):
         """Test restoring only some preset temperatures."""
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostatForStateRestore(mock_hass)
+        thermostat = MockAdaptiveThermostatForStateRestore(mock_hass)
 
         old_state = MockState(
             state="heat",
@@ -1360,7 +1360,7 @@ class TestRestorePIDValues:
     def test_restore_pid_integral(self):
         """Test restoring PID integral value from old state."""
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostatForStateRestore(mock_hass)
+        thermostat = MockAdaptiveThermostatForStateRestore(mock_hass)
 
         old_state = MockState(
             state="heat",
@@ -1375,7 +1375,7 @@ class TestRestorePIDValues:
     def test_restore_pid_integral_from_int(self):
         """Test restoring PID integral when stored as integer."""
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostatForStateRestore(mock_hass)
+        thermostat = MockAdaptiveThermostatForStateRestore(mock_hass)
 
         old_state = MockState(
             state="heat",
@@ -1390,7 +1390,7 @@ class TestRestorePIDValues:
     def test_restore_pid_gains_lowercase(self):
         """Test restoring PID gains with lowercase attribute names."""
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostatForStateRestore(mock_hass)
+        thermostat = MockAdaptiveThermostatForStateRestore(mock_hass)
 
         old_state = MockState(
             state="heat",
@@ -1416,7 +1416,7 @@ class TestRestorePIDValues:
     def test_restore_pid_gains_uppercase(self):
         """Test restoring PID gains with uppercase attribute names (legacy support)."""
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostatForStateRestore(mock_hass)
+        thermostat = MockAdaptiveThermostatForStateRestore(mock_hass)
 
         old_state = MockState(
             state="heat",
@@ -1438,7 +1438,7 @@ class TestRestorePIDValues:
     def test_restore_pid_mode(self):
         """Test restoring PID mode from old state."""
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostatForStateRestore(mock_hass)
+        thermostat = MockAdaptiveThermostatForStateRestore(mock_hass)
 
         old_state = MockState(
             state="heat",
@@ -1452,7 +1452,7 @@ class TestRestorePIDValues:
     def test_restore_pid_with_none_old_state(self):
         """Test that _restore_pid_values handles None old_state gracefully."""
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostatForStateRestore(mock_hass)
+        thermostat = MockAdaptiveThermostatForStateRestore(mock_hass)
 
         # Should not raise any exceptions
         thermostat._restore_pid_values(None)
@@ -1465,7 +1465,7 @@ class TestRestorePIDValues:
     def test_restore_pid_with_none_controller(self):
         """Test that _restore_pid_values handles None PID controller gracefully."""
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostatForStateRestore(mock_hass)
+        thermostat = MockAdaptiveThermostatForStateRestore(mock_hass)
         thermostat._pid_controller = None
 
         old_state = MockState(
@@ -1483,7 +1483,7 @@ class TestRestorePIDValues:
     def test_restore_partial_pid_gains(self):
         """Test restoring only some PID gains."""
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostatForStateRestore(mock_hass)
+        thermostat = MockAdaptiveThermostatForStateRestore(mock_hass)
 
         old_state = MockState(
             state="heat",
@@ -1503,7 +1503,7 @@ class TestRestorePIDValues:
     def test_lowercase_takes_precedence_over_uppercase(self):
         """Test that lowercase attribute names take precedence over uppercase."""
         mock_hass = _create_mock_hass()
-        thermostat = MockSmartThermostatForStateRestore(mock_hass)
+        thermostat = MockAdaptiveThermostatForStateRestore(mock_hass)
 
         old_state = MockState(
             state="heat",

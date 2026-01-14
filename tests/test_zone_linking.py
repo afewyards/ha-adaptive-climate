@@ -260,7 +260,7 @@ def test_delay_remaining_decreases(zone_linker):
 
 
 class MockThermostat:
-    """Mock climate entity simulating SmartThermostat behavior for ZoneLinker integration."""
+    """Mock climate entity simulating AdaptiveThermostat behavior for ZoneLinker integration."""
 
     def __init__(self, zone_id: str, zone_linker: ZoneLinker, linked_zones: list = None):
         self._unique_id = zone_id
@@ -275,7 +275,7 @@ class MockThermostat:
         self._block_reason = None
 
     async def _async_heater_turn_on(self):
-        """Simulates SmartThermostat._async_heater_turn_on() with ZoneLinker integration."""
+        """Simulates AdaptiveThermostat._async_heater_turn_on() with ZoneLinker integration."""
         # Check if zone is delayed due to linked zone heating
         if self._zone_linker and self._zone_linker.is_zone_delayed(self._unique_id):
             remaining = self._zone_linker.get_delay_remaining_minutes(self._unique_id)
@@ -302,7 +302,7 @@ class MockThermostat:
                 )
 
     async def _async_heater_turn_off(self):
-        """Simulates SmartThermostat._async_heater_turn_off()."""
+        """Simulates AdaptiveThermostat._async_heater_turn_off()."""
         self._is_device_active = False
         self._is_heating = False
         self._heater_turn_on_called = False

@@ -231,8 +231,8 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         'night_setback_config': config.get(const.CONF_NIGHT_SETBACK),
     }
 
-    smart_thermostat = SmartThermostat(**parameters)
-    async_add_entities([smart_thermostat])
+    thermostat = AdaptiveThermostat(**parameters)
+    async_add_entities([thermostat])
 
     # Register zone with coordinator
     coordinator = hass.data.get(DOMAIN, {}).get("coordinator")
@@ -276,8 +276,8 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     )
 
 
-class SmartThermostat(ClimateEntity, RestoreEntity, ABC):
-    """Representation of a Smart Thermostat device."""
+class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
+    """Representation of an Adaptive Thermostat device."""
 
     def __init__(self, **kwargs):
         """Initialize the thermostat."""
