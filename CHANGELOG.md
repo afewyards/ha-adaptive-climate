@@ -1,6 +1,30 @@
 # CHANGELOG
 
 
+## v0.2.0 (2026-01-14)
+
+### Features
+
+- Add HVAC mode tracking for separate heating/cooling demand
+  ([`7b739b8`](https://github.com/afewyards/ha-adaptive-thermostat/commit/7b739b863c6c8a66a1053e73c9253ba4e679c13c))
+
+The coordinator now tracks each zone's HVAC mode alongside demand state, enabling proper separation
+  of heating and cooling demand aggregation. Also tracks which controller activated shared switches
+  to prevent turning off switches when still needed by the other mode.
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+### Testing
+
+- Update integration tests for turn-off debounce
+  ([`d0e53a1`](https://github.com/afewyards/ha-adaptive-thermostat/commit/d0e53a1b25f1676528448e4e169f078e5fa4609a))
+
+Updated tests that expected immediate turn-off to account for the new 10-second debounce delay by
+  patching TURN_OFF_DEBOUNCE_SECONDS to 0.1s.
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+
 ## v0.1.2 (2026-01-14)
 
 ### Bug Fixes

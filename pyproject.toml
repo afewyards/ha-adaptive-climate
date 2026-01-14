@@ -18,7 +18,7 @@ patch_tags = ["fix", "perf"]
 
 [project]
 name = "adaptive-thermostat"
-version = "0.1.2"
+version = "0.2.0"
 description = "Home Assistant custom component for PID-based thermostat control with adaptive learning"
 readme = "README.md"
 license = {text = "MIT"}
