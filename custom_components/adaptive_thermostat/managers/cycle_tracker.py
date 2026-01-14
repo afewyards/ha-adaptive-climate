@@ -268,6 +268,38 @@ class CycleTrackerManager:
 
         return True, "Valid"
 
+    def on_setpoint_changed(self, old_temp: float, new_temp: float) -> None:
+        """Handle setpoint change event.
+
+        Aborts the current cycle if in HEATING or SETTLING state, as the
+        temperature target has changed mid-cycle.
+
+        Args:
+            old_temp: Previous target temperature
+            new_temp: New target temperature
+        """
+        # Only abort if we're in an active cycle
+        if self._state not in (CycleState.HEATING, CycleState.SETTLING):
+            return
+
+        # Abort the cycle
+        self._logger.info(
+            "Cycle aborted due to setpoint change: %.2f°C -> %.2f°C",
+            old_temp,
+            new_temp,
+        )
+
+        # Cancel settling timeout if active
+        if self._settling_timeout_handle is not None:
+            self._settling_timeout_handle()
+            self._settling_timeout_handle = None
+
+        # Clear cycle data and transition to IDLE
+        self._temperature_history.clear()
+        self._cycle_start_time = None
+        self._cycle_target_temp = None
+        self._state = CycleState.IDLE
+
     async def _finalize_cycle(self) -> None:
         """Finalize cycle and record metrics.
 

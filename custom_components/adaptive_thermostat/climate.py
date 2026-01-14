@@ -2044,7 +2044,15 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
     # Setter callbacks for TemperatureManager
     def _set_target_temp(self, value: float) -> None:
         """Set the target temperature."""
+        # Track old temperature for cycle tracker
+        old_temp = self._target_temp
+
+        # Update target temperature
         self._target_temp = value
+
+        # Notify cycle tracker of setpoint change
+        if self._cycle_tracker is not None and old_temp is not None and old_temp != value:
+            self._cycle_tracker.on_setpoint_changed(old_temp, value)
 
     async def _async_set_pid_mode_internal(self, mode: str) -> None:
         """Internal callback to set PID mode from TemperatureManager."""
