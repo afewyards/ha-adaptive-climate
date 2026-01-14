@@ -20,6 +20,7 @@ from ..const import (
     SEGMENT_NOISE_TOLERANCE,
     SEGMENT_RATE_MIN,
     SEGMENT_RATE_MAX,
+    MIN_CONVERGENCE_CYCLES_FOR_KE,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -782,6 +783,9 @@ class AdaptiveLearner:
         self._cycle_history: List[CycleMetrics] = []
         self._max_history = max_history
         self._last_adjustment_time: Optional[datetime] = None
+        # Convergence tracking for Ke learning activation
+        self._consecutive_converged_cycles: int = 0
+        self._pid_converged_for_ke: bool = False
 
     def add_cycle_metrics(self, metrics: CycleMetrics) -> None:
         """
@@ -1200,6 +1204,92 @@ class AdaptiveLearner:
         self._cycle_history.clear()
         self._last_adjustment_time = None
 
+    def update_convergence_tracking(self, metrics: CycleMetrics) -> bool:
+        """Update convergence tracking based on latest cycle metrics.
+
+        Tracks consecutive converged cycles to determine when PID is stable
+        enough for Ke learning to begin.
+
+        Args:
+            metrics: The latest cycle metrics to evaluate
+
+        Returns:
+            True if PID is now converged for Ke learning, False otherwise
+        """
+        # Check if this cycle meets convergence thresholds
+        overshoot = metrics.overshoot if metrics.overshoot is not None else 0.0
+        oscillations = metrics.oscillations
+        settling_time = metrics.settling_time if metrics.settling_time is not None else 0.0
+        rise_time = metrics.rise_time if metrics.rise_time is not None else 0.0
+
+        is_cycle_converged = (
+            overshoot <= CONVERGENCE_THRESHOLDS["overshoot_max"] and
+            oscillations <= CONVERGENCE_THRESHOLDS["oscillations_max"] and
+            settling_time <= CONVERGENCE_THRESHOLDS["settling_time_max"] and
+            rise_time <= CONVERGENCE_THRESHOLDS["rise_time_max"]
+        )
+
+        if is_cycle_converged:
+            self._consecutive_converged_cycles += 1
+            _LOGGER.debug(
+                "Convergence tracking: cycle converged (%d consecutive)",
+                self._consecutive_converged_cycles,
+            )
+
+            # Check if we've reached the threshold for Ke learning
+            if (self._consecutive_converged_cycles >= MIN_CONVERGENCE_CYCLES_FOR_KE and
+                    not self._pid_converged_for_ke):
+                self._pid_converged_for_ke = True
+                _LOGGER.info(
+                    "PID converged for Ke learning after %d consecutive cycles",
+                    self._consecutive_converged_cycles,
+                )
+        else:
+            # Reset consecutive counter on non-converged cycle
+            if self._consecutive_converged_cycles > 0:
+                _LOGGER.debug(
+                    "Convergence tracking: cycle not converged, resetting "
+                    "counter (was %d)",
+                    self._consecutive_converged_cycles,
+                )
+            self._consecutive_converged_cycles = 0
+            self._pid_converged_for_ke = False
+
+        return self._pid_converged_for_ke
+
+    def is_pid_converged_for_ke(self) -> bool:
+        """Check if PID has converged sufficiently for Ke learning.
+
+        Returns:
+            True if PID has had MIN_CONVERGENCE_CYCLES_FOR_KE consecutive
+            converged cycles, False otherwise
+        """
+        return self._pid_converged_for_ke
+
+    def get_consecutive_converged_cycles(self) -> int:
+        """Get the number of consecutive converged cycles.
+
+        Returns:
+            Number of consecutive cycles meeting convergence thresholds
+        """
+        return self._consecutive_converged_cycles
+
+    def reset_ke_convergence(self) -> None:
+        """Reset Ke convergence tracking.
+
+        Call this when PID values are changed or Ke learning needs to restart.
+        """
+        old_converged = self._pid_converged_for_ke
+        old_count = self._consecutive_converged_cycles
+        self._consecutive_converged_cycles = 0
+        self._pid_converged_for_ke = False
+        if old_converged or old_count > 0:
+            _LOGGER.info(
+                "Ke convergence reset (was: converged=%s, consecutive=%d)",
+                old_converged,
+                old_count,
+            )
+
 
 # PWM auto-tuning
 
@@ -1311,6 +1401,7 @@ class LearningDataStore:
         thermal_learner: Optional[ThermalRateLearner] = None,
         adaptive_learner: Optional[AdaptiveLearner] = None,
         valve_tracker: Optional[ValveCycleTracker] = None,
+        ke_learner: Optional[Any] = None,  # KeLearner, imported dynamically to avoid circular import
     ) -> bool:
         """
         Save learning data to storage.
@@ -1319,6 +1410,7 @@ class LearningDataStore:
             thermal_learner: ThermalRateLearner instance to save
             adaptive_learner: AdaptiveLearner instance to save
             valve_tracker: ValveCycleTracker instance to save
+            ke_learner: KeLearner instance to save
 
         Returns:
             True if save successful, False otherwise
@@ -1328,7 +1420,7 @@ class LearningDataStore:
             os.makedirs(self.storage_path, exist_ok=True)
 
             data: Dict[str, Any] = {
-                "version": 1,
+                "version": 2,  # Incremented for Ke learner support
                 "last_updated": datetime.now().isoformat(),
             }
 
@@ -1360,6 +1452,9 @@ class LearningDataStore:
                         else None
                     ),
                     "max_history": adaptive_learner._max_history,
+                    # Include convergence tracking state
+                    "consecutive_converged_cycles": adaptive_learner._consecutive_converged_cycles,
+                    "pid_converged_for_ke": adaptive_learner._pid_converged_for_ke,
                 }
 
             # Save ValveCycleTracker data
@@ -1368,6 +1463,10 @@ class LearningDataStore:
                     "cycle_count": valve_tracker._cycle_count,
                     "last_state": valve_tracker._last_state,
                 }
+
+            # Save KeLearner data
+            if ke_learner is not None:
+                data["ke_learner"] = ke_learner.to_dict()
 
             # Write to file atomically
             temp_file = f"{self.storage_file}.tmp"
@@ -1498,9 +1597,18 @@ class LearningDataStore:
             if last_adj_time_str is not None:
                 learner._last_adjustment_time = datetime.fromisoformat(last_adj_time_str)
 
+            # Restore convergence tracking state (version 2+)
+            learner._consecutive_converged_cycles = adaptive_data.get(
+                "consecutive_converged_cycles", 0
+            )
+            learner._pid_converged_for_ke = adaptive_data.get(
+                "pid_converged_for_ke", False
+            )
+
             _LOGGER.info(
                 f"Restored AdaptiveLearner: {learner.get_cycle_count()} cycles, "
-                f"last adjustment: {learner._last_adjustment_time}"
+                f"last adjustment: {learner._last_adjustment_time}, "
+                f"converged_for_ke: {learner._pid_converged_for_ke}"
             )
             return learner
 
@@ -1532,4 +1640,34 @@ class LearningDataStore:
 
         except Exception as e:
             _LOGGER.error(f"Failed to restore ValveCycleTracker: {e}")
+            return None
+
+    def restore_ke_learner(self, data: Dict[str, Any]) -> Optional[Any]:
+        """
+        Restore KeLearner from saved data.
+
+        Args:
+            data: Loaded data dictionary from load()
+
+        Returns:
+            Restored KeLearner instance, or None if data missing
+        """
+        if "ke_learner" not in data:
+            return None
+
+        try:
+            # Import KeLearner here to avoid circular import
+            from .ke_learning import KeLearner
+
+            ke_data = data["ke_learner"]
+            learner = KeLearner.from_dict(ke_data)
+
+            _LOGGER.info(
+                f"Restored KeLearner: ke={learner.current_ke:.2f}, "
+                f"enabled={learner.enabled}, observations={learner.observation_count}"
+            )
+            return learner
+
+        except Exception as e:
+            _LOGGER.error(f"Failed to restore KeLearner: {e}")
             return None

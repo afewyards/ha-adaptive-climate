@@ -68,7 +68,7 @@ def test_data_saving(temp_storage_dir):
     with open(store.storage_file, "r") as f:
         data = json.load(f)
 
-    assert data["version"] == 1
+    assert data["version"] == 2  # Version 2 for Ke learner support
     assert "last_updated" in data
 
     # Check ThermalRateLearner data
@@ -116,7 +116,7 @@ def test_data_loading(temp_storage_dir):
     data = store.load()
 
     assert data is not None
-    assert data["version"] == 1
+    assert data["version"] == 2  # Version 2 for Ke learner support
 
     # Restore ThermalRateLearner
     restored_thermal = store.restore_thermal_learner(data)

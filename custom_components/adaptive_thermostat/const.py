@@ -254,3 +254,21 @@ DEFAULT_FROST_PROTECTION_TEMP = 5.0
 DEFAULT_SYNC_MODES = True
 DEFAULT_DEMAND_THRESHOLD = 5.0  # PID output % threshold for zone demand
 DEFAULT_PERSISTENT_NOTIFICATION = True
+
+# Ke Learning constants
+# Minimum consecutive converged cycles before Ke learning activates
+MIN_CONVERGENCE_CYCLES_FOR_KE = 3
+# Minimum observations required for Ke correlation calculation
+KE_MIN_OBSERVATIONS = 5
+# Minimum outdoor temperature range (Celsius) for meaningful correlation
+KE_MIN_TEMP_RANGE = 5.0
+# Minimum hours between Ke adjustments (rate limiting)
+KE_ADJUSTMENT_INTERVAL = 48
+# Step size for Ke adjustments
+KE_ADJUSTMENT_STEP = 0.1
+# Minimum absolute correlation to consider Ke adjustment
+KE_CORRELATION_THRESHOLD = 0.3
+# Maximum observations to retain (FIFO eviction)
+KE_MAX_OBSERVATIONS = 100
+# Duration in minutes at target temperature to consider steady state
+KE_STEADY_STATE_DURATION = 15

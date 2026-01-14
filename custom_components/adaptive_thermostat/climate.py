@@ -7,6 +7,7 @@ import logging
 import time
 from abc import ABC
 from datetime import timedelta
+from typing import Optional
 
 import voluptuous as vol
 
@@ -48,11 +49,12 @@ from homeassistant.helpers.event import (
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.exceptions import HomeAssistantError, ServiceNotFound
 
-from .adaptive.physics import calculate_thermal_time_constant, calculate_initial_pid
+from .adaptive.physics import calculate_thermal_time_constant, calculate_initial_pid, calculate_initial_ke
 from .adaptive.night_setback import NightSetback
 from .adaptive.solar_recovery import SolarRecovery
 from .adaptive.sun_position import SunPositionCalculator
 from .adaptive.contact_sensors import ContactSensorHandler, ContactAction
+from .adaptive.ke_learning import KeLearner
 
 from homeassistant.components.climate import PLATFORM_SCHEMA, ClimateEntity, ClimateEntityFeature
 from homeassistant.components.climate import (
@@ -275,6 +277,11 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         {},
         "async_apply_adaptive_pid",
     )
+    platform.async_register_entity_service(  # type: ignore
+        "apply_adaptive_ke",
+        {},
+        "async_apply_adaptive_ke",
+    )
 
 
 class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
@@ -452,6 +459,9 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         self._last_heater_error: str | None = None
 
         # Calculate PID values from physics (adaptive learning will refine them)
+        # Get energy rating from controller domain config
+        self._energy_rating = self.hass.data.get(DOMAIN, {}).get("house_energy_rating") if hasattr(self, 'hass') else None
+
         if self._area_m2:
             volume_m3 = self._area_m2 * self._ceiling_height
             tau = calculate_thermal_time_constant(
@@ -469,7 +479,16 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
             self._ki = 0.01
             self._kd = 5.0
             _LOGGER.warning("%s: No area_m2 configured, using default PID values", self.unique_id)
+
+        # Calculate initial Ke from physics (adaptive learning will refine it)
+        # Note: energy_rating may not be available during __init__ since hass isn't fully set up
+        # It will be recalculated in async_added_to_hass if needed
         self._ke = const.DEFAULT_KE
+
+        # Initialize KeLearner (will be configured properly in async_added_to_hass)
+        self._ke_learner: Optional[KeLearner] = None
+        self._steady_state_start: Optional[float] = None  # timestamp when steady state began
+        self._last_ke_observation_time: Optional[float] = None
 
         self._pwm = kwargs.get('pwm').seconds
         self._p = self._i = self._d = self._e = self._dt = 0
@@ -522,6 +541,33 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                     "using static orientation offsets for solar recovery",
                     self.entity_id,
                 )
+
+        # Initialize Ke learning with physics-based initial value
+        # Get energy rating now that hass is available
+        energy_rating = self.hass.data.get(DOMAIN, {}).get("house_energy_rating")
+        if self._ext_sensor_entity_id:
+            # Only enable Ke learning if outdoor sensor is configured
+            initial_ke = calculate_initial_ke(
+                energy_rating=energy_rating,
+                window_area_m2=self._window_area_m2,
+                floor_area_m2=self._area_m2,
+                window_rating=self._window_rating,
+                heating_type=self._heating_type,
+            )
+            self._ke = initial_ke
+            self._ke_learner = KeLearner(initial_ke=initial_ke)
+            # Update PID controller with physics-based Ke
+            self._pid_controller.set_pid_param(ke=self._ke)
+            _LOGGER.info(
+                "%s: Ke learning initialized with physics-based Ke=%.2f "
+                "(energy_rating=%s, heating_type=%s)",
+                self.entity_id, initial_ke, energy_rating or "default", self._heating_type
+            )
+        else:
+            _LOGGER.debug(
+                "%s: Ke learning disabled - no outdoor sensor configured",
+                self.entity_id
+            )
 
         # Set up state change listeners
         self._setup_state_listeners()
@@ -1241,6 +1287,22 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                 if time_until is not None and time_until > 0:
                     device_state_attributes["contact_pause_in"] = time_until
 
+        # Ke learning status
+        if self._ke_learner:
+            device_state_attributes["ke_learning_enabled"] = self._ke_learner.enabled
+            device_state_attributes["ke_observations"] = self._ke_learner.observation_count
+            # Include PID convergence status from coordinator's adaptive learner
+            coordinator = self.hass.data.get(DOMAIN, {}).get("coordinator")
+            if coordinator:
+                all_zones = coordinator.get_all_zones()
+                for zone_id, zone_data in all_zones.items():
+                    if zone_data.get("climate_entity_id") == self.entity_id:
+                        adaptive_learner = zone_data.get("adaptive_learner")
+                        if adaptive_learner:
+                            device_state_attributes["pid_converged"] = adaptive_learner.is_pid_converged_for_ke()
+                            device_state_attributes["consecutive_converged_cycles"] = adaptive_learner.get_consecutive_converged_cycles()
+                        break
+
         return device_state_attributes
 
     def set_hvac_mode(self, hvac_mode: (HVACMode, str)) -> None:
@@ -1473,6 +1535,133 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         await self._async_control_heating(calc_pid=True)
         self.async_write_ha_state()
 
+    async def async_apply_adaptive_ke(self, **kwargs):
+        """Apply adaptive Ke value based on learned outdoor temperature correlations."""
+        if not self._ke_learner:
+            _LOGGER.warning(
+                "%s: Cannot apply adaptive Ke - no Ke learner (outdoor sensor not configured?)",
+                self.entity_id
+            )
+            return
+
+        if not self._ke_learner.enabled:
+            _LOGGER.warning(
+                "%s: Cannot apply adaptive Ke - learning not enabled (PID not converged yet)",
+                self.entity_id
+            )
+            return
+
+        recommendation = self._ke_learner.calculate_ke_adjustment()
+
+        if recommendation is None:
+            summary = self._ke_learner.get_observations_summary()
+            _LOGGER.warning(
+                "%s: Insufficient data for adaptive Ke (observations: %d, "
+                "temp_range: %s, correlation: %s)",
+                self.entity_id,
+                summary.get("count", 0),
+                summary.get("outdoor_temp_range"),
+                summary.get("correlation"),
+            )
+            return
+
+        # Apply the recommended Ke value
+        old_ke = self._ke
+        self._ke = recommendation
+        self._ke_learner.apply_ke_adjustment(recommendation)
+
+        # Update PID controller
+        self._pid_controller.set_pid_param(ke=self._ke)
+
+        _LOGGER.info(
+            "%s: Applied adaptive Ke: %.2f (was %.2f)",
+            self.entity_id, self._ke, old_ke
+        )
+
+        await self._async_control_heating(calc_pid=True)
+        self.async_write_ha_state()
+
+    def _is_at_steady_state(self) -> bool:
+        """Check if the system is at steady state (maintaining target temperature).
+
+        Steady state is determined by:
+        1. Temperature within tolerance of target
+        2. Maintained for KE_STEADY_STATE_DURATION minutes
+        3. HVAC mode is active (not OFF)
+
+        Returns:
+            True if at steady state, False otherwise
+        """
+        if self._hvac_mode == HVACMode.OFF:
+            self._steady_state_start = None
+            return False
+
+        if self._current_temp is None or self._target_temp is None:
+            self._steady_state_start = None
+            return False
+
+        # Check if within tolerance band
+        tolerance = max(self._cold_tolerance, self._hot_tolerance, 0.2)
+        within_tolerance = abs(self._current_temp - self._target_temp) <= tolerance
+
+        if not within_tolerance:
+            self._steady_state_start = None
+            return False
+
+        # Start tracking steady state if not already
+        current_time = time.time()
+        if self._steady_state_start is None:
+            self._steady_state_start = current_time
+
+        # Check if we've maintained steady state long enough
+        steady_duration_seconds = current_time - self._steady_state_start
+        required_duration_seconds = const.KE_STEADY_STATE_DURATION * 60
+
+        return steady_duration_seconds >= required_duration_seconds
+
+    def _maybe_record_ke_observation(self) -> None:
+        """Record a Ke observation if conditions are met.
+
+        Conditions:
+        1. Ke learner is enabled
+        2. System is at steady state
+        3. Outdoor temperature sensor is available
+        4. Minimum time has passed since last observation (5 minutes)
+        """
+        if not self._ke_learner or not self._ke_learner.enabled:
+            return
+
+        if not self._is_at_steady_state():
+            return
+
+        if self._ext_temp is None:
+            return
+
+        # Rate limit: at least 5 minutes between observations
+        current_time = time.time()
+        if self._last_ke_observation_time is not None:
+            time_since_last = current_time - self._last_ke_observation_time
+            if time_since_last < 300:  # 5 minutes
+                return
+
+        # Record the observation
+        self._ke_learner.add_observation(
+            outdoor_temp=self._ext_temp,
+            pid_output=self._control_output,
+            indoor_temp=self._current_temp,
+            target_temp=self._target_temp,
+        )
+        self._last_ke_observation_time = current_time
+
+        _LOGGER.debug(
+            "%s: Ke observation recorded: outdoor=%.1f, pid=%.1f, indoor=%.1f, target=%.1f",
+            self.entity_id,
+            self._ext_temp,
+            self._control_output,
+            self._current_temp,
+            self._target_temp,
+        )
+
     @property
     def min_temp(self):
         """Return the minimum temperature."""
@@ -1662,6 +1851,9 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                 coordinator = self.hass.data.get(const.DOMAIN, {}).get("coordinator")
                 if coordinator:
                     coordinator.update_zone_demand(self._zone_id, self._is_device_active)
+
+            # Record Ke observation if at steady state
+            self._maybe_record_ke_observation()
 
             self.async_write_ha_state()
 

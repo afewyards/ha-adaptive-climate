@@ -4,7 +4,23 @@ This module provides functions to calculate initial PID parameters based on
 thermal properties of zones and heating system characteristics.
 """
 
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Dict
+
+
+# Energy rating to insulation quality mapping
+# Higher insulation = less impact from outdoor temperature = lower initial Ke
+ENERGY_RATING_TO_INSULATION: Dict[str, float] = {
+    "A+++": 0.15,  # Excellent insulation - minimal outdoor impact
+    "A++": 0.25,   # Very good insulation
+    "A+": 0.35,    # Good insulation
+    "A": 0.45,     # Standard good insulation
+    "B": 0.55,     # Moderate insulation
+    "C": 0.70,     # Poor insulation - significant outdoor impact
+    "D": 0.85,     # Very poor insulation
+    "E": 1.00,     # Minimal insulation
+    "F": 1.15,     # Below minimum standards
+    "G": 1.30,     # No effective insulation
+}
 
 
 # Glazing U-values in W/(m²·K) - lower is better insulation
@@ -168,3 +184,72 @@ def calculate_initial_pwm_period(heating_type: str = "floor_hydronic") -> int:
     }
 
     return pwm_periods.get(heating_type, 600)  # Default to 10 minutes
+
+
+def calculate_initial_ke(
+    energy_rating: Optional[str] = None,
+    window_area_m2: Optional[float] = None,
+    floor_area_m2: Optional[float] = None,
+    window_rating: str = "hr++",
+    heating_type: str = "floor_hydronic",
+) -> float:
+    """Calculate initial Ke (outdoor temperature compensation) parameter.
+
+    Ke adjusts the PID output based on outdoor temperature difference from
+    a reference point. A well-tuned Ke reduces integral wind-up during
+    outdoor temperature changes.
+
+    The initial value is estimated based on:
+    - Building energy rating (insulation quality)
+    - Window area and rating (heat loss through glazing)
+    - Heating system type (response characteristics)
+
+    Args:
+        energy_rating: Building energy efficiency rating (A+++, A++, A+, A, B, C, D, E, F, G).
+                       Higher ratings mean better insulation and lower Ke.
+        window_area_m2: Total window/glass area in square meters.
+        floor_area_m2: Zone floor area in square meters (needed for window ratio).
+        window_rating: Glazing type (single, double, hr, hr+, hr++, hr+++, triple).
+                       Poorer glazing increases outdoor temperature impact.
+        heating_type: Type of heating system. Slower systems (floor_hydronic)
+                      benefit more from outdoor compensation.
+
+    Returns:
+        Initial Ke value (typically 0.1 - 0.8 for well-insulated buildings,
+        0.8 - 1.5 for poorly insulated buildings).
+    """
+    # Base Ke from energy rating
+    if energy_rating:
+        base_ke = ENERGY_RATING_TO_INSULATION.get(energy_rating.upper(), 0.45)
+    else:
+        # Default to moderate insulation if not specified
+        base_ke = 0.45
+
+    # Adjust for window heat loss
+    if window_area_m2 and floor_area_m2 and floor_area_m2 > 0:
+        # Get U-value for glazing type
+        u_value = GLAZING_U_VALUES.get(window_rating.lower(), 1.1)
+
+        # Window ratio: what fraction of floor area is glass
+        window_ratio = window_area_m2 / floor_area_m2
+
+        # Higher window ratio and worse glazing = more outdoor impact = higher Ke
+        # Normalized to HR++ (U=1.1) at 20% window ratio as baseline
+        window_factor = (u_value / 1.1) * (window_ratio / 0.2)
+
+        # Adjust Ke up to +50% for high glass / poor insulation
+        base_ke *= (1.0 + min(window_factor * 0.25, 0.5))
+
+    # Adjust for heating system type
+    # Slower systems benefit more from outdoor compensation
+    heating_type_factors = {
+        "floor_hydronic": 1.2,   # Slow response - more benefit from Ke
+        "radiator": 1.0,         # Baseline
+        "convector": 0.8,        # Faster response - less Ke needed
+        "forced_air": 0.6,       # Fast response - minimal Ke needed
+    }
+    type_factor = heating_type_factors.get(heating_type, 1.0)
+    base_ke *= type_factor
+
+    # Round to 2 decimal places
+    return round(base_ke, 2)
