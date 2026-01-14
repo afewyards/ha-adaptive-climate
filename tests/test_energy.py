@@ -124,7 +124,7 @@ class TestWeeklyDeltaCalculation:
 
         # Patch datetime.now to return same week
         with patch(
-            "custom_components.adaptive_thermostat.sensor.datetime"
+            "custom_components.adaptive_thermostat.sensors.energy.datetime"
         ) as mock_datetime:
             mock_datetime.now.return_value = datetime.now()
             mock_datetime.fromisoformat = datetime.fromisoformat
@@ -380,7 +380,7 @@ class TestWeekBoundaryReset:
         week3_date = datetime(2025, 1, 20, 12, 0, 0)  # Monday of week 4
 
         with patch(
-            "custom_components.adaptive_thermostat.sensor.datetime"
+            "custom_components.adaptive_thermostat.sensors.energy.datetime"
         ) as mock_datetime:
             mock_datetime.now.return_value = week3_date
             mock_datetime.fromisoformat = datetime.fromisoformat
@@ -413,7 +413,7 @@ class TestWeekBoundaryReset:
         friday = datetime(2025, 1, 10, 18, 0, 0)
 
         with patch(
-            "custom_components.adaptive_thermostat.sensor.datetime"
+            "custom_components.adaptive_thermostat.sensors.energy.datetime"
         ) as mock_datetime:
             mock_datetime.now.return_value = friday
             mock_datetime.fromisoformat = datetime.fromisoformat
@@ -445,7 +445,7 @@ class TestWeekBoundaryReset:
         new_week = datetime(2025, 1, 13, 10, 0, 0)
 
         with patch(
-            "custom_components.adaptive_thermostat.sensor.datetime"
+            "custom_components.adaptive_thermostat.sensors.energy.datetime"
         ) as mock_datetime:
             mock_datetime.now.return_value = new_week
             mock_datetime.fromisoformat = datetime.fromisoformat
@@ -477,7 +477,7 @@ class TestWeekBoundaryReset:
         new_year = datetime(2025, 1, 6, 10, 0, 0)
 
         with patch(
-            "custom_components.adaptive_thermostat.sensor.datetime"
+            "custom_components.adaptive_thermostat.sensors.energy.datetime"
         ) as mock_datetime:
             mock_datetime.now.return_value = new_year
             mock_datetime.fromisoformat = datetime.fromisoformat
