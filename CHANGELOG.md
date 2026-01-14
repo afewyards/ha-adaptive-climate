@@ -1,6 +1,40 @@
 # CHANGELOG
 
 
+## v0.2.1 (2026-01-14)
+
+### Bug Fixes
+
+- Night setback sunset offset timezone and unit bugs
+  ([`5c4be94`](https://github.com/afewyards/ha-adaptive-thermostat/commit/5c4be94f9601b636cd9ecac6ecca737029dcad2b))
+
+Two bugs caused night setback to trigger ~3 hours early:
+
+1. Timezone bug: sunset time from sun.sun was in UTC but compared against local time, causing ~1
+  hour early trigger in CET
+
+2. Unit bug: "sunset+2" was interpreted as 2 minutes instead of 2 hours, causing ~2 hours early
+  trigger
+
+Changes: - Convert UTC sunset/sunrise to local time using dt_util.as_local() - Add smart offset
+  parsing: values ≤12 = hours, >12 = minutes - Support explicit suffixes: sunset+2h, sunset+30m -
+  Backward compatible: sunset+30 still works as 30 minutes
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+### Testing
+
+- Update tests for HVAC mode tracking in demand aggregation
+  ([`d67d915`](https://github.com/afewyards/ha-adaptive-thermostat/commit/d67d9156fe7ad6bc8f273f38f165855c13bb06ad))
+
+Add hvac_mode parameter to update_zone_demand() calls in tests to match the API change from commit
+  7b739b8 which added separate heating/cooling demand tracking. Also set _heater_activated_by_us
+  flag for turn-off tests since the controller now only schedules turn-off when it activated the
+  heater.
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+
 ## v0.2.0 (2026-01-14)
 
 ### Features
