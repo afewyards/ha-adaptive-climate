@@ -190,7 +190,7 @@ async def test_full_control_loop_temperature_triggers_heating(
 
 @pytest.mark.asyncio
 async def test_control_loop_satisfied_turns_off_heater(
-    mock_hass, state_registry, coord, central_controller, pid
+    mock_hass, state_registry, coord, central_controller, pid, monkeypatch
 ):
     """
     Integration test: When temperature reaches setpoint, PID output drops,
@@ -198,6 +198,9 @@ async def test_control_loop_satisfied_turns_off_heater(
 
     Flow: temp at setpoint -> PID calc (low output) -> no demand -> heater OFF
     """
+    # Use short debounce for test
+    monkeypatch.setattr(coordinator, "TURN_OFF_DEBOUNCE_SECONDS", 0.1)
+
     # Setup: Heater is ON, temp has reached setpoint
     state_registry.set_state("switch.main_boiler", "on")
     mock_hass.states.get = state_registry.get_state
@@ -222,6 +225,9 @@ async def test_control_loop_satisfied_turns_off_heater(
     # Central controller updates
     await central_controller.update()
 
+    # Wait for debounce
+    await asyncio.sleep(0.2)
+
     # Verify heater was turned OFF
     turn_off_calls = [
         c for c in mock_hass._service_call_history
@@ -238,7 +244,7 @@ async def test_control_loop_satisfied_turns_off_heater(
 
 @pytest.mark.asyncio
 async def test_multi_zone_demand_aggregation(
-    mock_hass, state_registry, coord, central_controller
+    mock_hass, state_registry, coord, central_controller, monkeypatch
 ):
     """
     Integration test: Multiple zones with different demands correctly
@@ -250,6 +256,9 @@ async def test_multi_zone_demand_aggregation(
     3. Zone A satisfied -> heater stays ON (B still needs heat)
     4. Zone B satisfied -> heater OFF
     """
+    # Use short debounce for test
+    monkeypatch.setattr(coordinator, "TURN_OFF_DEBOUNCE_SECONDS", 0.1)
+
     state_registry.set_state("switch.main_boiler", "off")
     mock_hass.states.get = state_registry.get_state
     mock_hass.states.is_state = state_registry.is_state
@@ -284,6 +293,9 @@ async def test_multi_zone_demand_aggregation(
     coord.update_zone_demand("zone_b", False)
     await central_controller.update()
     assert coord.get_aggregate_demand()["heating"] is False
+
+    # Wait for debounce
+    await asyncio.sleep(0.2)
 
     # Heater should be OFF now
     turn_off_calls = [c for c in mock_hass._service_call_history if c["service"] == "turn_off"]
