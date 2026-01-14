@@ -300,6 +300,30 @@ class CycleTrackerManager:
         self._cycle_target_temp = None
         self._state = CycleState.IDLE
 
+    def on_contact_sensor_pause(self) -> None:
+        """Handle contact sensor pause event.
+
+        Aborts the current cycle if in HEATING or SETTLING state, as heating
+        has been paused due to window/door opening.
+        """
+        # Only abort if we're in an active cycle
+        if self._state not in (CycleState.HEATING, CycleState.SETTLING):
+            return
+
+        # Abort the cycle
+        self._logger.info("Cycle aborted due to contact sensor pause")
+
+        # Cancel settling timeout if active
+        if self._settling_timeout_handle is not None:
+            self._settling_timeout_handle()
+            self._settling_timeout_handle = None
+
+        # Clear cycle data and transition to IDLE
+        self._temperature_history.clear()
+        self._cycle_start_time = None
+        self._cycle_target_temp = None
+        self._state = CycleState.IDLE
+
     async def _finalize_cycle(self) -> None:
         """Finalize cycle and record metrics.
 

@@ -1924,6 +1924,10 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                         "%s: Contact sensor open - pausing heating",
                         self.entity_id
                     )
+                    # Notify cycle tracker of contact sensor pause
+                    if self._cycle_tracker:
+                        self._cycle_tracker.on_contact_sensor_pause()
+
                     if self._pwm:
                         await self._async_heater_turn_off(force=True)
                     else:

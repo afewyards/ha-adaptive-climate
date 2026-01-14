@@ -579,6 +579,39 @@ class TestCycleTrackerEdgeCases:
         # Verify state unchanged
         assert cycle_tracker.state == CycleState.IDLE
 
+    def test_contact_sensor_aborts_cycle(self, cycle_tracker):
+        """Test that contact sensor pause during active cycle aborts the cycle."""
+        # Start heating cycle
+        start_time = datetime(2025, 1, 14, 10, 0, 0)
+        cycle_tracker.on_heating_started(start_time)
+        assert cycle_tracker.state == CycleState.HEATING
+
+        # Add some temperature history
+        cycle_tracker._temperature_history = [
+            (datetime(2025, 1, 14, 10, 0, 30), 18.5),
+            (datetime(2025, 1, 14, 10, 1, 0), 19.0),
+        ]
+
+        # Trigger contact sensor pause (window/door opened)
+        cycle_tracker.on_contact_sensor_pause()
+
+        # Verify cycle was aborted
+        assert cycle_tracker.state == CycleState.IDLE
+        assert len(cycle_tracker.temperature_history) == 0
+        assert cycle_tracker.cycle_start_time is None
+        assert cycle_tracker._cycle_target_temp is None
+
+    def test_contact_sensor_pause_in_idle_no_effect(self, cycle_tracker):
+        """Test that contact sensor pause in IDLE state has no effect."""
+        # Ensure in IDLE state
+        assert cycle_tracker.state == CycleState.IDLE
+
+        # Trigger contact sensor pause while in IDLE
+        cycle_tracker.on_contact_sensor_pause()
+
+        # Verify state unchanged
+        assert cycle_tracker.state == CycleState.IDLE
+
 
 def test_cycle_tracker_module_exists():
     """Marker test to verify cycle tracker module exists."""
