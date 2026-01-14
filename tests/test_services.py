@@ -297,7 +297,7 @@ class TestWeeklyReportDeduplication:
         monday = Mock()
         monday.weekday = Mock(return_value=0)
 
-        with patch("custom_components.adaptive_thermostat.services._run_weekly_report_core") as mock_core:
+        with patch("custom_components.adaptive_thermostat.services.scheduled._run_weekly_report_core") as mock_core:
             _run_async(async_scheduled_weekly_report(
                 hass=mock_hass,
                 coordinator=mock_coordinator,
@@ -319,7 +319,7 @@ class TestWeeklyReportDeduplication:
         sunday = Mock()
         sunday.weekday = Mock(return_value=6)
 
-        with patch("custom_components.adaptive_thermostat.services._run_weekly_report_core") as mock_core:
+        with patch("custom_components.adaptive_thermostat.services.scheduled._run_weekly_report_core") as mock_core:
             mock_core.return_value = {"report": Mock(), "has_energy_data": False, "total_cost": 0}
 
             _run_async(async_scheduled_weekly_report(
