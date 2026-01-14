@@ -75,7 +75,7 @@ from . import DOMAIN, PLATFORMS
 from . import const
 from . import pid_controller
 from .adaptive.learning import AdaptiveLearner, ThermalRateLearner
-from .managers import HeaterController, NightSetbackController
+from .managers import HeaterController, NightSetbackController, TemperatureManager
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -462,6 +462,9 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         # Night setback controller (initialized in async_added_to_hass when hass is available)
         self._night_setback_controller: NightSetbackController | None = None
 
+        # Temperature manager (initialized in async_added_to_hass when hass is available)
+        self._temperature_manager: TemperatureManager | None = None
+
         # Heater control failure tracking (managed by HeaterController when available)
         self._heater_control_failed = False
         self._last_heater_error: str | None = None
@@ -552,6 +555,38 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                 "%s: Night setback controller initialized",
                 self.entity_id
             )
+
+        # Initialize temperature manager
+        self._temperature_manager = TemperatureManager(
+            thermostat=self,
+            away_temp=self._away_temp,
+            eco_temp=self._eco_temp,
+            boost_temp=self._boost_temp,
+            comfort_temp=self._comfort_temp,
+            home_temp=self._home_temp,
+            sleep_temp=self._sleep_temp,
+            activity_temp=self._activity_temp,
+            preset_sync_mode=self._preset_sync_mode,
+            min_temp=self.min_temp,
+            max_temp=self.max_temp,
+            boost_pid_off=self._boost_pid_off or False,
+            get_target_temp=lambda: self._target_temp,
+            set_target_temp=self._set_target_temp,
+            get_current_temp=lambda: self._current_temp,
+            set_force_on=self._set_force_on,
+            set_force_off=self._set_force_off,
+            async_set_pid_mode=self._async_set_pid_mode_internal,
+            async_control_heating=self._async_control_heating_internal,
+        )
+        # Sync initial preset mode state
+        self._temperature_manager.restore_state(
+            preset_mode=self._attr_preset_mode,
+            saved_target_temp=self._saved_target_temp,
+        )
+        _LOGGER.info(
+            "%s: Temperature manager initialized",
+            self.entity_id
+        )
 
         # Configure zone linking if linked zones are defined
         if self._linked_zones:
@@ -766,6 +801,12 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
             # Restore preset mode
             if old_state.attributes.get(ATTR_PRESET_MODE) is not None:
                 self._attr_preset_mode = old_state.attributes.get(ATTR_PRESET_MODE)
+                # Sync to temperature manager if initialized
+                if self._temperature_manager:
+                    self._temperature_manager.restore_state(
+                        preset_mode=self._attr_preset_mode,
+                        saved_target_temp=self._saved_target_temp,
+                    )
 
             # Restore HVAC mode
             if not self._hvac_mode and old_state.state:
@@ -906,11 +947,16 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
     @property
     def preset_mode(self):
         """Return the current preset mode, e.g., home, away, temp."""
+        if self._temperature_manager:
+            return self._temperature_manager.preset_mode
         return self._attr_preset_mode
 
     @property
     def preset_modes(self):
         """Return a list of available preset modes."""
+        if self._temperature_manager:
+            return self._temperature_manager.preset_modes
+        # Fallback for when manager not yet initialized
         preset_modes = [PRESET_NONE]
         for mode, preset_mode_temp in self._preset_modes_temp.items():
             if preset_mode_temp is not None:
@@ -919,7 +965,10 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
 
     @property
     def _preset_modes_temp(self):
-        """Return a list of preset modes and their temperatures"""
+        """Return a dict of preset modes and their temperatures."""
+        if self._temperature_manager:
+            return self._temperature_manager._preset_modes_temp
+        # Fallback for when manager not yet initialized
         return {
             PRESET_AWAY: self._away_temp,
             PRESET_ECO: self._eco_temp,
@@ -932,7 +981,10 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
 
     @property
     def _preset_temp_modes(self):
-        """Return a list of preset temperature and their modes"""
+        """Return a dict of preset temperatures and their modes."""
+        if self._temperature_manager:
+            return self._temperature_manager._preset_temp_modes
+        # Fallback for when manager not yet initialized
         return {
             self._away_temp: PRESET_AWAY,
             self._eco_temp: PRESET_ECO,
@@ -945,7 +997,10 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
 
     @property
     def presets(self):
-        """Return a dict of available preset and temperatures."""
+        """Return a dict of available presets and their temperatures."""
+        if self._temperature_manager:
+            return self._temperature_manager.presets
+        # Fallback for when manager not yet initialized
         presets = {}
         for mode, preset_mode_temp in self._preset_modes_temp.items():
             if preset_mode_temp is not None:
@@ -1480,17 +1535,22 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         temperature = kwargs.get(ATTR_TEMPERATURE)
         if temperature is None:
             return
-        if self._current_temp is not None and temperature > self._current_temp:
-            self._force_on = True
-        elif self._current_temp is not None and temperature < self._current_temp:
-            self._force_off = True
-        if temperature in self._preset_temp_modes and self._preset_sync_mode == 'sync':
-            await self.async_set_preset_mode(self._preset_temp_modes[temperature])
+        if self._temperature_manager:
+            await self._temperature_manager.async_set_temperature(temperature)
+            self.async_write_ha_state()
         else:
-            await self.async_set_preset_mode(PRESET_NONE)
-            self._target_temp = temperature
-        await self._async_control_heating(calc_pid=True)
-        self.async_write_ha_state()
+            # Fallback for when manager not yet initialized
+            if self._current_temp is not None and temperature > self._current_temp:
+                self._force_on = True
+            elif self._current_temp is not None and temperature < self._current_temp:
+                self._force_off = True
+            if temperature in self._preset_temp_modes and self._preset_sync_mode == 'sync':
+                await self.async_set_preset_mode(self._preset_temp_modes[temperature])
+            else:
+                await self.async_set_preset_mode(PRESET_NONE)
+                self._target_temp = temperature
+            await self._async_control_heating(calc_pid=True)
+            self.async_write_ha_state()
 
     async def async_set_pid(self, **kwargs):
         """Set PID parameters."""
@@ -1509,16 +1569,20 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
 
     async def async_set_preset_temp(self, **kwargs):
         """Set the presets modes temperatures."""
-        for preset_name, preset_temp in kwargs.items():
-            value = None if 'disable' in preset_name and preset_temp else (
-                max(min(float(preset_temp), self.max_temp), self.min_temp)
-            )
-            setattr(
-                self,
-                f"_{preset_name.replace('_disable', '')}",
-                value
-            )
-        await self._async_control_heating(calc_pid=True)
+        if self._temperature_manager:
+            await self._temperature_manager.async_set_preset_temp(**kwargs)
+        else:
+            # Fallback for when manager not yet initialized
+            for preset_name, preset_temp in kwargs.items():
+                value = None if 'disable' in preset_name and preset_temp else (
+                    max(min(float(preset_temp), self.max_temp), self.min_temp)
+                )
+                setattr(
+                    self,
+                    f"_{preset_name.replace('_disable', '')}",
+                    value
+                )
+            await self._async_control_heating(calc_pid=True)
 
     async def clear_integral(self, **kwargs):
         """Clear the integral value."""
@@ -2016,6 +2080,19 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         """Set the force off flag."""
         self._force_off = value
 
+    # Setter callbacks for TemperatureManager
+    def _set_target_temp(self, value: float) -> None:
+        """Set the target temperature."""
+        self._target_temp = value
+
+    async def _async_set_pid_mode_internal(self, mode: str) -> None:
+        """Internal callback to set PID mode from TemperatureManager."""
+        await self.async_set_pid_mode(mode=mode)
+
+    async def _async_control_heating_internal(self, calc_pid: bool) -> None:
+        """Internal callback to trigger heating control from TemperatureManager."""
+        await self._async_control_heating(calc_pid=calc_pid)
+
     @property
     def supported_features(self):
         """Return the list of supported features."""
@@ -2308,29 +2385,34 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         """Set new preset mode.
         This method must be run in the event loop and returns a coroutine.
         """
-        if preset_mode not in self.preset_modes:
-            return None
-        if preset_mode != PRESET_NONE and self.preset_mode == PRESET_NONE:
-            # self._is_away = True
-            self._saved_target_temp = self._target_temp
-            self._target_temp = self.presets[preset_mode]
-        elif preset_mode == PRESET_NONE and self.preset_mode != PRESET_NONE:
-            # self._is_away = False
-            self._target_temp = self._saved_target_temp
-        elif preset_mode == PRESET_NONE and self.preset_mode == PRESET_NONE:
-            return None
+        if self._temperature_manager:
+            await self._temperature_manager.async_set_preset_mode(preset_mode)
+            # Sync internal state for backward compatibility
+            self._attr_preset_mode = self._temperature_manager.preset_mode
+            self._saved_target_temp = self._temperature_manager.saved_target_temp
         else:
-            self._target_temp = self.presets[preset_mode]
-        self._attr_preset_mode = preset_mode
-        if self._boost_pid_off and self._attr_preset_mode == PRESET_BOOST:
-            # Force PID OFF if requested and boost mode is active
-            await self.async_set_pid_mode(mode='off')
-        elif self._boost_pid_off and self._attr_preset_mode != PRESET_BOOST:
-            # Force PID Auto if managed by boost_pid_off and not in boost mode
-            await self.async_set_pid_mode(mode='auto')
-        else:
-            # if boost_pid_off is false, don't change the PID mode
-            await self._async_control_heating(calc_pid=True)
+            # Fallback for when manager not yet initialized
+            if preset_mode not in self.preset_modes:
+                return None
+            if preset_mode != PRESET_NONE and self.preset_mode == PRESET_NONE:
+                self._saved_target_temp = self._target_temp
+                self._target_temp = self.presets[preset_mode]
+            elif preset_mode == PRESET_NONE and self.preset_mode != PRESET_NONE:
+                self._target_temp = self._saved_target_temp
+            elif preset_mode == PRESET_NONE and self.preset_mode == PRESET_NONE:
+                return None
+            else:
+                self._target_temp = self.presets[preset_mode]
+            self._attr_preset_mode = preset_mode
+            if self._boost_pid_off and self._attr_preset_mode == PRESET_BOOST:
+                # Force PID OFF if requested and boost mode is active
+                await self.async_set_pid_mode(mode='off')
+            elif self._boost_pid_off and self._attr_preset_mode != PRESET_BOOST:
+                # Force PID Auto if managed by boost_pid_off and not in boost mode
+                await self.async_set_pid_mode(mode='auto')
+            else:
+                # if boost_pid_off is false, don't change the PID mode
+                await self._async_control_heating(calc_pid=True)
 
     async def calc_output(self):
         """calculate control output"""
