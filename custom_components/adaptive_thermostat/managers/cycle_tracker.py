@@ -171,3 +171,80 @@ class CycleTrackerManager:
         self._settling_timeout_handle = self._hass.async_call_later(
             self._max_settling_time_minutes * 60, lambda _: self._hass.async_create_task(_settling_timeout())
         )
+
+    async def update_temperature(self, timestamp: datetime, temperature: float) -> None:
+        """Update temperature history and check for settling completion.
+
+        Only collects temperature samples when in HEATING or SETTLING state.
+        Checks for settling completion on each update during SETTLING state.
+
+        Args:
+            timestamp: Time of temperature reading
+            temperature: Current temperature value
+        """
+        # Only collect during active cycle tracking
+        if self._state not in (CycleState.HEATING, CycleState.SETTLING):
+            return
+
+        # Append temperature sample
+        self._temperature_history.append((timestamp, temperature))
+
+        # Check for settling completion during SETTLING state
+        if self._state == CycleState.SETTLING:
+            if self._is_settling_complete():
+                self._logger.info("Settling complete, finalizing cycle")
+                await self._finalize_cycle()
+
+    def _is_settling_complete(self) -> bool:
+        """Check if temperature has settled after heating stopped.
+
+        Settling is considered complete when:
+        1. At least 10 samples (5 minutes at 30-second intervals) are collected
+        2. Variance of last 10 samples < 0.01 (stable temperature)
+        3. Current temperature is within 0.5°C of target
+
+        Returns:
+            True if settling is complete, False otherwise
+        """
+        # Need minimum 10 samples for settling detection
+        if len(self._temperature_history) < 10:
+            return False
+
+        # Get last 10 temperature samples
+        last_temps = [temp for _, temp in self._temperature_history[-10:]]
+
+        # Calculate variance
+        mean_temp = sum(last_temps) / len(last_temps)
+        variance = sum((temp - mean_temp) ** 2 for temp in last_temps) / len(last_temps)
+
+        # Check if variance is below threshold (stable)
+        if variance >= 0.01:
+            return False
+
+        # Check if current temperature is within 0.5°C of target
+        current_temp = last_temps[-1]
+        target_temp = self._cycle_target_temp
+        if target_temp is None:
+            return False
+
+        if abs(current_temp - target_temp) > 0.5:
+            return False
+
+        return True
+
+    async def _finalize_cycle(self) -> None:
+        """Finalize cycle and record metrics.
+
+        Note: Full implementation will be added in feature 2.3.
+        For now, this just transitions to IDLE state.
+        """
+        # Cancel settling timeout if active
+        if self._settling_timeout_handle is not None:
+            self._settling_timeout_handle()
+            self._settling_timeout_handle = None
+
+        # Transition to IDLE
+        self._state = CycleState.IDLE
+
+        # Note: Cycle validation and metrics calculation will be added in feature 2.3
+        self._logger.info("Cycle finalized (full metrics calculation pending feature 2.3)")

@@ -144,6 +144,168 @@ class TestCycleTrackerBasic:
         assert len(cycle_tracker.temperature_history) == 0
 
 
+class TestCycleTrackerTemperatureCollection:
+    """Tests for temperature collection functionality."""
+
+    @pytest.mark.asyncio
+    async def test_temperature_collection_during_heating(self, cycle_tracker):
+        """Test temperature samples are collected during HEATING state."""
+        # Start heating
+        cycle_tracker.on_heating_started(datetime(2025, 1, 14, 10, 0, 0))
+
+        # Add temperature samples
+        await cycle_tracker.update_temperature(datetime(2025, 1, 14, 10, 0, 30), 18.5)
+        await cycle_tracker.update_temperature(datetime(2025, 1, 14, 10, 1, 0), 19.0)
+        await cycle_tracker.update_temperature(datetime(2025, 1, 14, 10, 1, 30), 19.5)
+
+        # Verify samples were collected
+        history = cycle_tracker.temperature_history
+        assert len(history) == 3
+        assert history[0] == (datetime(2025, 1, 14, 10, 0, 30), 18.5)
+        assert history[1] == (datetime(2025, 1, 14, 10, 1, 0), 19.0)
+        assert history[2] == (datetime(2025, 1, 14, 10, 1, 30), 19.5)
+
+    @pytest.mark.asyncio
+    async def test_temperature_collection_during_settling(self, cycle_tracker):
+        """Test temperature samples are collected during SETTLING state."""
+        # Start and stop heating
+        cycle_tracker.on_heating_started(datetime(2025, 1, 14, 10, 0, 0))
+        cycle_tracker.on_heating_stopped(datetime(2025, 1, 14, 10, 30, 0))
+
+        # Add temperature samples
+        await cycle_tracker.update_temperature(datetime(2025, 1, 14, 10, 30, 30), 20.0)
+        await cycle_tracker.update_temperature(datetime(2025, 1, 14, 10, 31, 0), 20.1)
+
+        # Verify samples were collected
+        history = cycle_tracker.temperature_history
+        assert len(history) == 2
+        assert history[0] == (datetime(2025, 1, 14, 10, 30, 30), 20.0)
+        assert history[1] == (datetime(2025, 1, 14, 10, 31, 0), 20.1)
+
+    @pytest.mark.asyncio
+    async def test_temperature_not_collected_during_idle(self, cycle_tracker):
+        """Test temperature samples are NOT collected during IDLE state."""
+        # Ensure we're in IDLE
+        assert cycle_tracker.state == CycleState.IDLE
+
+        # Try to add temperature samples
+        await cycle_tracker.update_temperature(datetime(2025, 1, 14, 10, 0, 0), 18.0)
+        await cycle_tracker.update_temperature(datetime(2025, 1, 14, 10, 1, 0), 18.5)
+
+        # Verify no samples were collected
+        assert len(cycle_tracker.temperature_history) == 0
+
+
+class TestCycleTrackerSettling:
+    """Tests for settling detection functionality."""
+
+    @pytest.mark.asyncio
+    async def test_settling_detection_stable(self, cycle_tracker, mock_callbacks):
+        """Test settling is detected when temperature is stable and near target."""
+        # Set target temperature
+        mock_callbacks["get_target_temp"].return_value = 20.0
+
+        # Start heating and stop
+        cycle_tracker.on_heating_started(datetime(2025, 1, 14, 10, 0, 0))
+        cycle_tracker.on_heating_stopped(datetime(2025, 1, 14, 10, 30, 0))
+
+        # Add 10 stable temperature samples near target (variance < 0.01, within 0.5°C)
+        base_time = datetime(2025, 1, 14, 10, 30, 0)
+        for i in range(10):
+            temp = 20.0 + (i % 3) * 0.02  # Very small variations (20.0, 20.02, 20.04)
+            await cycle_tracker.update_temperature(
+                datetime(2025, 1, 14, 10, 30 + i, 0), temp
+            )
+
+        # Should have detected settling and transitioned to IDLE
+        assert cycle_tracker.state == CycleState.IDLE
+
+    @pytest.mark.asyncio
+    async def test_settling_detection_unstable(self, cycle_tracker, mock_callbacks):
+        """Test settling continues when temperature is oscillating."""
+        # Set target temperature
+        mock_callbacks["get_target_temp"].return_value = 20.0
+
+        # Start heating and stop
+        cycle_tracker.on_heating_started(datetime(2025, 1, 14, 10, 0, 0))
+        cycle_tracker.on_heating_stopped(datetime(2025, 1, 14, 10, 30, 0))
+
+        # Add 10 unstable temperature samples (high variance)
+        base_time = datetime(2025, 1, 14, 10, 30, 0)
+        for i in range(10):
+            temp = 20.0 + (i % 2) * 0.5  # Oscillating (20.0, 20.5, 20.0, 20.5, ...)
+            await cycle_tracker.update_temperature(
+                datetime(2025, 1, 14, 10, 30 + i, 0), temp
+            )
+
+        # Should still be in SETTLING (not stable enough)
+        assert cycle_tracker.state == CycleState.SETTLING
+
+    @pytest.mark.asyncio
+    async def test_settling_detection_insufficient_samples(self, cycle_tracker, mock_callbacks):
+        """Test settling requires at least 10 samples."""
+        # Set target temperature
+        mock_callbacks["get_target_temp"].return_value = 20.0
+
+        # Start heating and stop
+        cycle_tracker.on_heating_started(datetime(2025, 1, 14, 10, 0, 0))
+        cycle_tracker.on_heating_stopped(datetime(2025, 1, 14, 10, 30, 0))
+
+        # Add only 9 stable samples (not enough)
+        for i in range(9):
+            await cycle_tracker.update_temperature(
+                datetime(2025, 1, 14, 10, 30 + i, 0), 20.0
+            )
+
+        # Should still be in SETTLING (not enough samples)
+        assert cycle_tracker.state == CycleState.SETTLING
+
+    @pytest.mark.asyncio
+    async def test_settling_detection_far_from_target(self, cycle_tracker, mock_callbacks):
+        """Test settling requires temperature within 0.5°C of target."""
+        # Set target temperature
+        mock_callbacks["get_target_temp"].return_value = 20.0
+
+        # Start heating and stop
+        cycle_tracker.on_heating_started(datetime(2025, 1, 14, 10, 0, 0))
+        cycle_tracker.on_heating_stopped(datetime(2025, 1, 14, 10, 30, 0))
+
+        # Add 10 stable samples but far from target (> 0.5°C away)
+        for i in range(10):
+            await cycle_tracker.update_temperature(
+                datetime(2025, 1, 14, 10, 30 + i, 0), 19.0  # 1.0°C below target
+            )
+
+        # Should still be in SETTLING (too far from target)
+        assert cycle_tracker.state == CycleState.SETTLING
+
+    @pytest.mark.asyncio
+    async def test_settling_timeout(self, cycle_tracker, mock_hass):
+        """Test settling timeout transitions to IDLE after 120 minutes."""
+        # Start heating and stop
+        cycle_tracker.on_heating_started(datetime.now())
+        cycle_tracker.on_heating_stopped(datetime.now())
+
+        # Verify timeout was scheduled
+        mock_hass.async_call_later.assert_called_once()
+        call_args = mock_hass.async_call_later.call_args
+        assert call_args[0][0] == 120 * 60  # 120 minutes in seconds
+
+        # Get the timeout callback and execute the inner task
+        timeout_callback = call_args[0][1]
+        timeout_callback(None)  # This calls lambda which calls async_create_task
+
+        # Verify that async_create_task was called with a coroutine
+        mock_hass.async_create_task.assert_called_once()
+
+        # Get the coroutine and await it
+        task_arg = mock_hass.async_create_task.call_args[0][0]
+        await task_arg
+
+        # State should transition to IDLE
+        assert cycle_tracker.state == CycleState.IDLE
+
+
 def test_cycle_tracker_module_exists():
     """Marker test to verify cycle tracker module exists."""
     assert CycleState is not None
