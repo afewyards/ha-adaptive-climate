@@ -479,7 +479,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         self._boost_pid_off = kwargs.get('boost_pid_off')
         self._cold_tolerance = abs(kwargs.get('cold_tolerance'))
         self._hot_tolerance = abs(kwargs.get('hot_tolerance'))
-        self._time_changed = 0
+        self._time_changed = time.time()
         self._last_sensor_update = time.time()
         self._last_ext_sensor_update = time.time()
         _LOGGER.info("%s: Active PID values - Kp=%.4f, Ki=%.5f, Kd=%.3f, Ke=%s",
@@ -1652,7 +1652,8 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                     self._sensor_stall:
                 # sensor not updated for too long, considered as stall, set to safety level
                 self._control_output = self._output_safety
-            elif calc_pid or self._sampling_period != 0:
+            else:
+                # Always recalculate PID to ensure output reflects current conditions
                 await self.calc_output()
             await self.set_control_value()
 
