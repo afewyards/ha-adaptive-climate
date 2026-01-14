@@ -1,4 +1,5 @@
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge)](https://github.com/custom-components/hacs)
+[![Tests](https://github.com/afewyards/ha-adaptive-thermostat/workflows/Tests/badge.svg)](https://github.com/afewyards/ha-adaptive-thermostat/actions/workflows/tests.yml)
 
 <a href="https://www.buymeacoffee.com/afewyards" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" height="41" width="174"></a>
 
