@@ -75,7 +75,7 @@ from . import DOMAIN, PLATFORMS
 from . import const
 from . import pid_controller
 from .adaptive.learning import AdaptiveLearner, ThermalRateLearner
-from .managers import HeaterController, KeController, NightSetbackController, TemperatureManager
+from .managers import HeaterController, KeController, NightSetbackController, TemperatureManager, CycleTrackerManager
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -468,6 +468,9 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         # Ke learning controller (initialized in async_added_to_hass when hass is available)
         self._ke_controller: KeController | None = None
 
+        # Cycle tracker for adaptive learning (initialized in async_added_to_hass when hass is available)
+        self._cycle_tracker: CycleTrackerManager | None = None
+
         # Heater control failure tracking (managed by HeaterController when available)
         self._heater_control_failed = False
         self._last_heater_error: str | None = None
@@ -666,6 +669,27 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
             "%s: Ke controller initialized",
             self.entity_id
         )
+
+        # Initialize cycle tracker for adaptive learning
+        coordinator = self.hass.data.get(DOMAIN, {}).get("coordinator")
+        if coordinator and self._zone_id:
+            zone_data = coordinator.get_zone_data(self._zone_id)
+            if zone_data:
+                adaptive_learner = zone_data.get("adaptive_learner")
+                if adaptive_learner:
+                    self._cycle_tracker = CycleTrackerManager(
+                        hass=self.hass,
+                        zone_id=self._zone_id,
+                        adaptive_learner=adaptive_learner,
+                        get_target_temp=lambda: self._target_temp,
+                        get_current_temp=lambda: self._current_temp,
+                        get_hvac_mode=lambda: self._hvac_mode,
+                        get_in_grace_period=lambda: self._in_grace_period,
+                    )
+                    _LOGGER.info(
+                        "%s: Initialized CycleTrackerManager",
+                        self.entity_id
+                    )
 
         # Set up state change listeners
         self._setup_state_listeners()
