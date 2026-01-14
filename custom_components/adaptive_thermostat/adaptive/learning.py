@@ -83,6 +83,16 @@ class AdaptiveLearner:
         self._consecutive_converged_cycles: int = 0
         self._pid_converged_for_ke: bool = False
 
+    @property
+    def cycle_history(self) -> List[CycleMetrics]:
+        """Return cycle history for external access."""
+        return self._cycle_history
+
+    @cycle_history.setter
+    def cycle_history(self, value: List[CycleMetrics]) -> None:
+        """Set cycle history (primarily for testing)."""
+        self._cycle_history = value
+
     def add_cycle_metrics(self, metrics: CycleMetrics) -> None:
         """
         Add a cycle's performance metrics to history.
