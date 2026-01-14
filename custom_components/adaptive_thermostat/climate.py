@@ -1577,6 +1577,12 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                     climate_entity_id=self.entity_id,
                 )
 
+        # Notify cycle tracker of mode change
+        if self._cycle_tracker and old_mode != self._hvac_mode:
+            old_mode_str = old_mode.value if old_mode else "off"
+            new_mode_str = self._hvac_mode.value if self._hvac_mode else "off"
+            self._cycle_tracker.on_mode_changed(old_mode_str, new_mode_str)
+
     async def async_set_temperature(self, **kwargs):
         """Set new target temperature."""
         temperature = kwargs.get(ATTR_TEMPERATURE)

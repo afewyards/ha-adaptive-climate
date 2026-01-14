@@ -612,6 +612,77 @@ class TestCycleTrackerEdgeCases:
         # Verify state unchanged
         assert cycle_tracker.state == CycleState.IDLE
 
+    def test_mode_change_aborts_cycle(self, cycle_tracker):
+        """Test that mode change from HEAT to OFF/COOL aborts the cycle."""
+        # Start heating cycle
+        start_time = datetime(2025, 1, 14, 10, 0, 0)
+        cycle_tracker.on_heating_started(start_time)
+        assert cycle_tracker.state == CycleState.HEATING
+
+        # Add some temperature history
+        cycle_tracker._temperature_history = [
+            (datetime(2025, 1, 14, 10, 0, 30), 18.5),
+            (datetime(2025, 1, 14, 10, 1, 0), 19.0),
+        ]
+
+        # Change mode from HEAT to OFF
+        cycle_tracker.on_mode_changed("heat", "off")
+
+        # Verify cycle was aborted
+        assert cycle_tracker.state == CycleState.IDLE
+        assert len(cycle_tracker.temperature_history) == 0
+        assert cycle_tracker.cycle_start_time is None
+        assert cycle_tracker._cycle_target_temp is None
+
+    def test_mode_change_to_cool_aborts_cycle(self, cycle_tracker):
+        """Test that mode change from HEAT to COOL aborts the cycle."""
+        # Start heating cycle
+        start_time = datetime(2025, 1, 14, 10, 0, 0)
+        cycle_tracker.on_heating_started(start_time)
+        assert cycle_tracker.state == CycleState.HEATING
+
+        # Add some temperature history
+        cycle_tracker._temperature_history = [
+            (datetime(2025, 1, 14, 10, 0, 30), 18.5),
+        ]
+
+        # Change mode from HEAT to COOL
+        cycle_tracker.on_mode_changed("heat", "cool")
+
+        # Verify cycle was aborted
+        assert cycle_tracker.state == CycleState.IDLE
+        assert len(cycle_tracker.temperature_history) == 0
+
+    def test_mode_change_heat_to_heat_no_effect(self, cycle_tracker):
+        """Test that mode change from HEAT to HEAT has no effect."""
+        # Start heating cycle
+        start_time = datetime(2025, 1, 14, 10, 0, 0)
+        cycle_tracker.on_heating_started(start_time)
+        assert cycle_tracker.state == CycleState.HEATING
+
+        # Add some temperature history
+        cycle_tracker._temperature_history = [
+            (datetime(2025, 1, 14, 10, 0, 30), 18.5),
+        ]
+
+        # Change mode from HEAT to HEAT (no actual change)
+        cycle_tracker.on_mode_changed("heat", "heat")
+
+        # Verify cycle continues (state unchanged)
+        assert cycle_tracker.state == CycleState.HEATING
+        assert len(cycle_tracker.temperature_history) == 1
+
+    def test_mode_change_in_idle_no_effect(self, cycle_tracker):
+        """Test that mode change in IDLE state has no effect."""
+        # Ensure in IDLE state
+        assert cycle_tracker.state == CycleState.IDLE
+
+        # Change mode while in IDLE
+        cycle_tracker.on_mode_changed("heat", "off")
+
+        # Verify state unchanged
+        assert cycle_tracker.state == CycleState.IDLE
+
 
 def test_cycle_tracker_module_exists():
     """Marker test to verify cycle tracker module exists."""

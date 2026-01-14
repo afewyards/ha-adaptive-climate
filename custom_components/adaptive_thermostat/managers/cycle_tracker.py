@@ -324,6 +324,40 @@ class CycleTrackerManager:
         self._cycle_target_temp = None
         self._state = CycleState.IDLE
 
+    def on_mode_changed(self, old_mode: str, new_mode: str) -> None:
+        """Handle HVAC mode change event.
+
+        Aborts the current cycle if mode changes away from HEAT, as the
+        heating operation has been terminated.
+
+        Args:
+            old_mode: Previous HVAC mode
+            new_mode: New HVAC mode
+        """
+        # Only abort if we're in an active cycle
+        if self._state not in (CycleState.HEATING, CycleState.SETTLING):
+            return
+
+        # Check if mode changed away from HEAT (to OFF or COOL)
+        if new_mode in ("off", "cool"):
+            # Abort the cycle
+            self._logger.info(
+                "Cycle aborted due to mode change: %s -> %s",
+                old_mode,
+                new_mode,
+            )
+
+            # Cancel settling timeout if active
+            if self._settling_timeout_handle is not None:
+                self._settling_timeout_handle()
+                self._settling_timeout_handle = None
+
+            # Clear cycle data and transition to IDLE
+            self._temperature_history.clear()
+            self._cycle_start_time = None
+            self._cycle_target_temp = None
+            self._state = CycleState.IDLE
+
     async def _finalize_cycle(self) -> None:
         """Finalize cycle and record metrics.
 
