@@ -1,6 +1,39 @@
 # CHANGELOG
 
 
+## v0.1.2 (2026-01-14)
+
+### Bug Fixes
+
+- Pump not activating when other heater switches already on
+  ([`228b2ae`](https://github.com/afewyards/ha-adaptive-thermostat/commit/228b2aec9bd5091c64d3f6aaaa9232233d773e65))
+
+- Changed heater/cooler logic from `_is_any_switch_on` to `_are_all_switches_on` so that if one
+  switch (e.g., power_plant_heat) is already on but another (e.g., pump) is off, the controller will
+  turn on all switches - Added 10-second debounce on turn-off to prevent brief demand drops during
+  HA restarts from turning off the main heat source - Added `_are_all_switches_on` method to check
+  if all switches are on - Added debounce methods: `_schedule_heater_turnoff_unlocked`,
+  `_cancel_heater_turnoff_unlocked`, `_delayed_heater_turnoff` (and cooler equivalents) - Added
+  tests for new functionality
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+### Documentation
+
+- Add test status badge to README
+  ([`f4d66bf`](https://github.com/afewyards/ha-adaptive-thermostat/commit/f4d66bfa022683fa8844543a7163b8d77469ff38))
+
+- Add testing period notice to README
+  ([`fc11d29`](https://github.com/afewyards/ha-adaptive-thermostat/commit/fc11d29bffd628bc63ee3afffae748273356a460))
+
+- Update Ke section to reflect adaptive learning
+  ([`295f527`](https://github.com/afewyards/ha-adaptive-thermostat/commit/295f5270c91d34bdd78a9d3d3f1dbefc559ae5f0))
+
+Replace static Ke recommendations with explanation of automatic learning. The system learns Ke by
+  observing correlations between outdoor temperature and PID output, making manual tuning
+  unnecessary.
+
+
 ## v0.1.1 (2026-01-14)
 
 ### Bug Fixes
