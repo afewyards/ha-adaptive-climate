@@ -75,7 +75,7 @@ from . import DOMAIN, PLATFORMS
 from . import const
 from . import pid_controller
 from .adaptive.learning import AdaptiveLearner, ThermalRateLearner
-from .managers import HeaterController, NightSetbackController, TemperatureManager
+from .managers import HeaterController, KeController, NightSetbackController, TemperatureManager
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -465,6 +465,9 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         # Temperature manager (initialized in async_added_to_hass when hass is available)
         self._temperature_manager: TemperatureManager | None = None
 
+        # Ke learning controller (initialized in async_added_to_hass when hass is available)
+        self._ke_controller: KeController | None = None
+
         # Heater control failure tracking (managed by HeaterController when available)
         self._heater_control_failed = False
         self._last_heater_error: str | None = None
@@ -499,8 +502,6 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
 
         # Initialize KeLearner (will be configured properly in async_added_to_hass)
         self._ke_learner: Optional[KeLearner] = None
-        self._steady_state_start: Optional[float] = None  # timestamp when steady state began
-        self._last_ke_observation_time: Optional[float] = None
 
         self._pwm = kwargs.get('pwm').seconds
         self._p = self._i = self._d = self._e = self._dt = 0
@@ -643,6 +644,28 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                 "%s: Ke learning disabled - no outdoor sensor configured",
                 self.entity_id
             )
+
+        # Initialize Ke controller (always, even without outdoor sensor)
+        self._ke_controller = KeController(
+            thermostat=self,
+            ke_learner=self._ke_learner,
+            get_hvac_mode=lambda: self._hvac_mode,
+            get_current_temp=lambda: self._current_temp,
+            get_target_temp=lambda: self._target_temp,
+            get_ext_temp=lambda: self._ext_temp,
+            get_control_output=lambda: self._control_output,
+            get_cold_tolerance=lambda: self._cold_tolerance,
+            get_hot_tolerance=lambda: self._hot_tolerance,
+            get_ke=lambda: self._ke,
+            set_ke=self._set_ke,
+            get_pid_controller=lambda: self._pid_controller,
+            async_control_heating=self._async_control_heating_internal,
+            async_write_ha_state=self._async_write_ha_state_internal,
+        )
+        _LOGGER.info(
+            "%s: Ke controller initialized",
+            self.entity_id
+        )
 
         # Set up state change listeners
         self._setup_state_listeners()
@@ -1688,131 +1711,32 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         self.async_write_ha_state()
 
     async def async_apply_adaptive_ke(self, **kwargs):
-        """Apply adaptive Ke value based on learned outdoor temperature correlations."""
-        if not self._ke_learner:
-            _LOGGER.warning(
-                "%s: Cannot apply adaptive Ke - no Ke learner (outdoor sensor not configured?)",
-                self.entity_id
-            )
-            return
+        """Apply adaptive Ke value based on learned outdoor temperature correlations.
 
-        if not self._ke_learner.enabled:
-            _LOGGER.warning(
-                "%s: Cannot apply adaptive Ke - learning not enabled (PID not converged yet)",
-                self.entity_id
-            )
-            return
-
-        recommendation = self._ke_learner.calculate_ke_adjustment()
-
-        if recommendation is None:
-            summary = self._ke_learner.get_observations_summary()
-            _LOGGER.warning(
-                "%s: Insufficient data for adaptive Ke (observations: %d, "
-                "temp_range: %s, correlation: %s)",
-                self.entity_id,
-                summary.get("count", 0),
-                summary.get("outdoor_temp_range"),
-                summary.get("correlation"),
-            )
-            return
-
-        # Apply the recommended Ke value
-        old_ke = self._ke
-        self._ke = recommendation
-        self._ke_learner.apply_ke_adjustment(recommendation)
-
-        # Update PID controller
-        self._pid_controller.set_pid_param(ke=self._ke)
-
-        _LOGGER.info(
-            "%s: Applied adaptive Ke: %.2f (was %.2f)",
-            self.entity_id, self._ke, old_ke
-        )
-
-        await self._async_control_heating(calc_pid=True)
-        self.async_write_ha_state()
+        Delegates to KeController for the actual implementation.
+        """
+        if self._ke_controller is not None:
+            await self._ke_controller.async_apply_adaptive_ke(**kwargs)
 
     def _is_at_steady_state(self) -> bool:
         """Check if the system is at steady state (maintaining target temperature).
 
-        Steady state is determined by:
-        1. Temperature within tolerance of target
-        2. Maintained for KE_STEADY_STATE_DURATION minutes
-        3. HVAC mode is active (not OFF)
+        Delegates to KeController for the actual implementation.
 
         Returns:
             True if at steady state, False otherwise
         """
-        if self._hvac_mode == HVACMode.OFF:
-            self._steady_state_start = None
-            return False
-
-        if self._current_temp is None or self._target_temp is None:
-            self._steady_state_start = None
-            return False
-
-        # Check if within tolerance band
-        tolerance = max(self._cold_tolerance, self._hot_tolerance, 0.2)
-        within_tolerance = abs(self._current_temp - self._target_temp) <= tolerance
-
-        if not within_tolerance:
-            self._steady_state_start = None
-            return False
-
-        # Start tracking steady state if not already
-        current_time = time.time()
-        if self._steady_state_start is None:
-            self._steady_state_start = current_time
-
-        # Check if we've maintained steady state long enough
-        steady_duration_seconds = current_time - self._steady_state_start
-        required_duration_seconds = const.KE_STEADY_STATE_DURATION * 60
-
-        return steady_duration_seconds >= required_duration_seconds
+        if self._ke_controller is not None:
+            return self._ke_controller.is_at_steady_state()
+        return False
 
     def _maybe_record_ke_observation(self) -> None:
         """Record a Ke observation if conditions are met.
 
-        Conditions:
-        1. Ke learner is enabled
-        2. System is at steady state
-        3. Outdoor temperature sensor is available
-        4. Minimum time has passed since last observation (5 minutes)
+        Delegates to KeController for the actual implementation.
         """
-        if not self._ke_learner or not self._ke_learner.enabled:
-            return
-
-        if not self._is_at_steady_state():
-            return
-
-        if self._ext_temp is None:
-            return
-
-        # Rate limit: at least 5 minutes between observations
-        current_time = time.time()
-        if self._last_ke_observation_time is not None:
-            time_since_last = current_time - self._last_ke_observation_time
-            if time_since_last < 300:  # 5 minutes
-                return
-
-        # Record the observation
-        self._ke_learner.add_observation(
-            outdoor_temp=self._ext_temp,
-            pid_output=self._control_output,
-            indoor_temp=self._current_temp,
-            target_temp=self._target_temp,
-        )
-        self._last_ke_observation_time = current_time
-
-        _LOGGER.debug(
-            "%s: Ke observation recorded: outdoor=%.1f, pid=%.1f, indoor=%.1f, target=%.1f",
-            self.entity_id,
-            self._ext_temp,
-            self._control_output,
-            self._current_temp,
-            self._target_temp,
-        )
+        if self._ke_controller is not None:
+            self._ke_controller.maybe_record_observation()
 
     @property
     def min_temp(self):
@@ -2079,6 +2003,15 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
     def _set_force_off(self, value: bool) -> None:
         """Set the force off flag."""
         self._force_off = value
+
+    # Setter callbacks for KeController
+    def _set_ke(self, value: float) -> None:
+        """Set the Ke value."""
+        self._ke = value
+
+    async def _async_write_ha_state_internal(self) -> None:
+        """Write HA state (internal callback for managers)."""
+        self.async_write_ha_state()
 
     # Setter callbacks for TemperatureManager
     def _set_target_temp(self, value: float) -> None:
