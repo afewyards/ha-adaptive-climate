@@ -6,7 +6,7 @@ import asyncio
 import logging
 import time
 from abc import ABC
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Optional
 
 import voluptuous as vol
@@ -1944,6 +1944,10 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
             else:
                 # Always recalculate PID to ensure output reflects current conditions
                 await self.calc_output()
+
+                # Record temperature for cycle tracking
+                if self._cycle_tracker and self._current_temp is not None:
+                    await self._cycle_tracker.update_temperature(datetime.now(), self._current_temp)
             await self.set_control_value()
 
             # Update zone demand for CentralController (based on actual device state, not PID output)

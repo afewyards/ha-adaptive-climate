@@ -494,6 +494,33 @@ class TestCycleTrackerValveMode:
         assert cycle_tracker.state == CycleState.SETTLING
 
 
+class TestCycleTrackerTemperatureUpdates:
+    """Test temperature update integration with control loop."""
+
+    @pytest.mark.asyncio
+    async def test_temperature_updates_during_heating(self, cycle_tracker):
+        """Test that temperature samples are collected during heating cycle."""
+        # Start heating cycle
+        start_time = datetime(2025, 1, 14, 10, 0, 0)
+        cycle_tracker.on_heating_started(start_time)
+
+        # Simulate temperature updates during heating (as would happen in control loop)
+        temp_time_1 = datetime(2025, 1, 14, 10, 0, 30)
+        await cycle_tracker.update_temperature(temp_time_1, 18.5)
+
+        temp_time_2 = datetime(2025, 1, 14, 10, 1, 0)
+        await cycle_tracker.update_temperature(temp_time_2, 19.0)
+
+        temp_time_3 = datetime(2025, 1, 14, 10, 1, 30)
+        await cycle_tracker.update_temperature(temp_time_3, 19.5)
+
+        # Verify temperature samples were collected
+        assert len(cycle_tracker.temperature_history) == 3
+        assert cycle_tracker.temperature_history[0] == (temp_time_1, 18.5)
+        assert cycle_tracker.temperature_history[1] == (temp_time_2, 19.0)
+        assert cycle_tracker.temperature_history[2] == (temp_time_3, 19.5)
+
+
 def test_cycle_tracker_module_exists():
     """Marker test to verify cycle tracker module exists."""
     assert CycleState is not None
