@@ -16,6 +16,10 @@ allowed_tags = ["feat", "fix", "docs", "style", "refactor", "perf", "test", "cho
 minor_tags = ["feat"]
 patch_tags = ["fix", "perf"]
 
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
 [project]
 name = "adaptive-thermostat"
 version = "0.2.1"
