@@ -1,6 +1,282 @@
 # CHANGELOG
 
 
+## v0.3.0 (2026-01-14)
+
+### Bug Fixes
+
+- Instantiate system-wide sensors (WeeklyCostSensor, TotalPowerSensor)
+  ([`314c1c5`](https://github.com/afewyards/ha-adaptive-thermostat/commit/314c1c520b4d2a04aee8cff7d41795a39132259c))
+
+WeeklyCostSensor and TotalPowerSensor classes existed but were never created during initialization.
+  This caused weekly reports to show "N/A (no meter data)" even when energy_meter_entity was
+  configured.
+
+Now creates these sensors during first zone setup using domain-level energy_meter_entity and
+  energy_cost_entity configuration.
+
+- Remove incorrect @dataclass decorator from CycleTrackerManager
+  ([`4e6316c`](https://github.com/afewyards/ha-adaptive-thermostat/commit/4e6316c3b494b5feaad061522837354f7404087c))
+
+The CycleTrackerManager class had both @dataclass decorator and a custom __init__ method, which is
+  incorrect. Removed the @dataclass decorator and unused dataclasses import since the class
+  implements its own initialization logic.
+
+### Chores
+
+- Alter gitignore
+  ([`440af85`](https://github.com/afewyards/ha-adaptive-thermostat/commit/440af85adfc36eaf8472753826fcb0517fe6d7ba))
+
+### Documentation
+
+- Add Mermaid diagrams to CLAUDE.md and track in git
+  ([`bded612`](https://github.com/afewyards/ha-adaptive-thermostat/commit/bded612d04d9ee8dd767ca8ad1c1c18268a8d743))
+
+- Add visual flowchart for main control loop (temperature → PID → heater) - Add initialization flow
+  diagram showing manager setup sequence - Add cycle tracking state machine diagram
+  (IDLE→HEATING→SETTLING) - Add multi-zone coordination sequence diagram - Remove CLAUDE.md from
+  .gitignore to track documentation
+
+### Features
+
+- Add calculate_rise_time() function for cycle metrics
+  ([`084dd70`](https://github.com/afewyards/ha-adaptive-thermostat/commit/084dd700c4da721505d947422be2169b3facf735))
+
+Implements calculate_rise_time() to measure heating system responsiveness. The function calculates
+  the time required for temperature to rise from start to target, with configurable tolerance for
+  target detection.
+
+- Added calculate_rise_time() to adaptive/cycle_analysis.py - Accepts temperature_history,
+  start_temp, target_temp, threshold params - Returns rise time in minutes or None if target never
+  reached - Comprehensive docstring with usage example
+
+Tests: - Added 10 comprehensive tests covering normal rise, never reached, insufficient data,
+  already at target, threshold variations, slow/fast rise, overshoot, and edge cases - All 661 tests
+  pass
+
+Related to feature 1.1 (infrastructure) in learning plan.
+
+- Add cycle_history property to AdaptiveLearner
+  ([`4085681`](https://github.com/afewyards/ha-adaptive-thermostat/commit/40856814b55662c33788092f80c9187ab2094690))
+
+Add getter and setter property for cycle_history to enable external access to cycle metrics data
+  while maintaining encapsulation. The setter is primarily intended for testing purposes.
+
+- Add heating event handlers to CycleTrackerManager
+  ([`76379f2`](https://github.com/afewyards/ha-adaptive-thermostat/commit/76379f200155b7737e09c6044426ff7da5e4ef5d))
+
+Implements on_heating_started() and on_heating_stopped() methods to manage cycle state transitions
+  (IDLE -> HEATING -> SETTLING) with settling timeout.
+
+- Create CycleTrackerManager class foundation
+  ([`f373d50`](https://github.com/afewyards/ha-adaptive-thermostat/commit/f373d5065a97441de5a3cb1c3b9e1ef2b56cfd3e))
+
+Add CycleTrackerManager class to track heating cycles and collect temperature data for adaptive PID
+  tuning. This manager implements a state machine (IDLE -> HEATING -> SETTLING) and provides the
+  foundation for cycle metrics calculation.
+
+- Create managers/cycle_tracker.py with CycleTrackerManager class - Define CycleState enum (IDLE,
+  HEATING, SETTLING) - Implement initialization with callbacks for temp/mode getters - Add state
+  tracking variables and constants - Export CycleState and CycleTrackerManager from managers module
+
+- Handle contact sensor interruptions in cycle tracking
+  ([`c3a82da`](https://github.com/afewyards/ha-adaptive-thermostat/commit/c3a82da4814d2509bc4c7dad45a9ef29c2909b11))
+
+Implemented on_contact_sensor_pause() method in CycleTrackerManager to abort active heating cycles
+  when windows or doors are opened. This prevents recording invalid cycle data from interrupted
+  heating sessions.
+
+- Added on_contact_sensor_pause() method to CycleTrackerManager - Aborts cycles in HEATING or
+  SETTLING states - Clears temperature history and cycle data - Cancels settling timeout if active -
+  Transitions to IDLE state - Integrated cycle tracker notification in climate.py contact sensor
+  pause handler - Notifies tracker before pausing heating (line 1928-1929) - Added comprehensive
+  tests for contact sensor edge cases - test_contact_sensor_aborts_cycle: Verifies cycle abortion
+  during active states - test_contact_sensor_pause_in_idle_no_effect: Verifies no-op in IDLE state
+
+All 691 tests pass (2 new tests added, 0 regressions)
+
+- Handle HVAC mode changes in cycle tracking
+  ([`21f72a7`](https://github.com/afewyards/ha-adaptive-thermostat/commit/21f72a7d3831c28effff3025b2b35e94cc2a1380))
+
+- Add on_mode_changed() method to CycleTrackerManager - Abort cycles when mode changes from HEAT to
+  OFF or COOL - Integrate mode change notification in climate.py - Add 4 comprehensive tests for
+  mode change handling
+
+- Handle setpoint changes during active cycles
+  ([`7c1ea1a`](https://github.com/afewyards/ha-adaptive-thermostat/commit/7c1ea1af2348cf98d818ecdc0c3b7123ffc9580f))
+
+Implement edge case handling for setpoint changes that occur during active heating cycles. When a
+  user changes the target temperature mid-cycle, the cycle is aborted to prevent recording invalid
+  metrics.
+
+- Add on_setpoint_changed() method to CycleTrackerManager - Aborts cycle if in HEATING or SETTLING
+  state - Clears temperature history and cycle data - Cancels settling timeout if active -
+  Transitions to IDLE state - Logs setpoint change with old/new temperatures
+
+- Integrate setpoint change tracking in climate.py - Modify _set_target_temp() to track old
+  temperature - Notify cycle tracker when setpoint changes - Only triggers when temperature actually
+  changes
+
+- Add comprehensive tests for edge case handling - Test setpoint change aborts cycle during HEATING
+  - Test setpoint change aborts cycle during SETTLING - Test setpoint change in IDLE has no effect
+
+All 689 tests pass (3 new tests added, 0 regressions)
+
+- Implement cycle validation and metrics calculation
+  ([`98d93d7`](https://github.com/afewyards/ha-adaptive-thermostat/commit/98d93d724f6f0c36e86f9aceb273b6385869f781))
+
+Add cycle validation logic to CycleTrackerManager: - Check minimum duration (5 minutes) - Check
+  learning grace period - Check sufficient temperature samples (>= 5)
+
+Implement complete metrics calculation in _finalize_cycle: - Calculate all 5 metrics: overshoot,
+  undershoot, settling_time, oscillations, rise_time - Record metrics with adaptive learner - Update
+  convergence tracking for PID tuning - Log cycle completion with all metrics
+
+Add comprehensive test coverage: - Test cycle validation rules - Test metrics calculation - Test
+  invalid cycle rejection
+
+- Implement temperature collection and settling detection
+  ([`2de7d5b`](https://github.com/afewyards/ha-adaptive-thermostat/commit/2de7d5b5d6bb8aae77640659f6c6996f95781c2f))
+
+Add temperature collection during HEATING and SETTLING states with automatic settling detection
+  based on temperature stability.
+
+Implementation: - Add update_temperature() method to collect samples during active cycles - Add
+  _is_settling_complete() to detect stable temperatures - Add _finalize_cycle() stub for cycle
+  completion (full metrics in 2.3) - Settling requires 10+ samples, variance < 0.01, within 0.5°C of
+  target - 120-minute settling timeout for edge cases
+
+Testing: - Add 8 comprehensive tests for temperature collection and settling - All 677 tests pass (8
+  new, 0 regressions) - Verify state transitions and timeout behavior
+
+- Integrate CycleTracker with HeaterController
+  ([`6c61692`](https://github.com/afewyards/ha-adaptive-thermostat/commit/6c61692c92bb43ea3d7ce9bbce19381d28d8fefa))
+
+- Add cycle tracker notifications in async_turn_on() and async_turn_off() - Track valve state
+  transitions in async_set_valve_value() for non-PWM mode - Support both PWM (on/off) and valve
+  (0-100%) heating devices - Add TestCycleTrackerValveMode with 2 tests for integration verification
+  - All 685 tests passing
+
+- Integrate CycleTrackerManager with climate entity
+  ([`5052577`](https://github.com/afewyards/ha-adaptive-thermostat/commit/50525775acc28407f4fde66b2a94b58995bd452e))
+
+- Add CycleTrackerManager import to climate.py - Add _cycle_tracker instance variable declaration -
+  Initialize cycle tracker in async_added_to_hass after Ke controller - Retrieve adaptive_learner
+  from coordinator zone data - Pass lambda callbacks for target_temp, current_temp, hvac_mode,
+  grace_period - Log successful initialization - All 685 tests pass with no regressions
+
+- Integrate temperature updates into control loop
+  ([`da2bf28`](https://github.com/afewyards/ha-adaptive-thermostat/commit/da2bf281bf8dcf652581c50bd808fd1294dfdb88))
+
+- Add datetime import to climate.py for cycle tracking timestamps - Integrate cycle tracker
+  temperature updates in _async_control_heating() - Temperature samples automatically collected
+  after PID calc_output() - Add safety checks for cycle_tracker existence and current_temp validity
+  - Add test for temperature update integration in control loop - All 686 tests passing (1 new test
+  added)
+
+### Refactoring
+
+- Extract CentralController to separate module
+  ([`95e4cef`](https://github.com/afewyards/ha-adaptive-thermostat/commit/95e4cef70beeed13cf9a59f6e0321166493d0689))
+
+Move CentralController class and related constants from coordinator.py to new central_controller.py
+  file. Re-export from coordinator.py for backward compatibility. Update tests to patch the correct
+  module.
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+- Extract cycle analysis functions to separate module
+  ([`613b510`](https://github.com/afewyards/ha-adaptive-thermostat/commit/613b510ba32a4aca1bb8751199bcc88bd7fc7f13))
+
+Move PhaseAwareOvershootTracker, CycleMetrics, and related functions (calculate_overshoot,
+  calculate_undershoot, count_oscillations, calculate_settling_time) from learning.py to new
+  cycle_analysis.py module.
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+- Extract energy sensors to separate module
+  ([`d885dd8`](https://github.com/afewyards/ha-adaptive-thermostat/commit/d885dd83b3264149090fb0217f50f09ca056fe7b))
+
+Move PowerPerM2Sensor, HeatOutputSensor, TotalPowerSensor, and WeeklyCostSensor from sensor.py to
+  sensors/energy.py as part of ongoing refactoring to improve code organization.
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+- Extract health sensor to separate module
+  ([`e78271c`](https://github.com/afewyards/ha-adaptive-thermostat/commit/e78271c370767f75cb37dbebf8b7e2679a079a8c))
+
+Move SystemHealthSensor class from sensor.py to sensors/health.py. Update sensor.py to be a lean
+  entry point with re-exports for backward compatibility.
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+- Extract heater controller to managers/heater_controller.py
+  ([`6e613f3`](https://github.com/afewyards/ha-adaptive-thermostat/commit/6e613f348492f7ac49d65b337edb7ed982e02ac7))
+
+Create new managers/ directory and extract HeaterController class from climate.py. This moves
+  heater/cooler control logic into a dedicated manager class, improving code organization and
+  maintainability.
+
+HeaterController handles: - Device on/off control (PWM and toggle modes) - Valve value control for
+  non-PWM devices - PWM switching logic - Service call error handling - Control failure event firing
+
+The climate.py delegates to HeaterController when available, with fallback logic for startup before
+  the controller is initialized. Setter callbacks allow HeaterController to update thermostat state.
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+- Extract Ke learning controller to managers/ke_manager.py
+  ([`7307924`](https://github.com/afewyards/ha-adaptive-thermostat/commit/7307924f4269a92ed4eaad1b01f5dabc99c3ac28))
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+- Extract night setback controller to managers/night_setback_manager.py
+  ([`d362aed`](https://github.com/afewyards/ha-adaptive-thermostat/commit/d362aed1615e1f60399331d9bf31c911adaf8b37))
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+- Extract performance sensors to separate module
+  ([`037c574`](https://github.com/afewyards/ha-adaptive-thermostat/commit/037c5741a3ca6f0bf89b143f7adf69bf88f8f40c))
+
+Create sensors/ directory and move performance-related sensor classes: - HeaterStateChange dataclass
+  - AdaptiveThermostatSensor base class - DutyCycleSensor, CycleTimeSensor, OvershootSensor -
+  SettlingTimeSensor, OscillationsSensor
+
+Maintain backward compatibility via re-exports in sensor.py.
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+- Extract scheduled tasks to services/scheduled.py
+  ([`fe168cc`](https://github.com/afewyards/ha-adaptive-thermostat/commit/fe168cc4fba1ddb3bfcd0a6127cdeffcdf7bcedc))
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+- Extract temperature manager to managers/temperature_manager.py
+  ([`bb956b1`](https://github.com/afewyards/ha-adaptive-thermostat/commit/bb956b1230beeaffcc4bb01c3f1dc34927b5dede))
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+- Extract ThermalRateLearner to separate module
+  ([`75fa04c`](https://github.com/afewyards/ha-adaptive-thermostat/commit/75fa04ca6df88d984ed4978bd63b2e21ee6405a7))
+
+Move ThermalRateLearner class from learning.py to dedicated thermal_rates.py file for better code
+  organization. Add backward compatible re-export from learning.py and export from
+  adaptive/__init__.py. Also add pytest pythonpath configuration to pyproject.toml.
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+### Testing
+
+- Add integration tests for cycle learning flow
+  ([`7b43cc2`](https://github.com/afewyards/ha-adaptive-thermostat/commit/7b43cc2893f89cbd68f1681b7816d23b646ce765))
+
+- Create tests/test_integration_cycle_learning.py with 8 comprehensive tests - Test complete heating
+  cycle with realistic temperature progression - Test multiple cycles recorded sequentially (3
+  back-to-back) - Test cycle abortion scenarios: setpoint changes, contact sensors - Test vacation
+  mode: cycles complete but not recorded - Test PWM mode on/off cycling - Test valve mode 0-100%
+  transitions - All 703 tests pass (8 new, 0 regressions)
+
+
 ## v0.2.1 (2026-01-14)
 
 ### Bug Fixes
