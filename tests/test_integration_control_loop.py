@@ -32,6 +32,7 @@ sys.modules['homeassistant.helpers.update_coordinator'].DataUpdateCoordinator = 
 
 # Import modules under test
 import coordinator
+import central_controller as central_controller_module
 import pid_controller
 
 
@@ -199,7 +200,7 @@ async def test_control_loop_satisfied_turns_off_heater(
     Flow: temp at setpoint -> PID calc (low output) -> no demand -> heater OFF
     """
     # Use short debounce for test
-    monkeypatch.setattr(coordinator, "TURN_OFF_DEBOUNCE_SECONDS", 0.1)
+    monkeypatch.setattr(central_controller_module, "TURN_OFF_DEBOUNCE_SECONDS", 0.1)
 
     # Setup: Heater is ON, temp has reached setpoint
     state_registry.set_state("switch.main_boiler", "on")
@@ -260,7 +261,7 @@ async def test_multi_zone_demand_aggregation(
     4. Zone B satisfied -> heater OFF
     """
     # Use short debounce for test
-    monkeypatch.setattr(coordinator, "TURN_OFF_DEBOUNCE_SECONDS", 0.1)
+    monkeypatch.setattr(central_controller_module, "TURN_OFF_DEBOUNCE_SECONDS", 0.1)
 
     state_registry.set_state("switch.main_boiler", "off")
     mock_hass.states.get = state_registry.get_state

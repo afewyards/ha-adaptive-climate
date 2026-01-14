@@ -44,6 +44,7 @@ sys.modules['homeassistant.helpers.update_coordinator'].DataUpdateCoordinator = 
 
 # Import coordinator module
 import coordinator
+import central_controller
 
 
 @pytest.fixture
@@ -98,7 +99,7 @@ async def test_heater_on_when_zone_demands(mock_hass, coord):
 async def test_heater_off_when_no_demand(mock_hass, coord, monkeypatch):
     """Test heater turns off when no zone has demand (after debounce)."""
     # Use short debounce for test
-    monkeypatch.setattr(coordinator, "TURN_OFF_DEBOUNCE_SECONDS", 0.1)
+    monkeypatch.setattr(central_controller, "TURN_OFF_DEBOUNCE_SECONDS", 0.1)
 
     # Create controller
     controller = coordinator.CentralController(
@@ -781,8 +782,8 @@ async def test_unexpected_exception_triggers_retry(mock_hass, coord):
 async def test_turn_off_also_uses_retry_logic(mock_hass, coord, monkeypatch):
     """Test turn_off also uses retry logic when it fails."""
     # Use short debounce and retry delays for test
-    monkeypatch.setattr(coordinator, "TURN_OFF_DEBOUNCE_SECONDS", 0.1)
-    monkeypatch.setattr(coordinator, "BASE_RETRY_DELAY_SECONDS", 0.05)
+    monkeypatch.setattr(central_controller, "TURN_OFF_DEBOUNCE_SECONDS", 0.1)
+    monkeypatch.setattr(central_controller, "BASE_RETRY_DELAY_SECONDS", 0.05)
 
     controller = coordinator.CentralController(
         mock_hass,
@@ -947,7 +948,7 @@ async def test_multiple_heaters_all_turn_on(mock_hass, coord):
 async def test_multiple_heaters_all_turn_off(mock_hass, coord, monkeypatch):
     """Test all heaters in a list turn off when no demand (after debounce)."""
     # Use short debounce for test
-    monkeypatch.setattr(coordinator, "TURN_OFF_DEBOUNCE_SECONDS", 0.1)
+    monkeypatch.setattr(central_controller, "TURN_OFF_DEBOUNCE_SECONDS", 0.1)
 
     controller = coordinator.CentralController(
         mock_hass,
@@ -1266,7 +1267,7 @@ async def test_turnoff_debounce_cancels_on_demand_return(mock_hass, coord, monke
     HA restart would turn off the heater immediately.
     """
     # Use short debounce for test
-    monkeypatch.setattr(coordinator, "TURN_OFF_DEBOUNCE_SECONDS", 0.5)
+    monkeypatch.setattr(central_controller, "TURN_OFF_DEBOUNCE_SECONDS", 0.5)
 
     controller = coordinator.CentralController(
         mock_hass,
