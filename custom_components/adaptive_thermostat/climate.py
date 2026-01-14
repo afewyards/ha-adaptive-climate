@@ -75,7 +75,7 @@ from . import DOMAIN, PLATFORMS
 from . import const
 from . import pid_controller
 from .adaptive.learning import AdaptiveLearner, ThermalRateLearner
-from .managers import HeaterController
+from .managers import HeaterController, NightSetbackController
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -459,6 +459,9 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         # Heater controller (initialized in async_added_to_hass when hass is available)
         self._heater_controller: HeaterController | None = None
 
+        # Night setback controller (initialized in async_added_to_hass when hass is available)
+        self._night_setback_controller: NightSetbackController | None = None
+
         # Heater control failure tracking (managed by HeaterController when available)
         self._heater_control_failed = False
         self._last_heater_error: str | None = None
@@ -532,6 +535,23 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
             min_on_cycle_duration=self._min_on_cycle_duration.seconds,
             min_off_cycle_duration=self._min_off_cycle_duration.seconds,
         )
+
+        # Initialize night setback controller now that hass is available
+        if self._night_setback or self._night_setback_config:
+            self._night_setback_controller = NightSetbackController(
+                hass=self.hass,
+                entity_id=self.entity_id,
+                night_setback=self._night_setback,
+                night_setback_config=self._night_setback_config,
+                solar_recovery=self._solar_recovery,
+                window_orientation=self._window_orientation,
+                get_target_temp=lambda: self._target_temp,
+                get_current_temp=lambda: self._current_temp,
+            )
+            _LOGGER.info(
+                "%s: Night setback controller initialized",
+                self.entity_id
+            )
 
         # Configure zone linking if linked zones are defined
         if self._linked_zones:
@@ -951,6 +971,9 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
     @property
     def in_learning_grace_period(self) -> bool:
         """Check if learning should be paused due to recent night setback transition."""
+        if self._night_setback_controller:
+            return self._night_setback_controller.in_learning_grace_period
+        # Fallback for backward compatibility when controller not initialized
         if self._learning_grace_until is None:
             return False
         from datetime import datetime
@@ -958,12 +981,16 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
 
     def _set_learning_grace_period(self, minutes: int = 60):
         """Set a grace period to pause learning after night setback transitions."""
-        from datetime import datetime, timedelta
-        self._learning_grace_until = datetime.now() + timedelta(minutes=minutes)
-        _LOGGER.info(
-            "%s: Learning grace period set for %d minutes (until %s)",
-            self.entity_id, minutes, self._learning_grace_until.strftime("%H:%M")
-        )
+        if self._night_setback_controller:
+            self._night_setback_controller.set_learning_grace_period(minutes)
+        else:
+            # Fallback for backward compatibility when controller not initialized
+            from datetime import datetime, timedelta
+            self._learning_grace_until = datetime.now() + timedelta(minutes=minutes)
+            _LOGGER.info(
+                "%s: Learning grace period set for %d minutes (until %s)",
+                self.entity_id, minutes, self._learning_grace_until.strftime("%H:%M")
+            )
 
     def _get_sunrise_time(self):
         """Get sunrise time from Home Assistant sun component (local time)."""
@@ -1126,6 +1153,11 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
             - in_night_period: Whether we are currently in the night setback period
             - night_setback_info: Dict with additional info for state attributes
         """
+        # Delegate to controller if available
+        if self._night_setback_controller:
+            return self._night_setback_controller.calculate_night_setback_adjustment(current_time)
+
+        # Fallback implementation for backward compatibility (before async_added_to_hass)
         from datetime import datetime, time as dt_time
 
         if current_time is None:
@@ -1307,7 +1339,14 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         # Learning grace period (after night setback transitions)
         if self.in_learning_grace_period:
             device_state_attributes["learning_paused"] = True
-            device_state_attributes["learning_resumes"] = self._learning_grace_until.strftime("%H:%M")
+            # Get learning_grace_until from controller if available, else fall back to instance var
+            grace_until = (
+                self._night_setback_controller.learning_grace_until
+                if self._night_setback_controller
+                else self._learning_grace_until
+            )
+            if grace_until:
+                device_state_attributes["learning_resumes"] = grace_until.strftime("%H:%M")
 
         # Zone linking status
         if self._zone_linker:
