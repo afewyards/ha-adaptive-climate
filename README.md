@@ -57,8 +57,6 @@ climate:
     min_temp: 7
     max_temp: 28
     target_temp: 20
-    keep_alive:
-      seconds: 60
 ```
 
 PID values are automatically calculated from `heating_type` and `area_m2`, then refined through adaptive learning. No manual tuning required.
@@ -74,8 +72,6 @@ climate:
     min_temp: 7
     max_temp: 28
     target_temp: 20
-    keep_alive:
-      seconds: 60
 
     # Zone properties for physics-based PID initialization
     heating_type: floor_hydronic  # floor_hydronic, radiator, convector, forced_air
@@ -111,8 +107,6 @@ climate:
     target_temp: 22
     hot_tolerance: 0.5
     cold_tolerance: 0.5
-    keep_alive:
-      seconds: 60
 ```
 
 ### Valve Control Example
@@ -128,8 +122,6 @@ climate:
     min_temp: 16
     max_temp: 28
     target_temp: 21
-    keep_alive:
-      seconds: 60
 ```
 
 Unlike `heater` (active only in heat mode) or `cooler` (active only in cool mode), `demand_switch` is controlled in both modes—useful when the same valve regulates flow from a shared hot/cold source.
@@ -142,8 +134,6 @@ climate:
     heater: switch.heating_bedroom
     target_sensor: sensor.temp_bedroom
     window_orientation: south  # Required for dynamic end time
-    keep_alive:
-      seconds: 60
 
     # Night setback configuration
     night_setback:
@@ -405,7 +395,7 @@ For thermally connected zones (e.g., open floor plan):
 ### Timing & Cycle Parameters
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
-| `keep_alive` | Yes | - | Interval to refresh heater state |
+| `control_interval` | No | Auto | Control loop interval (auto-derived from `sampling_period` or 60s default) |
 | `pwm` | No | 00:15:00 | PWM period (set to 0 for valves) |
 | `min_cycle_duration` | No | 00:00:00 | Minimum heater on-time |
 | `min_off_cycle_duration` | No | - | Minimum heater off-time |

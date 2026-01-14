@@ -6,6 +6,7 @@ import asyncio
 import logging
 import time
 from abc import ABC
+from datetime import timedelta
 
 import voluptuous as vol
 
@@ -101,7 +102,7 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
             cv.time_period, cv.positive_timedelta),
         vol.Optional(const.CONF_MIN_OFF_CYCLE_DURATION_PID_OFF): vol.All(
             cv.time_period, cv.positive_timedelta),
-        vol.Required(const.CONF_KEEP_ALIVE): vol.All(cv.time_period, cv.positive_timedelta),
+        vol.Optional(const.CONF_CONTROL_INTERVAL): vol.All(cv.time_period, cv.positive_timedelta),
         vol.Optional(const.CONF_SAMPLING_PERIOD, default=const.DEFAULT_SAMPLING_PERIOD): vol.All(
             cv.time_period, cv.positive_timedelta),
         vol.Optional(const.CONF_SENSOR_STALL, default=const.DEFAULT_SENSOR_STALL): vol.All(
@@ -192,7 +193,7 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         'min_off_cycle_duration': config.get(const.CONF_MIN_OFF_CYCLE_DURATION),
         'min_cycle_duration_pid_off': config.get(const.CONF_MIN_CYCLE_DURATION_PID_OFF),
         'min_off_cycle_duration_pid_off': config.get(const.CONF_MIN_OFF_CYCLE_DURATION_PID_OFF),
-        'keep_alive': config.get(const.CONF_KEEP_ALIVE),
+        'control_interval': config.get(const.CONF_CONTROL_INTERVAL),
         'sampling_period': config.get(const.CONF_SAMPLING_PERIOD),
         'sensor_stall': config.get(const.CONF_SENSOR_STALL),
         'output_safety': config.get(const.CONF_OUTPUT_SAFETY),
@@ -293,7 +294,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
             self._unique_id = slugify(f"{DOMAIN}_{self._name}_{self._heater_entity_id}")
         self._ac_mode = kwargs.get('ac_mode', False)
         self._force_off_state = kwargs.get('force_off_state', True)
-        self._keep_alive = kwargs.get('keep_alive')
+        self._control_interval = kwargs.get('control_interval')
         self._sampling_period = kwargs.get('sampling_period').seconds
         self._sensor_stall = kwargs.get('sensor_stall').seconds
         self._output_safety = kwargs.get('output_safety')
@@ -618,13 +619,19 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
             # Initialize contact sensor states on startup
             self._update_contact_sensor_states()
 
-        # Keep-alive interval timer
-        if self._keep_alive:
-            self.async_on_remove(
-                async_track_time_interval(
-                    self.hass,
-                    self._async_control_heating,
-                    self._keep_alive))
+        # Control loop interval timer
+        # Derive interval: explicit control_interval > sampling_period > default 60s
+        if self._control_interval:
+            control_interval = self._control_interval
+        elif self._sampling_period > 0:
+            control_interval = timedelta(seconds=self._sampling_period)
+        else:
+            control_interval = timedelta(seconds=const.DEFAULT_CONTROL_INTERVAL)
+        self.async_on_remove(
+            async_track_time_interval(
+                self.hass,
+                self._async_control_heating,
+                control_interval))
 
         # Startup callback to initialize sensor values
         @callback
@@ -1829,7 +1836,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
             return
 
         if self._is_device_active:
-            # It's a state refresh call from keep_alive, just force switch ON.
+            # It's a state refresh call from control interval, just force switch ON.
             _LOGGER.info("%s: Refresh state ON %s", self.entity_id,
                          ", ".join([entity for entity in self.heater_or_cooler_entity]))
         elif time.time() - self._get_cycle_start_time() >= self._min_off_cycle_duration.seconds:
@@ -1860,7 +1867,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
     async def _async_heater_turn_off(self, force=False):
         """Turn heater toggleable device off."""
         if not self._is_device_active:
-            # It's a state refresh call from keep_alive, just force switch OFF.
+            # It's a state refresh call from control interval, just force switch OFF.
             _LOGGER.info("%s: Refresh state OFF %s", self.entity_id,
                          ", ".join([entity for entity in self.heater_or_cooler_entity]))
         elif time.time() - self._get_cycle_start_time() >= self._min_on_cycle_duration.seconds or force:
@@ -2031,8 +2038,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                     ", ".join([entity for entity in self.heater_or_cooler_entity]),
                     int(time_on - time_passed)
                 )
-                if self._keep_alive:
-                    await self._async_heater_turn_on()
+                await self._async_heater_turn_on()
         else:
             if time_off <= time_passed or self._force_on:
                 _LOGGER.info(
@@ -2047,7 +2053,6 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                     ", ".join([entity for entity in self.heater_or_cooler_entity]),
                     int(time_off - time_passed)
                 )
-                if self._keep_alive:
-                    await self._async_heater_turn_off()
+                await self._async_heater_turn_off()
         self._force_on = False
         self._force_off = False

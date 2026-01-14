@@ -1054,7 +1054,7 @@ class MockAdaptiveThermostatForStateRestore:
         self._heater_entity_id = ["switch.heater"]
         self._cooler_entity_id = None
         self._demand_switch_entity_id = None
-        self._keep_alive = None
+        self._control_interval = None
         self._min_temp = 7
         self._max_temp = 35
 

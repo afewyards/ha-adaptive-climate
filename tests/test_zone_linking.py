@@ -478,7 +478,7 @@ def test_integration_multiple_heating_starts_dont_re_notify(zone_linker):
     # Wait a small amount
     time.sleep(0.05)
 
-    # Second turn_on call (like keep_alive refresh) - should not re-notify
+    # Second turn_on call (like control interval refresh) - should not re-notify
     # because _is_heating is already True
     run_async(living_room._async_heater_turn_on())
 
