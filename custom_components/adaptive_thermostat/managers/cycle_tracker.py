@@ -7,7 +7,6 @@ collects temperature data, and calculates metrics for adaptive PID tuning.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Callable
@@ -27,7 +26,6 @@ class CycleState(Enum):
     SETTLING = "settling"
 
 
-@dataclass
 class CycleTrackerManager:
     """Manages heating cycle tracking and metrics collection.
 
