@@ -1,0 +1,319 @@
+"""Cycle analysis functions and classes for Adaptive Thermostat.
+
+This module provides tools for analyzing heating cycle performance metrics
+including overshoot detection, undershoot calculation, oscillation counting,
+and settling time analysis.
+"""
+
+from datetime import datetime
+from typing import List, Optional, Tuple
+import logging
+
+_LOGGER = logging.getLogger(__name__)
+
+
+class PhaseAwareOvershootTracker:
+    """
+    Track temperature phases (rise vs settling) for accurate overshoot detection.
+
+    Overshoot should only be measured in the settling phase, which begins after
+    the temperature first crosses the setpoint. This prevents false overshoot
+    readings during the rise phase.
+    """
+
+    # Phase constants
+    PHASE_RISE = "rise"
+    PHASE_SETTLING = "settling"
+
+    def __init__(self, setpoint: float, tolerance: float = 0.05):
+        """
+        Initialize the phase-aware overshoot tracker.
+
+        Args:
+            setpoint: Target temperature in degrees C
+            tolerance: Small tolerance band for detecting setpoint crossing (default 0.05C)
+        """
+        self._setpoint = setpoint
+        self._tolerance = tolerance
+        self._phase = self.PHASE_RISE
+        self._setpoint_crossed = False
+        self._crossing_timestamp: Optional[datetime] = None
+        self._max_settling_temp: Optional[float] = None
+        self._settling_temps: List[Tuple[datetime, float]] = []
+
+    @property
+    def setpoint(self) -> float:
+        """Get the current setpoint."""
+        return self._setpoint
+
+    @property
+    def phase(self) -> str:
+        """Get the current phase (rise or settling)."""
+        return self._phase
+
+    @property
+    def setpoint_crossed(self) -> bool:
+        """Check if the setpoint has been crossed."""
+        return self._setpoint_crossed
+
+    @property
+    def crossing_timestamp(self) -> Optional[datetime]:
+        """Get the timestamp when setpoint was first crossed."""
+        return self._crossing_timestamp
+
+    def reset(self, new_setpoint: Optional[float] = None) -> None:
+        """
+        Reset tracking state. Call when setpoint changes.
+
+        Args:
+            new_setpoint: Optional new setpoint value. If None, keeps current setpoint.
+        """
+        if new_setpoint is not None:
+            self._setpoint = new_setpoint
+        self._phase = self.PHASE_RISE
+        self._setpoint_crossed = False
+        self._crossing_timestamp = None
+        self._max_settling_temp = None
+        self._settling_temps.clear()
+        _LOGGER.debug(f"Overshoot tracker reset, setpoint: {self._setpoint}°C")
+
+    def update(self, timestamp: datetime, temperature: float) -> None:
+        """
+        Update tracker with a new temperature reading.
+
+        Args:
+            timestamp: Time of the reading
+            temperature: Current temperature in degrees C
+        """
+        # Check for setpoint crossing (rise phase -> settling phase)
+        if self._phase == self.PHASE_RISE:
+            # Temperature has crossed or reached setpoint (with tolerance)
+            if temperature >= self._setpoint - self._tolerance:
+                self._phase = self.PHASE_SETTLING
+                self._setpoint_crossed = True
+                self._crossing_timestamp = timestamp
+                _LOGGER.debug(
+                    f"Setpoint crossed at {timestamp}, temp={temperature:.2f}°C, "
+                    f"setpoint={self._setpoint:.2f}°C - entering settling phase"
+                )
+
+        # Track maximum temperature in settling phase
+        if self._phase == self.PHASE_SETTLING:
+            self._settling_temps.append((timestamp, temperature))
+            if self._max_settling_temp is None or temperature > self._max_settling_temp:
+                self._max_settling_temp = temperature
+
+    def get_overshoot(self) -> Optional[float]:
+        """
+        Calculate overshoot based on settling phase data.
+
+        Returns:
+            Overshoot in degrees C (positive values only), or None if:
+            - Setpoint was never crossed (still in rise phase)
+            - No settling phase data available
+        """
+        # No overshoot if setpoint was never reached
+        if not self._setpoint_crossed:
+            _LOGGER.debug("No overshoot: setpoint was never crossed")
+            return None
+
+        if self._max_settling_temp is None:
+            return None
+
+        overshoot = self._max_settling_temp - self._setpoint
+        return max(0.0, overshoot)
+
+    def get_settling_temps(self) -> List[Tuple[datetime, float]]:
+        """
+        Get all temperature readings from the settling phase.
+
+        Returns:
+            List of (timestamp, temperature) tuples from settling phase
+        """
+        return list(self._settling_temps)
+
+
+class CycleMetrics:
+    """Container for heating cycle performance metrics."""
+
+    def __init__(
+        self,
+        overshoot: Optional[float] = None,
+        undershoot: Optional[float] = None,
+        settling_time: Optional[float] = None,
+        oscillations: int = 0,
+        rise_time: Optional[float] = None,
+    ):
+        """
+        Initialize cycle metrics.
+
+        Args:
+            overshoot: Maximum overshoot in °C
+            undershoot: Maximum undershoot in °C
+            settling_time: Settling time in minutes
+            oscillations: Number of oscillations around target
+            rise_time: Time to reach target from start in minutes
+        """
+        self.overshoot = overshoot
+        self.undershoot = undershoot
+        self.settling_time = settling_time
+        self.oscillations = oscillations
+        self.rise_time = rise_time
+
+
+def calculate_overshoot(
+    temperature_history: List[Tuple[datetime, float]],
+    target_temp: float,
+    phase_aware: bool = True
+) -> Optional[float]:
+    """
+    Calculate maximum overshoot beyond target temperature.
+
+    Args:
+        temperature_history: List of (timestamp, temperature) tuples
+        target_temp: Target temperature in °C
+        phase_aware: If True, only calculate overshoot from settling phase
+                    (after setpoint is first crossed). Default True.
+
+    Returns:
+        Overshoot in °C (positive values only), or None if:
+        - No data provided
+        - phase_aware=True and setpoint was never reached
+    """
+    if not temperature_history:
+        return None
+
+    if not phase_aware:
+        # Legacy behavior: max temp minus setpoint
+        max_temp = max(temp for _, temp in temperature_history)
+        overshoot = max_temp - target_temp
+        return max(0.0, overshoot)
+
+    # Phase-aware calculation: only consider temps after setpoint crossing
+    tracker = PhaseAwareOvershootTracker(target_temp)
+
+    for timestamp, temp in temperature_history:
+        tracker.update(timestamp, temp)
+
+    return tracker.get_overshoot()
+
+
+def calculate_undershoot(
+    temperature_history: List[Tuple[datetime, float]], target_temp: float
+) -> Optional[float]:
+    """
+    Calculate maximum undershoot below target temperature.
+
+    Args:
+        temperature_history: List of (timestamp, temperature) tuples
+        target_temp: Target temperature in °C
+
+    Returns:
+        Undershoot in °C (positive values only), or None if no data
+    """
+    if not temperature_history:
+        return None
+
+    min_temp = min(temp for _, temp in temperature_history)
+    undershoot = target_temp - min_temp
+
+    return max(0.0, undershoot)
+
+
+def count_oscillations(
+    temperature_history: List[Tuple[datetime, float]],
+    target_temp: float,
+    threshold: float = 0.1,
+) -> int:
+    """
+    Count number of oscillations around target temperature.
+
+    Args:
+        temperature_history: List of (timestamp, temperature) tuples
+        target_temp: Target temperature in °C
+        threshold: Hysteresis threshold in °C to avoid counting noise
+
+    Returns:
+        Number of oscillations (crossings of target)
+    """
+    if len(temperature_history) < 2:
+        return 0
+
+    # Track state: None, 'above', or 'below'
+    state = None
+    crossings = 0
+
+    for _, temp in temperature_history:
+        # Determine if above or below target (with threshold)
+        if temp > target_temp + threshold:
+            new_state = "above"
+        elif temp < target_temp - threshold:
+            new_state = "below"
+        else:
+            # Within threshold band, maintain current state
+            new_state = state
+
+        # Check for state change (crossing)
+        if state is not None and new_state != state and new_state is not None:
+            crossings += 1
+
+        if new_state is not None:
+            state = new_state
+
+    return crossings
+
+
+def calculate_settling_time(
+    temperature_history: List[Tuple[datetime, float]],
+    target_temp: float,
+    tolerance: float = 0.2,
+) -> Optional[float]:
+    """
+    Calculate time required for temperature to settle within tolerance band.
+
+    Args:
+        temperature_history: List of (timestamp, temperature) tuples
+        target_temp: Target temperature in °C
+        tolerance: Tolerance band in °C (±)
+
+    Returns:
+        Settling time in minutes, or None if never settles
+    """
+    if len(temperature_history) < 2:
+        return None
+
+    start_time = temperature_history[0][0]
+    settle_index = None
+
+    # Find first entry into tolerance band that persists
+    for i, (timestamp, temp) in enumerate(temperature_history):
+        within_tolerance = abs(temp - target_temp) <= tolerance
+
+        if within_tolerance:
+            # Check if it stays within tolerance
+            # Need at least 3 more samples or until the end
+            remaining = temperature_history[i:]
+            if len(remaining) >= 3:
+                # Check if next samples stay within tolerance
+                stays_settled = all(
+                    abs(t - target_temp) <= tolerance for _, t in remaining[:3]
+                )
+                if stays_settled:
+                    settle_index = i
+                    break
+            elif len(remaining) > 0:
+                # At end of history, check if all remaining stay within tolerance
+                stays_settled = all(
+                    abs(t - target_temp) <= tolerance for _, t in remaining
+                )
+                if stays_settled:
+                    settle_index = i
+                    break
+
+    if settle_index is None:
+        return None
+
+    settle_time = temperature_history[settle_index][0]
+    settling_minutes = (settle_time - start_time).total_seconds() / 60
+
+    return settling_minutes
