@@ -16,6 +16,7 @@ from .energy import (
     TotalPowerSensor,
     WeeklyCostSensor,
 )
+from .health import SystemHealthSensor
 
 __all__ = [
     # Performance sensors
@@ -33,4 +34,6 @@ __all__ = [
     "HeatOutputSensor",
     "TotalPowerSensor",
     "WeeklyCostSensor",
+    # Health sensors
+    "SystemHealthSensor",
 ]
