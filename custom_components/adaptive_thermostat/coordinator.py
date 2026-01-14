@@ -21,6 +21,8 @@ _LOGGER = logging.getLogger(__name__)
 MAX_SERVICE_CALL_RETRIES = 3
 BASE_RETRY_DELAY_SECONDS = 1.0
 CONSECUTIVE_FAILURE_WARNING_THRESHOLD = 3
+# Debounce delay before turning off switches (prevents flickering during restarts)
+TURN_OFF_DEBOUNCE_SECONDS = 10
 
 
 class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
@@ -199,6 +201,10 @@ class CentralController:
         self._heater_waiting_for_startup = False
         self._cooler_waiting_for_startup = False
 
+        # Track turn-off debounce state
+        self._heater_turnoff_task: asyncio.Task | None = None
+        self._cooler_turnoff_task: asyncio.Task | None = None
+
         # Lock to protect startup state from race conditions during concurrent updates
         self._startup_lock = asyncio.Lock()
 
@@ -236,14 +242,16 @@ class CentralController:
         """
         async with self._startup_lock:
             if has_demand:
-                # Zone(s) need heating
-                if not self._heater_waiting_for_startup and not await self._is_any_switch_on(self.main_heater_switch):
-                    # Start heater with delay
+                # Cancel any pending turn-off (demand came back)
+                self._cancel_heater_turnoff_unlocked()
+                # Zone(s) need heating - start if not already waiting and not all switches are on
+                if not self._heater_waiting_for_startup and not await self._are_all_switches_on(self.main_heater_switch):
+                    # Start heater with delay (some switches are off)
                     await self._start_heater_with_delay_unlocked()
             else:
-                # No demand - turn off immediately
+                # No demand - cancel startup and schedule debounced turn-off
                 await self._cancel_heater_startup_unlocked()
-                await self._turn_off_switches(self.main_heater_switch)
+                self._schedule_heater_turnoff_unlocked()
 
     async def _update_cooler(self, has_demand: bool) -> None:
         """Update cooler state based on demand.
@@ -253,14 +261,16 @@ class CentralController:
         """
         async with self._startup_lock:
             if has_demand:
+                # Cancel any pending turn-off (demand came back)
+                self._cancel_cooler_turnoff_unlocked()
                 # Zone(s) need cooling
-                if not self._cooler_waiting_for_startup and not await self._is_any_switch_on(self.main_cooler_switch):
-                    # Start cooler with delay
+                if not self._cooler_waiting_for_startup and not await self._are_all_switches_on(self.main_cooler_switch):
+                    # Start cooler with delay (some switches are off)
                     await self._start_cooler_with_delay_unlocked()
             else:
-                # No demand - turn off immediately
+                # No demand - cancel startup and schedule debounced turn-off
                 await self._cancel_cooler_startup_unlocked()
-                await self._turn_off_switches(self.main_cooler_switch)
+                self._schedule_cooler_turnoff_unlocked()
 
     async def _start_heater_with_delay_unlocked(self) -> None:
         """Start heater after startup delay.
@@ -376,6 +386,96 @@ class CentralController:
         self._cooler_waiting_for_startup = False
         self._cooler_startup_task = None
 
+    def _schedule_heater_turnoff_unlocked(self) -> None:
+        """Schedule a debounced heater turn-off.
+
+        Note: Must be called while holding _startup_lock.
+        """
+        # Don't schedule if already scheduled
+        if self._heater_turnoff_task and not self._heater_turnoff_task.done():
+            return
+
+        _LOGGER.debug(
+            "Scheduling heater turn-off in %d seconds", TURN_OFF_DEBOUNCE_SECONDS
+        )
+        self._heater_turnoff_task = asyncio.create_task(self._delayed_heater_turnoff())
+
+    def _schedule_cooler_turnoff_unlocked(self) -> None:
+        """Schedule a debounced cooler turn-off.
+
+        Note: Must be called while holding _startup_lock.
+        """
+        # Don't schedule if already scheduled
+        if self._cooler_turnoff_task and not self._cooler_turnoff_task.done():
+            return
+
+        _LOGGER.debug(
+            "Scheduling cooler turn-off in %d seconds", TURN_OFF_DEBOUNCE_SECONDS
+        )
+        self._cooler_turnoff_task = asyncio.create_task(self._delayed_cooler_turnoff())
+
+    def _cancel_heater_turnoff_unlocked(self) -> None:
+        """Cancel pending heater turn-off.
+
+        Note: Must be called while holding _startup_lock.
+        """
+        if self._heater_turnoff_task and not self._heater_turnoff_task.done():
+            self._heater_turnoff_task.cancel()
+            _LOGGER.debug("Cancelled pending heater turn-off (demand returned)")
+        self._heater_turnoff_task = None
+
+    def _cancel_cooler_turnoff_unlocked(self) -> None:
+        """Cancel pending cooler turn-off.
+
+        Note: Must be called while holding _startup_lock.
+        """
+        if self._cooler_turnoff_task and not self._cooler_turnoff_task.done():
+            self._cooler_turnoff_task.cancel()
+            _LOGGER.debug("Cancelled pending cooler turn-off (demand returned)")
+        self._cooler_turnoff_task = None
+
+    async def _delayed_heater_turnoff(self) -> None:
+        """Delayed heater turn-off task."""
+        try:
+            await asyncio.sleep(TURN_OFF_DEBOUNCE_SECONDS)
+
+            # Check if we still have no demand (under lock to prevent races)
+            async with self._startup_lock:
+                demand = self.coordinator.get_aggregate_demand()
+                if not demand["heating"]:
+                    await self._turn_off_switches(self.main_heater_switch)
+                    _LOGGER.info(
+                        "Heater turned off after %d second debounce",
+                        TURN_OFF_DEBOUNCE_SECONDS,
+                    )
+                else:
+                    _LOGGER.debug("Heater turn-off cancelled - demand returned")
+        except asyncio.CancelledError:
+            _LOGGER.debug("Heater turn-off cancelled")
+        finally:
+            self._heater_turnoff_task = None
+
+    async def _delayed_cooler_turnoff(self) -> None:
+        """Delayed cooler turn-off task."""
+        try:
+            await asyncio.sleep(TURN_OFF_DEBOUNCE_SECONDS)
+
+            # Check if we still have no demand (under lock to prevent races)
+            async with self._startup_lock:
+                demand = self.coordinator.get_aggregate_demand()
+                if not demand["cooling"]:
+                    await self._turn_off_switches(self.main_cooler_switch)
+                    _LOGGER.info(
+                        "Cooler turned off after %d second debounce",
+                        TURN_OFF_DEBOUNCE_SECONDS,
+                    )
+                else:
+                    _LOGGER.debug("Cooler turn-off cancelled - demand returned")
+        except asyncio.CancelledError:
+            _LOGGER.debug("Cooler turn-off cancelled")
+        finally:
+            self._cooler_turnoff_task = None
+
     async def _is_switch_on(self, entity_id: str) -> bool:
         """Check if a switch is currently on.
 
@@ -404,6 +504,20 @@ class CentralController:
             if await self._is_switch_on(entity_id):
                 return True
         return False
+
+    async def _are_all_switches_on(self, entity_ids: list[str]) -> bool:
+        """Check if all switches in the list are currently on.
+
+        Args:
+            entity_ids: List of entity IDs to check
+
+        Returns:
+            True if all switches are on, False if any is off
+        """
+        for entity_id in entity_ids:
+            if not await self._is_switch_on(entity_id):
+                return False
+        return True
 
     async def _turn_on_switch(self, entity_id: str) -> bool:
         """Turn on a switch with retry logic.

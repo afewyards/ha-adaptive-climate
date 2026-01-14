@@ -95,8 +95,11 @@ async def test_heater_on_when_zone_demands(mock_hass, coord):
 
 
 @pytest.mark.asyncio
-async def test_heater_off_when_no_demand(mock_hass, coord):
-    """Test heater turns off when no zone has demand."""
+async def test_heater_off_when_no_demand(mock_hass, coord, monkeypatch):
+    """Test heater turns off when no zone has demand (after debounce)."""
+    # Use short debounce for test
+    monkeypatch.setattr(coordinator, "TURN_OFF_DEBOUNCE_SECONDS", 0.1)
+
     # Create controller
     controller = coordinator.CentralController(
         mock_hass,
@@ -116,6 +119,9 @@ async def test_heater_off_when_no_demand(mock_hass, coord):
 
     # Update controller
     await controller.update()
+
+    # Wait for debounce
+    await asyncio.sleep(0.2)
 
     # Verify heater was turned off
     mock_hass.services.async_call.assert_called_with(
@@ -769,8 +775,12 @@ async def test_unexpected_exception_triggers_retry(mock_hass, coord):
 
 
 @pytest.mark.asyncio
-async def test_turn_off_also_uses_retry_logic(mock_hass, coord):
+async def test_turn_off_also_uses_retry_logic(mock_hass, coord, monkeypatch):
     """Test turn_off also uses retry logic when it fails."""
+    # Use short debounce and retry delays for test
+    monkeypatch.setattr(coordinator, "TURN_OFF_DEBOUNCE_SECONDS", 0.1)
+    monkeypatch.setattr(coordinator, "BASE_RETRY_DELAY_SECONDS", 0.05)
+
     controller = coordinator.CentralController(
         mock_hass,
         coord,
@@ -800,6 +810,9 @@ async def test_turn_off_also_uses_retry_logic(mock_hass, coord):
 
     # Update controller
     await controller.update()
+
+    # Wait for debounce + retries (0.1s debounce + 0.05s + 0.1s retry delays + buffer)
+    await asyncio.sleep(0.5)
 
     # Verify turn_off was eventually called successfully
     assert mock_hass.services.async_call.call_count == 3
@@ -925,8 +938,11 @@ async def test_multiple_heaters_all_turn_on(mock_hass, coord):
 
 
 @pytest.mark.asyncio
-async def test_multiple_heaters_all_turn_off(mock_hass, coord):
-    """Test all heaters in a list turn off when no demand."""
+async def test_multiple_heaters_all_turn_off(mock_hass, coord, monkeypatch):
+    """Test all heaters in a list turn off when no demand (after debounce)."""
+    # Use short debounce for test
+    monkeypatch.setattr(coordinator, "TURN_OFF_DEBOUNCE_SECONDS", 0.1)
+
     controller = coordinator.CentralController(
         mock_hass,
         coord,
@@ -945,6 +961,9 @@ async def test_multiple_heaters_all_turn_off(mock_hass, coord):
 
     # Update controller
     await controller.update()
+
+    # Wait for debounce
+    await asyncio.sleep(0.2)
 
     # Verify all switches were turned off
     calls = mock_hass.services.async_call.call_args_list
@@ -1140,3 +1159,142 @@ async def test_multiple_heaters_with_startup_delay(mock_hass, coord):
     turned_on_entities = [call.args[2]["entity_id"] for call in calls]
     assert "switch.boiler" in turned_on_entities
     assert "switch.pump" in turned_on_entities
+
+
+@pytest.mark.asyncio
+async def test_are_all_switches_on_with_mixed_states(mock_hass, coord):
+    """Test _are_all_switches_on returns False if any switch is off."""
+    controller = coordinator.CentralController(
+        mock_hass,
+        coord,
+        main_heater_switch=["switch.boiler", "switch.pump"],
+        startup_delay_seconds=0,
+    )
+
+    # Set up mock states: boiler on, pump off
+    def mock_get_state(entity_id):
+        state = Mock()
+        if entity_id == "switch.boiler":
+            state.state = "on"
+        else:
+            state.state = "off"
+        return state
+
+    mock_hass.states.get.side_effect = mock_get_state
+
+    # Check if all switches are on
+    result = await controller._are_all_switches_on(["switch.boiler", "switch.pump"])
+
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_are_all_switches_on_when_all_on(mock_hass, coord):
+    """Test _are_all_switches_on returns True when all switches are on."""
+    controller = coordinator.CentralController(
+        mock_hass,
+        coord,
+        main_heater_switch=["switch.boiler", "switch.pump"],
+        startup_delay_seconds=0,
+    )
+
+    # All switches are on
+    mock_state = Mock()
+    mock_state.state = "on"
+    mock_hass.states.get.return_value = mock_state
+
+    result = await controller._are_all_switches_on(["switch.boiler", "switch.pump"])
+
+    assert result is True
+
+
+@pytest.mark.asyncio
+async def test_heater_turns_on_when_one_switch_already_on(mock_hass, coord):
+    """Test heater startup is triggered when only one of multiple switches is on.
+
+    This tests the fix for the bug where if one switch (e.g., boiler) was already on,
+    the controller would not turn on the other switches (e.g., pump).
+    """
+    controller = coordinator.CentralController(
+        mock_hass,
+        coord,
+        main_heater_switch=["switch.boiler", "switch.pump"],
+        startup_delay_seconds=0,  # No delay for simpler test
+    )
+
+    # Set up mock states: boiler already on, pump off
+    def mock_get_state(entity_id):
+        state = Mock()
+        if entity_id == "switch.boiler":
+            state.state = "on"
+        else:
+            state.state = "off"
+        return state
+
+    mock_hass.states.get.side_effect = mock_get_state
+
+    # Register zone and add demand
+    coord.register_zone("living_room", {"name": "Living Room"})
+    coord.update_zone_demand("living_room", True)
+
+    # Update controller
+    await controller.update()
+
+    # Both switches should be turned on (even though boiler was already on)
+    calls = mock_hass.services.async_call.call_args_list
+    assert len(calls) == 2
+
+    turned_on_entities = [call.args[2]["entity_id"] for call in calls]
+    assert "switch.boiler" in turned_on_entities
+    assert "switch.pump" in turned_on_entities
+
+
+@pytest.mark.asyncio
+async def test_turnoff_debounce_cancels_on_demand_return(mock_hass, coord, monkeypatch):
+    """Test that pending turn-off is cancelled when demand returns.
+
+    This tests the debounce fix for the bug where brief demand drops during
+    HA restart would turn off the heater immediately.
+    """
+    # Use short debounce for test
+    monkeypatch.setattr(coordinator, "TURN_OFF_DEBOUNCE_SECONDS", 0.5)
+
+    controller = coordinator.CentralController(
+        mock_hass,
+        coord,
+        main_heater_switch=["switch.boiler"],
+        startup_delay_seconds=0,
+    )
+
+    # Mock switch is currently on
+    mock_state = Mock()
+    mock_state.state = "on"
+    mock_hass.states.get.return_value = mock_state
+
+    # Register zone with demand
+    coord.register_zone("living_room", {"name": "Living Room"})
+    coord.update_zone_demand("living_room", True)
+
+    # Initial update - switches stay on
+    await controller.update()
+    assert mock_hass.services.async_call.call_count == 0  # Already on, no calls
+
+    # Demand drops - schedules turn-off
+    coord.update_zone_demand("living_room", False)
+    await controller.update()
+
+    # Wait less than debounce period
+    await asyncio.sleep(0.2)
+
+    # No turn-off yet (still in debounce period)
+    assert mock_hass.services.async_call.call_count == 0
+
+    # Demand returns before debounce completes
+    coord.update_zone_demand("living_room", True)
+    await controller.update()
+
+    # Wait past the original debounce period
+    await asyncio.sleep(0.5)
+
+    # Switch should NOT have been turned off (turn-off was cancelled)
+    assert mock_hass.services.async_call.call_count == 0
