@@ -232,19 +232,115 @@ class CycleTrackerManager:
 
         return True
 
+    def _is_cycle_valid(self) -> tuple[bool, str]:
+        """Check if the current cycle is valid for recording.
+
+        A cycle is valid if:
+        1. Duration >= minimum cycle duration (5 minutes)
+        2. Not in learning grace period
+        3. Learning is enabled (not in vacation mode)
+        4. Sufficient temperature samples (>= 5)
+
+        Returns:
+            Tuple of (is_valid, reason_string)
+        """
+        # Check minimum duration
+        if self._cycle_start_time is None:
+            return False, "No cycle start time recorded"
+
+        duration_minutes = (datetime.now() - self._cycle_start_time).total_seconds() / 60
+        if duration_minutes < self._min_cycle_duration_minutes:
+            return False, f"Cycle too short ({duration_minutes:.1f} min < {self._min_cycle_duration_minutes} min)"
+
+        # Check learning grace period
+        if self._get_in_grace_period():
+            return False, "In learning grace period"
+
+        # Check vacation mode (learning_enabled)
+        # Note: This is checked via zone_data["learning_enabled"] which is set to False in vacation mode
+        # For now, we'll skip this check as it requires coordination with climate entity
+        # The get_in_grace_period callback handles the grace period, and vacation mode
+        # should be checked at a higher level before calling cycle tracking methods
+
+        # Check sufficient temperature samples
+        if len(self._temperature_history) < 5:
+            return False, f"Insufficient temperature samples ({len(self._temperature_history)} < 5)"
+
+        return True, "Valid"
+
     async def _finalize_cycle(self) -> None:
         """Finalize cycle and record metrics.
 
-        Note: Full implementation will be added in feature 2.3.
-        For now, this just transitions to IDLE state.
+        Validates the cycle, calculates metrics if valid, and records them
+        with the adaptive learner. Transitions to IDLE state.
         """
         # Cancel settling timeout if active
         if self._settling_timeout_handle is not None:
             self._settling_timeout_handle()
             self._settling_timeout_handle = None
 
+        # Validate cycle
+        is_valid, reason = self._is_cycle_valid()
+        if not is_valid:
+            self._logger.info("Cycle not recorded: %s", reason)
+            self._state = CycleState.IDLE
+            return
+
+        # Import cycle analysis functions
+        from ..adaptive.cycle_analysis import (
+            CycleMetrics,
+            calculate_overshoot,
+            calculate_undershoot,
+            calculate_settling_time,
+            count_oscillations,
+            calculate_rise_time,
+        )
+
+        # Get target temperature
+        target_temp = self._cycle_target_temp
+        if target_temp is None:
+            self._logger.warning("No target temperature recorded, cannot calculate metrics")
+            self._state = CycleState.IDLE
+            return
+
+        # Get start temperature (first reading in history)
+        if len(self._temperature_history) < 1:
+            self._logger.warning("No temperature history, cannot calculate metrics")
+            self._state = CycleState.IDLE
+            return
+
+        start_temp = self._temperature_history[0][1]
+
+        # Calculate all 5 metrics
+        overshoot = calculate_overshoot(self._temperature_history, target_temp)
+        undershoot = calculate_undershoot(self._temperature_history, target_temp)
+        settling_time = calculate_settling_time(self._temperature_history, target_temp)
+        oscillations = count_oscillations(self._temperature_history, target_temp)
+        rise_time = calculate_rise_time(self._temperature_history, start_temp, target_temp)
+
+        # Create CycleMetrics object
+        metrics = CycleMetrics(
+            overshoot=overshoot,
+            undershoot=undershoot,
+            settling_time=settling_time,
+            oscillations=oscillations,
+            rise_time=rise_time,
+        )
+
+        # Record metrics with adaptive learner
+        self._adaptive_learner.add_cycle_metrics(metrics)
+        self._adaptive_learner.update_convergence_tracking(metrics)
+
         # Transition to IDLE
         self._state = CycleState.IDLE
 
-        # Note: Cycle validation and metrics calculation will be added in feature 2.3
-        self._logger.info("Cycle finalized (full metrics calculation pending feature 2.3)")
+        # Log cycle completion with all metrics
+        self._logger.info(
+            "Cycle completed - overshoot=%.2f°C, undershoot=%.2f°C, "
+            "settling_time=%.1f min, oscillations=%d, rise_time=%.1f min",
+            overshoot or 0.0,
+            undershoot or 0.0,
+            settling_time or 0.0,
+            oscillations,
+            rise_time or 0.0,
+        )

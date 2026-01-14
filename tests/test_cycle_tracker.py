@@ -306,6 +306,161 @@ class TestCycleTrackerSettling:
         assert cycle_tracker.state == CycleState.IDLE
 
 
+class TestCycleTrackerValidation:
+    """Tests for cycle validation functionality."""
+
+    def test_cycle_validation_min_duration(self, cycle_tracker, monkeypatch):
+        """Test minimum duration enforcement (reject < 5 min)."""
+        # Mock datetime.now() to control the time
+        fixed_time = datetime(2025, 1, 14, 10, 4, 30)
+
+        class MockDateTime:
+            @staticmethod
+            def now():
+                return fixed_time
+
+        import custom_components.adaptive_thermostat.managers.cycle_tracker as cycle_tracker_module
+        monkeypatch.setattr(cycle_tracker_module, 'datetime', MockDateTime)
+
+        # Start heating
+        cycle_tracker.on_heating_started(datetime(2025, 1, 14, 10, 0, 0))
+
+        # Add some temperature samples
+        cycle_tracker._temperature_history.append((datetime(2025, 1, 14, 10, 1, 0), 18.5))
+        cycle_tracker._temperature_history.append((datetime(2025, 1, 14, 10, 2, 0), 19.0))
+        cycle_tracker._temperature_history.append((datetime(2025, 1, 14, 10, 3, 0), 19.5))
+        cycle_tracker._temperature_history.append((datetime(2025, 1, 14, 10, 4, 0), 20.0))
+        cycle_tracker._temperature_history.append((datetime(2025, 1, 14, 10, 4, 30), 20.2))
+
+        # Check validation after only 4.5 minutes
+        is_valid, reason = cycle_tracker._is_cycle_valid()
+        assert not is_valid
+        assert "too short" in reason.lower()
+
+    def test_cycle_validation_grace_period(self, cycle_tracker, mock_callbacks):
+        """Test learning grace period blocks recording."""
+        # Set grace period active
+        mock_callbacks["get_in_grace_period"].return_value = True
+
+        # Start heating 10 minutes ago
+        cycle_tracker.on_heating_started(datetime(2025, 1, 14, 9, 50, 0))
+
+        # Add sufficient temperature samples
+        for i in range(10):
+            cycle_tracker._temperature_history.append(
+                (datetime(2025, 1, 14, 9, 50 + i, 0), 18.0 + i * 0.2)
+            )
+
+        # Check validation with grace period active
+        is_valid, reason = cycle_tracker._is_cycle_valid()
+        assert not is_valid
+        assert "grace period" in reason.lower()
+
+    def test_cycle_validation_insufficient_samples(self, cycle_tracker):
+        """Test insufficient samples blocks recording."""
+        # Start heating 10 minutes ago
+        cycle_tracker.on_heating_started(datetime(2025, 1, 14, 9, 50, 0))
+
+        # Add only 4 samples (not enough)
+        for i in range(4):
+            cycle_tracker._temperature_history.append(
+                (datetime(2025, 1, 14, 9, 50 + i, 0), 18.0 + i * 0.5)
+            )
+
+        # Check validation
+        is_valid, reason = cycle_tracker._is_cycle_valid()
+        assert not is_valid
+        assert "insufficient temperature samples" in reason.lower()
+
+    def test_cycle_validation_success(self, cycle_tracker):
+        """Test validation passes with all requirements met."""
+        # Start heating 10 minutes ago
+        cycle_tracker.on_heating_started(datetime(2025, 1, 14, 9, 50, 0))
+
+        # Add sufficient temperature samples (>= 5)
+        for i in range(10):
+            cycle_tracker._temperature_history.append(
+                (datetime(2025, 1, 14, 9, 50 + i, 0), 18.0 + i * 0.2)
+            )
+
+        # Check validation
+        is_valid, reason = cycle_tracker._is_cycle_valid()
+        assert is_valid
+        assert reason == "Valid"
+
+
+class TestCycleTrackerMetrics:
+    """Tests for cycle metrics calculation."""
+
+    @pytest.mark.asyncio
+    async def test_metrics_calculation(self, cycle_tracker, mock_callbacks, mock_adaptive_learner):
+        """Test complete cycle calculates all 5 metrics."""
+        # Set target temperature
+        mock_callbacks["get_target_temp"].return_value = 20.0
+
+        # Start heating 10 minutes ago
+        start_time = datetime(2025, 1, 14, 10, 0, 0)
+        cycle_tracker.on_heating_started(start_time)
+
+        # Simulate realistic heating cycle with overshoot and settling
+        # Rise phase: 18.0 -> 20.5 (overshoot)
+        temps = [
+            (datetime(2025, 1, 14, 10, 0, 0), 18.0),   # start
+            (datetime(2025, 1, 14, 10, 1, 0), 18.5),
+            (datetime(2025, 1, 14, 10, 2, 0), 19.0),
+            (datetime(2025, 1, 14, 10, 3, 0), 19.5),
+            (datetime(2025, 1, 14, 10, 4, 0), 20.0),   # reach target
+            (datetime(2025, 1, 14, 10, 5, 0), 20.5),   # overshoot
+            (datetime(2025, 1, 14, 10, 6, 0), 20.3),   # settling
+            (datetime(2025, 1, 14, 10, 7, 0), 20.1),
+            (datetime(2025, 1, 14, 10, 8, 0), 20.0),
+            (datetime(2025, 1, 14, 10, 9, 0), 19.9),
+        ]
+
+        for timestamp, temp in temps:
+            await cycle_tracker.update_temperature(timestamp, temp)
+
+        # Stop heating and transition to SETTLING
+        cycle_tracker.on_heating_stopped(datetime(2025, 1, 14, 10, 10, 0))
+
+        # Call finalize (simulating settling complete or timeout)
+        await cycle_tracker._finalize_cycle()
+
+        # Verify metrics were calculated and passed to adaptive learner
+        mock_adaptive_learner.add_cycle_metrics.assert_called_once()
+        metrics = mock_adaptive_learner.add_cycle_metrics.call_args[0][0]
+
+        # Verify all 5 metrics are present
+        assert metrics.overshoot is not None
+        assert metrics.undershoot is not None
+        assert metrics.settling_time is not None
+        assert metrics.oscillations >= 0
+        assert metrics.rise_time is not None
+
+        # Verify convergence tracking was updated
+        mock_adaptive_learner.update_convergence_tracking.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_invalid_cycle_not_recorded(self, cycle_tracker, mock_adaptive_learner):
+        """Test invalid cycles are not recorded."""
+        # Start heating
+        cycle_tracker.on_heating_started(datetime(2025, 1, 14, 10, 0, 0))
+
+        # Add only 2 samples (insufficient)
+        await cycle_tracker.update_temperature(datetime(2025, 1, 14, 10, 0, 30), 18.5)
+        await cycle_tracker.update_temperature(datetime(2025, 1, 14, 10, 1, 0), 19.0)
+
+        # Try to finalize
+        await cycle_tracker._finalize_cycle()
+
+        # Verify metrics were NOT passed to adaptive learner
+        mock_adaptive_learner.add_cycle_metrics.assert_not_called()
+        mock_adaptive_learner.update_convergence_tracking.assert_not_called()
+
+        # Verify state transitioned to IDLE
+        assert cycle_tracker.state == CycleState.IDLE
+
+
 def test_cycle_tracker_module_exists():
     """Marker test to verify cycle tracker module exists."""
     assert CycleState is not None
