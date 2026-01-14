@@ -149,6 +149,7 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
             vol.Optional(const.CONF_NIGHT_SETBACK_DELTA, default=const.DEFAULT_NIGHT_SETBACK_DELTA): vol.Coerce(float),
             vol.Optional(const.CONF_NIGHT_SETBACK_RECOVERY_DEADLINE): cv.string,
             vol.Optional(const.CONF_NIGHT_SETBACK_SOLAR_RECOVERY, default=False): cv.boolean,
+            vol.Optional(const.CONF_MIN_EFFECTIVE_ELEVATION, default=const.DEFAULT_MIN_EFFECTIVE_ELEVATION): vol.Coerce(float),
         }),
     }
 )
@@ -430,7 +431,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
 
         # Zone linking for thermally connected zones
         self._linked_zones = kwargs.get('linked_zones', [])
-        self._link_delay_minutes = kwargs.get('link_delay_minutes', 10)
+        self._link_delay_minutes = kwargs.get('link_delay_minutes', const.DEFAULT_LINK_DELAY_MINUTES)
         self._zone_linker = None  # Will be set in async_added_to_hass
         self._is_heating = False  # Track heating state for zone linking
 
@@ -460,7 +461,8 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
 
         # Calculate PID values from physics (adaptive learning will refine them)
         # Get energy rating from controller domain config
-        self._energy_rating = self.hass.data.get(DOMAIN, {}).get("house_energy_rating") if hasattr(self, 'hass') else None
+        # Note: hass is not available during __init__, it will be set in async_added_to_hass
+        self._energy_rating = None
 
         if self._area_m2:
             volume_m3 = self._area_m2 * self._ceiling_height

@@ -147,8 +147,10 @@ climate:
 
 When `end` is omitted, the end time is calculated dynamically based on:
 - **Sunrise** + 60 minutes base offset
-- **Window orientation**: south +30min, east +15min, west -30min, north -45min
-- **Weather**: cloudy -30min, clear +15min
+- **Window orientation offsets** (negative = earlier recovery, more sun expected; positive = later recovery, less sun expected):
+  - south -30min, southeast -25min, east -20min
+  - southwest -5min, northeast +5min
+  - west +20min, northwest +25min, north +30min
 
 This allows south-facing rooms to benefit from solar gain while north-facing rooms start heating earlier.
 
@@ -233,12 +235,9 @@ Values are adjusted ±30% based on thermal time constant (zone volume and window
 - `sensor.{zone}_overshoot` - Temperature overshoot (°C)
 - `sensor.{zone}_settling_time` - Time to reach setpoint (min)
 - `sensor.{zone}_oscillations` - Number of temperature oscillations
-- `switch.{zone}_demand` - Zone heating demand indicator
+- `sensor.{zone}_heat_output` - Heat output (W) - requires supply/return temp sensors
 
 ### System
-- `sensor.heating_system_health` - Overall system health (healthy/warning/critical)
-- `sensor.heating_total_power` - Aggregated power across all zones (W)
-- `sensor.heating_weekly_cost` - Weekly energy cost
 - `number.adaptive_thermostat_learning_window` - Learning window in days (adjustable)
 
 ## Services
@@ -260,6 +259,14 @@ target:
   entity_id: climate.living_room
 ```
 Calculates and applies PID values based on learned performance metrics (overshoot, undershoot, settling time, oscillations). Requires at least 3 analyzed heating cycles.
+
+**Apply adaptive Ke:** `adaptive_thermostat.apply_adaptive_ke`
+```yaml
+service: adaptive_thermostat.apply_adaptive_ke
+target:
+  entity_id: climate.living_room
+```
+Applies learned outdoor temperature compensation (Ke) adjustments based on observed correlations between outdoor temperature and heating demand.
 
 ### Domain Services (system-wide)
 
@@ -294,6 +301,18 @@ data:
   target_temp: 12  # frost protection temperature
 ```
 
+**Energy stats:** `adaptive_thermostat.energy_stats`
+```yaml
+service: adaptive_thermostat.energy_stats
+```
+Returns current energy statistics including total power, zone powers, daily/weekly energy and costs.
+
+**PID recommendations:** `adaptive_thermostat.pid_recommendations`
+```yaml
+service: adaptive_thermostat.pid_recommendations
+```
+Returns current and recommended PID values for all zones based on physics and adaptive learning.
+
 ## Adaptive Learning
 
 The thermostat automatically learns from heating cycles and adjusts PID parameters:
@@ -307,9 +326,11 @@ The thermostat automatically learns from heating cycles and adjusts PID paramete
 | Observation | Adjustment |
 |-------------|------------|
 | High overshoot (>0.5°C) | Reduce Kp by up to 15% |
+| Moderate overshoot (>0.2°C) | Reduce Kp by 5% |
 | Slow response (>60 min) | Increase Kp by 10% |
 | Undershoot (>0.3°C) | Increase Ki by up to 20% |
 | Many oscillations (>3) | Reduce Kp, increase Kd |
+| Some oscillations (>1) | Increase Kd by 10% |
 | Slow settling (>90 min) | Increase Kd by 15% |
 
 Learning requires a minimum of 3 heating cycles before making recommendations.
@@ -370,7 +391,7 @@ Each zone creates a demand switch (`switch.{zone}_demand`) that indicates heatin
 For thermally connected zones (e.g., open floor plan):
 - When one zone starts heating, linked zones delay their heating
 - Prevents redundant heating of connected spaces
-- Configurable delay (default 10 minutes)
+- Configurable delay (default 20 minutes)
 
 ## Parameters Reference
 
