@@ -356,17 +356,13 @@ Pauses heating or switches to frost protection when windows/doors are open:
 - `frost_protection` - Maintains minimum safe temperature (5°C)
 - `none` - No action (useful if you only want logging)
 
-### Heating Curves
-Outdoor temperature compensation using the Ke parameter:
+### Outdoor Temperature Compensation (Ke)
+The Ke parameter compensates for outdoor temperature, reducing the work the PID integral term must do:
 ```
 E = Ke × (target_temp - outdoor_temp)
 ```
 
-Recommended Ke values by insulation:
-- Excellent (A+++): 0.3
-- Good (A/B): 0.5
-- Average (C/D): 1.0
-- Poor (E/F): 1.5
+Ke is learned automatically by observing the correlation between outdoor temperature and steady-state PID output. When a strong negative correlation is detected (colder outside → higher output), Ke is increased. No manual tuning required—just configure an `outdoor_sensor` and the system will adapt.
 
 ## Multi-Zone Coordination
 
