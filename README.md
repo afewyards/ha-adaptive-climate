@@ -23,6 +23,9 @@
 
 An advanced thermostat integration featuring PID control with automatic tuning, adaptive learning, multi-zone coordination, and energy optimization. Fork of [HASmartThermostat](https://github.com/ScratMan/HASmartThermostat) with extensive enhancements.
 
+> **Note: This project is currently in active testing and development.**
+> While the core functionality is operational, adaptive learning features and multi-zone coordination are being refined based on real-world usage. Please report any issues or unexpected behavior via [GitHub Issues](https://github.com/afewyards/ha-adaptive-thermostat/issues).
+
 ### Key Features
 
 - **PID Control** - Accurate temperature control with proportional, integral, derivative, and outdoor compensation (Ke) terms
