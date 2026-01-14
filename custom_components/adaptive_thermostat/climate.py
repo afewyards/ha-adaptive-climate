@@ -915,14 +915,17 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         return presets
 
     def _get_sunset_time(self):
-        """Get sunset time from Home Assistant sun component."""
+        """Get sunset time from Home Assistant sun component (local time)."""
         from datetime import datetime
+        from homeassistant.util import dt as dt_util
+
         sun_state = self.hass.states.get("sun.sun")
         if sun_state and sun_state.attributes.get("next_setting"):
             try:
-                return datetime.fromisoformat(
+                utc_sunset = datetime.fromisoformat(
                     sun_state.attributes["next_setting"].replace("Z", "+00:00")
                 )
+                return dt_util.as_local(utc_sunset)
             except (ValueError, TypeError):
                 return None
         return None
@@ -945,14 +948,17 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         )
 
     def _get_sunrise_time(self):
-        """Get sunrise time from Home Assistant sun component."""
+        """Get sunrise time from Home Assistant sun component (local time)."""
         from datetime import datetime
+        from homeassistant.util import dt as dt_util
+
         sun_state = self.hass.states.get("sun.sun")
         if sun_state and sun_state.attributes.get("next_rising"):
             try:
-                return datetime.fromisoformat(
+                utc_sunrise = datetime.fromisoformat(
                     sun_state.attributes["next_rising"].replace("Z", "+00:00")
                 )
+                return dt_util.as_local(utc_sunrise)
             except (ValueError, TypeError):
                 return None
         return None
@@ -1019,11 +1025,34 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
 
         return end_time.time()
 
+    def _parse_sunset_offset(self, offset_str: str) -> int:
+        """Parse sunset offset string to minutes.
+
+        Supports: +2 (hours if <=12), +2h (hours), +30m (minutes), +120 (minutes if >12)
+
+        Args:
+            offset_str: Offset string like "2", "2h", "30m", "120"
+
+        Returns:
+            Offset in minutes
+        """
+        offset_str = offset_str.strip()
+        if offset_str.endswith('m'):
+            return int(offset_str[:-1])
+        elif offset_str.endswith('h'):
+            return int(offset_str[:-1]) * 60
+        else:
+            # Default: interpret as hours for values <= 12, minutes otherwise
+            value = int(offset_str)
+            if value <= 12:
+                return value * 60  # hours
+            return value  # minutes (backward compat for sunset+30, sunset+120)
+
     def _parse_night_start_time(self, start_str: str, current_time):
         """Parse night setback start time string.
 
         Args:
-            start_str: Start time as "HH:MM" or "sunset" or "sunset+30"
+            start_str: Start time as "HH:MM" or "sunset" or "sunset+2" (hours) or "sunset+30m"
             current_time: Current datetime for sunset lookup
 
         Returns:
@@ -1036,9 +1065,9 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
             if sunset:
                 offset = 0
                 if "+" in start_str:
-                    offset = int(start_str.split("+")[1])
+                    offset = self._parse_sunset_offset(start_str.split("+")[1])
                 elif "-" in start_str:
-                    offset = -int(start_str.split("-")[1])
+                    offset = -self._parse_sunset_offset(start_str.split("-")[1])
                 return (sunset + timedelta(minutes=offset)).time()
             else:
                 return dt_time(21, 0)  # Fallback to 21:00

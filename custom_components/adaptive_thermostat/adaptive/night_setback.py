@@ -25,7 +25,7 @@ class NightSetback:
         """Initialize night setback.
 
         Args:
-            start_time: Start time as "HH:MM" or "sunset" or "sunset+30" (minutes offset)
+            start_time: Start time as "HH:MM" or "sunset" or "sunset+2" (hours) or "sunset+30m"
             end_time: End time as "HH:MM"
             setback_delta: Temperature reduction during night (degrees)
             recovery_deadline: Optional override time "HH:MM" when temp must be restored
@@ -40,11 +40,11 @@ class NightSetback:
         # Parse start time (may be "sunset" or "HH:MM")
         if start_time.lower().startswith("sunset"):
             self.use_sunset = True
-            # Parse sunset offset from string like "sunset+30" or "sunset-15"
+            # Parse sunset offset from string like "sunset+2" (hours) or "sunset+30m"
             if "+" in start_time:
-                self.sunset_offset_minutes = int(start_time.split("+")[1])
+                self.sunset_offset_minutes = self._parse_sunset_offset(start_time.split("+")[1])
             elif "-" in start_time:
-                self.sunset_offset_minutes = -int(start_time.split("-")[1])
+                self.sunset_offset_minutes = -self._parse_sunset_offset(start_time.split("-")[1])
         else:
             self.use_sunset = False
             self.start_time = self._parse_time(start_time)
@@ -60,6 +60,29 @@ class NightSetback:
         """
         hour, minute = map(int, time_str.split(":"))
         return time(hour, minute)
+
+    def _parse_sunset_offset(self, offset_str: str) -> int:
+        """Parse sunset offset string to minutes.
+
+        Supports: +2 (hours if <=12), +2h (hours), +30m (minutes), +120 (minutes if >12)
+
+        Args:
+            offset_str: Offset string like "2", "2h", "30m", "120"
+
+        Returns:
+            Offset in minutes
+        """
+        offset_str = offset_str.strip()
+        if offset_str.endswith('m'):
+            return int(offset_str[:-1])
+        elif offset_str.endswith('h'):
+            return int(offset_str[:-1]) * 60
+        else:
+            # Default: interpret as hours for values <= 12, minutes otherwise
+            value = int(offset_str)
+            if value <= 12:
+                return value * 60  # hours
+            return value  # minutes (backward compat for sunset+30, sunset+120)
 
     def is_night_period(
         self,
