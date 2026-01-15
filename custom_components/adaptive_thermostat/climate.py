@@ -237,9 +237,9 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     }
 
     thermostat = AdaptiveThermostat(**parameters)
-    async_add_entities([thermostat])
 
-    # Register zone with coordinator
+    # Register zone with coordinator BEFORE adding entity
+    # This ensures zone_data is available when async_added_to_hass runs
     coordinator = hass.data.get(DOMAIN, {}).get("coordinator")
     if coordinator:
         zone_data = {
@@ -254,7 +254,10 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         coordinator.register_zone(zone_id, zone_data)
         _LOGGER.info("Registered zone %s with coordinator", zone_id)
 
-        # Trigger sensor platform discovery for this zone
+    async_add_entities([thermostat])
+
+    # Trigger sensor platform discovery for this zone (after entity is added)
+    if coordinator:
         hass.async_create_task(
             discovery.async_load_platform(
                 hass,
