@@ -1,6 +1,23 @@
 # CHANGELOG
 
 
+## v0.4.0 (2026-01-15)
+
+### Features
+
+- Handle shared switches between heater and cooler modes
+  ([`9bc3abb`](https://github.com/afewyards/ha-adaptive-thermostat/commit/9bc3abb0be018fff2d5f6f34cb74bff1ff68e47f))
+
+Add smart turn-off logic to prevent shared switches (e.g., circulation pumps) from being turned off
+  when still needed by the other mode. Shared switches now only turn off when both heating and
+  cooling have no demand.
+
+Changes: - Add _get_shared_switches() to detect switches in both lists - Add
+  _turn_off_switches_smart() to skip shared switches when other mode is active - Update delayed
+  turn-off methods to check other mode's demand state - Remove obsolete
+  _heater_activated_by_us/_cooler_activated_by_us flags - Add 8 new tests for shared switch behavior
+
+
 ## v0.3.0 (2026-01-14)
 
 ### Bug Fixes
