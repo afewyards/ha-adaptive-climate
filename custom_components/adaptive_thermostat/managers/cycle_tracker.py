@@ -303,15 +303,28 @@ class CycleTrackerManager:
     def on_setpoint_changed(self, old_temp: float, new_temp: float) -> None:
         """Handle setpoint change event.
 
-        Aborts the current cycle if in HEATING or SETTLING state, as the
-        temperature target has changed mid-cycle.
+        If heater is active, continues tracking with the new setpoint and marks
+        the cycle as interrupted. Otherwise, aborts the current cycle.
 
         Args:
             old_temp: Previous target temperature
             new_temp: New target temperature
         """
-        # Only abort if we're in an active cycle
+        # Only process if we're in an active cycle
         if self._state not in (CycleState.HEATING, CycleState.SETTLING):
+            return
+
+        # Check if heater is currently active
+        if self._get_is_device_active is not None and self._get_is_device_active():
+            # Continue tracking with new setpoint
+            self._logger.info(
+                "Setpoint changed while heater active, continuing cycle tracking: %.2f°C -> %.2f°C",
+                old_temp,
+                new_temp,
+            )
+            self._cycle_target_temp = new_temp
+            self._was_interrupted = True
+            self._setpoint_changes.append((datetime.now(), old_temp, new_temp))
             return
 
         # Abort the cycle
