@@ -970,89 +970,40 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
     @property
     def preset_mode(self):
         """Return the current preset mode, e.g., home, away, temp."""
-        if self._temperature_manager:
-            return self._temperature_manager.preset_mode
-        return self._attr_preset_mode
+        return self._temperature_manager.preset_mode
 
     @property
     def preset_modes(self):
         """Return a list of available preset modes."""
-        if self._temperature_manager:
-            return self._temperature_manager.preset_modes
-        # Fallback for when manager not yet initialized
-        preset_modes = [PRESET_NONE]
-        for mode, preset_mode_temp in self._preset_modes_temp.items():
-            if preset_mode_temp is not None:
-                preset_modes.append(mode)
-        return preset_modes
+        return self._temperature_manager.preset_modes
 
     @property
     def _preset_modes_temp(self):
         """Return a dict of preset modes and their temperatures."""
-        if self._temperature_manager:
-            return self._temperature_manager._preset_modes_temp
-        # Fallback for when manager not yet initialized
-        return {
-            PRESET_AWAY: self._away_temp,
-            PRESET_ECO: self._eco_temp,
-            PRESET_BOOST: self._boost_temp,
-            PRESET_COMFORT: self._comfort_temp,
-            PRESET_HOME: self._home_temp,
-            PRESET_SLEEP: self._sleep_temp,
-            PRESET_ACTIVITY: self._activity_temp,
-        }
+        return self._temperature_manager._preset_modes_temp
 
     @property
     def _preset_temp_modes(self):
         """Return a dict of preset temperatures and their modes."""
-        if self._temperature_manager:
-            return self._temperature_manager._preset_temp_modes
-        # Fallback for when manager not yet initialized
-        return {
-            self._away_temp: PRESET_AWAY,
-            self._eco_temp: PRESET_ECO,
-            self._boost_temp: PRESET_BOOST,
-            self._comfort_temp: PRESET_COMFORT,
-            self._home_temp: PRESET_HOME,
-            self._sleep_temp: PRESET_SLEEP,
-            self._activity_temp: PRESET_ACTIVITY,
-        }
+        return self._temperature_manager._preset_temp_modes
 
     @property
     def presets(self):
         """Return a dict of available presets and their temperatures."""
-        if self._temperature_manager:
-            return self._temperature_manager.presets
-        # Fallback for when manager not yet initialized
-        presets = {}
-        for mode, preset_mode_temp in self._preset_modes_temp.items():
-            if preset_mode_temp is not None:
-                presets.update({mode: preset_mode_temp})
-        return presets
+        return self._temperature_manager.presets
 
     @property
     def in_learning_grace_period(self) -> bool:
         """Check if learning should be paused due to recent night setback transition."""
         if self._night_setback_controller:
             return self._night_setback_controller.in_learning_grace_period
-        # Fallback for backward compatibility when controller not initialized
-        if self._learning_grace_until is None:
-            return False
-        from datetime import datetime
-        return datetime.now() < self._learning_grace_until
+        # No night setback controller means no grace period
+        return False
 
     def _set_learning_grace_period(self, minutes: int = 60):
         """Set a grace period to pause learning after night setback transitions."""
         if self._night_setback_controller:
             self._night_setback_controller.set_learning_grace_period(minutes)
-        else:
-            # Fallback for backward compatibility when controller not initialized
-            from datetime import datetime, timedelta
-            self._learning_grace_until = datetime.now() + timedelta(minutes=minutes)
-            _LOGGER.info(
-                "%s: Learning grace period set for %d minutes (until %s)",
-                self.entity_id, minutes, self._learning_grace_until.strftime("%H:%M")
-            )
 
     def _calculate_night_setback_adjustment(self, current_time=None):
         """Calculate night setback adjustment for effective target temperature.
@@ -1223,68 +1174,26 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         temperature = kwargs.get(ATTR_TEMPERATURE)
         if temperature is None:
             return
-        if self._temperature_manager:
-            await self._temperature_manager.async_set_temperature(temperature)
-            self.async_write_ha_state()
-        else:
-            # Fallback for when manager not yet initialized
-            if self._current_temp is not None and temperature > self._current_temp:
-                self._force_on = True
-            elif self._current_temp is not None and temperature < self._current_temp:
-                self._force_off = True
-            if temperature in self._preset_temp_modes and self._preset_sync_mode == 'sync':
-                await self.async_set_preset_mode(self._preset_temp_modes[temperature])
-            else:
-                await self.async_set_preset_mode(PRESET_NONE)
-                self._target_temp = temperature
-            await self._async_control_heating(calc_pid=True)
-            self.async_write_ha_state()
+        await self._temperature_manager.async_set_temperature(temperature)
+        self.async_write_ha_state()
 
     async def async_set_pid(self, **kwargs):
         """Set PID parameters.
 
         Delegates to PIDTuningManager for the actual implementation.
         """
-        if self._pid_tuning_manager is not None:
-            await self._pid_tuning_manager.async_set_pid(**kwargs)
-        else:
-            # Fallback for startup before manager is initialized
-            for pid_kx, gain in kwargs.items():
-                if gain is not None:
-                    setattr(self, f'_{pid_kx}', float(gain))
-            self._pid_controller.set_pid_param(self._kp, self._ki, self._kd, self._ke)
-            await self._async_control_heating(calc_pid=True)
+        await self._pid_tuning_manager.async_set_pid(**kwargs)
 
     async def async_set_pid_mode(self, **kwargs):
         """Set PID mode (AUTO or OFF).
 
         Delegates to PIDTuningManager for the actual implementation.
         """
-        if self._pid_tuning_manager is not None:
-            await self._pid_tuning_manager.async_set_pid_mode(**kwargs)
-        else:
-            # Fallback for startup before manager is initialized
-            mode = kwargs.get('mode', None)
-            if str(mode).upper() in ['AUTO', 'OFF'] and self._pid_controller is not None:
-                self._pid_controller.mode = str(mode).upper()
-            await self._async_control_heating(calc_pid=True)
+        await self._pid_tuning_manager.async_set_pid_mode(**kwargs)
 
     async def async_set_preset_temp(self, **kwargs):
         """Set the presets modes temperatures."""
-        if self._temperature_manager:
-            await self._temperature_manager.async_set_preset_temp(**kwargs)
-        else:
-            # Fallback for when manager not yet initialized
-            for preset_name, preset_temp in kwargs.items():
-                value = None if 'disable' in preset_name and preset_temp else (
-                    max(min(float(preset_temp), self.max_temp), self.min_temp)
-                )
-                setattr(
-                    self,
-                    f"_{preset_name.replace('_disable', '')}",
-                    value
-                )
-            await self._async_control_heating(calc_pid=True)
+        await self._temperature_manager.async_set_preset_temp(**kwargs)
 
     async def clear_integral(self, **kwargs):
         """Clear the integral value."""
@@ -1297,110 +1206,14 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
 
         Delegates to PIDTuningManager for the actual implementation.
         """
-        if self._pid_tuning_manager is not None:
-            await self._pid_tuning_manager.async_reset_pid_to_physics(**kwargs)
-        else:
-            # Fallback for startup before manager is initialized
-            if not self._area_m2:
-                _LOGGER.warning(
-                    "%s: Cannot reset PID to physics - no area_m2 configured",
-                    self.entity_id
-                )
-                return
-
-            volume_m3 = self._area_m2 * self._ceiling_height
-            tau = calculate_thermal_time_constant(
-                volume_m3=volume_m3,
-                window_area_m2=self._window_area_m2,
-                floor_area_m2=self._area_m2,
-                window_rating=self._window_rating,
-            )
-            self._kp, self._ki, self._kd = calculate_initial_pid(tau, self._heating_type)
-
-            # Clear integral to avoid wind-up from old tuning
-            self._pid_controller.integral = 0.0
-            self._i = 0.0
-
-            self._pid_controller.set_pid_param(self._kp, self._ki, self._kd, self._ke)
-
-            _LOGGER.info(
-                "%s: Reset PID to physics defaults (tau=%.2f, type=%s, window=%s): Kp=%.4f, Ki=%.5f, Kd=%.3f",
-                self.entity_id, tau, self._heating_type, self._window_rating, self._kp, self._ki, self._kd
-            )
-
-            await self._async_control_heating(calc_pid=True)
-            self.async_write_ha_state()
+        await self._pid_tuning_manager.async_reset_pid_to_physics(**kwargs)
 
     async def async_apply_adaptive_pid(self, **kwargs):
         """Apply adaptive PID values based on learned metrics.
 
         Delegates to PIDTuningManager for the actual implementation.
         """
-        if self._pid_tuning_manager is not None:
-            await self._pid_tuning_manager.async_apply_adaptive_pid(**kwargs)
-        else:
-            # Fallback for startup before manager is initialized
-            coordinator = self.hass.data.get(DOMAIN, {}).get("coordinator")
-            if not coordinator:
-                _LOGGER.warning(
-                    "%s: Cannot apply adaptive PID - no coordinator",
-                    self.entity_id
-                )
-                return
-
-            all_zones = coordinator.get_all_zones()
-            adaptive_learner = None
-
-            for zone_id, zone_data in all_zones.items():
-                if zone_data.get("climate_entity_id") == self.entity_id:
-                    adaptive_learner = zone_data.get("adaptive_learner")
-                    break
-
-            if not adaptive_learner:
-                _LOGGER.warning(
-                    "%s: Cannot apply adaptive PID - no adaptive learner (learning_enabled: false?)",
-                    self.entity_id
-                )
-                return
-
-            # Calculate recommendation based on current PID values
-            recommendation = adaptive_learner.calculate_pid_adjustment(
-                current_kp=self._kp,
-                current_ki=self._ki,
-                current_kd=self._kd,
-            )
-
-            if recommendation is None:
-                cycle_count = adaptive_learner.get_cycle_count()
-                _LOGGER.warning(
-                    "%s: Insufficient data for adaptive PID (cycles: %d, need >= 3)",
-                    self.entity_id,
-                    cycle_count,
-                )
-                return
-
-            # Apply the recommended values
-            old_kp, old_ki, old_kd = self._kp, self._ki, self._kd
-            self._kp = recommendation["kp"]
-            self._ki = recommendation["ki"]
-            self._kd = recommendation["kd"]
-
-            # Clear integral to avoid wind-up from old tuning
-            self._pid_controller.integral = 0.0
-            self._i = 0.0
-
-            self._pid_controller.set_pid_param(self._kp, self._ki, self._kd, self._ke)
-
-            _LOGGER.info(
-                "%s: Applied adaptive PID: Kp=%.4f (was %.4f), Ki=%.5f (was %.5f), Kd=%.3f (was %.3f)",
-                self.entity_id,
-                self._kp, old_kp,
-                self._ki, old_ki,
-                self._kd, old_kd,
-            )
-
-            await self._async_control_heating(calc_pid=True)
-            self.async_write_ha_state()
+        await self._pid_tuning_manager.async_apply_adaptive_pid(**kwargs)
 
     async def async_apply_adaptive_ke(self, **kwargs):
         """Apply adaptive Ke value based on learned outdoor temperature correlations.
@@ -1639,35 +1452,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
 
         Delegates to HeaterController for the actual check.
         """
-        if self._heater_controller is not None:
-            return self._heater_controller.is_active(self.hvac_mode)
-
-        # Fallback for startup before heater controller is initialized
-        if self._pwm:
-            expected = STATE_ON
-            if self._heater_polarity_invert:
-                expected = STATE_OFF
-            return any([self.hass.states.is_state(heater_or_cooler_entity, expected) for heater_or_cooler_entity
-                        in self.heater_or_cooler_entity])
-        else:
-            is_active = False
-            try:
-                for heater_or_cooler_entity in self.heater_or_cooler_entity:
-                    state = self.hass.states.get(heater_or_cooler_entity).state
-                    try:
-                        value = float(state)
-                        if value > 0:
-                            is_active = True
-                    except ValueError:
-                        if state in ['on', 'open']:
-                            is_active = True
-                return is_active
-            except AttributeError as ex:
-                _LOGGER.debug(
-                    "Entity state not available during device active check: %s",
-                    ex
-                )
-                return False
+        return self._heater_controller.is_active(self.hvac_mode)
 
     def _get_cycle_start_time(self) -> float:
         """Get the time when the current heating/cooling cycle started.
@@ -1811,23 +1596,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
 
         Delegates to HeaterController for the actual list.
         """
-        if self._heater_controller is not None:
-            return self._heater_controller.get_entities(self.hvac_mode)
-
-        # Fallback for startup before heater controller is initialized
-        entities = []
-
-        # Add heater or cooler based on mode
-        if self.hvac_mode == HVACMode.COOL and self._cooler_entity_id is not None:
-            entities.extend(self._cooler_entity_id)
-        elif self._heater_entity_id is not None:
-            entities.extend(self._heater_entity_id)
-
-        # Add demand_switch entities (controlled in both heat and cool modes)
-        if self._demand_switch_entity_id is not None:
-            entities.extend(self._demand_switch_entity_id)
-
-        return entities
+        return self._heater_controller.get_entities(self.hvac_mode)
 
     def _fire_heater_control_failed_event(
         self,
@@ -1837,27 +1606,15 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
     ) -> None:
         """Fire an event when heater control fails.
 
-        Delegates to HeaterController if available.
+        Delegates to HeaterController for the actual event firing.
 
         Args:
             entity_id: Entity that failed to control
             operation: Operation that failed (turn_on, turn_off, set_value)
             error: Error message
         """
-        if self._heater_controller is not None:
-            self._heater_controller._fire_heater_control_failed_event(
-                entity_id, operation, error
-            )
-            return
-
-        self.hass.bus.async_fire(
-            f"{DOMAIN}_heater_control_failed",
-            {
-                "climate_entity_id": self.entity_id,
-                "heater_entity_id": entity_id,
-                "operation": operation,
-                "error": error,
-            },
+        self._heater_controller._fire_heater_control_failed_event(
+            entity_id, operation, error
         )
 
     async def _async_call_heater_service(
@@ -1869,7 +1626,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
     ) -> bool:
         """Call a heater/cooler service with error handling.
 
-        Delegates to HeaterController if available.
+        Delegates to HeaterController for the actual service call.
 
         Args:
             entity_id: Entity ID being controlled
@@ -1880,291 +1637,76 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         Returns:
             True if successful, False otherwise
         """
-        if self._heater_controller is not None:
-            result = await self._heater_controller._async_call_heater_service(
-                entity_id, domain, service, data
-            )
-            # Sync failure state from controller
-            self._heater_control_failed = self._heater_controller.heater_control_failed
-            self._last_heater_error = self._heater_controller.last_heater_error
-            return result
-
-        # Fallback for startup before heater controller is initialized
-        try:
-            await self.hass.services.async_call(domain, service, data)
-            # Clear failure state on success
-            self._heater_control_failed = False
-            self._last_heater_error = None
-            return True
-
-        except ServiceNotFound as e:
-            _LOGGER.error(
-                "%s: Service '%s.%s' not found for %s: %s",
-                self.entity_id,
-                domain,
-                service,
-                entity_id,
-                e,
-            )
-            self._heater_control_failed = True
-            self._last_heater_error = f"Service not found: {domain}.{service}"
-            self._fire_heater_control_failed_event(entity_id, service, str(e))
-            return False
-
-        except HomeAssistantError as e:
-            _LOGGER.error(
-                "%s: Home Assistant error calling %s.%s on %s: %s",
-                self.entity_id,
-                domain,
-                service,
-                entity_id,
-                e,
-            )
-            self._heater_control_failed = True
-            self._last_heater_error = str(e)
-            self._fire_heater_control_failed_event(entity_id, service, str(e))
-            return False
-
-        except Exception as e:
-            _LOGGER.error(
-                "%s: Unexpected error calling %s.%s on %s: %s",
-                self.entity_id,
-                domain,
-                service,
-                entity_id,
-                e,
-            )
-            self._heater_control_failed = True
-            self._last_heater_error = str(e)
-            self._fire_heater_control_failed_event(entity_id, service, str(e))
-            return False
+        result = await self._heater_controller._async_call_heater_service(
+            entity_id, domain, service, data
+        )
+        # Sync failure state from controller
+        self._heater_control_failed = self._heater_controller.heater_control_failed
+        self._last_heater_error = self._heater_controller.last_heater_error
+        return result
 
     async def _async_heater_turn_on(self):
         """Turn heater toggleable device on.
 
-        Delegates to HeaterController if available.
+        Delegates to HeaterController for the actual turn on operation.
         """
-        if self._heater_controller is not None:
-            # Update cycle durations in case PID mode changed
-            self._heater_controller.update_cycle_durations(
-                self._min_on_cycle_duration.seconds,
-                self._min_off_cycle_duration.seconds,
-            )
-            await self._heater_controller.async_turn_on(
-                hvac_mode=self.hvac_mode,
-                get_cycle_start_time=self._get_cycle_start_time,
-                zone_linker=self._zone_linker,
-                unique_id=self._unique_id,
-                linked_zones=self._linked_zones,
-                link_delay_minutes=self._link_delay_minutes,
-                is_heating=self._is_heating,
-                set_is_heating=self._set_is_heating,
-                set_last_heat_cycle_time=self._set_last_heat_cycle_time,
-            )
-            return
-
-        # Fallback for startup before heater controller is initialized
-        # Check if zone is delayed due to linked zone heating
-        if self._zone_linker and self._zone_linker.is_zone_delayed(self._unique_id):
-            remaining = self._zone_linker.get_delay_remaining_minutes(self._unique_id)
-            _LOGGER.info(
-                "%s: Zone linking delay active - heating delayed for %.1f more minutes",
-                self.entity_id, remaining or 0
-            )
-            return
-
-        if self._is_device_active:
-            # It's a state refresh call from control interval, just force switch ON.
-            _LOGGER.info("%s: Refresh state ON %s", self.entity_id,
-                         ", ".join([entity for entity in self.heater_or_cooler_entity]))
-        elif time.time() - self._get_cycle_start_time() >= self._min_off_cycle_duration.seconds:
-            _LOGGER.info("%s: Turning ON %s", self.entity_id,
-                         ", ".join([entity for entity in self.heater_or_cooler_entity]))
-            self._last_heat_cycle_time = time.time()
-
-            # Notify zone linker that this zone started heating (for linked zones)
-            if self._zone_linker and self._linked_zones and not self._is_heating:
-                self._is_heating = True
-                await self._zone_linker.on_zone_heating_started(
-                    self._unique_id, self._link_delay_minutes
-                )
-        else:
-            _LOGGER.info("%s: Reject request turning ON %s: Cycle is too short",
-                         self.entity_id, ", ".join([entity for entity in self.heater_or_cooler_entity]))
-            return
-        for heater_or_cooler_entity in self.heater_or_cooler_entity:
-            data = {ATTR_ENTITY_ID: heater_or_cooler_entity}
-            if self._heater_polarity_invert:
-                service = SERVICE_TURN_OFF
-            else:
-                service = SERVICE_TURN_ON
-            await self._async_call_heater_service(
-                heater_or_cooler_entity, HA_DOMAIN, service, data
-            )
+        # Update cycle durations in case PID mode changed
+        self._heater_controller.update_cycle_durations(
+            self._min_on_cycle_duration.seconds,
+            self._min_off_cycle_duration.seconds,
+        )
+        await self._heater_controller.async_turn_on(
+            hvac_mode=self.hvac_mode,
+            get_cycle_start_time=self._get_cycle_start_time,
+            zone_linker=self._zone_linker,
+            unique_id=self._unique_id,
+            linked_zones=self._linked_zones,
+            link_delay_minutes=self._link_delay_minutes,
+            is_heating=self._is_heating,
+            set_is_heating=self._set_is_heating,
+            set_last_heat_cycle_time=self._set_last_heat_cycle_time,
+        )
 
     async def _async_heater_turn_off(self, force=False):
         """Turn heater toggleable device off.
 
-        Delegates to HeaterController if available.
+        Delegates to HeaterController for the actual turn off operation.
         """
-        if self._heater_controller is not None:
-            # Update cycle durations in case PID mode changed
-            self._heater_controller.update_cycle_durations(
-                self._min_on_cycle_duration.seconds,
-                self._min_off_cycle_duration.seconds,
-            )
-            await self._heater_controller.async_turn_off(
-                hvac_mode=self.hvac_mode,
-                get_cycle_start_time=self._get_cycle_start_time,
-                set_is_heating=self._set_is_heating,
-                set_last_heat_cycle_time=self._set_last_heat_cycle_time,
-                force=force,
-            )
-            return
-
-        # Fallback for startup before heater controller is initialized
-        if not self._is_device_active:
-            # It's a state refresh call from control interval, just force switch OFF.
-            _LOGGER.info("%s: Refresh state OFF %s", self.entity_id,
-                         ", ".join([entity for entity in self.heater_or_cooler_entity]))
-        elif time.time() - self._get_cycle_start_time() >= self._min_on_cycle_duration.seconds or force:
-            _LOGGER.info("%s: Turning OFF %s", self.entity_id,
-                         ", ".join([entity for entity in self.heater_or_cooler_entity]))
-            self._last_heat_cycle_time = time.time()
-            # Reset heating state for zone linking
-            self._is_heating = False
-        else:
-            _LOGGER.info("%s: Reject request turning OFF %s: Cycle is too short",
-                         self.entity_id, ", ".join([entity for entity in self.heater_or_cooler_entity]))
-            return
-        for heater_or_cooler_entity in self.heater_or_cooler_entity:
-            data = {ATTR_ENTITY_ID: heater_or_cooler_entity}
-            if self._heater_polarity_invert:
-                service = SERVICE_TURN_ON
-            else:
-                service = SERVICE_TURN_OFF
-            await self._async_call_heater_service(
-                heater_or_cooler_entity, HA_DOMAIN, service, data
-            )
+        # Update cycle durations in case PID mode changed
+        self._heater_controller.update_cycle_durations(
+            self._min_on_cycle_duration.seconds,
+            self._min_off_cycle_duration.seconds,
+        )
+        await self._heater_controller.async_turn_off(
+            hvac_mode=self.hvac_mode,
+            get_cycle_start_time=self._get_cycle_start_time,
+            set_is_heating=self._set_is_heating,
+            set_last_heat_cycle_time=self._set_last_heat_cycle_time,
+            force=force,
+        )
 
     async def _async_set_valve_value(self, value: float):
         """Set valve value for non-PWM devices.
 
-        Delegates to HeaterController if available.
+        Delegates to HeaterController for the actual valve control.
         """
-        if self._heater_controller is not None:
-            await self._heater_controller.async_set_valve_value(value, self.hvac_mode)
-            return
-
-        # Fallback for startup before heater controller is initialized
-        _LOGGER.info("%s: Change state of %s to %s", self.entity_id,
-                     ", ".join([entity for entity in self.heater_or_cooler_entity]), value)
-        for heater_or_cooler_entity in self.heater_or_cooler_entity:
-            if heater_or_cooler_entity[0:6] == 'light.':
-                data = {ATTR_ENTITY_ID: heater_or_cooler_entity, ATTR_BRIGHTNESS_PCT: value}
-                await self._async_call_heater_service(
-                    heater_or_cooler_entity,
-                    LIGHT_DOMAIN,
-                    SERVICE_TURN_LIGHT_ON,
-                    data,
-                )
-            elif heater_or_cooler_entity[0:6] == 'valve.':
-                data = {ATTR_ENTITY_ID: heater_or_cooler_entity, ATTR_POSITION: value}
-                await self._async_call_heater_service(
-                    heater_or_cooler_entity,
-                    VALVE_DOMAIN,
-                    SERVICE_SET_VALVE_POSITION,
-                    data,
-                )
-            else:
-                data = {ATTR_ENTITY_ID: heater_or_cooler_entity, ATTR_VALUE: value}
-                await self._async_call_heater_service(
-                    heater_or_cooler_entity,
-                    self._get_number_entity_domain(heater_or_cooler_entity),
-                    SERVICE_SET_VALUE,
-                    data,
-                )
+        await self._heater_controller.async_set_valve_value(value, self.hvac_mode)
 
     async def async_set_preset_mode(self, preset_mode: str):
         """Set new preset mode.
         This method must be run in the event loop and returns a coroutine.
         """
-        if self._temperature_manager:
-            await self._temperature_manager.async_set_preset_mode(preset_mode)
-            # Sync internal state for backward compatibility
-            self._attr_preset_mode = self._temperature_manager.preset_mode
-            self._saved_target_temp = self._temperature_manager.saved_target_temp
-        else:
-            # Fallback for when manager not yet initialized
-            if preset_mode not in self.preset_modes:
-                return None
-            if preset_mode != PRESET_NONE and self.preset_mode == PRESET_NONE:
-                self._saved_target_temp = self._target_temp
-                self._target_temp = self.presets[preset_mode]
-            elif preset_mode == PRESET_NONE and self.preset_mode != PRESET_NONE:
-                self._target_temp = self._saved_target_temp
-            elif preset_mode == PRESET_NONE and self.preset_mode == PRESET_NONE:
-                return None
-            else:
-                self._target_temp = self.presets[preset_mode]
-            self._attr_preset_mode = preset_mode
-            if self._boost_pid_off and self._attr_preset_mode == PRESET_BOOST:
-                # Force PID OFF if requested and boost mode is active
-                await self.async_set_pid_mode(mode='off')
-            elif self._boost_pid_off and self._attr_preset_mode != PRESET_BOOST:
-                # Force PID Auto if managed by boost_pid_off and not in boost mode
-                await self.async_set_pid_mode(mode='auto')
-            else:
-                # if boost_pid_off is false, don't change the PID mode
-                await self._async_control_heating(calc_pid=True)
+        await self._temperature_manager.async_set_preset_mode(preset_mode)
+        # Sync internal state for backward compatibility
+        self._attr_preset_mode = self._temperature_manager.preset_mode
+        self._saved_target_temp = self._temperature_manager.saved_target_temp
 
     async def calc_output(self):
         """Calculate PID control output.
 
-        Delegates to ControlOutputManager if available.
+        Delegates to ControlOutputManager for the actual calculation.
         """
-        if self._control_output_manager is not None:
-            await self._control_output_manager.calc_output()
-            return
-
-        # Fallback for startup before control output manager is initialized
-        update = False
-        if self._previous_temp_time is None:
-            self._previous_temp_time = time.time()
-        if self._cur_temp_time is None:
-            self._cur_temp_time = time.time()
-        if self._previous_temp_time > self._cur_temp_time:
-            self._previous_temp_time = self._cur_temp_time
-
-        # Apply night setback adjustment if configured
-        effective_target, _, _ = self._calculate_night_setback_adjustment()
-
-        if self._pid_controller.sampling_period == 0:
-            self._control_output, update = self._pid_controller.calc(self._current_temp,
-                                                                     effective_target,
-                                                                     self._cur_temp_time,
-                                                                     self._previous_temp_time,
-                                                                     self._ext_temp)
-        else:
-            self._control_output, update = self._pid_controller.calc(self._current_temp,
-                                                                     effective_target,
-                                                                     ext_temp=self._ext_temp)
-        self._p = round(self._pid_controller.proportional, 1)
-        self._i = round(self._pid_controller.integral, 1)
-        self._d = round(self._pid_controller.derivative, 1)
-        self._e = round(self._pid_controller.external, 1)
-        self._control_output = round(self._control_output, self._output_precision)
-        if not self._output_precision:
-            self._control_output = int(self._control_output)
-        error = self._pid_controller.error
-        self._dt = self._pid_controller.dt
-
-        if update:
-            _LOGGER.debug("%s: New PID control output: %s (error = %.2f, dt = %.2f, "
-                          "p=%.2f, i=%.2f, d=%.2f, e=%.2f) [Kp=%.4f, Ki=%.4f, Kd=%.2f, Ke=%.2f]",
-                          self.entity_id, str(self._control_output), error, self._dt,
-                          self._p, self._i, self._d, self._e,
-                          self._kp or 0, self._ki or 0, self._kd or 0, self._ke or 0)
+        await self._control_output_manager.calc_output()
 
     async def set_control_value(self):
         """Set output value for heater.
