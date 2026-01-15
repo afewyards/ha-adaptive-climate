@@ -1,6 +1,7 @@
 """Manager classes for Adaptive Thermostat integration."""
 from __future__ import annotations
 
+from .control_output import ControlOutputManager
 from .cycle_tracker import CycleState, CycleTrackerManager
 from .heater_controller import HeaterController
 from .ke_manager import KeController
@@ -12,6 +13,7 @@ from .state_restorer import StateRestorer
 from .temperature_manager import TemperatureManager
 
 __all__ = [
+    "ControlOutputManager",
     "CycleState",
     "CycleTrackerManager",
     "HeaterController",

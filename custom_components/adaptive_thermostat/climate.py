@@ -75,7 +75,7 @@ from . import DOMAIN, PLATFORMS
 from . import const
 from . import pid_controller
 from .adaptive.learning import AdaptiveLearner, ThermalRateLearner
-from .managers import HeaterController, KeController, NightSetbackController, PIDTuningManager, StateRestorer, TemperatureManager, CycleTrackerManager
+from .managers import ControlOutputManager, HeaterController, KeController, NightSetbackController, PIDTuningManager, StateRestorer, TemperatureManager, CycleTrackerManager
 from .managers.state_attributes import build_state_attributes
 
 _LOGGER = logging.getLogger(__name__)
@@ -480,6 +480,9 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         # Cycle tracker for adaptive learning (initialized in async_added_to_hass when hass is available)
         self._cycle_tracker: CycleTrackerManager | None = None
 
+        # Control output manager (initialized in async_added_to_hass when hass is available)
+        self._control_output_manager: ControlOutputManager | None = None
+
         # Heater control failure tracking (managed by HeaterController when available)
         self._heater_control_failed = False
         self._last_heater_error: str | None = None
@@ -707,6 +710,35 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         )
         _LOGGER.info(
             "%s: PID tuning manager initialized",
+            self.entity_id
+        )
+
+        # Initialize control output manager
+        self._control_output_manager = ControlOutputManager(
+            thermostat=self,
+            pid_controller=self._pid_controller,
+            heater_controller=self._heater_controller,
+            get_current_temp=lambda: self._current_temp,
+            get_ext_temp=lambda: self._ext_temp,
+            get_previous_temp_time=lambda: self._previous_temp_time,
+            set_previous_temp_time=self._set_previous_temp_time,
+            get_cur_temp_time=lambda: self._cur_temp_time,
+            set_cur_temp_time=self._set_cur_temp_time,
+            get_output_precision=lambda: self._output_precision,
+            calculate_night_setback_adjustment=self._calculate_night_setback_adjustment,
+            set_control_output=self._set_control_output,
+            set_p=self._set_p,
+            set_i=self._set_i,
+            set_d=self._set_d,
+            set_e=self._set_e,
+            set_dt=self._set_dt,
+            get_kp=lambda: self._kp,
+            get_ki=lambda: self._ki,
+            get_kd=lambda: self._kd,
+            get_ke=lambda: self._ke,
+        )
+        _LOGGER.info(
+            "%s: Control output manager initialized",
             self.entity_id
         )
 
@@ -1690,6 +1722,39 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         """Set the Kd value."""
         self._kd = value
 
+    # Setter callbacks for ControlOutputManager
+    def _set_control_output(self, value: float) -> None:
+        """Set the control output value."""
+        self._control_output = value
+
+    def _set_p(self, value: float) -> None:
+        """Set the proportional component value."""
+        self._p = value
+
+    def _set_i(self, value: float) -> None:
+        """Set the integral component value."""
+        self._i = value
+
+    def _set_d(self, value: float) -> None:
+        """Set the derivative component value."""
+        self._d = value
+
+    def _set_e(self, value: float) -> None:
+        """Set the external component value."""
+        self._e = value
+
+    def _set_dt(self, value: float) -> None:
+        """Set the delta time value."""
+        self._dt = value
+
+    def _set_previous_temp_time(self, value: float) -> None:
+        """Set the previous temperature time."""
+        self._previous_temp_time = value
+
+    def _set_cur_temp_time(self, value: float) -> None:
+        """Set the current temperature time."""
+        self._cur_temp_time = value
+
     def _is_pid_converged_for_ke(self) -> bool:
         """Check if PID has converged sufficiently for Ke learning.
 
@@ -2054,7 +2119,15 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                 await self._async_control_heating(calc_pid=True)
 
     async def calc_output(self):
-        """calculate control output"""
+        """Calculate PID control output.
+
+        Delegates to ControlOutputManager if available.
+        """
+        if self._control_output_manager is not None:
+            await self._control_output_manager.calc_output()
+            return
+
+        # Fallback for startup before control output manager is initialized
         update = False
         if self._previous_temp_time is None:
             self._previous_temp_time = time.time()
@@ -2094,131 +2167,73 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                           self._kp or 0, self._ki or 0, self._kd or 0, self._ke or 0)
 
     async def set_control_value(self):
-        """Set Output value for heater.
+        """Set output value for heater.
 
-        Delegates to HeaterController if available.
+        Delegates to HeaterController for the actual control operation.
         """
-        if self._heater_controller is not None:
-            # Update cycle durations in case PID mode changed
-            self._heater_controller.update_cycle_durations(
-                self._min_on_cycle_duration.seconds,
-                self._min_off_cycle_duration.seconds,
-            )
-            await self._heater_controller.async_set_control_value(
-                control_output=self._control_output,
-                hvac_mode=self.hvac_mode,
-                get_cycle_start_time=self._get_cycle_start_time,
-                zone_linker=self._zone_linker,
-                unique_id=self._unique_id,
-                linked_zones=self._linked_zones,
-                link_delay_minutes=self._link_delay_minutes,
-                is_heating=self._is_heating,
-                set_is_heating=self._set_is_heating,
-                set_last_heat_cycle_time=self._set_last_heat_cycle_time,
-                time_changed=self._time_changed,
-                set_time_changed=self._set_time_changed,
-                force_on=self._force_on,
-                force_off=self._force_off,
-                set_force_on=self._set_force_on,
-                set_force_off=self._set_force_off,
+        if self._heater_controller is None:
+            _LOGGER.warning(
+                "%s: HeaterController not initialized, cannot set control value",
+                self.entity_id,
             )
             return
 
-        # Fallback for startup before heater controller is initialized
-        if self._pwm:
-            if abs(self._control_output) == self._difference:
-                if not self._is_device_active:
-                    _LOGGER.info("%s: Output is %s. Request turning ON %s", self.entity_id,
-                                 self._difference, ", ".join([entity for entity in self.heater_or_cooler_entity]))
-                    self._time_changed = time.time()
-                await self._async_heater_turn_on()
-            elif abs(self._control_output) > 0:
-                await self.pwm_switch()
-            else:
-                if self._is_device_active:
-                    _LOGGER.info("%s: Output is 0. Request turning OFF %s", self.entity_id,
-                                 ", ".join([entity for entity in self.heater_or_cooler_entity]))
-                    self._time_changed = time.time()
-                await self._async_heater_turn_off()
-        else:
-            await self._async_set_valve_value(abs(self._control_output))
+        # Update cycle durations in case PID mode changed
+        self._heater_controller.update_cycle_durations(
+            self._min_on_cycle_duration.seconds,
+            self._min_off_cycle_duration.seconds,
+        )
+        await self._heater_controller.async_set_control_value(
+            control_output=self._control_output,
+            hvac_mode=self.hvac_mode,
+            get_cycle_start_time=self._get_cycle_start_time,
+            zone_linker=self._zone_linker,
+            unique_id=self._unique_id,
+            linked_zones=self._linked_zones,
+            link_delay_minutes=self._link_delay_minutes,
+            is_heating=self._is_heating,
+            set_is_heating=self._set_is_heating,
+            set_last_heat_cycle_time=self._set_last_heat_cycle_time,
+            time_changed=self._time_changed,
+            set_time_changed=self._set_time_changed,
+            force_on=self._force_on,
+            force_off=self._force_off,
+            set_force_on=self._set_force_on,
+            set_force_off=self._set_force_off,
+        )
 
     async def pwm_switch(self):
         """Turn off and on the heater proportionally to control_value.
 
-        Delegates to HeaterController if available.
+        Delegates to HeaterController for the PWM switching operation.
         """
-        if self._heater_controller is not None:
-            # Update cycle durations in case PID mode changed
-            self._heater_controller.update_cycle_durations(
-                self._min_on_cycle_duration.seconds,
-                self._min_off_cycle_duration.seconds,
-            )
-            await self._heater_controller.async_pwm_switch(
-                control_output=self._control_output,
-                hvac_mode=self.hvac_mode,
-                get_cycle_start_time=self._get_cycle_start_time,
-                zone_linker=self._zone_linker,
-                unique_id=self._unique_id,
-                linked_zones=self._linked_zones,
-                link_delay_minutes=self._link_delay_minutes,
-                is_heating=self._is_heating,
-                set_is_heating=self._set_is_heating,
-                set_last_heat_cycle_time=self._set_last_heat_cycle_time,
-                time_changed=self._time_changed,
-                set_time_changed=self._set_time_changed,
-                force_on=self._force_on,
-                force_off=self._force_off,
-                set_force_on=self._set_force_on,
-                set_force_off=self._set_force_off,
+        if self._heater_controller is None:
+            _LOGGER.warning(
+                "%s: HeaterController not initialized, cannot perform PWM switch",
+                self.entity_id,
             )
             return
 
-        # Fallback for startup before heater controller is initialized
-        time_passed = time.time() - self._time_changed
-        # Compute time_on based on PWM duration and PID output
-        time_on = self._pwm * abs(self._control_output) / self._difference
-        time_off = self._pwm - time_on
-        # Check time_on and time_off are not too short
-        if 0 < time_on < self._min_on_cycle_duration.seconds:
-            # time_on is too short, increase time_off and time_on
-            time_off *= self._min_on_cycle_duration.seconds / time_on
-            time_on = self._min_on_cycle_duration.seconds
-        if 0 < time_off < self._min_off_cycle_duration.seconds:
-            # time_off is too short, increase time_on and time_off
-            time_on *= self._min_off_cycle_duration.seconds / time_off
-            time_off = self._min_off_cycle_duration.seconds
-        if self._is_device_active:
-            if time_on <= time_passed or self._force_off:
-                _LOGGER.info(
-                    "%s: ON time passed. Request turning OFF %s",
-                    self.entity_id,
-                    ", ".join([entity for entity in self.heater_or_cooler_entity])
-                )
-                await self._async_heater_turn_off()
-                self._time_changed = time.time()
-            else:
-                _LOGGER.info(
-                    "%s: Time until %s turns OFF: %s sec",
-                    self.entity_id,
-                    ", ".join([entity for entity in self.heater_or_cooler_entity]),
-                    int(time_on - time_passed)
-                )
-                await self._async_heater_turn_on()
-        else:
-            if time_off <= time_passed or self._force_on:
-                _LOGGER.info(
-                    "%s: OFF time passed. Request turning ON %s", self.entity_id,
-                    ", ".join([entity for entity in self.heater_or_cooler_entity])
-                )
-                await self._async_heater_turn_on()
-                self._time_changed = time.time()
-            else:
-                _LOGGER.info(
-                    "%s: Time until %s turns ON: %s sec", self.entity_id,
-                    ", ".join([entity for entity in self.heater_or_cooler_entity]),
-                    int(time_off - time_passed)
-                )
-                await self._async_heater_turn_off()
-        self._force_on = False
-        self._force_off = False
+        # Update cycle durations in case PID mode changed
+        self._heater_controller.update_cycle_durations(
+            self._min_on_cycle_duration.seconds,
+            self._min_off_cycle_duration.seconds,
+        )
+        await self._heater_controller.async_pwm_switch(
+            control_output=self._control_output,
+            hvac_mode=self.hvac_mode,
+            get_cycle_start_time=self._get_cycle_start_time,
+            zone_linker=self._zone_linker,
+            unique_id=self._unique_id,
+            linked_zones=self._linked_zones,
+            link_delay_minutes=self._link_delay_minutes,
+            is_heating=self._is_heating,
+            set_is_heating=self._set_is_heating,
+            set_last_heat_cycle_time=self._set_last_heat_cycle_time,
+            time_changed=self._time_changed,
+            set_time_changed=self._set_time_changed,
+            force_on=self._force_on,
+            force_off=self._force_off,
+            set_force_on=self._set_force_on,
+            set_force_off=self._set_force_off,
+        )
