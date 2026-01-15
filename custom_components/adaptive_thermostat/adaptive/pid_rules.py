@@ -98,13 +98,14 @@ def evaluate_pid_rules(
 
     # Rule 4: Undershoot (>0.3C)
     if avg_undershoot > 0.3:
-        increase = min(0.20, avg_undershoot * 0.4)  # Up to 20% increase
+        increase = min(1.0, avg_undershoot * 2.0)  # Up to 100% increase (doubling)
+        increase_pct = increase * 100.0
         results.append(PIDRuleResult(
             rule=PIDRule.UNDERSHOOT,
             kp_factor=1.0,
             ki_factor=1.0 + increase,
             kd_factor=1.0,
-            reason=f"Undershoot ({avg_undershoot:.2f}°C)"
+            reason=f"Undershoot ({avg_undershoot:.2f}°C, +{increase_pct:.0f}% Ki)"
         ))
 
     # Rule 5: Many oscillations (>3)
