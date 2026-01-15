@@ -639,5 +639,146 @@ class TestPIDDerivativeFilter:
         assert pid._derivative_filtered == 0.0
 
 
+class TestPIDOutdoorTempLag:
+    """Test outdoor temperature lag (EMA filter) functionality."""
+
+    def test_outdoor_temp_ema_filter(self):
+        """Test outdoor temperature EMA filter simulating sunny day scenario."""
+        # Create PID with outdoor_temp_lag_tau = 4 hours
+        pid = PID(kp=50, ki=1.0, kd=2.0, ke=0.005, out_min=0, out_max=100,
+                  outdoor_temp_lag_tau=4.0)
+
+        # Simulate sunny day: outdoor temp rises from 10°C to 20°C over 8 hours
+        # Indoor temp stable at 20°C, setpoint = 21°C
+        # Samples every 30 minutes
+        indoor_temp = 20.0
+        setpoint = 21.0
+
+        # Initial outdoor temp = 10°C
+        t = 0.0
+        outdoor_temp = 10.0
+        output, _ = pid.calc(input_val=indoor_temp, set_point=setpoint,
+                            input_time=t, last_input_time=None, ext_temp=outdoor_temp)
+
+        # First reading should initialize lagged temp to current outdoor temp
+        assert pid.outdoor_temp_lagged == 10.0
+
+        # Outdoor temp rises to 15°C after 2 hours
+        t = 7200.0  # 2 hours in seconds
+        outdoor_temp = 15.0
+        output, _ = pid.calc(input_val=indoor_temp, set_point=setpoint,
+                            input_time=t, last_input_time=0.0, ext_temp=outdoor_temp)
+
+        # Lagged temp should be between 10 and 15 (filtered)
+        # With tau=4h, dt=2h, alpha = 2/4 = 0.5
+        # lagged = 0.5 * 15 + 0.5 * 10 = 12.5
+        assert 10.0 < pid.outdoor_temp_lagged < 15.0
+        assert abs(pid.outdoor_temp_lagged - 12.5) < 0.1
+
+        # Outdoor temp rises to 17.5°C after another 1 hour (3 hours total)
+        t = 10800.0  # 3 hours in seconds
+        outdoor_temp = 17.5
+        output, _ = pid.calc(input_val=indoor_temp, set_point=setpoint,
+                            input_time=t, last_input_time=7200.0, ext_temp=outdoor_temp)
+
+        # Lagged temp should be catching up
+        # alpha = 1/4 = 0.25, lagged = 0.25 * 17.5 + 0.75 * 12.5 = 4.375 + 9.375 = 13.75
+        assert 12.5 < pid.outdoor_temp_lagged < 17.5
+        assert abs(pid.outdoor_temp_lagged - 13.75) < 0.1
+
+        # After another hour, outdoor temp at 20°C (4 hours total)
+        t = 14400.0  # 4 hours in seconds
+        outdoor_temp = 20.0
+        output, _ = pid.calc(input_val=indoor_temp, set_point=setpoint,
+                            input_time=t, last_input_time=10800.0, ext_temp=outdoor_temp)
+
+        # Lagged temp continues to approach outdoor temp
+        # alpha = 0.25, lagged = 0.25 * 20 + 0.75 * 13.75 = 5.0 + 10.3125 = 15.3125
+        assert 13.75 < pid.outdoor_temp_lagged < 20.0
+        assert abs(pid.outdoor_temp_lagged - 15.3125) < 0.1
+
+    def test_outdoor_temp_lag_initialization(self):
+        """Test that outdoor temp lag initializes with first reading."""
+        # Create PID with default tau
+        pid = PID(kp=50, ki=1.0, kd=2.0, ke=0.005, out_min=0, out_max=100)
+
+        # Initially, lagged temp should be None
+        assert pid.outdoor_temp_lagged is None
+
+        # First calc with outdoor temp
+        indoor_temp = 20.0
+        setpoint = 21.0
+        outdoor_temp = 5.0
+        t = 0.0
+
+        output, _ = pid.calc(input_val=indoor_temp, set_point=setpoint,
+                            input_time=t, last_input_time=None, ext_temp=outdoor_temp)
+
+        # After first reading, lagged temp should equal outdoor temp (no warmup needed)
+        assert pid.outdoor_temp_lagged == 5.0
+
+        # Verify dext uses the lagged temp
+        # dext = setpoint - outdoor_temp_lagged = 21 - 5 = 16
+        assert pid._dext == 16.0
+
+    def test_outdoor_temp_lag_reset_on_clear_samples(self):
+        """Test that outdoor temp lag resets when samples are cleared."""
+        # Create PID with outdoor temp lag
+        pid = PID(kp=50, ki=1.0, kd=2.0, ke=0.005, out_min=0, out_max=100,
+                  outdoor_temp_lag_tau=4.0)
+
+        # Initialize with outdoor temp
+        pid.calc(input_val=20.0, set_point=21.0, input_time=0.0,
+                last_input_time=None, ext_temp=10.0)
+
+        assert pid.outdoor_temp_lagged == 10.0
+
+        # Clear samples (e.g., mode change OFF -> AUTO)
+        pid.clear_samples()
+
+        # Lagged temp should be reset to None
+        assert pid.outdoor_temp_lagged is None
+
+    def test_outdoor_temp_lag_state_persistence(self):
+        """Test outdoor temp lag can be restored from saved state."""
+        # Create PID
+        pid = PID(kp=50, ki=1.0, kd=2.0, ke=0.005, out_min=0, out_max=100,
+                  outdoor_temp_lag_tau=4.0)
+
+        # Initialize with outdoor temp
+        pid.calc(input_val=20.0, set_point=21.0, input_time=0.0,
+                last_input_time=None, ext_temp=10.0)
+
+        # Simulate several readings to update lagged temp
+        for i in range(1, 5):
+            t = i * 3600.0  # 1 hour intervals
+            outdoor_temp = 10.0 + i * 2.0  # Rising temp
+            pid.calc(input_val=20.0, set_point=21.0, input_time=t,
+                    last_input_time=(i-1)*3600.0, ext_temp=outdoor_temp)
+
+        # Save lagged temp value
+        saved_lagged_temp = pid.outdoor_temp_lagged
+        assert saved_lagged_temp is not None
+
+        # Simulate restoration by creating new PID and setting lagged temp
+        pid2 = PID(kp=50, ki=1.0, kd=2.0, ke=0.005, out_min=0, out_max=100,
+                   outdoor_temp_lag_tau=4.0)
+
+        # Restore the lagged temp (as would happen in state_restorer.py)
+        pid2.outdoor_temp_lagged = saved_lagged_temp
+
+        # Verify restoration
+        assert pid2.outdoor_temp_lagged == saved_lagged_temp
+
+        # Next calc should use restored value
+        t = 5 * 3600.0
+        outdoor_temp = 18.0
+        pid2.calc(input_val=20.0, set_point=21.0, input_time=t,
+                 last_input_time=4*3600.0, ext_temp=outdoor_temp)
+
+        # Lagged temp should have updated from restored value
+        assert pid2.outdoor_temp_lagged != saved_lagged_temp
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

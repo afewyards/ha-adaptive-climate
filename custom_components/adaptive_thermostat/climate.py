@@ -566,14 +566,19 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                 window_rating=self._window_rating,
             )
             self._kp, self._ki, self._kd = calculate_initial_pid(tau, self._heating_type)
-            _LOGGER.info("%s: Physics-based PID init (tau=%.2f, type=%s, window=%s): Kp=%.4f, Ki=%.5f, Kd=%.3f",
-                         self.unique_id, tau, self._heating_type, self._window_rating, self._kp, self._ki, self._kd)
+            # Calculate outdoor temperature lag time constant: tau_lag = 2 * tau_building
+            # This models the thermal inertia of the building envelope
+            self._outdoor_temp_lag_tau = 2.0 * tau
+            _LOGGER.info("%s: Physics-based PID init (tau=%.2f, type=%s, window=%s): Kp=%.4f, Ki=%.5f, Kd=%.3f, outdoor_lag_tau=%.2f",
+                         self.unique_id, tau, self._heating_type, self._window_rating, self._kp, self._ki, self._kd, self._outdoor_temp_lag_tau)
         else:
             # Fallback defaults if no zone properties
             self._kp = 0.5
             self._ki = 0.01
             self._kd = 5.0
-            _LOGGER.warning("%s: No area_m2 configured, using default PID values", self.unique_id)
+            self._outdoor_temp_lag_tau = 4.0  # Default 4 hours if no tau available
+            _LOGGER.warning("%s: No area_m2 configured, using default PID values and outdoor_lag_tau=%.2f",
+                          self.unique_id, self._outdoor_temp_lag_tau)
 
         # Calculate initial Ke from physics (adaptive learning will refine it)
         # Note: energy_rating may not be available during __init__ since hass isn't fully set up
@@ -594,12 +599,13 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         self._time_changed = time.time()
         self._last_sensor_update = time.time()
         self._last_ext_sensor_update = time.time()
-        _LOGGER.info("%s: Active PID values - Kp=%.4f, Ki=%.5f, Kd=%.3f, Ke=%s, D_filter_alpha=%.2f",
-                     self.unique_id, self._kp, self._ki, self._kd, self._ke or 0, self._derivative_filter_alpha)
+        _LOGGER.info("%s: Active PID values - Kp=%.4f, Ki=%.5f, Kd=%.3f, Ke=%s, D_filter_alpha=%.2f, outdoor_lag_tau=%.2f",
+                     self.unique_id, self._kp, self._ki, self._kd, self._ke or 0, self._derivative_filter_alpha, self._outdoor_temp_lag_tau)
         self._pid_controller = pid_controller.PID(self._kp, self._ki, self._kd, self._ke,
                                                   self._min_out, self._max_out,
                                                   self._sampling_period, self._cold_tolerance,
-                                                  self._hot_tolerance, self._derivative_filter_alpha)
+                                                  self._hot_tolerance, self._derivative_filter_alpha,
+                                                  self._outdoor_temp_lag_tau)
         self._pid_controller.mode = "AUTO"
 
     async def async_added_to_hass(self):

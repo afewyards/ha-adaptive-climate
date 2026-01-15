@@ -190,6 +190,13 @@ class StateRestorer:
 
             thermostat._pid_controller.set_pid_param(ke=thermostat._ke)
 
+        # Restore outdoor temperature lag state
+        if old_state.attributes.get('outdoor_temp_lagged') is not None:
+            outdoor_temp_lagged = float(old_state.attributes.get('outdoor_temp_lagged'))
+            thermostat._pid_controller.outdoor_temp_lagged = outdoor_temp_lagged
+            _LOGGER.info("%s: Restored outdoor_temp_lagged=%.2f°C",
+                        thermostat.entity_id, outdoor_temp_lagged)
+
         _LOGGER.info("%s: Restored PID values - Kp=%.4f, Ki=%.5f, Kd=%.3f, Ke=%s",
                      thermostat.entity_id, thermostat._kp, thermostat._ki, thermostat._kd, thermostat._ke or 0)
 

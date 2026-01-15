@@ -39,6 +39,9 @@ def build_state_attributes(thermostat: SmartThermostat) -> dict[str, Any]:
         # ke_migrated: Ke scaled by 1/100 (new range: 0.001-0.02)
         "pid_integral_migrated": True,
         "ke_migrated": True,
+        # Outdoor temperature lag state
+        "outdoor_temp_lagged": thermostat._pid.outdoor_temp_lagged,
+        "outdoor_temp_lag_tau": thermostat._pid.outdoor_temp_lag_tau,
     }
 
     # Debug-only attributes

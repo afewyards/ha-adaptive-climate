@@ -11,7 +11,8 @@ class PID:
     error: float
 
     def __init__(self, kp, ki, kd, ke=0, out_min=float('-inf'), out_max=float('+inf'),
-                 sampling_period=0, cold_tolerance=0.3, hot_tolerance=0.3, derivative_filter_alpha=0.15):
+                 sampling_period=0, cold_tolerance=0.3, hot_tolerance=0.3, derivative_filter_alpha=0.15,
+                 outdoor_temp_lag_tau=4.0):
         """A proportional-integral-derivative controller.
             :param kp: Proportional coefficient.
             :type kp: float
@@ -34,6 +35,9 @@ class PID:
             :param derivative_filter_alpha: EMA filter alpha for derivative term (0.0-1.0).
                                            Lower values = more filtering. 1.0 = no filter.
             :type derivative_filter_alpha: float
+            :param outdoor_temp_lag_tau: Time constant in hours for outdoor temperature EMA filter.
+                                        Larger values = slower response to outdoor temp changes.
+            :type outdoor_temp_lag_tau: float
         """
         if kp is None:
             raise ValueError('kp must be specified')
@@ -74,6 +78,8 @@ class PID:
         self._sampling_period = sampling_period
         self._cold_tolerance = cold_tolerance
         self._hot_tolerance = hot_tolerance
+        self._outdoor_temp_lag_tau = outdoor_temp_lag_tau  # Time constant in hours
+        self._outdoor_temp_lagged = None  # Will be initialized on first outdoor temp reading
 
     @property
     def mode(self):
@@ -137,6 +143,21 @@ class PID:
     def dt(self):
         return self._dt
 
+    @property
+    def outdoor_temp_lagged(self):
+        """Get the lagged (EMA-filtered) outdoor temperature."""
+        return self._outdoor_temp_lagged
+
+    @outdoor_temp_lagged.setter
+    def outdoor_temp_lagged(self, value):
+        """Set the lagged outdoor temperature (for state restoration)."""
+        self._outdoor_temp_lagged = value
+
+    @property
+    def outdoor_temp_lag_tau(self):
+        """Get the outdoor temperature lag time constant in hours."""
+        return self._outdoor_temp_lag_tau
+
     def set_pid_param(self, kp=None, ki=None, kd=None, ke=None):
         """Set PID parameters."""
         if kp is not None and isinstance(kp, (int, float)):
@@ -156,6 +177,7 @@ class PID:
         self._last_input = None
         self._last_input_time = None
         self._derivative_filtered = 0.0
+        self._outdoor_temp_lagged = None
         
     def calc(self, input_val, set_point, input_time=None, last_input_time=None, ext_temp=None):
         """Adjusts and holds the given setpoint.
@@ -231,8 +253,21 @@ class PID:
             self._dt = self._input_time - self._last_input_time
         else:
             self._dt = 0
+
+        # Apply EMA filter to outdoor temperature to model thermal lag
         if ext_temp is not None:
-            self._dext = set_point - ext_temp
+            if self._outdoor_temp_lagged is None:
+                # Initialize with first reading (no warmup needed)
+                self._outdoor_temp_lagged = ext_temp
+            else:
+                # Apply EMA filter: alpha = dt / (tau * 3600)
+                # tau is in hours, dt is in seconds, so convert tau to seconds
+                alpha = self._dt / (self._outdoor_temp_lag_tau * 3600.0)
+                # Clamp alpha to [0, 1] for numerical stability
+                alpha = max(0.0, min(1.0, alpha))
+                self._outdoor_temp_lagged = alpha * ext_temp + (1.0 - alpha) * self._outdoor_temp_lagged
+
+            self._dext = set_point - self._outdoor_temp_lagged
         else:
             self._dext = 0
 
