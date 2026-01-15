@@ -1,7 +1,7 @@
 """Tests for cycle tracker manager."""
 
 from datetime import datetime
-from unittest.mock import MagicMock, Mock
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
@@ -12,10 +12,19 @@ from custom_components.adaptive_thermostat.managers.cycle_tracker import (
 
 
 @pytest.fixture
+def mock_async_call_later():
+    """Mock async_call_later from homeassistant.helpers.event."""
+    with patch(
+        "custom_components.adaptive_thermostat.managers.cycle_tracker.async_call_later"
+    ) as mock:
+        mock.return_value = MagicMock()  # Returns cancel handle
+        yield mock
+
+
+@pytest.fixture
 def mock_hass():
     """Create a mock Home Assistant instance."""
     hass = MagicMock()
-    hass.async_call_later = MagicMock()
     hass.async_create_task = MagicMock()
     return hass
 
@@ -90,6 +99,12 @@ class TestCycleTrackerBasic:
 
     def test_on_heating_stopped_transitions_to_settling(self, cycle_tracker, mock_hass):
         """Test on_heating_stopped() transitions to SETTLING."""
+        import sys
+
+        # Get the mocked async_call_later from conftest
+        mock_async_call_later = sys.modules["homeassistant.helpers.event"].async_call_later
+        mock_async_call_later.reset_mock()
+
         # First start heating
         cycle_tracker.on_heating_started(datetime.now())
         assert cycle_tracker.state == CycleState.HEATING
@@ -99,9 +114,9 @@ class TestCycleTrackerBasic:
 
         assert cycle_tracker.state == CycleState.SETTLING
         # Verify timeout was scheduled
-        mock_hass.async_call_later.assert_called_once()
-        call_args = mock_hass.async_call_later.call_args
-        assert call_args[0][0] == 120 * 60  # 120 minutes in seconds
+        mock_async_call_later.assert_called_once()
+        call_args = mock_async_call_later.call_args
+        assert call_args[0][1] == 120 * 60  # 120 minutes in seconds (2nd arg after hass)
 
     def test_on_heating_stopped_ignores_when_not_heating(self, cycle_tracker):
         """Test on_heating_stopped() ignores call when not in HEATING state."""
@@ -282,17 +297,23 @@ class TestCycleTrackerSettling:
     @pytest.mark.asyncio
     async def test_settling_timeout(self, cycle_tracker, mock_hass):
         """Test settling timeout transitions to IDLE after 120 minutes."""
+        import sys
+
+        # Get the mocked async_call_later from conftest
+        mock_async_call_later = sys.modules["homeassistant.helpers.event"].async_call_later
+        mock_async_call_later.reset_mock()
+
         # Start heating and stop
         cycle_tracker.on_heating_started(datetime.now())
         cycle_tracker.on_heating_stopped(datetime.now())
 
         # Verify timeout was scheduled
-        mock_hass.async_call_later.assert_called_once()
-        call_args = mock_hass.async_call_later.call_args
-        assert call_args[0][0] == 120 * 60  # 120 minutes in seconds
+        mock_async_call_later.assert_called_once()
+        call_args = mock_async_call_later.call_args
+        assert call_args[0][1] == 120 * 60  # 120 minutes in seconds (2nd arg after hass)
 
-        # Get the timeout callback and execute the inner task
-        timeout_callback = call_args[0][1]
+        # Get the timeout callback (3rd arg) and execute the inner task
+        timeout_callback = call_args[0][2]
         timeout_callback(None)  # This calls lambda which calls async_create_task
 
         # Verify that async_create_task was called with a coroutine

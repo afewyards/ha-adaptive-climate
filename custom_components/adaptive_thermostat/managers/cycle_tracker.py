@@ -151,6 +151,8 @@ class CycleTrackerManager:
 
     def _schedule_settling_timeout(self) -> None:
         """Schedule timeout for settling detection."""
+        from homeassistant.helpers.event import async_call_later
+
         # Cancel existing timeout if any
         if self._settling_timeout_handle is not None:
             self._settling_timeout_handle()
@@ -168,8 +170,8 @@ class CycleTrackerManager:
             self._settling_timeout_handle = None
 
         # Store the cancel handle
-        self._settling_timeout_handle = self._hass.async_call_later(
-            self._max_settling_time_minutes * 60, lambda _: self._hass.async_create_task(_settling_timeout())
+        self._settling_timeout_handle = async_call_later(
+            self._hass, self._max_settling_time_minutes * 60, lambda _: self._hass.async_create_task(_settling_timeout())
         )
 
     async def update_temperature(self, timestamp: datetime, temperature: float) -> None:
