@@ -80,6 +80,7 @@ class PID:
         self._hot_tolerance = hot_tolerance
         self._outdoor_temp_lag_tau = outdoor_temp_lag_tau  # Time constant in hours
         self._outdoor_temp_lagged = None  # Will be initialized on first outdoor temp reading
+        self._last_output_before_off = None  # Stores output before switching to OFF mode for bumpless transfer
 
     @property
     def mode(self):
@@ -89,6 +90,9 @@ class PID:
     def mode(self, mode):
         assert mode.upper() in ['AUTO', 'OFF']
         new_mode = mode.upper()
+        # Store output before switching to OFF for bumpless transfer
+        if self._mode == 'AUTO' and new_mode == 'OFF':
+            self._last_output_before_off = self._output
         # Clear samples when switching from OFF to AUTO to prevent stale data
         if self._mode == 'OFF' and new_mode == 'AUTO':
             self.clear_samples()
@@ -157,6 +161,54 @@ class PID:
     def outdoor_temp_lag_tau(self):
         """Get the outdoor temperature lag time constant in hours."""
         return self._outdoor_temp_lag_tau
+
+    @property
+    def has_transfer_state(self):
+        """Check if bumpless transfer state is available."""
+        return self._last_output_before_off is not None
+
+    def prepare_bumpless_transfer(self):
+        """Prepare for bumpless transfer by setting integral to maintain continuity.
+
+        This method calculates the integral term needed to maintain the same output
+        as before the mode was switched to OFF, preventing sudden output jumps when
+        switching back to AUTO mode.
+
+        Should be called on first calc() after OFF→AUTO transition, and only if:
+        - Setpoint hasn't changed significantly (< 2°C)
+        - Error is not too large (< 2°C)
+        """
+        if not self.has_transfer_state:
+            return
+
+        # Skip transfer if setpoint changed significantly or error is large
+        if abs(self._set_point - self._last_set_point) > 2.0:
+            _LOGGER.debug("Bumpless transfer skipped: setpoint changed by %.2f°C",
+                         abs(self._set_point - self._last_set_point))
+            self._last_output_before_off = None
+            return
+
+        if abs(self._error) > 2.0:
+            _LOGGER.debug("Bumpless transfer skipped: error too large (%.2f°C)", abs(self._error))
+            self._last_output_before_off = None
+            return
+
+        # Calculate required integral to match last output
+        # Output = P + I + D + E, so I = Output - P - E (D=0 on first calc after OFF)
+        required_integral = self._last_output_before_off - self._proportional - self._external
+
+        # Clamp to valid range accounting for external term
+        required_integral = max(
+            min(required_integral, self._out_max - self._external),
+            self._out_min - self._external
+        )
+
+        self._integral = required_integral
+        _LOGGER.debug("Bumpless transfer: set integral to %.2f%% to maintain output %.2f%%",
+                     self._integral, self._last_output_before_off)
+
+        # Clear the transfer state after use
+        self._last_output_before_off = None
 
     def set_pid_param(self, kp=None, ki=None, kd=None, ke=None):
         """Set PID parameters."""
@@ -274,6 +326,14 @@ class PID:
         # Compensate losses due to external temperature
         self._external = self._Ke * self._dext
 
+        # Calculate proportional term for bumpless transfer
+        self._proportional = self._Kp * self._error
+
+        # Apply bumpless transfer if transitioning from OFF to AUTO
+        # This must be done after P and E terms are calculated but before integral updates
+        if self.has_transfer_state:
+            self.prepare_bumpless_transfer()
+
         # In order to prevent windup, only integrate if the process is not saturated and set point
         # is stable
         if self._out_min < self._last_output < self._out_max and \
@@ -287,7 +347,6 @@ class PID:
         if self._last_set_point != self._set_point:
             self._integral = 0  # Reset integral if set point has changed as system will need to converge to a new value
 
-        self._proportional = self._Kp * self._error
         if self._dt != 0:
             # Convert dt to hours for dimensional correctness
             # Kd has units of %/(°C/hour), so dt must be in hours

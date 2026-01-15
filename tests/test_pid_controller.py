@@ -780,5 +780,121 @@ class TestPIDOutdoorTempLag:
         assert pid2.outdoor_temp_lagged != saved_lagged_temp
 
 
+class TestPIDBumplessTransfer:
+    """Test bumpless transfer for OFF→AUTO mode changes."""
+
+    def test_bumpless_transfer_maintains_output(self):
+        """Test that bumpless transfer maintains output continuity when switching from OFF to AUTO."""
+        # Create PID controller
+        pid = PID(kp=10.0, ki=1.2, kd=2.5, ke=0.005, out_min=0, out_max=100)
+
+        # Run in AUTO mode to establish an output value
+        t = 0.0
+        output1, _ = pid.calc(input_val=19.5, set_point=21.0, input_time=t,
+                             last_input_time=None, ext_temp=10.0)
+        assert output1 > 0  # Should have some output
+
+        # Continue running to build up integral term
+        for i in range(1, 6):
+            t = i * 60.0  # 1 minute intervals
+            output_before, _ = pid.calc(input_val=19.8, set_point=21.0, input_time=t,
+                                       last_input_time=t - 60.0, ext_temp=10.0)
+
+        # Store the last output value
+        last_output = pid._output
+        assert last_output > 0
+
+        # Switch to OFF mode
+        pid.mode = 'OFF'
+
+        # Verify transfer state was stored
+        assert pid.has_transfer_state
+        assert pid._last_output_before_off == last_output
+
+        # Simulate some time passing in OFF mode
+        t += 60.0
+        pid.calc(input_val=20.5, set_point=21.0, input_time=t, last_input_time=t - 60.0)
+
+        # Switch back to AUTO mode
+        pid.mode = 'AUTO'
+
+        # First calc after switching to AUTO should use bumpless transfer
+        t += 60.0
+        output_after, _ = pid.calc(input_val=20.0, set_point=21.0, input_time=t,
+                                   last_input_time=t - 60.0, ext_temp=10.0)
+
+        # Output should be close to the last output before OFF
+        # Allow some tolerance since D term will be different
+        assert abs(output_after - last_output) < 5.0, \
+            f"Output changed too much: {last_output:.2f} -> {output_after:.2f}"
+
+        # Transfer state should be cleared after use
+        assert not pid.has_transfer_state
+
+    def test_bumpless_transfer_skips_on_setpoint_change(self):
+        """Test that bumpless transfer is skipped when setpoint changes significantly."""
+        # Create PID controller
+        pid = PID(kp=10.0, ki=1.2, kd=2.5, out_min=0, out_max=100)
+
+        # Run in AUTO mode
+        t = 0.0
+        pid.calc(input_val=19.5, set_point=21.0, input_time=t, last_input_time=None)
+
+        for i in range(1, 6):
+            t = i * 60.0
+            pid.calc(input_val=19.8, set_point=21.0, input_time=t, last_input_time=t - 60.0)
+
+        last_output = pid._output
+        last_integral = pid.integral
+
+        # Switch to OFF mode
+        pid.mode = 'OFF'
+        assert pid.has_transfer_state
+
+        # Switch back to AUTO with significantly different setpoint
+        pid.mode = 'AUTO'
+        t += 60.0
+        pid.calc(input_val=20.0, set_point=24.0, input_time=t, last_input_time=t - 60.0)
+
+        # Transfer should have been skipped due to setpoint change > 2°C
+        assert not pid.has_transfer_state
+        # Integral should have been reset due to setpoint change
+        assert pid.integral == 0.0
+
+    def test_bumpless_transfer_skips_on_large_error(self):
+        """Test that bumpless transfer is skipped when error is too large."""
+        # Create PID controller
+        pid = PID(kp=10.0, ki=1.2, kd=2.5, out_min=0, out_max=100)
+
+        # Run in AUTO mode
+        t = 0.0
+        pid.calc(input_val=19.5, set_point=21.0, input_time=t, last_input_time=None)
+
+        for i in range(1, 6):
+            t = i * 60.0
+            pid.calc(input_val=20.0, set_point=21.0, input_time=t, last_input_time=t - 60.0)
+
+        # Switch to OFF mode
+        pid.mode = 'OFF'
+        assert pid.has_transfer_state
+
+        # Switch back to AUTO with large error (> 2°C)
+        pid.mode = 'AUTO'
+        t += 60.0
+        pid.calc(input_val=17.0, set_point=21.0, input_time=t, last_input_time=t - 60.0)
+
+        # Transfer should have been skipped due to large error
+        assert not pid.has_transfer_state
+
+    def test_bumpless_transfer_module_exists(self):
+        """Marker test to verify bumpless transfer functionality exists."""
+        pid = PID(kp=10.0, ki=1.2, kd=2.5, out_min=0, out_max=100)
+
+        # Verify properties and methods exist
+        assert hasattr(pid, 'has_transfer_state')
+        assert hasattr(pid, 'prepare_bumpless_transfer')
+        assert hasattr(pid, '_last_output_before_off')
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
