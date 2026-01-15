@@ -232,7 +232,7 @@ VALID_WINDOW_ORIENTATIONS = [
 
 # Energy ratings
 VALID_ENERGY_RATINGS = [
-    "A+++", "A++", "A+", "A", "B", "C", "D", "E", "F", "G"
+    "A++++", "A+++", "A++", "A+", "A", "B", "C", "D", "E", "F", "G"
 ]
 
 # Default values for new configuration options

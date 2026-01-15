@@ -10,6 +10,7 @@ from typing import Tuple, Optional, Dict
 # Energy rating to insulation quality mapping
 # Higher insulation = less impact from outdoor temperature = lower initial Ke
 ENERGY_RATING_TO_INSULATION: Dict[str, float] = {
+    "A++++": 0.10,  # Outstanding insulation - extremely minimal outdoor impact
     "A+++": 0.15,  # Excellent insulation - minimal outdoor impact
     "A++": 0.25,   # Very good insulation
     "A+": 0.35,    # Good insulation
@@ -72,6 +73,7 @@ def calculate_thermal_time_constant(
         # Estimate tau based on energy efficiency rating
         # Better insulation = slower temperature changes = higher tau
         rating_map = {
+            "A++++": 10.0,  # Outstanding insulation, extremely slow response
             "A+++": 8.0,  # Excellent insulation, very slow response
             "A++": 6.0,   # Very good insulation
             "A+": 5.0,    # Good insulation
