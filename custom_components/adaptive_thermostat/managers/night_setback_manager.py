@@ -330,6 +330,18 @@ class NightSetbackController:
                     end_time = dt_time(hour, minute)
                 else:
                     end_time = dt_time(7, 0)
+            else:
+                # If recovery_deadline is set and earlier than dynamic end, use it
+                deadline_str = self._night_setback_config.get('recovery_deadline')
+                if deadline_str:
+                    hour, minute = map(int, deadline_str.split(":"))
+                    deadline_time = dt_time(hour, minute)
+                    if deadline_time < end_time:
+                        end_time = deadline_time
+                        _LOGGER.debug(
+                            "%s: Using recovery_deadline %s (earlier than dynamic end time)",
+                            self._entity_id, deadline_str
+                        )
 
             # Check if in night period
             in_night_period = self._is_in_night_time_period(

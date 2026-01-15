@@ -149,7 +149,7 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
             vol.Optional(const.CONF_NIGHT_SETBACK_END): cv.string,
             vol.Optional(const.CONF_NIGHT_SETBACK_DELTA, default=const.DEFAULT_NIGHT_SETBACK_DELTA): vol.Coerce(float),
             vol.Optional(const.CONF_NIGHT_SETBACK_RECOVERY_DEADLINE): cv.string,
-            vol.Optional(const.CONF_NIGHT_SETBACK_SOLAR_RECOVERY, default=False): cv.boolean,
+            vol.Optional(const.CONF_NIGHT_SETBACK_SOLAR_RECOVERY): cv.boolean,
             vol.Optional(const.CONF_MIN_EFFECTIVE_ELEVATION, default=const.DEFAULT_MIN_EFFECTIVE_ELEVATION): vol.Coerce(float),
         }),
     }
@@ -393,6 +393,11 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
             _LOGGER.info("%s: Night setback configured: start=%s, end=%s", self._name, start, end)
             if start:
                 # Store config for dynamic end time calculation
+                # Auto-enable solar_recovery if window_orientation is set (can be explicitly disabled)
+                solar_recovery_enabled = night_setback_config.get(
+                    const.CONF_NIGHT_SETBACK_SOLAR_RECOVERY,
+                    bool(self._window_orientation)  # Auto-enable if orientation set
+                )
                 self._night_setback_config = {
                     'start': start,
                     'end': end,  # May be None - will use dynamic calculation
@@ -401,7 +406,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                         const.DEFAULT_NIGHT_SETBACK_DELTA
                     ),
                     'recovery_deadline': night_setback_config.get(const.CONF_NIGHT_SETBACK_RECOVERY_DEADLINE),
-                    'solar_recovery': night_setback_config.get(const.CONF_NIGHT_SETBACK_SOLAR_RECOVERY, False),
+                    'solar_recovery': solar_recovery_enabled,
                     'min_effective_elevation': night_setback_config.get(
                         const.CONF_MIN_EFFECTIVE_ELEVATION,
                         const.DEFAULT_MIN_EFFECTIVE_ELEVATION
@@ -419,7 +424,8 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                 # Solar recovery (uses window_orientation from zone config)
                 # Works with both explicit and dynamic end times
                 # Sun position calculator is set in async_added_to_hass
-                if self._night_setback_config['solar_recovery'] and self._window_orientation:
+                # Automatically enabled if window_orientation is set
+                if solar_recovery_enabled and self._window_orientation:
                     # Use explicit end time or default to 07:00 for static fallback
                     # (dynamic sun position calculator will override this)
                     base_recovery = end if end else "07:00"

@@ -144,8 +144,8 @@ climate:
       start: "22:00"          # Or "sunset+30" for 30 min after sunset
       delta: 2.0              # Reduce by 2°C at night
       # end: "06:30"          # Optional - if omitted, calculated dynamically
-      solar_recovery: true    # Delay morning heating to let sun warm zone
-      recovery_deadline: "08:00"  # Hard deadline for recovery
+      recovery_deadline: "08:00"  # End time override (used if earlier than dynamic calculation)
+      # solar_recovery: true  # Auto-enabled if window_orientation set (can explicitly disable)
       min_effective_elevation: 10  # Min sun angle (degrees) for effective solar gain
 ```
 
@@ -155,12 +155,13 @@ When `end` is omitted, the end time is calculated dynamically based on:
   - south -30min, southeast -25min, east -20min
   - southwest -5min, northeast +5min
   - west +20min, northwest +25min, north +30min
+- **Recovery deadline override**: If `recovery_deadline` is set and earlier than the calculated dynamic end time, it will be used instead
 
-This allows south-facing rooms to benefit from solar gain while north-facing rooms start heating earlier.
+This allows south-facing rooms to benefit from solar gain while north-facing rooms start heating earlier, with `recovery_deadline` providing a guaranteed wake-up time regardless of sunrise.
 
 #### Dynamic Solar Recovery
 
-When `solar_recovery` is enabled and Home Assistant has a configured location, the system calculates when the sun's position will actually illuminate the window based on:
+Solar recovery is automatically enabled when `window_orientation` is configured (can be explicitly disabled by setting `solar_recovery: false`). When enabled and Home Assistant has a configured location, the system calculates when the sun's position will actually illuminate the window based on:
 - **Window orientation azimuth**: The sun must be within ±45° of the window's facing direction
 - **Minimum elevation**: Sun must be above `min_effective_elevation` (default 10°) to provide effective heating
 - **Date and location**: Calculations adapt automatically to seasonal changes and geographic location
@@ -479,8 +480,8 @@ Configure as a nested block under `night_setback`:
 | `start` | - | Start time ("22:00" or "sunset+30") |
 | `end` | dynamic | End time ("06:30") - if omitted, calculated from sunrise/orientation/weather |
 | `delta` | 2.0 | Temperature reduction at night (°C) |
-| `solar_recovery` | false | Delay morning heating to let sun warm the zone (uses dynamic sun position when HA location configured) |
-| `recovery_deadline` | - | Hard deadline for active heating recovery ("08:00") |
+| `recovery_deadline` | - | Override end time if earlier than dynamic calculation ("08:00") |
+| `solar_recovery` | auto | Auto-enabled if window_orientation set; delays morning heating to let sun warm the zone (uses dynamic sun position when HA location configured) |
 | `min_effective_elevation` | 10.0 | Minimum sun elevation (degrees) for effective solar gain through windows |
 
 ### Zone Coordination Parameters
