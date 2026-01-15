@@ -114,7 +114,7 @@ PID_LIMITS = {
     "ki_min": 0.0,
     "ki_max": 1000.0,  # Increased from 100.0 to 1000.0 in v0.7.0 (100x scaling for hourly units)
     "kd_min": 0.0,
-    "kd_max": 200.0,
+    "kd_max": 5.0,  # Reduced from 200.0 to 5.0 in v0.7.0 (was band-aid for low Ki)
     "ke_min": 0.0,
     "ke_max": 0.02,  # Reduced from 2.0 to 0.02 in v0.7.0 (100x scaling)
 }

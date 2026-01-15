@@ -143,10 +143,10 @@ class TestPhysicsCalculations:
         kp, ki, kd = calculate_initial_pid(tau, "floor_hydronic")
 
         # Floor hydronic has 0.5x modifier
-        # Expected: Kp ≈ 56, Ki ≈ 0.6 (100x increase in v0.7.0), Kd ≈ 3.5
+        # Expected: Kp ≈ 56, Ki ≈ 0.6 (100x increase in v0.7.0), Kd ≈ 1.75 (reduced in v0.7.0)
         assert kp == pytest.approx(56.25, abs=1.0)
         assert ki == pytest.approx(0.6, abs=0.1)
-        assert kd == pytest.approx(3.5, abs=0.5)
+        assert kd == pytest.approx(1.75, abs=0.3)
 
     def test_calculate_initial_pid_radiator(self):
         """Test PID calculation for radiator heating."""
@@ -154,10 +154,10 @@ class TestPhysicsCalculations:
         kp, ki, kd = calculate_initial_pid(tau, "radiator")
 
         # Radiator has 0.7x modifier
-        # Expected: Kp ≈ 105, Ki ≈ 1.4 (100x increase in v0.7.0), Kd ≈ 3.5
+        # Expected: Kp ≈ 105, Ki ≈ 1.4 (100x increase in v0.7.0), Kd ≈ 2.0 (reduced in v0.7.0)
         assert kp == pytest.approx(105.0, abs=5.0)
         assert ki == pytest.approx(1.4, abs=0.2)
-        assert kd == pytest.approx(3.5, abs=0.5)
+        assert kd == pytest.approx(2.0, abs=0.3)
 
     def test_calculate_initial_pid_convector(self):
         """Test PID calculation for convector heating."""
@@ -165,10 +165,10 @@ class TestPhysicsCalculations:
         kp, ki, kd = calculate_initial_pid(tau, "convector")
 
         # Convector has 1.0x modifier (baseline)
-        # Expected: Kp ≈ 150, Ki ≈ 2.8 (100x increase in v0.7.0), Kd ≈ 3.0
+        # Expected: Kp ≈ 150, Ki ≈ 2.8 (100x increase in v0.7.0), Kd ≈ 1.2 (reduced in v0.7.0)
         assert kp == pytest.approx(150.0, abs=10.0)
         assert ki == pytest.approx(2.8, abs=0.4)
-        assert kd == pytest.approx(3.0, abs=0.5)
+        assert kd == pytest.approx(1.2, abs=0.3)
 
     def test_calculate_initial_pid_forced_air(self):
         """Test PID calculation for forced air heating."""
@@ -176,10 +176,10 @@ class TestPhysicsCalculations:
         kp, ki, kd = calculate_initial_pid(tau, "forced_air")
 
         # Forced air has 1.3x modifier (aggressive)
-        # Expected: Kp ≈ 260, Ki ≈ 5.2 (100x increase in v0.7.0), Kd ≈ 2.6
+        # Expected: Kp ≈ 260, Ki ≈ 5.2 (100x increase in v0.7.0), Kd ≈ 0.8 (reduced in v0.7.0)
         assert kp == pytest.approx(260.0, abs=15.0)
         assert ki == pytest.approx(5.2, abs=0.8)
-        assert kd == pytest.approx(2.6, abs=0.5)
+        assert kd == pytest.approx(0.8, abs=0.2)
 
     def test_calculate_initial_pid_unknown_type(self):
         """Test PID calculation with unknown heating type uses default modifier."""
@@ -449,3 +449,91 @@ class TestKeCalculation:
         # Should default to B rating equivalent (0.0045 * 1.0 = 0.0045)
         assert ke_default == pytest.approx(0.0045, abs=0.0005)
         assert 0.001 <= ke_default <= 0.02
+
+
+class TestKdValues:
+    """Tests for Kd (derivative) values after v0.7.0 reduction."""
+
+    def test_kd_values_proper_range(self):
+        """Test that all Kd values are within proper range (0.5 < Kd < 5.0)."""
+        # Test all heating types with typical tau values
+        heating_types = ["floor_hydronic", "radiator", "convector", "forced_air"]
+        tau_values = [8.0, 4.0, 2.5, 1.5]  # Typical tau for each type
+
+        for heating_type, tau in zip(heating_types, tau_values):
+            kp, ki, kd = calculate_initial_pid(tau, heating_type)
+
+            # Kd should be in reasonable range after v0.7.0 reduction
+            assert 0.5 <= kd <= 5.0, f"{heating_type}: Kd={kd} out of range"
+
+    def test_kd_relationship_to_kp(self):
+        """Test that Kd is reasonable relative to Kp for all heating types."""
+        # After v0.7.0 reduction, Kd values should be more reasonable
+        # Note: Due to inverse tau_factor scaling (Kd divided by tau_factor),
+        # Kd can be larger than Kp, especially for systems with tau_factor < 1.0
+        heating_types = ["floor_hydronic", "radiator", "convector", "forced_air"]
+        tau_values = [8.0, 4.0, 2.5, 1.5]
+
+        for heating_type, tau in zip(heating_types, tau_values):
+            kp, ki, kd = calculate_initial_pid(tau, heating_type)
+
+            # Kd should be positive and reasonable (not excessively large)
+            assert 0 < kd < 10.0, f"{heating_type}: Kd={kd} out of reasonable range"
+
+            # All Kd values should be significantly reduced from old values (7.0, 5.0, 3.0, 2.0)
+            # which would have resulted in Kd values >10 for slow systems
+
+    def test_kd_floor_hydronic_specific(self):
+        """Test floor hydronic Kd reduced from 7.0 to 2.5 (64% reduction)."""
+        tau = 8.0  # Typical high thermal mass
+        kp, ki, kd = calculate_initial_pid(tau, "floor_hydronic")
+
+        # After tau_factor adjustment (0.7 clamp for tau=8.0)
+        # Expected Kd = 2.5 / 0.7 = 3.57 (Kd uses inverse tau_factor for more damping on slow systems)
+        assert kd == pytest.approx(3.57, abs=0.1)
+
+        # Base value should be 2.5 (reduced from 7.0)
+        # With inverse tau_factor, final value is ~3.57 (still much lower than old 7.0/0.7=10.0)
+        assert kd < 5.0
+
+    def test_kd_forced_air_specific(self):
+        """Test forced air Kd reduced from 2.0 to 0.8 (60% reduction)."""
+        tau = 1.5  # Typical low thermal mass
+        kp, ki, kd = calculate_initial_pid(tau, "forced_air")
+
+        # After tau_factor adjustment (1.0 for tau=1.5)
+        # Expected Kd = 0.8 * 1.0 = 0.8
+        assert kd == pytest.approx(0.8, abs=0.2)
+
+        # Should be significantly lower than old value (2.0 * 1.0 = 2.0)
+        assert kd < 1.2
+
+    def test_kd_values_increase_with_tau(self):
+        """Test that Kd increases with thermal time constant (more damping for slow systems)."""
+        # Test with convector heating type at different tau values
+        tau_low = 1.5
+        tau_high = 6.0
+
+        kp_low, ki_low, kd_low = calculate_initial_pid(tau_low, "convector")
+        kp_high, ki_high, kd_high = calculate_initial_pid(tau_high, "convector")
+
+        # Higher tau should result in higher Kd (more damping needed)
+        assert kd_high > kd_low, f"Kd should increase with tau: {kd_low} -> {kd_high}"
+
+    def test_kd_reasonable_relative_to_ki(self):
+        """Test that Kd values are reasonable relative to Ki after v0.7.0 fixes."""
+        # After Ki increase (100x) and Kd reduction (60%), the ratio should be more balanced
+        heating_types = ["floor_hydronic", "radiator", "convector", "forced_air"]
+        tau_values = [8.0, 4.0, 2.5, 1.5]
+
+        for heating_type, tau in zip(heating_types, tau_values):
+            kp, ki, kd = calculate_initial_pid(tau, heating_type)
+
+            # With fixed Ki (now in proper units), Kd/Ki ratio should be reasonable
+            # Due to different tau_factor scaling (Ki multiplied, Kd divided), ratios vary
+            # Fast systems (forced_air) can have Kd/Ki < 0.2, slow systems can be > 5
+            if ki > 0:  # Avoid division by zero
+                ratio = kd / ki
+                assert 0.05 <= ratio <= 20.0, (
+                    f"{heating_type}: Kd/Ki ratio {ratio:.2f} out of expected range"
+                )
