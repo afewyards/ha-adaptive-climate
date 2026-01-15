@@ -1450,11 +1450,16 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
             self.async_write_ha_state()
 
     @property
-    def _is_device_active(self):
+    def _is_device_active(self) -> bool:
         """Check if the toggleable/valve device is currently active.
 
         Delegates to HeaterController for the actual check.
+
+        Returns:
+            True if device is active, False if no heater controller or device is inactive.
         """
+        if self._heater_controller is None:
+            return False
         return self._heater_controller.is_active(self.hvac_mode)
 
     def _get_cycle_start_time(self) -> float:
