@@ -1,6 +1,20 @@
 # CHANGELOG
 
 
+## v0.6.3 (2026-01-15)
+
+### Bug Fixes
+
+- Use async_call_later helper instead of non-existent hass method
+  ([`3626a91`](https://github.com/afewyards/ha-adaptive-thermostat/commit/3626a910b211e0f7fe3073cbf73d04604a850052))
+
+async_call_later is a helper function from homeassistant.helpers.event, not a method on the
+  HomeAssistant object. This was causing an AttributeError when the cycle tracker tried to schedule
+  the settling timeout after heating stopped.
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+
 ## v0.6.2 (2026-01-15)
 
 ### Bug Fixes
