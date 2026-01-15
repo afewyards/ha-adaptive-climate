@@ -18,6 +18,7 @@ try:
         resolve_rule_conflicts,
     )
     from .persistence import LearningDataStore
+    from .pwm_tuning import calculate_pwm_adjustment, ValveCycleTracker
     __all__ = [
         "ThermalRateLearner",
         "PhaseAwareOvershootTracker",
@@ -34,6 +35,9 @@ try:
         "resolve_rule_conflicts",
         # Persistence
         "LearningDataStore",
+        # PWM tuning
+        "calculate_pwm_adjustment",
+        "ValveCycleTracker",
     ]
 except ImportError:
     # Handle case where module is imported in unusual way (e.g., test path manipulation)
