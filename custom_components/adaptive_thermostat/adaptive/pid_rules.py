@@ -5,7 +5,7 @@ It includes rule definitions, evaluation, conflict detection, and resolution.
 """
 
 from enum import Enum
-from typing import Dict, List, NamedTuple, Set, Tuple
+from typing import Dict, List, NamedTuple, Optional, Set, Tuple
 import logging
 
 from ..const import (
@@ -15,6 +15,44 @@ from ..const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def calculate_pearson_correlation(x: List[float], y: List[float]) -> Optional[float]:
+    """Calculate Pearson correlation coefficient between two variables.
+
+    Args:
+        x: First variable (e.g., rise times)
+        y: Second variable (e.g., outdoor temperatures)
+
+    Returns:
+        Pearson correlation coefficient in range [-1, 1], or None if:
+        - Insufficient data (< 2 samples)
+        - Lists have different lengths
+        - Standard deviation of either variable is zero
+    """
+    if len(x) < 2 or len(y) < 2 or len(x) != len(y):
+        return None
+
+    n = len(x)
+
+    # Calculate means
+    mean_x = sum(x) / n
+    mean_y = sum(y) / n
+
+    # Calculate covariance and standard deviations
+    covariance = sum((x[i] - mean_x) * (y[i] - mean_y) for i in range(n)) / n
+    std_x = (sum((xi - mean_x) ** 2 for xi in x) / n) ** 0.5
+    std_y = (sum((yi - mean_y) ** 2 for yi in y) / n) ** 0.5
+
+    # Avoid division by zero
+    if std_x == 0 or std_y == 0:
+        return None
+
+    # Pearson correlation: r = cov(X,Y) / (σ_x * σ_y)
+    correlation = covariance / (std_x * std_y)
+
+    # Clamp to [-1, 1] to handle floating point errors
+    return max(-1.0, min(1.0, correlation))
 
 
 class PIDRule(Enum):
@@ -50,6 +88,8 @@ def evaluate_pid_rules(
     avg_oscillations: float,
     avg_rise_time: float,
     avg_settling_time: float,
+    recent_rise_times: Optional[List[float]] = None,
+    recent_outdoor_temps: Optional[List[float]] = None,
 ) -> List[PIDRuleResult]:
     """
     Evaluate all PID tuning rules against current metrics.
@@ -60,10 +100,14 @@ def evaluate_pid_rules(
         avg_oscillations: Average number of oscillations
         avg_rise_time: Average rise time in minutes
         avg_settling_time: Average settling time in minutes
+        recent_rise_times: List of recent rise times for correlation analysis (optional)
+        recent_outdoor_temps: List of recent outdoor temps for correlation analysis (optional)
 
     Returns:
         List of applicable rule results (rules that would fire)
     """
+    from ..const import MIN_OUTDOOR_TEMP_RANGE, SLOW_RESPONSE_CORRELATION_THRESHOLD
+
     results: List[PIDRuleResult] = []
 
     # Rule 1: High overshoot (>1.0C) - Extreme case
@@ -88,13 +132,45 @@ def evaluate_pid_rules(
         ))
 
     # Rule 3: Slow response (rise time >60 min)
+    # Diagnose root cause: Ki (outdoor correlation) vs Kp (no correlation)
     if avg_rise_time > 60:
+        # Default to old behavior (increase Kp)
+        kp_factor = 1.10
+        ki_factor = 1.0
+        reason = f"Slow rise time ({avg_rise_time:.1f} min)"
+
+        # Try to diagnose root cause if outdoor data available
+        if (recent_rise_times is not None and recent_outdoor_temps is not None and
+            len(recent_rise_times) >= 3 and len(recent_outdoor_temps) >= 3):
+
+            # Check if outdoor temps have sufficient variation for correlation
+            outdoor_range = max(recent_outdoor_temps) - min(recent_outdoor_temps)
+
+            if outdoor_range >= MIN_OUTDOOR_TEMP_RANGE:
+                # Calculate correlation between rise time and outdoor temp
+                correlation = calculate_pearson_correlation(recent_rise_times, recent_outdoor_temps)
+
+                if correlation is not None:
+                    # Negative correlation means slower when colder -> Ki issue
+                    # (integral takes too long to accumulate against outdoor losses)
+                    if correlation < -SLOW_RESPONSE_CORRELATION_THRESHOLD:
+                        # Diagnose LOW_KI: increase Ki up to 30%
+                        kp_factor = 1.0
+                        ki_factor = 1.30
+                        reason = f"Slow rise time ({avg_rise_time:.1f} min, cold correlation r={correlation:.2f}, increase Ki)"
+                    # Positive or no correlation means issue is not outdoor-dependent -> Kp issue
+                    elif correlation >= -SLOW_RESPONSE_CORRELATION_THRESHOLD:
+                        # Diagnose LOW_KP: increase Kp by 10% (default behavior)
+                        kp_factor = 1.10
+                        ki_factor = 1.0
+                        reason = f"Slow rise time ({avg_rise_time:.1f} min, no cold correlation r={correlation:.2f}, increase Kp)"
+
         results.append(PIDRuleResult(
             rule=PIDRule.SLOW_RESPONSE,
-            kp_factor=1.10,
-            ki_factor=1.0,
+            kp_factor=kp_factor,
+            ki_factor=ki_factor,
             kd_factor=1.0,
-            reason=f"Slow rise time ({avg_rise_time:.1f} min)"
+            reason=reason
         ))
 
     # Rule 4: Undershoot (>0.3C)

@@ -207,6 +207,10 @@ MIN_CYCLES_FOR_LEARNING = 6
 # Maximum number of cycles to retain in history (FIFO eviction when exceeded)
 MAX_CYCLE_HISTORY = 100
 
+# Slow response rule diagnostic thresholds
+MIN_OUTDOOR_TEMP_RANGE = 3.0  # Minimum outdoor temp variation needed for correlation analysis (°C)
+SLOW_RESPONSE_CORRELATION_THRESHOLD = 0.6  # Correlation threshold for diagnosing Ki vs Kp issues
+
 # Minimum interval between PID adjustments in hours (rate limiting)
 # Updated from 24h to 8h in v0.7.0 for faster convergence with hybrid gate
 MIN_ADJUSTMENT_INTERVAL = 8

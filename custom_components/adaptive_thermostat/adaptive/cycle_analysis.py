@@ -243,6 +243,7 @@ class CycleMetrics:
         disturbances: Optional[List[str]] = None,
         interruption_history: Optional[List[Tuple[datetime, str]]] = None,
         heater_cycles: int = 0,
+        outdoor_temp_avg: Optional[float] = None,
     ):
         """
         Initialize cycle metrics.
@@ -256,6 +257,7 @@ class CycleMetrics:
             disturbances: List of detected disturbance types (e.g., "solar_gain", "wind_loss")
             interruption_history: List of (timestamp, interruption_type) tuples for debugging
             heater_cycles: Number of heater on/off transitions (informational only)
+            outdoor_temp_avg: Average outdoor temperature during cycle in °C
         """
         self.overshoot = overshoot
         self.undershoot = undershoot
@@ -265,6 +267,7 @@ class CycleMetrics:
         self.disturbances = disturbances or []
         self.interruption_history = interruption_history or []
         self.heater_cycles = heater_cycles
+        self.outdoor_temp_avg = outdoor_temp_avg
 
     @property
     def is_disturbed(self) -> bool:

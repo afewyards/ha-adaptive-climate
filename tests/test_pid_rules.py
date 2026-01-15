@@ -291,3 +291,186 @@ class TestOvershootRuleKdIncrease:
 
         # Should not trigger any rules
         assert len(results) == 0
+
+
+class TestSlowResponseDiagnostics:
+    """Tests for slow response rule with outdoor temperature correlation diagnostics."""
+
+    def test_pearson_correlation_calculation(self):
+        """Test Pearson correlation helper function."""
+        from custom_components.adaptive_thermostat.adaptive.pid_rules import calculate_pearson_correlation
+
+        # Perfect positive correlation
+        x = [1.0, 2.0, 3.0, 4.0, 5.0]
+        y = [2.0, 4.0, 6.0, 8.0, 10.0]
+        r = calculate_pearson_correlation(x, y)
+        assert r is not None
+        assert abs(r - 1.0) < 0.01, f"Expected r≈1.0 for perfect positive correlation, got {r}"
+
+        # Perfect negative correlation
+        x = [1.0, 2.0, 3.0, 4.0, 5.0]
+        y = [10.0, 8.0, 6.0, 4.0, 2.0]
+        r = calculate_pearson_correlation(x, y)
+        assert r is not None
+        assert abs(r - (-1.0)) < 0.01, f"Expected r≈-1.0 for perfect negative correlation, got {r}"
+
+        # No correlation
+        x = [1.0, 2.0, 3.0, 4.0, 5.0]
+        y = [3.0, 3.0, 3.0, 3.0, 3.0]  # Constant
+        r = calculate_pearson_correlation(x, y)
+        assert r is None, "Expected None when std dev is zero"
+
+        # Insufficient data
+        r = calculate_pearson_correlation([1.0], [2.0])
+        assert r is None, "Expected None with insufficient data"
+
+    def test_slow_response_low_ki_diagnosis(self):
+        """Test slow response rule diagnoses LOW_KI when cold weather correlation exists."""
+        # Simulate scenario: slower rise times when colder outside
+        # Rise times: [70, 75, 80, 85, 90] minutes
+        # Outdoor temps: [5, 0, -5, -10, -15] °C
+        # Strong negative correlation (r ≈ -0.99)
+
+        results = evaluate_pid_rules(
+            avg_overshoot=0.0,
+            avg_undershoot=0.0,
+            avg_oscillations=0.0,
+            avg_rise_time=80.0,  # >60 min triggers slow response
+            avg_settling_time=30.0,
+            recent_rise_times=[70.0, 75.0, 80.0, 85.0, 90.0],
+            recent_outdoor_temps=[5.0, 0.0, -5.0, -10.0, -15.0],
+        )
+
+        # Should trigger slow response rule
+        assert len(results) == 1
+        assert results[0].rule == PIDRule.SLOW_RESPONSE
+
+        # Should diagnose LOW_KI and increase Ki instead of Kp
+        assert results[0].kp_factor == 1.0, "Kp should not change for LOW_KI diagnosis"
+        assert results[0].ki_factor == 1.30, "Ki should increase by 30% for LOW_KI diagnosis"
+        assert results[0].kd_factor == 1.0, "Kd should not change"
+
+        # Reason should mention cold correlation and Ki increase
+        reason_lower = results[0].reason.lower()
+        assert "correlation" in reason_lower
+        assert "ki" in reason_lower
+
+    def test_slow_response_low_kp_diagnosis(self):
+        """Test slow response rule diagnoses LOW_KP when no cold weather correlation."""
+        # Simulate scenario: slow rise times but no outdoor correlation
+        # Rise times: [70, 75, 80, 85, 90] minutes
+        # Outdoor temps: [10, 12, 11, 13, 12] °C (warm, minimal variation)
+        # No significant correlation
+
+        results = evaluate_pid_rules(
+            avg_overshoot=0.0,
+            avg_undershoot=0.0,
+            avg_oscillations=0.0,
+            avg_rise_time=80.0,  # >60 min triggers slow response
+            avg_settling_time=30.0,
+            recent_rise_times=[70.0, 75.0, 80.0, 85.0, 90.0],
+            recent_outdoor_temps=[10.0, 12.0, 11.0, 13.0, 12.0],
+        )
+
+        # Should trigger slow response rule
+        assert len(results) == 1
+        assert results[0].rule == PIDRule.SLOW_RESPONSE
+
+        # Should diagnose LOW_KP and increase Kp (default behavior)
+        assert results[0].kp_factor == 1.10, "Kp should increase by 10% for LOW_KP diagnosis"
+        assert results[0].ki_factor == 1.0, "Ki should not change for LOW_KP diagnosis"
+        assert results[0].kd_factor == 1.0, "Kd should not change"
+
+        # Reason should mention no cold correlation and Kp increase
+        reason_lower = results[0].reason.lower()
+        assert "correlation" in reason_lower
+        assert "kp" in reason_lower
+
+    def test_slow_response_fallback_without_outdoor_data(self):
+        """Test slow response rule falls back to default behavior without outdoor data."""
+        # No outdoor data provided
+        results = evaluate_pid_rules(
+            avg_overshoot=0.0,
+            avg_undershoot=0.0,
+            avg_oscillations=0.0,
+            avg_rise_time=80.0,  # >60 min triggers slow response
+            avg_settling_time=30.0,
+            # No outdoor data
+        )
+
+        # Should trigger slow response rule
+        assert len(results) == 1
+        assert results[0].rule == PIDRule.SLOW_RESPONSE
+
+        # Should fall back to default behavior (increase Kp)
+        assert results[0].kp_factor == 1.10, "Should fall back to Kp increase"
+        assert results[0].ki_factor == 1.0
+        assert results[0].kd_factor == 1.0
+
+    def test_slow_response_insufficient_outdoor_temp_range(self):
+        """Test slow response rule requires sufficient outdoor temp variation."""
+        # Outdoor temps have <3°C variation (insufficient for correlation)
+        results = evaluate_pid_rules(
+            avg_overshoot=0.0,
+            avg_undershoot=0.0,
+            avg_oscillations=0.0,
+            avg_rise_time=80.0,
+            avg_settling_time=30.0,
+            recent_rise_times=[70.0, 75.0, 80.0, 85.0, 90.0],
+            recent_outdoor_temps=[10.0, 11.0, 10.5, 11.5, 10.2],  # Range = 1.5°C < 3.0°C
+        )
+
+        # Should trigger slow response rule
+        assert len(results) == 1
+        assert results[0].rule == PIDRule.SLOW_RESPONSE
+
+        # Should fall back to default behavior due to insufficient outdoor variation
+        assert results[0].kp_factor == 1.10, "Should fall back to Kp increase when outdoor range too small"
+        assert results[0].ki_factor == 1.0
+        assert results[0].kd_factor == 1.0
+
+    def test_slow_response_insufficient_data_points(self):
+        """Test slow response rule requires at least 3 data points for correlation."""
+        # Only 2 data points (insufficient)
+        results = evaluate_pid_rules(
+            avg_overshoot=0.0,
+            avg_undershoot=0.0,
+            avg_oscillations=0.0,
+            avg_rise_time=80.0,
+            avg_settling_time=30.0,
+            recent_rise_times=[70.0, 90.0],
+            recent_outdoor_temps=[5.0, -15.0],
+        )
+
+        # Should trigger slow response rule
+        assert len(results) == 1
+        assert results[0].rule == PIDRule.SLOW_RESPONSE
+
+        # Should fall back to default behavior due to insufficient data
+        assert results[0].kp_factor == 1.10, "Should fall back to Kp increase with <3 data points"
+        assert results[0].ki_factor == 1.0
+        assert results[0].kd_factor == 1.0
+
+    def test_slow_response_weak_correlation_uses_kp(self):
+        """Test slow response with weak correlation uses Kp (edge case)."""
+        # Positive correlation (faster when colder - physically impossible)
+        # Should trigger Kp increase since correlation is not strong negative
+
+        results = evaluate_pid_rules(
+            avg_overshoot=0.0,
+            avg_undershoot=0.0,
+            avg_oscillations=0.0,
+            avg_rise_time=80.0,
+            avg_settling_time=30.0,
+            recent_rise_times=[90.0, 85.0, 80.0, 75.0, 70.0],  # Decreasing
+            recent_outdoor_temps=[5.0, 0.0, -5.0, -10.0, -15.0],  # Also decreasing -> positive correlation
+        )
+
+        # Should trigger slow response rule
+        assert len(results) == 1
+        assert results[0].rule == PIDRule.SLOW_RESPONSE
+
+        # Positive correlation (not < -0.6) should trigger Kp increase
+        assert results[0].kp_factor == 1.10, "Positive correlation should use Kp default"
+        assert results[0].ki_factor == 1.0
+        assert results[0].kd_factor == 1.0

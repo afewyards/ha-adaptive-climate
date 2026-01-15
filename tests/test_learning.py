@@ -468,24 +468,26 @@ class TestRuleConflicts:
     """Tests for PID rule conflict detection and resolution."""
 
     def test_overshoot_vs_slow_response_conflict(self):
-        """Test that overshoot takes precedence over slow response for Kp."""
+        """Test that moderate overshoot and slow response don't conflict (different parameters)."""
         learner = AdaptiveLearner()
 
         # Add cycles with both overshoot AND slow response
         for _ in range(6):
             learner.add_cycle_metrics(CycleMetrics(
-                overshoot=0.6,     # Triggers high overshoot (reduce Kp)
+                overshoot=0.6,     # Triggers moderate overshoot (increase Kd, Kp unchanged)
                 rise_time=70,      # Triggers slow response (increase Kp)
                 oscillations=0,
                 settling_time=30,
             ))
 
-        result = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
+        # Start with Kd = 2.0 (within valid range of 0-5.0)
+        result = learner.calculate_pid_adjustment(100.0, 1.0, 2.0)
 
-        # Overshoot (priority 2) should win over slow response (priority 1)
-        # Kp should be REDUCED, not increased
+        # New behavior: moderate overshoot increases Kd, slow response increases Kp
+        # No conflict since they adjust different parameters
         assert result is not None
-        assert result["kp"] < 100.0
+        assert result["kp"] >= 100.0, "Kp should increase or stay same (slow response rule)"
+        assert result["kd"] > 2.0, "Kd should increase (moderate overshoot rule)"
 
     def test_oscillation_vs_slow_response_conflict(self):
         """Test that oscillation takes precedence over slow response for Kp."""
@@ -508,24 +510,27 @@ class TestRuleConflicts:
         assert result["kp"] < 100.0
 
     def test_no_conflict_when_rules_agree(self):
-        """Test that agreeing rules both apply."""
+        """Test that agreeing rules both apply when they affect different parameters."""
         learner = AdaptiveLearner()
 
-        # Add cycles where overshoot and oscillations both reduce Kp
+        # Add cycles where overshoot increases Kd and oscillations reduce Kp
         for _ in range(6):
             learner.add_cycle_metrics(CycleMetrics(
-                overshoot=0.6,     # High overshoot (reduce Kp ~12%)
-                oscillations=4,    # Many oscillations (reduce Kp 10%)
+                overshoot=0.6,     # Moderate overshoot (increase Kd 20%)
+                oscillations=4,    # Many oscillations (reduce Kp 10%, increase Kd 20%)
                 rise_time=20,
                 settling_time=30,
             ))
 
-        result = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
+        # Start with Kd = 2.0 (within valid range of 0-5.0)
+        result = learner.calculate_pid_adjustment(100.0, 1.0, 2.0)
 
-        # Both reductions should apply (no conflict)
-        # Both reduce Kp: 100 * 0.88 * 0.90 ≈ 79.2
+        # New behavior: oscillations reduce Kp, both increase Kd (no conflict)
+        # Kp: 100 * 0.90 = 90.0 (oscillation rule only)
+        # Kd: 2.0 * 1.20 * 1.20 = 2.88 (both rules increase)
         assert result is not None
-        assert result["kp"] < 80.0
+        assert result["kp"] < 100.0, "Kp should be reduced by oscillation rule"
+        assert result["kd"] > 2.0, "Kd should be increased by both overshoot and oscillation rules"
 
     def test_conflict_detection_only_on_opposing_adjustments(self):
         """Test that conflicts are only detected when adjustments oppose each other."""
@@ -692,11 +697,13 @@ class TestConvergenceDetection:
                 rise_time=20,
             ))
 
-        result = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
+        # Start with Kd = 2.0 (within valid range of 0-5.0)
+        result = learner.calculate_pid_adjustment(100.0, 1.0, 2.0)
 
         # Not fully converged - should return adjustment
         assert result is not None
-        assert result["kp"] < 100.0  # Overshoot reduces Kp
+        # New behavior: moderate overshoot increases Kd, not reduces Kp
+        assert result["kd"] > 2.0, "Overshoot should increase Kd"
 
     def test_convergence_at_threshold_boundary(self):
         """Test convergence when metrics are exactly at threshold boundaries."""

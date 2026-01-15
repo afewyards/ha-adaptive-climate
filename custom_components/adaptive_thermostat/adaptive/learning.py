@@ -334,6 +334,9 @@ class AdaptiveLearner:
         else:
             avg_rise_time = 0.0
 
+        # Extract outdoor temperature averages for correlation analysis
+        outdoor_temp_values = [c.outdoor_temp_avg for c in recent_cycles if c.outdoor_temp_avg is not None]
+
         # Check for convergence - skip adjustments if system is tuned
         if self._check_convergence(
             avg_overshoot, avg_oscillations, avg_settling_time, avg_rise_time
@@ -344,7 +347,9 @@ class AdaptiveLearner:
         # Evaluate all applicable rules
         rule_results = evaluate_pid_rules(
             avg_overshoot, avg_undershoot, avg_oscillations,
-            avg_rise_time, avg_settling_time
+            avg_rise_time, avg_settling_time,
+            recent_rise_times=rise_time_values,
+            recent_outdoor_temps=outdoor_temp_values,
         )
 
         if not rule_results:

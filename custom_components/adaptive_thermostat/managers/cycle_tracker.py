@@ -51,6 +51,7 @@ class CycleTrackerManager:
         get_is_device_active: Callable[[], bool] | None = None,
         thermal_time_constant: float | None = None,
         settling_timeout_minutes: int | None = None,
+        get_outdoor_temp: Callable[[], float | None] | None = None,
     ) -> None:
         """Initialize the cycle tracker manager.
 
@@ -65,6 +66,7 @@ class CycleTrackerManager:
             get_is_device_active: Callback to check if heater/cooler is currently active
             thermal_time_constant: Building thermal time constant in hours (tau)
             settling_timeout_minutes: Optional override for settling timeout in minutes
+            get_outdoor_temp: Callback to get outdoor temperature (optional)
         """
         from ..const import (
             SETTLING_TIMEOUT_MULTIPLIER,
@@ -80,12 +82,14 @@ class CycleTrackerManager:
         self._get_hvac_mode = get_hvac_mode
         self._get_in_grace_period = get_in_grace_period
         self._get_is_device_active = get_is_device_active
+        self._get_outdoor_temp = get_outdoor_temp
 
         # State tracking
         self._state: CycleState = CycleState.IDLE
         self._cycle_start_time: datetime | None = None
         self._cycle_target_temp: float | None = None
         self._temperature_history: list[tuple[datetime, float]] = []
+        self._outdoor_temp_history: list[tuple[datetime, float]] = []
         self._settling_timeout_handle = None
         self._interruption_history: list[tuple[datetime, str]] = []
 
@@ -152,6 +156,7 @@ class CycleTrackerManager:
         self._cycle_start_time = timestamp
         self._cycle_target_temp = self._get_target_temp()
         self._temperature_history.clear()
+        self._outdoor_temp_history.clear()
 
         current_temp = self._get_current_temp()
         self._logger.info(
@@ -279,6 +284,12 @@ class CycleTrackerManager:
         # Append temperature sample
         self._temperature_history.append((timestamp, temperature))
 
+        # Also track outdoor temperature if available
+        if self._get_outdoor_temp is not None:
+            outdoor_temp = self._get_outdoor_temp()
+            if outdoor_temp is not None:
+                self._outdoor_temp_history.append((timestamp, outdoor_temp))
+
         # Check for settling completion during SETTLING state
         if self._state == CycleState.SETTLING:
             if self._is_settling_complete():
@@ -323,6 +334,7 @@ class CycleTrackerManager:
         """
         # Clear temperature history
         self._temperature_history.clear()
+        self._outdoor_temp_history.clear()
 
         # Reset cycle tracking variables
         self._cycle_start_time = None
@@ -631,6 +643,11 @@ class CycleTrackerManager:
             wind_speeds=None,    # TODO: Wire up wind sensor data
         )
 
+        # Calculate outdoor temperature average if available
+        outdoor_temp_avg = None
+        if len(self._outdoor_temp_history) > 0:
+            outdoor_temp_avg = sum(temp for _, temp in self._outdoor_temp_history) / len(self._outdoor_temp_history)
+
         # Create CycleMetrics object with interruption history
         metrics = CycleMetrics(
             overshoot=overshoot,
@@ -640,6 +657,7 @@ class CycleTrackerManager:
             rise_time=rise_time,
             disturbances=disturbances,
             interruption_history=self._interruption_history.copy(),
+            outdoor_temp_avg=outdoor_temp_avg,
         )
 
         # Record metrics with adaptive learner
