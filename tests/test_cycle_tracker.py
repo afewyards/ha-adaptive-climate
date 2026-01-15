@@ -748,6 +748,39 @@ class TestSetpointChangeWithDeviceActive:
         assert len(tracker.temperature_history) == 1
         assert tracker.temperature_history[0] == (datetime(2025, 1, 14, 10, 0, 30), 18.5)
 
+    def test_setpoint_change_while_heater_inactive_aborts_cycle(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks
+    ):
+        """Test that setpoint change while heater is inactive aborts the cycle."""
+        # Create tracker with get_is_device_active returning False
+        tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            get_target_temp=mock_callbacks["get_target_temp"],
+            get_current_temp=mock_callbacks["get_current_temp"],
+            get_hvac_mode=mock_callbacks["get_hvac_mode"],
+            get_in_grace_period=mock_callbacks["get_in_grace_period"],
+            get_is_device_active=Mock(return_value=False),
+        )
+
+        # Start heating cycle
+        start_time = datetime(2025, 1, 14, 10, 0, 0)
+        tracker.on_heating_started(start_time)
+        assert tracker.state == CycleState.HEATING
+
+        # Add temperature sample to history
+        tracker._temperature_history.append((datetime(2025, 1, 14, 10, 0, 30), 18.5))
+
+        # Change setpoint while heater is inactive
+        tracker.on_setpoint_changed(20.0, 22.0)
+
+        # Assert state is IDLE (aborted)
+        assert tracker.state == CycleState.IDLE
+
+        # Assert temperature_history is empty (cleared)
+        assert len(tracker.temperature_history) == 0
+
 
 def test_cycle_tracker_module_exists():
     """Marker test to verify cycle tracker module exists."""
