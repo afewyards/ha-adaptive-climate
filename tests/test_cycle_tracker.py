@@ -854,6 +854,64 @@ class TestSetpointChangeWithDeviceActive:
         assert len(tracker._setpoint_changes) == 3
 
 
+class TestResetCycleState:
+    """Tests for _reset_cycle_state helper method."""
+
+    def test_reset_cycle_state_clears_all(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks
+    ):
+        """Test that _reset_cycle_state clears all state variables."""
+        # Create tracker
+        tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            get_target_temp=mock_callbacks["get_target_temp"],
+            get_current_temp=mock_callbacks["get_current_temp"],
+            get_hvac_mode=mock_callbacks["get_hvac_mode"],
+            get_in_grace_period=mock_callbacks["get_in_grace_period"],
+            get_is_device_active=Mock(return_value=True),
+        )
+
+        # Start heating cycle
+        start_time = datetime(2025, 1, 14, 10, 0, 0)
+        tracker.on_heating_started(start_time)
+        assert tracker.state == CycleState.HEATING
+
+        # Set _was_interrupted = True
+        tracker._was_interrupted = True
+
+        # Add items to _setpoint_changes
+        tracker._setpoint_changes.append((datetime(2025, 1, 14, 10, 5, 0), 20.0, 22.0))
+        tracker._setpoint_changes.append((datetime(2025, 1, 14, 10, 10, 0), 22.0, 21.0))
+
+        # Add items to _temperature_history
+        tracker._temperature_history.append((datetime(2025, 1, 14, 10, 0, 30), 18.5))
+        tracker._temperature_history.append((datetime(2025, 1, 14, 10, 1, 0), 19.0))
+        tracker._temperature_history.append((datetime(2025, 1, 14, 10, 1, 30), 19.5))
+
+        # Call _reset_cycle_state()
+        tracker._reset_cycle_state()
+
+        # Assert _state == CycleState.IDLE
+        assert tracker._state == CycleState.IDLE
+
+        # Assert _was_interrupted == False
+        assert tracker._was_interrupted is False
+
+        # Assert _setpoint_changes is empty
+        assert len(tracker._setpoint_changes) == 0
+
+        # Assert _temperature_history is empty
+        assert len(tracker._temperature_history) == 0
+
+        # Assert _cycle_start_time is None
+        assert tracker._cycle_start_time is None
+
+        # Assert _cycle_target_temp is None
+        assert tracker._cycle_target_temp is None
+
+
 def test_cycle_tracker_module_exists():
     """Marker test to verify cycle tracker module exists."""
     assert CycleState is not None
