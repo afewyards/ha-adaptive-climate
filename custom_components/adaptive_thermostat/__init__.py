@@ -40,6 +40,7 @@ from .const import (
     CONF_SYNC_MODES,
     CONF_LEARNING_WINDOW_DAYS,
     CONF_WEATHER_ENTITY,
+    CONF_OUTDOOR_SENSOR,
     CONF_HOUSE_ENERGY_RATING,
     CONF_WINDOW_RATING,
     CONF_SUPPLY_TEMP_SENSOR,
@@ -181,6 +182,7 @@ if HAS_HOMEASSISTANT:
 
                 # Weather and physics
                 vol.Optional(CONF_WEATHER_ENTITY): cv.entity_id,
+                vol.Optional(CONF_OUTDOOR_SENSOR): cv.entity_id,
                 vol.Optional(CONF_HOUSE_ENERGY_RATING): vol.In(
                     VALID_ENERGY_RATINGS,
                     msg=f"house_energy_rating must be one of: {', '.join(VALID_ENERGY_RATINGS)}"
@@ -353,6 +355,15 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     # Initialize domain data storage
     hass.data.setdefault(DOMAIN, {})
 
+    # Create www directory for chart images
+    from pathlib import Path
+    www_dir = Path(hass.config.path("www")) / "adaptive_thermostat"
+    try:
+        www_dir.mkdir(parents=True, exist_ok=True)
+        _LOGGER.debug("Chart directory ready: %s", www_dir)
+    except (OSError, IOError) as e:
+        _LOGGER.warning("Could not create chart directory: %s", e)
+
     # Create coordinator
     coordinator = AdaptiveThermostatCoordinator(hass)
     hass.data[DOMAIN]["coordinator"] = coordinator
@@ -434,6 +445,12 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     hass.data[DOMAIN]["weather_entity"] = weather_entity
     if weather_entity:
         _LOGGER.info("Weather entity configured: %s", weather_entity)
+
+    # Outdoor temperature sensor for Ke learning (weather compensation)
+    outdoor_sensor = domain_config.get(CONF_OUTDOOR_SENSOR)
+    hass.data[DOMAIN]["outdoor_sensor"] = outdoor_sensor
+    if outdoor_sensor:
+        _LOGGER.info("Outdoor sensor configured: %s", outdoor_sensor)
 
     # House energy rating for physics-based initialization
     house_energy_rating = domain_config.get(CONF_HOUSE_ENERGY_RATING)

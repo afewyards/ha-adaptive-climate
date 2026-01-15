@@ -72,7 +72,6 @@ climate:
     name: Ground Floor
     heater: switch.heating_gf
     target_sensor: sensor.temp_gf
-    outdoor_sensor: sensor.outdoor_temp
     min_temp: 7
     max_temp: 28
     target_temp: 20
@@ -179,8 +178,9 @@ adaptive_thermostat:
   # Learning
   learning_window_days: 7  # Adjustable via number entity
 
-  # Weather for solar gain prediction
-  weather_entity: weather.home
+  # Weather and outdoor temperature
+  weather_entity: weather.home  # For solar gain prediction
+  outdoor_sensor: sensor.outdoor_temp  # For Ke (outdoor compensation) - shared by all zones
 
   # Heat output sensors (optional - for detailed analytics)
   supply_temp_sensor: sensor.heating_supply
@@ -367,7 +367,7 @@ The Ke parameter compensates for outdoor temperature, reducing the work the PID 
 E = Ke × (target_temp - outdoor_temp)
 ```
 
-Ke is learned automatically by observing the correlation between outdoor temperature and steady-state PID output. When a strong negative correlation is detected (colder outside → higher output), Ke is increased. No manual tuning required—just configure an `outdoor_sensor` and the system will adapt.
+Ke is learned automatically by observing the correlation between outdoor temperature and steady-state PID output. When a strong negative correlation is detected (colder outside → higher output), Ke is increased. No manual tuning required—just configure `outdoor_sensor` at the system level and all zones will automatically use it for Ke learning.
 
 ## Multi-Zone Coordination
 
@@ -405,7 +405,6 @@ For thermally connected zones (e.g., open floor plan):
 | `demand_switch` | No* | - | Switch/valve entity (or list) controlled in both modes |
 | `invert_heater` | No | false | Invert heater on/off polarity |
 | `target_sensor` | Yes | - | Temperature sensor entity |
-| `outdoor_sensor` | No | - | Outdoor temperature sensor for Ke |
 | `min_temp` | No | 7 | Minimum setpoint temperature |
 | `max_temp` | No | 35 | Maximum setpoint temperature |
 | `target_temp` | No | 20 | Initial target temperature |
@@ -501,6 +500,7 @@ These are configured under the `adaptive_thermostat:` domain block, not per-zone
 | `house_energy_rating` | - | Building energy rating (A+++ to G) for physics init |
 | `learning_window_days` | 7 | Days of data for adaptive learning |
 | `weather_entity` | - | Weather entity for solar gain prediction |
+| `outdoor_sensor` | - | Outdoor temperature sensor for Ke (shared by all zones) |
 | `main_heater_switch` | - | Main heater switch(es) - single entity or list |
 | `main_cooler_switch` | - | Main cooler switch(es) - single entity or list |
 | `source_startup_delay` | 30 | Seconds to wait before activating heat source |
