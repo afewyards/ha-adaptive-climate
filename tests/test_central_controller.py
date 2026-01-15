@@ -114,9 +114,6 @@ async def test_heater_off_when_no_demand(mock_hass, coord, monkeypatch):
     mock_state.state = "on"
     mock_hass.states.get.return_value = mock_state
 
-    # Simulate that heater was previously activated by controller
-    controller._heater_activated_by_us = True
-
     # Register zone with no demand
     coord.register_zone("living_room", {"name": "Living Room"})
     coord.update_zone_demand("living_room", False, hvac_mode="heat")
@@ -808,9 +805,6 @@ async def test_turn_off_also_uses_retry_logic(mock_hass, coord, monkeypatch):
 
     mock_hass.services.async_call = AsyncMock(side_effect=mock_service_call)
 
-    # Simulate that heater was previously activated by controller
-    controller._heater_activated_by_us = True
-
     # Register zone with no demand (to trigger turn_off)
     coord.register_zone("living_room", {"name": "Living Room"})
     coord.update_zone_demand("living_room", False, hvac_mode="heat")
@@ -961,9 +955,6 @@ async def test_multiple_heaters_all_turn_off(mock_hass, coord, monkeypatch):
     mock_state = Mock()
     mock_state.state = "on"
     mock_hass.states.get.return_value = mock_state
-
-    # Simulate that heater was previously activated by controller
-    controller._heater_activated_by_us = True
 
     # Register zone with no demand
     coord.register_zone("living_room", {"name": "Living Room"})
@@ -1281,9 +1272,6 @@ async def test_turnoff_debounce_cancels_on_demand_return(mock_hass, coord, monke
     mock_state.state = "on"
     mock_hass.states.get.return_value = mock_state
 
-    # Simulate that heater was previously activated by controller
-    controller._heater_activated_by_us = True
-
     # Register zone with demand
     coord.register_zone("living_room", {"name": "Living Room"})
     coord.update_zone_demand("living_room", True, hvac_mode="heat")
@@ -1311,3 +1299,249 @@ async def test_turnoff_debounce_cancels_on_demand_return(mock_hass, coord, monke
 
     # Switch should NOT have been turned off (turn-off was cancelled)
     assert mock_hass.services.async_call.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_get_shared_switches_no_overlap(mock_hass, coord):
+    """Test shared switch detection when lists don't overlap."""
+    controller = coordinator.CentralController(
+        mock_hass,
+        coord,
+        main_heater_switch=["switch.boiler"],
+        main_cooler_switch=["switch.chiller"],
+        startup_delay_seconds=0,
+    )
+
+    shared = controller._get_shared_switches()
+    assert shared == set()
+
+
+@pytest.mark.asyncio
+async def test_get_shared_switches_with_overlap(mock_hass, coord):
+    """Test shared switch detection when lists have common switches."""
+    controller = coordinator.CentralController(
+        mock_hass,
+        coord,
+        main_heater_switch=["switch.boiler", "switch.pump"],
+        main_cooler_switch=["switch.chiller", "switch.pump"],
+        startup_delay_seconds=0,
+    )
+
+    shared = controller._get_shared_switches()
+    assert shared == {"switch.pump"}
+
+
+@pytest.mark.asyncio
+async def test_get_shared_switches_multiple_overlap(mock_hass, coord):
+    """Test shared switch detection with multiple shared switches."""
+    controller = coordinator.CentralController(
+        mock_hass,
+        coord,
+        main_heater_switch=["switch.boiler", "switch.pump", "switch.fan"],
+        main_cooler_switch=["switch.chiller", "switch.pump", "switch.fan"],
+        startup_delay_seconds=0,
+    )
+
+    shared = controller._get_shared_switches()
+    assert shared == {"switch.pump", "switch.fan"}
+
+
+@pytest.mark.asyncio
+async def test_get_shared_switches_one_list_none(mock_hass, coord):
+    """Test shared switch detection when one list is None."""
+    controller = coordinator.CentralController(
+        mock_hass,
+        coord,
+        main_heater_switch=["switch.boiler"],
+        main_cooler_switch=None,
+        startup_delay_seconds=0,
+    )
+
+    shared = controller._get_shared_switches()
+    assert shared == set()
+
+
+@pytest.mark.asyncio
+async def test_shared_switch_stays_on_when_other_mode_active(mock_hass, coord, monkeypatch):
+    """Test shared switch stays on when turning off heater but cooler is active."""
+    # Use short debounce for test
+    monkeypatch.setattr(central_controller, "TURN_OFF_DEBOUNCE_SECONDS", 0.1)
+
+    controller = coordinator.CentralController(
+        mock_hass,
+        coord,
+        main_heater_switch=["switch.boiler", "switch.pump"],
+        main_cooler_switch=["switch.chiller", "switch.pump"],
+        startup_delay_seconds=0,
+    )
+
+    # Mock switch states - all are on
+    def get_state(entity_id):
+        state = Mock()
+        state.state = "on"
+        return state
+
+    mock_hass.states.get.side_effect = get_state
+
+    # Register zones
+    coord.register_zone("living_room", {"name": "Living Room"})
+
+    # Initial state: heating demand
+    coord.update_zone_demand("living_room", True, hvac_mode="heat")
+    await controller.update()
+    mock_hass.services.async_call.reset_mock()
+
+    # Stop heating, start cooling
+    coord.update_zone_demand("living_room", False, hvac_mode="heat")
+    coord.update_zone_demand("living_room", True, hvac_mode="cool")
+
+    # Trigger updates
+    await controller.update()
+
+    # Wait for debounce
+    await asyncio.sleep(0.2)
+
+    # Check calls - boiler should turn off, pump should NOT
+    calls = [call.args for call in mock_hass.services.async_call.call_args_list]
+
+    # Should have turned off boiler but not pump
+    assert ("switch", "turn_off", {"entity_id": "switch.boiler"}) in calls
+    assert ("switch", "turn_off", {"entity_id": "switch.pump"}) not in calls
+
+
+@pytest.mark.asyncio
+async def test_shared_switch_turns_off_when_both_modes_stop(mock_hass, coord, monkeypatch):
+    """Test shared switch turns off when both heating and cooling stop."""
+    # Use short debounce for test
+    monkeypatch.setattr(central_controller, "TURN_OFF_DEBOUNCE_SECONDS", 0.1)
+
+    controller = coordinator.CentralController(
+        mock_hass,
+        coord,
+        main_heater_switch=["switch.boiler", "switch.pump"],
+        main_cooler_switch=["switch.chiller", "switch.pump"],
+        startup_delay_seconds=0,
+    )
+
+    # Mock switch states - all are on
+    def get_state(entity_id):
+        state = Mock()
+        state.state = "on"
+        return state
+
+    mock_hass.states.get.side_effect = get_state
+
+    # Register zones
+    coord.register_zone("living_room", {"name": "Living Room"})
+
+    # Initial state: heating demand
+    coord.update_zone_demand("living_room", True, hvac_mode="heat")
+    await controller.update()
+    mock_hass.services.async_call.reset_mock()
+
+    # Stop all demand
+    coord.update_zone_demand("living_room", False, hvac_mode="heat")
+
+    # Trigger update
+    await controller.update()
+
+    # Wait for debounce
+    await asyncio.sleep(0.2)
+
+    # Check calls - both boiler and pump should turn off
+    calls = [call.args for call in mock_hass.services.async_call.call_args_list]
+
+    assert ("switch", "turn_off", {"entity_id": "switch.boiler"}) in calls
+    assert ("switch", "turn_off", {"entity_id": "switch.pump"}) in calls
+
+
+@pytest.mark.asyncio
+async def test_cooler_shared_switch_stays_on_when_heater_active(mock_hass, coord, monkeypatch):
+    """Test shared switch stays on when turning off cooler but heater is active."""
+    # Use short debounce for test
+    monkeypatch.setattr(central_controller, "TURN_OFF_DEBOUNCE_SECONDS", 0.1)
+
+    controller = coordinator.CentralController(
+        mock_hass,
+        coord,
+        main_heater_switch=["switch.boiler", "switch.pump"],
+        main_cooler_switch=["switch.chiller", "switch.pump"],
+        startup_delay_seconds=0,
+    )
+
+    # Mock switch states - all are on
+    def get_state(entity_id):
+        state = Mock()
+        state.state = "on"
+        return state
+
+    mock_hass.states.get.side_effect = get_state
+
+    # Register zones
+    coord.register_zone("living_room", {"name": "Living Room"})
+
+    # Initial state: cooling demand
+    coord.update_zone_demand("living_room", True, hvac_mode="cool")
+    await controller.update()
+    mock_hass.services.async_call.reset_mock()
+
+    # Stop cooling, start heating
+    coord.update_zone_demand("living_room", False, hvac_mode="cool")
+    coord.update_zone_demand("living_room", True, hvac_mode="heat")
+
+    # Trigger updates
+    await controller.update()
+
+    # Wait for debounce
+    await asyncio.sleep(0.2)
+
+    # Check calls - chiller should turn off, pump should NOT
+    calls = [call.args for call in mock_hass.services.async_call.call_args_list]
+
+    assert ("switch", "turn_off", {"entity_id": "switch.chiller"}) in calls
+    assert ("switch", "turn_off", {"entity_id": "switch.pump"}) not in calls
+
+
+@pytest.mark.asyncio
+async def test_no_shared_switches_normal_behavior(mock_hass, coord, monkeypatch):
+    """Test that normal turn-off works when no switches are shared."""
+    # Use short debounce for test
+    monkeypatch.setattr(central_controller, "TURN_OFF_DEBOUNCE_SECONDS", 0.1)
+
+    controller = coordinator.CentralController(
+        mock_hass,
+        coord,
+        main_heater_switch=["switch.boiler"],
+        main_cooler_switch=["switch.chiller"],
+        startup_delay_seconds=0,
+    )
+
+    # Mock switch states - all are on
+    def get_state(entity_id):
+        state = Mock()
+        state.state = "on"
+        return state
+
+    mock_hass.states.get.side_effect = get_state
+
+    # Register zones
+    coord.register_zone("living_room", {"name": "Living Room"})
+
+    # Initial state: heating demand
+    coord.update_zone_demand("living_room", True, hvac_mode="heat")
+    await controller.update()
+    mock_hass.services.async_call.reset_mock()
+
+    # Stop heating
+    coord.update_zone_demand("living_room", False, hvac_mode="heat")
+
+    # Trigger update
+    await controller.update()
+
+    # Wait for debounce
+    await asyncio.sleep(0.2)
+
+    # Check calls - boiler should turn off
+    calls = [call.args for call in mock_hass.services.async_call.call_args_list]
+
+    assert ("switch", "turn_off", {"entity_id": "switch.boiler"}) in calls

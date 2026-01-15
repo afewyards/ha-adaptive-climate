@@ -76,16 +76,22 @@ class CentralController:
         # Track consecutive failures per switch for health monitoring
         self._consecutive_failures: dict[str, int] = {}
 
-        # Track whether we activated heater/cooler switches (for shared switch handling)
-        self._heater_activated_by_us = False
-        self._cooler_activated_by_us = False
-
         _LOGGER.debug(
             "CentralController initialized: heater=%s, cooler=%s, delay=%ds",
             main_heater_switch,
             main_cooler_switch,
             startup_delay_seconds,
         )
+
+    def _get_shared_switches(self) -> set[str]:
+        """Get switches that are in both heater and cooler lists.
+
+        Returns:
+            Set of entity IDs that are shared between modes
+        """
+        if not self.main_heater_switch or not self.main_cooler_switch:
+            return set()
+        return set(self.main_heater_switch) & set(self.main_cooler_switch)
 
     async def update(self) -> None:
         """Update central controller state based on zone demand.
@@ -120,10 +126,7 @@ class CentralController:
             else:
                 # No demand - cancel startup and schedule debounced turn-off
                 await self._cancel_heater_startup_unlocked()
-                # Only schedule turn-off if we activated the heater
-                # (prevents turning off shared switches when cooler activated them)
-                if self._heater_activated_by_us:
-                    self._schedule_heater_turnoff_unlocked()
+                self._schedule_heater_turnoff_unlocked()
 
     async def _update_cooler(self, has_demand: bool) -> None:
         """Update cooler state based on demand.
@@ -142,10 +145,7 @@ class CentralController:
             else:
                 # No demand - cancel startup and schedule debounced turn-off
                 await self._cancel_cooler_startup_unlocked()
-                # Only schedule turn-off if we activated the cooler
-                # (prevents turning off shared switches when heater activated them)
-                if self._cooler_activated_by_us:
-                    self._schedule_cooler_turnoff_unlocked()
+                self._schedule_cooler_turnoff_unlocked()
 
     async def _start_heater_with_delay_unlocked(self) -> None:
         """Start heater after startup delay.
@@ -158,7 +158,6 @@ class CentralController:
         if self.startup_delay_seconds == 0:
             # No delay - turn on immediately
             await self._turn_on_switches(self.main_heater_switch)
-            self._heater_activated_by_us = True
         else:
             # Schedule delayed startup
             self._heater_waiting_for_startup = True
@@ -176,7 +175,6 @@ class CentralController:
         if self.startup_delay_seconds == 0:
             # No delay - turn on immediately
             await self._turn_on_switches(self.main_cooler_switch)
-            self._cooler_activated_by_us = True
         else:
             # Schedule delayed startup
             self._cooler_waiting_for_startup = True
@@ -193,7 +191,6 @@ class CentralController:
                 demand = self.coordinator.get_aggregate_demand()
                 if demand["heating"]:
                     await self._turn_on_switches(self.main_heater_switch)
-                    self._heater_activated_by_us = True
                     _LOGGER.info("Heater started after %d second delay", self.startup_delay_seconds)
                 else:
                     _LOGGER.debug("Heater startup cancelled - no demand after delay")
@@ -214,7 +211,6 @@ class CentralController:
                 demand = self.coordinator.get_aggregate_demand()
                 if demand["cooling"]:
                     await self._turn_on_switches(self.main_cooler_switch)
-                    self._cooler_activated_by_us = True
                     _LOGGER.info("Cooler started after %d second delay", self.startup_delay_seconds)
                 else:
                     _LOGGER.debug("Cooler startup cancelled - no demand after delay")
@@ -322,8 +318,11 @@ class CentralController:
             async with self._startup_lock:
                 demand = self.coordinator.get_aggregate_demand()
                 if not demand["heating"]:
-                    await self._turn_off_switches(self.main_heater_switch)
-                    self._heater_activated_by_us = False
+                    # Turn off heater switches, but skip shared ones if cooling active
+                    await self._turn_off_switches_smart(
+                        self.main_heater_switch,
+                        other_mode_has_demand=demand["cooling"],
+                    )
                     _LOGGER.info(
                         "Heater turned off after %d second debounce",
                         TURN_OFF_DEBOUNCE_SECONDS,
@@ -344,8 +343,11 @@ class CentralController:
             async with self._startup_lock:
                 demand = self.coordinator.get_aggregate_demand()
                 if not demand["cooling"]:
-                    await self._turn_off_switches(self.main_cooler_switch)
-                    self._cooler_activated_by_us = False
+                    # Turn off cooler switches, but skip shared ones if heating active
+                    await self._turn_off_switches_smart(
+                        self.main_cooler_switch,
+                        other_mode_has_demand=demand["heating"],
+                    )
                     _LOGGER.info(
                         "Cooler turned off after %d second debounce",
                         TURN_OFF_DEBOUNCE_SECONDS,
@@ -453,6 +455,38 @@ class CentralController:
         for entity_id in entity_ids:
             if not await self._turn_off_switch(entity_id):
                 success = False
+        return success
+
+    async def _turn_off_switches_smart(
+        self,
+        entity_ids: list[str],
+        other_mode_has_demand: bool,
+    ) -> bool:
+        """Turn off switches, skipping shared switches if other mode needs them.
+
+        Args:
+            entity_ids: List of switches to turn off
+            other_mode_has_demand: Whether the other mode (heat/cool) has demand
+
+        Returns:
+            True if all operations succeeded
+        """
+        shared = self._get_shared_switches()
+        success = True
+
+        for entity_id in entity_ids:
+            # Skip shared switches if other mode has demand
+            if entity_id in shared and other_mode_has_demand:
+                _LOGGER.debug(
+                    "Skipping turn-off of shared switch %s (other mode has demand)",
+                    entity_id,
+                )
+                continue
+
+            # Turn off this switch (already has state check inside _turn_off_switch)
+            if not await self._turn_off_switch(entity_id):
+                success = False
+
         return success
 
     async def _call_switch_service(
