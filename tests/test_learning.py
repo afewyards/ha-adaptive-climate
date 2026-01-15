@@ -472,7 +472,7 @@ class TestRuleConflicts:
         learner = AdaptiveLearner()
 
         # Add cycles with both overshoot AND slow response
-        for _ in range(3):
+        for _ in range(6):
             learner.add_cycle_metrics(CycleMetrics(
                 overshoot=0.6,     # Triggers high overshoot (reduce Kp)
                 rise_time=70,      # Triggers slow response (increase Kp)
@@ -492,7 +492,7 @@ class TestRuleConflicts:
         learner = AdaptiveLearner()
 
         # Add cycles with oscillations AND slow response
-        for _ in range(3):
+        for _ in range(6):
             learner.add_cycle_metrics(CycleMetrics(
                 overshoot=0.0,
                 oscillations=4,    # Many oscillations (reduce Kp by 10%)
@@ -512,7 +512,7 @@ class TestRuleConflicts:
         learner = AdaptiveLearner()
 
         # Add cycles where overshoot and oscillations both reduce Kp
-        for _ in range(3):
+        for _ in range(6):
             learner.add_cycle_metrics(CycleMetrics(
                 overshoot=0.6,     # High overshoot (reduce Kp ~12%)
                 oscillations=4,    # Many oscillations (reduce Kp 10%)
@@ -533,7 +533,7 @@ class TestRuleConflicts:
 
         # Add cycles with undershoot (increases Ki) and slow settling (increases Kd)
         # No conflict expected - they adjust different parameters
-        for _ in range(3):
+        for _ in range(6):
             learner.add_cycle_metrics(CycleMetrics(
                 overshoot=0.0,
                 undershoot=0.5,    # Increase Ki
@@ -542,19 +542,20 @@ class TestRuleConflicts:
                 settling_time=100,  # Increase Kd
             ))
 
-        result = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
+        # Use realistic PID values within v0.7.0 limits (kd_max=5.0)
+        result = learner.calculate_pid_adjustment(100.0, 1.0, 2.0)
 
         # Both should apply since they don't conflict
         assert result is not None
         assert result["ki"] > 1.0  # Ki increased
-        assert result["kd"] > 10.0  # Kd increased
+        assert result["kd"] > 2.0  # Kd increased
 
     def test_multiple_conflicts_resolved(self):
         """Test that multiple conflicts are resolved correctly."""
         learner = AdaptiveLearner()
 
         # Create scenario with multiple potential conflicts
-        for _ in range(3):
+        for _ in range(6):
             learner.add_cycle_metrics(CycleMetrics(
                 overshoot=0.3,     # Moderate overshoot (reduce Kp by 5%)
                 oscillations=4,    # Many oscillations (reduce Kp 10%, increase Kd 20%)
@@ -562,14 +563,15 @@ class TestRuleConflicts:
                 settling_time=30,
             ))
 
-        result = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
+        # Use realistic PID values within v0.7.0 limits (kd_max=5.0)
+        result = learner.calculate_pid_adjustment(100.0, 1.0, 2.0)
 
         # Kp conflicts: overshoot (priority 2) and oscillation (priority 3) both reduce
         #              slow response (priority 1) increases
         # Oscillation has highest priority, so slow response is suppressed
         assert result is not None
         assert result["kp"] < 100.0  # Should be reduced
-        assert result["kd"] > 10.0   # Kd should be increased by oscillation rule
+        assert result["kd"] > 2.0   # Kd should be increased by oscillation rule
 
 
 class TestConvergenceDetection:
@@ -580,7 +582,7 @@ class TestConvergenceDetection:
         learner = AdaptiveLearner()
 
         # Add cycles with good metrics (within convergence thresholds)
-        for _ in range(3):
+        for _ in range(6):
             learner.add_cycle_metrics(CycleMetrics(
                 overshoot=0.1,      # Below 0.2 threshold
                 oscillations=0,     # Below 1 threshold
@@ -598,7 +600,7 @@ class TestConvergenceDetection:
         learner = AdaptiveLearner()
 
         # Add cycles with one metric outside threshold
-        for _ in range(3):
+        for _ in range(6):
             learner.add_cycle_metrics(CycleMetrics(
                 overshoot=0.3,      # Above 0.2 threshold
                 oscillations=0,
@@ -615,7 +617,7 @@ class TestConvergenceDetection:
         """Test that system is not converged when oscillations exceed threshold."""
         learner = AdaptiveLearner()
 
-        for _ in range(3):
+        for _ in range(6):
             learner.add_cycle_metrics(CycleMetrics(
                 overshoot=0.1,
                 oscillations=2,     # Above 1 threshold
@@ -632,7 +634,7 @@ class TestConvergenceDetection:
         """Test that system is not converged when settling time exceeds threshold."""
         learner = AdaptiveLearner()
 
-        for _ in range(3):
+        for _ in range(6):
             learner.add_cycle_metrics(CycleMetrics(
                 overshoot=0.1,
                 oscillations=0,
@@ -663,7 +665,7 @@ class TestConvergenceDetection:
         """Test that system is not converged when rise time exceeds threshold."""
         learner = AdaptiveLearner()
 
-        for _ in range(3):
+        for _ in range(6):
             learner.add_cycle_metrics(CycleMetrics(
                 overshoot=0.1,
                 oscillations=0,
@@ -682,7 +684,7 @@ class TestConvergenceDetection:
         learner = AdaptiveLearner()
 
         # Most metrics good, but overshoot is high
-        for _ in range(3):
+        for _ in range(6):
             learner.add_cycle_metrics(CycleMetrics(
                 overshoot=0.5,      # Above threshold, triggers moderate overshoot
                 oscillations=0,
@@ -701,7 +703,7 @@ class TestConvergenceDetection:
         learner = AdaptiveLearner()
 
         # All metrics exactly at thresholds (should still be considered converged)
-        for _ in range(3):
+        for _ in range(6):
             learner.add_cycle_metrics(CycleMetrics(
                 overshoot=0.2,      # Exactly at 0.2 threshold
                 oscillations=1,     # Exactly at 1 threshold
@@ -1243,7 +1245,7 @@ class TestRateLimiting:
         learner = AdaptiveLearner()
 
         # Add enough cycles to trigger adjustment
-        for _ in range(3):
+        for _ in range(6):
             learner.add_cycle_metrics(CycleMetrics(
                 overshoot=0.6,  # High overshoot triggers adjustment
                 oscillations=0,
@@ -1265,7 +1267,7 @@ class TestRateLimiting:
         learner = AdaptiveLearner()
 
         # Add enough cycles
-        for _ in range(3):
+        for _ in range(6):
             learner.add_cycle_metrics(CycleMetrics(
                 overshoot=0.6,
                 oscillations=0,
@@ -1278,7 +1280,7 @@ class TestRateLimiting:
         assert result1 is not None
 
         # Add more cycles for a potential second adjustment
-        for _ in range(3):
+        for _ in range(6):
             learner.add_cycle_metrics(CycleMetrics(
                 overshoot=0.6,
                 oscillations=0,
@@ -1295,7 +1297,7 @@ class TestRateLimiting:
         learner = AdaptiveLearner()
 
         # Add enough cycles
-        for _ in range(3):
+        for _ in range(6):
             learner.add_cycle_metrics(CycleMetrics(
                 overshoot=0.6,
                 oscillations=0,
@@ -1311,7 +1313,7 @@ class TestRateLimiting:
         learner._last_adjustment_time = datetime.now() - timedelta(hours=25)
 
         # Add more cycles
-        for _ in range(3):
+        for _ in range(6):
             learner.add_cycle_metrics(CycleMetrics(
                 overshoot=0.6,
                 oscillations=0,
@@ -1328,7 +1330,7 @@ class TestRateLimiting:
         learner = AdaptiveLearner()
 
         # Add enough cycles
-        for _ in range(3):
+        for _ in range(6):
             learner.add_cycle_metrics(CycleMetrics(
                 overshoot=0.6,
                 oscillations=0,
@@ -1344,7 +1346,7 @@ class TestRateLimiting:
         learner._last_adjustment_time = datetime.now() - timedelta(hours=2)
 
         # Add more cycles
-        for _ in range(3):
+        for _ in range(6):
             learner.add_cycle_metrics(CycleMetrics(
                 overshoot=0.6,
                 oscillations=0,
@@ -1375,7 +1377,7 @@ class TestRateLimiting:
         learner = AdaptiveLearner()
 
         # Add cycles and make adjustment
-        for _ in range(3):
+        for _ in range(6):
             learner.add_cycle_metrics(CycleMetrics(
                 overshoot=0.6,
                 oscillations=0,
@@ -1399,7 +1401,7 @@ class TestRateLimiting:
         assert learner.get_last_adjustment_time() is None
 
         # Add cycles and make adjustment
-        for _ in range(3):
+        for _ in range(6):
             learner.add_cycle_metrics(CycleMetrics(
                 overshoot=0.6,
                 oscillations=0,
@@ -1457,11 +1459,11 @@ class TestPIDLimitsConstants:
         assert "ke_max" in PID_LIMITS
 
     def test_ke_limits_values(self):
-        """Test Ke limits have correct default values (0.0 to 2.0)."""
+        """Test Ke limits have correct default values (0.0 to 0.02) after v0.7.0."""
         from custom_components.adaptive_thermostat.const import PID_LIMITS
 
         assert PID_LIMITS["ke_min"] == 0.0
-        assert PID_LIMITS["ke_max"] == 2.0
+        assert PID_LIMITS["ke_max"] == 0.02  # Reduced by 100x in v0.7.0 (issue 1.3)
 
     def test_ke_limits_range_is_valid(self):
         """Test that ke_min is less than ke_max."""
@@ -1491,7 +1493,7 @@ def test_pid_limits():
 
     Story 7.4: Add Ke limits to PID_LIMITS constant.
     - ke_min = 0.0 (no weather compensation)
-    - ke_max = 2.0 (based on calculate_recommended_ke usage)
+    - ke_max = 0.02 (reduced by 100x in v0.7.0 - issue 1.3)
     """
     from custom_components.adaptive_thermostat.const import PID_LIMITS
 
@@ -1501,15 +1503,15 @@ def test_pid_limits():
 
     # Verify Ke limits have correct values
     assert PID_LIMITS["ke_min"] == 0.0, f"ke_min should be 0.0, got {PID_LIMITS['ke_min']}"
-    assert PID_LIMITS["ke_max"] == 2.0, f"ke_max should be 2.0, got {PID_LIMITS['ke_max']}"
+    assert PID_LIMITS["ke_max"] == 0.02, f"ke_max should be 0.02, got {PID_LIMITS['ke_max']}"
 
-    # Verify existing limits are unchanged
+    # Verify existing limits (note: ki_max and kd_max changed in v0.7.0)
     assert PID_LIMITS["kp_min"] == 10.0
     assert PID_LIMITS["kp_max"] == 500.0
     assert PID_LIMITS["ki_min"] == 0.0
-    assert PID_LIMITS["ki_max"] == 100.0
+    assert PID_LIMITS["ki_max"] == 1000.0  # Increased from 100.0 in v0.7.0 (issue 1.4)
     assert PID_LIMITS["kd_min"] == 0.0
-    assert PID_LIMITS["kd_max"] == 200.0
+    assert PID_LIMITS["kd_max"] == 5.0  # Reduced from 200.0 in v0.7.0 (issue 1.8)
 
 
 # ============================================================================

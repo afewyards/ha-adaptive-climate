@@ -26,6 +26,9 @@ from .pid_rules import (
     resolve_rule_conflicts,
 )
 
+# Import robust statistics for outlier rejection
+from .robust_stats import robust_average
+
 # Import and re-export ThermalRateLearner for backward compatibility
 from .thermal_rates import ThermalRateLearner
 
@@ -241,23 +244,55 @@ class AdaptiveLearner:
         # Use only undisturbed cycles for learning
         recent_cycles = undisturbed_cycles[-min_cycles:]
 
-        avg_overshoot = statistics.mean(
-            [c.overshoot for c in recent_cycles if c.overshoot is not None]
-        ) if any(c.overshoot is not None for c in recent_cycles) else 0.0
+        # Use robust averaging with outlier detection (v0.7.0+)
+        # MAD-based outlier rejection with max 30% removal, min 4 valid cycles
 
-        avg_undershoot = statistics.mean(
-            [c.undershoot for c in recent_cycles if c.undershoot is not None]
-        ) if any(c.undershoot is not None for c in recent_cycles) else 0.0
+        overshoot_values = [c.overshoot for c in recent_cycles if c.overshoot is not None]
+        if overshoot_values:
+            avg_overshoot, overshoot_outliers = robust_average(overshoot_values)
+            if overshoot_outliers:
+                _LOGGER.debug(
+                    f"Removed {len(overshoot_outliers)} overshoot outliers from {len(overshoot_values)} cycles"
+                )
+        else:
+            avg_overshoot = 0.0
 
-        avg_settling_time = statistics.mean(
-            [c.settling_time for c in recent_cycles if c.settling_time is not None]
-        ) if any(c.settling_time is not None for c in recent_cycles) else 0.0
+        undershoot_values = [c.undershoot for c in recent_cycles if c.undershoot is not None]
+        if undershoot_values:
+            avg_undershoot, undershoot_outliers = robust_average(undershoot_values)
+            if undershoot_outliers:
+                _LOGGER.debug(
+                    f"Removed {len(undershoot_outliers)} undershoot outliers from {len(undershoot_values)} cycles"
+                )
+        else:
+            avg_undershoot = 0.0
 
-        avg_oscillations = statistics.mean([c.oscillations for c in recent_cycles])
+        settling_time_values = [c.settling_time for c in recent_cycles if c.settling_time is not None]
+        if settling_time_values:
+            avg_settling_time, settling_outliers = robust_average(settling_time_values)
+            if settling_outliers:
+                _LOGGER.debug(
+                    f"Removed {len(settling_outliers)} settling_time outliers from {len(settling_time_values)} cycles"
+                )
+        else:
+            avg_settling_time = 0.0
 
-        avg_rise_time = statistics.mean(
-            [c.rise_time for c in recent_cycles if c.rise_time is not None]
-        ) if any(c.rise_time is not None for c in recent_cycles) else 0.0
+        oscillation_values = [c.oscillations for c in recent_cycles]
+        avg_oscillations, oscillation_outliers = robust_average(oscillation_values)
+        if oscillation_outliers:
+            _LOGGER.debug(
+                f"Removed {len(oscillation_outliers)} oscillation outliers from {len(oscillation_values)} cycles"
+            )
+
+        rise_time_values = [c.rise_time for c in recent_cycles if c.rise_time is not None]
+        if rise_time_values:
+            avg_rise_time, rise_outliers = robust_average(rise_time_values)
+            if rise_outliers:
+                _LOGGER.debug(
+                    f"Removed {len(rise_outliers)} rise_time outliers from {len(rise_time_values)} cycles"
+                )
+        else:
+            avg_rise_time = 0.0
 
         # Check for convergence - skip adjustments if system is tuned
         if self._check_convergence(

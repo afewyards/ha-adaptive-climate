@@ -141,7 +141,8 @@ RULE_PRIORITY_OVERSHOOT = 2     # Stability - avoid temperature swings
 RULE_PRIORITY_SLOW_RESPONSE = 1  # Performance - improve comfort
 
 # Minimum number of cycles required before adaptive learning can recommend PID changes
-MIN_CYCLES_FOR_LEARNING = 3
+# Increased from 3 to 6 in v0.7.0 for robust outlier detection with MAD
+MIN_CYCLES_FOR_LEARNING = 6
 
 # Maximum number of cycles to retain in history (FIFO eviction when exceeded)
 MAX_CYCLE_HISTORY = 100
