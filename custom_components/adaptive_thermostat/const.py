@@ -236,6 +236,9 @@ SETTLING_TIMEOUT_MULTIPLIER = 30  # Multiplier for tau to calculate settling tim
 SETTLING_TIMEOUT_MIN = 60  # Minimum settling timeout in minutes
 SETTLING_TIMEOUT_MAX = 240  # Maximum settling timeout in minutes (4 hours)
 
+# Overshoot peak tracking window (v0.7.0) - time window after heater stops to track peaks
+OVERSHOOT_PEAK_WINDOW_MINUTES = 45  # Default 45 minutes - prevents late peaks from external factors
+
 # Segment detection noise tolerance
 # Temperature fluctuations below this threshold are ignored as sensor noise
 SEGMENT_NOISE_TOLERANCE = 0.05  # 0.05C default

@@ -116,27 +116,36 @@ class PhaseAwareOvershootTracker:
     Overshoot should only be measured in the settling phase, which begins after
     the temperature first crosses the setpoint. This prevents false overshoot
     readings during the rise phase.
+
+    Time-window-based peak tracking: Only temperature readings within a specified
+    time window after heater stops are considered for peak detection. This prevents
+    late peaks caused by external factors (solar gain, occupancy) from being
+    incorrectly attributed to overshoot.
     """
 
     # Phase constants
     PHASE_RISE = "rise"
     PHASE_SETTLING = "settling"
 
-    def __init__(self, setpoint: float, tolerance: float = 0.05):
+    def __init__(self, setpoint: float, tolerance: float = 0.05, peak_tracking_window_minutes: int = 45):
         """
         Initialize the phase-aware overshoot tracker.
 
         Args:
             setpoint: Target temperature in degrees C
             tolerance: Small tolerance band for detecting setpoint crossing (default 0.05C)
+            peak_tracking_window_minutes: Time window after heater stops to track peaks (default 45 min)
         """
         self._setpoint = setpoint
         self._tolerance = tolerance
+        self._peak_tracking_window_minutes = peak_tracking_window_minutes
         self._phase = self.PHASE_RISE
         self._setpoint_crossed = False
         self._crossing_timestamp: Optional[datetime] = None
         self._max_settling_temp: Optional[float] = None
         self._settling_temps: List[Tuple[datetime, float]] = []
+        self._heater_stop_time: Optional[datetime] = None
+        self._peak_window_closed = False
 
     @property
     def setpoint(self) -> float:
@@ -172,7 +181,22 @@ class PhaseAwareOvershootTracker:
         self._crossing_timestamp = None
         self._max_settling_temp = None
         self._settling_temps.clear()
+        self._heater_stop_time = None
+        self._peak_window_closed = False
         _LOGGER.debug(f"Overshoot tracker reset, setpoint: {self._setpoint}°C")
+
+    def on_heater_stopped(self, timestamp: datetime) -> None:
+        """
+        Mark when the heater stopped to begin peak tracking window.
+
+        Args:
+            timestamp: Time when heater was turned off
+        """
+        self._heater_stop_time = timestamp
+        self._peak_window_closed = False
+        _LOGGER.debug(
+            f"Heater stopped at {timestamp}, starting {self._peak_tracking_window_minutes}-minute peak tracking window"
+        )
 
     def update(self, timestamp: datetime, temperature: float) -> None:
         """
@@ -197,8 +221,33 @@ class PhaseAwareOvershootTracker:
         # Track maximum temperature in settling phase
         if self._phase == self.PHASE_SETTLING:
             self._settling_temps.append((timestamp, temperature))
-            if self._max_settling_temp is None or temperature > self._max_settling_temp:
-                self._max_settling_temp = temperature
+
+            # Only track peak if within time window after heater stopped
+            if self._heater_stop_time is not None and not self._peak_window_closed:
+                # Check if we're within the tracking window
+                elapsed_minutes = (timestamp - self._heater_stop_time).total_seconds() / 60
+
+                if elapsed_minutes <= self._peak_tracking_window_minutes:
+                    # Within window - update peak
+                    if self._max_settling_temp is None or temperature > self._max_settling_temp:
+                        self._max_settling_temp = temperature
+                        _LOGGER.debug(
+                            f"Peak updated to {temperature:.2f}°C at {timestamp} "
+                            f"({elapsed_minutes:.1f} min after heater stopped)"
+                        )
+                else:
+                    # Window expired - close it
+                    if not self._peak_window_closed:
+                        self._peak_window_closed = True
+                        _LOGGER.debug(
+                            f"Peak tracking window closed at {timestamp} "
+                            f"({elapsed_minutes:.1f} min after heater stopped), "
+                            f"final peak: {self._max_settling_temp:.2f}°C"
+                        )
+            elif self._heater_stop_time is None:
+                # Heater never stopped (still heating) - track peak normally
+                if self._max_settling_temp is None or temperature > self._max_settling_temp:
+                    self._max_settling_temp = temperature
 
     def get_overshoot(self) -> Optional[float]:
         """
