@@ -1,10 +1,12 @@
 """Tests for night setback module."""
 import pytest
 from datetime import datetime, time, timedelta
+from unittest.mock import Mock
 from custom_components.adaptive_thermostat.adaptive.night_setback import (
     NightSetback,
     NightSetbackManager
 )
+from custom_components.adaptive_thermostat.adaptive.thermal_rates import ThermalRateLearner
 
 
 class TestNightSetback:
@@ -320,3 +322,301 @@ class TestNightSetbackManager:
         assert config["use_sunset"] is True
         assert config["sunset_offset_minutes"] == 30
         assert config["start_time"] == "sunset+30"
+
+
+class TestNightSetbackLearnedRate:
+    """Test night setback with learned heating rates."""
+
+    def test_night_setback_learned_rate(self):
+        """Test recovery timing with learned heating rate."""
+        # Create thermal rate learner with learned rate
+        learner = ThermalRateLearner()
+        learner.add_heating_measurement(1.5)  # Learned 1.5°C/h
+        learner.add_heating_measurement(1.6)
+        learner.add_heating_measurement(1.4)
+
+        setback = NightSetback(
+            start_time="22:00",
+            end_time="06:00",
+            setback_delta=3.0,
+            recovery_deadline="07:00",
+            thermal_rate_learner=learner,
+            heating_type="radiator"
+        )
+
+        # Current: 04:00, 3 hours until deadline
+        # Temp deficit: 5°C (15°C current, 20°C target)
+        # Learned rate: 1.5°C/h
+        # Cold-soak margin: 1.3x for radiator
+        # Estimated recovery: (5 / 1.5) * 1.3 = 4.33 hours
+        # Should start recovery since 4.33h > 3h
+
+        current = datetime(2024, 1, 15, 4, 0)
+        base_setpoint = 20.0
+        current_temp = 15.0
+
+        should_recover = setback.should_start_recovery(current, current_temp, base_setpoint)
+        assert should_recover is True
+
+    def test_night_setback_fallback_heating_type(self):
+        """Test fallback to heating type estimate when no learned rate."""
+        # No thermal rate learner provided
+        setback = NightSetback(
+            start_time="22:00",
+            end_time="06:00",
+            setback_delta=3.0,
+            recovery_deadline="07:00",
+            thermal_rate_learner=None,
+            heating_type="forced_air"
+        )
+
+        # Current: 05:00, 2 hours until deadline
+        # Temp deficit: 4°C (16°C current, 20°C target)
+        # Forced air estimate: 4.0°C/h
+        # Cold-soak margin: 1.1x for forced_air
+        # Estimated recovery: (4 / 4.0) * 1.1 = 1.1 hours
+        # Should NOT start recovery since 1.1h < 2h
+
+        current = datetime(2024, 1, 15, 5, 0)
+        base_setpoint = 20.0
+        current_temp = 16.0
+
+        should_recover = setback.should_start_recovery(current, current_temp, base_setpoint)
+        assert should_recover is False
+
+    def test_night_setback_fallback_hierarchy(self):
+        """Test complete fallback hierarchy: learned → type → default."""
+        # Test 1: Learned rate (highest priority)
+        learner_with_data = ThermalRateLearner()
+        learner_with_data.add_heating_measurement(2.5)
+
+        setback1 = NightSetback(
+            start_time="22:00",
+            end_time="06:00",
+            setback_delta=2.0,
+            recovery_deadline="07:00",
+            thermal_rate_learner=learner_with_data,
+            heating_type="floor_hydronic"
+        )
+
+        # Learned rate should be used (2.5°C/h), not floor_hydronic (0.5°C/h)
+        rate1 = setback1._get_heating_rate()
+        assert rate1 == 2.5
+
+        # Test 2: Heating type estimate (second priority)
+        learner_no_data = ThermalRateLearner()  # No measurements
+
+        setback2 = NightSetback(
+            start_time="22:00",
+            end_time="06:00",
+            setback_delta=2.0,
+            recovery_deadline="07:00",
+            thermal_rate_learner=learner_no_data,
+            heating_type="convector"
+        )
+
+        # Should use convector estimate (2.0°C/h)
+        rate2 = setback2._get_heating_rate()
+        assert rate2 == 2.0
+
+        # Test 3: Default rate (lowest priority)
+        setback3 = NightSetback(
+            start_time="22:00",
+            end_time="06:00",
+            setback_delta=2.0,
+            recovery_deadline="07:00",
+            thermal_rate_learner=None,
+            heating_type=None
+        )
+
+        # Should use default (1.0°C/h)
+        rate3 = setback3._get_heating_rate()
+        assert rate3 == 1.0
+
+    def test_night_setback_floor_hydronic_slow_recovery(self):
+        """Test floor hydronic with slow learned rate and high margin."""
+        learner = ThermalRateLearner()
+        learner.add_heating_measurement(0.6)  # Slow learned rate
+        learner.add_heating_measurement(0.5)
+        learner.add_heating_measurement(0.7)
+
+        setback = NightSetback(
+            start_time="22:00",
+            end_time="06:00",
+            setback_delta=3.0,
+            recovery_deadline="07:00",
+            thermal_rate_learner=learner,
+            heating_type="floor_hydronic"
+        )
+
+        # Current: 02:00, 5 hours until deadline
+        # Temp deficit: 6°C (14°C current, 20°C target)
+        # Learned rate: 0.6°C/h (median)
+        # Cold-soak margin: 1.5x for floor_hydronic
+        # Estimated recovery: (6 / 0.6) * 1.5 = 15 hours
+        # Should start recovery since 15h > 5h
+
+        current = datetime(2024, 1, 15, 2, 0)
+        base_setpoint = 20.0
+        current_temp = 14.0
+
+        should_recover = setback.should_start_recovery(current, current_temp, base_setpoint)
+        assert should_recover is True
+
+    def test_night_setback_forced_air_fast_recovery(self):
+        """Test forced air with fast learned rate and low margin."""
+        learner = ThermalRateLearner()
+        learner.add_heating_measurement(3.8)  # Fast learned rate
+        learner.add_heating_measurement(4.2)
+        learner.add_heating_measurement(4.0)
+
+        setback = NightSetback(
+            start_time="22:00",
+            end_time="06:00",
+            setback_delta=2.0,
+            recovery_deadline="07:00",
+            thermal_rate_learner=learner,
+            heating_type="forced_air"
+        )
+
+        # Current: 05:30, 1.5 hours until deadline
+        # Temp deficit: 3°C (17°C current, 20°C target)
+        # Learned rate: 4.0°C/h (median)
+        # Cold-soak margin: 1.1x for forced_air
+        # Estimated recovery: (3 / 4.0) * 1.1 = 0.825 hours
+        # Should NOT start recovery since 0.825h < 1.5h
+
+        current = datetime(2024, 1, 15, 5, 30)
+        base_setpoint = 20.0
+        current_temp = 17.0
+
+        should_recover = setback.should_start_recovery(current, current_temp, base_setpoint)
+        assert should_recover is False
+
+    def test_cold_soak_margins_by_heating_type(self):
+        """Test cold-soak margins are correctly applied by heating type."""
+        # Floor hydronic: 50% margin
+        setback_floor = NightSetback(
+            start_time="22:00",
+            end_time="06:00",
+            setback_delta=2.0,
+            heating_type="floor_hydronic"
+        )
+        assert setback_floor._get_cold_soak_margin() == 1.5
+
+        # Radiator: 30% margin
+        setback_radiator = NightSetback(
+            start_time="22:00",
+            end_time="06:00",
+            setback_delta=2.0,
+            heating_type="radiator"
+        )
+        assert setback_radiator._get_cold_soak_margin() == 1.3
+
+        # Convector: 20% margin
+        setback_convector = NightSetback(
+            start_time="22:00",
+            end_time="06:00",
+            setback_delta=2.0,
+            heating_type="convector"
+        )
+        assert setback_convector._get_cold_soak_margin() == 1.2
+
+        # Forced air: 10% margin
+        setback_forced = NightSetback(
+            start_time="22:00",
+            end_time="06:00",
+            setback_delta=2.0,
+            heating_type="forced_air"
+        )
+        assert setback_forced._get_cold_soak_margin() == 1.1
+
+        # Unknown: 25% margin (default)
+        setback_unknown = NightSetback(
+            start_time="22:00",
+            end_time="06:00",
+            setback_delta=2.0,
+            heating_type="unknown_type"
+        )
+        assert setback_unknown._get_cold_soak_margin() == 1.25
+
+    def test_heating_type_rate_estimates(self):
+        """Test heating type rate estimates are correct."""
+        # Floor hydronic: 0.5°C/h
+        setback_floor = NightSetback(
+            start_time="22:00",
+            end_time="06:00",
+            setback_delta=2.0,
+            heating_type="floor_hydronic"
+        )
+        assert setback_floor._get_heating_rate() == 0.5
+
+        # Radiator: 1.2°C/h
+        setback_radiator = NightSetback(
+            start_time="22:00",
+            end_time="06:00",
+            setback_delta=2.0,
+            heating_type="radiator"
+        )
+        assert setback_radiator._get_heating_rate() == 1.2
+
+        # Convector: 2.0°C/h
+        setback_convector = NightSetback(
+            start_time="22:00",
+            end_time="06:00",
+            setback_delta=2.0,
+            heating_type="convector"
+        )
+        assert setback_convector._get_heating_rate() == 2.0
+
+        # Forced air: 4.0°C/h
+        setback_forced = NightSetback(
+            start_time="22:00",
+            end_time="06:00",
+            setback_delta=2.0,
+            heating_type="forced_air"
+        )
+        assert setback_forced._get_heating_rate() == 4.0
+
+    def test_night_setback_no_recovery_deadline(self):
+        """Test that without recovery deadline, learned rate is not used."""
+        learner = ThermalRateLearner()
+        learner.add_heating_measurement(2.0)
+
+        setback = NightSetback(
+            start_time="22:00",
+            end_time="06:00",
+            setback_delta=2.0,
+            recovery_deadline=None,  # No deadline
+            thermal_rate_learner=learner,
+            heating_type="radiator"
+        )
+
+        current = datetime(2024, 1, 15, 4, 0)
+        base_setpoint = 20.0
+        current_temp = 15.0
+
+        # Should always return False when no recovery deadline
+        should_recover = setback.should_start_recovery(current, current_temp, base_setpoint)
+        assert should_recover is False
+
+
+def test_night_setback_learned_rate_module_exists():
+    """Marker test to verify night setback learned rate module exists."""
+    from custom_components.adaptive_thermostat.adaptive.night_setback import NightSetback
+    from custom_components.adaptive_thermostat.adaptive.thermal_rates import ThermalRateLearner
+
+    # Verify new parameters exist
+    learner = ThermalRateLearner()
+    setback = NightSetback(
+        start_time="22:00",
+        end_time="06:00",
+        setback_delta=2.0,
+        thermal_rate_learner=learner,
+        heating_type="radiator"
+    )
+
+    assert hasattr(setback, 'thermal_rate_learner')
+    assert hasattr(setback, 'heating_type')
+    assert hasattr(setback, '_get_heating_rate')
+    assert hasattr(setback, '_get_cold_soak_margin')

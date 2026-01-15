@@ -5,6 +5,9 @@ sunset support, and recovery deadline overrides.
 """
 from datetime import datetime, time
 from typing import Optional, Dict, Any
+import logging
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class NightSetback:
@@ -20,7 +23,9 @@ class NightSetback:
         end_time: str,
         setback_delta: float,
         recovery_deadline: Optional[str] = None,
-        sunset_offset_minutes: int = 0
+        sunset_offset_minutes: int = 0,
+        thermal_rate_learner: Optional['ThermalRateLearner'] = None,
+        heating_type: Optional[str] = None,
     ):
         """Initialize night setback.
 
@@ -30,12 +35,16 @@ class NightSetback:
             setback_delta: Temperature reduction during night (degrees)
             recovery_deadline: Optional override time "HH:MM" when temp must be restored
             sunset_offset_minutes: Minutes to add/subtract from sunset (e.g., +30, -15)
+            thermal_rate_learner: Optional ThermalRateLearner for learned heating rate
+            heating_type: Heating type for fallback estimates (floor_hydronic, radiator, convector, forced_air)
         """
         self.start_time_str = start_time
         self.end_time = self._parse_time(end_time)
         self.setback_delta = setback_delta
         self.recovery_deadline = self._parse_time(recovery_deadline) if recovery_deadline else None
         self.sunset_offset_minutes = sunset_offset_minutes
+        self.thermal_rate_learner = thermal_rate_learner
+        self.heating_type = heating_type
 
         # Parse start time (may be "sunset" or "HH:MM")
         if start_time.lower().startswith("sunset"):
@@ -83,6 +92,64 @@ class NightSetback:
             if value <= 12:
                 return value * 60  # hours
             return value  # minutes (backward compat for sunset+30, sunset+120)
+
+    def _get_heating_rate(self) -> float:
+        """Get heating rate with fallback hierarchy.
+
+        Fallback order:
+        1. Learned rate from ThermalRateLearner
+        2. Heating type estimate (floor=0.5, radiator=1.2, convector=2.0, forced_air=4.0)
+        3. Default 1.0°C/h
+
+        Returns:
+            Heating rate in °C/hour
+        """
+        # Fallback 1: Try learned rate
+        if self.thermal_rate_learner is not None:
+            learned_rate = self.thermal_rate_learner.get_average_heating_rate()
+            if learned_rate is not None:
+                _LOGGER.debug(f"Using learned heating rate: {learned_rate:.2f}°C/h")
+                return learned_rate
+
+        # Fallback 2: Heating type estimates
+        heating_type_rates = {
+            "floor_hydronic": 0.5,  # Slow heating
+            "radiator": 1.2,         # Moderate heating
+            "convector": 2.0,        # Fast heating
+            "forced_air": 4.0,       # Very fast heating
+        }
+
+        if self.heating_type in heating_type_rates:
+            rate = heating_type_rates[self.heating_type]
+            _LOGGER.debug(f"Using heating type estimate for {self.heating_type}: {rate:.2f}°C/h")
+            return rate
+
+        # Fallback 3: Default rate
+        _LOGGER.debug("Using default heating rate: 1.0°C/h")
+        return 1.0
+
+    def _get_cold_soak_margin(self) -> float:
+        """Get cold-soak margin multiplier based on heating type.
+
+        Cold-soak margin accounts for extra time needed when building is cold.
+        Higher thermal mass systems need more margin.
+
+        Returns:
+            Margin multiplier (e.g., 1.5 = 50% extra time)
+        """
+        # Cold-soak margins by heating type
+        margins = {
+            "floor_hydronic": 1.5,  # 50% margin - high thermal mass
+            "radiator": 1.3,         # 30% margin - moderate thermal mass
+            "convector": 1.2,        # 20% margin - low thermal mass
+            "forced_air": 1.1,       # 10% margin - very low thermal mass
+        }
+
+        if self.heating_type in margins:
+            return margins[self.heating_type]
+
+        # Default margin for unknown heating types
+        return 1.25  # 25% margin
 
     def is_night_period(
         self,
@@ -168,6 +235,7 @@ class NightSetback:
         """Check if recovery heating should start.
 
         Recovery starts early if needed to reach setpoint by deadline.
+        Uses learned heating rate with fallback to heating type estimates.
 
         Args:
             current_time: Current datetime
@@ -194,9 +262,23 @@ class NightSetback:
         # Calculate temperature deficit
         temp_deficit = base_setpoint - current_temp
 
-        # Estimate recovery time needed (assuming ~2°C/hour heating rate)
-        # This is a simplified estimate; real implementation would use learned heating rate
-        estimated_recovery_hours = temp_deficit / 2.0
+        # Get heating rate with fallback hierarchy
+        heating_rate = self._get_heating_rate()
+
+        # Get cold-soak margin
+        cold_soak_margin = self._get_cold_soak_margin()
+
+        # Estimate recovery time needed with cold-soak margin
+        estimated_recovery_hours = (temp_deficit / heating_rate) * cold_soak_margin
+
+        _LOGGER.debug(
+            f"Night setback recovery calculation: "
+            f"temp_deficit={temp_deficit:.2f}°C, "
+            f"heating_rate={heating_rate:.2f}°C/h, "
+            f"cold_soak_margin={cold_soak_margin:.2f}x, "
+            f"estimated_recovery={estimated_recovery_hours:.2f}h, "
+            f"time_until_deadline={time_until_deadline:.2f}h"
+        )
 
         # Start recovery if we don't have enough time
         return estimated_recovery_hours >= time_until_deadline
