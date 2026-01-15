@@ -321,16 +321,7 @@ class CycleTrackerManager:
             new_temp,
         )
 
-        # Cancel settling timeout if active
-        if self._settling_timeout_handle is not None:
-            self._settling_timeout_handle()
-            self._settling_timeout_handle = None
-
-        # Clear cycle data and transition to IDLE
-        self._temperature_history.clear()
-        self._cycle_start_time = None
-        self._cycle_target_temp = None
-        self._state = CycleState.IDLE
+        self._reset_cycle_state()
 
     def on_contact_sensor_pause(self) -> None:
         """Handle contact sensor pause event.
@@ -345,16 +336,7 @@ class CycleTrackerManager:
         # Abort the cycle
         self._logger.info("Cycle aborted due to contact sensor pause")
 
-        # Cancel settling timeout if active
-        if self._settling_timeout_handle is not None:
-            self._settling_timeout_handle()
-            self._settling_timeout_handle = None
-
-        # Clear cycle data and transition to IDLE
-        self._temperature_history.clear()
-        self._cycle_start_time = None
-        self._cycle_target_temp = None
-        self._state = CycleState.IDLE
+        self._reset_cycle_state()
 
     def on_mode_changed(self, old_mode: str, new_mode: str) -> None:
         """Handle HVAC mode change event.
@@ -379,16 +361,7 @@ class CycleTrackerManager:
                 new_mode,
             )
 
-            # Cancel settling timeout if active
-            if self._settling_timeout_handle is not None:
-                self._settling_timeout_handle()
-                self._settling_timeout_handle = None
-
-            # Clear cycle data and transition to IDLE
-            self._temperature_history.clear()
-            self._cycle_start_time = None
-            self._cycle_target_temp = None
-            self._state = CycleState.IDLE
+            self._reset_cycle_state()
 
     async def _finalize_cycle(self) -> None:
         """Finalize cycle and record metrics.
