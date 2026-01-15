@@ -12,6 +12,9 @@ from ..const import (
     MIN_ADJUSTMENT_INTERVAL,
     CONVERGENCE_THRESHOLDS,
     MIN_CONVERGENCE_CYCLES_FOR_KE,
+    CONVERGENCE_CONFIDENCE_HIGH,
+    CONFIDENCE_DECAY_RATE_DAILY,
+    CONFIDENCE_INCREASE_PER_GOOD_CYCLE,
 )
 
 # Import PID rule engine components
@@ -64,6 +67,11 @@ class AdaptiveLearner:
         # Convergence tracking for Ke learning activation
         self._consecutive_converged_cycles: int = 0
         self._pid_converged_for_ke: bool = False
+        # Adaptive convergence confidence tracking
+        self._convergence_confidence: float = 0.0
+        self._last_seasonal_check: Optional[datetime] = None
+        self._outdoor_temp_history: List[float] = []
+        self._duty_cycle_history: List[float] = []
 
     @property
     def cycle_history(self) -> List[CycleMetrics]:
@@ -274,22 +282,46 @@ class AdaptiveLearner:
             _LOGGER.info(f"Detected {len(conflicts)} PID rule conflict(s)")
             rule_results = resolve_rule_conflicts(rule_results, conflicts)
 
-        # Apply resolved rules
+        # Get learning rate multiplier based on convergence confidence
+        learning_rate = self.get_learning_rate_multiplier()
+        if learning_rate != 1.0:
+            _LOGGER.info(
+                f"Applying learning rate multiplier: {learning_rate:.2f}x "
+                f"(confidence: {self._convergence_confidence:.2f})"
+            )
+
+        # Apply resolved rules with learning rate scaling
         new_kp = current_kp
         new_ki = current_ki
         new_kd = current_kd
 
         for result in rule_results:
-            if result.kp_factor != 1.0:
-                _LOGGER.info(f"{result.reason}: Kp *= {result.kp_factor:.2f}")
-            if result.ki_factor != 1.0:
-                _LOGGER.info(f"{result.reason}: Ki *= {result.ki_factor:.2f}")
-            if result.kd_factor != 1.0:
-                _LOGGER.info(f"{result.reason}: Kd *= {result.kd_factor:.2f}")
+            # Scale adjustment factors by learning rate
+            # For factors < 1.0 (reductions), scale towards 1.0
+            # For factors > 1.0 (increases), scale away from 1.0
+            scaled_kp_factor = 1.0 + (result.kp_factor - 1.0) * learning_rate
+            scaled_ki_factor = 1.0 + (result.ki_factor - 1.0) * learning_rate
+            scaled_kd_factor = 1.0 + (result.kd_factor - 1.0) * learning_rate
 
-            new_kp *= result.kp_factor
-            new_ki *= result.ki_factor
-            new_kd *= result.kd_factor
+            if result.kp_factor != 1.0:
+                _LOGGER.info(
+                    f"{result.reason}: Kp *= {result.kp_factor:.2f} "
+                    f"(scaled: {scaled_kp_factor:.2f})"
+                )
+            if result.ki_factor != 1.0:
+                _LOGGER.info(
+                    f"{result.reason}: Ki *= {result.ki_factor:.2f} "
+                    f"(scaled: {scaled_ki_factor:.2f})"
+                )
+            if result.kd_factor != 1.0:
+                _LOGGER.info(
+                    f"{result.reason}: Kd *= {result.kd_factor:.2f} "
+                    f"(scaled: {scaled_kd_factor:.2f})"
+                )
+
+            new_kp *= scaled_kp_factor
+            new_ki *= scaled_ki_factor
+            new_kd *= scaled_kd_factor
 
         # Enforce PID limits
         new_kp = max(PID_LIMITS["kp_min"], min(PID_LIMITS["kp_max"], new_kp))
@@ -404,3 +436,162 @@ class AdaptiveLearner:
                 old_converged,
                 old_count,
             )
+
+    def update_convergence_confidence(self, metrics: CycleMetrics) -> None:
+        """Update convergence confidence based on cycle performance.
+
+        Confidence increases when cycles meet convergence criteria, and is used
+        to scale learning rate adjustments.
+
+        Args:
+            metrics: CycleMetrics from the latest completed cycle
+        """
+        # Check if this cycle meets convergence criteria
+        is_good_cycle = (
+            (metrics.overshoot is None or metrics.overshoot <= CONVERGENCE_THRESHOLDS["overshoot_max"]) and
+            metrics.oscillations <= CONVERGENCE_THRESHOLDS["oscillations_max"] and
+            (metrics.settling_time is None or metrics.settling_time <= CONVERGENCE_THRESHOLDS["settling_time_max"]) and
+            (metrics.rise_time is None or metrics.rise_time <= CONVERGENCE_THRESHOLDS["rise_time_max"])
+        )
+
+        if is_good_cycle:
+            # Increase confidence, capped at maximum
+            self._convergence_confidence = min(
+                CONVERGENCE_CONFIDENCE_HIGH,
+                self._convergence_confidence + CONFIDENCE_INCREASE_PER_GOOD_CYCLE
+            )
+            _LOGGER.debug(
+                f"Convergence confidence increased to {self._convergence_confidence:.2f} "
+                f"(good cycle: overshoot={metrics.overshoot:.2f}°C, "
+                f"oscillations={metrics.oscillations}, "
+                f"settling={metrics.settling_time:.1f}min)"
+            )
+        else:
+            # Poor cycle - reduce confidence slightly
+            self._convergence_confidence = max(
+                0.0,
+                self._convergence_confidence - CONFIDENCE_INCREASE_PER_GOOD_CYCLE * 0.5
+            )
+            _LOGGER.debug(
+                f"Convergence confidence decreased to {self._convergence_confidence:.2f} "
+                f"(poor cycle detected)"
+            )
+
+    def check_performance_degradation(self, baseline_window: int = 10) -> bool:
+        """Check if recent performance has degraded compared to baseline.
+
+        Compares recent cycles to earlier baseline to detect if tuning has drifted.
+
+        Args:
+            baseline_window: Number of cycles to use for baseline comparison
+
+        Returns:
+            True if performance has degraded significantly, False otherwise
+        """
+        if len(self._cycle_history) < baseline_window * 2:
+            return False  # Not enough data
+
+        # Get baseline (older cycles) and recent cycles
+        baseline_cycles = self._cycle_history[:baseline_window]
+        recent_cycles = self._cycle_history[-baseline_window:]
+
+        # Calculate average overshoot for both windows
+        baseline_overshoot = statistics.mean(
+            [c.overshoot for c in baseline_cycles if c.overshoot is not None]
+        ) if any(c.overshoot is not None for c in baseline_cycles) else 0.0
+
+        recent_overshoot = statistics.mean(
+            [c.overshoot for c in recent_cycles if c.overshoot is not None]
+        ) if any(c.overshoot is not None for c in recent_cycles) else 0.0
+
+        # Check if recent performance is significantly worse (>50% increase in overshoot)
+        if recent_overshoot > baseline_overshoot * 1.5 and recent_overshoot > 0.3:
+            _LOGGER.warning(
+                f"Performance degradation detected: overshoot increased from "
+                f"{baseline_overshoot:.2f}°C to {recent_overshoot:.2f}°C"
+            )
+            return True
+
+        return False
+
+    def check_seasonal_shift(self, outdoor_temp: Optional[float] = None) -> bool:
+        """Check if outdoor temperature regime has shifted significantly.
+
+        Detects seasonal changes (e.g., winter to spring) that may require
+        re-tuning. Uses 10°C shift threshold.
+
+        Args:
+            outdoor_temp: Current outdoor temperature in °C
+
+        Returns:
+            True if significant shift detected, False otherwise
+        """
+        if outdoor_temp is None:
+            return False
+
+        # Add to history
+        self._outdoor_temp_history.append(outdoor_temp)
+
+        # Keep last 30 readings (roughly 15 hours at 30-min intervals)
+        if len(self._outdoor_temp_history) > 30:
+            self._outdoor_temp_history = self._outdoor_temp_history[-30:]
+
+        # Need at least 10 readings to detect shift
+        if len(self._outdoor_temp_history) < 10:
+            return False
+
+        # Check daily (avoid checking too frequently)
+        now = datetime.now()
+        if self._last_seasonal_check is not None:
+            if now - self._last_seasonal_check < timedelta(days=1):
+                return False
+
+        self._last_seasonal_check = now
+
+        # Calculate average of old vs new readings
+        old_avg = statistics.mean(self._outdoor_temp_history[:10])
+        new_avg = statistics.mean(self._outdoor_temp_history[-10:])
+
+        # Detect 10°C shift
+        if abs(new_avg - old_avg) >= 10.0:
+            _LOGGER.warning(
+                f"Seasonal shift detected: outdoor temp changed from "
+                f"{old_avg:.1f}°C to {new_avg:.1f}°C"
+            )
+            return True
+
+        return False
+
+    def apply_confidence_decay(self) -> None:
+        """Apply daily confidence decay to account for drift over time.
+
+        Reduces confidence by CONFIDENCE_DECAY_RATE_DAILY (2% per day).
+        Call this once per day or on each cycle with appropriate scaling.
+        """
+        # Decay confidence
+        self._convergence_confidence = max(
+            0.0,
+            self._convergence_confidence * (1.0 - CONFIDENCE_DECAY_RATE_DAILY)
+        )
+
+    def get_learning_rate_multiplier(self) -> float:
+        """Get learning rate multiplier based on convergence confidence.
+
+        Returns:
+            Multiplier in range [0.5, 2.0]:
+            - Low confidence (0.0): 2.0x faster learning
+            - High confidence (1.0): 0.5x slower learning
+        """
+        # Low confidence = faster learning (larger adjustments)
+        # High confidence = slower learning (smaller adjustments)
+        # Linear interpolation from 2.0 (confidence=0) to 0.5 (confidence=1)
+        multiplier = 2.0 - (self._convergence_confidence * 1.5)
+        return max(0.5, min(2.0, multiplier))
+
+    def get_convergence_confidence(self) -> float:
+        """Get current convergence confidence level.
+
+        Returns:
+            Confidence in range [0.0, 1.0]
+        """
+        return self._convergence_confidence

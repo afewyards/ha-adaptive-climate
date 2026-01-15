@@ -149,6 +149,11 @@ MAX_CYCLE_HISTORY = 100
 # Minimum interval between PID adjustments in hours (rate limiting)
 MIN_ADJUSTMENT_INTERVAL = 24
 
+# Convergence confidence tracking constants
+CONVERGENCE_CONFIDENCE_HIGH = 1.0  # Maximum confidence level (fully converged)
+CONFIDENCE_DECAY_RATE_DAILY = 0.02  # 2% confidence decay per day
+CONFIDENCE_INCREASE_PER_GOOD_CYCLE = 0.1  # 10% confidence increase per good cycle
+
 # Segment detection noise tolerance
 # Temperature fluctuations below this threshold are ignored as sensor noise
 SEGMENT_NOISE_TOLERANCE = 0.05  # 0.05C default
