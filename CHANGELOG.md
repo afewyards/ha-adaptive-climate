@@ -1,6 +1,24 @@
 # CHANGELOG
 
 
+## v0.6.2 (2026-01-15)
+
+### Bug Fixes
+
+- Add async_get_last_state to MockRestoreEntity in tests
+  ([`99b952d`](https://github.com/afewyards/ha-adaptive-thermostat/commit/99b952dbe08e45cd1f9eda8f79e5740eda1faaeb))
+
+Add missing async_get_last_state and async_added_to_hass methods to MockRestoreEntity in
+  test_comfort_sensors.py and test_sensor.py.
+
+These tests set up mocks in sys.modules at import time. When pytest collects tests alphabetically,
+  test_comfort_sensors.py was imported before test_energy.py, causing its incomplete
+  MockRestoreEntity to pollute the module cache. This made WeeklyCostSensor inherit from a mock
+  without async_get_last_state, causing test failures.
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+
 ## v0.6.1 (2026-01-15)
 
 ### Bug Fixes
