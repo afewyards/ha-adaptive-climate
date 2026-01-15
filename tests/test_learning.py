@@ -1104,8 +1104,10 @@ class TestCycleHistoryBounding:
 
     def test_min_adjustment_interval_constant_exists(self):
         """Test MIN_ADJUSTMENT_INTERVAL constant exists and has correct default."""
-        from custom_components.adaptive_thermostat.const import MIN_ADJUSTMENT_INTERVAL
-        assert MIN_ADJUSTMENT_INTERVAL == 24
+        from custom_components.adaptive_thermostat.const import MIN_ADJUSTMENT_INTERVAL, MIN_ADJUSTMENT_CYCLES
+        # Updated from 24h to 8h in v0.7.0 for hybrid rate limiting
+        assert MIN_ADJUSTMENT_INTERVAL == 8
+        assert MIN_ADJUSTMENT_CYCLES == 3
 
     def test_adaptive_learner_default_max_history(self):
         """Test AdaptiveLearner uses MAX_CYCLE_HISTORY by default."""
@@ -1359,18 +1361,25 @@ class TestRateLimiting:
         assert result2 is not None
 
     def test_rate_limit_check_boundary(self):
-        """Test rate limit at exact boundary."""
+        """Test rate limit at exact boundary for hybrid gates."""
         learner = AdaptiveLearner()
 
-        # Set last adjustment to exactly 24 hours ago
-        learner._last_adjustment_time = datetime.now() - timedelta(hours=24)
+        # Set last adjustment to exactly 8 hours ago (time gate at boundary)
+        learner._last_adjustment_time = datetime.now() - timedelta(hours=8)
+        learner._cycles_since_last_adjustment = 3  # Cycle gate satisfied
 
-        # At exactly 24h, should NOT be rate limited (>= is allowed)
-        assert learner._check_rate_limit(24) is False
+        # At exactly 8h and 3 cycles, should NOT be rate limited (>= is allowed)
+        assert learner._check_rate_limit(8, 3) is False
 
-        # At 23.99h, should be rate limited
-        learner._last_adjustment_time = datetime.now() - timedelta(hours=23, minutes=59)
-        assert learner._check_rate_limit(24) is True
+        # At 7.99h with 3 cycles, should be rate limited by time gate
+        learner._last_adjustment_time = datetime.now() - timedelta(hours=7, minutes=59)
+        learner._cycles_since_last_adjustment = 3
+        assert learner._check_rate_limit(8, 3) is True
+
+        # At 8h but only 2 cycles, should be rate limited by cycle gate
+        learner._last_adjustment_time = datetime.now() - timedelta(hours=8)
+        learner._cycles_since_last_adjustment = 2
+        assert learner._check_rate_limit(8, 3) is True
 
     def test_clear_history_resets_last_adjustment_time(self):
         """Test that clear_history also resets last_adjustment_time."""
@@ -1425,15 +1434,19 @@ def test_story_3_5_features():
     from custom_components.adaptive_thermostat.const import (
         MAX_CYCLE_HISTORY,
         MIN_ADJUSTMENT_INTERVAL,
+        MIN_ADJUSTMENT_CYCLES,
     )
     from custom_components.adaptive_thermostat.adaptive.learning import AdaptiveLearner
 
     assert MAX_CYCLE_HISTORY == 100
-    assert MIN_ADJUSTMENT_INTERVAL == 24
+    # Updated from 24h to 8h in v0.7.0 for hybrid rate limiting
+    assert MIN_ADJUSTMENT_INTERVAL == 8
+    assert MIN_ADJUSTMENT_CYCLES == 3
 
     learner = AdaptiveLearner()
     assert hasattr(learner, '_max_history')
     assert hasattr(learner, '_last_adjustment_time')
+    assert hasattr(learner, '_cycles_since_last_adjustment')
     assert hasattr(learner, 'get_last_adjustment_time')
 
 

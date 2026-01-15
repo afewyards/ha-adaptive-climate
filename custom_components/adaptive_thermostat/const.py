@@ -208,7 +208,12 @@ MIN_CYCLES_FOR_LEARNING = 6
 MAX_CYCLE_HISTORY = 100
 
 # Minimum interval between PID adjustments in hours (rate limiting)
-MIN_ADJUSTMENT_INTERVAL = 24
+# Updated from 24h to 8h in v0.7.0 for faster convergence with hybrid gate
+MIN_ADJUSTMENT_INTERVAL = 8
+
+# Minimum number of cycles between PID adjustments (hybrid rate limiting gate)
+# Works in conjunction with MIN_ADJUSTMENT_INTERVAL - both must be satisfied
+MIN_ADJUSTMENT_CYCLES = 3
 
 # Convergence confidence tracking constants
 CONVERGENCE_CONFIDENCE_HIGH = 1.0  # Maximum confidence level (fully converged)

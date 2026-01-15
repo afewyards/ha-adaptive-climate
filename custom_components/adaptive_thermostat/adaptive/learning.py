@@ -10,6 +10,7 @@ from ..const import (
     MIN_CYCLES_FOR_LEARNING,
     MAX_CYCLE_HISTORY,
     MIN_ADJUSTMENT_INTERVAL,
+    MIN_ADJUSTMENT_CYCLES,
     CONVERGENCE_THRESHOLDS,
     MIN_CONVERGENCE_CYCLES_FOR_KE,
     CONVERGENCE_CONFIDENCE_HIGH,
@@ -80,6 +81,8 @@ class AdaptiveLearner:
         self._last_seasonal_check: Optional[datetime] = None
         self._outdoor_temp_history: List[float] = []
         self._duty_cycle_history: List[float] = []
+        # Hybrid rate limiting: track cycles since last adjustment
+        self._cycles_since_last_adjustment: int = 0
 
     @property
     def cycle_history(self) -> List[CycleMetrics]:
@@ -96,11 +99,15 @@ class AdaptiveLearner:
         Add a cycle's performance metrics to history.
 
         Implements FIFO eviction when history exceeds max_history.
+        Increments cycle counter for hybrid rate limiting.
 
         Args:
             metrics: CycleMetrics object with performance data
         """
         self._cycle_history.append(metrics)
+
+        # Increment cycle counter for hybrid rate limiting
+        self._cycles_since_last_adjustment += 1
 
         # FIFO eviction: remove oldest entries when exceeding max history
         if len(self._cycle_history) > self._max_history:
@@ -161,29 +168,52 @@ class AdaptiveLearner:
     def _check_rate_limit(
         self,
         min_interval_hours: int = MIN_ADJUSTMENT_INTERVAL,
+        min_cycles: int = MIN_ADJUSTMENT_CYCLES,
     ) -> bool:
         """
-        Check if enough time has passed since the last PID adjustment.
+        Check if enough time AND cycles have passed since the last PID adjustment.
+
+        Implements hybrid rate limiting with two gates (both must be satisfied):
+        1. Time gate: minimum hours between adjustments
+        2. Cycle gate: minimum cycles between adjustments
 
         Args:
             min_interval_hours: Minimum hours between adjustments
+            min_cycles: Minimum cycles between adjustments
 
         Returns:
             True if rate limited (adjustment should be skipped), False if OK to adjust
         """
+        # First adjustment - no rate limiting
         if self._last_adjustment_time is None:
             return False
 
+        # Check time gate
         time_since_last = datetime.now() - self._last_adjustment_time
         min_interval = timedelta(hours=min_interval_hours)
+        time_gate_satisfied = time_since_last >= min_interval
 
-        if time_since_last < min_interval:
+        # Check cycle gate
+        cycle_gate_satisfied = self._cycles_since_last_adjustment >= min_cycles
+
+        # Both gates must be satisfied
+        if not time_gate_satisfied:
             hours_remaining = (min_interval - time_since_last).total_seconds() / 3600
             _LOGGER.info(
-                f"PID adjustment rate limited: last adjustment was "
+                f"PID adjustment rate limited (time gate): last adjustment was "
                 f"{time_since_last.total_seconds() / 3600:.1f}h ago, "
                 f"minimum interval is {min_interval_hours}h "
                 f"({hours_remaining:.1f}h remaining)"
+            )
+            return True
+
+        if not cycle_gate_satisfied:
+            cycles_remaining = min_cycles - self._cycles_since_last_adjustment
+            _LOGGER.info(
+                f"PID adjustment rate limited (cycle gate): "
+                f"{self._cycles_since_last_adjustment} cycles since last adjustment, "
+                f"minimum is {min_cycles} cycles "
+                f"({cycles_remaining} cycles remaining)"
             )
             return True
 
@@ -196,6 +226,7 @@ class AdaptiveLearner:
         current_kd: float,
         min_cycles: int = MIN_CYCLES_FOR_LEARNING,
         min_interval_hours: int = MIN_ADJUSTMENT_INTERVAL,
+        min_adjustment_cycles: int = MIN_ADJUSTMENT_CYCLES,
     ) -> Optional[Dict[str, float]]:
         """
         Calculate PID adjustments based on observed cycle performance.
@@ -209,21 +240,23 @@ class AdaptiveLearner:
         the higher priority rule wins.
 
         Also detects convergence (system is well-tuned) and skips adjustments.
-        Rate limiting prevents adjustments too frequently.
+        Rate limiting prevents adjustments too frequently using hybrid gates
+        (both time AND cycles must be satisfied).
 
         Args:
             current_kp: Current proportional gain
             current_ki: Current integral gain
             current_kd: Current derivative gain
             min_cycles: Minimum cycles required before making recommendations
-            min_interval_hours: Minimum hours between adjustments (rate limiting)
+            min_interval_hours: Minimum hours between adjustments (hybrid time gate)
+            min_adjustment_cycles: Minimum cycles between adjustments (hybrid cycle gate)
 
         Returns:
             Dictionary with recommended kp, ki, kd values, or None if insufficient data,
             system is converged, or rate limited
         """
-        # Check rate limiting first
-        if self._check_rate_limit(min_interval_hours):
+        # Check hybrid rate limiting first (both time AND cycles)
+        if self._check_rate_limit(min_interval_hours, min_adjustment_cycles):
             return None
 
         if len(self._cycle_history) < min_cycles:
@@ -368,8 +401,9 @@ class AdaptiveLearner:
         new_ki = max(PID_LIMITS["ki_min"], min(PID_LIMITS["ki_max"], new_ki))
         new_kd = max(PID_LIMITS["kd_min"], min(PID_LIMITS["kd_max"], new_kd))
 
-        # Record adjustment time for rate limiting
+        # Record adjustment time and reset cycle counter for hybrid rate limiting
         self._last_adjustment_time = datetime.now()
+        self._cycles_since_last_adjustment = 0
 
         return {
             "kp": new_kp,
@@ -387,9 +421,10 @@ class AdaptiveLearner:
         return self._last_adjustment_time
 
     def clear_history(self) -> None:
-        """Clear all stored cycle metrics and reset last adjustment time."""
+        """Clear all stored cycle metrics and reset last adjustment time and cycle counter."""
         self._cycle_history.clear()
         self._last_adjustment_time = None
+        self._cycles_since_last_adjustment = 0
 
     def update_convergence_tracking(self, metrics: CycleMetrics) -> bool:
         """Update convergence tracking based on latest cycle metrics.
