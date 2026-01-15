@@ -36,6 +36,7 @@ from .sensors.comfort import (
     TimeAtTargetSensor,
     ComfortScoreSensor,
 )
+from .sensors.actuator_wear import ActuatorWearSensor
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -67,6 +68,10 @@ async def async_setup_platform(
     flow_rate_sensor = discovery_info.get("flow_rate_sensor")
     fallback_flow_rate = discovery_info.get("fallback_flow_rate", DEFAULT_FALLBACK_FLOW_RATE)
 
+    # Get actuator wear tracking configuration
+    heater_rated_cycles = discovery_info.get("heater_rated_cycles")
+    cooler_rated_cycles = discovery_info.get("cooler_rated_cycles")
+
     sensors = [
         DutyCycleSensor(hass, zone_id, zone_name, climate_entity_id),
         PowerPerM2Sensor(hass, zone_id, zone_name, climate_entity_id),
@@ -88,6 +93,24 @@ async def async_setup_platform(
         TimeAtTargetSensor(hass, zone_id, zone_name, climate_entity_id),
         ComfortScoreSensor(hass, zone_id, zone_name, climate_entity_id),
     ]
+
+    # Add actuator wear sensors if rated cycles are configured
+    if heater_rated_cycles:
+        sensors.append(
+            ActuatorWearSensor(
+                hass, zone_id, zone_name, climate_entity_id,
+                actuator_type="heater",
+                rated_cycles=heater_rated_cycles,
+            )
+        )
+    if cooler_rated_cycles:
+        sensors.append(
+            ActuatorWearSensor(
+                hass, zone_id, zone_name, climate_entity_id,
+                actuator_type="cooler",
+                rated_cycles=cooler_rated_cycles,
+            )
+        )
 
     # Create system-wide sensors on first zone setup
     from .const import DOMAIN
@@ -157,4 +180,6 @@ __all__ = [
     # Comfort sensors
     "TimeAtTargetSensor",
     "ComfortScoreSensor",
+    # Actuator wear sensors
+    "ActuatorWearSensor",
 ]

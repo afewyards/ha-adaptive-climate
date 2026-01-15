@@ -203,3 +203,17 @@ class StateRestorer:
         # Restore PID mode
         if old_state.attributes.get('pid_mode') is not None:
             thermostat._pid_controller.mode = old_state.attributes.get('pid_mode')
+
+        # Restore actuator cycle counts for wear tracking
+        if thermostat._heater_controller:
+            heater_cycles = old_state.attributes.get('heater_cycle_count')
+            if heater_cycles is not None:
+                thermostat._heater_controller.set_heater_cycle_count(int(heater_cycles))
+                _LOGGER.info("%s: Restored heater_cycle_count=%d",
+                            thermostat.entity_id, int(heater_cycles))
+
+            cooler_cycles = old_state.attributes.get('cooler_cycle_count')
+            if cooler_cycles is not None:
+                thermostat._heater_controller.set_cooler_cycle_count(int(cooler_cycles))
+                _LOGGER.info("%s: Restored cooler_cycle_count=%d",
+                            thermostat.entity_id, int(cooler_cycles))

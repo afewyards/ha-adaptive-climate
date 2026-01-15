@@ -116,6 +116,12 @@ class HeaterController:
         self._heater_control_failed = False
         self._last_heater_error: str | None = None
 
+        # Cycle counting for actuator wear tracking
+        self._heater_cycle_count: int = 0
+        self._cooler_cycle_count: int = 0
+        self._last_heater_state: bool = False
+        self._last_cooler_state: bool = False
+
     def update_cycle_durations(
         self,
         min_on_cycle_duration: float,
@@ -142,6 +148,62 @@ class HeaterController:
     def last_heater_error(self) -> str | None:
         """Return the last heater error message, if any."""
         return self._last_heater_error
+
+    @property
+    def heater_cycle_count(self) -> int:
+        """Return the total number of heater on→off cycles."""
+        return self._heater_cycle_count
+
+    @property
+    def cooler_cycle_count(self) -> int:
+        """Return the total number of cooler on→off cycles."""
+        return self._cooler_cycle_count
+
+    def set_heater_cycle_count(self, count: int) -> None:
+        """Set the heater cycle count (used during state restoration).
+
+        Args:
+            count: Cycle count to restore
+        """
+        self._heater_cycle_count = count
+
+    def set_cooler_cycle_count(self, count: int) -> None:
+        """Set the cooler cycle count (used during state restoration).
+
+        Args:
+            count: Cycle count to restore
+        """
+        self._cooler_cycle_count = count
+
+    def _increment_cycle_count(self, hvac_mode: HVACMode, is_now_off: bool) -> None:
+        """Increment cycle counter on on→off transition.
+
+        Args:
+            hvac_mode: Current HVAC mode
+            is_now_off: Whether device just turned off
+        """
+        if not is_now_off:
+            return
+
+        # Increment heater or cooler based on mode
+        if hvac_mode == HVACMode.COOL:
+            if self._last_cooler_state and is_now_off:
+                self._cooler_cycle_count += 1
+                _LOGGER.debug(
+                    "%s: Cooler cycle count incremented to %d",
+                    self._thermostat.entity_id,
+                    self._cooler_cycle_count
+                )
+            self._last_cooler_state = not is_now_off
+        else:
+            if self._last_heater_state and is_now_off:
+                self._heater_cycle_count += 1
+                _LOGGER.debug(
+                    "%s: Heater cycle count incremented to %d",
+                    self._thermostat.entity_id,
+                    self._heater_cycle_count
+                )
+            self._last_heater_state = not is_now_off
 
     def get_entities(self, hvac_mode: HVACMode) -> List[str]:
         """Return the entities to be controlled based on HVAC MODE.
@@ -375,6 +437,12 @@ class HeaterController:
             if hasattr(self._thermostat, '_cycle_tracker') and self._thermostat._cycle_tracker:
                 self._thermostat._cycle_tracker.on_heating_started(datetime.now())
 
+            # Update state tracking for cycle counting (off→on transition)
+            if hvac_mode == HVACMode.COOL:
+                self._last_cooler_state = True
+            else:
+                self._last_heater_state = True
+
             # Notify zone linker that this zone started heating (for linked zones)
             if zone_linker and linked_zones and not is_heating:
                 set_is_heating(True)
@@ -438,6 +506,9 @@ class HeaterController:
             # Notify cycle tracker that heating stopped
             if hasattr(self._thermostat, '_cycle_tracker') and self._thermostat._cycle_tracker:
                 self._thermostat._cycle_tracker.on_heating_stopped(datetime.now())
+
+            # Increment cycle counter for wear tracking (on→off transition)
+            self._increment_cycle_count(hvac_mode, is_now_off=True)
 
             # Reset heating state for zone linking
             set_is_heating(False)
@@ -515,9 +586,16 @@ class HeaterController:
             # Detect heating started transition (was off, now on)
             if not old_active and new_active:
                 self._thermostat._cycle_tracker.on_heating_started(datetime.now())
+                # Update state tracking for cycle counting
+                if hvac_mode == HVACMode.COOL:
+                    self._last_cooler_state = True
+                else:
+                    self._last_heater_state = True
             # Detect heating stopped transition (was on, now off)
             elif old_active and not new_active:
                 self._thermostat._cycle_tracker.on_heating_stopped(datetime.now())
+                # Increment cycle counter for wear tracking (on→off transition)
+                self._increment_cycle_count(hvac_mode, is_now_off=True)
 
     async def async_set_control_value(
         self,

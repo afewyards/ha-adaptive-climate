@@ -136,6 +136,9 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Optional(const.CONF_AREA_M2): vol.Coerce(float),
         vol.Optional(const.CONF_MAX_POWER_W): vol.Coerce(float),
         vol.Optional(const.CONF_CEILING_HEIGHT, default=const.DEFAULT_CEILING_HEIGHT): vol.Coerce(float),
+        # Actuator wear tracking
+        vol.Optional(const.CONF_HEATER_RATED_CYCLES): vol.Coerce(int),
+        vol.Optional(const.CONF_COOLER_RATED_CYCLES): vol.Coerce(int),
         vol.Optional(const.CONF_WINDOW_AREA_M2): vol.Coerce(float),
         vol.Optional(const.CONF_WINDOW_ORIENTATION): vol.In(const.VALID_WINDOW_ORIENTATIONS),
         vol.Optional(const.CONF_WINDOW_RATING): cv.string,
@@ -327,6 +330,8 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
                     "zone_id": zone_id,
                     "zone_name": name,
                     "climate_entity_id": f"climate.{zone_id}",
+                    "heater_rated_cycles": config.get(const.CONF_HEATER_RATED_CYCLES),
+                    "cooler_rated_cycles": config.get(const.CONF_COOLER_RATED_CYCLES),
                 },
                 config,
             )

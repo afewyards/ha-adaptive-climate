@@ -281,6 +281,21 @@ CONF_MIN_CYCLE_TIME_CRITICAL = "min_cycle_time_critical"
 CONF_MAX_POWER_M2 = "max_power_m2"
 CONF_MAX_POWER_W = "max_power_w"  # Total heater power in watts (for process gain scaling)
 
+# Actuator wear tracking configuration
+CONF_HEATER_RATED_CYCLES = "heater_rated_cycles"  # Expected lifetime cycles for heater actuator
+CONF_COOLER_RATED_CYCLES = "cooler_rated_cycles"  # Expected lifetime cycles for cooler actuator
+
+# Default rated cycles by actuator type
+DEFAULT_RATED_CYCLES = {
+    "contactor": 100000,  # Mechanical contactors (typical HVAC relay)
+    "valve": 50000,       # Motorized valves (higher wear due to mechanical movement)
+    "switch": 100000,     # Solid-state relays and electronic switches
+}
+
+# Actuator maintenance thresholds (percentage of rated cycles)
+ACTUATOR_MAINTENANCE_SOON_PCT = 80   # Warning threshold - maintenance soon
+ACTUATOR_MAINTENANCE_DUE_PCT = 90    # Critical threshold - maintenance due
+
 # Contact sensor configuration
 CONF_CONTACT_SENSORS = "contact_sensors"
 CONF_CONTACT_ACTION = "contact_action"
