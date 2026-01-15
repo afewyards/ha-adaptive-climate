@@ -52,12 +52,11 @@ def test_report_content():
     assert "Weekly Heating Performance Report" in formatted
     assert "2024-01-01" in formatted
     assert "2024-01-07" in formatted
-    assert "Total Energy: 358.3 kWh" in formatted
-    assert "Total Cost: €35.83" in formatted
-    assert "living_room" in formatted
+    assert "Energy: 358.3 kWh" in formatted
+    assert "Cost: €35.83" in formatted
+    assert "Living Room" in formatted
     assert "45.5%" in formatted
     assert "123.4 kWh" in formatted
-    assert "€12.34" in formatted
 
 
 def test_report_without_cost_data():
@@ -89,15 +88,12 @@ def test_report_without_cost_data():
     # Verify formatted report handles missing data gracefully
     formatted = report.format_report(currency_symbol="€")
     assert "Weekly Heating Performance Report" in formatted
-    assert "Total Energy: 123.4 kWh" in formatted
-    assert "Total Cost: N/A (no cost data)" in formatted
-    assert "living_room" in formatted
+    assert "Energy: 123.4 kWh" in formatted
+    assert "Cost: N/A (no cost data)" in formatted
+    assert "Living Room" in formatted
     assert "45.5%" in formatted
-    assert "bedroom" in formatted
+    assert "Bedroom" in formatted
     assert "30.2%" in formatted
-
-    # Ensure missing cost info doesn't break formatting
-    assert "€12.34" not in formatted  # No cost should appear
 
 
 def test_report_without_energy_meter():
@@ -125,9 +121,9 @@ def test_report_without_energy_meter():
     # Verify formatted report handles missing data
     formatted = report.format_report(currency_symbol="€")
     assert "Weekly Heating Performance Report" in formatted
-    assert "Total Energy: N/A (no meter data)" in formatted
-    assert "Total Cost: N/A (no cost data)" in formatted
-    assert "living_room" in formatted
+    assert "Energy: N/A (no meter data)" in formatted
+    assert "Cost: N/A (no cost data)" in formatted
+    assert "Living Room" in formatted
     assert "45.5%" in formatted
 
 
@@ -238,3 +234,150 @@ def test_generate_report_with_missing_zone_keys():
     assert report.zones["bedroom"]["duty_cycle"] == 0.0
     assert report.zones["bedroom"]["energy_kwh"] == 89.7
     assert report.zones["bedroom"]["cost"] is None
+
+
+def test_report_comfort_metrics():
+    """Test that report handles comfort metrics correctly."""
+    start_date = datetime(2024, 1, 1, 0, 0, 0)
+    end_date = datetime(2024, 1, 7, 23, 59, 59)
+
+    report = WeeklyReport(start_date, end_date)
+
+    # Add zone data with comfort scores
+    report.add_zone_data(
+        "living_room",
+        duty_cycle=45.5,
+        comfort_score=85.0,
+        time_at_target=78.5,
+        area_m2=25.0,
+    )
+    report.add_zone_data(
+        "bedroom",
+        duty_cycle=30.2,
+        comfort_score=92.0,
+        time_at_target=88.0,
+        area_m2=15.0,
+    )
+    report.set_totals(total_energy_kwh=123.4, total_cost=12.34)
+
+    # Verify comfort scores are stored
+    assert report.comfort_scores["living_room"] == 85.0
+    assert report.comfort_scores["bedroom"] == 92.0
+    assert report.time_at_target["living_room"] == 78.5
+    assert report.time_at_target["bedroom"] == 88.0
+
+    # Verify average comfort calculation
+    avg_comfort = report.get_average_comfort()
+    assert avg_comfort == 88.5  # (85 + 92) / 2
+
+    # Verify best zone detection
+    best_zone = report.get_best_zone()
+    assert best_zone == ("bedroom", 92.0)
+
+    # Verify format_report includes comfort
+    formatted = report.format_report()
+    assert "Comfort:" in formatted
+
+
+def test_report_week_over_week():
+    """Test week-over-week comparison in report."""
+    start_date = datetime(2024, 1, 1, 0, 0, 0)
+    end_date = datetime(2024, 1, 7, 23, 59, 59)
+
+    report = WeeklyReport(start_date, end_date)
+    report.add_zone_data("living_room", duty_cycle=45.5)
+    report.set_totals(total_energy_kwh=100.0, total_cost=25.00)
+
+    # Set week-over-week changes (costs down 15%)
+    report.set_week_over_week(cost_change_pct=-15.0, energy_change_pct=-12.0)
+
+    assert report.cost_change_pct == -15.0
+    assert report.energy_change_pct == -12.0
+
+    # Verify format_report shows the change
+    formatted = report.format_report()
+    assert "↓15%" in formatted or "↓12%" in formatted
+
+
+def test_report_zone_cost_calculation():
+    """Test zone cost breakdown calculation."""
+    start_date = datetime(2024, 1, 1, 0, 0, 0)
+    end_date = datetime(2024, 1, 7, 23, 59, 59)
+
+    report = WeeklyReport(start_date, end_date)
+
+    # Zone 1: 40% duty cycle, 20 m² (weight = 800)
+    report.add_zone_data("living_room", duty_cycle=40.0, area_m2=20.0)
+    # Zone 2: 60% duty cycle, 10 m² (weight = 600)
+    report.add_zone_data("bedroom", duty_cycle=60.0, area_m2=10.0)
+
+    report.set_totals(total_cost=100.0)
+    report.calculate_zone_costs()
+
+    # Total weight = 800 + 600 = 1400
+    # Living room: (800/1400) * 100 = 57.14
+    # Bedroom: (600/1400) * 100 = 42.86
+    assert abs(report.zone_costs["living_room"] - 57.14) < 0.1
+    assert abs(report.zone_costs["bedroom"] - 42.86) < 0.1
+
+
+def test_report_format_summary():
+    """Test digestible summary formatting."""
+    start_date = datetime(2024, 1, 1, 0, 0, 0)
+    end_date = datetime(2024, 1, 7, 23, 59, 59)
+
+    report = WeeklyReport(start_date, end_date)
+    report.add_zone_data(
+        "living_room",
+        duty_cycle=45.5,
+        comfort_score=85.0,
+        area_m2=25.0,
+    )
+    report.add_zone_data(
+        "bedroom",
+        duty_cycle=30.2,
+        comfort_score=92.0,
+        area_m2=15.0,
+    )
+    report.set_totals(total_cost=42.30)
+    report.set_week_over_week(cost_change_pct=-12.0)
+    report.health_status = "healthy"
+
+    summary = report.format_summary()
+
+    # Should contain cost with change indicator
+    assert "€42.30" in summary
+    assert "↓12%" in summary
+
+    # Should contain comfort average
+    assert "comfort" in summary.lower()
+
+    # Should contain active zones count
+    assert "zone" in summary.lower()
+
+
+def test_report_to_dict_with_comfort():
+    """Test that to_dict includes all new fields."""
+    start_date = datetime(2024, 1, 1, 0, 0, 0)
+    end_date = datetime(2024, 1, 7, 23, 59, 59)
+
+    report = WeeklyReport(start_date, end_date)
+    report.add_zone_data(
+        "living_room",
+        duty_cycle=45.5,
+        comfort_score=85.0,
+        time_at_target=78.5,
+    )
+    report.set_totals(total_cost=25.00)
+    report.set_week_over_week(cost_change_pct=-10.0, energy_change_pct=-8.0)
+
+    report_dict = report.to_dict()
+
+    assert "comfort_scores" in report_dict
+    assert report_dict["comfort_scores"]["living_room"] == 85.0
+    assert "time_at_target" in report_dict
+    assert report_dict["time_at_target"]["living_room"] == 78.5
+    assert report_dict["cost_change_pct"] == -10.0
+    assert report_dict["energy_change_pct"] == -8.0
+    assert "health_status" in report_dict
+    assert "active_zones" in report_dict

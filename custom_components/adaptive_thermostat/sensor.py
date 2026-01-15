@@ -32,6 +32,10 @@ from .sensors.energy import (
     WeeklyCostSensor,
 )
 from .sensors.health import SystemHealthSensor
+from .sensors.comfort import (
+    TimeAtTargetSensor,
+    ComfortScoreSensor,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -80,6 +84,9 @@ async def async_setup_platform(
             flow_rate_sensor,
             fallback_flow_rate,
         ),
+        # Comfort sensors
+        TimeAtTargetSensor(hass, zone_id, zone_name, climate_entity_id),
+        ComfortScoreSensor(hass, zone_id, zone_name, climate_entity_id),
     ]
 
     # Create system-wide sensors on first zone setup
@@ -147,4 +154,7 @@ __all__ = [
     "WeeklyCostSensor",
     # Health sensors
     "SystemHealthSensor",
+    # Comfort sensors
+    "TimeAtTargetSensor",
+    "ComfortScoreSensor",
 ]

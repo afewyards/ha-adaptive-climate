@@ -34,6 +34,10 @@ python -m pytest tests/ -v --tb=short
 
 **Installation:** Copy `custom_components/adaptive_thermostat/` to HA's `config/custom_components/`, then restart Home Assistant. No build system - pure Python loaded at runtime.
 
+## Code Style
+
+- **Maximum file length:** Keep files under 800 lines. When a file grows beyond this, extract logical components into separate modules.
+
 ## Architecture
 
 ### Core Modules
