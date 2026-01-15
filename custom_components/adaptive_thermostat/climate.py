@@ -75,7 +75,7 @@ from . import DOMAIN, PLATFORMS
 from . import const
 from . import pid_controller
 from .adaptive.learning import AdaptiveLearner, ThermalRateLearner
-from .managers import HeaterController, KeController, NightSetbackController, StateRestorer, TemperatureManager, CycleTrackerManager
+from .managers import HeaterController, KeController, NightSetbackController, PIDTuningManager, StateRestorer, TemperatureManager, CycleTrackerManager
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -473,6 +473,9 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         # Ke learning controller (initialized in async_added_to_hass when hass is available)
         self._ke_controller: KeController | None = None
 
+        # PID tuning manager (initialized in async_added_to_hass when hass is available)
+        self._pid_tuning_manager: PIDTuningManager | None = None
+
         # Cycle tracker for adaptive learning (initialized in async_added_to_hass when hass is available)
         self._cycle_tracker: CycleTrackerManager | None = None
 
@@ -676,6 +679,33 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         )
         _LOGGER.info(
             "%s: Ke controller initialized",
+            self.entity_id
+        )
+
+        # Initialize PID tuning manager
+        self._pid_tuning_manager = PIDTuningManager(
+            thermostat=self,
+            pid_controller=self._pid_controller,
+            get_kp=lambda: self._kp,
+            get_ki=lambda: self._ki,
+            get_kd=lambda: self._kd,
+            get_ke=lambda: self._ke,
+            set_kp=self._set_kp,
+            set_ki=self._set_ki,
+            set_kd=self._set_kd,
+            set_ke=self._set_ke,
+            get_area_m2=lambda: self._area_m2,
+            get_ceiling_height=lambda: self._ceiling_height,
+            get_window_area_m2=lambda: self._window_area_m2,
+            get_window_rating=lambda: self._window_rating,
+            get_heating_type=lambda: self._heating_type,
+            get_hass=lambda: self.hass,
+            get_zone_id=lambda: self._zone_id,
+            async_control_heating=self._async_control_heating_internal,
+            async_write_ha_state=self._async_write_ha_state_internal,
+        )
+        _LOGGER.info(
+            "%s: PID tuning manager initialized",
             self.entity_id
         )
 
@@ -1261,19 +1291,33 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
             self.async_write_ha_state()
 
     async def async_set_pid(self, **kwargs):
-        """Set PID parameters."""
-        for pid_kx, gain in kwargs.items():
-            if gain is not None:
-                setattr(self, f'_{pid_kx}', float(gain))
-        self._pid_controller.set_pid_param(self._kp, self._ki, self._kd, self._ke)
-        await self._async_control_heating(calc_pid=True)
+        """Set PID parameters.
+
+        Delegates to PIDTuningManager for the actual implementation.
+        """
+        if self._pid_tuning_manager is not None:
+            await self._pid_tuning_manager.async_set_pid(**kwargs)
+        else:
+            # Fallback for startup before manager is initialized
+            for pid_kx, gain in kwargs.items():
+                if gain is not None:
+                    setattr(self, f'_{pid_kx}', float(gain))
+            self._pid_controller.set_pid_param(self._kp, self._ki, self._kd, self._ke)
+            await self._async_control_heating(calc_pid=True)
 
     async def async_set_pid_mode(self, **kwargs):
-        """Set PID parameters."""
-        mode = kwargs.get('mode', None)
-        if str(mode).upper() in ['AUTO', 'OFF'] and self._pid_controller is not None:
-            self._pid_controller.mode = str(mode).upper()
-        await self._async_control_heating(calc_pid=True)
+        """Set PID mode (AUTO or OFF).
+
+        Delegates to PIDTuningManager for the actual implementation.
+        """
+        if self._pid_tuning_manager is not None:
+            await self._pid_tuning_manager.async_set_pid_mode(**kwargs)
+        else:
+            # Fallback for startup before manager is initialized
+            mode = kwargs.get('mode', None)
+            if str(mode).upper() in ['AUTO', 'OFF'] and self._pid_controller is not None:
+                self._pid_controller.mode = str(mode).upper()
+            await self._async_control_heating(calc_pid=True)
 
     async def async_set_preset_temp(self, **kwargs):
         """Set the presets modes temperatures."""
@@ -1299,106 +1343,119 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         self.async_write_ha_state()
 
     async def async_reset_pid_to_physics(self, **kwargs):
-        """Reset PID values to physics-based defaults."""
-        if not self._area_m2:
-            _LOGGER.warning(
-                "%s: Cannot reset PID to physics - no area_m2 configured",
-                self.entity_id
+        """Reset PID values to physics-based defaults.
+
+        Delegates to PIDTuningManager for the actual implementation.
+        """
+        if self._pid_tuning_manager is not None:
+            await self._pid_tuning_manager.async_reset_pid_to_physics(**kwargs)
+        else:
+            # Fallback for startup before manager is initialized
+            if not self._area_m2:
+                _LOGGER.warning(
+                    "%s: Cannot reset PID to physics - no area_m2 configured",
+                    self.entity_id
+                )
+                return
+
+            volume_m3 = self._area_m2 * self._ceiling_height
+            tau = calculate_thermal_time_constant(
+                volume_m3=volume_m3,
+                window_area_m2=self._window_area_m2,
+                floor_area_m2=self._area_m2,
+                window_rating=self._window_rating,
             )
-            return
+            self._kp, self._ki, self._kd = calculate_initial_pid(tau, self._heating_type)
 
-        volume_m3 = self._area_m2 * self._ceiling_height
-        tau = calculate_thermal_time_constant(
-            volume_m3=volume_m3,
-            window_area_m2=self._window_area_m2,
-            floor_area_m2=self._area_m2,
-            window_rating=self._window_rating,
-        )
-        self._kp, self._ki, self._kd = calculate_initial_pid(tau, self._heating_type)
+            # Clear integral to avoid wind-up from old tuning
+            self._pid_controller.integral = 0.0
+            self._i = 0.0
 
-        # Clear integral to avoid wind-up from old tuning
-        self._pid_controller.integral = 0.0
-        self._i = 0.0
+            self._pid_controller.set_pid_param(self._kp, self._ki, self._kd, self._ke)
 
-        self._pid_controller.set_pid_param(self._kp, self._ki, self._kd, self._ke)
+            _LOGGER.info(
+                "%s: Reset PID to physics defaults (tau=%.2f, type=%s, window=%s): Kp=%.4f, Ki=%.5f, Kd=%.3f",
+                self.entity_id, tau, self._heating_type, self._window_rating, self._kp, self._ki, self._kd
+            )
 
-        _LOGGER.info(
-            "%s: Reset PID to physics defaults (tau=%.2f, type=%s, window=%s): Kp=%.4f, Ki=%.5f, Kd=%.3f",
-            self.entity_id, tau, self._heating_type, self._window_rating, self._kp, self._ki, self._kd
-        )
-
-        await self._async_control_heating(calc_pid=True)
-        self.async_write_ha_state()
+            await self._async_control_heating(calc_pid=True)
+            self.async_write_ha_state()
 
     async def async_apply_adaptive_pid(self, **kwargs):
-        """Apply adaptive PID values based on learned metrics."""
-        # Get coordinator and find our zone's adaptive learner
-        coordinator = self.hass.data.get(DOMAIN, {}).get("coordinator")
-        if not coordinator:
-            _LOGGER.warning(
-                "%s: Cannot apply adaptive PID - no coordinator",
-                self.entity_id
+        """Apply adaptive PID values based on learned metrics.
+
+        Delegates to PIDTuningManager for the actual implementation.
+        """
+        if self._pid_tuning_manager is not None:
+            await self._pid_tuning_manager.async_apply_adaptive_pid(**kwargs)
+        else:
+            # Fallback for startup before manager is initialized
+            coordinator = self.hass.data.get(DOMAIN, {}).get("coordinator")
+            if not coordinator:
+                _LOGGER.warning(
+                    "%s: Cannot apply adaptive PID - no coordinator",
+                    self.entity_id
+                )
+                return
+
+            all_zones = coordinator.get_all_zones()
+            adaptive_learner = None
+
+            for zone_id, zone_data in all_zones.items():
+                if zone_data.get("climate_entity_id") == self.entity_id:
+                    adaptive_learner = zone_data.get("adaptive_learner")
+                    break
+
+            if not adaptive_learner:
+                _LOGGER.warning(
+                    "%s: Cannot apply adaptive PID - no adaptive learner (learning_enabled: false?)",
+                    self.entity_id
+                )
+                return
+
+            # Calculate recommendation based on current PID values
+            recommendation = adaptive_learner.calculate_pid_adjustment(
+                current_kp=self._kp,
+                current_ki=self._ki,
+                current_kd=self._kd,
             )
-            return
 
-        all_zones = coordinator.get_all_zones()
-        adaptive_learner = None
+            if recommendation is None:
+                cycle_count = adaptive_learner.get_cycle_count()
+                _LOGGER.warning(
+                    "%s: Insufficient data for adaptive PID (cycles: %d, need >= 3)",
+                    self.entity_id,
+                    cycle_count,
+                )
+                return
 
-        for zone_id, zone_data in all_zones.items():
-            if zone_data.get("climate_entity_id") == self.entity_id:
-                adaptive_learner = zone_data.get("adaptive_learner")
-                break
+            # Apply the recommended values
+            old_kp, old_ki, old_kd = self._kp, self._ki, self._kd
+            self._kp = recommendation["kp"]
+            self._ki = recommendation["ki"]
+            self._kd = recommendation["kd"]
 
-        if not adaptive_learner:
-            _LOGGER.warning(
-                "%s: Cannot apply adaptive PID - no adaptive learner (learning_enabled: false?)",
-                self.entity_id
-            )
-            return
+            # Clear integral to avoid wind-up from old tuning
+            self._pid_controller.integral = 0.0
+            self._i = 0.0
 
-        # Calculate recommendation based on current PID values
-        recommendation = adaptive_learner.calculate_pid_adjustment(
-            current_kp=self._kp,
-            current_ki=self._ki,
-            current_kd=self._kd,
-        )
+            self._pid_controller.set_pid_param(self._kp, self._ki, self._kd, self._ke)
 
-        if recommendation is None:
-            cycle_count = adaptive_learner.get_cycle_count()
-            _LOGGER.warning(
-                "%s: Insufficient data for adaptive PID (cycles: %d, need >= 3)",
+            _LOGGER.info(
+                "%s: Applied adaptive PID: Kp=%.4f (was %.4f), Ki=%.5f (was %.5f), Kd=%.3f (was %.3f)",
                 self.entity_id,
-                cycle_count,
+                self._kp, old_kp,
+                self._ki, old_ki,
+                self._kd, old_kd,
             )
-            return
 
-        # Apply the recommended values
-        old_kp, old_ki, old_kd = self._kp, self._ki, self._kd
-        self._kp = recommendation["kp"]
-        self._ki = recommendation["ki"]
-        self._kd = recommendation["kd"]
-
-        # Clear integral to avoid wind-up from old tuning
-        self._pid_controller.integral = 0.0
-        self._i = 0.0
-
-        self._pid_controller.set_pid_param(self._kp, self._ki, self._kd, self._ke)
-
-        _LOGGER.info(
-            "%s: Applied adaptive PID: Kp=%.4f (was %.4f), Ki=%.5f (was %.5f), Kd=%.3f (was %.3f)",
-            self.entity_id,
-            self._kp, old_kp,
-            self._ki, old_ki,
-            self._kd, old_kd,
-        )
-
-        await self._async_control_heating(calc_pid=True)
-        self.async_write_ha_state()
+            await self._async_control_heating(calc_pid=True)
+            self.async_write_ha_state()
 
     async def async_apply_adaptive_ke(self, **kwargs):
         """Apply adaptive Ke value based on learned outdoor temperature correlations.
 
-        Delegates to KeController for the actual implementation.
+        Delegates to PIDTuningManager (which delegates to KeController) for the actual implementation.
         """
         if self._ke_controller is not None:
             await self._ke_controller.async_apply_adaptive_ke(**kwargs)
@@ -1701,6 +1758,19 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
     def _set_ke(self, value: float) -> None:
         """Set the Ke value."""
         self._ke = value
+
+    # Setter callbacks for PIDTuningManager
+    def _set_kp(self, value: float) -> None:
+        """Set the Kp value."""
+        self._kp = value
+
+    def _set_ki(self, value: float) -> None:
+        """Set the Ki value."""
+        self._ki = value
+
+    def _set_kd(self, value: float) -> None:
+        """Set the Kd value."""
+        self._kd = value
 
     def _is_pid_converged_for_ke(self) -> bool:
         """Check if PID has converged sufficiently for Ke learning.

@@ -6,6 +6,7 @@ from .heater_controller import HeaterController
 from .ke_manager import KeController
 from .night_setback_calculator import NightSetbackCalculator
 from .night_setback_manager import NightSetbackController
+from .pid_tuning import PIDTuningManager
 from .state_restorer import StateRestorer
 from .temperature_manager import TemperatureManager
 
@@ -16,6 +17,7 @@ __all__ = [
     "KeController",
     "NightSetbackCalculator",
     "NightSetbackController",
+    "PIDTuningManager",
     "StateRestorer",
     "TemperatureManager",
 ]
