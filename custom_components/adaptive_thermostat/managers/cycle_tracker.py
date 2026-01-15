@@ -202,6 +202,31 @@ class CycleTrackerManager:
                 self._logger.info("Settling complete, finalizing cycle")
                 await self._finalize_cycle()
 
+    def _reset_cycle_state(self) -> None:
+        """Reset cycle state to IDLE and clear all cycle data.
+
+        This helper method provides consistent cleanup of cycle state,
+        ensuring all state variables are properly reset.
+        """
+        # Clear temperature history
+        self._temperature_history.clear()
+
+        # Reset cycle tracking variables
+        self._cycle_start_time = None
+        self._cycle_target_temp = None
+        self._was_interrupted = False
+
+        # Clear setpoint changes
+        self._setpoint_changes.clear()
+
+        # Set state to IDLE
+        self._state = CycleState.IDLE
+
+        # Cancel settling timeout if active
+        if self._settling_timeout_handle is not None:
+            self._settling_timeout_handle()
+            self._settling_timeout_handle = None
+
     def _is_settling_complete(self) -> bool:
         """Check if temperature has settled after heating stopped.
 
