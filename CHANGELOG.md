@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v0.6.4 (2026-01-15)
+
+### Bug Fixes
+
+- Add Pillow to test dependencies for CI
+  ([`10d62f7`](https://github.com/afewyards/ha-adaptive-thermostat/commit/10d62f741ae6835ed4173ec4281e1fc77960bb41))
+
+The charts module uses PIL for image generation, but Pillow was not listed in requirements-test.txt,
+  causing CI failures.
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+
 ## v0.6.3 (2026-01-15)
 
 ### Bug Fixes
