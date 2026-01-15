@@ -907,6 +907,129 @@ class TestResetCycleState:
         assert tracker._cycle_target_temp is None
 
 
+class TestCycleTrackerMADSettling:
+    """Test MAD-based settling detection."""
+
+    def test_settling_detection_with_noise(self, cycle_tracker):
+        """Test settling detection is robust to sensor noise using MAD."""
+        # Start heating, then stop
+        cycle_tracker.on_heating_started(datetime(2025, 1, 14, 10, 0, 0))
+        cycle_tracker.on_heating_stopped(datetime(2025, 1, 14, 10, 15, 0))
+
+        # Add 10 temperature samples with ±0.2°C noise (simulating sensor jitter)
+        # Centered around 20.0°C target
+        noisy_temps = [20.0, 20.1, 19.9, 20.0, 20.2, 19.8, 20.1, 19.9, 20.0, 20.1]
+        for i, temp in enumerate(noisy_temps):
+            cycle_tracker._temperature_history.append(
+                (datetime(2025, 1, 14, 10, 15 + i, 0), temp)
+            )
+
+        # Calculate expected MAD
+        # Median of [20.0, 20.1, 19.9, 20.0, 20.2, 19.8, 20.1, 19.9, 20.0, 20.1] = 20.0
+        # Deviations: [0.0, 0.1, 0.1, 0.0, 0.2, 0.2, 0.1, 0.1, 0.0, 0.1]
+        # MAD = median of deviations = 0.1
+        mad = cycle_tracker._calculate_mad(noisy_temps)
+        assert 0.09 <= mad <= 0.11  # Allow small floating point tolerance
+
+        # MAD threshold is 0.05, so 0.1 > 0.05 => should not settle yet
+        assert not cycle_tracker._is_settling_complete()
+
+        # Now add samples with less noise (within threshold)
+        stable_temps = [20.0, 20.01, 19.99, 20.0, 20.02, 19.98, 20.01, 19.99, 20.0, 20.01]
+        cycle_tracker._temperature_history.clear()
+        for i, temp in enumerate(stable_temps):
+            cycle_tracker._temperature_history.append(
+                (datetime(2025, 1, 14, 10, 25 + i, 0), temp)
+            )
+
+        # MAD should now be < 0.05
+        mad = cycle_tracker._calculate_mad(stable_temps)
+        assert mad < 0.05
+
+        # Should detect settling
+        assert cycle_tracker._is_settling_complete()
+
+    def test_settling_mad_vs_variance(self, cycle_tracker):
+        """Test MAD is more robust than variance to outliers."""
+        # Start heating, then stop
+        cycle_tracker.on_heating_started(datetime(2025, 1, 14, 10, 0, 0))
+        cycle_tracker.on_heating_stopped(datetime(2025, 1, 14, 10, 15, 0))
+
+        # Add 9 stable samples + 1 outlier
+        # Stable temps around 20.0°C, one reading at 21.0°C (outlier)
+        temps_with_outlier = [20.0, 20.01, 19.99, 20.0, 21.0, 20.01, 19.99, 20.0, 20.01, 19.99]
+
+        for i, temp in enumerate(temps_with_outlier):
+            cycle_tracker._temperature_history.append(
+                (datetime(2025, 1, 14, 10, 15 + i, 0), temp)
+            )
+
+        # Calculate MAD (robust to outlier)
+        mad = cycle_tracker._calculate_mad(temps_with_outlier)
+
+        # Calculate variance (NOT robust to outlier)
+        mean_temp = sum(temps_with_outlier) / len(temps_with_outlier)
+        variance = sum((t - mean_temp) ** 2 for t in temps_with_outlier) / len(temps_with_outlier)
+
+        # Variance should be high due to outlier (old threshold: 0.01)
+        # MAD should be low (new threshold: 0.05)
+        assert variance > 0.01  # Would fail old variance check
+        assert mad < 0.05  # Should pass new MAD check
+
+        # MAD-based detection should handle this gracefully
+        # (though in this case, one outlier might still exceed threshold depending on exact values)
+
+    def test_settling_detection_outlier_robust(self, cycle_tracker):
+        """Test settling detection handles single outlier correctly."""
+        # Start heating, then stop
+        cycle_tracker.on_heating_started(datetime(2025, 1, 14, 10, 0, 0))
+        cycle_tracker.on_heating_stopped(datetime(2025, 1, 14, 10, 15, 0))
+
+        # Add 9 very stable samples + 1 moderate outlier
+        temps = [20.0, 20.0, 20.0, 20.0, 20.15, 20.0, 20.0, 20.0, 20.0, 20.0]
+
+        for i, temp in enumerate(temps):
+            cycle_tracker._temperature_history.append(
+                (datetime(2025, 1, 14, 10, 15 + i, 0), temp)
+            )
+
+        # Calculate MAD
+        # Median = 20.0
+        # Deviations: [0.0, 0.0, 0.0, 0.0, 0.15, 0.0, 0.0, 0.0, 0.0, 0.0]
+        # MAD = median([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.15]) = 0.0
+        mad = cycle_tracker._calculate_mad(temps)
+        assert mad == 0.0  # MAD ignores single outlier when most values are identical
+
+        # Should detect settling (MAD < 0.05)
+        assert cycle_tracker._is_settling_complete()
+
+    def test_calculate_mad_basic(self, cycle_tracker):
+        """Test MAD calculation with known values."""
+        # Test case 1: All identical values
+        mad = cycle_tracker._calculate_mad([5.0, 5.0, 5.0, 5.0, 5.0])
+        assert mad == 0.0
+
+        # Test case 2: Simple values with known MAD
+        # Values: [1, 2, 3, 4, 5]
+        # Median = 3
+        # Deviations: [2, 1, 0, 1, 2]
+        # MAD = median([0, 1, 1, 2, 2]) = 1
+        mad = cycle_tracker._calculate_mad([1.0, 2.0, 3.0, 4.0, 5.0])
+        assert mad == 1.0
+
+        # Test case 3: Even number of values
+        # Values: [1, 2, 3, 4]
+        # Median = 2.5
+        # Deviations: [1.5, 0.5, 0.5, 1.5]
+        # MAD = median([0.5, 0.5, 1.5, 1.5]) = 1.0
+        mad = cycle_tracker._calculate_mad([1.0, 2.0, 3.0, 4.0])
+        assert mad == 1.0
+
+        # Test case 4: Empty list
+        mad = cycle_tracker._calculate_mad([])
+        assert mad == 0.0
+
+
 def test_cycle_tracker_module_exists():
     """Marker test to verify cycle tracker module exists."""
     assert CycleState is not None

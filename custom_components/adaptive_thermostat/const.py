@@ -220,6 +220,9 @@ CONVERGENCE_CONFIDENCE_HIGH = 1.0  # Maximum confidence level (fully converged)
 CONFIDENCE_DECAY_RATE_DAILY = 0.02  # 2% confidence decay per day
 CONFIDENCE_INCREASE_PER_GOOD_CYCLE = 0.1  # 10% confidence increase per good cycle
 
+# Settling detection (v0.7.0)
+SETTLING_MAD_THRESHOLD = 0.05  # Maximum MAD (°C) for temperature stability detection
+
 # Segment detection noise tolerance
 # Temperature fluctuations below this threshold are ignored as sensor noise
 SEGMENT_NOISE_TOLERANCE = 0.05  # 0.05C default

@@ -308,17 +308,58 @@ class CycleTrackerManager:
             self._settling_timeout_handle()
             self._settling_timeout_handle = None
 
+    def _calculate_mad(self, values: list[float]) -> float:
+        """Calculate Median Absolute Deviation (MAD) for robust variability measure.
+
+        MAD is more robust to outliers than standard deviation/variance.
+        Formula: median(|values - median(values)|)
+
+        Args:
+            values: List of numeric values
+
+        Returns:
+            Median absolute deviation
+        """
+        if not values:
+            return 0.0
+
+        # Calculate median
+        sorted_values = sorted(values)
+        n = len(sorted_values)
+        if n % 2 == 0:
+            median = (sorted_values[n // 2 - 1] + sorted_values[n // 2]) / 2
+        else:
+            median = sorted_values[n // 2]
+
+        # Calculate absolute deviations
+        abs_deviations = [abs(v - median) for v in values]
+
+        # Return median of absolute deviations
+        sorted_devs = sorted(abs_deviations)
+        n = len(sorted_devs)
+        if n % 2 == 0:
+            mad = (sorted_devs[n // 2 - 1] + sorted_devs[n // 2]) / 2
+        else:
+            mad = sorted_devs[n // 2]
+
+        return mad
+
     def _is_settling_complete(self) -> bool:
         """Check if temperature has settled after heating stopped.
 
         Settling is considered complete when:
         1. At least 10 samples (5 minutes at 30-second intervals) are collected
-        2. Variance of last 10 samples < 0.01 (stable temperature)
+        2. MAD of last 10 samples < SETTLING_MAD_THRESHOLD (stable temperature)
         3. Current temperature is within 0.5°C of target
+
+        Uses Median Absolute Deviation (MAD) instead of variance for robustness
+        to outliers (e.g., brief sensor noise, single errant reading).
 
         Returns:
             True if settling is complete, False otherwise
         """
+        from ..const import SETTLING_MAD_THRESHOLD
+
         # Need minimum 10 samples for settling detection
         if len(self._temperature_history) < 10:
             return False
@@ -326,12 +367,17 @@ class CycleTrackerManager:
         # Get last 10 temperature samples
         last_temps = [temp for _, temp in self._temperature_history[-10:]]
 
-        # Calculate variance
-        mean_temp = sum(last_temps) / len(last_temps)
-        variance = sum((temp - mean_temp) ** 2 for temp in last_temps) / len(last_temps)
+        # Calculate MAD (robust alternative to variance)
+        mad = self._calculate_mad(last_temps)
 
-        # Check if variance is below threshold (stable)
-        if variance >= 0.01:
+        self._logger.debug(
+            "Settling check: MAD=%.3f°C (threshold=%.3f°C)",
+            mad,
+            SETTLING_MAD_THRESHOLD,
+        )
+
+        # Check if MAD is below threshold (stable)
+        if mad >= SETTLING_MAD_THRESHOLD:
             return False
 
         # Check if current temperature is within 0.5°C of target
@@ -343,6 +389,7 @@ class CycleTrackerManager:
         if abs(current_temp - target_temp) > 0.5:
             return False
 
+        self._logger.debug("Temperature settled: MAD=%.3f°C", mad)
         return True
 
     def _is_cycle_valid(self) -> tuple[bool, str]:
