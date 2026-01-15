@@ -84,6 +84,7 @@ class LearningDataStore:
                         else None
                     ),
                     "max_history": adaptive_learner._max_history,
+                    "heating_type": adaptive_learner._heating_type,
                     # Include convergence tracking state
                     "consecutive_converged_cycles": adaptive_learner._consecutive_converged_cycles,
                     "pid_converged_for_ke": adaptive_learner._pid_converged_for_ke,
@@ -210,7 +211,8 @@ class LearningDataStore:
 
             adaptive_data = data["adaptive_learner"]
             max_history = adaptive_data.get("max_history", MAX_CYCLE_HISTORY)
-            learner = AdaptiveLearner(max_history=max_history)
+            heating_type = adaptive_data.get("heating_type")
+            learner = AdaptiveLearner(max_history=max_history, heating_type=heating_type)
 
             # Validate cycle history is a list
             cycle_history = adaptive_data.get("cycle_history", [])

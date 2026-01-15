@@ -15,6 +15,7 @@ from ..const import (
     CONVERGENCE_CONFIDENCE_HIGH,
     CONFIDENCE_DECAY_RATE_DAILY,
     CONFIDENCE_INCREASE_PER_GOOD_CYCLE,
+    get_convergence_thresholds,
 )
 
 # Import PID rule engine components
@@ -57,15 +58,19 @@ _LOGGER = logging.getLogger(__name__)
 class AdaptiveLearner:
     """Adaptive PID tuning based on observed heating cycle performance."""
 
-    def __init__(self, max_history: int = MAX_CYCLE_HISTORY):
+    def __init__(self, max_history: int = MAX_CYCLE_HISTORY, heating_type: Optional[str] = None):
         """
         Initialize the AdaptiveLearner.
 
         Args:
             max_history: Maximum number of cycles to retain in history (FIFO eviction)
+            heating_type: Heating system type (floor_hydronic, radiator, convector, forced_air)
+                         Used to select appropriate convergence thresholds
         """
         self._cycle_history: List[CycleMetrics] = []
         self._max_history = max_history
+        self._heating_type = heating_type
+        self._convergence_thresholds = get_convergence_thresholds(heating_type)
         self._last_adjustment_time: Optional[datetime] = None
         # Convergence tracking for Ke learning activation
         self._consecutive_converged_cycles: int = 0
@@ -126,7 +131,7 @@ class AdaptiveLearner:
         Check if the system has converged (is well-tuned).
 
         Convergence occurs when ALL performance metrics are within acceptable bounds
-        defined by CONVERGENCE_THRESHOLDS.
+        defined by heating-type-specific thresholds (or default thresholds if heating type unknown).
 
         Args:
             avg_overshoot: Average overshoot in °C
@@ -138,10 +143,10 @@ class AdaptiveLearner:
             True if converged, False otherwise
         """
         is_converged = (
-            avg_overshoot <= CONVERGENCE_THRESHOLDS["overshoot_max"] and
-            avg_oscillations <= CONVERGENCE_THRESHOLDS["oscillations_max"] and
-            avg_settling_time <= CONVERGENCE_THRESHOLDS["settling_time_max"] and
-            avg_rise_time <= CONVERGENCE_THRESHOLDS["rise_time_max"]
+            avg_overshoot <= self._convergence_thresholds["overshoot_max"] and
+            avg_oscillations <= self._convergence_thresholds["oscillations_max"] and
+            avg_settling_time <= self._convergence_thresholds["settling_time_max"] and
+            avg_rise_time <= self._convergence_thresholds["rise_time_max"]
         )
 
         if is_converged:
@@ -405,10 +410,10 @@ class AdaptiveLearner:
         rise_time = metrics.rise_time if metrics.rise_time is not None else 0.0
 
         is_cycle_converged = (
-            overshoot <= CONVERGENCE_THRESHOLDS["overshoot_max"] and
-            oscillations <= CONVERGENCE_THRESHOLDS["oscillations_max"] and
-            settling_time <= CONVERGENCE_THRESHOLDS["settling_time_max"] and
-            rise_time <= CONVERGENCE_THRESHOLDS["rise_time_max"]
+            overshoot <= self._convergence_thresholds["overshoot_max"] and
+            oscillations <= self._convergence_thresholds["oscillations_max"] and
+            settling_time <= self._convergence_thresholds["settling_time_max"] and
+            rise_time <= self._convergence_thresholds["rise_time_max"]
         )
 
         if is_cycle_converged:
@@ -483,10 +488,10 @@ class AdaptiveLearner:
         """
         # Check if this cycle meets convergence criteria
         is_good_cycle = (
-            (metrics.overshoot is None or metrics.overshoot <= CONVERGENCE_THRESHOLDS["overshoot_max"]) and
-            metrics.oscillations <= CONVERGENCE_THRESHOLDS["oscillations_max"] and
-            (metrics.settling_time is None or metrics.settling_time <= CONVERGENCE_THRESHOLDS["settling_time_max"]) and
-            (metrics.rise_time is None or metrics.rise_time <= CONVERGENCE_THRESHOLDS["rise_time_max"])
+            (metrics.overshoot is None or metrics.overshoot <= self._convergence_thresholds["overshoot_max"]) and
+            metrics.oscillations <= self._convergence_thresholds["oscillations_max"] and
+            (metrics.settling_time is None or metrics.settling_time <= self._convergence_thresholds["settling_time_max"]) and
+            (metrics.rise_time is None or metrics.rise_time <= self._convergence_thresholds["rise_time_max"])
         )
 
         if is_good_cycle:

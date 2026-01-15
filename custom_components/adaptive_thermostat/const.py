@@ -1,4 +1,6 @@
 """Constants for Adaptive Thermostat"""
+from typing import Dict, Optional
+
 DOMAIN = "adaptive_thermostat"
 
 DEFAULT_NAME = "Adaptive Thermostat"
@@ -127,12 +129,70 @@ PID_LIMITS = {
 
 # Convergence thresholds for adaptive learning
 # System is considered "tuned" when ALL metrics are within these bounds
-CONVERGENCE_THRESHOLDS = {
+# Default thresholds (used for unknown heating types)
+DEFAULT_CONVERGENCE_THRESHOLDS = {
     "overshoot_max": 0.2,       # Maximum acceptable overshoot in °C
     "oscillations_max": 1,      # Maximum acceptable oscillations
     "settling_time_max": 60,    # Maximum settling time in minutes
     "rise_time_max": 45,        # Maximum rise time in minutes
 }
+
+# Heating-type-specific convergence thresholds
+# Slow systems (high thermal mass) get relaxed criteria to avoid false negatives
+HEATING_TYPE_CONVERGENCE_THRESHOLDS = {
+    HEATING_TYPE_FLOOR_HYDRONIC: {
+        "overshoot_max": 0.3,       # Relaxed from 0.2°C - high thermal mass makes precise control harder
+        "oscillations_max": 1,      # Same as default
+        "settling_time_max": 120,   # Relaxed from 60 min - slow systems take longer to stabilize
+        "rise_time_max": 90,        # Relaxed from 45 min - slower heating rate
+    },
+    HEATING_TYPE_RADIATOR: {
+        "overshoot_max": 0.25,      # Slightly relaxed from 0.2°C
+        "oscillations_max": 1,      # Same as default
+        "settling_time_max": 90,    # Relaxed from 60 min - moderate thermal mass
+        "rise_time_max": 60,        # Relaxed from 45 min - moderate heating rate
+    },
+    HEATING_TYPE_CONVECTOR: {
+        "overshoot_max": 0.2,       # Baseline (same as default)
+        "oscillations_max": 1,      # Same as default
+        "settling_time_max": 60,    # Baseline (same as default)
+        "rise_time_max": 45,        # Baseline (same as default)
+    },
+    HEATING_TYPE_FORCED_AIR: {
+        "overshoot_max": 0.15,      # Tightened from 0.2°C - fast systems should be more precise
+        "oscillations_max": 1,      # Same as default
+        "settling_time_max": 45,    # Tightened from 60 min - fast settling expected
+        "rise_time_max": 30,        # Tightened from 45 min - rapid heating rate
+    },
+}
+
+# Legacy alias for backward compatibility
+CONVERGENCE_THRESHOLDS = DEFAULT_CONVERGENCE_THRESHOLDS
+
+
+def get_convergence_thresholds(heating_type: Optional[str] = None) -> Dict[str, float]:
+    """
+    Get convergence thresholds for a specific heating type.
+
+    Returns heating-type-specific thresholds if available, otherwise returns default thresholds.
+    Slow systems (high thermal mass) get relaxed criteria to avoid false convergence negatives.
+
+    Args:
+        heating_type: One of HEATING_TYPE_* constants, or None for default thresholds
+
+    Returns:
+        Dict with convergence threshold values (overshoot_max, oscillations_max,
+        settling_time_max, rise_time_max)
+
+    Example:
+        >>> thresholds = get_convergence_thresholds(HEATING_TYPE_FLOOR_HYDRONIC)
+        >>> thresholds["rise_time_max"]
+        90  # Relaxed from 45 min default for slow floor heating
+    """
+    if heating_type and heating_type in HEATING_TYPE_CONVERGENCE_THRESHOLDS:
+        return HEATING_TYPE_CONVERGENCE_THRESHOLDS[heating_type]
+    return DEFAULT_CONVERGENCE_THRESHOLDS
+
 
 # Rule priority levels for PID adjustment conflict resolution
 # Higher priority = takes precedence when rules conflict

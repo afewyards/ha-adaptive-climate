@@ -306,7 +306,7 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
             "area_m2": config.get(const.CONF_AREA_M2, 0),
             "heating_type": config.get(const.CONF_HEATING_TYPE),
             "learning_enabled": True,  # Always enabled, vacation mode can toggle
-            "adaptive_learner": AdaptiveLearner(),
+            "adaptive_learner": AdaptiveLearner(heating_type=config.get(const.CONF_HEATING_TYPE)),
             "linked_zones": config.get(const.CONF_LINKED_ZONES, []),
         }
         coordinator.register_zone(zone_id, zone_data)
