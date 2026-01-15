@@ -814,6 +814,45 @@ class TestSetpointChangeWithDeviceActive:
         # Assert temperature_history is empty (cleared)
         assert len(tracker.temperature_history) == 0
 
+    def test_multiple_setpoint_changes_while_heater_active(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks
+    ):
+        """Test that multiple setpoint changes while heater is active are tracked."""
+        # Create tracker with get_is_device_active returning True
+        tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            get_target_temp=mock_callbacks["get_target_temp"],
+            get_current_temp=mock_callbacks["get_current_temp"],
+            get_hvac_mode=mock_callbacks["get_hvac_mode"],
+            get_in_grace_period=mock_callbacks["get_in_grace_period"],
+            get_is_device_active=Mock(return_value=True),
+        )
+
+        # Start heating cycle
+        start_time = datetime(2025, 1, 14, 10, 0, 0)
+        tracker.on_heating_started(start_time)
+        assert tracker.state == CycleState.HEATING
+
+        # First setpoint change
+        tracker.on_setpoint_changed(20.0, 22.0)
+
+        # Second setpoint change
+        tracker.on_setpoint_changed(22.0, 21.0)
+
+        # Third setpoint change
+        tracker.on_setpoint_changed(21.0, 23.0)
+
+        # Assert state is still HEATING
+        assert tracker.state == CycleState.HEATING
+
+        # Assert _cycle_target_temp is the latest value
+        assert tracker._cycle_target_temp == 23.0
+
+        # Assert len(_setpoint_changes) == 3
+        assert len(tracker._setpoint_changes) == 3
+
 
 def test_cycle_tracker_module_exists():
     """Marker test to verify cycle tracker module exists."""
