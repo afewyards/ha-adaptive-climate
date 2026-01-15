@@ -143,6 +143,7 @@ class CycleMetrics:
         settling_time: Optional[float] = None,
         oscillations: int = 0,
         rise_time: Optional[float] = None,
+        disturbances: Optional[List[str]] = None,
     ):
         """
         Initialize cycle metrics.
@@ -153,12 +154,23 @@ class CycleMetrics:
             settling_time: Settling time in minutes
             oscillations: Number of oscillations around target
             rise_time: Time to reach target from start in minutes
+            disturbances: List of detected disturbance types (e.g., "solar_gain", "wind_loss")
         """
         self.overshoot = overshoot
         self.undershoot = undershoot
         self.settling_time = settling_time
         self.oscillations = oscillations
         self.rise_time = rise_time
+        self.disturbances = disturbances or []
+
+    @property
+    def is_disturbed(self) -> bool:
+        """Check if this cycle had any disturbances.
+
+        Returns:
+            True if disturbances were detected, False otherwise
+        """
+        return len(self.disturbances) > 0
 
 
 def calculate_overshoot(

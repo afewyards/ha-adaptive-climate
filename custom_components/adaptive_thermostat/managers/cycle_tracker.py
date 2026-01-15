@@ -474,6 +474,7 @@ class CycleTrackerManager:
             count_oscillations,
             calculate_rise_time,
         )
+        from ..adaptive.disturbance_detector import DisturbanceDetector
 
         # Get target temperature
         target_temp = self._cycle_target_temp
@@ -497,6 +498,26 @@ class CycleTrackerManager:
         oscillations = count_oscillations(self._temperature_history, target_temp)
         rise_time = calculate_rise_time(self._temperature_history, start_temp, target_temp)
 
+        # Detect disturbances (requires environmental sensor data - not yet wired up)
+        # For now, heater_active_periods is estimated from cycle start/stop times
+        heater_active_periods = []
+        if self._cycle_start_time:
+            # Estimate heater was active from cycle start to first settling temp
+            heating_end = self._cycle_start_time
+            if len(self._temperature_history) > 0:
+                # Assume heating stopped sometime during the cycle
+                heating_end = self._temperature_history[len(self._temperature_history) // 2][0]
+            heater_active_periods.append((self._cycle_start_time, heating_end))
+
+        detector = DisturbanceDetector()
+        disturbances = detector.detect_disturbances(
+            temperature_history=self._temperature_history,
+            heater_active_periods=heater_active_periods,
+            outdoor_temps=None,  # TODO: Wire up outdoor sensor data
+            solar_values=None,   # TODO: Wire up solar sensor data
+            wind_speeds=None,    # TODO: Wire up wind sensor data
+        )
+
         # Create CycleMetrics object
         metrics = CycleMetrics(
             overshoot=overshoot,
@@ -504,6 +525,7 @@ class CycleTrackerManager:
             settling_time=settling_time,
             oscillations=oscillations,
             rise_time=rise_time,
+            disturbances=disturbances,
         )
 
         # Record metrics with adaptive learner
@@ -511,14 +533,16 @@ class CycleTrackerManager:
         self._adaptive_learner.update_convergence_tracking(metrics)
 
         # Log cycle completion with all metrics
+        disturbance_str = f", disturbances={disturbances}" if disturbances else ""
         self._logger.info(
             "Cycle completed - overshoot=%.2f°C, undershoot=%.2f°C, "
-            "settling_time=%.1f min, oscillations=%d, rise_time=%.1f min",
+            "settling_time=%.1f min, oscillations=%d, rise_time=%.1f min%s",
             overshoot or 0.0,
             undershoot or 0.0,
             settling_time or 0.0,
             oscillations,
             rise_time or 0.0,
+            disturbance_str,
         )
 
         # Reset cycle state (clears interruption flags and transitions to IDLE)

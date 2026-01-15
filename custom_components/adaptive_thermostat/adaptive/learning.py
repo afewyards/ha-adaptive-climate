@@ -217,7 +217,21 @@ class AdaptiveLearner:
             return None
 
         # Calculate average metrics from recent cycles
-        recent_cycles = self._cycle_history[-min_cycles:]
+        # Filter out disturbed cycles for more accurate learning
+        recent_cycles = self._cycle_history[-min_cycles * 2:]  # Get more cycles to account for filtering
+        undisturbed_cycles = [c for c in recent_cycles if not c.is_disturbed]
+
+        # If too many cycles were filtered out, we don't have enough data
+        if len(undisturbed_cycles) < min_cycles:
+            _LOGGER.debug(
+                f"Insufficient undisturbed cycles for learning: "
+                f"{len(undisturbed_cycles)} undisturbed out of {len(recent_cycles)} total "
+                f"(need {min_cycles})"
+            )
+            return None
+
+        # Use only undisturbed cycles for learning
+        recent_cycles = undisturbed_cycles[-min_cycles:]
 
         avg_overshoot = statistics.mean(
             [c.overshoot for c in recent_cycles if c.overshoot is not None]
