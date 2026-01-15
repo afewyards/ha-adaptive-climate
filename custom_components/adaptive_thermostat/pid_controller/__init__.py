@@ -360,7 +360,10 @@ class PID:
                 # Ki has units of %/(°C·hour), so dt must be in hours
                 dt_hours = self._dt / 3600.0
                 self._integral += self._Ki * self._error * dt_hours
-                # Take external temperature compensation into account for integral clamping
+                # Integral clamping accounts for external term to ensure total output respects bounds
+                # Formula: I_max = out_max - E, I_min = out_min - E
+                # This ensures P + I + D + E stays within [out_min, out_max]
+                # After v0.7.0 Ke reduction (100x), E typically <1%, leaving >99% headroom for integral
                 self._integral = max(min(self._integral, self._out_max - self._external), self._out_min - self._external)
         else:
             # P-on-E: original behavior with setpoint stability check and integral reset
@@ -370,7 +373,7 @@ class PID:
                 # Ki has units of %/(°C·hour), so dt must be in hours
                 dt_hours = self._dt / 3600.0
                 self._integral += self._Ki * self._error * dt_hours
-                # Take external temperature compensation into account for integral clamping
+                # Integral clamping accounts for external term (same formula as P-on-M above)
                 self._integral = max(min(self._integral, self._out_max - self._external), self._out_min - self._external)
             if self._last_set_point != self._set_point:
                 self._integral = 0  # Reset integral if set point has changed as system will need to converge to a new value

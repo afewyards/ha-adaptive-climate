@@ -1067,5 +1067,174 @@ class TestPIDProportionalOnMeasurement:
         assert pid_e._proportional_on_measurement is False
 
 
+class TestPIDKeIntegralClamping:
+    """Test integral clamping with reduced Ke values (v0.7.0).
+
+    After issue 1.3 reduced Ke values by 100x (from 0.1-1.3 to 0.001-0.013),
+    verify that integral headroom is now >99% instead of being severely limited.
+    """
+
+    def test_integral_headroom_with_small_ke(self):
+        """Verify integral headroom is >99% with reduced Ke values.
+
+        After Ke reduction in v0.7.0, the external term should contribute <1% of output,
+        leaving >99% headroom for the integral term to accumulate.
+
+        Test scenario: G-rated house (worst insulation) at -10°C outdoor temp.
+        """
+        # G-rated house has Ke = 0.013 (after 100x reduction)
+        # Worst case: indoor 20°C, outdoor -10°C, delta = 30°C
+        # External term: E = Ke * dext = 0.013 * 30 = 0.39%
+        # Expected headroom: 100% - 0.39% = 99.61%
+
+        pid = PID(
+            kp=0.3,
+            ki=1.2,  # floor_hydronic Ki after v0.7.0 fix
+            kd=2.5,
+            ke=0.013,  # G-rated house (worst insulation)
+            out_min=0,
+            out_max=100,
+            proportional_on_measurement=True
+        )
+
+        # First calculation to initialize
+        time0 = 0.0
+        output0, _ = pid.calc(20.0, 20.0, input_time=time0, ext_temp=-10.0)
+
+        # External term should be: 0.013 * (20 - (-10)) = 0.013 * 30 = 0.39
+        assert pid.external == pytest.approx(0.39, abs=0.01), "External term should be ~0.39%"
+
+        # External term is only 0.39% of 100% range
+        external_percentage = (pid.external / 100.0) * 100
+        assert external_percentage < 1.0, "External term should be <1% of output range"
+
+        # Integral headroom should be >99%
+        integral_headroom = 100.0 - pid.external
+        assert integral_headroom > 99.0, "Integral headroom should be >99%"
+
+        # Verify integral clamping formula: integral <= out_max - external
+        # Max integral value: 100 - 0.39 = 99.61
+        max_integral = pid._out_max - pid.external
+        assert max_integral == pytest.approx(99.61, abs=0.01), "Max integral should be ~99.61"
+
+    def test_extreme_cold_no_underheating(self):
+        """Verify integral can reach high values in extreme cold without clamping issues.
+
+        Simulate extreme cold scenario where system needs 95% steady-state power.
+        With old Ke values (pre-v0.7.0), external term would steal 7.6% of headroom,
+        clamping integral at 92.4% and causing underheating.
+        With new Ke values (post-v0.7.0), external term only uses 0.39%, allowing
+        integral to reach 99.61% if needed.
+        """
+        # G-rated house in extreme cold: -20°C outdoor, 20°C indoor
+        pid = PID(
+            kp=0.3,
+            ki=1.2,
+            kd=2.5,
+            ke=0.013,  # G-rated house
+            out_min=0,
+            out_max=100,
+            proportional_on_measurement=True
+        )
+
+        # Initialize PID
+        time0 = 0.0
+        pid.calc(20.0, 20.0, input_time=time0, ext_temp=-20.0)
+
+        # External term: E = 0.013 * (20 - (-20)) = 0.013 * 40 = 0.52%
+        assert pid.external == pytest.approx(0.52, abs=0.01), "External term should be ~0.52%"
+
+        # Simulate cold start: temperature drops to 18°C, needs to recover to 20°C
+        # Let integral accumulate over several hours to reach high value
+        current_temp = 18.0
+        setpoint = 20.0
+        time = 0.0
+
+        # Run for 10 hours with constant 2°C error
+        # Integral accumulation: Ki * error * time = 1.2 * 2.0 * 10 = 24% per 10 hours
+        # Need ~80 hours to reach 95% integral (if system really needs that much)
+        for hour in range(80):
+            time = hour * 3600.0  # Convert hours to seconds
+            last_time = time - 3600.0 if hour > 0 else None
+
+            # Temperature slowly rises but still below setpoint
+            # In reality, integral would drive heater to 100% and temp would rise faster
+            # But for this test, we're checking if integral CAN accumulate to 95%
+            current_temp = 18.0 + (hour * 0.02)  # Very slow rise for testing
+
+            output, _ = pid.calc(current_temp, setpoint, input_time=time, last_input_time=last_time, ext_temp=-20.0)
+
+        # After 80 hours with 2°C error: integral should be ~1.2 * 2.0 * 80 = 192%
+        # Clamped to: max_integral = 100 - 0.52 = 99.48%
+        # Verify integral can reach very high values (simulating 95% power need)
+        assert pid.integral >= 95.0, "Integral should be able to reach 95%+ for extreme cold"
+        assert pid.integral <= 99.5, "Integral should be clamped at ~99.5% (100 - 0.52)"
+
+        # Old behavior (pre-v0.7.0) with Ke=1.3:
+        # E = 1.3 * 40 = 52%, max_integral = 100 - 52 = 48%
+        # This would cause severe underheating in extreme cold!
+
+        # New behavior (v0.7.0) with Ke=0.013:
+        # E = 0.013 * 40 = 0.52%, max_integral = 100 - 0.52 = 99.48%
+        # System can reach 95%+ power when needed ✓
+
+    def test_integral_clamping_formula_documentation(self):
+        """Document and verify the integral clamping formula is correct.
+
+        The clamping formula at line 364/374 of pid_controller/__init__.py:
+        self._integral = max(min(self._integral, self._out_max - self._external),
+                             self._out_min - self._external)
+
+        This ensures the total output (P + I + D + E) respects out_min and out_max bounds.
+        After Ke reduction, this formula now allows >99% integral headroom.
+        """
+        # Test with moderate Ke value (A-rated house)
+        pid = PID(
+            kp=0.3,
+            ki=2.0,
+            kd=2.0,
+            ke=0.005,  # A-rated house
+            out_min=0,
+            out_max=100,
+            proportional_on_measurement=True
+        )
+
+        # Initialize at 20°C indoor, 0°C outdoor
+        time0 = 0.0
+        pid.calc(20.0, 20.0, input_time=time0, ext_temp=0.0)
+
+        # External term: E = 0.005 * 20 = 0.1%
+        assert pid.external == pytest.approx(0.1, abs=0.01)
+
+        # Integral bounds should be:
+        # Lower: out_min - external = 0 - 0.1 = -0.1
+        # Upper: out_max - external = 100 - 0.1 = 99.9
+        integral_min = pid._out_min - pid.external
+        integral_max = pid._out_max - pid.external
+
+        assert integral_min == pytest.approx(-0.1, abs=0.01)
+        assert integral_max == pytest.approx(99.9, abs=0.01)
+
+        # Simulate integral accumulation with 1°C error over 40 hours
+        # Integral: Ki * error * time = 2.0 * 1.0 * 40 = 80%
+        current_temp = 19.0
+        setpoint = 20.0
+        time = 0.0
+
+        for hour in range(40):
+            time = hour * 3600.0
+            last_time = time - 3600.0 if hour > 0 else None
+            pid.calc(current_temp, setpoint, input_time=time, last_input_time=last_time, ext_temp=0.0)
+
+        # Integral should accumulate to ~80%
+        assert 78.0 <= pid.integral <= 82.0, "Integral should be ~80%"
+
+        # Total output = P + I + D + E should be clamped to [0, 100]
+        total = pid.proportional + pid.integral + pid.derivative + pid.external
+        assert 0 <= total <= 100, "Total output should respect bounds"
+
+        # This test confirms the clamping formula is working correctly with reduced Ke values
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

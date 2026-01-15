@@ -285,6 +285,8 @@ sequenceDiagram
 
 **Outdoor temperature compensation (Ke):** Start with 0.3-0.6 for well-insulated buildings. Acts like integral term with faster response.
 
+**Integral clamping with external term (v0.7.0+):** The PID controller uses the formula `I_max = out_max - E` and `I_min = out_min - E` to ensure the total output `P + I + D + E` respects the configured bounds. After the v0.7.0 Ke reduction (100x smaller values), the external term typically contributes <1% of the output range, leaving >99% headroom for the integral term to accumulate. This resolves the pre-v0.7.0 issue where large Ke values (0.1-1.3) would steal 10-50% of the integral headroom, causing underheating in extreme cold conditions.
+
 ## Test Organization
 
 Tests are organized by component - run the relevant file when modifying:
