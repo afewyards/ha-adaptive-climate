@@ -49,6 +49,8 @@ class CycleTrackerManager:
         get_hvac_mode: Callable[[], str],
         get_in_grace_period: Callable[[], bool],
         get_is_device_active: Callable[[], bool] | None = None,
+        thermal_time_constant: float | None = None,
+        settling_timeout_minutes: int | None = None,
     ) -> None:
         """Initialize the cycle tracker manager.
 
@@ -61,7 +63,15 @@ class CycleTrackerManager:
             get_hvac_mode: Callback to get current HVAC mode
             get_in_grace_period: Callback to check if in learning grace period
             get_is_device_active: Callback to check if heater/cooler is currently active
+            thermal_time_constant: Building thermal time constant in hours (tau)
+            settling_timeout_minutes: Optional override for settling timeout in minutes
         """
+        from ..const import (
+            SETTLING_TIMEOUT_MULTIPLIER,
+            SETTLING_TIMEOUT_MIN,
+            SETTLING_TIMEOUT_MAX,
+        )
+
         self._hass = hass
         self._zone_id = zone_id
         self._adaptive_learner = adaptive_learner
@@ -79,13 +89,34 @@ class CycleTrackerManager:
         self._settling_timeout_handle = None
         self._interruption_history: list[tuple[datetime, str]] = []
 
-        # Constants
-        self._max_settling_time_minutes = 120
+        # Calculate dynamic settling timeout based on thermal mass
+        self._settling_timeout_source = "default"
+        if settling_timeout_minutes is not None:
+            # Use explicit override
+            self._max_settling_time_minutes = settling_timeout_minutes
+            self._settling_timeout_source = "override"
+        elif thermal_time_constant is not None:
+            # Calculate from tau: timeout = max(60, min(240, tau * 30))
+            calculated_timeout = thermal_time_constant * SETTLING_TIMEOUT_MULTIPLIER
+            self._max_settling_time_minutes = int(
+                max(SETTLING_TIMEOUT_MIN, min(SETTLING_TIMEOUT_MAX, calculated_timeout))
+            )
+            self._settling_timeout_source = f"calculated (tau={thermal_time_constant:.1f}h)"
+        else:
+            # Default fallback
+            self._max_settling_time_minutes = 120
+            self._settling_timeout_source = "default"
+
         self._min_cycle_duration_minutes = 5
 
         # Logging
         self._logger = logging.getLogger(f"{__name__}.{zone_id}")
-        self._logger.info("CycleTrackerManager initialized for zone %s", zone_id)
+        self._logger.info(
+            "CycleTrackerManager initialized for zone %s: settling_timeout=%d min (%s)",
+            zone_id,
+            self._max_settling_time_minutes,
+            self._settling_timeout_source,
+        )
 
     @property
     def state(self) -> CycleState:

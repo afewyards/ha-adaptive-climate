@@ -1034,3 +1034,108 @@ def test_cycle_tracker_module_exists():
     """Marker test to verify cycle tracker module exists."""
     assert CycleState is not None
     assert CycleTrackerManager is not None
+
+
+class TestCycleTrackerSettlingTimeout:
+    """Tests for dynamic settling timeout based on thermal mass."""
+
+    def test_settling_timeout_floor_hydronic(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks
+    ):
+        """Test settling timeout calculation for floor hydronic (high thermal mass).
+
+        Floor hydronic systems have tau=8h, should calculate timeout of 240 min (capped at max).
+        Formula: timeout = max(60, min(240, tau * 30)) = max(60, min(240, 8*30)) = 240 min
+        """
+        # Create cycle tracker with floor hydronic thermal time constant
+        cycle_tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            thermal_time_constant=8.0,  # 8 hours (floor hydronic)
+            **mock_callbacks,
+        )
+
+        # Verify timeout is capped at maximum (240 minutes)
+        assert cycle_tracker._max_settling_time_minutes == 240
+        assert "calculated" in cycle_tracker._settling_timeout_source
+        assert "tau=8.0h" in cycle_tracker._settling_timeout_source
+
+    def test_settling_timeout_forced_air(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks
+    ):
+        """Test settling timeout calculation for forced air (low thermal mass).
+
+        Forced air systems have tau=2h, should calculate timeout of 60 min (capped at min).
+        Formula: timeout = max(60, min(240, tau * 30)) = max(60, min(240, 2*30)) = 60 min
+        """
+        # Create cycle tracker with forced air thermal time constant
+        cycle_tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            thermal_time_constant=2.0,  # 2 hours (forced air)
+            **mock_callbacks,
+        )
+
+        # Verify timeout is capped at minimum (60 minutes)
+        assert cycle_tracker._max_settling_time_minutes == 60
+        assert "calculated" in cycle_tracker._settling_timeout_source
+        assert "tau=2.0h" in cycle_tracker._settling_timeout_source
+
+    def test_settling_timeout_radiator(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks
+    ):
+        """Test settling timeout calculation for radiator (medium thermal mass).
+
+        Radiator systems have tau=4h, should calculate timeout of 120 min.
+        Formula: timeout = max(60, min(240, tau * 30)) = max(60, min(240, 4*30)) = 120 min
+        """
+        # Create cycle tracker with radiator thermal time constant
+        cycle_tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            thermal_time_constant=4.0,  # 4 hours (radiator)
+            **mock_callbacks,
+        )
+
+        # Verify timeout is calculated correctly (not capped)
+        assert cycle_tracker._max_settling_time_minutes == 120
+        assert "calculated" in cycle_tracker._settling_timeout_source
+        assert "tau=4.0h" in cycle_tracker._settling_timeout_source
+
+    def test_settling_timeout_override(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks
+    ):
+        """Test settling timeout with explicit override."""
+        # Create cycle tracker with explicit override
+        cycle_tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            thermal_time_constant=8.0,  # Would calculate 240 min
+            settling_timeout_minutes=90,  # Override to 90 min
+            **mock_callbacks,
+        )
+
+        # Verify override takes precedence
+        assert cycle_tracker._max_settling_time_minutes == 90
+        assert cycle_tracker._settling_timeout_source == "override"
+
+    def test_settling_timeout_default_fallback(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks
+    ):
+        """Test settling timeout falls back to default when tau not provided."""
+        # Create cycle tracker without tau or override
+        cycle_tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            # No thermal_time_constant or settling_timeout_minutes
+            **mock_callbacks,
+        )
+
+        # Verify default timeout (120 minutes)
+        assert cycle_tracker._max_settling_time_minutes == 120
+        assert cycle_tracker._settling_timeout_source == "default"

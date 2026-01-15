@@ -566,25 +566,26 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
 
         if self._area_m2:
             volume_m3 = self._area_m2 * self._ceiling_height
-            tau = calculate_thermal_time_constant(
+            self._thermal_time_constant = calculate_thermal_time_constant(
                 volume_m3=volume_m3,
                 window_area_m2=self._window_area_m2,
                 floor_area_m2=self._area_m2,
                 window_rating=self._window_rating,
             )
             self._kp, self._ki, self._kd = calculate_initial_pid(
-                tau, self._heating_type, self._area_m2, self._max_power_w
+                self._thermal_time_constant, self._heating_type, self._area_m2, self._max_power_w
             )
             # Calculate outdoor temperature lag time constant: tau_lag = 2 * tau_building
             # This models the thermal inertia of the building envelope
-            self._outdoor_temp_lag_tau = 2.0 * tau
+            self._outdoor_temp_lag_tau = 2.0 * self._thermal_time_constant
 
             # Log power scaling info if configured
             power_info = f", power={self._max_power_w}W" if self._max_power_w else ""
             _LOGGER.info("%s: Physics-based PID init (tau=%.2f, type=%s, window=%s%s): Kp=%.4f, Ki=%.5f, Kd=%.3f, outdoor_lag_tau=%.2f",
-                         self.unique_id, tau, self._heating_type, self._window_rating, power_info, self._kp, self._ki, self._kd, self._outdoor_temp_lag_tau)
+                         self.unique_id, self._thermal_time_constant, self._heating_type, self._window_rating, power_info, self._kp, self._ki, self._kd, self._outdoor_temp_lag_tau)
         else:
             # Fallback defaults if no zone properties
+            self._thermal_time_constant = None
             self._kp = 0.5
             self._ki = 0.01
             self._kd = 5.0
@@ -841,6 +842,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                         get_hvac_mode=lambda: self._hvac_mode,
                         get_in_grace_period=lambda: self._in_grace_period,
                         get_is_device_active=lambda: self._is_device_active,
+                        thermal_time_constant=self._thermal_time_constant,
                     )
                     _LOGGER.info(
                         "%s: Initialized CycleTrackerManager",

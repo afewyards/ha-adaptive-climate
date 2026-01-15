@@ -223,6 +223,11 @@ CONFIDENCE_INCREASE_PER_GOOD_CYCLE = 0.1  # 10% confidence increase per good cyc
 # Settling detection (v0.7.0)
 SETTLING_MAD_THRESHOLD = 0.05  # Maximum MAD (°C) for temperature stability detection
 
+# Settling timeout configuration (v0.7.0) - dynamic timeout based on thermal mass
+SETTLING_TIMEOUT_MULTIPLIER = 30  # Multiplier for tau to calculate settling timeout
+SETTLING_TIMEOUT_MIN = 60  # Minimum settling timeout in minutes
+SETTLING_TIMEOUT_MAX = 240  # Maximum settling timeout in minutes (4 hours)
+
 # Segment detection noise tolerance
 # Temperature fluctuations below this threshold are ignored as sensor noise
 SEGMENT_NOISE_TOLERANCE = 0.05  # 0.05C default
