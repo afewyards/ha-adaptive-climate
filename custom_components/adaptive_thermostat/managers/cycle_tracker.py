@@ -391,8 +391,15 @@ class CycleTrackerManager:
         is_valid, reason = self._is_cycle_valid()
         if not is_valid:
             self._logger.info("Cycle not recorded: %s", reason)
-            self._state = CycleState.IDLE
+            self._reset_cycle_state()
             return
+
+        # Log interruption status if cycle was interrupted
+        if self._was_interrupted:
+            self._logger.info(
+                "Cycle had %d setpoint changes during tracking",
+                len(self._setpoint_changes),
+            )
 
         # Import cycle analysis functions
         from ..adaptive.cycle_analysis import (
@@ -408,13 +415,13 @@ class CycleTrackerManager:
         target_temp = self._cycle_target_temp
         if target_temp is None:
             self._logger.warning("No target temperature recorded, cannot calculate metrics")
-            self._state = CycleState.IDLE
+            self._reset_cycle_state()
             return
 
         # Get start temperature (first reading in history)
         if len(self._temperature_history) < 1:
             self._logger.warning("No temperature history, cannot calculate metrics")
-            self._state = CycleState.IDLE
+            self._reset_cycle_state()
             return
 
         start_temp = self._temperature_history[0][1]
@@ -439,9 +446,6 @@ class CycleTrackerManager:
         self._adaptive_learner.add_cycle_metrics(metrics)
         self._adaptive_learner.update_convergence_tracking(metrics)
 
-        # Transition to IDLE
-        self._state = CycleState.IDLE
-
         # Log cycle completion with all metrics
         self._logger.info(
             "Cycle completed - overshoot=%.2f°C, undershoot=%.2f°C, "
@@ -452,3 +456,6 @@ class CycleTrackerManager:
             oscillations,
             rise_time or 0.0,
         )
+
+        # Reset cycle state (clears interruption flags and transitions to IDLE)
+        self._reset_cycle_state()
