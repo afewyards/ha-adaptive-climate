@@ -781,6 +781,39 @@ class TestSetpointChangeWithDeviceActive:
         # Assert temperature_history is empty (cleared)
         assert len(tracker.temperature_history) == 0
 
+    def test_setpoint_change_without_callback_aborts_cycle(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks
+    ):
+        """Test backward compatibility: setpoint change aborts cycle when callback not provided."""
+        # Create tracker WITHOUT get_is_device_active parameter (legacy behavior)
+        tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            get_target_temp=mock_callbacks["get_target_temp"],
+            get_current_temp=mock_callbacks["get_current_temp"],
+            get_hvac_mode=mock_callbacks["get_hvac_mode"],
+            get_in_grace_period=mock_callbacks["get_in_grace_period"],
+            # NOTE: get_is_device_active intentionally not provided
+        )
+
+        # Start heating cycle
+        start_time = datetime(2025, 1, 14, 10, 0, 0)
+        tracker.on_heating_started(start_time)
+        assert tracker.state == CycleState.HEATING
+
+        # Add temperature sample to history
+        tracker._temperature_history.append((datetime(2025, 1, 14, 10, 0, 30), 18.5))
+
+        # Change setpoint - should abort cycle (legacy behavior)
+        tracker.on_setpoint_changed(20.0, 22.0)
+
+        # Assert state is IDLE (aborted - legacy behavior preserved)
+        assert tracker.state == CycleState.IDLE
+
+        # Assert temperature_history is empty (cleared)
+        assert len(tracker.temperature_history) == 0
+
 
 def test_cycle_tracker_module_exists():
     """Marker test to verify cycle tracker module exists."""
