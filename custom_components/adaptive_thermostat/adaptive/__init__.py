@@ -17,6 +17,7 @@ try:
         detect_rule_conflicts,
         resolve_rule_conflicts,
     )
+    from .persistence import LearningDataStore
     __all__ = [
         "ThermalRateLearner",
         "PhaseAwareOvershootTracker",
@@ -31,6 +32,8 @@ try:
         "evaluate_pid_rules",
         "detect_rule_conflicts",
         "resolve_rule_conflicts",
+        # Persistence
+        "LearningDataStore",
     ]
 except ImportError:
     # Handle case where module is imported in unusual way (e.g., test path manipulation)
