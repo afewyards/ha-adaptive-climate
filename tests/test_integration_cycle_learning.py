@@ -335,6 +335,74 @@ class TestValveModeCycleTracking:
         assert mock_adaptive_learner.add_cycle_metrics.call_count == 1
 
 
+class TestCycleResumedAfterSetpointChange:
+    """Test complete cycle with setpoint change mid-cycle."""
+
+    @pytest.mark.asyncio
+    async def test_cycle_tracked_despite_setpoint_change(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks
+    ):
+        """Test that cycle completes when setpoint changes while heater is active."""
+        # Create mock for get_is_device_active returning True
+        mock_is_device_active = MagicMock(return_value=True)
+
+        # Create tracker with get_is_device_active callback
+        tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="bedroom",
+            adaptive_learner=mock_adaptive_learner,
+            get_target_temp=mock_callbacks["get_target_temp"],
+            get_current_temp=mock_callbacks["get_current_temp"],
+            get_hvac_mode=mock_callbacks["get_hvac_mode"],
+            get_in_grace_period=mock_callbacks["get_in_grace_period"],
+            get_is_device_active=mock_is_device_active,
+        )
+
+        # Start heating
+        start_time = datetime(2024, 1, 1, 10, 0, 0)
+        tracker.on_heating_started(start_time)
+
+        assert tracker.state == CycleState.HEATING
+
+        # Collect 5 temperature samples
+        current_time = start_time
+        for i in range(5):
+            temp = 19.0 + i * 0.2
+            await tracker.update_temperature(current_time, temp)
+            current_time += timedelta(seconds=30)
+
+        # Change setpoint mid-cycle (heater still active)
+        tracker.on_setpoint_changed(21.0, 22.0)
+
+        # Assert state is still HEATING and _was_interrupted is True
+        assert tracker.state == CycleState.HEATING
+        assert tracker._was_interrupted is True
+
+        # Collect 15 more temperature samples
+        for i in range(15):
+            temp = 20.0 + min(i * 0.1, 2.0)
+            await tracker.update_temperature(current_time, temp)
+            current_time += timedelta(seconds=30)
+
+        # Change get_is_device_active mock to return False
+        mock_is_device_active.return_value = False
+
+        # Stop heating
+        tracker.on_heating_stopped(current_time)
+
+        # Assert state transitions to SETTLING
+        assert tracker.state == CycleState.SETTLING
+
+        # Add 10 settling samples at stable temperature
+        for _ in range(10):
+            await tracker.update_temperature(current_time, 22.0)
+            current_time += timedelta(seconds=30)
+
+        # Assert state becomes IDLE and add_cycle_metrics was called
+        assert tracker.state == CycleState.IDLE
+        assert mock_adaptive_learner.add_cycle_metrics.call_count == 1
+
+
 # Marker test for module existence
 def test_integration_cycle_learning_module_exists():
     """Marker test to verify module can be imported."""
