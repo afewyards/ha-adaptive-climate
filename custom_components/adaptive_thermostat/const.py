@@ -212,6 +212,9 @@ MAX_CYCLE_HISTORY = 100
 MIN_OUTDOOR_TEMP_RANGE = 3.0  # Minimum outdoor temp variation needed for correlation analysis (°C)
 SLOW_RESPONSE_CORRELATION_THRESHOLD = 0.6  # Correlation threshold for diagnosing Ki vs Kp issues
 
+# Rule hysteresis band for preventing oscillation in PID adjustments (v0.7.0)
+RULE_HYSTERESIS_BAND_PCT = 0.20  # 20% hysteresis band between activate/release thresholds
+
 # Minimum interval between PID adjustments in hours (rate limiting)
 # Updated from 24h to 8h in v0.7.0 for faster convergence with hybrid gate
 MIN_ADJUSTMENT_INTERVAL = 8

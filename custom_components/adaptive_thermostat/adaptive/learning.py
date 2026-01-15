@@ -23,6 +23,7 @@ from ..const import (
 from .pid_rules import (
     PIDRule,
     PIDRuleResult,
+    RuleStateTracker,
     evaluate_pid_rules,
     detect_rule_conflicts,
     resolve_rule_conflicts,
@@ -83,6 +84,8 @@ class AdaptiveLearner:
         self._duty_cycle_history: List[float] = []
         # Hybrid rate limiting: track cycles since last adjustment
         self._cycles_since_last_adjustment: int = 0
+        # Rule state tracker with hysteresis to prevent oscillation
+        self._rule_state_tracker = RuleStateTracker()
 
     @property
     def cycle_history(self) -> List[CycleMetrics]:
@@ -344,12 +347,13 @@ class AdaptiveLearner:
             _LOGGER.info("Skipping PID adjustment - system has converged")
             return None
 
-        # Evaluate all applicable rules
+        # Evaluate all applicable rules with hysteresis tracking
         rule_results = evaluate_pid_rules(
             avg_overshoot, avg_undershoot, avg_oscillations,
             avg_rise_time, avg_settling_time,
             recent_rise_times=rise_time_values,
             recent_outdoor_temps=outdoor_temp_values,
+            state_tracker=self._rule_state_tracker,
         )
 
         if not rule_results:

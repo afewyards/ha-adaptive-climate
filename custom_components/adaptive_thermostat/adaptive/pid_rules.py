@@ -12,6 +12,7 @@ from ..const import (
     RULE_PRIORITY_OSCILLATION,
     RULE_PRIORITY_OVERSHOOT,
     RULE_PRIORITY_SLOW_RESPONSE,
+    RULE_HYSTERESIS_BAND_PCT,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -82,6 +83,87 @@ class PIDRuleResult(NamedTuple):
     reason: str       # Human-readable reason for adjustment
 
 
+class RuleStateTracker:
+    """Tracks rule activation state with hysteresis to prevent oscillation.
+
+    Hysteresis prevents rules from rapidly activating/deactivating when metrics
+    hover near thresholds, which would cause PID parameters to oscillate.
+
+    Example: Overshoot rule with 0.2°C activation threshold and 20% hysteresis:
+    - Inactive → Active when overshoot > 0.2°C (activation threshold)
+    - Active → Inactive when overshoot < 0.16°C (release threshold = 0.2 * 0.8)
+    - Between 0.16-0.2°C: maintains current state (hysteresis band)
+    """
+
+    def __init__(self, hysteresis_band_pct: float = RULE_HYSTERESIS_BAND_PCT):
+        """Initialize the rule state tracker.
+
+        Args:
+            hysteresis_band_pct: Percentage hysteresis band (0.20 = 20%)
+        """
+        self._hysteresis_band_pct = hysteresis_band_pct
+        self._rule_states: Dict[PIDRule, bool] = {}  # True = active, False = inactive
+
+    def update_state(
+        self,
+        rule: PIDRule,
+        metric_value: float,
+        activation_threshold: float
+    ) -> bool:
+        """Update and return the state of a rule with hysteresis logic.
+
+        Args:
+            rule: The PID rule to check
+            metric_value: Current metric value (e.g., overshoot in °C)
+            activation_threshold: Threshold where rule activates
+
+        Returns:
+            True if rule is active, False if inactive
+        """
+        # Calculate release threshold (lower than activation for positive thresholds)
+        release_threshold = activation_threshold * (1.0 - self._hysteresis_band_pct)
+
+        # Get current state (default to inactive if never seen before)
+        current_state = self._rule_states.get(rule, False)
+
+        # State transition logic with hysteresis
+        if not current_state:
+            # Currently inactive: activate if metric exceeds activation threshold
+            if metric_value > activation_threshold:
+                self._rule_states[rule] = True
+                _LOGGER.debug(
+                    f"Rule '{rule.rule_name}' activated: {metric_value:.3f} > {activation_threshold:.3f}"
+                )
+                return True
+        else:
+            # Currently active: deactivate only if metric drops below release threshold
+            if metric_value < release_threshold:
+                self._rule_states[rule] = False
+                _LOGGER.debug(
+                    f"Rule '{rule.rule_name}' deactivated: {metric_value:.3f} < {release_threshold:.3f}"
+                )
+                return False
+
+        # Maintain current state (in hysteresis band)
+        return current_state
+
+    def is_active(self, rule: PIDRule) -> bool:
+        """Check if a rule is currently active.
+
+        Args:
+            rule: The PID rule to check
+
+        Returns:
+            True if active, False if inactive or never evaluated
+        """
+        return self._rule_states.get(rule, False)
+
+    def reset(self):
+        """Reset all rule states to inactive."""
+        self._rule_states.clear()
+        _LOGGER.debug("All rule states reset")
+
+
 def evaluate_pid_rules(
     avg_overshoot: float,
     avg_undershoot: float,
@@ -90,6 +172,7 @@ def evaluate_pid_rules(
     avg_settling_time: float,
     recent_rise_times: Optional[List[float]] = None,
     recent_outdoor_temps: Optional[List[float]] = None,
+    state_tracker: Optional[RuleStateTracker] = None,
 ) -> List[PIDRuleResult]:
     """
     Evaluate all PID tuning rules against current metrics.
@@ -102,6 +185,7 @@ def evaluate_pid_rules(
         avg_settling_time: Average settling time in minutes
         recent_rise_times: List of recent rise times for correlation analysis (optional)
         recent_outdoor_temps: List of recent outdoor temps for correlation analysis (optional)
+        state_tracker: Optional RuleStateTracker for hysteresis logic (optional, backward compatible)
 
     Returns:
         List of applicable rule results (rules that would fire)
@@ -110,9 +194,18 @@ def evaluate_pid_rules(
 
     results: List[PIDRuleResult] = []
 
+    # Helper to check if rule should fire with hysteresis
+    def should_fire(rule: PIDRule, metric: float, threshold: float) -> bool:
+        """Check if rule should fire, using hysteresis if tracker provided."""
+        if state_tracker is not None:
+            return state_tracker.update_state(rule, metric, threshold)
+        else:
+            # No hysteresis: simple threshold comparison (backward compatible)
+            return metric > threshold
+
     # Rule 1: High overshoot (>1.0C) - Extreme case
     # Thermal lag is root cause, Kd addresses it. For extreme cases, also reduce Kp.
-    if avg_overshoot > 1.0:
+    if should_fire(PIDRule.HIGH_OVERSHOOT, avg_overshoot, 1.0):
         results.append(PIDRuleResult(
             rule=PIDRule.HIGH_OVERSHOOT,
             kp_factor=0.90,  # Reduce Kp by 10% for extreme overshoot
@@ -122,7 +215,7 @@ def evaluate_pid_rules(
         ))
     # Rule 2: Moderate overshoot (0.2-1.0C) - Increase Kd only
     # Thermal lag is root cause, Kd addresses it without touching Kp
-    elif avg_overshoot > 0.2:
+    elif should_fire(PIDRule.MODERATE_OVERSHOOT, avg_overshoot, 0.2):
         results.append(PIDRuleResult(
             rule=PIDRule.MODERATE_OVERSHOOT,
             kp_factor=1.0,
@@ -133,7 +226,7 @@ def evaluate_pid_rules(
 
     # Rule 3: Slow response (rise time >60 min)
     # Diagnose root cause: Ki (outdoor correlation) vs Kp (no correlation)
-    if avg_rise_time > 60:
+    if should_fire(PIDRule.SLOW_RESPONSE, avg_rise_time, 60):
         # Default to old behavior (increase Kp)
         kp_factor = 1.10
         ki_factor = 1.0
@@ -174,7 +267,7 @@ def evaluate_pid_rules(
         ))
 
     # Rule 4: Undershoot (>0.3C)
-    if avg_undershoot > 0.3:
+    if should_fire(PIDRule.UNDERSHOOT, avg_undershoot, 0.3):
         increase = min(1.0, avg_undershoot * 2.0)  # Up to 100% increase (doubling)
         increase_pct = increase * 100.0
         results.append(PIDRuleResult(
@@ -186,7 +279,7 @@ def evaluate_pid_rules(
         ))
 
     # Rule 5: Many oscillations (>3)
-    if avg_oscillations > 3:
+    if should_fire(PIDRule.MANY_OSCILLATIONS, avg_oscillations, 3):
         results.append(PIDRuleResult(
             rule=PIDRule.MANY_OSCILLATIONS,
             kp_factor=0.90,
@@ -195,7 +288,7 @@ def evaluate_pid_rules(
             reason=f"Many oscillations ({avg_oscillations:.1f})"
         ))
     # Rule 6: Some oscillations (>1, only if many didn't fire)
-    elif avg_oscillations > 1:
+    elif should_fire(PIDRule.SOME_OSCILLATIONS, avg_oscillations, 1):
         results.append(PIDRuleResult(
             rule=PIDRule.SOME_OSCILLATIONS,
             kp_factor=1.0,
@@ -205,7 +298,7 @@ def evaluate_pid_rules(
         ))
 
     # Rule 7: Slow settling (>90 min)
-    if avg_settling_time > 90:
+    if should_fire(PIDRule.SLOW_SETTLING, avg_settling_time, 90):
         results.append(PIDRuleResult(
             rule=PIDRule.SLOW_SETTLING,
             kp_factor=1.0,
