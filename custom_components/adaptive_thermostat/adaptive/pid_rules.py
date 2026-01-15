@@ -66,24 +66,25 @@ def evaluate_pid_rules(
     """
     results: List[PIDRuleResult] = []
 
-    # Rule 1: High overshoot (>0.5C)
-    if avg_overshoot > 0.5:
-        reduction = min(0.15, avg_overshoot * 0.2)  # Up to 15% reduction
+    # Rule 1: High overshoot (>1.0C) - Extreme case
+    # Thermal lag is root cause, Kd addresses it. For extreme cases, also reduce Kp.
+    if avg_overshoot > 1.0:
         results.append(PIDRuleResult(
             rule=PIDRule.HIGH_OVERSHOOT,
-            kp_factor=1.0 - reduction,
+            kp_factor=0.90,  # Reduce Kp by 10% for extreme overshoot
             ki_factor=0.9,
-            kd_factor=1.0,
-            reason=f"High overshoot ({avg_overshoot:.2f}°C)"
+            kd_factor=1.20,  # Increase Kd by 20% to handle thermal lag
+            reason=f"Extreme overshoot ({avg_overshoot:.2f}°C, increase Kd+reduce Kp)"
         ))
-    # Rule 2: Moderate overshoot (>0.2C, only if high overshoot didn't fire)
+    # Rule 2: Moderate overshoot (0.2-1.0C) - Increase Kd only
+    # Thermal lag is root cause, Kd addresses it without touching Kp
     elif avg_overshoot > 0.2:
         results.append(PIDRuleResult(
             rule=PIDRule.MODERATE_OVERSHOOT,
-            kp_factor=0.95,
+            kp_factor=1.0,
             ki_factor=1.0,
-            kd_factor=1.0,
-            reason=f"Moderate overshoot ({avg_overshoot:.2f}°C)"
+            kd_factor=1.20,  # Increase Kd by 20% to dampen overshoot
+            reason=f"Moderate overshoot ({avg_overshoot:.2f}°C, increase Kd)"
         ))
 
     # Rule 3: Slow response (rise time >60 min)
