@@ -12,7 +12,14 @@ class MockSensorEntity:
 
 class MockRestoreEntity:
     """Mock RestoreEntity base class."""
-    pass
+
+    async def async_added_to_hass(self):
+        """Mock async_added_to_hass for base class."""
+        pass
+
+    async def async_get_last_state(self):
+        """Return None by default - tests will override."""
+        return None
 
 
 # Mock homeassistant modules before importing sensors

@@ -66,7 +66,13 @@ def _setup_mocks():
 
     # Create a distinct class for RestoreEntity to avoid duplicate base class error
     class MockRestoreEntity:
-        pass
+        async def async_added_to_hass(self):
+            """Mock async_added_to_hass for base class."""
+            pass
+
+        async def async_get_last_state(self):
+            """Return None by default - tests will override."""
+            return None
 
     mock_restore_state = Mock()
     mock_restore_state.RestoreEntity = MockRestoreEntity
