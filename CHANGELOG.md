@@ -1,6 +1,116 @@
 # CHANGELOG
 
 
+## v0.6.1 (2026-01-15)
+
+### Bug Fixes
+
+- Register zone with coordinator before adding entity
+  ([`839f40f`](https://github.com/afewyards/ha-adaptive-thermostat/commit/839f40f353b40b18f8aca29b32bde486858eee2c))
+
+Move zone registration to happen BEFORE async_add_entities() is called. This ensures zone_data
+  (including adaptive_learner) is available when async_added_to_hass() runs, allowing
+  CycleTrackerManager to be properly initialized.
+
+Previously, zone registration happened after entity addition, causing a race condition where
+  async_added_to_hass() would find no zone_data and skip creating the CycleTrackerManager entirely.
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+### Refactoring
+
+- Extract build_state_attributes from climate.py
+  ([`9fc7eee`](https://github.com/afewyards/ha-adaptive-thermostat/commit/9fc7eeec48dbbd201f7b78164c00fbb2190bfea6))
+
+Extract extra_state_attributes logic into managers/state_attributes.py, reducing climate.py by ~82
+  lines and improving code organization.
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+- Extract ControlOutputManager from climate.py
+  ([`76bafc2`](https://github.com/afewyards/ha-adaptive-thermostat/commit/76bafc2c05f47ea508426d431b200f9a115d501b))
+
+Extract calc_output() logic into new ControlOutputManager class. Simplify set_control_value() and
+  pwm_switch() by removing fallback code since HeaterController handles all control operations.
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+- Extract LearningDataStore from adaptive/learning.py
+  ([`74b87fa`](https://github.com/afewyards/ha-adaptive-thermostat/commit/74b87fa44cf418e855bcc1c761388e4d237e04d3))
+
+Extract LearningDataStore class to dedicated persistence.py module: - Move all persistence logic
+  (save, load, restore methods) - Add backward-compatible re-exports in learning.py and __init__.py
+  - Reduce learning.py from 771 to 481 lines
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+- Extract NightSetbackCalculator from climate.py
+  ([`2e37387`](https://github.com/afewyards/ha-adaptive-thermostat/commit/2e3738755ff74f243b6a9e1a8f9f63233bee81d7))
+
+Move night setback calculation logic into dedicated NightSetbackCalculator class in
+  managers/night_setback_calculator.py. This reduces climate.py by ~150 lines and improves
+  separation of concerns.
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+- Extract PID rule engine from adaptive/learning.py
+  ([`a1dccc2`](https://github.com/afewyards/ha-adaptive-thermostat/commit/a1dccc2de5e2bc0eebc47c089e8d94e30f23dba3))
+
+- Create adaptive/pid_rules.py with PIDRule enum and PIDRuleResult namedtuple - Extract
+  evaluate_pid_rules(), detect_rule_conflicts(), resolve_rule_conflicts() - Update
+  AdaptiveLearner.calculate_pid_adjustment() to use imported functions - Add re-exports in
+  adaptive/__init__.py for backward compatibility
+
+Story 2.1 complete. All 90 learning tests pass.
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+- Extract PIDTuningManager from climate.py
+  ([`314983a`](https://github.com/afewyards/ha-adaptive-thermostat/commit/314983af276b94cf5bbfb0f958c298ef34014c67))
+
+Move PID tuning service methods (async_set_pid, async_set_pid_mode, async_reset_pid_to_physics,
+  async_apply_adaptive_pid, async_apply_adaptive_ke) to new managers/pid_tuning.py module.
+  Climate.py service handlers now delegate to PIDTuningManager instance.
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+- Extract PWM tuning utilities from adaptive/learning.py
+  ([`674d230`](https://github.com/afewyards/ha-adaptive-thermostat/commit/674d230f0303965ae2ec31d310fcac9e5eaf13a2))
+
+- Create adaptive/pwm_tuning.py with calculate_pwm_adjustment() and ValveCycleTracker - Update
+  learning.py to import and re-export for backward compatibility - Update adaptive/__init__.py with
+  re-exports - Reduce learning.py from 481 to 392 lines
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+- Extract StateRestorer from climate.py
+  ([`bee004a`](https://github.com/afewyards/ha-adaptive-thermostat/commit/bee004ace5ebc4dda5f8976459e61812adf10519))
+
+Move state restoration logic into dedicated StateRestorer manager class: - _restore_state() for
+  target temp, preset mode, HVAC mode - _restore_pid_values() for PID integral, gains (Kp, Ki, Kd,
+  Ke), and PID mode - Single restore() entry point for async_added_to_hass
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+- Remove fallback code sections from climate.py
+  ([`8c4b5a4`](https://github.com/afewyards/ha-adaptive-thermostat/commit/8c4b5a418e6ff7e1a0f192f0ba683b1d323959d0))
+
+All managers are now initialized in async_added_to_hass before any methods can be called, making the
+  fallback code paths unreachable.
+
+Removed fallbacks from: - async_set_pid(), async_set_pid_mode() - delegate to PIDTuningManager -
+  async_set_preset_temp() - delegate to TemperatureManager - async_reset_pid_to_physics(),
+  async_apply_adaptive_pid() - delegate to PIDTuningManager - _is_device_active,
+  heater_or_cooler_entity - delegate to HeaterController - _async_call_heater_service,
+  _async_heater_turn_on/off, _async_set_valve_value - delegate to HeaterController -
+  async_set_preset_mode, preset_mode/s, presets - delegate to TemperatureManager - calc_output() -
+  delegate to ControlOutputManager - async_set_temperature() - delegate to TemperatureManager
+
+climate.py reduced from 2239 to 1781 lines (-458 lines, -20.5%)
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+
 ## v0.6.0 (2026-01-15)
 
 ### Bug Fixes
