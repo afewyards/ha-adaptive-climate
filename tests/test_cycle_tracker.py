@@ -741,8 +741,9 @@ class TestSetpointChangeWithDeviceActive:
         # Assert _cycle_target_temp updated to new value
         assert tracker._cycle_target_temp == 22.0
 
-        # Assert _was_interrupted is True
-        assert tracker._was_interrupted is True
+        # Assert interruption was recorded
+        assert len(tracker._interruption_history) == 1
+        assert tracker._interruption_history[0][1] == "setpoint_minor"
 
         # Assert temperature_history is preserved
         assert len(tracker.temperature_history) == 1
@@ -850,8 +851,8 @@ class TestSetpointChangeWithDeviceActive:
         # Assert _cycle_target_temp is the latest value
         assert tracker._cycle_target_temp == 23.0
 
-        # Assert len(_setpoint_changes) == 3
-        assert len(tracker._setpoint_changes) == 3
+        # Assert 3 interruptions were recorded
+        assert len(tracker._interruption_history) == 3
 
 
 class TestResetCycleState:
@@ -878,12 +879,9 @@ class TestResetCycleState:
         tracker.on_heating_started(start_time)
         assert tracker.state == CycleState.HEATING
 
-        # Set _was_interrupted = True
-        tracker._was_interrupted = True
-
-        # Add items to _setpoint_changes
-        tracker._setpoint_changes.append((datetime(2025, 1, 14, 10, 5, 0), 20.0, 22.0))
-        tracker._setpoint_changes.append((datetime(2025, 1, 14, 10, 10, 0), 22.0, 21.0))
+        # Add items to _interruption_history
+        tracker._interruption_history.append((datetime(2025, 1, 14, 10, 5, 0), "setpoint_minor"))
+        tracker._interruption_history.append((datetime(2025, 1, 14, 10, 10, 0), "setpoint_minor"))
 
         # Add items to _temperature_history
         tracker._temperature_history.append((datetime(2025, 1, 14, 10, 0, 30), 18.5))
@@ -896,11 +894,8 @@ class TestResetCycleState:
         # Assert _state == CycleState.IDLE
         assert tracker._state == CycleState.IDLE
 
-        # Assert _was_interrupted == False
-        assert tracker._was_interrupted is False
-
-        # Assert _setpoint_changes is empty
-        assert len(tracker._setpoint_changes) == 0
+        # Assert _interruption_history is empty
+        assert len(tracker._interruption_history) == 0
 
         # Assert _temperature_history is empty
         assert len(tracker._temperature_history) == 0

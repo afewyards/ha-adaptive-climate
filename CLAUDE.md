@@ -202,9 +202,27 @@ The `CycleTrackerManager` implements a three-state machine for real-time learnin
 - HEATING → SETTLING: When `HeaterController` turns off heater (after min 5 min)
 - SETTLING → IDLE: When temperature stabilizes OR 120 min timeout
 
-**Interruptions:** Setpoint changes, HVAC mode changes, or contact sensor triggers invalidate the current cycle and reset to IDLE.
+**Interruptions:** Setpoint changes, HVAC mode changes, or contact sensor triggers may invalidate the current cycle. Interruption handling uses the `InterruptionClassifier` for consistent decision-making.
 
-**Output:** Valid cycles produce `CycleMetrics` fed to `AdaptiveLearner` for PID tuning recommendations.
+**Output:** Valid cycles produce `CycleMetrics` (with `interruption_history` for debugging) fed to `AdaptiveLearner` for PID tuning recommendations.
+
+#### Interruption Decision Matrix
+
+The `InterruptionClassifier` in `adaptive/cycle_analysis.py` provides standardized interruption handling:
+
+| Interruption Type | Classification Logic | Action | Rationale |
+|-------------------|---------------------|---------|-----------|
+| **Setpoint Change (Major)** | ΔT > 0.5°C AND device inactive | **Abort cycle** | Large setpoint change when heater off indicates user intent change - cycle data no longer valid |
+| **Setpoint Change (Minor)** | ΔT ≤ 0.5°C OR device active | **Continue tracking** | Small adjustments or changes during active heating - update target and continue |
+| **Mode Change** | Incompatible mode transition | **Abort cycle** | heat→off, cool→heat, etc. terminate control - cycle invalid |
+| **Mode Change (Compatible)** | heat→auto, cool→auto, etc. | **Continue tracking** | Compatible mode changes preserve control objective |
+| **Contact Sensor** | Open > 300s (5 min) | **Abort cycle** | Extended window/door opening invalidates thermal model |
+| **Contact Sensor (Grace)** | Open ≤ 300s | **No interruption** | Brief openings (checking mail, etc.) - cycle continues |
+| **Settling Timeout** | 120 min without stabilization | **Finalize cycle** | Prevents infinite settling wait - record what we have |
+
+**Constants:**
+- `SETPOINT_MAJOR_THRESHOLD = 0.5°C` - threshold for major vs minor setpoint changes
+- `CONTACT_GRACE_PERIOD = 300s` - grace period for brief contact sensor openings
 
 ```mermaid
 stateDiagram-v2

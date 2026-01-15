@@ -77,8 +77,7 @@ class CycleTrackerManager:
         self._cycle_target_temp: float | None = None
         self._temperature_history: list[tuple[datetime, float]] = []
         self._settling_timeout_handle = None
-        self._was_interrupted: bool = False
-        self._setpoint_changes: list[tuple[datetime, float, float]] = []
+        self._interruption_history: list[tuple[datetime, str]] = []
 
         # Constants
         self._max_settling_time_minutes = 120
@@ -255,6 +254,36 @@ class CycleTrackerManager:
                 self._logger.info("Settling complete, finalizing cycle")
                 await self._finalize_cycle()
 
+    def _handle_interruption(
+        self,
+        interruption_type: str,
+        should_abort: bool,
+        reason: str
+    ) -> None:
+        """Centralized interruption handler.
+
+        Args:
+            interruption_type: Type of interruption (from InterruptionType enum value)
+            should_abort: Whether to abort the cycle (True) or continue tracking (False)
+            reason: Human-readable reason for logging
+        """
+        from ..adaptive.cycle_analysis import InterruptionType
+
+        # Only process if we're in an active cycle
+        if self._state not in (CycleState.HEATING, CycleState.COOLING, CycleState.SETTLING):
+            return
+
+        # Record interruption in history
+        self._interruption_history.append((datetime.now(), interruption_type))
+
+        if should_abort:
+            # Abort the cycle
+            self._logger.info("Cycle aborted: %s", reason)
+            self._reset_cycle_state()
+        else:
+            # Continue tracking but mark as interrupted
+            self._logger.info("Cycle interrupted (continuing): %s", reason)
+
     def _reset_cycle_state(self) -> None:
         """Reset cycle state to IDLE and clear all cycle data.
 
@@ -267,10 +296,9 @@ class CycleTrackerManager:
         # Reset cycle tracking variables
         self._cycle_start_time = None
         self._cycle_target_temp = None
-        self._was_interrupted = False
 
-        # Clear setpoint changes
-        self._setpoint_changes.clear()
+        # Clear interruption history
+        self._interruption_history.clear()
 
         # Set state to IDLE
         self._state = CycleState.IDLE
@@ -356,38 +384,48 @@ class CycleTrackerManager:
     def on_setpoint_changed(self, old_temp: float, new_temp: float) -> None:
         """Handle setpoint change event.
 
-        If heater/cooler is active, continues tracking with the new setpoint and marks
-        the cycle as interrupted. Otherwise, aborts the current cycle.
+        Uses InterruptionClassifier to determine if change is major or minor.
+        Major changes (>0.5°C with device inactive) abort the cycle.
+        Minor changes (≤0.5°C or device active) continue tracking.
 
         Args:
             old_temp: Previous target temperature
             new_temp: New target temperature
         """
+        from ..adaptive.cycle_analysis import InterruptionClassifier, InterruptionType
+
         # Only process if we're in an active cycle
         if self._state not in (CycleState.HEATING, CycleState.COOLING, CycleState.SETTLING):
             return
 
-        # Check if heater/cooler is currently active
-        if self._get_is_device_active is not None and self._get_is_device_active():
-            # Continue tracking with new setpoint
-            self._logger.info(
-                "Setpoint changed while device active, continuing cycle tracking: %.2f°C -> %.2f°C",
-                old_temp,
-                new_temp,
-            )
-            self._cycle_target_temp = new_temp
-            self._was_interrupted = True
-            self._setpoint_changes.append((datetime.now(), old_temp, new_temp))
-            return
+        # Check if device is currently active
+        is_device_active = False
+        if self._get_is_device_active is not None:
+            is_device_active = self._get_is_device_active()
 
-        # Abort the cycle
-        self._logger.info(
-            "Cycle aborted due to setpoint change: %.2f°C -> %.2f°C",
-            old_temp,
-            new_temp,
+        # Classify the interruption
+        interruption_type = InterruptionClassifier.classify_setpoint_change(
+            old_temp, new_temp, is_device_active
         )
 
-        self._reset_cycle_state()
+        # Determine action based on classification
+        if interruption_type == InterruptionType.SETPOINT_MAJOR:
+            # Major change, abort cycle
+            reason = f"setpoint change: {old_temp:.2f}°C -> {new_temp:.2f}°C (device inactive)"
+            self._handle_interruption(
+                interruption_type.value,
+                should_abort=True,
+                reason=reason
+            )
+        else:
+            # Minor change, continue tracking with new setpoint
+            self._cycle_target_temp = new_temp
+            reason = f"setpoint change: {old_temp:.2f}°C -> {new_temp:.2f}°C (device active or minor)"
+            self._handle_interruption(
+                interruption_type.value,
+                should_abort=False,
+                reason=reason
+            )
 
     def on_contact_sensor_pause(self) -> None:
         """Handle contact sensor pause event.
@@ -395,50 +433,47 @@ class CycleTrackerManager:
         Aborts the current cycle if in HEATING, COOLING, or SETTLING state, as
         climate control has been paused due to window/door opening.
         """
-        # Only abort if we're in an active cycle
-        if self._state not in (CycleState.HEATING, CycleState.COOLING, CycleState.SETTLING):
-            return
+        from ..adaptive.cycle_analysis import InterruptionType
 
-        # Abort the cycle
-        self._logger.info("Cycle aborted due to contact sensor pause")
-
-        self._reset_cycle_state()
+        # Use centralized interruption handler
+        self._handle_interruption(
+            InterruptionType.CONTACT_SENSOR.value,
+            should_abort=True,
+            reason="contact sensor pause (window/door opened)"
+        )
 
     def on_mode_changed(self, old_mode: str, new_mode: str) -> None:
         """Handle HVAC mode change event.
 
-        Aborts the current cycle if mode changes away from the active mode,
-        as the climate control operation has been terminated.
+        Uses InterruptionClassifier to determine if mode change is compatible
+        with current cycle state. Incompatible changes abort the cycle.
 
         Args:
             old_mode: Previous HVAC mode
             new_mode: New HVAC mode
         """
-        # Only abort if we're in an active cycle
+        from ..adaptive.cycle_analysis import InterruptionClassifier, InterruptionType
+
+        # Only process if we're in an active cycle
         if self._state not in (CycleState.HEATING, CycleState.COOLING, CycleState.SETTLING):
             return
 
-        # Determine if mode change requires aborting the cycle
-        # Abort if:
-        # - We were heating and mode changed to off or cool
-        # - We were cooling and mode changed to off or heat
-        should_abort = False
-        if self._state == CycleState.HEATING and new_mode in ("off", "cool"):
-            should_abort = True
-        elif self._state == CycleState.COOLING and new_mode in ("off", "heat"):
-            should_abort = True
-        elif self._state == CycleState.SETTLING and new_mode == "off":
-            should_abort = True
+        # Map cycle state to string for classifier
+        cycle_state_str = self._state.value  # "heating", "cooling", or "settling"
 
-        if should_abort:
-            # Abort the cycle
-            self._logger.info(
-                "Cycle aborted due to mode change: %s -> %s",
-                old_mode,
-                new_mode,
+        # Classify the interruption
+        interruption_type = InterruptionClassifier.classify_mode_change(
+            old_mode, new_mode, cycle_state_str
+        )
+
+        if interruption_type is not None:
+            # Incompatible mode change, abort cycle
+            reason = f"mode change: {old_mode} -> {new_mode} (incompatible with {cycle_state_str})"
+            self._handle_interruption(
+                interruption_type.value,
+                should_abort=True,
+                reason=reason
             )
-
-            self._reset_cycle_state()
 
     async def _finalize_cycle(self) -> None:
         """Finalize cycle and record metrics.
@@ -459,10 +494,10 @@ class CycleTrackerManager:
             return
 
         # Log interruption status if cycle was interrupted
-        if self._was_interrupted:
+        if len(self._interruption_history) > 0:
             self._logger.info(
-                "Cycle had %d setpoint changes during tracking",
-                len(self._setpoint_changes),
+                "Cycle had %d interruptions during tracking",
+                len(self._interruption_history),
             )
 
         # Import cycle analysis functions
@@ -518,7 +553,7 @@ class CycleTrackerManager:
             wind_speeds=None,    # TODO: Wire up wind sensor data
         )
 
-        # Create CycleMetrics object
+        # Create CycleMetrics object with interruption history
         metrics = CycleMetrics(
             overshoot=overshoot,
             undershoot=undershoot,
@@ -526,6 +561,7 @@ class CycleTrackerManager:
             oscillations=oscillations,
             rise_time=rise_time,
             disturbances=disturbances,
+            interruption_history=self._interruption_history.copy(),
         )
 
         # Record metrics with adaptive learner

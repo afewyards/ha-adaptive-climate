@@ -6,10 +6,107 @@ and settling time analysis.
 """
 
 from datetime import datetime
+from enum import Enum
 from typing import List, Optional, Tuple
 import logging
 
 _LOGGER = logging.getLogger(__name__)
+
+
+class InterruptionType(Enum):
+    """Types of cycle interruptions."""
+
+    SETPOINT_MAJOR = "setpoint_major"  # >0.5°C change with device inactive
+    SETPOINT_MINOR = "setpoint_minor"  # ≤0.5°C change or device active
+    MODE_CHANGE = "mode_change"         # HVAC mode changed (heat→off, cool→heat, etc.)
+    CONTACT_SENSOR = "contact_sensor"   # Window/door opened
+    TIMEOUT = "timeout"                 # Settling timeout reached
+    EXTERNAL = "external"               # Other external interruption
+
+
+class InterruptionClassifier:
+    """Classifies and handles cycle interruptions with consistent logic."""
+
+    # Classification thresholds
+    SETPOINT_MAJOR_THRESHOLD = 0.5  # °C - setpoint changes above this are "major"
+    CONTACT_GRACE_PERIOD = 300      # seconds - grace period for contact sensor
+
+    @staticmethod
+    def classify_setpoint_change(
+        old_temp: float,
+        new_temp: float,
+        is_device_active: bool
+    ) -> InterruptionType:
+        """Classify a setpoint change interruption.
+
+        Args:
+            old_temp: Previous target temperature
+            new_temp: New target temperature
+            is_device_active: Whether heater/cooler is currently active
+
+        Returns:
+            InterruptionType.SETPOINT_MAJOR if device inactive and change >0.5°C
+            InterruptionType.SETPOINT_MINOR if device active or change ≤0.5°C
+        """
+        delta = abs(new_temp - old_temp)
+
+        # If device is active, classify as minor (continue tracking)
+        if is_device_active:
+            return InterruptionType.SETPOINT_MINOR
+
+        # If device inactive, check magnitude
+        if delta > InterruptionClassifier.SETPOINT_MAJOR_THRESHOLD:
+            return InterruptionType.SETPOINT_MAJOR
+        else:
+            return InterruptionType.SETPOINT_MINOR
+
+    @staticmethod
+    def classify_mode_change(
+        old_mode: str,
+        new_mode: str,
+        current_cycle_state: str
+    ) -> Optional[InterruptionType]:
+        """Classify a mode change interruption.
+
+        Args:
+            old_mode: Previous HVAC mode (heat, cool, off, etc.)
+            new_mode: New HVAC mode
+            current_cycle_state: Current cycle state (heating, cooling, settling)
+
+        Returns:
+            InterruptionType.MODE_CHANGE if mode change is incompatible
+            None if mode change is compatible (no interruption)
+        """
+        # Map cycle states to compatible modes
+        compatible_modes = {
+            "heating": ["heat", "auto"],
+            "cooling": ["cool", "auto"],
+            "settling": ["heat", "cool", "auto"],  # Can settle from any active mode
+        }
+
+        # Check if new mode is compatible with current cycle state
+        if current_cycle_state in compatible_modes:
+            if new_mode not in compatible_modes[current_cycle_state]:
+                return InterruptionType.MODE_CHANGE
+
+        return None  # Compatible mode change, no interruption
+
+    @staticmethod
+    def classify_contact_sensor(
+        contact_open_duration: float
+    ) -> Optional[InterruptionType]:
+        """Classify a contact sensor interruption.
+
+        Args:
+            contact_open_duration: Duration contact has been open in seconds
+
+        Returns:
+            InterruptionType.CONTACT_SENSOR if duration exceeds grace period
+            None if within grace period (no interruption)
+        """
+        if contact_open_duration > InterruptionClassifier.CONTACT_GRACE_PERIOD:
+            return InterruptionType.CONTACT_SENSOR
+        return None  # Within grace period, no interruption
 
 
 class PhaseAwareOvershootTracker:
@@ -144,6 +241,7 @@ class CycleMetrics:
         oscillations: int = 0,
         rise_time: Optional[float] = None,
         disturbances: Optional[List[str]] = None,
+        interruption_history: Optional[List[Tuple[datetime, str]]] = None,
     ):
         """
         Initialize cycle metrics.
@@ -155,6 +253,7 @@ class CycleMetrics:
             oscillations: Number of oscillations around target
             rise_time: Time to reach target from start in minutes
             disturbances: List of detected disturbance types (e.g., "solar_gain", "wind_loss")
+            interruption_history: List of (timestamp, interruption_type) tuples for debugging
         """
         self.overshoot = overshoot
         self.undershoot = undershoot
@@ -162,6 +261,7 @@ class CycleMetrics:
         self.oscillations = oscillations
         self.rise_time = rise_time
         self.disturbances = disturbances or []
+        self.interruption_history = interruption_history or []
 
     @property
     def is_disturbed(self) -> bool:
@@ -171,6 +271,15 @@ class CycleMetrics:
             True if disturbances were detected, False otherwise
         """
         return len(self.disturbances) > 0
+
+    @property
+    def was_interrupted(self) -> bool:
+        """Check if this cycle had any interruptions.
+
+        Returns:
+            True if interruptions were recorded, False otherwise
+        """
+        return len(self.interruption_history) > 0
 
 
 def calculate_overshoot(
