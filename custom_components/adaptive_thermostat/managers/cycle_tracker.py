@@ -47,6 +47,7 @@ class CycleTrackerManager:
         get_current_temp: Callable[[], float | None],
         get_hvac_mode: Callable[[], str],
         get_in_grace_period: Callable[[], bool],
+        get_is_device_active: Callable[[], bool] | None = None,
     ) -> None:
         """Initialize the cycle tracker manager.
 
@@ -58,6 +59,7 @@ class CycleTrackerManager:
             get_current_temp: Callback to get current temperature
             get_hvac_mode: Callback to get current HVAC mode
             get_in_grace_period: Callback to check if in learning grace period
+            get_is_device_active: Callback to check if heater/cooler is currently active
         """
         self._hass = hass
         self._zone_id = zone_id
@@ -66,6 +68,7 @@ class CycleTrackerManager:
         self._get_current_temp = get_current_temp
         self._get_hvac_mode = get_hvac_mode
         self._get_in_grace_period = get_in_grace_period
+        self._get_is_device_active = get_is_device_active
 
         # State tracking
         self._state: CycleState = CycleState.IDLE
@@ -73,6 +76,8 @@ class CycleTrackerManager:
         self._cycle_target_temp: float | None = None
         self._temperature_history: list[tuple[datetime, float]] = []
         self._settling_timeout_handle = None
+        self._was_interrupted: bool = False
+        self._setpoint_changes: list[tuple[datetime, float, float]] = []
 
         # Constants
         self._max_settling_time_minutes = 120
