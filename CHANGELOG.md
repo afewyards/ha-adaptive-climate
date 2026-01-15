@@ -1,6 +1,124 @@
 # CHANGELOG
 
 
+## v0.6.5 (2026-01-15)
+
+### Bug Fixes
+
+- Add _reset_cycle_state() helper to CycleTrackerManager
+  ([`374df55`](https://github.com/afewyards/ha-adaptive-thermostat/commit/374df55a90ccc91351320689bfcdf06909e3ebdc))
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+- Add get_is_device_active callback to CycleTrackerManager
+  ([`0c93878`](https://github.com/afewyards/ha-adaptive-thermostat/commit/0c938788fdd1faf9358315ec04ae4015f8ea2938))
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+- Add safety check to _is_device_active property
+  ([`fca6dd1`](https://github.com/afewyards/ha-adaptive-thermostat/commit/fca6dd1616f6c7cb20e203a9d691b9d96a3ae384))
+
+Add existence check for _heater_controller before accessing is_active method to prevent
+  AttributeError when controller is not yet initialized. Returns False when controller is None.
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+- Continue cycle tracking on setpoint change when heater is active
+  ([`4712dbf`](https://github.com/afewyards/ha-adaptive-thermostat/commit/4712dbf3b72977cc744f02eb2ddfecf0390d1b7d))
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+- Pass get_is_device_active callback to CycleTrackerManager
+  ([`770e538`](https://github.com/afewyards/ha-adaptive-thermostat/commit/770e5380ae358cd64fcf8f7d3b9d19f99a5b5a56))
+
+Add get_is_device_active callback parameter to CycleTrackerManager initialization in climate.py.
+  This allows the cycle tracker to properly monitor device state during cycle tracking.
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+- Update _finalize_cycle() to log interruption status
+  ([`bf507b6`](https://github.com/afewyards/ha-adaptive-thermostat/commit/bf507b64d40258fba1e5ec401f05193967ade0dc))
+
+- Add logging after validation checks to report setpoint changes during tracking - Replace inline
+  state resets with _reset_cycle_state() calls for consistency - Ensure _was_interrupted and
+  _setpoint_changes are cleared after finalization - All cycle tracker tests pass
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+### Refactoring
+
+- Use _reset_cycle_state() helper in abort paths
+  ([`de0843e`](https://github.com/afewyards/ha-adaptive-thermostat/commit/de0843eb76cf80e8a2896cd6da21686731e4dbff))
+
+Replace inline abort logic in on_setpoint_changed(), on_contact_sensor_pause(), and
+  on_mode_changed() with calls to _reset_cycle_state() helper method for consistent cycle cleanup.
+  Log messages preserved before reset calls.
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+### Testing
+
+- Add integration test for complete cycle with setpoint change mid-cycle
+  ([`d5261f2`](https://github.com/afewyards/ha-adaptive-thermostat/commit/d5261f24c0d759dc93bd1f7cc42990fa4c715507))
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+- Add integration test for cooling mode setpoint change
+  ([`36b7c24`](https://github.com/afewyards/ha-adaptive-thermostat/commit/36b7c2400ae9dd8d0f311284f5d7b1629af5cb09))
+
+Add COOLING state to CycleState enum and on_cooling_started/stopped methods to CycleTrackerManager.
+  Update existing methods to handle COOLING state: - update_temperature now collects samples during
+  COOLING - on_setpoint_changed continues tracking when cooler is active - on_contact_sensor_pause
+  aborts COOLING cycles - on_mode_changed handles COOLING to heat/off transitions
+
+Add test_setpoint_change_in_cooling_mode integration test that verifies setpoint changes while
+  cooler is active continue cycle tracking.
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+- Add unit test for _reset_cycle_state clearing all state
+  ([`9c52a00`](https://github.com/afewyards/ha-adaptive-thermostat/commit/9c52a003b13eb8051e56705f32fd8de587d652f6))
+
+Add test_reset_cycle_state_clears_all to verify that _reset_cycle_state() properly clears all state
+  variables: _state, _was_interrupted, _setpoint_changes, _temperature_history, _cycle_start_time,
+  and _cycle_target_temp.
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+- Add unit test for backward compatibility when callback not provided
+  ([`ab3ba59`](https://github.com/afewyards/ha-adaptive-thermostat/commit/ab3ba5953ef7f75596d6065d3aa11f1e7dc374c9))
+
+Adds test_setpoint_change_without_callback_aborts_cycle which verifies that when
+  get_is_device_active callback is not provided, setpoint changes abort the cycle (preserving legacy
+  behavior).
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+- Add unit test for multiple setpoint changes while heater active
+  ([`a9d9c62`](https://github.com/afewyards/ha-adaptive-thermostat/commit/a9d9c6209a1518254984316da4e74eb73772733b))
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+- Add unit test for setpoint change while heater inactive
+  ([`c1b9e62`](https://github.com/afewyards/ha-adaptive-thermostat/commit/c1b9e620b2dd5fda54d9b82f42b19c34a6778829))
+
+Add test_setpoint_change_while_heater_inactive_aborts_cycle to verify that when get_is_device_active
+  returns False, setpoint changes abort the cycle and clear temperature history (preserving
+  backward-compatible behavior).
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+- Add unit test for setpoint change while heater is active
+  ([`78bfc9b`](https://github.com/afewyards/ha-adaptive-thermostat/commit/78bfc9b8881f1014b68163743064b9be0e7af7c5))
+
+Test verifies that when setpoint changes while the heater is actively running, cycle tracking
+  continues instead of aborting. Checks that: - State remains HEATING (not aborted) -
+  _cycle_target_temp is updated to new value - _was_interrupted flag is set to True - Temperature
+  history is preserved
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+
 ## v0.6.4 (2026-01-15)
 
 ### Bug Fixes
