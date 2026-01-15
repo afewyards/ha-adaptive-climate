@@ -107,15 +107,80 @@ def calculate_thermal_time_constant(
     return tau_base
 
 
+def calculate_power_scaling_factor(
+    heating_type: str,
+    area_m2: Optional[float],
+    max_power_w: Optional[float],
+) -> float:
+    """Calculate power scaling factor for PID gains based on heater power.
+
+    The process gain (system response to heating input) depends on heater power.
+    Systems with lower power density (W/m²) respond more slowly and need higher
+    PID gains (higher controller output for same temperature error).
+
+    This function calculates a scaling factor that adjusts PID gains to account
+    for heater power deviating from the baseline for each heating type.
+
+    Args:
+        heating_type: Type of heating system (floor_hydronic, radiator, etc.)
+        area_m2: Zone floor area in square meters. Required if max_power_w provided.
+        max_power_w: Total heater power in watts. If None, returns 1.0 (no scaling).
+
+    Returns:
+        Power scaling factor (0.25 - 4.0). Values > 1.0 indicate undersized system
+        (needs higher gains), < 1.0 indicates oversized system (needs lower gains).
+
+    Formula:
+        scaling = baseline_power_density / actual_power_density
+
+    Example:
+        - 50m² zone with floor_hydronic (baseline 20 W/m²)
+        - 500W heater installed (10 W/m² actual)
+        - scaling = 20 / 10 = 2.0 (double the PID gains for undersized system)
+    """
+    # Import here to avoid circular dependency
+    from ..const import HEATING_TYPE_CHARACTERISTICS
+
+    # Return 1.0 (no scaling) if power not configured
+    if max_power_w is None or area_m2 is None or area_m2 <= 0:
+        return 1.0
+
+    # Get baseline power density for heating type
+    heating_chars = HEATING_TYPE_CHARACTERISTICS.get(
+        heating_type, HEATING_TYPE_CHARACTERISTICS["convector"]
+    )
+    baseline_power_w_m2 = heating_chars.get("baseline_power_w_m2", 60)
+
+    # Calculate actual power density
+    actual_power_w_m2 = max_power_w / area_m2
+
+    # Power scaling: inverse relationship
+    # Lower power density → higher gains needed (slower response)
+    # Higher power density → lower gains needed (faster response)
+    power_factor = baseline_power_w_m2 / actual_power_w_m2
+
+    # Clamp to 0.25x - 4.0x range for safety
+    # 0.25x = system 4x oversized (very fast, needs conservative gains)
+    # 4.0x = system 4x undersized (very slow, needs aggressive gains)
+    power_factor = max(0.25, min(4.0, power_factor))
+
+    return power_factor
+
+
 def calculate_initial_pid(
     thermal_time_constant: float,
     heating_type: str = "floor_hydronic",
+    area_m2: Optional[float] = None,
+    max_power_w: Optional[float] = None,
 ) -> Tuple[float, float, float]:
     """Calculate initial PID parameters using empirical heating system values.
 
     Uses empirically-derived base values for each heating type, with minor
     adjustments based on thermal time constant. These values are calibrated
     for real-world HVAC systems rather than theoretical Ziegler-Nichols.
+
+    Optionally applies power scaling to account for heater power deviating
+    from baseline expectations (undersized or oversized systems).
 
     Args:
         thermal_time_constant: System thermal time constant in hours (tau).
@@ -124,6 +189,9 @@ def calculate_initial_pid(
             - "radiator": Traditional radiators (moderate response)
             - "convector": Convection heaters (faster response)
             - "forced_air": Forced air heating (fast response)
+        area_m2: Zone floor area in square meters. Required for power scaling.
+        max_power_w: Total heater power in watts. If provided with area_m2,
+                     PID gains are scaled based on power density.
 
     Returns:
         Tuple of (Kp, Ki, Kd) PID parameters.
@@ -132,6 +200,7 @@ def calculate_initial_pid(
         - Floor heating needs very low Ki (slow integration, avoid wind-up)
         - Floor heating needs high Kd (dampen slow oscillations)
         - Faster systems (convector, forced_air) can use higher Ki, lower Kd
+        - Power scaling: undersized systems get higher gains, oversized get lower gains
     """
     # Empirical base values per heating type
     # Calibrated from real-world A+++ house with floor hydronic heating
@@ -156,6 +225,14 @@ def calculate_initial_pid(
     # Strengthen Ki adjustment with power 1.5 to improve slow-building performance
     Ki = params["ki"] * (tau_factor ** 1.5)
     Kd = params["kd"] / tau_factor  # Inverse: slower systems need more damping
+
+    # Apply power scaling if heater power configured
+    # Undersized systems need higher gains, oversized need lower gains
+    power_factor = calculate_power_scaling_factor(heating_type, area_m2, max_power_w)
+    Kp *= power_factor
+    Ki *= power_factor
+    # Note: Kd is NOT scaled - derivative term responds to rate of change,
+    # not absolute heating capacity
 
     return (round(Kp, 4), round(Ki, 5), round(Kd, 2))
 

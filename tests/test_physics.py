@@ -6,6 +6,7 @@ from custom_components.adaptive_thermostat.adaptive.physics import (
     calculate_initial_pid,
     calculate_initial_pwm_period,
     calculate_initial_ke,
+    calculate_power_scaling_factor,
     GLAZING_U_VALUES,
     ENERGY_RATING_TO_INSULATION,
 )
@@ -673,3 +674,126 @@ class TestTauAdjustmentExtreme:
         tau = 5.0
         kp, ki, kd = calculate_initial_pid(tau, "floor_hydronic")
         assert kp > 0 and ki > 0 and kd > 0
+
+
+class TestPowerScaling:
+    """Tests for power scaling functionality."""
+
+    def test_power_scaling_factor_undersized_system(self):
+        """Test power scaling for undersized heating system (2x higher gains)."""
+        # 50m² zone with floor_hydronic (baseline 20 W/m²)
+        # 500W heater installed (10 W/m² actual - half of baseline)
+        # scaling = 20 / 10 = 2.0 (double the PID gains)
+        heating_type = "floor_hydronic"
+        area_m2 = 50.0
+        max_power_w = 500.0  # 10 W/m² (baseline is 20 W/m²)
+
+        scaling = calculate_power_scaling_factor(heating_type, area_m2, max_power_w)
+
+        assert scaling == pytest.approx(2.0, abs=0.01)
+
+    def test_power_scaling_factor_oversized_system(self):
+        """Test power scaling for oversized heating system (0.5x lower gains)."""
+        # 50m² zone with floor_hydronic (baseline 20 W/m²)
+        # 2000W heater installed (40 W/m² actual - double of baseline)
+        # scaling = 20 / 40 = 0.5 (halve the PID gains)
+        heating_type = "floor_hydronic"
+        area_m2 = 50.0
+        max_power_w = 2000.0  # 40 W/m² (baseline is 20 W/m²)
+
+        scaling = calculate_power_scaling_factor(heating_type, area_m2, max_power_w)
+
+        assert scaling == pytest.approx(0.5, abs=0.01)
+
+    def test_power_scaling_factor_no_power_configured(self):
+        """Test power scaling returns 1.0 when no power configured."""
+        # No power configured - should return 1.0 (no scaling)
+        heating_type = "radiator"
+        area_m2 = 30.0
+        max_power_w = None
+
+        scaling = calculate_power_scaling_factor(heating_type, area_m2, max_power_w)
+
+        assert scaling == pytest.approx(1.0, abs=0.01)
+
+    def test_power_scaling_factor_no_area_configured(self):
+        """Test power scaling returns 1.0 when no area configured."""
+        # No area configured - should return 1.0 (no scaling)
+        heating_type = "radiator"
+        area_m2 = None
+        max_power_w = 1500.0
+
+        scaling = calculate_power_scaling_factor(heating_type, area_m2, max_power_w)
+
+        assert scaling == pytest.approx(1.0, abs=0.01)
+
+    def test_power_scaling_factor_clamping_min(self):
+        """Test power scaling clamps to 0.25x minimum (4x oversized)."""
+        # 50m² zone with floor_hydronic (baseline 20 W/m²)
+        # 10000W heater installed (200 W/m² - 10x baseline)
+        # scaling = 20 / 200 = 0.1, clamped to 0.25
+        heating_type = "floor_hydronic"
+        area_m2 = 50.0
+        max_power_w = 10000.0
+
+        scaling = calculate_power_scaling_factor(heating_type, area_m2, max_power_w)
+
+        assert scaling == pytest.approx(0.25, abs=0.01)
+
+    def test_power_scaling_factor_clamping_max(self):
+        """Test power scaling clamps to 4.0x maximum (4x undersized)."""
+        # 50m² zone with floor_hydronic (baseline 20 W/m²)
+        # 200W heater installed (4 W/m² - 1/5 of baseline)
+        # scaling = 20 / 4 = 5.0, clamped to 4.0
+        heating_type = "floor_hydronic"
+        area_m2 = 50.0
+        max_power_w = 200.0
+
+        scaling = calculate_power_scaling_factor(heating_type, area_m2, max_power_w)
+
+        assert scaling == pytest.approx(4.0, abs=0.01)
+
+    def test_power_scaling_different_heating_types(self):
+        """Test power scaling uses correct baseline for each heating type."""
+        area_m2 = 50.0
+
+        # Floor hydronic: baseline 20 W/m² → 1000W = 20 W/m² → scaling = 1.0
+        scaling_floor = calculate_power_scaling_factor("floor_hydronic", area_m2, 1000.0)
+        assert scaling_floor == pytest.approx(1.0, abs=0.01)
+
+        # Radiator: baseline 50 W/m² → 2500W = 50 W/m² → scaling = 1.0
+        scaling_radiator = calculate_power_scaling_factor("radiator", area_m2, 2500.0)
+        assert scaling_radiator == pytest.approx(1.0, abs=0.01)
+
+        # Convector: baseline 60 W/m² → 3000W = 60 W/m² → scaling = 1.0
+        scaling_convector = calculate_power_scaling_factor("convector", area_m2, 3000.0)
+        assert scaling_convector == pytest.approx(1.0, abs=0.01)
+
+        # Forced air: baseline 80 W/m² → 4000W = 80 W/m² → scaling = 1.0
+        scaling_forced = calculate_power_scaling_factor("forced_air", area_m2, 4000.0)
+        assert scaling_forced == pytest.approx(1.0, abs=0.01)
+
+    def test_power_scaling_applied_to_pid_gains(self):
+        """Test that power scaling is correctly applied to Kp and Ki (not Kd)."""
+        tau = 4.0
+        heating_type = "floor_hydronic"
+        area_m2 = 50.0
+
+        # Calculate baseline PID (no power scaling)
+        kp_baseline, ki_baseline, kd_baseline = calculate_initial_pid(tau, heating_type, None, None)
+
+        # Calculate with undersized system (2x power scaling)
+        max_power_w = 500.0  # 10 W/m² vs baseline 20 W/m² = 2x scaling
+        kp_scaled, ki_scaled, kd_scaled = calculate_initial_pid(tau, heating_type, area_m2, max_power_w)
+
+        # Kp and Ki should be doubled
+        assert kp_scaled == pytest.approx(kp_baseline * 2.0, abs=0.01)
+        assert ki_scaled == pytest.approx(ki_baseline * 2.0, abs=0.01)
+        # Kd should remain unchanged (not scaled)
+        assert kd_scaled == pytest.approx(kd_baseline, abs=0.01)
+
+    def test_power_scaling_module_exists(self):
+        """Marker test to verify power scaling functionality exists."""
+        # This test always passes and serves as a marker for the feature
+        scaling = calculate_power_scaling_factor("radiator", 30.0, 1500.0)
+        assert scaling > 0

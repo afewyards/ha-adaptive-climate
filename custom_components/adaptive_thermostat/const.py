@@ -84,24 +84,28 @@ HEATING_TYPE_CHARACTERISTICS = {
         "pid_modifier": 0.5,      # Very conservative
         "pwm_period": 900,        # 15 minutes
         "derivative_filter_alpha": 0.05,  # Heavy filtering - high thermal mass reduces noise sensitivity
+        "baseline_power_w_m2": 20,  # Baseline power density for process gain scaling (W/m²)
         "description": "Floor heating with water - high thermal mass, slow response",
     },
     HEATING_TYPE_RADIATOR: {
         "pid_modifier": 0.7,      # Moderately conservative
         "pwm_period": 600,        # 10 minutes
         "derivative_filter_alpha": 0.10,  # Moderate filtering
+        "baseline_power_w_m2": 50,  # Baseline power density for process gain scaling (W/m²)
         "description": "Traditional radiators - moderate thermal mass",
     },
     HEATING_TYPE_CONVECTOR: {
         "pid_modifier": 1.0,      # Standard
         "pwm_period": 300,        # 5 minutes
         "derivative_filter_alpha": 0.15,  # Light filtering - default balance
+        "baseline_power_w_m2": 60,  # Baseline power density for process gain scaling (W/m²)
         "description": "Convection heaters - low thermal mass, faster response",
     },
     HEATING_TYPE_FORCED_AIR: {
         "pid_modifier": 1.3,      # Aggressive
         "pwm_period": 180,        # 3 minutes
         "derivative_filter_alpha": 0.25,  # Minimal filtering - fast response needed
+        "baseline_power_w_m2": 80,  # Baseline power density for process gain scaling (W/m²)
         "description": "Forced air heating - very low thermal mass, fast response",
     },
 }
@@ -183,6 +187,7 @@ CONF_MIN_LEARNING_EVENTS = "min_learning_events"
 CONF_MIN_CYCLE_TIME_WARNING = "min_cycle_time_warning"
 CONF_MIN_CYCLE_TIME_CRITICAL = "min_cycle_time_critical"
 CONF_MAX_POWER_M2 = "max_power_m2"
+CONF_MAX_POWER_W = "max_power_w"  # Total heater power in watts (for process gain scaling)
 
 # Contact sensor configuration
 CONF_CONTACT_SENSORS = "contact_sensors"

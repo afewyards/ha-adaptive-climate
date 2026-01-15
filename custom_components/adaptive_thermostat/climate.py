@@ -133,6 +133,7 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Optional(const.CONF_HEATING_TYPE): vol.In(const.VALID_HEATING_TYPES),
         vol.Optional(const.CONF_DERIVATIVE_FILTER): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=1.0)),
         vol.Optional(const.CONF_AREA_M2): vol.Coerce(float),
+        vol.Optional(const.CONF_MAX_POWER_W): vol.Coerce(float),
         vol.Optional(const.CONF_CEILING_HEIGHT, default=const.DEFAULT_CEILING_HEIGHT): vol.Coerce(float),
         vol.Optional(const.CONF_WINDOW_AREA_M2): vol.Coerce(float),
         vol.Optional(const.CONF_WINDOW_ORIENTATION): vol.In(const.VALID_WINDOW_ORIENTATIONS),
@@ -432,6 +433,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         self._zone_id = kwargs.get('zone_id')
         self._heating_type = kwargs.get('heating_type', 'floor_hydronic')
         self._area_m2 = kwargs.get('area_m2')
+        self._max_power_w = kwargs.get('max_power_w')
         self._ceiling_height = kwargs.get('ceiling_height', 2.5)
         self._window_area_m2 = kwargs.get('window_area_m2')
         self._window_rating = kwargs.get('window_rating', 'hr++')
@@ -565,12 +567,17 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                 floor_area_m2=self._area_m2,
                 window_rating=self._window_rating,
             )
-            self._kp, self._ki, self._kd = calculate_initial_pid(tau, self._heating_type)
+            self._kp, self._ki, self._kd = calculate_initial_pid(
+                tau, self._heating_type, self._area_m2, self._max_power_w
+            )
             # Calculate outdoor temperature lag time constant: tau_lag = 2 * tau_building
             # This models the thermal inertia of the building envelope
             self._outdoor_temp_lag_tau = 2.0 * tau
-            _LOGGER.info("%s: Physics-based PID init (tau=%.2f, type=%s, window=%s): Kp=%.4f, Ki=%.5f, Kd=%.3f, outdoor_lag_tau=%.2f",
-                         self.unique_id, tau, self._heating_type, self._window_rating, self._kp, self._ki, self._kd, self._outdoor_temp_lag_tau)
+
+            # Log power scaling info if configured
+            power_info = f", power={self._max_power_w}W" if self._max_power_w else ""
+            _LOGGER.info("%s: Physics-based PID init (tau=%.2f, type=%s, window=%s%s): Kp=%.4f, Ki=%.5f, Kd=%.3f, outdoor_lag_tau=%.2f",
+                         self.unique_id, tau, self._heating_type, self._window_rating, power_info, self._kp, self._ki, self._kd, self._outdoor_temp_lag_tau)
         else:
             # Fallback defaults if no zone properties
             self._kp = 0.5
