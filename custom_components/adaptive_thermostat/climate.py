@@ -626,11 +626,12 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                     self.entity_id,
                 )
 
-        # Initialize Ke learning with physics-based initial value
+        # Initialize Ke learning - start with Ke=0, let PID stabilize first
+        # Physics-based Ke is stored in KeLearner as reference for later application
         # Get energy rating now that hass is available
         energy_rating = self.hass.data.get(DOMAIN, {}).get("house_energy_rating")
         if self._ext_sensor_entity_id:
-            # Only enable Ke learning if outdoor sensor is configured
+            # Calculate physics-based Ke as reference (not applied yet)
             initial_ke = calculate_initial_ke(
                 energy_rating=energy_rating,
                 window_area_m2=self._window_area_m2,
@@ -638,12 +639,14 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                 window_rating=self._window_rating,
                 heating_type=self._heating_type,
             )
-            self._ke = initial_ke
+            # Start with Ke=0 - don't apply until PID reaches equilibrium
+            self._ke = 0.0
             self._ke_learner = KeLearner(initial_ke=initial_ke)
-            # Update PID controller with physics-based Ke
-            self._pid_controller.set_pid_param(ke=self._ke)
+            # PID controller starts without Ke compensation
+            self._pid_controller.set_pid_param(ke=0.0)
             _LOGGER.info(
-                "%s: Ke learning initialized with physics-based Ke=%.2f "
+                "%s: Ke learning initialized (physics reference Ke=%.2f, "
+                "starting with Ke=0 until PID stabilizes) "
                 "(energy_rating=%s, heating_type=%s)",
                 self.entity_id, initial_ke, energy_rating or "default", self._heating_type
             )
@@ -669,6 +672,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
             get_pid_controller=lambda: self._pid_controller,
             async_control_heating=self._async_control_heating_internal,
             async_write_ha_state=self._async_write_ha_state_internal,
+            get_is_pid_converged=self._is_pid_converged_for_ke,
         )
         _LOGGER.info(
             "%s: Ke controller initialized",
@@ -2051,6 +2055,23 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
     def _set_ke(self, value: float) -> None:
         """Set the Ke value."""
         self._ke = value
+
+    def _is_pid_converged_for_ke(self) -> bool:
+        """Check if PID has converged sufficiently for Ke learning.
+
+        Returns True if the adaptive learner reports PID convergence
+        (stable performance for required number of consecutive cycles).
+        """
+        coordinator = self.hass.data.get(DOMAIN, {}).get("coordinator")
+        if not coordinator or not self._zone_id:
+            return False
+        zone_data = coordinator.get_zone_data(self._zone_id)
+        if not zone_data:
+            return False
+        adaptive_learner = zone_data.get("adaptive_learner")
+        if not adaptive_learner:
+            return False
+        return adaptive_learner.is_pid_converged_for_ke()
 
     async def _async_write_ha_state_internal(self) -> None:
         """Write HA state (internal callback for managers)."""

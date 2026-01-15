@@ -49,6 +49,7 @@ class KeController:
         get_pid_controller: callable,
         async_control_heating: callable,
         async_write_ha_state: callable,
+        get_is_pid_converged: callable = None,
     ):
         """Initialize the KeController.
 
@@ -67,6 +68,7 @@ class KeController:
             get_pid_controller: Callback to get PID controller
             async_control_heating: Async callback to trigger heating control
             async_write_ha_state: Async callback to write HA state
+            get_is_pid_converged: Callback to check if PID has converged for Ke learning
         """
         self._thermostat = thermostat
         self._ke_learner = ke_learner
@@ -84,6 +86,7 @@ class KeController:
         self._get_pid_controller = get_pid_controller
         self._async_control_heating = async_control_heating
         self._async_write_ha_state = async_write_ha_state
+        self._get_is_pid_converged = get_is_pid_converged
 
         # State tracking
         self._steady_state_start: Optional[float] = None
@@ -160,13 +163,33 @@ class KeController:
         """Record a Ke observation if conditions are met.
 
         Conditions:
-        1. Ke learner is enabled
+        1. Ke learner exists and is enabled (or becomes enabled when PID converges)
         2. System is at steady state
         3. Outdoor temperature sensor is available
         4. Minimum time has passed since last observation (5 minutes)
         """
-        if not self._ke_learner or not self._ke_learner.enabled:
+        if not self._ke_learner:
             return
+
+        # Check if PID has converged and enable Ke learning if not already enabled
+        if not self._ke_learner.enabled:
+            if self._get_is_pid_converged and self._get_is_pid_converged():
+                # PID has converged - enable Ke learning and apply physics-based Ke
+                self._ke_learner.enable()
+                physics_ke = self._ke_learner.current_ke
+                if physics_ke > 0:
+                    self._set_ke(physics_ke)
+                    pid_controller = self._get_pid_controller()
+                    if pid_controller:
+                        pid_controller.set_pid_param(ke=physics_ke)
+                    _LOGGER.info(
+                        "%s: PID converged - enabled Ke learning and applied physics-based Ke=%.3f",
+                        self._thermostat.entity_id,
+                        physics_ke,
+                    )
+            else:
+                # PID not converged yet, skip observation
+                return
 
         if not self.is_at_steady_state():
             return
