@@ -23,6 +23,7 @@ class CycleState(Enum):
 
     IDLE = "idle"
     HEATING = "heating"
+    COOLING = "cooling"
     SETTLING = "settling"
 
 
@@ -154,6 +155,58 @@ class CycleTrackerManager:
             self._max_settling_time_minutes,
         )
 
+    def on_cooling_started(self, timestamp: datetime) -> None:
+        """Handle cooling start event.
+
+        Transitions from IDLE -> COOLING, records cycle start time and target temperature,
+        and clears temperature history to start fresh collection.
+
+        Args:
+            timestamp: Time when cooling started
+        """
+        if self._state != CycleState.IDLE:
+            self._logger.warning(
+                "Cooling started while in state %s, resetting cycle", self._state
+            )
+
+        # Transition to COOLING state
+        self._state = CycleState.COOLING
+        self._cycle_start_time = timestamp
+        self._cycle_target_temp = self._get_target_temp()
+        self._temperature_history.clear()
+
+        current_temp = self._get_current_temp()
+        self._logger.info(
+            "Cooling cycle started: target=%.2f°C, current=%.2f°C",
+            self._cycle_target_temp or 0.0,
+            current_temp or 0.0,
+        )
+
+    def on_cooling_stopped(self, timestamp: datetime) -> None:
+        """Handle cooling stop event.
+
+        Transitions from COOLING -> SETTLING and schedules settling timeout.
+
+        Args:
+            timestamp: Time when cooling stopped
+        """
+        if self._state != CycleState.COOLING:
+            self._logger.warning(
+                "Cooling stopped while in state %s, ignoring", self._state
+            )
+            return
+
+        # Transition to SETTLING state
+        self._state = CycleState.SETTLING
+
+        # Schedule settling timeout (120 minutes)
+        self._schedule_settling_timeout()
+
+        self._logger.info(
+            "Cooling stopped, monitoring settling (timeout in %d minutes)",
+            self._max_settling_time_minutes,
+        )
+
     def _schedule_settling_timeout(self) -> None:
         """Schedule timeout for settling detection."""
         from homeassistant.helpers.event import async_call_later
@@ -182,7 +235,7 @@ class CycleTrackerManager:
     async def update_temperature(self, timestamp: datetime, temperature: float) -> None:
         """Update temperature history and check for settling completion.
 
-        Only collects temperature samples when in HEATING or SETTLING state.
+        Only collects temperature samples when in HEATING, COOLING, or SETTLING state.
         Checks for settling completion on each update during SETTLING state.
 
         Args:
@@ -190,7 +243,7 @@ class CycleTrackerManager:
             temperature: Current temperature value
         """
         # Only collect during active cycle tracking
-        if self._state not in (CycleState.HEATING, CycleState.SETTLING):
+        if self._state not in (CycleState.HEATING, CycleState.COOLING, CycleState.SETTLING):
             return
 
         # Append temperature sample
@@ -303,7 +356,7 @@ class CycleTrackerManager:
     def on_setpoint_changed(self, old_temp: float, new_temp: float) -> None:
         """Handle setpoint change event.
 
-        If heater is active, continues tracking with the new setpoint and marks
+        If heater/cooler is active, continues tracking with the new setpoint and marks
         the cycle as interrupted. Otherwise, aborts the current cycle.
 
         Args:
@@ -311,14 +364,14 @@ class CycleTrackerManager:
             new_temp: New target temperature
         """
         # Only process if we're in an active cycle
-        if self._state not in (CycleState.HEATING, CycleState.SETTLING):
+        if self._state not in (CycleState.HEATING, CycleState.COOLING, CycleState.SETTLING):
             return
 
-        # Check if heater is currently active
+        # Check if heater/cooler is currently active
         if self._get_is_device_active is not None and self._get_is_device_active():
             # Continue tracking with new setpoint
             self._logger.info(
-                "Setpoint changed while heater active, continuing cycle tracking: %.2f°C -> %.2f°C",
+                "Setpoint changed while device active, continuing cycle tracking: %.2f°C -> %.2f°C",
                 old_temp,
                 new_temp,
             )
@@ -339,11 +392,11 @@ class CycleTrackerManager:
     def on_contact_sensor_pause(self) -> None:
         """Handle contact sensor pause event.
 
-        Aborts the current cycle if in HEATING or SETTLING state, as heating
-        has been paused due to window/door opening.
+        Aborts the current cycle if in HEATING, COOLING, or SETTLING state, as
+        climate control has been paused due to window/door opening.
         """
         # Only abort if we're in an active cycle
-        if self._state not in (CycleState.HEATING, CycleState.SETTLING):
+        if self._state not in (CycleState.HEATING, CycleState.COOLING, CycleState.SETTLING):
             return
 
         # Abort the cycle
@@ -354,19 +407,30 @@ class CycleTrackerManager:
     def on_mode_changed(self, old_mode: str, new_mode: str) -> None:
         """Handle HVAC mode change event.
 
-        Aborts the current cycle if mode changes away from HEAT, as the
-        heating operation has been terminated.
+        Aborts the current cycle if mode changes away from the active mode,
+        as the climate control operation has been terminated.
 
         Args:
             old_mode: Previous HVAC mode
             new_mode: New HVAC mode
         """
         # Only abort if we're in an active cycle
-        if self._state not in (CycleState.HEATING, CycleState.SETTLING):
+        if self._state not in (CycleState.HEATING, CycleState.COOLING, CycleState.SETTLING):
             return
 
-        # Check if mode changed away from HEAT (to OFF or COOL)
-        if new_mode in ("off", "cool"):
+        # Determine if mode change requires aborting the cycle
+        # Abort if:
+        # - We were heating and mode changed to off or cool
+        # - We were cooling and mode changed to off or heat
+        should_abort = False
+        if self._state == CycleState.HEATING and new_mode in ("off", "cool"):
+            should_abort = True
+        elif self._state == CycleState.COOLING and new_mode in ("off", "heat"):
+            should_abort = True
+        elif self._state == CycleState.SETTLING and new_mode == "off":
+            should_abort = True
+
+        if should_abort:
             # Abort the cycle
             self._logger.info(
                 "Cycle aborted due to mode change: %s -> %s",
