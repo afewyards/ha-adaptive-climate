@@ -75,7 +75,7 @@ from . import DOMAIN, PLATFORMS
 from . import const
 from . import pid_controller
 from .adaptive.learning import AdaptiveLearner, ThermalRateLearner
-from .managers import HeaterController, KeController, NightSetbackController, TemperatureManager, CycleTrackerManager
+from .managers import HeaterController, KeController, NightSetbackController, StateRestorer, TemperatureManager, CycleTrackerManager
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -703,13 +703,10 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         # Set up state change listeners
         self._setup_state_listeners()
 
-        # Restore state from previous session
+        # Restore state from previous session using StateRestorer
         old_state = await self.async_get_last_state()
-        self._restore_state(old_state)
-
-        # Restore PID values if we have old state
-        if old_state is not None:
-            self._restore_pid_values(old_state)
+        state_restorer = StateRestorer(self)
+        state_restorer.restore(old_state)
 
         # Set default state to off
         if not self._hvac_mode:
@@ -830,111 +827,18 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
     def _restore_state(self, old_state) -> None:
         """Restore climate entity state from Home Assistant's state restoration.
 
-        This method restores:
-        - Target temperature setpoint
-        - Active preset mode
-        - HVAC mode
-
-        Note: Preset temperatures are not restored as they now come from controller config.
-
-        Args:
-            old_state: The restored state object from async_get_last_state(),
-                      or None if no previous state exists.
+        This is a compatibility wrapper that delegates to StateRestorer.
         """
-        if old_state is not None:
-            # Restore target temperature
-            if old_state.attributes.get(ATTR_TEMPERATURE) is None:
-                if self._target_temp is None:
-                    if self._ac_mode:
-                        self._target_temp = self.max_temp
-                    else:
-                        self._target_temp = self.min_temp
-                _LOGGER.warning("%s: No setpoint available in old state, falling back to %s",
-                                self.entity_id, self._target_temp)
-            else:
-                self._target_temp = float(old_state.attributes.get(ATTR_TEMPERATURE))
-
-            # Restore preset mode
-            if old_state.attributes.get(ATTR_PRESET_MODE) is not None:
-                self._attr_preset_mode = old_state.attributes.get(ATTR_PRESET_MODE)
-                # Sync to temperature manager if initialized
-                if self._temperature_manager:
-                    self._temperature_manager.restore_state(
-                        preset_mode=self._attr_preset_mode,
-                        saved_target_temp=self._saved_target_temp,
-                    )
-
-            # Restore HVAC mode
-            if not self._hvac_mode and old_state.state:
-                self.set_hvac_mode(old_state.state)
-        else:
-            # No previous state, set defaults
-            if self._target_temp is None:
-                if self._ac_mode:
-                    self._target_temp = self.max_temp
-                else:
-                    self._target_temp = self.min_temp
-            _LOGGER.warning("%s: No setpoint to restore, setting to %s", self.entity_id,
-                            self._target_temp)
+        state_restorer = StateRestorer(self)
+        state_restorer._restore_state(old_state)
 
     def _restore_pid_values(self, old_state) -> None:
         """Restore PID controller values from Home Assistant's state restoration.
 
-        This method restores:
-        - PID integral value (pid_i)
-        - PID gains: Kp, Ki, Kd, Ke (supports both lowercase and uppercase attribute names)
-        - PID mode (auto/off)
-
-        Args:
-            old_state: The restored state object from async_get_last_state().
-                      Must not be None.
+        This is a compatibility wrapper that delegates to StateRestorer.
         """
-        if old_state is None or self._pid_controller is None:
-            return
-
-        # Restore PID integral value
-        if isinstance(old_state.attributes.get('pid_i'), (float, int)):
-            self._i = float(old_state.attributes.get('pid_i'))
-            self._pid_controller.integral = self._i
-
-        # Restore Kp (supports both 'kp' and 'Kp')
-        if old_state.attributes.get('kp') is not None:
-            self._kp = float(old_state.attributes.get('kp'))
-            self._pid_controller.set_pid_param(kp=self._kp)
-        elif old_state.attributes.get('Kp') is not None:
-            self._kp = float(old_state.attributes.get('Kp'))
-            self._pid_controller.set_pid_param(kp=self._kp)
-
-        # Restore Ki (supports both 'ki' and 'Ki')
-        if old_state.attributes.get('ki') is not None:
-            self._ki = float(old_state.attributes.get('ki'))
-            self._pid_controller.set_pid_param(ki=self._ki)
-        elif old_state.attributes.get('Ki') is not None:
-            self._ki = float(old_state.attributes.get('Ki'))
-            self._pid_controller.set_pid_param(ki=self._ki)
-
-        # Restore Kd (supports both 'kd' and 'Kd')
-        if old_state.attributes.get('kd') is not None:
-            self._kd = float(old_state.attributes.get('kd'))
-            self._pid_controller.set_pid_param(kd=self._kd)
-        elif old_state.attributes.get('Kd') is not None:
-            self._kd = float(old_state.attributes.get('Kd'))
-            self._pid_controller.set_pid_param(kd=self._kd)
-
-        # Restore Ke (supports both 'ke' and 'Ke')
-        if old_state.attributes.get('ke') is not None:
-            self._ke = float(old_state.attributes.get('ke'))
-            self._pid_controller.set_pid_param(ke=self._ke)
-        elif old_state.attributes.get('Ke') is not None:
-            self._ke = float(old_state.attributes.get('Ke'))
-            self._pid_controller.set_pid_param(ke=self._ke)
-
-        _LOGGER.info("%s: Restored PID values - Kp=%.4f, Ki=%.5f, Kd=%.3f, Ke=%s",
-                     self.entity_id, self._kp, self._ki, self._kd, self._ke or 0)
-
-        # Restore PID mode
-        if old_state.attributes.get('pid_mode') is not None:
-            self._pid_controller.mode = old_state.attributes.get('pid_mode')
+        state_restorer = StateRestorer(self)
+        state_restorer._restore_pid_values(old_state)
 
     @property
     def should_poll(self):

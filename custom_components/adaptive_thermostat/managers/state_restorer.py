@@ -1,0 +1,161 @@
+"""State restoration manager for Adaptive Thermostat integration."""
+from __future__ import annotations
+
+import logging
+from typing import TYPE_CHECKING, Any, Optional
+
+if TYPE_CHECKING:
+    from homeassistant.core import State
+    from ..climate import AdaptiveThermostat
+
+_LOGGER = logging.getLogger(__name__)
+
+
+class StateRestorer:
+    """Manager for restoring thermostat state from Home Assistant's state restoration.
+
+    Handles restoration of:
+    - Target temperature setpoint
+    - Active preset mode
+    - HVAC mode
+    - PID controller values (integral, gains, mode)
+    """
+
+    def __init__(self, thermostat: AdaptiveThermostat) -> None:
+        """Initialize the StateRestorer.
+
+        Args:
+            thermostat: Reference to the parent thermostat entity
+        """
+        self._thermostat = thermostat
+
+    def restore(self, old_state: Optional[State]) -> None:
+        """Restore all state from a previous session.
+
+        This is the main entry point that orchestrates the full restoration
+        process by calling both _restore_state and _restore_pid_values.
+
+        Args:
+            old_state: The restored state object from async_get_last_state(),
+                      or None if no previous state exists.
+        """
+        self._restore_state(old_state)
+        if old_state is not None:
+            self._restore_pid_values(old_state)
+
+    def _restore_state(self, old_state: Optional[State]) -> None:
+        """Restore climate entity state from Home Assistant's state restoration.
+
+        This method restores:
+        - Target temperature setpoint
+        - Active preset mode
+        - HVAC mode
+
+        Note: Preset temperatures are not restored as they now come from controller config.
+
+        Args:
+            old_state: The restored state object from async_get_last_state(),
+                      or None if no previous state exists.
+        """
+        # Import here to avoid circular imports
+        from homeassistant.const import ATTR_TEMPERATURE
+        from homeassistant.components.climate import ATTR_PRESET_MODE
+
+        thermostat = self._thermostat
+
+        if old_state is not None:
+            # Restore target temperature
+            if old_state.attributes.get(ATTR_TEMPERATURE) is None:
+                if thermostat._target_temp is None:
+                    if thermostat._ac_mode:
+                        thermostat._target_temp = thermostat.max_temp
+                    else:
+                        thermostat._target_temp = thermostat.min_temp
+                _LOGGER.warning("%s: No setpoint available in old state, falling back to %s",
+                                thermostat.entity_id, thermostat._target_temp)
+            else:
+                thermostat._target_temp = float(old_state.attributes.get(ATTR_TEMPERATURE))
+
+            # Restore preset mode
+            if old_state.attributes.get(ATTR_PRESET_MODE) is not None:
+                thermostat._attr_preset_mode = old_state.attributes.get(ATTR_PRESET_MODE)
+                # Sync to temperature manager if initialized
+                if thermostat._temperature_manager:
+                    thermostat._temperature_manager.restore_state(
+                        preset_mode=thermostat._attr_preset_mode,
+                        saved_target_temp=thermostat._saved_target_temp,
+                    )
+
+            # Restore HVAC mode
+            if not thermostat._hvac_mode and old_state.state:
+                thermostat.set_hvac_mode(old_state.state)
+        else:
+            # No previous state, set defaults
+            if thermostat._target_temp is None:
+                if thermostat._ac_mode:
+                    thermostat._target_temp = thermostat.max_temp
+                else:
+                    thermostat._target_temp = thermostat.min_temp
+            _LOGGER.warning("%s: No setpoint to restore, setting to %s", thermostat.entity_id,
+                            thermostat._target_temp)
+
+    def _restore_pid_values(self, old_state: State) -> None:
+        """Restore PID controller values from Home Assistant's state restoration.
+
+        This method restores:
+        - PID integral value (pid_i)
+        - PID gains: Kp, Ki, Kd, Ke (supports both lowercase and uppercase attribute names)
+        - PID mode (auto/off)
+
+        Args:
+            old_state: The restored state object from async_get_last_state().
+                      Must not be None.
+        """
+        thermostat = self._thermostat
+
+        if old_state is None or thermostat._pid_controller is None:
+            return
+
+        # Restore PID integral value
+        if isinstance(old_state.attributes.get('pid_i'), (float, int)):
+            thermostat._i = float(old_state.attributes.get('pid_i'))
+            thermostat._pid_controller.integral = thermostat._i
+
+        # Restore Kp (supports both 'kp' and 'Kp')
+        if old_state.attributes.get('kp') is not None:
+            thermostat._kp = float(old_state.attributes.get('kp'))
+            thermostat._pid_controller.set_pid_param(kp=thermostat._kp)
+        elif old_state.attributes.get('Kp') is not None:
+            thermostat._kp = float(old_state.attributes.get('Kp'))
+            thermostat._pid_controller.set_pid_param(kp=thermostat._kp)
+
+        # Restore Ki (supports both 'ki' and 'Ki')
+        if old_state.attributes.get('ki') is not None:
+            thermostat._ki = float(old_state.attributes.get('ki'))
+            thermostat._pid_controller.set_pid_param(ki=thermostat._ki)
+        elif old_state.attributes.get('Ki') is not None:
+            thermostat._ki = float(old_state.attributes.get('Ki'))
+            thermostat._pid_controller.set_pid_param(ki=thermostat._ki)
+
+        # Restore Kd (supports both 'kd' and 'Kd')
+        if old_state.attributes.get('kd') is not None:
+            thermostat._kd = float(old_state.attributes.get('kd'))
+            thermostat._pid_controller.set_pid_param(kd=thermostat._kd)
+        elif old_state.attributes.get('Kd') is not None:
+            thermostat._kd = float(old_state.attributes.get('Kd'))
+            thermostat._pid_controller.set_pid_param(kd=thermostat._kd)
+
+        # Restore Ke (supports both 'ke' and 'Ke')
+        if old_state.attributes.get('ke') is not None:
+            thermostat._ke = float(old_state.attributes.get('ke'))
+            thermostat._pid_controller.set_pid_param(ke=thermostat._ke)
+        elif old_state.attributes.get('Ke') is not None:
+            thermostat._ke = float(old_state.attributes.get('Ke'))
+            thermostat._pid_controller.set_pid_param(ke=thermostat._ke)
+
+        _LOGGER.info("%s: Restored PID values - Kp=%.4f, Ki=%.5f, Kd=%.3f, Ke=%s",
+                     thermostat.entity_id, thermostat._kp, thermostat._ki, thermostat._kd, thermostat._ke or 0)
+
+        # Restore PID mode
+        if old_state.attributes.get('pid_mode') is not None:
+            thermostat._pid_controller.mode = old_state.attributes.get('pid_mode')
