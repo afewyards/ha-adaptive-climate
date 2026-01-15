@@ -10,7 +10,7 @@ _LOGGER = logging.getLogger(__name__)
 class PID:
     error: float
 
-    def __init__(self, kp, ki, kd, ke=0, out_min=float('-inf'), out_max=float('+inf'),
+    def __init__(self, kp, ki, kd, ke=0, ke_wind=0.02, out_min=float('-inf'), out_max=float('+inf'),
                  sampling_period=0, cold_tolerance=0.3, hot_tolerance=0.3, derivative_filter_alpha=0.15,
                  outdoor_temp_lag_tau=4.0, proportional_on_measurement=False):
         """A proportional-integral-derivative controller.
@@ -22,6 +22,8 @@ class PID:
             :type kd: float
             :param ke: Outdoor temperature compensation coefficient.
             :type ke: float
+            :param ke_wind: Wind speed compensation coefficient (per m/s).
+            :type ke_wind: float
             :param out_min: Lower output limit.
             :type out_min: float
             :param out_max: Upper output limit.
@@ -56,6 +58,7 @@ class PID:
         self._Ki = ki
         self._Kd = kd
         self._Ke = ke
+        self._Ke_wind = ke_wind
         self._out_min = out_min
         self._out_max = out_max
         self._proportional = 0.0
@@ -86,6 +89,7 @@ class PID:
         self._outdoor_temp_lagged = None  # Will be initialized on first outdoor temp reading
         self._last_output_before_off = None  # Stores output before switching to OFF mode for bumpless transfer
         self._proportional_on_measurement = proportional_on_measurement  # P-on-M vs P-on-E mode
+        self._wind_speed = 0.0  # Current wind speed in m/s (defaults to 0 if unavailable)
 
     @property
     def mode(self):
@@ -236,7 +240,7 @@ class PID:
         self._derivative_filtered = 0.0
         self._outdoor_temp_lagged = None
         
-    def calc(self, input_val, set_point, input_time=None, last_input_time=None, ext_temp=None):
+    def calc(self, input_val, set_point, input_time=None, last_input_time=None, ext_temp=None, wind_speed=None):
         """Adjusts and holds the given setpoint.
 
         Args:
@@ -246,6 +250,7 @@ class PID:
             last_input_time (float): The timestamp in seconds of the previous input value to
             compute dt
             ext_temp (float): The outdoor temperature value.
+            wind_speed (float): The wind speed in m/s (optional).
 
         Returns:
             A value between `out_min` and `out_max`.
@@ -328,8 +333,16 @@ class PID:
         else:
             self._dext = 0
 
-        # Compensate losses due to external temperature
-        self._external = self._Ke * self._dext
+        # Update wind speed (treat None as 0)
+        if wind_speed is not None:
+            self._wind_speed = wind_speed
+        else:
+            self._wind_speed = 0.0
+
+        # Compensate losses due to external temperature and wind
+        # Formula: external = Ke * dext + Ke_wind * wind_speed * dext
+        # Wind increases heat loss proportionally to temperature difference
+        self._external = self._Ke * self._dext + self._Ke_wind * self._wind_speed * self._dext
 
         # Calculate proportional term
         # P-on-M (proportional-on-measurement): responds to changes in measurement, not error

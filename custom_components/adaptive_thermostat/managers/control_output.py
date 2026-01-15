@@ -29,6 +29,7 @@ class ControlOutputManager:
         *,
         get_current_temp: Callable[[], float | None],
         get_ext_temp: Callable[[], float | None],
+        get_wind_speed: Callable[[], float | None],
         get_previous_temp_time: Callable[[], float | None],
         set_previous_temp_time: Callable[[float], None],
         get_cur_temp_time: Callable[[], float | None],
@@ -54,6 +55,7 @@ class ControlOutputManager:
             heater_controller: Heater controller instance (may be None initially)
             get_current_temp: Callback to get current temperature
             get_ext_temp: Callback to get external temperature
+            get_wind_speed: Callback to get wind speed
             get_previous_temp_time: Callback to get previous temperature time
             set_previous_temp_time: Callback to set previous temperature time
             get_cur_temp_time: Callback to get current temperature time
@@ -78,6 +80,7 @@ class ControlOutputManager:
         # Getters/setters for thermostat state
         self._get_current_temp = get_current_temp
         self._get_ext_temp = get_ext_temp
+        self._get_wind_speed = get_wind_speed
         self._get_previous_temp_time = get_previous_temp_time
         self._set_previous_temp_time = set_previous_temp_time
         self._get_cur_temp_time = get_cur_temp_time
@@ -144,6 +147,7 @@ class ControlOutputManager:
         # Get current values
         current_temp = self._get_current_temp()
         ext_temp = self._get_ext_temp()
+        wind_speed = self._get_wind_speed()
         output_precision = self._get_output_precision()
 
         # Calculate PID output
@@ -154,12 +158,14 @@ class ControlOutputManager:
                 cur_temp_time,
                 previous_temp_time,
                 ext_temp,
+                wind_speed,
             )
         else:
             control_output, update = self._pid_controller.calc(
                 current_temp,
                 effective_target,
                 ext_temp=ext_temp,
+                wind_speed=wind_speed,
             )
 
         # Update component values

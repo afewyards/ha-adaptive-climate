@@ -387,3 +387,64 @@ def calculate_initial_ke(
 
     # Round to 4 decimal places (was 2, now more precision needed)
     return round(base_ke, 4)
+
+
+def calculate_ke_wind(
+    energy_rating: Optional[str] = None,
+    window_area_m2: Optional[float] = None,
+    floor_area_m2: Optional[float] = None,
+    window_rating: str = "hr++",
+) -> float:
+    """Calculate wind speed compensation coefficient (Ke_wind per m/s).
+
+    Wind speed increases convective heat loss from building surfaces,
+    particularly affecting windows and poorly insulated walls. This
+    coefficient scales the outdoor temperature compensation based on
+    wind speed.
+
+    The wind compensation is applied as: Ke_wind * wind_speed * dext
+    This means wind amplifies the outdoor temperature effect.
+
+    Args:
+        energy_rating: Building energy efficiency rating. Better insulation
+                      reduces wind penetration.
+        window_area_m2: Total window/glass area in square meters.
+        floor_area_m2: Zone floor area in square meters.
+        window_rating: Glazing type. Poorer glazing more affected by wind.
+
+    Returns:
+        Ke_wind coefficient (per m/s), typically 0.01 - 0.03.
+        Default 0.02 per m/s for moderate insulation.
+    """
+    # Base wind coefficient - moderate insulation
+    base_ke_wind = 0.02
+
+    # Adjust for building insulation quality
+    if energy_rating:
+        # Better insulation = less wind impact
+        rating_factors = {
+            "A++++": 0.5,  # Excellent air sealing
+            "A+++": 0.6,
+            "A++": 0.7,
+            "A+": 0.8,
+            "A": 0.9,
+            "B": 1.0,    # Baseline
+            "C": 1.2,
+            "D": 1.4,
+            "E": 1.6,
+            "F": 1.8,
+            "G": 2.0,    # Poor air sealing, significant wind penetration
+        }
+        base_ke_wind *= rating_factors.get(energy_rating.upper(), 1.0)
+
+    # Adjust for window exposure
+    if window_area_m2 and floor_area_m2 and floor_area_m2 > 0:
+        u_value = GLAZING_U_VALUES.get(window_rating.lower(), 1.1)
+        window_ratio = window_area_m2 / floor_area_m2
+
+        # More windows and worse glazing = more wind impact
+        window_factor = (u_value / 1.1) * (window_ratio / 0.2)
+        base_ke_wind *= (1.0 + min(window_factor * 0.3, 0.5))
+
+    # Round to 3 decimal places
+    return round(base_ke_wind, 3)

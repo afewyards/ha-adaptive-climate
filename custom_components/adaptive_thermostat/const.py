@@ -27,6 +27,7 @@ CONF_COOLER = "cooler"
 CONF_INVERT_HEATER = 'invert_heater'
 CONF_SENSOR = "target_sensor"
 CONF_OUTDOOR_SENSOR = "outdoor_sensor"
+CONF_WIND_SPEED_SENSOR = "wind_speed_sensor"
 CONF_MIN_TEMP = "min_temp"
 CONF_MAX_TEMP = "max_temp"
 CONF_TARGET_TEMP = "target_temp"

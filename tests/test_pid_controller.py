@@ -1235,6 +1235,141 @@ class TestPIDKeIntegralClamping:
 
         # This test confirms the clamping formula is working correctly with reduced Ke values
 
+    def test_wind_compensation_calculation(self):
+        """Test wind speed compensation in external term."""
+        # Create PID with outdoor compensation and wind compensation
+        pid = PID(kp=10, ki=1, kd=2, ke=0.005, ke_wind=0.02, out_min=0, out_max=100)
+
+        # Scenario: Indoor 18°C, Setpoint 20°C, Outdoor 5°C, Wind 10 m/s
+        input_val = 18.0
+        set_point = 20.0
+        ext_temp = 5.0
+        wind_speed = 10.0
+
+        # Calculate with wind
+        output_with_wind, _ = pid.calc(
+            input_val, set_point,
+            input_time=100.0, last_input_time=0.0,
+            ext_temp=ext_temp, wind_speed=wind_speed
+        )
+
+        # dext = 20 - 5 = 15
+        # External term = Ke * dext + Ke_wind * wind_speed * dext
+        #               = 0.005 * 15 + 0.02 * 10 * 15
+        #               = 0.075 + 3.0 = 3.075
+        expected_external = 0.005 * 15 + 0.02 * 10 * 15
+        assert abs(pid.external - expected_external) < 0.1
+
+        # Calculate without wind (wind_speed=0)
+        pid2 = PID(kp=10, ki=1, kd=2, ke=0.005, ke_wind=0.02, out_min=0, out_max=100)
+        output_no_wind, _ = pid2.calc(
+            input_val, set_point,
+            input_time=100.0, last_input_time=0.0,
+            ext_temp=ext_temp, wind_speed=0.0
+        )
+
+        # External term without wind = Ke * dext = 0.005 * 15 = 0.075
+        expected_external_no_wind = 0.005 * 15
+        assert abs(pid2.external - expected_external_no_wind) < 0.1
+
+        # Wind should increase external term significantly
+        assert pid.external > pid2.external
+
+    def test_wind_compensation_graceful_none(self):
+        """Test wind compensation handles None wind_speed gracefully."""
+        pid = PID(kp=10, ki=1, kd=2, ke=0.005, ke_wind=0.02, out_min=0, out_max=100)
+
+        # Call without wind_speed (defaults to None)
+        output, _ = pid.calc(
+            18.0, 20.0,
+            input_time=100.0, last_input_time=0.0,
+            ext_temp=5.0
+        )
+
+        # Should treat as wind_speed=0
+        # External = Ke * dext = 0.005 * 15 = 0.075
+        expected_external = 0.005 * 15
+        assert abs(pid.external - expected_external) < 0.1
+
+    def test_wind_amplifies_cold_weather_effect(self):
+        """Test that wind amplifies outdoor temperature effect in cold weather."""
+        pid = PID(kp=10, ki=1, kd=2, ke=0.005, ke_wind=0.02, out_min=0, out_max=100)
+
+        # Extreme cold: Indoor 18°C, Setpoint 20°C, Outdoor -10°C
+        input_val = 18.0
+        set_point = 20.0
+        ext_temp = -10.0
+
+        # No wind
+        pid.calc(
+            input_val, set_point,
+            input_time=100.0, last_input_time=0.0,
+            ext_temp=ext_temp, wind_speed=0.0
+        )
+        external_no_wind = pid.external
+
+        # High wind (15 m/s)
+        pid2 = PID(kp=10, ki=1, kd=2, ke=0.005, ke_wind=0.02, out_min=0, out_max=100)
+        pid2.calc(
+            input_val, set_point,
+            input_time=100.0, last_input_time=0.0,
+            ext_temp=ext_temp, wind_speed=15.0
+        )
+        external_with_wind = pid2.external
+
+        # dext = 20 - (-10) = 30
+        # Wind should significantly increase external term
+        # No wind: 0.005 * 30 = 0.15
+        # With wind: 0.005 * 30 + 0.02 * 15 * 30 = 0.15 + 9.0 = 9.15
+        assert abs(external_no_wind - 0.15) < 0.1
+        assert abs(external_with_wind - 9.15) < 0.1
+        assert external_with_wind > external_no_wind * 50  # Wind increases by >50x
+
+
+class TestWindCompensationPhysics:
+    """Test calculate_ke_wind function from physics module."""
+
+    def test_calculate_ke_wind_default(self):
+        """Test default Ke_wind calculation."""
+        from adaptive.physics import calculate_ke_wind
+
+        # Default (moderate insulation)
+        ke_wind = calculate_ke_wind()
+        assert 0.015 <= ke_wind <= 0.025
+
+    def test_calculate_ke_wind_excellent_insulation(self):
+        """Test Ke_wind with excellent insulation."""
+        from adaptive.physics import calculate_ke_wind
+
+        # Excellent insulation should have lower wind impact
+        ke_wind_excellent = calculate_ke_wind(energy_rating="A++++")
+        ke_wind_poor = calculate_ke_wind(energy_rating="G")
+
+        assert ke_wind_excellent < ke_wind_poor
+        assert ke_wind_excellent < 0.015  # Should be well below baseline
+
+    def test_calculate_ke_wind_window_exposure(self):
+        """Test Ke_wind adjustment for high window exposure."""
+        from adaptive.physics import calculate_ke_wind
+
+        # Large window area with poor glazing
+        ke_wind_high_windows = calculate_ke_wind(
+            energy_rating="B",
+            window_area_m2=20.0,
+            floor_area_m2=50.0,  # 40% window ratio
+            window_rating="single"
+        )
+
+        # Small window area with good glazing
+        ke_wind_low_windows = calculate_ke_wind(
+            energy_rating="B",
+            window_area_m2=5.0,
+            floor_area_m2=50.0,  # 10% window ratio
+            window_rating="triple"
+        )
+
+        assert ke_wind_high_windows > ke_wind_low_windows
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

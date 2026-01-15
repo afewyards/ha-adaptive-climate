@@ -241,6 +241,7 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         'invert_heater': config.get(const.CONF_INVERT_HEATER),
         'sensor_entity_id': config.get(const.CONF_SENSOR),
         'ext_sensor_entity_id': hass.data.get(DOMAIN, {}).get("outdoor_sensor"),
+        'wind_speed_sensor_entity_id': hass.data.get(DOMAIN, {}).get("wind_speed_sensor"),
         'min_temp': config.get(const.CONF_MIN_TEMP),
         'max_temp': config.get(const.CONF_MAX_TEMP),
         'target_temp': config.get(const.CONF_TARGET_TEMP),
@@ -361,6 +362,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         self._heater_polarity_invert = kwargs.get('invert_heater')
         self._sensor_entity_id = kwargs.get('sensor_entity_id')
         self._ext_sensor_entity_id = kwargs.get('ext_sensor_entity_id')
+        self._wind_speed_sensor_entity_id = kwargs.get('wind_speed_sensor_entity_id')
         if self._unique_id == 'none':
             self._unique_id = slugify(f"{DOMAIN}_{self._name}_{self._heater_entity_id}")
         self._ac_mode = kwargs.get('ac_mode', False)
@@ -391,6 +393,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         self._previous_temp = None
         self._previous_temp_time = None
         self._ext_temp = None
+        self._wind_speed = None
         self._temp_lock = asyncio.Lock()
         self._min_temp = kwargs.get('min_temp')
         self._max_temp = kwargs.get('max_temp')
@@ -805,6 +808,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
             heater_controller=self._heater_controller,
             get_current_temp=lambda: self._current_temp,
             get_ext_temp=lambda: self._ext_temp,
+            get_wind_speed=lambda: self._wind_speed,
             get_previous_temp_time=lambda: self._previous_temp_time,
             set_previous_temp_time=self._set_previous_temp_time,
             get_cur_temp_time=lambda: self._cur_temp_time,
@@ -910,6 +914,14 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                     self._ext_sensor_entity_id,
                     self._async_ext_sensor_changed))
 
+        # Wind speed sensor listener
+        if self._wind_speed_sensor_entity_id is not None:
+            self.async_on_remove(
+                async_track_state_change_event(
+                    self.hass,
+                    self._wind_speed_sensor_entity_id,
+                    self._async_wind_speed_sensor_changed))
+
         # Heater entity listener
         if self._heater_entity_id is not None:
             self.async_on_remove(
@@ -969,6 +981,12 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                 ext_sensor_state = self.hass.states.get(self._ext_sensor_entity_id)
                 if ext_sensor_state and ext_sensor_state.state != STATE_UNKNOWN:
                     self._async_update_ext_temp(ext_sensor_state)
+
+            # Initialize wind speed sensor state
+            if self._wind_speed_sensor_entity_id is not None:
+                wind_sensor_state = self.hass.states.get(self._wind_speed_sensor_entity_id)
+                if wind_sensor_state and wind_sensor_state.state != STATE_UNKNOWN:
+                    self._async_update_wind_speed(wind_sensor_state)
 
         if self.hass.state == CoreState.running:
             _async_startup()
@@ -1376,6 +1394,17 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         _LOGGER.debug("%s: Received new external temperature: %s", self.entity_id, self._ext_temp)
         await self._async_control_heating(calc_pid=False)
 
+    async def _async_wind_speed_sensor_changed(self, event: Event[EventStateChangedData]):
+        """Handle wind speed changes."""
+        new_state = event.data["new_state"]
+        if new_state is None:
+            return
+
+        self._async_update_wind_speed(new_state)
+        _LOGGER.debug("%s: Received new wind speed: %s m/s", self.entity_id, self._wind_speed)
+        # Wind speed doesn't trigger immediate control loop - it will be used in next calc
+        # No need to call _async_control_heating here
+
     @callback
     def _async_switch_changed(self, event: Event[EventStateChangedData]):
         """Handle heater switch state changes."""
@@ -1457,6 +1486,21 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         except ValueError as ex:
             _LOGGER.debug("%s: Unable to update from sensor %s: %s", self.entity_id,
                           self._ext_sensor_entity_id, ex)
+
+    @callback
+    def _async_update_wind_speed(self, state):
+        """Update wind speed from sensor."""
+        if state.state in (STATE_UNKNOWN, STATE_UNAVAILABLE, None):
+            _LOGGER.debug("%s: Wind speed sensor %s is %s, treating as 0 m/s",
+                          self.entity_id, self._wind_speed_sensor_entity_id, state.state)
+            self._wind_speed = None
+            return
+        try:
+            self._wind_speed = float(state.state)
+        except ValueError as ex:
+            _LOGGER.debug("%s: Unable to update from wind speed sensor %s: %s", self.entity_id,
+                          self._wind_speed_sensor_entity_id, ex)
+            self._wind_speed = None
 
     async def _async_control_heating(
             self, time_func: object = None, calc_pid: object = False) -> object:

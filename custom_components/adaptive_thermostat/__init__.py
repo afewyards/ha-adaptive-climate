@@ -41,6 +41,7 @@ from .const import (
     CONF_LEARNING_WINDOW_DAYS,
     CONF_WEATHER_ENTITY,
     CONF_OUTDOOR_SENSOR,
+    CONF_WIND_SPEED_SENSOR,
     CONF_HOUSE_ENERGY_RATING,
     CONF_WINDOW_RATING,
     CONF_SUPPLY_TEMP_SENSOR,
@@ -183,6 +184,7 @@ if HAS_HOMEASSISTANT:
                 # Weather and physics
                 vol.Optional(CONF_WEATHER_ENTITY): cv.entity_id,
                 vol.Optional(CONF_OUTDOOR_SENSOR): cv.entity_id,
+                vol.Optional(CONF_WIND_SPEED_SENSOR): cv.entity_id,
                 vol.Optional(CONF_HOUSE_ENERGY_RATING): vol.In(
                     VALID_ENERGY_RATINGS,
                     msg=f"house_energy_rating must be one of: {', '.join(VALID_ENERGY_RATINGS)}"
