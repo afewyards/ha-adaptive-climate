@@ -760,6 +760,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                         get_current_temp=lambda: self._current_temp,
                         get_hvac_mode=lambda: self._hvac_mode,
                         get_in_grace_period=lambda: self._in_grace_period,
+                        get_is_device_active=lambda: self._is_device_active,
                     )
                     _LOGGER.info(
                         "%s: Initialized CycleTrackerManager",
