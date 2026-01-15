@@ -1,6 +1,27 @@
 # CHANGELOG
 
 
+## v0.5.0 (2026-01-15)
+
+### Bug Fixes
+
+- Enforce recovery_deadline as early override for night setback end time
+  ([`c3b18e7`](https://github.com/afewyards/ha-adaptive-thermostat/commit/c3b18e72f00b9c520c701fad40a83b9e3262d688))
+
+- Fix recovery_deadline being ignored when dynamic end time succeeds - Now uses the earlier of
+  (dynamic end time, recovery_deadline) - Auto-enable solar_recovery when window_orientation is
+  configured - Update README with new behavior and clearer examples
+
+Previously, recovery_deadline was only used as a fallback when sunrise data was unavailable. Now it
+  properly acts as an upper bound, ensuring zones recover by the specified time even if dynamic
+  calculation suggests a later time.
+
+### Features
+
+- Add A++++ energy rating for extremely well-insulated buildings
+  ([`48484f4`](https://github.com/afewyards/ha-adaptive-thermostat/commit/48484f46e4fd2cb4877db27ca33c54076eab3e23))
+
+
 ## v0.4.0 (2026-01-15)
 
 ### Features
