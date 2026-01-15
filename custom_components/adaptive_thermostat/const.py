@@ -62,6 +62,7 @@ CONF_DEBUG = 'debug'
 DEFAULT_DEBUG = False
 CONF_HEATING_TYPE = "heating_type"
 CONF_DERIVATIVE_FILTER = "derivative_filter_alpha"
+CONF_PROPORTIONAL_ON_MEASUREMENT = "proportional_on_measurement"
 
 # Heating system types
 HEATING_TYPE_FLOOR_HYDRONIC = "floor_hydronic"

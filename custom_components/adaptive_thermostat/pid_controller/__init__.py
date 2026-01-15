@@ -12,7 +12,7 @@ class PID:
 
     def __init__(self, kp, ki, kd, ke=0, out_min=float('-inf'), out_max=float('+inf'),
                  sampling_period=0, cold_tolerance=0.3, hot_tolerance=0.3, derivative_filter_alpha=0.15,
-                 outdoor_temp_lag_tau=4.0):
+                 outdoor_temp_lag_tau=4.0, proportional_on_measurement=False):
         """A proportional-integral-derivative controller.
             :param kp: Proportional coefficient.
             :type kp: float
@@ -38,6 +38,10 @@ class PID:
             :param outdoor_temp_lag_tau: Time constant in hours for outdoor temperature EMA filter.
                                         Larger values = slower response to outdoor temp changes.
             :type outdoor_temp_lag_tau: float
+            :param proportional_on_measurement: Use proportional-on-measurement (P-on-M) instead of
+                                               proportional-on-error (P-on-E). P-on-M eliminates
+                                               output spikes on setpoint changes but reduces response speed.
+            :type proportional_on_measurement: bool
         """
         if kp is None:
             raise ValueError('kp must be specified')
@@ -81,6 +85,7 @@ class PID:
         self._outdoor_temp_lag_tau = outdoor_temp_lag_tau  # Time constant in hours
         self._outdoor_temp_lagged = None  # Will be initialized on first outdoor temp reading
         self._last_output_before_off = None  # Stores output before switching to OFF mode for bumpless transfer
+        self._proportional_on_measurement = proportional_on_measurement  # P-on-M vs P-on-E mode
 
     @property
     def mode(self):
@@ -326,26 +331,49 @@ class PID:
         # Compensate losses due to external temperature
         self._external = self._Ke * self._dext
 
-        # Calculate proportional term for bumpless transfer
-        self._proportional = self._Kp * self._error
+        # Calculate proportional term
+        # P-on-M (proportional-on-measurement): responds to changes in measurement, not error
+        # P-on-E (proportional-on-error): responds to changes in error
+        if self._proportional_on_measurement:
+            # P-on-M: proportional term based on negative derivative of measurement
+            # This eliminates output spikes when setpoint changes
+            if self._last_input is not None and self._dt != 0:
+                self._proportional = -self._Kp * self._input_diff
+            else:
+                self._proportional = 0.0
+        else:
+            # P-on-E: traditional proportional term based on error
+            self._proportional = self._Kp * self._error
 
         # Apply bumpless transfer if transitioning from OFF to AUTO
         # This must be done after P and E terms are calculated but before integral updates
         if self.has_transfer_state:
             self.prepare_bumpless_transfer()
 
-        # In order to prevent windup, only integrate if the process is not saturated and set point
-        # is stable
-        if self._out_min < self._last_output < self._out_max and \
-                self._last_set_point == self._set_point:
-            # Convert dt from seconds to hours for dimensional correctness
-            # Ki has units of %/(°C·hour), so dt must be in hours
-            dt_hours = self._dt / 3600.0
-            self._integral += self._Ki * self._error * dt_hours
-            # Take external temperature compensation into account for integral clamping
-            self._integral = max(min(self._integral, self._out_max - self._external), self._out_min - self._external)
-        if self._last_set_point != self._set_point:
-            self._integral = 0  # Reset integral if set point has changed as system will need to converge to a new value
+        # In order to prevent windup, only integrate if the process is not saturated
+        # For P-on-M mode: allow integration even when setpoint changes (no integral reset)
+        # For P-on-E mode: only integrate when setpoint is stable
+        if self._proportional_on_measurement:
+            # P-on-M: integrate continuously, no reset on setpoint change
+            if self._out_min < self._last_output < self._out_max:
+                # Convert dt from seconds to hours for dimensional correctness
+                # Ki has units of %/(°C·hour), so dt must be in hours
+                dt_hours = self._dt / 3600.0
+                self._integral += self._Ki * self._error * dt_hours
+                # Take external temperature compensation into account for integral clamping
+                self._integral = max(min(self._integral, self._out_max - self._external), self._out_min - self._external)
+        else:
+            # P-on-E: original behavior with setpoint stability check and integral reset
+            if self._out_min < self._last_output < self._out_max and \
+                    self._last_set_point == self._set_point:
+                # Convert dt from seconds to hours for dimensional correctness
+                # Ki has units of %/(°C·hour), so dt must be in hours
+                dt_hours = self._dt / 3600.0
+                self._integral += self._Ki * self._error * dt_hours
+                # Take external temperature compensation into account for integral clamping
+                self._integral = max(min(self._integral, self._out_max - self._external), self._out_min - self._external)
+            if self._last_set_point != self._set_point:
+                self._integral = 0  # Reset integral if set point has changed as system will need to converge to a new value
 
         if self._dt != 0:
             # Convert dt to hours for dimensional correctness

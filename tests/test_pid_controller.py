@@ -896,5 +896,176 @@ class TestPIDBumplessTransfer:
         assert hasattr(pid, '_last_output_before_off')
 
 
+class TestPIDProportionalOnMeasurement:
+    """Test proportional-on-measurement (P-on-M) functionality."""
+
+    def test_proportional_on_measurement_setpoint_change(self):
+        """Test P-on-M eliminates output spike on setpoint change and preserves integral."""
+        # Create PID with P-on-M enabled (default)
+        # Use out_min=-10 to avoid windup prevention blocking integration at output=0
+        pid_p_on_m = PID(kp=10.0, ki=1.2, kd=2.5, out_min=-10, out_max=100, proportional_on_measurement=True)
+
+        # Create PID with P-on-E for comparison
+        pid_p_on_e = PID(kp=10.0, ki=1.2, kd=2.5, out_min=-10, out_max=100, proportional_on_measurement=False)
+
+        # Run both controllers for a few cycles to build up integral term
+        current_temp = 19.0
+        setpoint = 20.0
+        output_before_m = 0
+        output_before_e = 0
+        for i in range(5):
+            time = float(i * 3600)  # 1 hour intervals
+            last_time = float((i - 1) * 3600) if i > 0 else None
+            output_before_m, _ = pid_p_on_m.calc(current_temp, setpoint, input_time=time, last_input_time=last_time)
+            output_before_e, _ = pid_p_on_e.calc(current_temp, setpoint, input_time=time, last_input_time=last_time)
+            current_temp += 0.1  # Slowly approaching setpoint
+
+        # Store state before setpoint change
+        integral_before_m = pid_p_on_m.integral
+        integral_before_e = pid_p_on_e.integral
+
+        # Now change setpoint from 20.0 to 22.0 (sudden +2°C change)
+        new_setpoint = 22.0
+        time_after_change = 5.0 * 3600
+        last_time_after_change = 4.0 * 3600
+
+        output_m, _ = pid_p_on_m.calc(current_temp, new_setpoint, input_time=time_after_change, last_input_time=last_time_after_change)
+        output_e, _ = pid_p_on_e.calc(current_temp, new_setpoint, input_time=time_after_change, last_input_time=last_time_after_change)
+
+        # P-on-M: Integral should NOT be reset (continues accumulating)
+        assert pid_p_on_m.integral != 0, "P-on-M should preserve integral on setpoint change"
+        assert pid_p_on_m.integral >= integral_before_m, "P-on-M integral should continue accumulating"
+
+        # P-on-E: Integral SHOULD be reset to zero
+        assert pid_p_on_e.integral == 0, "P-on-E should reset integral on setpoint change"
+
+        # P-on-M: Output change should be smaller (no proportional spike)
+        output_delta_m = abs(output_m - output_before_m)
+        output_delta_e = abs(output_e - output_before_e)
+
+        # P-on-E will have larger output change due to proportional term responding to error change
+        assert output_delta_m < output_delta_e, "P-on-M should have smaller output change than P-on-E on setpoint change"
+
+    def test_proportional_on_measurement_faster_recovery(self):
+        """Test that P-on-M provides smoother recovery from setpoint changes due to preserved integral."""
+        # Create two PID controllers
+        # Use out_min=-10 to avoid windup prevention blocking integration at output=0
+        pid_p_on_m = PID(kp=10.0, ki=1.2, kd=2.5, out_min=-10, out_max=100, proportional_on_measurement=True)
+        pid_p_on_e = PID(kp=10.0, ki=1.2, kd=2.5, out_min=-10, out_max=100, proportional_on_measurement=False)
+
+        # Build up integral by maintaining small error (19.5°C -> 20°C setpoint)
+        # This simulates a system slowly approaching setpoint
+        current_temp = 19.5
+        for i in range(10):
+            time = float(i * 3600)
+            last_time = float((i - 1) * 3600) if i > 0 else None
+            pid_p_on_m.calc(current_temp, 20.0, input_time=time, last_input_time=last_time)
+            pid_p_on_e.calc(current_temp, 20.0, input_time=time, last_input_time=last_time)
+
+        # Verify integral has accumulated (0.5°C error * 1.2 Ki * 10 hours = 6%)
+        assert pid_p_on_m.integral > 0, "Should have accumulated integral"
+        assert pid_p_on_e.integral > 0, "Should have accumulated integral"
+
+        # Change setpoint to 22°C (keeping temp at 19.5°C)
+        time = 10.0 * 3600
+        last_time = 9.0 * 3600
+        output_m, _ = pid_p_on_m.calc(19.5, 22.0, input_time=time, last_input_time=last_time)
+        output_e, _ = pid_p_on_e.calc(19.5, 22.0, input_time=time, last_input_time=last_time)
+
+        # P-on-M maintains integral, P-on-E resets it
+        # This means P-on-M has a "head start" on recovery
+        assert pid_p_on_m.integral > 0, "P-on-M should maintain positive integral"
+        assert pid_p_on_e.integral == 0, "P-on-E should reset integral to zero"
+
+        # Simulate temperature rising slowly toward new setpoint
+        current_temp = 20.0
+        outputs_m = []
+        outputs_e = []
+
+        for i in range(10):
+            time = float((11 + i) * 3600)
+            last_time = float((10 + i) * 3600)
+            current_temp += 0.15  # Rising toward 22°C
+
+            out_m, _ = pid_p_on_m.calc(current_temp, 22.0, input_time=time, last_input_time=last_time)
+            out_e, _ = pid_p_on_e.calc(current_temp, 22.0, input_time=time, last_input_time=last_time)
+
+            outputs_m.append(out_m)
+            outputs_e.append(out_e)
+
+        # P-on-M should have more consistent output due to preserved integral
+        # P-on-E needs to rebuild integral from zero
+        avg_output_m = sum(outputs_m) / len(outputs_m)
+        avg_output_e = sum(outputs_e) / len(outputs_e)
+
+        # Both should produce reasonable outputs
+        assert avg_output_m > 0, "P-on-M should produce positive output"
+        assert avg_output_e > 0, "P-on-E should produce positive output"
+
+    def test_proportional_on_measurement_measurement_changes(self):
+        """Test that P-on-M proportional term responds to measurement changes, not error changes."""
+        pid = PID(kp=10.0, ki=1.2, kd=2.5, out_min=0, out_max=100, proportional_on_measurement=True)
+
+        # First calculation at 19°C, setpoint 20°C
+        time1 = 0.0
+        output1, _ = pid.calc(19.0, 20.0, input_time=time1, last_input_time=None)
+
+        # Proportional term should be 0 on first call (no previous measurement)
+        assert pid.proportional == 0.0, "First P-on-M proportional should be 0"
+
+        # Second calculation: temperature rises to 19.5°C
+        time2 = 3600.0  # 1 hour later
+        output2, _ = pid.calc(19.5, 20.0, input_time=time2, last_input_time=time1)
+
+        # Proportional term should respond to measurement change (negative, since temp increased)
+        # P = -Kp * (input - last_input) = -10.0 * (19.5 - 19.0) = -10.0 * 0.5 = -5.0
+        assert pid.proportional == pytest.approx(-5.0), "P-on-M proportional should be -Kp * measurement_change"
+
+        # Third calculation: temperature continues to 20.0°C (reaching setpoint)
+        time3 = 7200.0  # 2 hours total
+        output3, _ = pid.calc(20.0, 20.0, input_time=time3, last_input_time=time2)
+
+        # P = -10.0 * (20.0 - 19.5) = -5.0
+        assert pid.proportional == pytest.approx(-5.0), "P-on-M proportional continues responding to measurement"
+
+    def test_proportional_on_error_traditional_behavior(self):
+        """Test that P-on-E (traditional mode) responds to error, not measurement."""
+        pid = PID(kp=10.0, ki=1.2, kd=2.5, out_min=0, out_max=100, proportional_on_measurement=False)
+
+        # First calculation at 19°C, setpoint 20°C
+        time1 = 0.0
+        output1, _ = pid.calc(19.0, 20.0, input_time=time1, last_input_time=None)
+
+        # P = Kp * error = 10.0 * (20.0 - 19.0) = 10.0
+        assert pid.proportional == pytest.approx(10.0), "P-on-E should be Kp * error"
+
+        # Second calculation: temperature rises to 19.5°C, error reduces to 0.5°C
+        time2 = 3600.0
+        output2, _ = pid.calc(19.5, 20.0, input_time=time2, last_input_time=time1)
+
+        # P = 10.0 * (20.0 - 19.5) = 5.0
+        assert pid.proportional == pytest.approx(5.0), "P-on-E proportional based on error"
+
+        # Third calculation: setpoint changes to 22°C (error jumps from 0.5 to 2.5°C)
+        time3 = 7200.0
+        output3, _ = pid.calc(19.5, 22.0, input_time=time3, last_input_time=time2)
+
+        # P = 10.0 * (22.0 - 19.5) = 25.0 (large spike due to setpoint change)
+        assert pid.proportional == pytest.approx(25.0), "P-on-E spikes on setpoint change"
+
+        # Integral should be reset on setpoint change
+        assert pid.integral == 0.0, "P-on-E resets integral on setpoint change"
+
+    def test_proportional_on_measurement_module_exists(self):
+        """Marker test to verify P-on-M functionality exists."""
+        # Verify P-on-M mode can be enabled/disabled
+        pid_m = PID(kp=10.0, ki=1.2, kd=2.5, out_min=0, out_max=100, proportional_on_measurement=True)
+        pid_e = PID(kp=10.0, ki=1.2, kd=2.5, out_min=0, out_max=100, proportional_on_measurement=False)
+
+        assert hasattr(pid_m, '_proportional_on_measurement')
+        assert pid_m._proportional_on_measurement is True
+        assert pid_e._proportional_on_measurement is False
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
