@@ -705,6 +705,50 @@ class TestCycleTrackerEdgeCases:
         assert cycle_tracker.state == CycleState.IDLE
 
 
+class TestSetpointChangeWithDeviceActive:
+    """Tests for setpoint change behavior when heater is active."""
+
+    def test_setpoint_change_while_heater_active_continues_tracking(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks
+    ):
+        """Test that setpoint change while heater is active continues tracking."""
+        # Create tracker with get_is_device_active returning True
+        tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            get_target_temp=mock_callbacks["get_target_temp"],
+            get_current_temp=mock_callbacks["get_current_temp"],
+            get_hvac_mode=mock_callbacks["get_hvac_mode"],
+            get_in_grace_period=mock_callbacks["get_in_grace_period"],
+            get_is_device_active=Mock(return_value=True),
+        )
+
+        # Start heating cycle
+        start_time = datetime(2025, 1, 14, 10, 0, 0)
+        tracker.on_heating_started(start_time)
+        assert tracker.state == CycleState.HEATING
+
+        # Add temperature sample to history
+        tracker._temperature_history.append((datetime(2025, 1, 14, 10, 0, 30), 18.5))
+
+        # Change setpoint while heater is active
+        tracker.on_setpoint_changed(20.0, 22.0)
+
+        # Assert state is still HEATING (not aborted)
+        assert tracker.state == CycleState.HEATING
+
+        # Assert _cycle_target_temp updated to new value
+        assert tracker._cycle_target_temp == 22.0
+
+        # Assert _was_interrupted is True
+        assert tracker._was_interrupted is True
+
+        # Assert temperature_history is preserved
+        assert len(tracker.temperature_history) == 1
+        assert tracker.temperature_history[0] == (datetime(2025, 1, 14, 10, 0, 30), 18.5)
+
+
 def test_cycle_tracker_module_exists():
     """Marker test to verify cycle tracker module exists."""
     assert CycleState is not None
