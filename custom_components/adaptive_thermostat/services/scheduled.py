@@ -444,6 +444,7 @@ async def async_daily_learning(
         current_kp = state.attributes.get("kp", 100.0)
         current_ki = state.attributes.get("ki", 0.01)
         current_kd = state.attributes.get("kd", 0.0)
+        pwm_seconds = zone_data.get("pwm_seconds", 0)
 
         try:
             # Trigger learning analysis with current PID values
@@ -451,6 +452,7 @@ async def async_daily_learning(
                 current_kp=current_kp,
                 current_ki=current_ki,
                 current_kd=current_kd,
+                pwm_seconds=pwm_seconds,
             )
             zones_analyzed += 1
 

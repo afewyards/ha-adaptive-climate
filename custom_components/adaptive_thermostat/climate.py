@@ -308,6 +308,7 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
             "learning_enabled": True,  # Always enabled, vacation mode can toggle
             "adaptive_learner": AdaptiveLearner(heating_type=config.get(const.CONF_HEATING_TYPE)),
             "linked_zones": config.get(const.CONF_LINKED_ZONES, []),
+            "pwm_seconds": config.get(const.CONF_PWM).seconds if config.get(const.CONF_PWM) else 0,
         }
         coordinator.register_zone(zone_id, zone_data)
         _LOGGER.info("Registered zone %s with coordinator", zone_id)

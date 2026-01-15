@@ -233,6 +233,7 @@ class PIDTuningManager:
             current_kp=self._get_kp(),
             current_ki=self._get_ki(),
             current_kd=self._get_kd(),
+            pwm_seconds=self._thermostat._pwm,
         )
 
         if recommendation is None:

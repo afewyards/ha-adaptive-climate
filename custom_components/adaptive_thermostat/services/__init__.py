@@ -93,6 +93,7 @@ async def async_handle_run_learning(
         current_kp = state.attributes.get("kp", 100.0)
         current_ki = state.attributes.get("ki", 0.01)
         current_kd = state.attributes.get("kd", 0.0)
+        pwm_seconds = zone_data.get("pwm_seconds", 0)
 
         try:
             # Get cycle count for reporting
@@ -103,6 +104,7 @@ async def async_handle_run_learning(
                 current_kp=current_kp,
                 current_ki=current_ki,
                 current_kd=current_kd,
+                pwm_seconds=pwm_seconds,
             )
 
             results["zones_analyzed"] += 1
@@ -462,6 +464,7 @@ async def async_handle_pid_recommendations(
         current_ki = state.attributes.get("ki", 0.01)
         current_kd = state.attributes.get("kd", 0.0)
         current_pid = {"kp": current_kp, "ki": current_ki, "kd": current_kd}
+        pwm_seconds = zone_data.get("pwm_seconds", 0)
 
         try:
             cycle_count = adaptive_learner.get_cycle_count()
@@ -471,6 +474,7 @@ async def async_handle_pid_recommendations(
                 current_kp=current_kp,
                 current_ki=current_ki,
                 current_kd=current_kd,
+                pwm_seconds=pwm_seconds,
             )
 
             if recommendation is None:

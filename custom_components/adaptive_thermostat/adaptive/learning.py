@@ -227,6 +227,7 @@ class AdaptiveLearner:
         min_cycles: int = MIN_CYCLES_FOR_LEARNING,
         min_interval_hours: int = MIN_ADJUSTMENT_INTERVAL,
         min_adjustment_cycles: int = MIN_ADJUSTMENT_CYCLES,
+        pwm_seconds: float = 0,
     ) -> Optional[Dict[str, float]]:
         """
         Calculate PID adjustments based on observed cycle performance.
@@ -250,6 +251,7 @@ class AdaptiveLearner:
             min_cycles: Minimum cycles required before making recommendations
             min_interval_hours: Minimum hours between adjustments (hybrid time gate)
             min_adjustment_cycles: Minimum cycles between adjustments (hybrid cycle gate)
+            pwm_seconds: PWM period in seconds (0 for valve mode, >0 for PWM mode)
 
         Returns:
             Dictionary with recommended kp, ki, kd values, or None if insufficient data,
@@ -348,6 +350,22 @@ class AdaptiveLearner:
         if not rule_results:
             _LOGGER.debug("No PID rules triggered - metrics within acceptable ranges")
             return None
+
+        # Filter out oscillation rules in PWM mode
+        # PWM cycling is expected behavior and should not trigger oscillation rules
+        if pwm_seconds > 0:
+            from ..const import RULE_PRIORITY_OSCILLATION
+            original_count = len(rule_results)
+            rule_results = [r for r in rule_results if r.rule.priority != RULE_PRIORITY_OSCILLATION]
+            if len(rule_results) < original_count:
+                _LOGGER.debug(
+                    f"PWM mode active (period={pwm_seconds}s): filtered out "
+                    f"{original_count - len(rule_results)} oscillation rule(s). "
+                    "PWM cycles are expected behavior."
+                )
+            if not rule_results:
+                _LOGGER.debug("All rules filtered out in PWM mode - no adjustments needed")
+                return None
 
         # Detect and resolve conflicts
         conflicts = detect_rule_conflicts(rule_results)

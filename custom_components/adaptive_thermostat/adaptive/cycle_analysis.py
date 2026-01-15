@@ -242,6 +242,7 @@ class CycleMetrics:
         rise_time: Optional[float] = None,
         disturbances: Optional[List[str]] = None,
         interruption_history: Optional[List[Tuple[datetime, str]]] = None,
+        heater_cycles: int = 0,
     ):
         """
         Initialize cycle metrics.
@@ -250,10 +251,11 @@ class CycleMetrics:
             overshoot: Maximum overshoot in °C
             undershoot: Maximum undershoot in °C
             settling_time: Settling time in minutes
-            oscillations: Number of oscillations around target
+            oscillations: Number of temperature oscillations around target
             rise_time: Time to reach target from start in minutes
             disturbances: List of detected disturbance types (e.g., "solar_gain", "wind_loss")
             interruption_history: List of (timestamp, interruption_type) tuples for debugging
+            heater_cycles: Number of heater on/off transitions (informational only)
         """
         self.overshoot = overshoot
         self.undershoot = undershoot
@@ -262,6 +264,7 @@ class CycleMetrics:
         self.rise_time = rise_time
         self.disturbances = disturbances or []
         self.interruption_history = interruption_history or []
+        self.heater_cycles = heater_cycles
 
     @property
     def is_disturbed(self) -> bool:
@@ -347,7 +350,11 @@ def count_oscillations(
     threshold: float = 0.1,
 ) -> int:
     """
-    Count number of oscillations around target temperature.
+    Count number of temperature oscillations around target temperature.
+
+    This function counts temperature crossings of the setpoint, NOT heater on/off cycles.
+    In PWM mode, the heater may cycle on/off frequently (expected behavior), but this
+    function only counts actual temperature oscillations around the target.
 
     Args:
         temperature_history: List of (timestamp, temperature) tuples
@@ -355,7 +362,7 @@ def count_oscillations(
         threshold: Hysteresis threshold in °C to avoid counting noise
 
     Returns:
-        Number of oscillations (crossings of target)
+        Number of temperature oscillations (crossings of target), not heater cycles
     """
     if len(temperature_history) < 2:
         return 0
