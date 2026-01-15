@@ -146,13 +146,15 @@ def calculate_initial_pid(
 
     params = heating_params.get(heating_type, heating_params["radiator"])
 
-    # Minor tau-based adjustment (normalized to tau=1.5 as baseline)
-    # Higher tau = slower system = slightly lower Kp/Ki, slightly higher Kd
-    tau_factor = 1.5 / thermal_time_constant if thermal_time_constant > 0 else 1.0
-    tau_factor = max(0.7, min(1.3, tau_factor))  # Clamp to ±30%
+    # Tau-based adjustment (normalized to tau=1.5 as baseline) - v0.7.0 widened range
+    # Higher tau = slower system = lower Kp/Ki, higher Kd
+    # Use gentler scaling with power 0.7 to avoid over-correction
+    tau_factor = (1.5 / thermal_time_constant) ** 0.7 if thermal_time_constant > 0 else 1.0
+    tau_factor = max(0.3, min(2.5, tau_factor))  # Clamp to -70% to +150% (was ±30%)
 
     Kp = params["kp"] * tau_factor
-    Ki = params["ki"] * tau_factor
+    # Strengthen Ki adjustment with power 1.5 to improve slow-building performance
+    Ki = params["ki"] * (tau_factor ** 1.5)
     Kd = params["kd"] / tau_factor  # Inverse: slower systems need more damping
 
     return (round(Kp, 4), round(Ki, 5), round(Kd, 2))
