@@ -76,6 +76,7 @@ from . import const
 from . import pid_controller
 from .adaptive.learning import AdaptiveLearner, ThermalRateLearner
 from .managers import HeaterController, KeController, NightSetbackController, PIDTuningManager, StateRestorer, TemperatureManager, CycleTrackerManager
+from .managers.state_attributes import build_state_attributes
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -1094,91 +1095,8 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
 
     @property
     def extra_state_attributes(self):
-        """attributes to include in entity"""
-        device_state_attributes = {
-            'away_temp': self._away_temp,
-            'eco_temp': self._eco_temp,
-            'boost_temp': self._boost_temp,
-            'comfort_temp': self._comfort_temp,
-            'home_temp': self._home_temp,
-            'sleep_temp': self._sleep_temp,
-            'activity_temp': self._activity_temp,
-            "control_output": self._control_output,
-            "kp": self._kp,
-            "ki": self._ki,
-            "kd": self._kd,
-            "ke": self._ke,
-            "pid_mode": self.pid_mode,
-            "pid_i": self.pid_control_i,
-        }
-        if self.hass.data.get(DOMAIN, {}).get("debug", False):
-            device_state_attributes.update({
-                "pid_p": self.pid_control_p,
-                "pid_d": self.pid_control_d,
-                "pid_e": self.pid_control_e,
-                "pid_dt": self._dt,
-            })
-        if self._night_setback or self._night_setback_config:
-            # Use consolidated night setback calculation method
-            _, _, night_info = self._calculate_night_setback_adjustment()
-            device_state_attributes.update(night_info)
-
-        # Learning grace period (after night setback transitions)
-        if self.in_learning_grace_period:
-            device_state_attributes["learning_paused"] = True
-            # Get learning_grace_until from controller if available, else fall back to instance var
-            grace_until = (
-                self._night_setback_controller.learning_grace_until
-                if self._night_setback_controller
-                else self._learning_grace_until
-            )
-            if grace_until:
-                device_state_attributes["learning_resumes"] = grace_until.strftime("%H:%M")
-
-        # Zone linking status
-        if self._zone_linker:
-            is_delayed = self._zone_linker.is_zone_delayed(self._unique_id)
-            device_state_attributes["zone_link_delayed"] = is_delayed
-            if is_delayed:
-                remaining = self._zone_linker.get_delay_remaining_minutes(self._unique_id)
-                device_state_attributes["zone_link_delay_remaining"] = round(remaining, 1) if remaining else 0
-            if self._linked_zones:
-                device_state_attributes["linked_zones"] = self._linked_zones
-
-        # Heater control failure status
-        if self._heater_control_failed:
-            device_state_attributes["heater_control_failed"] = True
-            device_state_attributes["last_heater_error"] = self._last_heater_error
-
-        # Contact sensor status (window/door open detection)
-        if self._contact_sensor_handler:
-            is_open = self._contact_sensor_handler.is_any_contact_open()
-            is_paused = self._contact_sensor_handler.should_take_action()
-            device_state_attributes["contact_open"] = is_open
-            device_state_attributes["contact_paused"] = is_paused
-            if is_open and not is_paused:
-                # Contact is open but delay hasn't elapsed yet
-                time_until = self._contact_sensor_handler.get_time_until_action()
-                if time_until is not None and time_until > 0:
-                    device_state_attributes["contact_pause_in"] = time_until
-
-        # Ke learning status
-        if self._ke_learner:
-            device_state_attributes["ke_learning_enabled"] = self._ke_learner.enabled
-            device_state_attributes["ke_observations"] = self._ke_learner.observation_count
-            # Include PID convergence status from coordinator's adaptive learner
-            coordinator = self.hass.data.get(DOMAIN, {}).get("coordinator")
-            if coordinator:
-                all_zones = coordinator.get_all_zones()
-                for zone_id, zone_data in all_zones.items():
-                    if zone_data.get("climate_entity_id") == self.entity_id:
-                        adaptive_learner = zone_data.get("adaptive_learner")
-                        if adaptive_learner:
-                            device_state_attributes["pid_converged"] = adaptive_learner.is_pid_converged_for_ke()
-                            device_state_attributes["consecutive_converged_cycles"] = adaptive_learner.get_consecutive_converged_cycles()
-                        break
-
-        return device_state_attributes
+        """Return extra state attributes to include in entity."""
+        return build_state_attributes(self)
 
     def set_hvac_mode(self, hvac_mode: (HVACMode, str)) -> None:
         """Set new target hvac mode."""

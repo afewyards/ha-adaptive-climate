@@ -7,6 +7,7 @@ from .ke_manager import KeController
 from .night_setback_calculator import NightSetbackCalculator
 from .night_setback_manager import NightSetbackController
 from .pid_tuning import PIDTuningManager
+from .state_attributes import build_state_attributes
 from .state_restorer import StateRestorer
 from .temperature_manager import TemperatureManager
 
@@ -20,4 +21,5 @@ __all__ = [
     "PIDTuningManager",
     "StateRestorer",
     "TemperatureManager",
+    "build_state_attributes",
 ]
