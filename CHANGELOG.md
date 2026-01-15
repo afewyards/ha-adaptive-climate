@@ -1,6 +1,49 @@
 # CHANGELOG
 
 
+## v0.6.0 (2026-01-15)
+
+### Bug Fixes
+
+- Defer Ke application until PID reaches equilibrium
+  ([`0375795`](https://github.com/afewyards/ha-adaptive-thermostat/commit/0375795bfe441a657831b5d3e3f7df138173c62e))
+
+- Start with Ke=0 instead of applying physics-based Ke immediately - Store physics-based Ke in
+  KeLearner as reference value - Add get_is_pid_converged callback to KeController - Enable Ke
+  learning and apply physics Ke only after PID converges - This prevents Ke from interfering with
+  PID tuning during initial stabilization
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+### Features
+
+- **reports**: Add visual charts and comfort metrics to weekly report
+  ([`a88a5e8`](https://github.com/afewyards/ha-adaptive-thermostat/commit/a88a5e870408e6cd2678d295cbb243f7f9c1c2f7))
+
+- Add Pillow-based chart generation (bar charts, comfort charts, week-over-week comparison) - Add
+  TimeAtTargetSensor tracking % time within tolerance of setpoint - Add ComfortScoreSensor with
+  weighted composite score (time_at_target 60%, deviation 25%, oscillations 15%) - Add 12-week
+  rolling history storage for week-over-week comparisons - Add zone cost estimation based on duty
+  cycle × area weighting - Attach PNG chart to mobile notifications - Add comprehensive tests for
+  all new modules
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+### Refactoring
+
+- Move outdoor_sensor config from per-zone to domain level
+  ([`c65e7de`](https://github.com/afewyards/ha-adaptive-thermostat/commit/c65e7de0615de8141e508a91fff62e0d9e078646))
+
+- Add outdoor_sensor to domain-level config schema in __init__.py - Remove per-zone outdoor_sensor
+  config option from climate.py - All zones now inherit outdoor_sensor from domain config - Update
+  README documentation to reflect the change
+
+This simplifies configuration since outdoor temperature is typically the same for all zones in a
+  house.
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+
 ## v0.5.0 (2026-01-15)
 
 ### Bug Fixes
