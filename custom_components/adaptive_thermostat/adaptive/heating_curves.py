@@ -20,26 +20,26 @@ def calculate_weather_compensation(
     Weather compensation increases heating output when outdoor temperature
     is lower than the indoor setpoint, reducing the load on the PID controller.
 
-    Note: Ke values scaled by 1/100 in v0.7.0 to match corrected Ki dimensional analysis.
+    Note: Ke values restored in v0.7.1 (100x increase from v0.7.0's incorrect scaling).
 
     Args:
         indoor_setpoint: Target indoor temperature in °C
         outdoor_temp: Current outdoor temperature in °C
-        ke: Weather compensation coefficient (typically 0.0-0.02, scaled by 1/100 in v0.7.0)
+        ke: Weather compensation coefficient (typically 0.1-2.0, restored in v0.7.1)
             - 0.0: No weather compensation
-            - 0.005: Mild compensation (well-insulated buildings)
-            - 0.010: Moderate compensation (typical buildings)
-            - 0.020: Strong compensation (poorly insulated buildings)
+            - 0.5: Mild compensation (well-insulated buildings)
+            - 1.0: Moderate compensation (typical buildings)
+            - 2.0: Strong compensation (poorly insulated buildings)
 
     Returns:
         Weather compensation adjustment to add to PID output
 
     Example:
-        >>> calculate_weather_compensation(20.0, 0.0, ke=0.01)
-        0.2
-        >>> calculate_weather_compensation(20.0, 10.0, ke=0.01)
-        0.1
-        >>> calculate_weather_compensation(20.0, 20.0, ke=0.01)
+        >>> calculate_weather_compensation(20.0, 0.0, ke=1.0)
+        20.0
+        >>> calculate_weather_compensation(20.0, 10.0, ke=1.0)
+        10.0
+        >>> calculate_weather_compensation(20.0, 20.0, ke=1.0)
         0.0
     """
     if ke == 0.0:
@@ -63,7 +63,7 @@ def calculate_recommended_ke(
     The ke value determines how strongly outdoor temperature affects heating output.
     Higher values mean stronger compensation.
 
-    Note: Values scaled by 1/100 in v0.7.0 to match corrected Ki dimensional analysis.
+    Note: Values restored in v0.7.1 (100x increase from v0.7.0's incorrect scaling).
 
     Args:
         insulation_quality: Building insulation quality
@@ -78,14 +78,14 @@ def calculate_recommended_ke(
             - "forced_air": Forced air systems (very fast response)
 
     Returns:
-        Recommended ke coefficient (0.0-0.02, scaled by 1/100 from previous 0.0-2.0 range)
+        Recommended ke coefficient (0.1-2.0, restored in v0.7.1)
     """
-    # Base ke values by insulation quality (scaled by 1/100 in v0.7.0)
+    # Base ke values by insulation quality (restored 100x in v0.7.1)
     insulation_ke = {
-        "excellent": 0.003,  # A+++ - minimal compensation needed
-        "good": 0.005,       # A/B - mild compensation
-        "average": 0.010,    # C/D - moderate compensation
-        "poor": 0.015,       # E/F - strong compensation
+        "excellent": 0.3,  # A+++ - minimal compensation needed
+        "good": 0.5,       # A/B - mild compensation
+        "average": 1.0,    # C/D - moderate compensation
+        "poor": 1.5,       # E/F - strong compensation
     }
 
     # Adjustment factors by heating type
@@ -97,7 +97,7 @@ def calculate_recommended_ke(
     }
 
     # Get base ke (default to good insulation)
-    base_ke = insulation_ke.get(insulation_quality, 0.005)
+    base_ke = insulation_ke.get(insulation_quality, 0.5)
 
     # Get heating type factor (default to radiator)
     factor = heating_factors.get(heating_type, 1.0)
