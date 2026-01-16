@@ -55,27 +55,55 @@ class TestPIDController:
         assert output2 <= 100.0
 
     def test_integral_windup_prevention(self):
-        """Test integral windup prevention."""
-        # Create PID controller
-        pid = PID(kp=5, ki=1, kd=0, out_min=0, out_max=100)
+        """Test integral windup prevention with directional saturation.
 
-        # First calculation establishes baseline
-        output1, _ = pid.calc(input_val=20.0, set_point=25.0, input_time=0.0)
-        initial_integral = pid.integral
+        Tests that the back-calculation anti-windup:
+        1. Blocks integration when error drives further saturation (same direction)
+        2. Allows integration when error opposes saturation (wind-down)
+        """
+        # Use P-on-E mode for simpler test (P term based on error, not measurement change)
+        # Create PID with low Kp so integral must build up to saturate
+        pid = PID(kp=2, ki=10, kd=0, out_min=0, out_max=100, proportional_on_measurement=False)
 
-        # Second calculation at output limit (simulate saturation)
-        # Force output to be at max by making large error
-        pid.calc(input_val=0.0, set_point=100.0, input_time=1.0)
+        # First call establishes baseline
+        pid.calc(input_val=10.0, set_point=20.0, input_time=0.0, last_input_time=None)
 
-        # Third calculation should not accumulate integral when saturated
-        # The integral should be clamped
-        output3, _ = pid.calc(input_val=0.0, set_point=100.0, input_time=2.0)
+        # Build up integral over time to saturate output at 100%
+        # error = 10, P = 20, Ki = 10, dt = 100s = 100/3600 hours
+        # Each iteration adds approximately 2.778 to integral
+        for i in range(1, 35):
+            last_time = 100.0 * (i - 1)
+            current_time = 100.0 * i
+            output, _ = pid.calc(input_val=10.0, set_point=20.0, input_time=current_time, last_input_time=last_time)
 
-        # Output should be clamped at max
-        assert output3 == 100.0
+        # Should now be saturated at 100%
+        assert output == 100.0
+        assert pid.integral > 70.0
 
-        # Integral should be limited to prevent windup
-        assert pid.integral <= 100.0
+        # Test case 1: error in same direction as saturation (positive error, saturated high)
+        # Integral should NOT increase (anti-windup blocks further windup)
+        integral_before_same_direction = pid.integral
+        output2, _ = pid.calc(input_val=10.0, set_point=20.0, input_time=3500.0, last_input_time=3400.0)
+
+        # Output still saturated
+        assert output2 == 100.0
+
+        # Integral should not have increased (saturated_high = True blocks integration)
+        assert pid.integral == integral_before_same_direction
+
+        # Test case 2: error opposes saturation (negative error, saturated high)
+        # This simulates overshoot - integral SHOULD decrease (wind-down allowed)
+        integral_before_opposite = pid.integral
+        # Create negative error: input > setpoint
+        output3, _ = pid.calc(input_val=22.0, set_point=20.0, input_time=3600.0, last_input_time=3500.0)
+
+        # Output may drop below 100% as integral winds down and P term goes negative
+        # P = 2 * (20-22) = -4, and integral decreases, so output < 100
+        assert output3 < 100.0
+
+        # Integral should decrease when error opposes saturation
+        # (saturated_high = False because error < 0, so integration proceeds with negative error)
+        assert pid.integral < integral_before_opposite
 
     def test_pid_mode_off(self):
         """Test PID behavior when mode is OFF."""
