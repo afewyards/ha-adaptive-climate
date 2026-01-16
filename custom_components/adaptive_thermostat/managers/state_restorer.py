@@ -163,9 +163,9 @@ class StateRestorer:
             thermostat._kd = float(old_state.attributes.get('Kd'))
             thermostat._pid_controller.set_pid_param(kd=thermostat._kd)
 
-        # Restore Ke (supports both 'ke' and 'Ke') with migration for v0.7.0 scaling fix
-        # In v0.6.x and earlier, Ke values were 100x larger
-        # In v0.7.0+, Ke scaled by 1/100 to match corrected Ki dimensional analysis
+        # Restore Ke (supports both 'ke' and 'Ke') with migration for v0.7.1 scaling restoration
+        # In v0.7.0, Ke values were incorrectly scaled down by 100x
+        # In v0.7.1+, Ke restored to proper range by multiplying by 100x
         ke_value = None
         if old_state.attributes.get('ke') is not None:
             ke_value = float(old_state.attributes.get('ke'))
@@ -174,15 +174,14 @@ class StateRestorer:
 
         if ke_value is not None:
             # Check if migration is needed by looking for version marker
-            # If no marker exists, assume old version and migrate if Ke > 0.05
-            ke_migrated = old_state.attributes.get('ke_migrated') == True
+            # If no marker exists, assume v0.7.0 and migrate if Ke < 0.05
+            ke_v071_migrated = old_state.attributes.get('ke_v071_migrated') == True
 
-            if not ke_migrated and ke_value > 0.05:
-                # Migrate: old Ke was 100x larger, divide by 100
-                thermostat._ke = ke_value / 100.0
+            if not ke_v071_migrated and ke_value < 0.05:
+                # Migrate: v0.7.0 Ke was 100x too small, multiply by 100
+                thermostat._ke = ke_value * 100.0
                 _LOGGER.info(
-                    "%s: Migrated Ke from v0.6.x to v0.7.0+ (100x scaling): "
-                    "%.4f -> %.4f",
+                    "%s: Ke v0.7.1 migration: %.4f -> %.4f",
                     thermostat.entity_id, ke_value, thermostat._ke
                 )
             else:

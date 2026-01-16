@@ -34,11 +34,11 @@ def build_state_attributes(thermostat: SmartThermostat) -> dict[str, Any]:
         "ke": thermostat._ke,
         "pid_mode": thermostat.pid_mode,
         "pid_i": thermostat.pid_control_i,
-        # Migration markers for v0.7.0 dimensional analysis fixes
-        # pid_integral_migrated: integral stored in hourly units (not seconds)
-        # ke_migrated: Ke scaled by 1/100 (new range: 0.001-0.02)
+        # Migration markers for dimensional analysis fixes
+        # pid_integral_migrated: integral stored in hourly units (not seconds) - v0.7.0
+        # ke_v071_migrated: Ke restored to proper range (100x from v0.7.0) - v0.7.1
         "pid_integral_migrated": True,
-        "ke_migrated": True,
+        "ke_v071_migrated": True,
         # Outdoor temperature lag state
         "outdoor_temp_lagged": thermostat._pid_controller.outdoor_temp_lagged,
         "outdoor_temp_lag_tau": thermostat._pid_controller.outdoor_temp_lag_tau,
