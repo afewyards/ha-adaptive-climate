@@ -187,13 +187,34 @@ def get_convergence_thresholds(heating_type: Optional[str] = None) -> Dict[str, 
         settling_time_max, rise_time_max)
 
     Example:
-        >>> thresholds = get_convergence_thresholds(HEATING_TYPE_FLOOR_HYDRONIC)
+        >>> thresholds = get_convergence_thresholds(HEATING_TYPE_FLOOR_HYDROMIC)
         >>> thresholds["rise_time_max"]
         90  # Relaxed from 45 min default for slow floor heating
     """
     if heating_type and heating_type in HEATING_TYPE_CONVERGENCE_THRESHOLDS:
         return HEATING_TYPE_CONVERGENCE_THRESHOLDS[heating_type]
     return DEFAULT_CONVERGENCE_THRESHOLDS
+
+
+# Rule threshold multipliers - scale convergence thresholds for rule activation
+# Each rule uses: threshold = convergence_threshold * multiplier
+RULE_THRESHOLD_MULTIPLIERS = {
+    "moderate_overshoot": 1.0,   # Activate at convergence threshold (0.2°C baseline)
+    "high_overshoot": 5.0,       # Activate at 5x convergence threshold (1.0°C baseline)
+    "slow_response": 1.33,       # Activate at 1.33x rise time max (60 min baseline)
+    "slow_settling": 1.5,        # Activate at 1.5x settling time max (90 min baseline)
+    "undershoot": 1.5,           # Activate at 1.5x convergence threshold (0.3°C baseline)
+    "many_oscillations": 3.0,    # Activate at 3x oscillation max (3 oscillations baseline)
+    "some_oscillations": 1.0,    # Activate at convergence threshold (1 oscillation baseline)
+}
+
+# Rule threshold floors - minimum absolute thresholds to prevent excessive sensitivity
+# Floors override calculated thresholds to account for sensor noise and comfort minimums
+RULE_THRESHOLD_FLOORS = {
+    "moderate_overshoot": 0.15,  # Minimum 0.15°C (sensor noise + comfort minimum)
+    "high_overshoot": 1.0,       # Minimum 1.0°C (significant overshoot)
+    "undershoot": 0.2,           # Minimum 0.2°C (sensor noise + comfort minimum)
+}
 
 
 # Rule priority levels for PID adjustment conflict resolution
