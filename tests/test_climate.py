@@ -1142,12 +1142,24 @@ class MockAdaptiveThermostatForStateRestore:
             self._kd = float(old_state.attributes.get('Kd'))
             self._pid_controller.set_pid_param(kd=self._kd)
 
-        # Restore Ke (supports both 'ke' and 'Ke')
+        # Restore Ke (supports both 'ke' and 'Ke') with v0.7.1 migration
+        ke_value = None
         if old_state.attributes.get('ke') is not None:
-            self._ke = float(old_state.attributes.get('ke'))
-            self._pid_controller.set_pid_param(ke=self._ke)
+            ke_value = float(old_state.attributes.get('ke'))
         elif old_state.attributes.get('Ke') is not None:
-            self._ke = float(old_state.attributes.get('Ke'))
+            ke_value = float(old_state.attributes.get('Ke'))
+
+        if ke_value is not None:
+            # Check if migration is needed by looking for version marker
+            # If no marker exists, assume v0.7.0 and migrate if Ke < 0.05
+            ke_v071_migrated = old_state.attributes.get('ke_v071_migrated') == True
+
+            if not ke_v071_migrated and ke_value < 0.05:
+                # Migrate: v0.7.0 Ke was 100x too small, multiply by 100
+                self._ke = ke_value * 100.0
+            else:
+                self._ke = ke_value
+
             self._pid_controller.set_pid_param(ke=self._ke)
 
         # Restore PID mode
@@ -1516,6 +1528,98 @@ class TestRestorePIDValues:
         thermostat._restore_pid_values(old_state)
 
         assert thermostat._kp == 0.8
+
+    def test_ke_migration_v071_from_v070(self):
+        """Test Ke migration from v0.7.0 (small values) to v0.7.1 (100x scaling)."""
+        mock_hass = _create_mock_hass()
+        thermostat = MockAdaptiveThermostatForStateRestore(mock_hass)
+
+        # Test migration from v0.7.0 (Ke=0.005, no migration marker)
+        old_state = MockState(
+            state="heat",
+            attributes={
+                "ke": 0.005  # v0.7.0 incorrectly scaled value
+            }
+        )
+
+        thermostat._restore_pid_values(old_state)
+
+        # Should be scaled up to 0.5 (100x multiplication)
+        assert thermostat._ke == 0.5
+        assert thermostat._pid_controller._ke == 0.5
+
+    def test_ke_no_migration_when_marker_present(self):
+        """Test Ke is not migrated when ke_v071_migrated marker is True."""
+        mock_hass = _create_mock_hass()
+        thermostat = MockAdaptiveThermostatForStateRestore(mock_hass)
+
+        # Test with migration marker present (already migrated)
+        old_state = MockState(
+            state="heat",
+            attributes={
+                "ke": 0.005,  # Small value but already migrated
+                "ke_v071_migrated": True
+            }
+        )
+
+        thermostat._restore_pid_values(old_state)
+
+        # Should NOT be scaled (marker indicates already migrated)
+        assert thermostat._ke == 0.005
+        assert thermostat._pid_controller._ke == 0.005
+
+    def test_ke_no_migration_for_already_correct_values(self):
+        """Test Ke is not migrated when value is already in v0.7.1 range (>= 0.05)."""
+        mock_hass = _create_mock_hass()
+        thermostat = MockAdaptiveThermostatForStateRestore(mock_hass)
+
+        # Test with v0.6.x or correctly migrated v0.7.1 value
+        old_state = MockState(
+            state="heat",
+            attributes={
+                "ke": 0.5  # Already correct value
+            }
+        )
+
+        thermostat._restore_pid_values(old_state)
+
+        # Should NOT be scaled (value >= 0.05 indicates already correct)
+        assert thermostat._ke == 0.5
+        assert thermostat._pid_controller._ke == 0.5
+
+    def test_ke_migration_edge_case_at_threshold(self):
+        """Test Ke migration edge case at 0.05 threshold."""
+        mock_hass = _create_mock_hass()
+        thermostat = MockAdaptiveThermostatForStateRestore(mock_hass)
+
+        # Test at exactly 0.05 (should NOT migrate, >= 0.05)
+        old_state = MockState(
+            state="heat",
+            attributes={
+                "ke": 0.05
+            }
+        )
+
+        thermostat._restore_pid_values(old_state)
+
+        # Should NOT be scaled (value at threshold)
+        assert thermostat._ke == 0.05
+        assert thermostat._pid_controller._ke == 0.05
+
+        # Test just below threshold (should migrate)
+        thermostat2 = MockAdaptiveThermostatForStateRestore(mock_hass)
+        old_state2 = MockState(
+            state="heat",
+            attributes={
+                "ke": 0.049
+            }
+        )
+
+        thermostat2._restore_pid_values(old_state2)
+
+        # Should be scaled (value < 0.05)
+        assert thermostat2._ke == 4.9  # 0.049 * 100
+        assert thermostat2._pid_controller._ke == 4.9
 
 
 def test_story_7_1_methods_exist():
