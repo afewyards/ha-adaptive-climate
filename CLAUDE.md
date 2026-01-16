@@ -151,14 +151,28 @@ flowchart TD
 
 ### PID Adjustment Rules (in `adaptive/learning.py`)
 
+The adaptive learning system uses heating-type-specific thresholds for rule activation. These thresholds are derived from convergence thresholds using multipliers defined in `RULE_THRESHOLD_MULTIPLIERS`, ensuring that slow systems (high thermal mass) get proportionally relaxed criteria to match their physical characteristics.
+
+**Rule Thresholds by Heating Type:**
+
+| Rule | floor_hydronic | radiator | convector | forced_air | Baseline (convector) |
+|------|----------------|----------|-----------|------------|----------------------|
+| **Slow Response** | 120 min | 80 min | 60 min | 40 min | rise_time_max × 1.33 |
+| **Moderate Overshoot** | 0.30°C | 0.25°C | 0.20°C | 0.15°C | overshoot_max × 1.0 |
+| **High Overshoot** | 1.5°C | 1.2°C | 1.0°C | 1.0°C | overshoot_max × 5.0 |
+
+**Note:** Thresholds are computed dynamically using `get_rule_thresholds(heating_type)` from `const.py`. Floor values (minimum thresholds) apply to prevent excessive sensitivity from sensor noise.
+
+**Adjustment Actions:**
+
 | Observation | Adjustment |
 |-------------|------------|
-| Overshoot >0.5°C | Reduce Kp by 15% |
-| Overshoot >0.2°C | Reduce Kp by 5% |
-| Slow response >60 min | Increase Kp by 10% |
-| Undershoot >0.3°C | Increase Ki by 20% |
-| Oscillations >3 | Reduce Kp 10%, increase Kd 20% |
-| Slow settling >90 min | Increase Kd by 15% |
+| Overshoot > High Overshoot threshold | Reduce Kp by 15% |
+| Overshoot > Moderate Overshoot threshold | Reduce Kp by 5% |
+| Slow response > Slow Response threshold | Increase Kp by 10% |
+| Undershoot > undershoot threshold (overshoot_max × 1.5) | Increase Ki by 20% |
+| Oscillations > many_oscillations threshold (3×) | Reduce Kp 10%, increase Kd 20% |
+| Slow settling > slow_settling threshold (settling_time_max × 1.5) | Increase Kd by 15% |
 
 ### Proportional-on-Measurement (P-on-M)
 
