@@ -1,6 +1,38 @@
 # CHANGELOG
 
 
+## v0.9.0 (2026-01-16)
+
+### Documentation
+
+- Add heating-type-specific thresholds documentation to CLAUDE.md
+  ([`38d8ff9`](https://github.com/afewyards/ha-adaptive-thermostat/commit/38d8ff9bdcefd76ca051eac4587aac6e4334c790))
+
+### Features
+
+- Add get_rule_thresholds() function to const.py
+  ([`6f9a587`](https://github.com/afewyards/ha-adaptive-thermostat/commit/6f9a587f718002b409b2ebed1f12dedf938a2dbc))
+
+- Add rule threshold multipliers and floors constants
+  ([`c99370a`](https://github.com/afewyards/ha-adaptive-thermostat/commit/c99370a197b9cd6acfb10d954af47fcbf1446074))
+
+- Store and pass rule thresholds in AdaptiveLearner
+  ([`e0f3da9`](https://github.com/afewyards/ha-adaptive-thermostat/commit/e0f3da925575bccbcb12c3ac1d0d1a27657ec71d))
+
+### Refactoring
+
+- Add rule_thresholds parameter to evaluate_pid_rules()
+  ([`6a7b726`](https://github.com/afewyards/ha-adaptive-thermostat/commit/6a7b726624ac7b65e46ecb4029caf7a61591b2f5))
+
+### Testing
+
+- Add TestHeatingTypeSpecificThresholds for heating-type-specific behavior
+  ([`c910993`](https://github.com/afewyards/ha-adaptive-thermostat/commit/c910993b2778d477cf74fcf498727b7eb884d631))
+
+- Add tests for get_rule_thresholds() function
+  ([`313c6dd`](https://github.com/afewyards/ha-adaptive-thermostat/commit/313c6dd1898dc1509518d3c40ab221da9d4f9861))
+
+
 ## v0.8.0 (2026-01-16)
 
 ### Documentation
