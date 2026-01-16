@@ -531,3 +531,112 @@ class TestGetRuleThresholds:
         assert thresholds["slow_response"] == 60.0
         assert thresholds["moderate_overshoot"] == 0.2
         assert thresholds["high_overshoot"] == 1.0
+
+
+class TestHeatingTypeSpecificThresholds:
+    """Tests for heating-type-specific threshold behavior in evaluate_pid_rules()."""
+
+    def test_floor_hydronic_70min_no_slow_response(self):
+        """Test 70min rise does NOT trigger SLOW_RESPONSE for floor_hydronic."""
+        # Floor hydronic threshold: 90 * 1.33 = 120 min
+        # 70 min < 120 min -> no slow response rule
+        thresholds = get_rule_thresholds(HEATING_TYPE_FLOOR_HYDRONIC)
+
+        results = evaluate_pid_rules(
+            avg_overshoot=0.0,
+            avg_undershoot=0.0,
+            avg_oscillations=0.0,
+            avg_rise_time=70.0,  # Below threshold for floor_hydronic
+            avg_settling_time=30.0,
+            rule_thresholds=thresholds,
+        )
+
+        # Should not trigger any rules
+        assert len(results) == 0, "70 min rise time should not trigger SLOW_RESPONSE for floor_hydronic"
+
+    def test_forced_air_45min_triggers_slow_response(self):
+        """Test 45min rise DOES trigger SLOW_RESPONSE for forced_air."""
+        # Forced air threshold: 30 * 1.33 = 40 min
+        # 45 min > 40 min -> slow response rule triggered
+        thresholds = get_rule_thresholds(HEATING_TYPE_FORCED_AIR)
+
+        results = evaluate_pid_rules(
+            avg_overshoot=0.0,
+            avg_undershoot=0.0,
+            avg_oscillations=0.0,
+            avg_rise_time=45.0,  # Above threshold for forced_air
+            avg_settling_time=30.0,
+            rule_thresholds=thresholds,
+        )
+
+        # Should trigger slow response rule
+        assert len(results) == 1, "45 min rise time should trigger SLOW_RESPONSE for forced_air"
+        assert results[0].rule == PIDRule.SLOW_RESPONSE
+        assert results[0].kp_factor == 1.10, "Should increase Kp by 10%"
+
+    def test_floor_hydronic_high_overshoot_threshold(self):
+        """Test 1.2C overshoot does NOT trigger HIGH_OVERSHOOT for floor_hydronic."""
+        # Floor hydronic threshold: max(0.3 * 5.0, 1.0) = 1.5°C
+        # 1.2°C < 1.5°C -> only moderate overshoot, not high
+        thresholds = get_rule_thresholds(HEATING_TYPE_FLOOR_HYDRONIC)
+
+        results = evaluate_pid_rules(
+            avg_overshoot=1.2,  # Below HIGH_OVERSHOOT threshold for floor_hydronic
+            avg_undershoot=0.0,
+            avg_oscillations=0.0,
+            avg_rise_time=30.0,
+            avg_settling_time=30.0,
+            rule_thresholds=thresholds,
+        )
+
+        # Should trigger moderate overshoot only (not high)
+        assert len(results) == 1, "1.2°C overshoot should trigger MODERATE_OVERSHOOT for floor_hydronic"
+        assert results[0].rule == PIDRule.MODERATE_OVERSHOOT, "Should be MODERATE_OVERSHOOT, not HIGH_OVERSHOOT"
+        assert results[0].kp_factor == 1.0, "Kp should not change for moderate overshoot"
+        assert results[0].kd_factor == 1.20, "Kd should increase by 20%"
+
+    def test_backward_compatible_defaults(self):
+        """Test evaluate_pid_rules(rule_thresholds=None) uses convector defaults."""
+        # When rule_thresholds=None, function should use convector-like defaults:
+        # - slow_response = 60.0
+        # - moderate_overshoot = 0.2
+        # - high_overshoot = 1.0
+
+        # Test slow response with default threshold (60 min)
+        results = evaluate_pid_rules(
+            avg_overshoot=0.0,
+            avg_undershoot=0.0,
+            avg_oscillations=0.0,
+            avg_rise_time=65.0,  # Above 60 min default
+            avg_settling_time=30.0,
+            rule_thresholds=None,  # Use defaults
+        )
+
+        assert len(results) == 1
+        assert results[0].rule == PIDRule.SLOW_RESPONSE
+
+        # Test moderate overshoot with default threshold (0.2°C)
+        results = evaluate_pid_rules(
+            avg_overshoot=0.25,  # Above 0.2°C default
+            avg_undershoot=0.0,
+            avg_oscillations=0.0,
+            avg_rise_time=30.0,
+            avg_settling_time=30.0,
+            rule_thresholds=None,  # Use defaults
+        )
+
+        assert len(results) == 1
+        assert results[0].rule == PIDRule.MODERATE_OVERSHOOT
+
+        # Test high overshoot with default threshold (1.0°C)
+        results = evaluate_pid_rules(
+            avg_overshoot=1.1,  # Above 1.0°C default
+            avg_undershoot=0.0,
+            avg_oscillations=0.0,
+            avg_rise_time=30.0,
+            avg_settling_time=30.0,
+            rule_thresholds=None,  # Use defaults
+        )
+
+        assert len(results) == 1
+        assert results[0].rule == PIDRule.HIGH_OVERSHOOT
