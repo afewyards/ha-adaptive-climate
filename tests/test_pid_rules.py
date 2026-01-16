@@ -10,7 +10,12 @@ from custom_components.adaptive_thermostat.adaptive.learning import (
     AdaptiveLearner,
     CycleMetrics,
 )
-from custom_components.adaptive_thermostat.const import PID_LIMITS
+from custom_components.adaptive_thermostat.const import (
+    PID_LIMITS,
+    get_rule_thresholds,
+    HEATING_TYPE_FLOOR_HYDRONIC,
+    HEATING_TYPE_FORCED_AIR,
+)
 
 
 class TestUndershootRuleAggressive:
@@ -474,3 +479,55 @@ class TestSlowResponseDiagnostics:
         assert results[0].kp_factor == 1.10, "Positive correlation should use Kp default"
         assert results[0].ki_factor == 1.0
         assert results[0].kd_factor == 1.0
+
+
+class TestGetRuleThresholds:
+    """Tests for get_rule_thresholds() function."""
+
+    def test_get_rule_thresholds_floor_hydronic(self):
+        """Test get_rule_thresholds() returns correct thresholds for floor_hydronic."""
+        # Floor hydronic has:
+        # - overshoot_max: 0.3
+        # - rise_time_max: 90
+        # Expected thresholds:
+        # - slow_response = 90 * 1.33 = 120.0
+        # - moderate_overshoot = max(0.3 * 1.0, 0.15) = 0.3
+        # - high_overshoot = max(0.3 * 5.0, 1.0) = 1.5
+
+        thresholds = get_rule_thresholds(HEATING_TYPE_FLOOR_HYDRONIC)
+
+        assert thresholds["slow_response"] == 120.0
+        assert thresholds["moderate_overshoot"] == 0.3
+        assert thresholds["high_overshoot"] == 1.5
+
+    def test_get_rule_thresholds_forced_air(self):
+        """Test get_rule_thresholds() returns correct thresholds for forced_air."""
+        # Forced air has:
+        # - overshoot_max: 0.15
+        # - rise_time_max: 30
+        # Expected thresholds:
+        # - slow_response = 30 * 1.33 = 40.0
+        # - moderate_overshoot = max(0.15 * 1.0, 0.15) = 0.15 (floored)
+        # - high_overshoot = max(0.15 * 5.0, 1.0) = 1.0 (floored)
+
+        thresholds = get_rule_thresholds(HEATING_TYPE_FORCED_AIR)
+
+        assert thresholds["slow_response"] == 40.0
+        assert thresholds["moderate_overshoot"] == 0.15
+        assert thresholds["high_overshoot"] == 1.0
+
+    def test_get_rule_thresholds_default(self):
+        """Test get_rule_thresholds() returns correct defaults for None."""
+        # Default (convector-like) has:
+        # - overshoot_max: 0.2
+        # - rise_time_max: 45
+        # Expected thresholds:
+        # - slow_response = 45 * 1.33 = 60.0
+        # - moderate_overshoot = max(0.2 * 1.0, 0.15) = 0.2
+        # - high_overshoot = max(0.2 * 5.0, 1.0) = 1.0 (floored)
+
+        thresholds = get_rule_thresholds(None)
+
+        assert thresholds["slow_response"] == 60.0
+        assert thresholds["moderate_overshoot"] == 0.2
+        assert thresholds["high_overshoot"] == 1.0
