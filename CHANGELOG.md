@@ -1,6 +1,37 @@
 # CHANGELOG
 
 
+## v0.8.0 (2026-01-16)
+
+### Documentation
+
+- Restructure README to 252 lines with wiki links
+  ([`f931bea`](https://github.com/afewyards/ha-adaptive-thermostat/commit/f931bead04cb22b86b2f3777834eba7b4d25b4ae))
+
+### Features
+
+- Add weather entity temperature as fallback for outdoor sensor
+  ([`07d60c5`](https://github.com/afewyards/ha-adaptive-thermostat/commit/07d60c5bd3c4f0fe06f31459fedee486f8a0e173))
+
+When no outdoor_sensor is configured but a weather_entity is available, the thermostat now extracts
+  the temperature attribute from the weather entity to enable Ke learning and outdoor compensation.
+
+- Add _weather_entity_id attribute and pass from domain config - Add _has_outdoor_temp_source helper
+  property - Add state listener for weather entity changes - Add _async_weather_entity_changed and
+  _async_update_ext_temp_from_weather - Update Ke learning init to accept weather entity as temp
+  source
+
+- Add weather entity wind_speed as fallback
+  ([`33c69be`](https://github.com/afewyards/ha-adaptive-thermostat/commit/33c69be863cd95d7264e7a7b066f12f6b0236678))
+
+When no dedicated wind_speed_sensor is configured, use the weather entity's wind_speed attribute as
+  a fallback source. This mirrors the existing outdoor temperature fallback behavior.
+
+Changes: - Add listener for weather entity wind_speed changes - Add startup initialization for
+  wind_speed from weather entity - Add _async_weather_entity_wind_changed event handler - Add
+  _async_update_wind_speed_from_weather update method
+
+
 ## v0.7.0 (2026-01-16)
 
 ### Bug Fixes
