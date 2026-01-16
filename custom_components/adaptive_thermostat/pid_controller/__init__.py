@@ -4,6 +4,11 @@ from time import time
 
 _LOGGER = logging.getLogger(__name__)
 
+# Minimum time delta (seconds) required for integral/derivative updates
+# Rationale: 10s provides 10:1 SNR for 0.1°C sensor noise, 204x safety margin vs 0.049s spike
+# Allows 10s sensor intervals to update normally, prevents noise during rapid control loops
+MIN_DT_FOR_DERIVATIVE = 10.0
+
 
 # Based on Arduino PID Library
 # See https://github.com/br3ttb/Arduino-PID-Library
@@ -363,35 +368,38 @@ class PID:
         if self.has_transfer_state:
             self.prepare_bumpless_transfer()
 
-        # In order to prevent windup, only integrate if the process is not saturated
-        # For P-on-M mode: allow integration even when setpoint changes (no integral reset)
-        # For P-on-E mode: only integrate when setpoint is stable
-        if self._proportional_on_measurement:
-            # P-on-M: integrate continuously, no reset on setpoint change
-            if self._out_min < self._last_output < self._out_max:
-                # Convert dt from seconds to hours for dimensional correctness
-                # Ki has units of %/(°C·hour), so dt must be in hours
-                dt_hours = self._dt / 3600.0
-                self._integral += self._Ki * self._error * dt_hours
-                # Integral clamping accounts for external term to ensure total output respects bounds
-                # Formula: I_max = out_max - E, I_min = out_min - E
-                # This ensures P + I + D + E stays within [out_min, out_max]
-                # After v0.7.0 Ke reduction (100x), E typically <1%, leaving >99% headroom for integral
-                self._integral = max(min(self._integral, self._out_max - self._external), self._out_min - self._external)
-        else:
-            # P-on-E: original behavior with setpoint stability check and integral reset
-            if self._out_min < self._last_output < self._out_max and \
-                    self._last_set_point == self._set_point:
-                # Convert dt from seconds to hours for dimensional correctness
-                # Ki has units of %/(°C·hour), so dt must be in hours
-                dt_hours = self._dt / 3600.0
-                self._integral += self._Ki * self._error * dt_hours
-                # Integral clamping accounts for external term (same formula as P-on-M above)
-                self._integral = max(min(self._integral, self._out_max - self._external), self._out_min - self._external)
-            if self._last_set_point != self._set_point:
-                self._integral = 0  # Reset integral if set point has changed as system will need to converge to a new value
+        # Apply timing threshold to prevent derivative spikes from rapid non-sensor calls
+        # Only update integral and derivative if dt >= MIN_DT_FOR_DERIVATIVE
+        if self._dt >= MIN_DT_FOR_DERIVATIVE:
+            # In order to prevent windup, only integrate if the process is not saturated
+            # For P-on-M mode: allow integration even when setpoint changes (no integral reset)
+            # For P-on-E mode: only integrate when setpoint is stable
+            if self._proportional_on_measurement:
+                # P-on-M: integrate continuously, no reset on setpoint change
+                if self._out_min < self._last_output < self._out_max:
+                    # Convert dt from seconds to hours for dimensional correctness
+                    # Ki has units of %/(°C·hour), so dt must be in hours
+                    dt_hours = self._dt / 3600.0
+                    self._integral += self._Ki * self._error * dt_hours
+                    # Integral clamping accounts for external term to ensure total output respects bounds
+                    # Formula: I_max = out_max - E, I_min = out_min - E
+                    # This ensures P + I + D + E stays within [out_min, out_max]
+                    # After v0.7.0 Ke reduction (100x), E typically <1%, leaving >99% headroom for integral
+                    self._integral = max(min(self._integral, self._out_max - self._external), self._out_min - self._external)
+            else:
+                # P-on-E: original behavior with setpoint stability check and integral reset
+                if self._out_min < self._last_output < self._out_max and \
+                        self._last_set_point == self._set_point:
+                    # Convert dt from seconds to hours for dimensional correctness
+                    # Ki has units of %/(°C·hour), so dt must be in hours
+                    dt_hours = self._dt / 3600.0
+                    self._integral += self._Ki * self._error * dt_hours
+                    # Integral clamping accounts for external term (same formula as P-on-M above)
+                    self._integral = max(min(self._integral, self._out_max - self._external), self._out_min - self._external)
+                if self._last_set_point != self._set_point:
+                    self._integral = 0  # Reset integral if set point has changed as system will need to converge to a new value
 
-        if self._dt != 0:
+            # Calculate derivative
             # Convert dt to hours for dimensional correctness
             # Kd has units of %/(°C/hour), so dt must be in hours
             dt_hours = self._dt / 3600.0
@@ -406,8 +414,20 @@ class PID:
                 (1.0 - self._derivative_filter_alpha) * self._derivative_filtered
             )
             self._derivative = self._derivative_filtered
+
+        elif self._dt > 0:
+            # dt is positive but below threshold - freeze I and D at last values
+            # This prevents derivative spikes from rapid non-sensor calls (external sensor, contact sensor, periodic loop)
+            # Integral and derivative remain unchanged from previous calculation
+            _LOGGER.debug(
+                "PID: dt=%.3fs < %.1fs threshold, freeze I=%.2f D=%.2f (rapid non-sensor call)",
+                self._dt, MIN_DT_FOR_DERIVATIVE, self._integral, self._derivative_filtered
+            )
         else:
+            # First call (dt=0) - initialize I and D to zero
+            self._integral = 0.0
             self._derivative = 0.0
+            self._derivative_filtered = 0.0
 
         # Compute PID Output
         output = self._proportional + self._integral + self._derivative + self._external

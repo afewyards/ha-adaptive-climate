@@ -252,16 +252,17 @@ class TestPIDController:
         pid = PID(kp=10, ki=1.0, kd=0, out_min=0, out_max=100)
 
         # Build up integral with constant setpoint over multiple cycles
+        # Use dt >= 10s to meet MIN_DT_FOR_DERIVATIVE threshold
         pid.calc(input_val=20.0, set_point=22.0, input_time=0.0, last_input_time=None)
-        pid.calc(input_val=20.5, set_point=22.0, input_time=1.0, last_input_time=0.0)
-        pid.calc(input_val=21.0, set_point=22.0, input_time=2.0, last_input_time=1.0)
+        pid.calc(input_val=20.5, set_point=22.0, input_time=15.0, last_input_time=0.0)
+        pid.calc(input_val=21.0, set_point=22.0, input_time=30.0, last_input_time=15.0)
 
         # Integral should have accumulated (Ki=1.0, error reduces over time)
         integral_before = pid.integral
         assert integral_before != 0, "Integral should have accumulated"
 
         # Change setpoint WITHOUT providing ext_temp
-        pid.calc(input_val=21.0, set_point=25.0, input_time=3.0, last_input_time=2.0)
+        pid.calc(input_val=21.0, set_point=25.0, input_time=45.0, last_input_time=30.0)
 
         # Integral should be reset to 0 regardless of ext_temp presence
         assert pid.integral == 0, "Integral should be reset on setpoint change"
@@ -415,16 +416,16 @@ class TestPIDIntegralDimensionalFix:
         assert abs(output1 - 0.3) < 0.01  # Proportional only: 0.3 * 1.0
         assert pid.integral == 0.0  # Reset due to setpoint change
 
-        # Second calculation with small time step to establish _last_output > 0
+        # Second calculation with dt >= 10s to meet MIN_DT_FOR_DERIVATIVE threshold
         # Now setpoint is stable (20 -> 20), so integration can occur
-        output2, _ = pid.calc(input_val=19.0, set_point=20.0, input_time=1.0, last_input_time=0.0)
-        # Integral accumulation over 1 second = 1.2 * 1.0 * (1/3600) = 0.000333%
+        output2, _ = pid.calc(input_val=19.0, set_point=20.0, input_time=15.0, last_input_time=0.0)
+        # Integral accumulation over 15 seconds = 1.2 * 1.0 * (15/3600) = 0.005%
         assert pid.integral > 0, f"Expected integral > 0, got {pid.integral}"
         small_integral = pid.integral
 
-        # Third calculation: maintain 1°C error for 1 hour (3600 seconds from time=1)
+        # Third calculation: maintain 1°C error for 1 hour (3600 seconds from time=15)
         # Expected additional accumulation: Ki * error * dt_hours = 1.2 * 1.0 * 1.0 = 1.2%
-        output3, _ = pid.calc(input_val=19.0, set_point=20.0, input_time=3601.0, last_input_time=1.0)
+        output3, _ = pid.calc(input_val=19.0, set_point=20.0, input_time=3615.0, last_input_time=15.0)
 
         # Total integral = small_integral + 1.2 ≈ 1.2%
         assert abs(pid.integral - 1.2) < 0.01, f"Expected integral ~1.2, got {pid.integral}"
@@ -1369,6 +1370,201 @@ class TestWindCompensationPhysics:
         )
 
         assert ke_wind_high_windows > ke_wind_low_windows
+
+
+class TestPIDDerivativeTimingProtection:
+    """Test PID derivative spike prevention via timing threshold."""
+
+    def test_tiny_dt_freezes_integral_and_derivative(self):
+        """Test that tiny dt (< 10s) freezes I and D to prevent spikes."""
+        # Create PID controller with known parameters
+        # Use larger out_min to avoid clamping issues in test
+        pid = PID(kp=10, ki=1.0, kd=50, out_min=-50, out_max=100, proportional_on_measurement=False)
+
+        # First call: establish baseline with normal dt (30s)
+        output1, _ = pid.calc(input_val=20.0, set_point=22.0, input_time=0.0, last_input_time=None)
+
+        # Second call: normal dt (30s) - I and D should update
+        output2, _ = pid.calc(input_val=20.1, set_point=22.0, input_time=30.0, last_input_time=0.0)
+        integral_after_normal = pid.integral
+        derivative_after_normal = pid.derivative
+
+        # Verify I and D were updated (not zero)
+        assert integral_after_normal > 0
+        assert derivative_after_normal != 0
+
+        # Third call: tiny dt (0.05s) - I and D should freeze
+        output3, _ = pid.calc(input_val=20.2, set_point=22.0, input_time=30.05, last_input_time=30.0)
+
+        # Integral and derivative should be frozen (unchanged)
+        assert pid.integral == integral_after_normal
+        assert pid.derivative == derivative_after_normal
+
+    def test_boundary_conditions(self):
+        """Test boundary conditions around 10s threshold."""
+        # Use wider output range and smaller gains to avoid saturation
+        pid = PID(kp=2, ki=0.1, kd=5, out_min=-50, out_max=100, proportional_on_measurement=False)
+
+        # First call: establish baseline
+        pid.calc(input_val=20.0, set_point=22.0, input_time=0.0, last_input_time=None)
+
+        # Second call: dt = 30s (normal update)
+        output2, _ = pid.calc(input_val=20.1, set_point=22.0, input_time=30.0, last_input_time=0.0)
+        baseline_integral = pid.integral
+        baseline_derivative = pid.derivative
+
+        # dt = 9.5s (below threshold) - should freeze
+        pid.calc(input_val=20.2, set_point=22.0, input_time=39.5, last_input_time=30.0)
+        assert pid.integral == baseline_integral  # Frozen
+        assert pid.derivative == baseline_derivative  # Frozen
+
+        # dt = 10.0s (exactly at threshold) - should update
+        pid.calc(input_val=20.3, set_point=22.0, input_time=49.5, last_input_time=39.5)
+        assert pid.integral > baseline_integral  # Updated
+
+        # dt = 15s (above threshold) - should update
+        # Use a larger dt to ensure integral accumulates
+        new_baseline = pid.integral
+        pid.calc(input_val=20.4, set_point=22.0, input_time=64.5, last_input_time=49.5)
+        assert pid.integral > new_baseline  # Updated
+
+    def test_rapid_calls_sequence(self):
+        """Test rapid call sequence: sensor → external → periodic.
+
+        Only the first (sensor) call with normal dt should update I&D.
+        """
+        pid = PID(kp=10, ki=1.0, kd=50, out_min=0, out_max=100, proportional_on_measurement=False)
+
+        # First call: establish baseline
+        pid.calc(input_val=20.0, set_point=22.0, input_time=0.0, last_input_time=None)
+
+        # Sensor update: dt = 30s (normal) - should update I and D
+        pid.calc(input_val=20.1, set_point=22.0, input_time=30.0, last_input_time=0.0)
+        integral_after_sensor = pid.integral
+        derivative_after_sensor = pid.derivative
+        assert integral_after_sensor > 0
+        assert derivative_after_sensor != 0
+
+        # External sensor update: dt = 0.1s (tiny) - should freeze I and D
+        pid.calc(input_val=20.1, set_point=22.0, input_time=30.1, last_input_time=30.0)
+        assert pid.integral == integral_after_sensor
+        assert pid.derivative == derivative_after_sensor
+
+        # Periodic control loop: dt = 0.1s (tiny) - should freeze I and D
+        pid.calc(input_val=20.1, set_point=22.0, input_time=30.2, last_input_time=30.1)
+        assert pid.integral == integral_after_sensor
+        assert pid.derivative == derivative_after_sensor
+
+    def test_normal_operation_preserved(self):
+        """Test that normal operation (dt ≥ 10s) is unchanged."""
+        # Use wider output range and smaller gains to avoid saturation
+        pid = PID(kp=5, ki=0.5, kd=10, out_min=-50, out_max=100, proportional_on_measurement=False)
+
+        # First call
+        pid.calc(input_val=20.0, set_point=22.0, input_time=0.0, last_input_time=None)
+
+        # Second call: dt = 15s - should update normally
+        pid.calc(input_val=20.1, set_point=22.0, input_time=15.0, last_input_time=0.0)
+        integral_1 = pid.integral
+
+        # Third call: dt = 20s - should update normally
+        pid.calc(input_val=20.2, set_point=22.0, input_time=35.0, last_input_time=15.0)
+        integral_2 = pid.integral
+
+        # Fourth call: dt = 60s - should update normally
+        pid.calc(input_val=20.3, set_point=22.0, input_time=95.0, last_input_time=35.0)
+        integral_3 = pid.integral
+
+        # All should show integral accumulation
+        assert integral_2 > integral_1
+        assert integral_3 > integral_2
+
+    def test_first_call_initializes_to_zero(self):
+        """Test that first call (dt=0) initializes I and D to zero."""
+        pid = PID(kp=10, ki=1.0, kd=50, out_min=0, out_max=100, proportional_on_measurement=False)
+
+        # First call with dt=0 (implicit from last_input_time=None)
+        output, _ = pid.calc(input_val=20.0, set_point=22.0, input_time=0.0, last_input_time=None)
+
+        # I and D should be zero on first call
+        assert pid.integral == 0.0
+        assert pid.derivative == 0.0
+        assert pid.dt == 0.0
+
+    def test_ema_filter_state_preserved_when_frozen(self):
+        """Test that EMA filter state is preserved during freeze."""
+        pid = PID(kp=10, ki=1.0, kd=50, out_min=0, out_max=100,
+                  derivative_filter_alpha=0.3, proportional_on_measurement=False)
+
+        # First call
+        pid.calc(input_val=20.0, set_point=22.0, input_time=0.0, last_input_time=None)
+
+        # Second call: dt = 30s - establish filtered derivative
+        pid.calc(input_val=20.1, set_point=22.0, input_time=30.0, last_input_time=0.0)
+
+        # Third call: dt = 30s - continue filtering
+        pid.calc(input_val=20.3, set_point=22.0, input_time=60.0, last_input_time=30.0)
+        derivative_before_freeze = pid.derivative
+        filtered_before_freeze = pid._derivative_filtered
+
+        # Fourth call: dt = 0.05s (tiny) - freeze D
+        pid.calc(input_val=20.4, set_point=22.0, input_time=60.05, last_input_time=60.0)
+
+        # Filtered derivative state should be preserved
+        assert pid._derivative_filtered == filtered_before_freeze
+        assert pid.derivative == derivative_before_freeze
+
+        # Fifth call: dt = 30s - resume normal operation
+        pid.calc(input_val=20.5, set_point=22.0, input_time=90.05, last_input_time=60.05)
+
+        # Derivative should update based on preserved filter state
+        assert pid.derivative != derivative_before_freeze
+
+    def test_no_derivative_spike_from_noise(self):
+        """Test that sensor noise with tiny dt doesn't cause derivative spikes."""
+        pid = PID(kp=10, ki=1.0, kd=500, out_min=0, out_max=100,
+                  proportional_on_measurement=False)
+
+        # First call
+        pid.calc(input_val=20.0, set_point=22.0, input_time=0.0, last_input_time=None)
+
+        # Second call: dt = 30s - normal operation
+        pid.calc(input_val=20.1, set_point=22.0, input_time=30.0, last_input_time=0.0)
+        output_before = pid._output
+        derivative_before = pid.derivative
+
+        # Third call: dt = 0.049s with tiny temperature noise (0.002°C)
+        # Without protection, this would cause: -(500 * 0.002) / (0.049/3600) = -146,938% spike!
+        # With protection, derivative should freeze
+        pid.calc(input_val=20.102, set_point=22.0, input_time=30.049, last_input_time=30.0)
+
+        # Derivative should be frozen (unchanged), not spiking
+        assert pid.derivative == derivative_before
+
+        # Output should not have wild spike
+        assert abs(pid._output - output_before) < 50  # Reasonable change
+
+    def test_proportional_term_updates_even_when_id_frozen(self):
+        """Test that proportional term updates even when I and D are frozen."""
+        pid = PID(kp=10, ki=1.0, kd=50, out_min=0, out_max=100, proportional_on_measurement=False)
+
+        # First call
+        pid.calc(input_val=20.0, set_point=22.0, input_time=0.0, last_input_time=None)
+
+        # Second call: dt = 30s
+        pid.calc(input_val=20.1, set_point=22.0, input_time=30.0, last_input_time=0.0)
+        integral_before = pid.integral
+        derivative_before = pid.derivative
+
+        # Third call: dt = 0.05s with temperature change - I&D freeze but P should update
+        pid.calc(input_val=20.5, set_point=22.0, input_time=30.05, last_input_time=30.0)
+
+        # I and D frozen
+        assert pid.integral == integral_before
+        assert pid.derivative == derivative_before
+
+        # P should reflect new error (22.0 - 20.5 = 1.5)
+        assert pid.proportional == 10 * 1.5
 
 
 if __name__ == "__main__":

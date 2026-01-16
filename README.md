@@ -30,9 +30,12 @@ An advanced thermostat integration featuring PID control with automatic tuning, 
 
 - **PID Control** - Accurate temperature control with proportional, integral, derivative, and outdoor compensation (Ke) terms
 - **Adaptive Learning** - Automatically learns thermal characteristics and optimizes PID parameters
+- **Ke-First Learning** - Learns outdoor compensation before PID tuning for faster convergence
 - **Physics-Based Initialization** - Initial PID values calculated from zone properties (no manual tuning required)
 - **Multi-Zone Coordination** - Central heat source control, mode synchronization, and zone linking
 - **Energy Optimization** - Night setback, solar gain prediction, contact sensors, heating curves
+- **Actuator Wear Tracking** - Cycle counting with maintenance alerts for predictive maintenance
+- **Wind Compensation** - Ke_wind parameter for improved outdoor temperature response in windy conditions
 - **Analytics & Monitoring** - Performance sensors, health monitoring, energy tracking, weekly reports
 
 ## Installation
@@ -65,6 +68,8 @@ climate:
 
 PID values are automatically calculated from `heating_type` and `area_m2`, then refined through adaptive learning. No manual tuning required.
 
+> **Note:** Ke-First learning is automatically enabled when `outdoor_sensor` is configured at the system level. Wind compensation is optional via `wind_speed_sensor`.
+
 ### Full Example with Adaptive Features
 ```yaml
 climate:
@@ -96,6 +101,24 @@ climate:
     contact_action: pause  # pause, frost_protection, none
     contact_delay: 120
 ```
+
+### Actuator Wear Tracking Example
+Track actuator lifecycle and get maintenance alerts:
+```yaml
+climate:
+  - platform: adaptive_thermostat
+    name: Living Room
+    heater: switch.heating_living
+    target_sensor: sensor.temp_living
+    heater_rated_cycles: 100000  # Expected heater lifetime (typical contactor)
+    cooler_rated_cycles: 50000   # Expected cooler lifetime (valves have lower cycle life)
+```
+
+**Notes:**
+- Tracks on→off cycles for heater and cooler separately
+- Creates `sensor.{zone}_heater_wear` and `sensor.{zone}_cooler_wear` (hidden by default)
+- Fires maintenance alert events at 80% (soon) and 90% (due) thresholds
+- Typical rated cycles: contactors/switches 100k, valves 50k
 
 ### Cooling/AC Example
 ```yaml
@@ -181,6 +204,7 @@ adaptive_thermostat:
   # Weather and outdoor temperature
   weather_entity: weather.home  # For solar gain prediction
   outdoor_sensor: sensor.outdoor_temp  # For Ke (outdoor compensation) - shared by all zones
+  wind_speed_sensor: sensor.wind_speed_mps  # Optional - enables wind compensation (Ke_wind)
 
   # Heat output sensors (optional - for detailed analytics)
   supply_temp_sensor: sensor.heating_supply
@@ -241,6 +265,12 @@ Values are adjusted ±30% based on thermal time constant (zone volume and window
 - `sensor.{zone}_settling_time` - Time to reach setpoint (min)
 - `sensor.{zone}_oscillations` - Number of temperature oscillations
 - `sensor.{zone}_heat_output` - Heat output (W) - requires supply/return temp sensors
+- `sensor.{zone}_heater_wear` - Heater actuator wear % (hidden by default, optional - requires `heater_rated_cycles`)
+- `sensor.{zone}_cooler_wear` - Cooler actuator wear % (hidden by default, optional - requires `cooler_rated_cycles`)
+
+**Additional Climate Entity Attributes:**
+- `heater_cycle_count` - Total heater on→off cycles
+- `cooler_cycle_count` - Total cooler on→off cycles
 
 ### System
 - `number.adaptive_thermostat_learning_window` - Learning window in days (adjustable)
@@ -326,19 +356,25 @@ The thermostat automatically learns from heating cycles and adjusts PID paramete
 - **Thermal rates** - Heating and cooling rates (°C/hour) for each zone
 - **Overshoot patterns** - How much temperature exceeds setpoint
 - **Settling behavior** - Time to stabilize and oscillation patterns
+- **Ke-First** - Outdoor compensation learned before PID tuning (10-15 cycles, physics-based)
+- **Wind impact** - Wind speed effect on heat loss via Ke_wind
 
 ### PID Adjustment Rules
-| Observation | Adjustment |
-|-------------|------------|
-| High overshoot (>0.5°C) | Reduce Kp by up to 15% |
-| Moderate overshoot (>0.2°C) | Reduce Kp by 5% |
-| Slow response (>60 min) | Increase Kp by 10% |
-| Undershoot (>0.3°C) | Increase Ki by up to 20% |
-| Many oscillations (>3) | Reduce Kp, increase Kd |
-| Some oscillations (>1) | Increase Kd by 10% |
-| Slow settling (>90 min) | Increase Kd by 15% |
 
-Learning requires a minimum of 3 heating cycles before making recommendations.
+| Observation | Adjustment | Changed in v0.7.0 |
+|-------------|------------|-------------------|
+| High overshoot (>1.0°C) | Reduce Kp 10%, Ki 10%, increase Kd 20% | Kd increase added |
+| Moderate overshoot (0.2-1.0°C) | Increase Kd by 20% | Changed from Kp reduction |
+| Slow response (>60 min) | Increase Kp by 10% (or Ki +30% if outdoor-correlated) | Outdoor correlation check added |
+| Undershoot (>0.3°C) | Increase Ki by 6-100% (gradient-based) | Increased from 20% max |
+| Many oscillations (>3) | Reduce Kp 10%, increase Kd 20% | Filtered in PWM mode |
+| Some oscillations (>1) | Increase Kd by 10% | Filtered in PWM mode |
+| Slow settling (>90 min) | Increase Kd by 15% | No change |
+
+**Additional Notes:**
+- Rule hysteresis (20% band) prevents rapid activation/deactivation
+- Oscillation rules filtered in PWM mode (on/off cycling is expected)
+- Minimum 6 cycles required (increased from 3 for outlier detection)
 
 ## Energy Optimization Features
 
@@ -364,10 +400,25 @@ Pauses heating or switches to frost protection when windows/doors are open:
 ### Outdoor Temperature Compensation (Ke)
 The Ke parameter compensates for outdoor temperature, reducing the work the PID integral term must do:
 ```
-E = Ke × (target_temp - outdoor_temp)
+E = Ke × (target_temp - outdoor_temp) + Ke_wind × wind_speed × (target_temp - outdoor_temp)
 ```
 
-Ke is learned automatically by observing the correlation between outdoor temperature and steady-state PID output. When a strong negative correlation is detected (colder outside → higher output), Ke is increased. No manual tuning required—just configure `outdoor_sensor` at the system level and all zones will automatically use it for Ke learning.
+#### Ke-First Learning
+Outdoor compensation is automatically learned before PID tuning begins:
+- Uses linear regression on temperature drop rates during heater OFF periods
+- Requires 10-15 cycles with >5°C outdoor temperature variation
+- R² > 0.7 validation ensures statistical significance
+- Blocks PID tuning until Ke converges for optimal results
+- No configuration needed—enabled by default when `outdoor_sensor` configured at system level
+
+#### Wind Compensation
+Wind speed amplifies heat loss, requiring additional heating power:
+- Ke_wind scales outdoor compensation based on wind speed (m/s)
+- Base value: 0.02 per m/s, adjusted for energy rating and window exposure
+- Configure via `wind_speed_sensor` (optional)
+- Gracefully degrades if sensor unavailable (treats as 0 m/s)
+
+Both Ke and Ke_wind are learned automatically. No manual tuning required—just configure `outdoor_sensor` (and optionally `wind_speed_sensor`) at the system level and all zones will automatically use them.
 
 ## Multi-Zone Coordination
 
@@ -393,6 +444,98 @@ For thermally connected zones (e.g., open floor plan):
 - When one zone starts heating, linked zones delay their heating
 - Prevents redundant heating of connected spaces
 - Configurable delay (default 20 minutes)
+
+## Actuator Wear Tracking
+
+Track actuator lifecycle and predict maintenance needs based on cycle counts.
+
+### What's Tracked
+- **On→off cycle counts** - Incremented each time heater/cooler transitions from on to off
+- **Separate tracking** - Heater and cooler actuators tracked independently
+- **Mode support** - Works in both PWM (on/off switching) and valve control modes
+
+### Wear Sensors
+When `heater_rated_cycles` or `cooler_rated_cycles` is configured, wear sensors are automatically created:
+
+- `sensor.{zone}_heater_wear` - Heater wear percentage (0-100%)
+- `sensor.{zone}_cooler_wear` - Cooler wear percentage (0-100%)
+- **Hidden by default** (`entity_registry_visible_default: false`)
+- **Icon changes** based on wear level:
+  - `mdi:gauge-low` (0-50%)
+  - `mdi:gauge` (50-80%)
+  - `mdi:gauge-full` (80-100%)
+
+### Sensor Attributes
+Each wear sensor provides detailed lifecycle information:
+
+| Attribute | Description |
+|-----------|-------------|
+| `total_cycles` | Current cycle count |
+| `rated_cycles` | Expected lifetime cycles (from config) |
+| `estimated_remaining` | Remaining cycles before end of life |
+| `maintenance_status` | `ok`, `maintenance_soon` (≥80%), `maintenance_due` (≥90%), `no_rating` |
+| `actuator_type` | `heater` or `cooler` |
+
+### Climate Entity Attributes
+Cycle counts are also exposed on the climate entity for easy access:
+
+- `heater_cycle_count` - Total heater on→off cycles
+- `cooler_cycle_count` - Total cooler on→off cycles
+
+### Maintenance Events
+Automatic maintenance alerts are fired as actuators approach end of life:
+
+**Event:** `adaptive_thermostat_actuator_maintenance_alert`
+
+**Thresholds:**
+- **80% wear** - `maintenance_soon` status
+- **90% wear** - `maintenance_due` status
+
+**Event Data:**
+```yaml
+climate_entity_id: climate.living_room
+zone_name: Living Room
+actuator_type: heater
+total_cycles: 80000
+rated_cycles: 100000
+wear_percentage: 80.0
+maintenance_status: maintenance_soon
+```
+
+**Use in Automations:**
+```yaml
+automation:
+  - alias: Actuator Maintenance Alert
+    trigger:
+      - platform: event
+        event_type: adaptive_thermostat_actuator_maintenance_alert
+    condition:
+      - condition: template
+        value_template: "{{ trigger.event.data.maintenance_status == 'maintenance_due' }}"
+    action:
+      - service: notify.mobile_app
+        data:
+          title: "Actuator Maintenance Required"
+          message: >
+            {{ trigger.event.data.zone_name }} {{ trigger.event.data.actuator_type }}
+            has reached {{ trigger.event.data.wear_percentage }}% wear
+            ({{ trigger.event.data.total_cycles }} of {{ trigger.event.data.rated_cycles }} cycles).
+            Maintenance recommended.
+```
+
+### Typical Rated Cycles
+Use these values as guidelines when configuring `heater_rated_cycles` and `cooler_rated_cycles`:
+
+| Component Type | Typical Rated Cycles |
+|----------------|---------------------|
+| Contactors/relays | 100,000 cycles |
+| Motorized valves | 50,000 cycles |
+| Solid-state relays | 100,000+ cycles |
+
+### State Persistence
+- Cycle counts persist across Home Assistant restarts
+- No data loss on reboot
+- Stored in the climate entity's state attributes
 
 ## Parameters Reference
 
@@ -457,6 +600,12 @@ For thermally connected zones (e.g., open floor plan):
 | `window_area_m2` | - | Total window area in m² |
 | `window_orientation` | - | Primary window direction (north, northeast, east, southeast, south, southwest, west, northwest, roof) |
 
+### Actuator Wear Parameters
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `heater_rated_cycles` | - | Expected heater lifetime cycles (e.g., 100000 for contactors) |
+| `cooler_rated_cycles` | - | Expected cooler lifetime cycles (e.g., 50000 for valves) |
+
 ### Preset Mode Parameters
 These are configured at the controller level under `adaptive_thermostat:` (shared across all zones).
 
@@ -501,6 +650,7 @@ These are configured under the `adaptive_thermostat:` domain block, not per-zone
 | `learning_window_days` | 7 | Days of data for adaptive learning |
 | `weather_entity` | - | Weather entity for solar gain prediction |
 | `outdoor_sensor` | - | Outdoor temperature sensor for Ke (shared by all zones) |
+| `wind_speed_sensor` | - | Wind speed sensor (m/s) for Ke_wind compensation |
 | `main_heater_switch` | - | Main heater switch(es) - single entity or list |
 | `main_cooler_switch` | - | Main cooler switch(es) - single entity or list |
 | `source_startup_delay` | 30 | Seconds to wait before activating heat source |
@@ -523,6 +673,14 @@ The thermostat automatically learns and adjusts PID parameters. Give it time:
 - Values are adjusted based on zone volume and window area
 - After 3+ heating cycles, use `adaptive_thermostat.apply_adaptive_pid` to apply learned adjustments
 - Use `adaptive_thermostat.reset_pid_to_physics` to reset to initial values if needed
+
+### Ke-First Learning Status
+When `outdoor_sensor` is configured, outdoor compensation (Ke) is learned before PID tuning begins:
+- Check climate entity attributes for `ke_first_convergence_progress` (0-100%)
+- Requires 10-15 cycles with >5°C outdoor temperature variation
+- Once converged (100%), PID tuning automatically begins
+- Reset via `adaptive_thermostat.reset_pid_to_physics` if needed
+- Status visible in climate entity attributes
 
 ### Common Issues
 - **Slow response**: Check `heating_type` is correct, or wait for adaptive learning

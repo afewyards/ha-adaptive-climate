@@ -111,7 +111,7 @@ class ControlOutputManager:
         """
         self._heater_controller = heater_controller
 
-    async def calc_output(self) -> float:
+    async def calc_output(self, is_temp_sensor_update: bool = False) -> float:
         """Calculate PID control output.
 
         This method:
@@ -120,6 +120,10 @@ class ControlOutputManager:
         3. Calls PID controller to calculate output
         4. Updates thermostat state with P, I, D, E components
         5. Logs the new output when changed
+
+        Args:
+            is_temp_sensor_update: True if called from temperature sensor update,
+                                   False for external sensor, contact sensor, or periodic calls
 
         Returns:
             The calculated control output value
@@ -137,6 +141,13 @@ class ControlOutputManager:
         if cur_temp_time is None:
             cur_temp_time = time.time()
             self._set_cur_temp_time(cur_temp_time)
+
+        # Only update cur_temp_time if this is a real temperature sensor update
+        # This prevents artificial tiny dt values from external sensor, contact sensor, or periodic calls
+        if is_temp_sensor_update:
+            cur_temp_time = time.time()
+            self._set_cur_temp_time(cur_temp_time)
+
         if previous_temp_time > cur_temp_time:
             previous_temp_time = cur_temp_time
             self._set_previous_temp_time(previous_temp_time)

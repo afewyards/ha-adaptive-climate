@@ -1391,7 +1391,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         self._async_update_temp(new_state)
         self._trigger_source = 'sensor'
         _LOGGER.debug("%s: Received new temperature: %s", self.entity_id, self._current_temp)
-        await self._async_control_heating(calc_pid=True)
+        await self._async_control_heating(calc_pid=True, is_temp_sensor_update=True)
         self.async_write_ha_state()
 
     @callback
@@ -1404,7 +1404,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         self._async_update_ext_temp(new_state)
         self._trigger_source = 'ext_sensor'
         _LOGGER.debug("%s: Received new external temperature: %s", self.entity_id, self._ext_temp)
-        await self._async_control_heating(calc_pid=False)
+        await self._async_control_heating(calc_pid=False, is_temp_sensor_update=False)
 
     async def _async_wind_speed_sensor_changed(self, event: Event[EventStateChangedData]):
         """Handle wind speed changes."""
@@ -1450,7 +1450,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         )
 
         # Trigger control heating to potentially pause/resume
-        await self._async_control_heating(calc_pid=False)
+        await self._async_control_heating(calc_pid=False, is_temp_sensor_update=False)
 
     def _update_contact_sensor_states(self):
         """Update contact sensor handler with current states from Home Assistant."""
@@ -1515,7 +1515,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
             self._wind_speed = None
 
     async def _async_control_heating(
-            self, time_func: object = None, calc_pid: object = False) -> object:
+            self, time_func: object = None, calc_pid: object = False, is_temp_sensor_update: bool = False) -> object:
         """Run PID controller, optional autotune for faster integration"""
         async with self._temp_lock:
             if not self._active and None not in (self._current_temp, self._target_temp):
@@ -1572,7 +1572,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                 self._control_output = self._output_safety
             else:
                 # Always recalculate PID to ensure output reflects current conditions
-                await self.calc_output()
+                await self.calc_output(is_temp_sensor_update)
 
                 # Record temperature for cycle tracking
                 if self._cycle_tracker and self._current_temp is not None:
@@ -1850,12 +1850,15 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         self._attr_preset_mode = self._temperature_manager.preset_mode
         self._saved_target_temp = self._temperature_manager.saved_target_temp
 
-    async def calc_output(self):
+    async def calc_output(self, is_temp_sensor_update: bool = False):
         """Calculate PID control output.
 
         Delegates to ControlOutputManager for the actual calculation.
+
+        Args:
+            is_temp_sensor_update: True if called from temperature sensor update
         """
-        await self._control_output_manager.calc_output()
+        await self._control_output_manager.calc_output(is_temp_sensor_update)
 
     async def set_control_value(self):
         """Set output value for heater.
