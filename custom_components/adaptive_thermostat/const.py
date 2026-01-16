@@ -126,7 +126,7 @@ PID_LIMITS = {
     "kd_min": 0.0,
     "kd_max": 5.0,  # Reduced from 200.0 to 5.0 in v0.7.0 (was band-aid for low Ki)
     "ke_min": 0.0,
-    "ke_max": 0.02,  # Reduced from 2.0 to 0.02 in v0.7.0 (100x scaling)
+    "ke_max": 2.0,  # Restored from 0.02 to 2.0 in v0.7.1 (100x restoration)
 }
 
 # Convergence thresholds for adaptive learning
@@ -382,8 +382,8 @@ KE_MIN_OBSERVATIONS = 5
 KE_MIN_TEMP_RANGE = 5.0
 # Minimum hours between Ke adjustments (rate limiting)
 KE_ADJUSTMENT_INTERVAL = 48
-# Step size for Ke adjustments (reduced from 0.1 to 0.001 in v0.7.0 - 100x scaling)
-KE_ADJUSTMENT_STEP = 0.001
+# Step size for Ke adjustments (restored from 0.001 to 0.1 in v0.7.1 - 100x restoration)
+KE_ADJUSTMENT_STEP = 0.1
 # Minimum absolute correlation to consider Ke adjustment
 KE_CORRELATION_THRESHOLD = 0.3
 # Maximum observations to retain (FIFO eviction)
