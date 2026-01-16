@@ -237,6 +237,13 @@ def calculate_initial_pid(
     # Find bracketing reference points for interpolation
     tau = thermal_time_constant if thermal_time_constant > 0 else 2.0
 
+    # Kp scaling: Kp ∝ 1/(tau × √tau)
+    # Rationale:
+    #   - Base: Kp ∝ 1/tau (Ziegler-Nichols for first-order systems)
+    #   - Additional √tau factor accounts for thermal mass damping
+    #   - Higher thermal mass needs proportionally lower Kp to prevent oscillation
+    #   - Formula validated against reference profiles from real-world systems
+
     # If tau is below lowest reference point, use improved scaling from lowest point
     if tau <= profiles[0][0]:
         tau_ref, kp_ref, ki_ref, kd_ref = profiles[0]
