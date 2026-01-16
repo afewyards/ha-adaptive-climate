@@ -429,8 +429,12 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         self._output_precision = kwargs.get('output_precision')
         self._output_min = kwargs.get('output_min')
         self._output_max = kwargs.get('output_max')
-        self._output_clamp_low = kwargs.get('output_clamp_low') or const.DEFAULT_OUT_CLAMP_LOW
-        self._output_clamp_high = kwargs.get('output_clamp_high') or const.DEFAULT_OUT_CLAMP_HIGH
+        self._output_clamp_low = kwargs.get('output_clamp_low')
+        if self._output_clamp_low is None:
+            self._output_clamp_low = const.DEFAULT_OUT_CLAMP_LOW
+        self._output_clamp_high = kwargs.get('output_clamp_high')
+        if self._output_clamp_high is None:
+            self._output_clamp_high = const.DEFAULT_OUT_CLAMP_HIGH
         self._difference = self._output_max - self._output_min
         if self._ac_mode:
             self._attr_hvac_modes = [HVACMode.COOL, HVACMode.HEAT, HVACMode.OFF]
@@ -624,10 +628,13 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         _LOGGER.info("%s: Active PID values - Kp=%.4f, Ki=%.5f, Kd=%.3f, Ke=%s, D_filter_alpha=%.2f, outdoor_lag_tau=%.2f, P-on-M=%s",
                      self.unique_id, self._kp, self._ki, self._kd, self._ke or 0, self._derivative_filter_alpha, self._outdoor_temp_lag_tau, self._proportional_on_measurement)
         self._pid_controller = pid_controller.PID(self._kp, self._ki, self._kd, self._ke,
-                                                  self._min_out, self._max_out,
-                                                  self._sampling_period, self._cold_tolerance,
-                                                  self._hot_tolerance, self._derivative_filter_alpha,
-                                                  self._outdoor_temp_lag_tau, self._proportional_on_measurement)
+                                                  out_min=self._min_out, out_max=self._max_out,
+                                                  sampling_period=self._sampling_period,
+                                                  cold_tolerance=self._cold_tolerance,
+                                                  hot_tolerance=self._hot_tolerance,
+                                                  derivative_filter_alpha=self._derivative_filter_alpha,
+                                                  outdoor_temp_lag_tau=self._outdoor_temp_lag_tau,
+                                                  proportional_on_measurement=self._proportional_on_measurement)
         self._pid_controller.mode = "AUTO"
 
     async def async_added_to_hass(self):
