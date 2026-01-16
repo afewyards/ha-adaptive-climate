@@ -51,7 +51,7 @@ def test_cycle_metrics_to_pid_adjustment(adaptive_learner):
     Flow: Heating cycle completes -> metrics extracted -> PID adjustment calculated
     """
     # Simulate 3 heating cycles with moderate overshoot and some oscillations
-    for _ in range(3):
+    for _ in range(MIN_CYCLES_FOR_LEARNING):
         metrics = CycleMetrics(
             overshoot=0.4,  # Moderate overshoot (>0.2°C)
             undershoot=0.1,
@@ -62,18 +62,20 @@ def test_cycle_metrics_to_pid_adjustment(adaptive_learner):
         adaptive_learner.add_cycle_metrics(metrics)
 
     # Initial PID values
-    kp, ki, kd = 100.0, 20.0, 10.0
+    kp, ki, kd = 100.0, 20.0, 2.0
 
     # Calculate adjustment
     result = adaptive_learner.calculate_pid_adjustment(kp, ki, kd)
 
-    # Should have result (3 cycles = minimum)
-    assert result is not None, "Expected PID adjustment with 3 cycles"
+    # Should have result (MIN_CYCLES_FOR_LEARNING cycles = minimum)
+    assert result is not None, f"Expected PID adjustment with {MIN_CYCLES_FOR_LEARNING} cycles"
 
-    # Moderate overshoot (>0.2°C) should reduce Kp slightly (by 5%)
-    assert result["kp"] < kp, f"Expected Kp reduction, got {result['kp']} vs original {kp}"
+    # v0.7.0: Moderate overshoot (0.2-1.0°C) only increases Kd (thermal lag addressed by derivative)
+    # Oscillations (>1) also increase Kd
+    # Both rules increase Kd, so Kp should be unchanged
+    assert result["kp"] == kp, f"Expected Kp unchanged, got {result['kp']} vs original {kp}"
 
-    # Some oscillations (>1) should increase Kd (by 10%)
+    # Both moderate overshoot and oscillations should increase Kd
     assert result["kd"] > kd, f"Expected Kd increase, got {result['kd']} vs original {kd}"
 
 
@@ -99,14 +101,14 @@ def test_insufficient_cycles_returns_none(adaptive_learner):
 
 def test_high_overshoot_reduces_kp():
     """
-    Integration test: High overshoot (>0.5°C) significantly reduces Kp.
+    Integration test: Extreme overshoot (>1.0°C) reduces Kp and increases Kd (v0.7.0).
     """
     learner = AdaptiveLearner()
 
-    # High overshoot cycles
-    for _ in range(3):
+    # Extreme overshoot cycles (>1.0°C triggers HIGH_OVERSHOOT rule)
+    for _ in range(MIN_CYCLES_FOR_LEARNING):
         metrics = CycleMetrics(
-            overshoot=0.7,  # High overshoot
+            overshoot=1.2,  # Extreme overshoot (>1.0°C)
             undershoot=0.0,
             settling_time=40.0,
             oscillations=0,
@@ -114,14 +116,16 @@ def test_high_overshoot_reduces_kp():
         )
         learner.add_cycle_metrics(metrics)
 
-    kp, ki, kd = 150.0, 25.0, 15.0
+    kp, ki, kd = 150.0, 25.0, 2.0
     result = learner.calculate_pid_adjustment(kp, ki, kd)
 
     assert result is not None
-    # High overshoot: reduce Kp by up to 15%
-    assert result["kp"] < kp * 0.90, f"Expected significant Kp reduction for high overshoot"
-    # High overshoot also reduces Ki by 10%
-    assert result["ki"] < ki, f"Expected Ki reduction for high overshoot"
+    # v0.7.0: Extreme overshoot (>1.0°C): reduce Kp by 10% and Ki by 10%, increase Kd by 20%
+    assert result["kp"] < kp, f"Expected Kp reduction for extreme overshoot"
+    # Extreme overshoot also reduces Ki
+    assert result["ki"] < ki, f"Expected Ki reduction for extreme overshoot"
+    # Extreme overshoot increases Kd to handle thermal lag
+    assert result["kd"] > kd, f"Expected Kd increase for extreme overshoot"
 
 
 def test_undershoot_increases_ki():
@@ -132,7 +136,7 @@ def test_undershoot_increases_ki():
 
     # Undershoot cycles (system not reaching setpoint)
     # Note: rise_time > 45 to avoid triggering convergence check
-    for _ in range(3):
+    for _ in range(MIN_CYCLES_FOR_LEARNING):
         metrics = CycleMetrics(
             overshoot=0.0,
             undershoot=0.5,  # Significant undershoot
@@ -142,7 +146,7 @@ def test_undershoot_increases_ki():
         )
         learner.add_cycle_metrics(metrics)
 
-    kp, ki, kd = 100.0, 15.0, 30.0
+    kp, ki, kd = 100.0, 15.0, 3.0
     result = learner.calculate_pid_adjustment(kp, ki, kd)
 
     assert result is not None
@@ -157,7 +161,7 @@ def test_many_oscillations_adjusts_kp_and_kd():
     learner = AdaptiveLearner()
 
     # Oscillating cycles
-    for _ in range(3):
+    for _ in range(MIN_CYCLES_FOR_LEARNING):
         metrics = CycleMetrics(
             overshoot=0.2,
             undershoot=0.15,
@@ -167,7 +171,7 @@ def test_many_oscillations_adjusts_kp_and_kd():
         )
         learner.add_cycle_metrics(metrics)
 
-    kp, ki, kd = 120.0, 20.0, 25.0
+    kp, ki, kd = 120.0, 20.0, 2.5
     result = learner.calculate_pid_adjustment(kp, ki, kd)
 
     assert result is not None
@@ -183,7 +187,7 @@ def test_slow_settling_increases_kd():
     learner = AdaptiveLearner()
 
     # Slow settling cycles
-    for _ in range(3):
+    for _ in range(MIN_CYCLES_FOR_LEARNING):
         metrics = CycleMetrics(
             overshoot=0.1,
             undershoot=0.1,
@@ -193,7 +197,7 @@ def test_slow_settling_increases_kd():
         )
         learner.add_cycle_metrics(metrics)
 
-    kp, ki, kd = 100.0, 20.0, 30.0
+    kp, ki, kd = 100.0, 20.0, 3.0
     result = learner.calculate_pid_adjustment(kp, ki, kd)
 
     assert result is not None
@@ -208,7 +212,7 @@ def test_slow_rise_time_increases_kp():
     learner = AdaptiveLearner()
 
     # Slow rise time cycles
-    for _ in range(3):
+    for _ in range(MIN_CYCLES_FOR_LEARNING):
         metrics = CycleMetrics(
             overshoot=0.1,
             undershoot=0.0,
@@ -218,7 +222,7 @@ def test_slow_rise_time_increases_kp():
         )
         learner.add_cycle_metrics(metrics)
 
-    kp, ki, kd = 80.0, 15.0, 40.0
+    kp, ki, kd = 80.0, 15.0, 4.0
     result = learner.calculate_pid_adjustment(kp, ki, kd)
 
     assert result is not None
@@ -233,17 +237,17 @@ def test_slow_rise_time_increases_kp():
 
 def test_progressive_learning_improves_tuning():
     """
-    Integration test: Multiple rounds of learning progressively tune PID.
+    Integration test: Multiple rounds of learning progressively tune PID (v0.7.0).
 
-    Scenario: System starts with overshoot, learning reduces Kp over rounds.
+    Scenario: System starts with extreme overshoot, learning reduces Kp over rounds.
     """
     learner = AdaptiveLearner()
-    kp, ki, kd = 150.0, 25.0, 15.0  # Start with aggressive tuning
+    kp, ki, kd = 150.0, 25.0, 2.0  # Start with aggressive tuning
 
-    # Round 1: High overshoot
-    for _ in range(3):
+    # Round 1: Extreme overshoot (>1.0°C triggers HIGH_OVERSHOOT rule which reduces Kp)
+    for _ in range(MIN_CYCLES_FOR_LEARNING):
         metrics = CycleMetrics(
-            overshoot=0.7,  # High overshoot due to aggressive Kp
+            overshoot=1.1,  # Extreme overshoot (>1.0°C) due to aggressive Kp
             undershoot=0.0,
             settling_time=40.0,
             oscillations=2,
@@ -253,14 +257,14 @@ def test_progressive_learning_improves_tuning():
 
     result1 = learner.calculate_pid_adjustment(kp, ki, kd)
     assert result1 is not None
-    assert result1["kp"] < kp  # Kp should be reduced
+    assert result1["kp"] < kp  # Kp should be reduced (v0.7.0: HIGH_OVERSHOOT >1.0°C)
 
     # Apply first round adjustments
     kp, ki, kd = result1["kp"], result1["ki"], result1["kd"]
 
     # Round 2: Reduced overshoot due to lower Kp
     learner.clear_history()
-    for _ in range(3):
+    for _ in range(MIN_CYCLES_FOR_LEARNING):
         metrics = CycleMetrics(
             overshoot=0.3,  # Less overshoot now
             undershoot=0.1,
@@ -290,7 +294,7 @@ def test_pid_limits_enforced_on_high_values():
     learner = AdaptiveLearner()
 
     # Cycles that would push for high Kp
-    for _ in range(3):
+    for _ in range(MIN_CYCLES_FOR_LEARNING):
         metrics = CycleMetrics(
             overshoot=0.0,
             undershoot=0.1,
@@ -301,7 +305,7 @@ def test_pid_limits_enforced_on_high_values():
         learner.add_cycle_metrics(metrics)
 
     # Start with values near limits
-    kp, ki, kd = 480.0, 95.0, 190.0
+    kp, ki, kd = 480.0, 95.0, 4.5
     result = learner.calculate_pid_adjustment(kp, ki, kd)
 
     assert result is not None
@@ -317,7 +321,7 @@ def test_pid_limits_enforced_on_low_values():
     learner = AdaptiveLearner()
 
     # Cycles that would push for low Kp (high overshoot)
-    for _ in range(3):
+    for _ in range(MIN_CYCLES_FOR_LEARNING):
         metrics = CycleMetrics(
             overshoot=1.0,  # Very high overshoot
             undershoot=0.0,
@@ -401,8 +405,8 @@ def test_end_to_end_adaptive_learning_flow():
     """
     learner = AdaptiveLearner()
 
-    # Simulate 3 heating cycles with moderate overshoot and some oscillations
-    for cycle in range(3):
+    # Simulate MIN_CYCLES_FOR_LEARNING heating cycles with moderate overshoot and some oscillations
+    for cycle in range(MIN_CYCLES_FOR_LEARNING):
         metrics = CycleMetrics(
             overshoot=0.35 + cycle * 0.05,  # Increasing overshoot each cycle
             undershoot=0.1,
@@ -412,8 +416,8 @@ def test_end_to_end_adaptive_learning_flow():
         )
         learner.add_cycle_metrics(metrics)
 
-    # Initial PID values
-    initial_kp, initial_ki, initial_kd = 100.0, 20.0, 30.0
+    # Initial PID values (v0.7.0: kd_max = 5.0)
+    initial_kp, initial_ki, initial_kd = 100.0, 20.0, 3.0
 
     # Get recommendation
     result = learner.calculate_pid_adjustment(initial_kp, initial_ki, initial_kd)
@@ -437,7 +441,7 @@ def test_adaptive_pid_applied_to_controller(adaptive_learner, pid):
     Integration test: Adaptive PID adjustments can be applied to controller.
     """
     # Add sufficient cycles
-    for _ in range(3):
+    for _ in range(MIN_CYCLES_FOR_LEARNING):
         metrics = CycleMetrics(
             overshoot=0.4,
             undershoot=0.1,
@@ -500,7 +504,7 @@ def test_combined_thermal_and_adaptive_learning():
     assert heating_rate is not None
 
     # Phase 2: Observe cycle performance
-    for _ in range(3):
+    for _ in range(MIN_CYCLES_FOR_LEARNING):
         metrics = CycleMetrics(
             overshoot=0.25,
             undershoot=0.2,
@@ -544,7 +548,7 @@ def test_none_metrics_handled_gracefully():
 
     # Add cycles with some None values
     # Note: oscillations > 1 and undershoot > 0.3 to avoid convergence and trigger rules
-    for _ in range(3):
+    for _ in range(MIN_CYCLES_FOR_LEARNING):
         metrics = CycleMetrics(
             overshoot=None,  # None overshoot
             undershoot=0.4,  # Above rule threshold

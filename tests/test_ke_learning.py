@@ -299,8 +299,8 @@ class TestKeLearnerCorrelation:
         assert result is None
 
     def test_adjustment_negative_correlation_increases_ke(self):
-        """Test that strong negative correlation recommends Ke increase."""
-        learner = KeLearner(initial_ke=0.3)
+        """Test that strong negative correlation recommends Ke increase (v0.7.0: 100x smaller scale)."""
+        learner = KeLearner(initial_ke=0.003)
         learner.enable()
 
         # Create strong negative correlation:
@@ -408,8 +408,8 @@ class TestKeLearnerRateLimiting:
         assert result2 is None  # Rate limited
 
     def test_rate_limiting_expires(self):
-        """Test that rate limiting expires after interval."""
-        learner = KeLearner(initial_ke=0.3)
+        """Test that rate limiting expires after interval (v0.7.0: 100x smaller scale)."""
+        learner = KeLearner(initial_ke=0.003)
         learner.enable()
 
         # Add observations and apply adjustment
@@ -563,11 +563,11 @@ class TestCalculateInitialKe:
     """Tests for physics-based initial Ke calculation."""
 
     def test_default_values(self):
-        """Test calculation with default values."""
+        """Test calculation with default values (v0.7.0: 100x smaller scale)."""
         ke = calculate_initial_ke()
 
-        # Default should be moderate (A-rated building baseline)
-        assert 0.3 <= ke <= 0.7
+        # Default should be moderate (A-rated building baseline, v0.7.0 scale)
+        assert 0.003 <= ke <= 0.007
 
     def test_energy_rating_effect(self):
         """Test that better energy rating results in lower Ke."""

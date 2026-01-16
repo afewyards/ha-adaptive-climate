@@ -12,6 +12,13 @@ from custom_components.adaptive_thermostat.analytics.charts import (
     COLOR_BAR_SECONDARY,
 )
 
+# Check if PIL is available
+try:
+    import PIL
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
+
 
 def test_get_comfort_color_good():
     """Test comfort color for good scores (>= 80)."""
@@ -48,6 +55,7 @@ def test_chart_generator_without_pillow():
         assert result is None
 
 
+@pytest.mark.skipif(not PIL_AVAILABLE, reason="PIL (Pillow) not installed")
 def test_chart_generator_bar_chart():
     """Test bar chart generation with mocked Pillow."""
     # Create mock Image and ImageDraw
@@ -90,6 +98,7 @@ def test_chart_generator_empty_data():
         assert result is None
 
 
+@pytest.mark.skipif(not PIL_AVAILABLE, reason="PIL (Pillow) not installed")
 def test_chart_generator_comfort_chart():
     """Test comfort score chart generation."""
     mock_image = MagicMock()
@@ -115,6 +124,7 @@ def test_chart_generator_comfort_chart():
                         assert mock_draw.rectangle.called
 
 
+@pytest.mark.skipif(not PIL_AVAILABLE, reason="PIL (Pillow) not installed")
 def test_chart_generator_comparison_chart():
     """Test comparison chart generation."""
     mock_image = MagicMock()

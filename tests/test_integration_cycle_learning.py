@@ -374,9 +374,9 @@ class TestCycleResumedAfterSetpointChange:
         # Change setpoint mid-cycle (heater still active)
         tracker.on_setpoint_changed(21.0, 22.0)
 
-        # Assert state is still HEATING and _was_interrupted is True
+        # Assert state is still HEATING and cycle was interrupted (interruption_history not empty)
         assert tracker.state == CycleState.HEATING
-        assert tracker._was_interrupted is True
+        assert len(tracker._interruption_history) > 0
 
         # Collect 15 more temperature samples
         for i in range(15):
@@ -449,7 +449,7 @@ class TestSetpointChangeInCoolingMode:
 
         # Assert state is still COOLING (same behavior as heating)
         assert tracker.state == CycleState.COOLING
-        assert tracker._was_interrupted is True
+        assert len(tracker._interruption_history) > 0
         assert tracker._cycle_target_temp == 23.0
 
         # Verify temperature history is preserved

@@ -56,41 +56,41 @@ class TestRecommendedKe:
     """Tests for recommended ke calculation."""
 
     def test_excellent_insulation_low_ke(self):
-        """Test excellent insulation gives low ke."""
+        """Test excellent insulation gives low ke (v0.7.0: 100x smaller scale)."""
         ke = calculate_recommended_ke("excellent", "radiator")
-        assert ke == pytest.approx(0.3)  # 0.3 * 1.0
+        assert ke == pytest.approx(0.003)  # 0.003 * 1.0
 
     def test_poor_insulation_high_ke(self):
-        """Test poor insulation gives high ke."""
+        """Test poor insulation gives high ke (v0.7.0: 100x smaller scale)."""
         ke = calculate_recommended_ke("poor", "radiator")
-        assert ke == pytest.approx(1.5)  # 1.5 * 1.0
+        assert ke == pytest.approx(0.015)  # 0.015 * 1.0
 
     def test_heating_type_adjustments(self):
-        """Test heating type affects ke."""
-        # Good insulation (0.5 base) with different heating types
+        """Test heating type affects ke (v0.7.0: 100x smaller scale)."""
+        # Good insulation (0.005 base) with different heating types
         ke_floor = calculate_recommended_ke("good", "floor_hydronic")
         ke_radiator = calculate_recommended_ke("good", "radiator")
         ke_forced_air = calculate_recommended_ke("good", "forced_air")
 
-        assert ke_floor == pytest.approx(0.4)   # 0.5 * 0.8
-        assert ke_radiator == pytest.approx(0.5)  # 0.5 * 1.0
-        assert ke_forced_air == pytest.approx(0.6)  # 0.5 * 1.2
+        assert ke_floor == pytest.approx(0.004)   # 0.005 * 0.8
+        assert ke_radiator == pytest.approx(0.005)  # 0.005 * 1.0
+        assert ke_forced_air == pytest.approx(0.006)  # 0.005 * 1.2
 
     def test_combined_poor_insulation_fast_heating(self):
-        """Test poor insulation with fast heating gives high ke."""
+        """Test poor insulation with fast heating gives high ke (v0.7.0: 100x smaller scale)."""
         ke = calculate_recommended_ke("poor", "forced_air")
-        assert ke == pytest.approx(1.8)  # 1.5 * 1.2
+        assert ke == pytest.approx(0.018)  # 0.015 * 1.2
 
     def test_unknown_values_use_defaults(self):
-        """Test unknown insulation/heating types use defaults."""
+        """Test unknown insulation/heating types use defaults (v0.7.0: 100x smaller scale)."""
         ke = calculate_recommended_ke("unknown", "unknown")
-        assert ke == pytest.approx(0.5)  # good insulation (0.5) * radiator (1.0)
+        assert ke == pytest.approx(0.005)  # good insulation (0.005) * radiator (1.0)
 
     def test_ke_clamped_to_valid_range(self):
-        """Test ke is clamped to 0.0-2.0 range."""
+        """Test ke is clamped to 0.0-0.02 range (v0.7.0: 100x smaller scale)."""
         # This shouldn't happen with current values, but test the clamping logic
         ke = calculate_recommended_ke("poor", "forced_air")
-        assert 0.0 <= ke <= 2.0
+        assert 0.0 <= ke <= 0.02
 
 
 class TestOutdoorCompensationToPIDOutput:

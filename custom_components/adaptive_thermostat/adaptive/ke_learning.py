@@ -341,8 +341,8 @@ class KeLearner:
         # Enforce Ke limits
         new_ke = max(PID_LIMITS["ke_min"], min(PID_LIMITS["ke_max"], new_ke))
 
-        # Skip if no effective change
-        if abs(new_ke - self._current_ke) < 0.01:
+        # Skip if no effective change (v0.7.0: threshold scaled to match new Ke scale)
+        if abs(new_ke - self._current_ke) < 0.0001:
             _LOGGER.debug("Ke adjustment skipped: at limit")
             return None
 

@@ -287,7 +287,7 @@ class TestPIDAdjustmentScaling:
         # Add cycles with overshoot to trigger reduction
         for i in range(5):
             cycle = CycleMetrics(
-                overshoot=0.6,  # Trigger overshoot rule
+                overshoot=1.2,  # Trigger HIGH_OVERSHOOT rule (v0.7.0: >1.0°C reduces Kp)
                 undershoot=0.0,
                 settling_time=30.0,
                 oscillations=0,
@@ -306,7 +306,7 @@ class TestPIDAdjustmentScaling:
             min_cycles=3,
         )
 
-        # Should get adjustment (overshoot should trigger Kp reduction)
+        # Should get adjustment (extreme overshoot >1.0°C triggers Kp reduction)
         assert adjustment is not None
         # With 2.0x learning rate, Kp reduction should be more aggressive
         assert adjustment["kp"] < 100.0

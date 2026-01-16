@@ -101,9 +101,9 @@ class TestThermalTimeConstant:
             window_rating="single"
         )
         # Heat loss factor = (5.8/1.1) * (0.2/0.2) = 5.27
-        # tau reduction = 0.15 * 5.27 = 0.79 (clamped to 0.5 max)
-        # tau = 4.0 * (1 - 0.5) = 2.0
-        assert tau_with_single == pytest.approx(2.0, abs=0.01)
+        # tau reduction = 0.15 * 5.27 = 0.79 (clamped to 0.4 max)
+        # tau = 4.0 * (1 - 0.4) = 2.4
+        assert tau_with_single == pytest.approx(2.4, abs=0.01)
 
     def test_thermal_time_constant_with_triple_glazing(self):
         """Test tau adjustment with excellent glazing (triple pane)."""

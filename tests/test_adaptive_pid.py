@@ -10,11 +10,11 @@ from custom_components.adaptive_thermostat.const import MIN_CYCLES_FOR_LEARNING
 
 
 def test_high_overshoot_reducing_kp():
-    """Test that high overshoot reduces Kp."""
+    """Test that moderate overshoot increases Kd (v0.7.0: thermal lag addressed by derivative)."""
     learner = AdaptiveLearner()
 
-    # Add cycles with high overshoot (0.6°C)
-    for _ in range(3):
+    # Add cycles with moderate overshoot (0.6°C, triggers MODERATE_OVERSHOOT rule)
+    for _ in range(MIN_CYCLES_FOR_LEARNING):
         metrics = CycleMetrics(
             overshoot=0.6,
             undershoot=0.0,
@@ -24,19 +24,17 @@ def test_high_overshoot_reducing_kp():
         )
         learner.add_cycle_metrics(metrics)
 
-    # Initial PID values
-    kp, ki, kd = 100.0, 20.0, 10.0
+    # Initial PID values (v0.7.0: kd_max reduced to 5.0)
+    kp, ki, kd = 100.0, 20.0, 2.0
 
     # Calculate adjustments
     result = learner.calculate_pid_adjustment(kp, ki, kd)
 
     assert result is not None
-    # High overshoot should reduce Kp
-    assert result["kp"] < kp
-    # Should also reduce Ki
-    assert result["ki"] < ki
-    # Kd should remain unchanged (no oscillations)
-    assert result["kd"] == kd
+    # v0.7.0: Moderate overshoot (0.2-1.0°C) increases Kd only (thermal lag)
+    assert result["kp"] == kp  # Kp unchanged
+    assert result["ki"] == ki  # Ki unchanged
+    assert result["kd"] > kd   # Kd increased to dampen overshoot (2.0 * 1.20 * learning_rate)
 
 
 def test_slow_response_increasing_kp():
@@ -44,7 +42,7 @@ def test_slow_response_increasing_kp():
     learner = AdaptiveLearner()
 
     # Add cycles with slow rise time (70 minutes)
-    for _ in range(3):
+    for _ in range(MIN_CYCLES_FOR_LEARNING):
         metrics = CycleMetrics(
             overshoot=0.1,
             undershoot=0.0,
@@ -70,7 +68,7 @@ def test_oscillations_adjusting_kp_and_kd():
     learner = AdaptiveLearner()
 
     # Add cycles with many oscillations (4 oscillations)
-    for _ in range(3):
+    for _ in range(MIN_CYCLES_FOR_LEARNING):
         metrics = CycleMetrics(
             overshoot=0.3,
             undershoot=0.1,
@@ -80,16 +78,16 @@ def test_oscillations_adjusting_kp_and_kd():
         )
         learner.add_cycle_metrics(metrics)
 
-    # Initial PID values
-    kp, ki, kd = 100.0, 20.0, 10.0
+    # Initial PID values (v0.7.0: kd_max reduced to 5.0)
+    kp, ki, kd = 100.0, 20.0, 2.0
 
     # Calculate adjustments
     result = learner.calculate_pid_adjustment(kp, ki, kd)
 
     assert result is not None
-    # Many oscillations should reduce Kp
+    # Many oscillations should reduce Kp by 10%
     assert result["kp"] < kp
-    # Many oscillations should increase Kd
+    # Many oscillations should increase Kd by 20%
     assert result["kd"] > kd
 
 
@@ -98,7 +96,7 @@ def test_pid_limits_enforcement():
     learner = AdaptiveLearner()
 
     # Add cycles with extreme metrics to push beyond limits
-    for _ in range(3):
+    for _ in range(MIN_CYCLES_FOR_LEARNING):
         metrics = CycleMetrics(
             overshoot=2.0,  # Very high overshoot
             undershoot=0.0,
@@ -108,10 +106,10 @@ def test_pid_limits_enforcement():
         )
         learner.add_cycle_metrics(metrics)
 
-    # Start with values near minimum
-    kp, ki, kd = 15.0, 5.0, 5.0
+    # Start with values near minimum (v0.7.0: kd_max = 5.0)
+    kp, ki, kd = 15.0, 5.0, 2.0
 
-    # Calculate adjustments (high overshoot will try to reduce further)
+    # Calculate adjustments (high overshoot will try to reduce Kp/Ki and increase Kd)
     result = learner.calculate_pid_adjustment(kp, ki, kd)
 
     assert result is not None
@@ -122,11 +120,11 @@ def test_pid_limits_enforcement():
     # Kd should not go below minimum (0.0)
     assert result["kd"] >= 0.0
 
-    # Test maximum limits
+    # Test maximum limits (v0.7.0: Kd limits changed to 0.0-5.0)
     learner2 = AdaptiveLearner()
 
     # Add cycles with slow response to increase Kp
-    for _ in range(3):
+    for _ in range(MIN_CYCLES_FOR_LEARNING):
         metrics = CycleMetrics(
             overshoot=0.0,
             undershoot=0.5,  # High undershoot to increase Ki
@@ -136,8 +134,8 @@ def test_pid_limits_enforcement():
         )
         learner2.add_cycle_metrics(metrics)
 
-    # Start with values near maximum
-    kp, ki, kd = 480.0, 95.0, 190.0
+    # Start with values near maximum (v0.7.0: kd_max = 5.0)
+    kp, ki, kd = 480.0, 95.0, 4.5
 
     # Calculate adjustments
     result = learner2.calculate_pid_adjustment(kp, ki, kd)
@@ -145,18 +143,18 @@ def test_pid_limits_enforcement():
     assert result is not None
     # Kp should not exceed maximum (500.0)
     assert result["kp"] <= 500.0
-    # Ki should not exceed maximum (100.0)
-    assert result["ki"] <= 100.0
-    # Kd should not exceed maximum (200.0)
-    assert result["kd"] <= 200.0
+    # Ki should not exceed maximum (1000.0) - v0.7.0 increased from 100.0
+    assert result["ki"] <= 1000.0
+    # Kd should not exceed maximum (5.0) - v0.7.0 reduced from 200.0
+    assert result["kd"] <= 5.0
 
 
 def test_minimum_cycles_requirement():
     """Test that insufficient cycles return None."""
     learner = AdaptiveLearner()
 
-    # Add only 2 cycles (less than minimum of 3)
-    for _ in range(2):
+    # Add only MIN_CYCLES_FOR_LEARNING - 1 cycles (less than minimum)
+    for _ in range(MIN_CYCLES_FOR_LEARNING - 1):
         metrics = CycleMetrics(
             overshoot=0.3,
             undershoot=0.1,
@@ -197,7 +195,7 @@ def test_undershoot_increases_ki():
 
     # Add cycles with undershoot (0.4°C)
     # Note: rise_time > 45 to avoid triggering convergence check
-    for _ in range(3):
+    for _ in range(MIN_CYCLES_FOR_LEARNING):
         metrics = CycleMetrics(
             overshoot=0.0,
             undershoot=0.4,  # Significant undershoot
@@ -223,7 +221,7 @@ def test_slow_settling_increases_kd():
     learner = AdaptiveLearner()
 
     # Add cycles with slow settling (100 minutes)
-    for _ in range(3):
+    for _ in range(MIN_CYCLES_FOR_LEARNING):
         metrics = CycleMetrics(
             overshoot=0.1,
             undershoot=0.0,
@@ -233,8 +231,8 @@ def test_slow_settling_increases_kd():
         )
         learner.add_cycle_metrics(metrics)
 
-    # Initial PID values
-    kp, ki, kd = 100.0, 20.0, 10.0
+    # Initial PID values (v0.7.0: kd_max = 5.0)
+    kp, ki, kd = 100.0, 20.0, 2.0
 
     # Calculate adjustments
     result = learner.calculate_pid_adjustment(kp, ki, kd)
