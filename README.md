@@ -28,15 +28,25 @@ An advanced thermostat integration featuring PID control with automatic tuning, 
 
 ### Key Features
 
-- **PID Control** - Accurate temperature control with proportional, integral, derivative, and outdoor compensation (Ke) terms
-- **Adaptive Learning** - Automatically learns thermal characteristics and optimizes PID parameters
-- **Ke-First Learning** - Learns outdoor compensation before PID tuning for faster convergence
-- **Physics-Based Initialization** - Initial PID values calculated from zone properties (no manual tuning required)
-- **Multi-Zone Coordination** - Central heat source control, mode synchronization, and zone linking
-- **Energy Optimization** - Night setback, solar gain prediction, contact sensors, heating curves
-- **Actuator Wear Tracking** - Cycle counting with maintenance alerts for predictive maintenance
-- **Wind Compensation** - Ke_wind parameter for improved outdoor temperature response in windy conditions
-- **Analytics & Monitoring** - Performance sensors, health monitoring, energy tracking, weekly reports
+- **PID Control** - Four-term PID controller (P+I+D+E) with proportional-on-measurement for smooth operation
+- **Adaptive Learning** - Automatically learns thermal characteristics and optimizes PID parameters from real heating cycles
+- **Physics-Based Initialization** - Initial PID values calculated from zone properties using empirical HVAC data
+- **Multi-Zone Coordination** - Central heat source control, mode synchronization, and zone linking for connected spaces
+- **Energy Optimization** - Night setback with dynamic sunrise timing, solar gain prediction, contact sensors, outdoor compensation
+- **Actuator Wear Tracking** - Cycle counting with predictive maintenance alerts
+- **Comprehensive Monitoring** - Performance sensors, health warnings, energy tracking, and automated reports
+
+## 📚 Full Documentation
+
+**[Visit the Wiki](https://github.com/afewyards/ha-adaptive-thermostat/wiki)** for comprehensive documentation including:
+
+- [Installation & Setup](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Installation-&-Setup) - Detailed installation guide and first-time configuration
+- [Configuration Reference](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Configuration-Reference) - Complete parameter reference with 60+ parameters
+- [PID Control](https://github.com/afewyards/ha-adaptive-thermostat/wiki/PID-Control) - How PID works, P-on-M vs P-on-E, PWM vs valve control
+- [Adaptive Learning](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Adaptive-Learning) - Cycle tracking, learning rules, Ke-First process
+- [Multi-Zone Coordination](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Multi-Zone-Coordination) - Architecture and configuration
+- [Energy Optimization](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Energy-Optimization) - Night setback, solar recovery, outdoor compensation
+- [Troubleshooting](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Troubleshooting) - Diagnostic checklist and common issues
 
 ## Installation
 
@@ -50,9 +60,9 @@ An advanced thermostat integration featuring PID control with automatic tuning, 
 1. Copy the `custom_components/adaptive_thermostat` folder to your `<config>/custom_components/` directory
 2. Restart Home Assistant
 
-## Configuration
+## Quick Start
 
-### Basic Example
+### Basic Configuration
 ```yaml
 climate:
   - platform: adaptive_thermostat
@@ -68,59 +78,56 @@ climate:
 
 PID values are automatically calculated from `heating_type` and `area_m2`, then refined through adaptive learning. No manual tuning required.
 
-> **Note:** Ke-First learning is automatically enabled when `outdoor_sensor` is configured at the system level. Wind compensation is optional via `wind_speed_sensor`.
+## Configuration Examples
 
-### Full Example with Adaptive Features
+### Multi-Zone with Central Heat Source
 ```yaml
+adaptive_thermostat:
+  house_energy_rating: A+++
+  main_heater_switch: switch.boiler
+  outdoor_sensor: sensor.outdoor_temp
+  sync_modes: true
+
 climate:
   - platform: adaptive_thermostat
     name: Ground Floor
     heater: switch.heating_gf
     target_sensor: sensor.temp_gf
-    min_temp: 7
-    max_temp: 28
-    target_temp: 20
-
-    # Zone properties for physics-based PID initialization
-    heating_type: floor_hydronic  # floor_hydronic, radiator, convector, forced_air
+    heating_type: floor_hydronic
     area_m2: 28
-    ceiling_height: 2.5
-    window_area_m2: 4.0
-    window_orientation: south  # north, northeast, east, southeast, south, southwest, west, northwest, roof
-
-    # Zone linking (for thermally connected zones)
+    window_orientation: south
     linked_zones:
       - climate.kitchen
-      - climate.hallway
-    link_delay_minutes: 20
 
-    # Contact sensors (pause heating when windows/doors open)
-    contact_sensors:
-      - binary_sensor.gf_window
-      - binary_sensor.gf_door
-    contact_action: pause  # pause, frost_protection, none
-    contact_delay: 120
+  - platform: adaptive_thermostat
+    name: Kitchen
+    heater: switch.heating_kitchen
+    target_sensor: sensor.temp_kitchen
+    heating_type: radiator
+    area_m2: 15
 ```
 
-### Actuator Wear Tracking Example
-Track actuator lifecycle and get maintenance alerts:
+### Night Setback with Solar Recovery
 ```yaml
 climate:
   - platform: adaptive_thermostat
-    name: Living Room
-    heater: switch.heating_living
-    target_sensor: sensor.temp_living
-    heater_rated_cycles: 100000  # Expected heater lifetime (typical contactor)
-    cooler_rated_cycles: 50000   # Expected cooler lifetime (valves have lower cycle life)
+    name: Bedroom
+    heater: switch.heating_bedroom
+    target_sensor: sensor.temp_bedroom
+    heating_type: radiator
+    area_m2: 16
+    window_orientation: south
+
+    night_setback:
+      start: "22:00"
+      delta: 2.0
+      recovery_deadline: "08:00"
+      solar_recovery: true
 ```
 
-**Notes:**
-- Tracks on→off cycles for heater and cooler separately
-- Creates `sensor.{zone}_heater_wear` and `sensor.{zone}_cooler_wear` (hidden by default)
-- Fires maintenance alert events at 80% (soon) and 90% (due) thresholds
-- Typical rated cycles: contactors/switches 100k, valves 50k
+When `end` is omitted, wake time is calculated from sunrise, window orientation, and weather forecast. [Learn more →](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Energy-Optimization#night-setback)
 
-### Cooling/AC Example
+### Cooling/AC Configuration
 ```yaml
 climate:
   - platform: adaptive_thermostat
@@ -128,132 +135,37 @@ climate:
     heater: switch.heating_living
     cooler: switch.ac_living
     target_sensor: sensor.temp_living
-    min_temp: 16
-    max_temp: 30
-    target_temp: 22
+    heating_type: forced_air
+    area_m2: 25
     hot_tolerance: 0.5
     cold_tolerance: 0.5
 ```
 
-### Valve Control Example
-For systems with a single valve that controls flow regardless of heating or cooling mode (e.g., fan coil units, zone valves on a shared hydronic loop):
-
+### Valve Control (0-100%)
 ```yaml
 climate:
   - platform: adaptive_thermostat
     name: Fan Coil Unit
     demand_switch: switch.fcunit_valve
     target_sensor: sensor.temp_fcunit
-    pwm: 0  # Direct valve control (0-100%)
-    min_temp: 16
-    max_temp: 28
-    target_temp: 21
+    pwm: 0  # Direct valve positioning
+    heating_type: forced_air
+    area_m2: 20
 ```
 
-Unlike `heater` (active only in heat mode) or `cooler` (active only in cool mode), `demand_switch` is controlled in both modes—useful when the same valve regulates flow from a shared hot/cold source.
-
-### Night Setback Example
+### Actuator Wear Tracking
 ```yaml
 climate:
   - platform: adaptive_thermostat
-    name: Bedroom
-    heater: switch.heating_bedroom
-    target_sensor: sensor.temp_bedroom
-    window_orientation: south  # Required for dynamic end time
-
-    # Night setback configuration
-    night_setback:
-      start: "22:00"          # Or "sunset+30" for 30 min after sunset
-      delta: 2.0              # Reduce by 2°C at night
-      # end: "06:30"          # Optional - if omitted, calculated dynamically
-      recovery_deadline: "08:00"  # End time override (used if earlier than dynamic calculation)
-      # solar_recovery: true  # Auto-enabled if window_orientation set (can explicitly disable)
-      min_effective_elevation: 10  # Min sun angle (degrees) for effective solar gain
+    name: Living Room
+    heater: switch.heating_living
+    target_sensor: sensor.temp_living
+    heating_type: radiator
+    area_m2: 20
+    heater_rated_cycles: 100000  # Typical contactor lifetime
 ```
 
-When `end` is omitted, the end time is calculated dynamically based on:
-- **Sunrise** + 60 minutes base offset
-- **Window orientation offsets** (negative = earlier recovery, more sun expected; positive = later recovery, less sun expected):
-  - south -30min, southeast -25min, east -20min
-  - southwest -5min, northeast +5min
-  - west +20min, northwest +25min, north +30min
-- **Recovery deadline override**: If `recovery_deadline` is set and earlier than the calculated dynamic end time, it will be used instead
-
-This allows south-facing rooms to benefit from solar gain while north-facing rooms start heating earlier, with `recovery_deadline` providing a guaranteed wake-up time regardless of sunrise.
-
-#### Dynamic Solar Recovery
-
-Solar recovery is automatically enabled when `window_orientation` is configured (can be explicitly disabled by setting `solar_recovery: false`). When enabled and Home Assistant has a configured location, the system calculates when the sun's position will actually illuminate the window based on:
-- **Window orientation azimuth**: The sun must be within ±45° of the window's facing direction
-- **Minimum elevation**: Sun must be above `min_effective_elevation` (default 10°) to provide effective heating
-- **Date and location**: Calculations adapt automatically to seasonal changes and geographic location
-
-This replaces the static orientation offsets with accurate sun position calculations using the `astral` library. For example, a southeast-facing window will get sun earlier in summer (when sunrise is in the northeast) than in winter.
-
-If Home Assistant location is not configured, the system falls back to static orientation-based offsets.
-
-### System Configuration
-```yaml
-adaptive_thermostat:
-  # House properties (for physics-based initialization)
-  house_energy_rating: A+++  # A+++ to G
-
-  # Learning
-  learning_window_days: 7  # Adjustable via number entity
-
-  # Weather and outdoor temperature
-  weather_entity: weather.home  # For solar gain prediction
-  outdoor_sensor: sensor.outdoor_temp  # For Ke (outdoor compensation) - shared by all zones
-  wind_speed_sensor: sensor.wind_speed_mps  # Optional - enables wind compensation (Ke_wind)
-
-  # Heat output sensors (optional - for detailed analytics)
-  supply_temp_sensor: sensor.heating_supply
-  return_temp_sensor: sensor.heating_return
-  flow_rate_sensor: sensor.heating_flow
-  volume_meter_entity: sensor.heating_volume_m3
-  fallback_flow_rate: 0.5  # L/min fallback when meter unavailable
-
-  # Energy tracking (optional)
-  energy_meter_entity: sensor.heating_energy
-  energy_cost_entity: input_number.energy_price
-
-  # Central heat source control (single entity or list)
-  main_heater_switch:
-    - switch.boiler
-    - switch.circulation_pump
-  main_cooler_switch:
-    - switch.ac_compressor
-  source_startup_delay: 30  # Seconds delay before firing heat source
-
-  # Mode synchronization across zones
-  sync_modes: true  # Sync HEAT/COOL mode changes across zones
-
-  # Preset temperatures (shared across all zones)
-  away_temp: 14
-  eco_temp: 18
-  boost_temp: 23
-  comfort_temp: 21
-  home_temp: 20
-  activity_temp: 20
-  preset_sync_mode: none  # "sync" or "none"
-  boost_pid_off: false  # Disable PID when in boost mode
-
-  # Notifications for health alerts and reports
-  notify_service: notify.mobile_app
-```
-
-## Heating Types
-
-The `heating_type` parameter determines PID values using empirical base values calibrated from real-world HVAC systems:
-
-| Type | Description | Kp | Ki | Kd | PWM Period |
-|------|-------------|-----|-------|-----|------------|
-| `floor_hydronic` | Underfloor water heating | 0.3 | 0.012 | 7.0 | 15 min |
-| `radiator` | Traditional radiators | 0.5 | 0.02 | 5.0 | 10 min |
-| `convector` | Convection heaters | 0.8 | 0.04 | 3.0 | 5 min |
-| `forced_air` | Forced air / HVAC | 1.2 | 0.08 | 2.0 | 3 min |
-
-Values are adjusted ±30% based on thermal time constant (zone volume and window area). Floor heating needs very low Ki (to avoid integral wind-up) and high Kd (to dampen slow oscillations).
+Tracks on→off cycles and fires maintenance alerts at 80% and 90% wear. [Learn more →](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Actuator-Wear-Tracking)
 
 ## Created Entities
 
@@ -265,433 +177,71 @@ Values are adjusted ±30% based on thermal time constant (zone volume and window
 - `sensor.{zone}_settling_time` - Time to reach setpoint (min)
 - `sensor.{zone}_oscillations` - Number of temperature oscillations
 - `sensor.{zone}_heat_output` - Heat output (W) - requires supply/return temp sensors
-- `sensor.{zone}_heater_wear` - Heater actuator wear % (hidden by default, optional - requires `heater_rated_cycles`)
-- `sensor.{zone}_cooler_wear` - Cooler actuator wear % (hidden by default, optional - requires `cooler_rated_cycles`)
-
-**Additional Climate Entity Attributes:**
-- `heater_cycle_count` - Total heater on→off cycles
-- `cooler_cycle_count` - Total cooler on→off cycles
+- `sensor.{zone}_heater_wear` - Heater wear % (hidden, optional)
+- `sensor.{zone}_cooler_wear` - Cooler wear % (hidden, optional)
 
 ### System
 - `number.adaptive_thermostat_learning_window` - Learning window in days (adjustable)
 
 ## Services
 
-### Entity Services (target a specific thermostat)
-
-**Reset PID to physics defaults:** `adaptive_thermostat.reset_pid_to_physics`
-```yaml
-service: adaptive_thermostat.reset_pid_to_physics
-target:
-  entity_id: climate.living_room
-```
-Recalculates PID values from the zone's physical properties (`area_m2`, `ceiling_height`, `heating_type`) using empirical values calibrated for real-world HVAC systems. Clears the integral term to avoid wind-up.
-
-**Apply adaptive PID:** `adaptive_thermostat.apply_adaptive_pid`
-```yaml
-service: adaptive_thermostat.apply_adaptive_pid
-target:
-  entity_id: climate.living_room
-```
-Calculates and applies PID values based on learned performance metrics (overshoot, undershoot, settling time, oscillations). Requires at least 3 analyzed heating cycles.
-
-**Apply adaptive Ke:** `adaptive_thermostat.apply_adaptive_ke`
-```yaml
-service: adaptive_thermostat.apply_adaptive_ke
-target:
-  entity_id: climate.living_room
-```
-Applies learned outdoor temperature compensation (Ke) adjustments based on observed correlations between outdoor temperature and heating demand.
-
-### Domain Services (system-wide)
-
-**Run adaptive learning:** `adaptive_thermostat.run_learning`
-```yaml
-service: adaptive_thermostat.run_learning
-```
-Triggers adaptive learning analysis for all zones.
-
-**Health check:** `adaptive_thermostat.health_check`
-```yaml
-service: adaptive_thermostat.health_check
-```
-
-**Weekly report:** `adaptive_thermostat.weekly_report`
-```yaml
-service: adaptive_thermostat.weekly_report
-```
-
-**Cost report:** `adaptive_thermostat.cost_report`
-```yaml
-service: adaptive_thermostat.cost_report
-data:
-  period: weekly  # daily, weekly, or monthly
-```
-
-**Vacation mode:** `adaptive_thermostat.set_vacation_mode`
-```yaml
-service: adaptive_thermostat.set_vacation_mode
-data:
-  enabled: true
-  target_temp: 12  # frost protection temperature
-```
-
-**Energy stats:** `adaptive_thermostat.energy_stats`
-```yaml
-service: adaptive_thermostat.energy_stats
-```
-Returns current energy statistics including total power, zone powers, daily/weekly energy and costs.
-
-**PID recommendations:** `adaptive_thermostat.pid_recommendations`
-```yaml
-service: adaptive_thermostat.pid_recommendations
-```
-Returns current and recommended PID values for all zones based on physics and adaptive learning.
-
-## Adaptive Learning
-
-The thermostat automatically learns from heating cycles and adjusts PID parameters:
-
-### What It Learns
-- **Thermal rates** - Heating and cooling rates (°C/hour) for each zone
-- **Overshoot patterns** - How much temperature exceeds setpoint
-- **Settling behavior** - Time to stabilize and oscillation patterns
-- **Ke-First** - Outdoor compensation learned before PID tuning (10-15 cycles, physics-based)
-- **Wind impact** - Wind speed effect on heat loss via Ke_wind
-
-### PID Adjustment Rules
-
-| Observation | Adjustment | Changed in v0.7.0 |
-|-------------|------------|-------------------|
-| High overshoot (>1.0°C) | Reduce Kp 10%, Ki 10%, increase Kd 20% | Kd increase added |
-| Moderate overshoot (0.2-1.0°C) | Increase Kd by 20% | Changed from Kp reduction |
-| Slow response (>60 min) | Increase Kp by 10% (or Ki +30% if outdoor-correlated) | Outdoor correlation check added |
-| Undershoot (>0.3°C) | Increase Ki by 6-100% (gradient-based) | Increased from 20% max |
-| Many oscillations (>3) | Reduce Kp 10%, increase Kd 20% | Filtered in PWM mode |
-| Some oscillations (>1) | Increase Kd by 10% | Filtered in PWM mode |
-| Slow settling (>90 min) | Increase Kd by 15% | No change |
-
-**Additional Notes:**
-- Rule hysteresis (20% band) prevents rapid activation/deactivation
-- Oscillation rules filtered in PWM mode (on/off cycling is expected)
-- Minimum 6 cycles required (increased from 3 for outlier detection)
-
-## Energy Optimization Features
-
-### Night Setback
-Automatically lowers temperature during sleeping hours. Features include:
-- **Sunset-relative start**: Use "sunset+30" to start 30 minutes after sunset
-- **Dynamic end time**: When `end` is omitted, calculates optimal wake time from sunrise, window orientation, and weather
-- **Solar recovery**: Delays morning heating to let the sun warm south-facing zones naturally
-- **Learning grace period**: Excludes night setback transitions from adaptive learning to avoid confusion
-
-### Solar Gain Prediction
-Learns solar heating patterns per zone based on:
-- Window orientation (south-facing gets more sun)
-- Season (summer vs winter intensity)
-- Cloud coverage forecast
-
-### Contact Sensors
-Pauses heating or switches to frost protection when windows/doors are open:
-- `pause` - Stops heating completely
-- `frost_protection` - Maintains minimum safe temperature (5°C)
-- `none` - No action (useful if you only want logging)
-
-### Outdoor Temperature Compensation (Ke)
-The Ke parameter compensates for outdoor temperature, reducing the work the PID integral term must do:
-```
-E = Ke × (target_temp - outdoor_temp) + Ke_wind × wind_speed × (target_temp - outdoor_temp)
-```
-
-#### Ke-First Learning
-Outdoor compensation is automatically learned before PID tuning begins:
-- Uses linear regression on temperature drop rates during heater OFF periods
-- Requires 10-15 cycles with >5°C outdoor temperature variation
-- R² > 0.7 validation ensures statistical significance
-- Blocks PID tuning until Ke converges for optimal results
-- No configuration needed—enabled by default when `outdoor_sensor` configured at system level
-
-#### Wind Compensation
-Wind speed amplifies heat loss, requiring additional heating power:
-- Ke_wind scales outdoor compensation based on wind speed (m/s)
-- Base value: 0.02 per m/s, adjusted for energy rating and window exposure
-- Configure via `wind_speed_sensor` (optional)
-- Gracefully degrades if sensor unavailable (treats as 0 m/s)
-
-Both Ke and Ke_wind are learned automatically. No manual tuning required—just configure `outdoor_sensor` (and optionally `wind_speed_sensor`) at the system level and all zones will automatically use them.
-
-## Multi-Zone Coordination
-
-### Central Heat Source Control
-Aggregates demand from all zones to control the main boiler/heat pump:
-- Startup delay allows valves to open before firing heat source
-- Immediate off when no zone has demand
-- Configured via `main_heater_switch`, `main_cooler_switch`, and `source_startup_delay`
-
-### Mode Synchronization
-When one zone switches to HEAT or COOL mode, other zones follow (OFF mode remains independent).
-- Enable with `sync_modes: true` in system configuration
-- Prevents conflicting heat/cool modes across zones
-
-### Zone Demand Tracking
-Each zone creates a demand switch (`switch.{zone}_demand`) that indicates heating demand:
-- ON when PID output exceeds threshold
-- Used by central controller to aggregate demand
-- Can also be used in custom automations
-
-### Zone Linking
-For thermally connected zones (e.g., open floor plan):
-- When one zone starts heating, linked zones delay their heating
-- Prevents redundant heating of connected spaces
-- Configurable delay (default 20 minutes)
-
-## Actuator Wear Tracking
-
-Track actuator lifecycle and predict maintenance needs based on cycle counts.
-
-### What's Tracked
-- **On→off cycle counts** - Incremented each time heater/cooler transitions from on to off
-- **Separate tracking** - Heater and cooler actuators tracked independently
-- **Mode support** - Works in both PWM (on/off switching) and valve control modes
-
-### Wear Sensors
-When `heater_rated_cycles` or `cooler_rated_cycles` is configured, wear sensors are automatically created:
-
-- `sensor.{zone}_heater_wear` - Heater wear percentage (0-100%)
-- `sensor.{zone}_cooler_wear` - Cooler wear percentage (0-100%)
-- **Hidden by default** (`entity_registry_visible_default: false`)
-- **Icon changes** based on wear level:
-  - `mdi:gauge-low` (0-50%)
-  - `mdi:gauge` (50-80%)
-  - `mdi:gauge-full` (80-100%)
-
-### Sensor Attributes
-Each wear sensor provides detailed lifecycle information:
-
-| Attribute | Description |
-|-----------|-------------|
-| `total_cycles` | Current cycle count |
-| `rated_cycles` | Expected lifetime cycles (from config) |
-| `estimated_remaining` | Remaining cycles before end of life |
-| `maintenance_status` | `ok`, `maintenance_soon` (≥80%), `maintenance_due` (≥90%), `no_rating` |
-| `actuator_type` | `heater` or `cooler` |
-
-### Climate Entity Attributes
-Cycle counts are also exposed on the climate entity for easy access:
-
-- `heater_cycle_count` - Total heater on→off cycles
-- `cooler_cycle_count` - Total cooler on→off cycles
-
-### Maintenance Events
-Automatic maintenance alerts are fired as actuators approach end of life:
-
-**Event:** `adaptive_thermostat_actuator_maintenance_alert`
-
-**Thresholds:**
-- **80% wear** - `maintenance_soon` status
-- **90% wear** - `maintenance_due` status
-
-**Event Data:**
-```yaml
-climate_entity_id: climate.living_room
-zone_name: Living Room
-actuator_type: heater
-total_cycles: 80000
-rated_cycles: 100000
-wear_percentage: 80.0
-maintenance_status: maintenance_soon
-```
-
-**Use in Automations:**
-```yaml
-automation:
-  - alias: Actuator Maintenance Alert
-    trigger:
-      - platform: event
-        event_type: adaptive_thermostat_actuator_maintenance_alert
-    condition:
-      - condition: template
-        value_template: "{{ trigger.event.data.maintenance_status == 'maintenance_due' }}"
-    action:
-      - service: notify.mobile_app
-        data:
-          title: "Actuator Maintenance Required"
-          message: >
-            {{ trigger.event.data.zone_name }} {{ trigger.event.data.actuator_type }}
-            has reached {{ trigger.event.data.wear_percentage }}% wear
-            ({{ trigger.event.data.total_cycles }} of {{ trigger.event.data.rated_cycles }} cycles).
-            Maintenance recommended.
-```
-
-### Typical Rated Cycles
-Use these values as guidelines when configuring `heater_rated_cycles` and `cooler_rated_cycles`:
-
-| Component Type | Typical Rated Cycles |
-|----------------|---------------------|
-| Contactors/relays | 100,000 cycles |
-| Motorized valves | 50,000 cycles |
-| Solid-state relays | 100,000+ cycles |
-
-### State Persistence
-- Cycle counts persist across Home Assistant restarts
-- No data loss on reboot
-- Stored in the climate entity's state attributes
-
-## Parameters Reference
-
-### Core Parameters
-| Parameter | Required | Default | Description |
-|-----------|----------|---------|-------------|
-| `name` | No | Adaptive Thermostat | Thermostat name |
-| `heater` | No* | - | Switch/valve entity (or list) for heating mode |
-| `cooler` | No | - | Switch/valve entity (or list) for cooling mode |
-| `demand_switch` | No* | - | Switch/valve entity (or list) controlled in both modes |
-| `invert_heater` | No | false | Invert heater on/off polarity |
-| `target_sensor` | Yes | - | Temperature sensor entity |
-| `min_temp` | No | 7 | Minimum setpoint temperature |
-| `max_temp` | No | 35 | Maximum setpoint temperature |
-| `target_temp` | No | 20 | Initial target temperature |
-
-\* At least one of `heater`, `cooler`, or `demand_switch` is required.
-
-**Note:** Cooling mode (COOL) is automatically enabled when `cooler` is configured at zone level or `main_cooler_switch` is configured at controller level.
-
-### Timing & Cycle Parameters
-| Parameter | Required | Default | Description |
-|-----------|----------|---------|-------------|
-| `control_interval` | No | Auto | Control loop interval (auto-derived from `sampling_period` or 60s default) |
-| `pwm` | No | 00:15:00 | PWM period (set to 0 for valves) |
-| `min_cycle_duration` | No | 00:00:00 | Minimum heater on-time |
-| `min_off_cycle_duration` | No | - | Minimum heater off-time |
-| `min_cycle_duration_pid_off` | No | - | Min on-time when PID disabled |
-| `min_off_cycle_duration_pid_off` | No | - | Min off-time when PID disabled |
-| `sampling_period` | No | 00:00:00 | PID calculation interval (0 = on sensor change) |
-
-### Temperature Tolerance Parameters
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `hot_tolerance` | 0.3 | Tolerance above setpoint before cooling (°C) |
-| `cold_tolerance` | 0.3 | Tolerance below setpoint before heating (°C) |
-| `precision` | - | Display precision (tenths, halves, whole) |
-| `target_temp_step` | - | Setpoint adjustment step size |
-
-### Output Control Parameters
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `output_min` | 0 | Minimum PID output value |
-| `output_max` | 100 | Maximum PID output value |
-| `out_clamp_low` | 0 | Lower output clamp limit |
-| `out_clamp_high` | 100 | Upper output clamp limit |
-| `output_precision` | 1 | Decimal places for output value |
-
-### Safety Parameters
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `sensor_stall` | 06:00:00 | Timeout before declaring sensor stalled |
-| `output_safety` | 5.0 | Safety output when sensor stalls (%) |
-| `force_off_state` | true | Force heater off when HVAC mode is OFF |
-
-### Adaptive Learning Parameters
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `heating_type` | - | System type: floor_hydronic, radiator, convector, forced_air |
-| `area_m2` | - | Zone floor area in m² |
-| `ceiling_height` | 2.5 | Ceiling height in meters |
-| `window_area_m2` | - | Total window area in m² |
-| `window_orientation` | - | Primary window direction (north, northeast, east, southeast, south, southwest, west, northwest, roof) |
-
-### Actuator Wear Parameters
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `heater_rated_cycles` | - | Expected heater lifetime cycles (e.g., 100000 for contactors) |
-| `cooler_rated_cycles` | - | Expected cooler lifetime cycles (e.g., 50000 for valves) |
-
-### Preset Mode Parameters
-These are configured at the controller level under `adaptive_thermostat:` (shared across all zones).
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `away_temp` | - | Away mode temperature |
-| `eco_temp` | - | Eco mode temperature |
-| `boost_temp` | - | Boost mode temperature |
-| `comfort_temp` | - | Comfort mode temperature |
-| `home_temp` | - | Home mode temperature |
-| `activity_temp` | - | Activity mode temperature |
-| `preset_sync_mode` | none | Sync setpoint to preset ("sync" or "none") |
-| `boost_pid_off` | false | Disable PID control in boost mode |
-
-### Night Setback Parameters
-Configure as a nested block under `night_setback`:
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `start` | - | Start time ("22:00" or "sunset+30") |
-| `end` | dynamic | End time ("06:30") - if omitted, calculated from sunrise/orientation/weather |
-| `delta` | 2.0 | Temperature reduction at night (°C) |
-| `recovery_deadline` | - | Override end time if earlier than dynamic calculation ("08:00") |
-| `solar_recovery` | auto | Auto-enabled if window_orientation set; delays morning heating to let sun warm the zone (uses dynamic sun position when HA location configured) |
-| `min_effective_elevation` | 10.0 | Minimum sun elevation (degrees) for effective solar gain through windows |
-
-### Zone Coordination Parameters
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `linked_zones` | - | List of thermally connected zone entity IDs |
-| `link_delay_minutes` | 20 | Delay (minutes) before linked zone starts heating |
-| `contact_sensors` | - | List of window/door sensor entity IDs |
-| `contact_action` | pause | Action when open: pause, frost_protection, none |
-| `contact_delay` | 120 | Seconds before taking action |
-
-### System Configuration Parameters
-These are configured under the `adaptive_thermostat:` domain block, not per-zone.
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `house_energy_rating` | - | Building energy rating (A+++ to G) for physics init |
-| `learning_window_days` | 7 | Days of data for adaptive learning |
-| `weather_entity` | - | Weather entity for solar gain prediction |
-| `outdoor_sensor` | - | Outdoor temperature sensor for Ke (shared by all zones) |
-| `wind_speed_sensor` | - | Wind speed sensor (m/s) for Ke_wind compensation |
-| `main_heater_switch` | - | Main heater switch(es) - single entity or list |
-| `main_cooler_switch` | - | Main cooler switch(es) - single entity or list |
-| `source_startup_delay` | 30 | Seconds to wait before activating heat source |
-| `sync_modes` | true | Synchronize HEAT/COOL modes across zones |
-| `notify_service` | - | Notification service for alerts/reports |
-| `debug` | false | Expose additional PID debug attributes on entities |
-| `energy_meter_entity` | - | Energy meter sensor for cost tracking |
-| `energy_cost_entity` | - | Energy price input for cost calculation |
-| `supply_temp_sensor` | - | Supply water temperature sensor |
-| `return_temp_sensor` | - | Return water temperature sensor |
-| `flow_rate_sensor` | - | Flow rate sensor (L/min) |
-| `volume_meter_entity` | - | Volume meter for flow rate calculation |
-| `fallback_flow_rate` | 0.5 | Fallback flow rate (L/min) when meter unavailable |
+### Entity Services
+- `adaptive_thermostat.reset_pid_to_physics` - Reset PID to physics-based defaults
+- `adaptive_thermostat.apply_adaptive_pid` - Apply learned PID adjustments
+- `adaptive_thermostat.apply_adaptive_ke` - Apply outdoor compensation tuning
+
+### Domain Services
+- `adaptive_thermostat.run_learning` - Trigger learning analysis for all zones
+- `adaptive_thermostat.health_check` - System health monitoring
+- `adaptive_thermostat.weekly_report` - Generate performance report
+- `adaptive_thermostat.cost_report` - Energy cost analysis (daily/weekly/monthly)
+- `adaptive_thermostat.set_vacation_mode` - Enable frost protection mode
+- `adaptive_thermostat.energy_stats` - Current energy statistics
+- `adaptive_thermostat.pid_recommendations` - Preview recommended PID values
+
+[Full service documentation →](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Services)
 
 ## Troubleshooting
 
-### Let Adaptive Learning Do the Work
-The thermostat automatically learns and adjusts PID parameters. Give it time:
-- Initial values come from empirical base values (calibrated per heating_type)
-- Values are adjusted based on zone volume and window area
-- After 3+ heating cycles, use `adaptive_thermostat.apply_adaptive_pid` to apply learned adjustments
-- Use `adaptive_thermostat.reset_pid_to_physics` to reset to initial values if needed
-
-### Ke-First Learning Status
-When `outdoor_sensor` is configured, outdoor compensation (Ke) is learned before PID tuning begins:
-- Check climate entity attributes for `ke_first_convergence_progress` (0-100%)
-- Requires 10-15 cycles with >5°C outdoor temperature variation
-- Once converged (100%), PID tuning automatically begins
-- Reset via `adaptive_thermostat.reset_pid_to_physics` if needed
-- Status visible in climate entity attributes
+### Let Adaptive Learning Work
+The thermostat automatically learns and adjusts. Give it time:
+- Initial values come from physics-based calculations
+- After 3+ heating cycles, apply learned adjustments using `adaptive_thermostat.apply_adaptive_pid`
+- When `outdoor_sensor` configured, Ke (outdoor compensation) is learned first (10-15 cycles)
 
 ### Common Issues
-- **Slow response**: Check `heating_type` is correct, or wait for adaptive learning
-- **Oscillations**: Usually resolves after adaptive learning detects the pattern
-- **Never reaches setpoint**: Ensure `area_m2` is accurate
-- **Overshoots then settles**: Normal initially, adaptive learning will reduce Kp
+
+**Slow response**
+- Verify `heating_type` matches your actual system
+- Check `area_m2` is accurate
+- Wait for adaptive learning (3-7 days) or increase Kp manually
+
+**Oscillations**
+- Usually resolves after adaptive learning detects the pattern
+- May indicate `heating_type` mismatch or very short PWM period
+
+**Never reaches setpoint**
+- Ensure `area_m2` is correct
+- Check for high heat loss (poor insulation, open windows)
+- Verify heater has sufficient capacity
+
+**Temperature overshoots then settles**
+- Normal behavior initially
+- Adaptive learning will detect overshoot and reduce Kp automatically
+
+**Ke-First learning not converging**
+- Requires >5°C outdoor temperature variation over 10-15 cycles
+- Check climate entity attributes for `ke_first_convergence_progress`
+- May take 1-14 days depending on weather stability
 
 ### Health Warnings
+
+Monitor sensor values for performance issues:
 - **Critical cycle time (<10 min)**: System cycling too fast, check PID tuning
 - **Warning cycle time (<15 min)**: Consider increasing PWM period
-- **High power (>20 W/m²)**: May indicate heat loss issues
+- **High power (>20 W/m²)**: May indicate heat loss or inefficient operation
+
+[Full troubleshooting guide →](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Troubleshooting)
 
 ## Credits
 
