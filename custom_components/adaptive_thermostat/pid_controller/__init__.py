@@ -5,9 +5,9 @@ from time import time
 _LOGGER = logging.getLogger(__name__)
 
 # Minimum time delta (seconds) required for integral/derivative updates
-# Rationale: 10s provides 10:1 SNR for 0.1°C sensor noise, 204x safety margin vs 0.049s spike
-# Allows 10s sensor intervals to update normally, prevents noise during rapid control loops
-MIN_DT_FOR_DERIVATIVE = 10.0
+# Rationale: 5s allows 5s sensor intervals, provides 5:1 SNR for 0.1°C noise, 102x safety margin vs 0.049s spike
+# Balances responsiveness with noise rejection for fast sensor update rates
+MIN_DT_FOR_DERIVATIVE = 5.0
 
 
 # Based on Arduino PID Library
