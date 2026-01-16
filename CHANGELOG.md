@@ -1,6 +1,670 @@
 # CHANGELOG
 
 
+## v0.7.0 (2026-01-16)
+
+### Bug Fixes
+
+- Add time-window-based peak tracking to overshoot detection
+  ([`2e0d547`](https://github.com/afewyards/ha-adaptive-thermostat/commit/2e0d5473345c7eaac8cdf55d8c1ed7ef968fd41a))
+
+Implemented time-window-based peak tracking in PhaseAwareOvershootTracker to prevent late peaks from
+  external factors (solar gain, occupancy) being incorrectly attributed to PID overshoot.
+
+Implementation: - Added on_heater_stopped() method to mark when heater turns off - Peak tracking
+  window (default 45 min) starts when heater stops - Only peaks within window are counted as
+  overshoot - Late peaks outside window are ignored - Window state persists until reset or setpoint
+  change - Graceful handling when heater stop not signaled
+
+Testing: - 13 comprehensive tests covering all scenarios - Tests for peaks within/outside window -
+  Tests for solar gain and occupancy scenarios - Tests for reset, custom window durations, and edge
+  cases - All 61 cycle tracker + overshoot tests passing
+
+Files: - custom_components/adaptive_thermostat/adaptive/cycle_analysis.py -
+  custom_components/adaptive_thermostat/const.py - tests/test_overshoot_peak_tracking.py (new)
+
+- Clarify heating_type_factors are dimensionless multipliers
+  ([`f996fe3`](https://github.com/afewyards/ha-adaptive-thermostat/commit/f996fe3ef809a7011d6d81bf63fbaba0b0cc6fd3))
+
+- Added comment explaining no scaling needed for v0.7.1 - These factors (0.6-1.2) are
+  multiplicative, not absolute values - Applied to base_ke which was already scaled 100x in story
+  1.1 - Verified outdoor compensation ranges: 1.2% (A++++/forced_air) to 31.2% (G/floor_hydronic)
+
+- Correct PID integral/derivative dimensional analysis (seconds to hours)
+  ([`f5af257`](https://github.com/afewyards/ha-adaptive-thermostat/commit/f5af25735d8165f697b87fab527f004c81079bc2))
+
+- Convert dt from seconds to hours in integral and derivative calculations - Ki units: %/(°C·hour),
+  Kd units: %/(°C/hour) - Add migration logic in state_restorer.py for existing integral values -
+  Add pid_integral_migrated marker to state attributes for v0.7.0+ - Update docstrings to document
+  Ki and Kd units - Add 3 comprehensive tests verifying hourly time units
+
+This fixes the dimensional bug where Ki and Kd parameters were designed for hourly time units but dt
+  was being used in seconds, causing integral to accumulate 3600x too slowly and derivative to be
+  3600x too large.
+
+With this fix, Ki values like 1.2 %/(°C·hour) will properly accumulate 1.2% of output per hour at
+  1°C error, not per second.
+
+- Handle None values for output_clamp_low/high parameters
+  ([`637f7ef`](https://github.com/afewyards/ha-adaptive-thermostat/commit/637f7ef8cd35b9f33a1e0b33de10ff613b9ede5f))
+
+When output_clamp_low/high are not specified in configuration, config.get() returns None. Using
+  kwargs.get(key, default) doesn't work because the key exists in kwargs with value None. Changed to
+  use 'or' operator to properly fallback to DEFAULT_OUT_CLAMP_LOW/HIGH when value is None.
+
+This fixes "out_min must be less than out_max" error on startup when output_clamp parameters are not
+  configured.
+
+- Implement back-calculation anti-windup in PID controller
+  ([`0b57c01`](https://github.com/afewyards/ha-adaptive-thermostat/commit/0b57c016127b6f88542e7c07599f96fb33be2f7f))
+
+Replaced simple saturation-based anti-windup with directional saturation check that allows integral
+  wind-down when error opposes saturation direction.
+
+Changes: - P-on-M mode: Block integration only when (output >= max AND error > 0) OR (output <= min
+  AND error < 0). Allows wind-down when saturated high but error is negative (overshoot scenario). -
+  P-on-E mode: Same directional logic applied alongside setpoint stability check. - Added
+  comprehensive tests validating wind-down behavior from both high and low saturation, blocking
+  behavior when error drives further saturation, and correct operation in both P-on-M and P-on-E
+  modes.
+
+Rationale: Traditional anti-windup blocks ALL integration when output is saturated, preventing the
+  integral from winding down even when the error reverses direction (e.g., temperature overshoots
+  setpoint while output still saturated). Back-calculation anti-windup allows the integral to
+  decrease when the error opposes the saturation direction, enabling faster recovery from overshoot.
+
+Test Coverage: - test_antiwindup_allows_winddown_from_high_saturation -
+  test_antiwindup_allows_winddown_from_low_saturation -
+  test_antiwindup_blocks_further_windup_at_saturation -
+  test_antiwindup_proportional_on_measurement_mode
+
+Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
+
+- Implement Ke migration logic for v0.7.1
+  ([`5a7bc3c`](https://github.com/afewyards/ha-adaptive-thermostat/commit/5a7bc3cddffd2f58202ff5ec147751172e70e98c))
+
+Replaces v0.7.0 division logic with v0.7.1 multiplication to restore Ke values to proper range
+  (0.1-2.0). Migration detects v0.7.0 values (Ke < 0.05) and scales up by 100x.
+
+Changes: - State restoration: Check ke_value < 0.05 and multiply by 100 - Migration marker:
+  ke_migrated → ke_v071_migrated - Logging: Updated to reflect v0.7.1 restoration semantics -
+  Comments: Clarified v0.7.0 was incorrectly scaled down
+
+This ensures users upgrading from v0.7.0 will have their Ke values automatically restored to the
+  correct range for outdoor compensation.
+
+- Increase Ki (integral gain) values by 100x
+  ([`ff57eff`](https://github.com/afewyards/ha-adaptive-thermostat/commit/ff57eff99a7589d4230c714db1f58a7f21272ebd))
+
+- Update heating_params Ki values in adaptive/physics.py: - floor_hydronic: 0.012 → 1.2 (100x
+  increase) - radiator: 0.02 → 2.0 - convector: 0.04 → 4.0 - forced_air: 0.08 → 8.0 - Update
+  PID_LIMITS ki_max in const.py from 100.0 to 1000.0 - Fix after v0.7.0 dimensional analysis bug fix
+  (hourly units) - Update test assertions to match new Ki values with tau adjustment - Add
+  TestKiWindupTime class with windup and cold start recovery tests
+
+With the dimensional fix in v0.7.0, Ki now properly accumulates over hours: Ki=1.2 %/(°C·hour) means
+  1.2% accumulation per hour at 1°C error. Previous values were 100x too small due to dt being in
+  seconds.
+
+- Overshoot rule now increases Kd instead of reducing Kp
+  ([`5d713d3`](https://github.com/afewyards/ha-adaptive-thermostat/commit/5d713d349b0d2657610f971bb286fcb81df644b1))
+
+For moderate overshoot (0.2-1.0°C): - Increase Kd by 20% (thermal lag damping) - Keep Kp and Ki
+  unchanged
+
+For extreme overshoot (>1.0°C): - Increase Kd by 20% (thermal lag damping) - Reduce Kp by 10%
+  (aggressive response reduction) - Reduce Ki by 10% (integral windup reduction)
+
+Rationale: Thermal lag is the root cause of overshoot. Kd (derivative) directly addresses this by
+  predicting and counteracting temperature rise rate. The old approach of reducing Kp made the
+  system less responsive overall, slowing down heating unnecessarily.
+
+- Prevent integral windup when external term saturates output bounds
+  ([`6ce2372`](https://github.com/afewyards/ha-adaptive-thermostat/commit/6ce2372d4d86bf1f5fb3c825b92deab63ff5985e))
+
+Implements dynamic integral clamping (I_max = out_max - E, I_min = out_min - E) to prevent integral
+  windup when the Ke external term pushes total output to saturation limits.
+
+- Reduce floor_hydronic tau=8.0 Kd from 4.2 to 3.2 for kd_max=3.3 limit
+  ([`aa1bda4`](https://github.com/afewyards/ha-adaptive-thermostat/commit/aa1bda4799e861631b809804a5661ba157c7ea50))
+
+- Reduce Kd values by ~60% after Ki increase
+  ([`ff409d6`](https://github.com/afewyards/ha-adaptive-thermostat/commit/ff409d6b8e4aa43a8c7bf2bb9a20d080e5d2a9e0))
+
+Kd values were excessively high as a band-aid for critically low Ki values. Now that Ki has been
+  fixed (100x increase in v0.7.0), Kd can be reduced to more appropriate levels.
+
+Changes: - floor_hydronic: kd 7.0 → 2.5 (64% reduction) - radiator: kd 5.0 → 2.0 (60% reduction) -
+  convector: kd 3.0 → 1.2 (60% reduction) - forced_air: kd 2.0 → 0.8 (60% reduction) - PID_LIMITS
+  kd_max: 200.0 → 5.0
+
+With inverse tau_factor scaling (Kd divided by tau_factor), final Kd values range from 0.8 to ~3.6,
+  significantly lower than old values (2.0 to ~10.0).
+
+Tests: - Added TestKdValues class with 6 comprehensive tests - Updated existing PID calculation
+  tests for new Kd values - All new tests pass - 763 tests passing (30 pre-existing failures
+  unrelated to Kd changes)
+
+Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
+
+- Reduce Ke (outdoor compensation) values by 100x
+  ([`529a736`](https://github.com/afewyards/ha-adaptive-thermostat/commit/529a73643ed79fc4c368962e0c6901dc30b65cc6))
+
+- Update ENERGY_RATING_TO_INSULATION values by 100x (new range: 0.001-0.013) - Update
+  calculate_initial_ke() default fallback from 0.45 to 0.0045 - Change Ke rounding from 2 to 4
+  decimal places for new precision - Update PID_LIMITS ke_max from 2.0 to 0.02 in const.py - Update
+  KE_ADJUSTMENT_STEP from 0.1 to 0.001 in const.py - Add Ke migration logic in state_restorer.py for
+  old values > 0.05 - Add ke_migrated marker to state_attributes.py - Update docstring to reflect
+  new Ke range (0.001-0.015) - Add comprehensive Ke tests in test_physics.py
+
+Feature 1.3: Fixes dimensional mismatch after integral fix in v0.7.0. Old Ke values were 100x too
+  large, causing excessive outdoor compensation. New range matches corrected Ki dimensional analysis
+  (hours not seconds).
+
+- Reduce MIN_DT_FOR_DERIVATIVE threshold to 5.0 seconds
+  ([`4393ec3`](https://github.com/afewyards/ha-adaptive-thermostat/commit/4393ec31209c2c49805a76bada3fd4f5fd656e9f))
+
+Reduces minimum time delta from 10.0s to 5.0s to allow faster sensor update intervals while
+  maintaining noise rejection. Provides 5:1 SNR for 0.1°C sensor noise and 102x safety margin vs
+  0.049s spike.
+
+- Resolve climate entity loading failures on HAOS
+  ([`09c25b7`](https://github.com/afewyards/ha-adaptive-thermostat/commit/09c25b718fe331b72ff3bde2a28bd5de5bed7d6d))
+
+Three critical fixes to resolve "out_min must be less than out_max" error and subsequent
+  AttributeError preventing climate entities from loading:
+
+1. Fixed output_clamp_* None handling in climate.py:432-437 - Changed from .get(key, default) to
+  explicit None-check - .get(key, default) doesn't work when value is None (not missing) - Ensures
+  DEFAULT_OUT_CLAMP_LOW/HIGH are properly applied
+
+2. Fixed PID controller constructor call in climate.py:630-636 - Added named arguments for all
+  parameters after ke - Previous positional call was missing ke_wind parameter - Caused parameter
+  shift: min_out -> ke_wind, max_out -> out_min, etc. - Result: out_min=0, out_max=sampling_period,
+  triggering validation error
+
+3. Fixed attribute access in state_attributes.py:43-44 - Changed thermostat._pid to
+  thermostat._pid_controller - Attribute was renamed but reference wasn't updated - Caused
+  AttributeError preventing state writes
+
+4. Bumped version to 0.7.0 in manifest.json
+
+Related to commit a02fc75 which introduced buggy 'or' operator for falsy value handling.
+
+- Restore Ke scaling in ENERGY_RATING_TO_INSULATION dictionary
+  ([`b85b92b`](https://github.com/afewyards/ha-adaptive-thermostat/commit/b85b92b8eecf6d4a1d23b2dd27be0b0c8611906b))
+
+Scale all energy rating values by 100x to restore correct Ke magnitude (v0.7.1 correction of v0.7.0
+  incorrect scaling): - A++++: 0.001 → 0.1 - A+++: 0.0015 → 0.15 - A++: 0.0025 → 0.25 - A+: 0.0035 →
+  0.35 - A: 0.0045 → 0.45 - B: 0.0055 → 0.55 - C: 0.007 → 0.7 - D: 0.0085 → 0.85 - E: 0.010 → 1.0 -
+  F: 0.0115 → 1.15 - G: 0.013 → 1.3
+
+Updated calculate_initial_ke() docstring to reflect new range: - Well-insulated: 0.001-0.008 →
+  0.1-0.8 - Poorly insulated: 0.008-0.015 → 0.8-1.5
+
+Verified dimensional analysis: At typical design conditions (dext=20°C), outdoor compensation ranges
+  from 2-26%, matching industry standard 10-30% feed-forward compensation for HVAC systems.
+
+- Use robust MAD instead of variance for settling detection
+  ([`9fc19c6`](https://github.com/afewyards/ha-adaptive-thermostat/commit/9fc19c69322860daacc820dafb77cc2dd0ae246c))
+
+- Add SETTLING_MAD_THRESHOLD constant (0.05°C) to const.py - Implement _calculate_mad() method for
+  Median Absolute Deviation - Replace variance-based settling check with MAD-based check - Add debug
+  logging showing MAD value and threshold - Create TestCycleTrackerMADSettling class with 4
+  comprehensive tests: - test_settling_detection_with_noise: Verifies MAD handles ±0.2°C noise -
+  test_settling_mad_vs_variance: Compares robustness to outliers -
+  test_settling_detection_outlier_robust: Single outlier handling - test_calculate_mad_basic: MAD
+  calculation correctness - All 43 cycle tracker tests pass (4 new, 39 existing)
+
+- Widen tau-based PID adjustment range and use gentler scaling
+  ([`8599375`](https://github.com/afewyards/ha-adaptive-thermostat/commit/85993759f120caa884d354ed9dc997d1574a5142))
+
+- Widen tau_factor clamp from ±30% to -70%/+150% (0.3 to 2.5) - Use gentler scaling: tau_factor =
+  (1.5/tau)**0.7 instead of 1.5/tau - Strengthen Ki adjustment: apply tau_factor**1.5 for integral
+  term - This allows better adaptation to extreme building characteristics (tau 2h to 10h) - Slow
+  buildings (tau=10h) now get more appropriate low gains - Fast buildings (tau=0.5h) now get more
+  appropriate high gains
+
+Tests: - Added TestTauAdjustmentExtreme class with 6 comprehensive tests - Updated existing physics
+  tests for new tau_factor calculations - All tau adjustment tests pass (6/6 new tests) - Updated Kd
+  range tests to accommodate higher Kd for slow systems - Updated Ki tests to reflect new
+  tau_factor**1.5 scaling
+
+### Documentation
+
+- Add detailed rationale for Kp ∝ 1/tau^1.5 scaling formula
+  ([`c1f4e4a`](https://github.com/afewyards/ha-adaptive-thermostat/commit/c1f4e4af0b1504478a33390033b296b6fa4cd214))
+
+### Features
+
+- Add actuator wear tracking with cycle counting
+  ([`31d791c`](https://github.com/afewyards/ha-adaptive-thermostat/commit/31d791c3a05d771c960f8159fe95b8a8fd055f4e))
+
+- Add CONF_HEATER_RATED_CYCLES and CONF_COOLER_RATED_CYCLES config - Add DEFAULT_RATED_CYCLES
+  constants (contactor: 100k, valve: 50k, switch: 100k) - Add ACTUATOR_MAINTENANCE_SOON_PCT (80%)
+  and ACTUATOR_MAINTENANCE_DUE_PCT (90%) - Track heater/cooler on→off cycles in HeaterController -
+  Persist cycle counts in state restoration - Expose cycle counts as climate entity attributes -
+  Create ActuatorWearSensor showing wear % and maintenance status - Fire maintenance alert events at
+  80% and 90% thresholds - Add comprehensive tests for wear calculations
+
+Addresses story 7.1: Track contactor/valve wear with maintenance alerts
+
+- Add bumpless transfer for OFF→AUTO mode changes
+  ([`3e21f92`](https://github.com/afewyards/ha-adaptive-thermostat/commit/3e21f922a29eb4d22328ef3cbfd5d2a146cb1541))
+
+- Add _last_output_before_off attribute to store output before switching to OFF - Store output value
+  when transitioning AUTO→OFF - Add prepare_bumpless_transfer() method to calculate required
+  integral - Calculate integral to maintain output continuity: I = Output - P - E - Add
+  has_transfer_state property to check if transfer state available - Apply bumpless transfer after
+  calculating P and E terms but before integral updates - Skip transfer if setpoint changed >2°C or
+  error >2°C - Clear transfer state after use to prevent reapplication - Add 4 comprehensive tests
+  verifying transfer behavior and edge cases
+
+This prevents sudden output jumps when switching from OFF to AUTO mode, providing smoother control
+  transitions.
+
+- Add derivative term filtering to reduce sensor noise amplification
+  ([`9cb37ab`](https://github.com/afewyards/ha-adaptive-thermostat/commit/9cb37ab09b00ba29d3082e0009ed57448c7c9514))
+
+- Add CONF_DERIVATIVE_FILTER constant to const.py - Add derivative_filter_alpha parameter to
+  PID.__init__() with default 0.15 - Add _derivative_filtered attribute to store filtered value -
+  Apply EMA filter to derivative calculation: filtered = alpha * raw + (1-alpha) * prev_filtered -
+  Initialize _derivative_filtered = 0.0 in __init__, reset in clear_samples() - Add
+  heating-type-specific alpha values in HEATING_TYPE_CHARACTERISTICS: * floor_hydronic: 0.05 (heavy
+  filtering for high thermal mass) * radiator: 0.10 (moderate filtering) * convector: 0.15 (light
+  filtering - default) * forced_air: 0.25 (minimal filtering for fast response) - Add
+  derivative_filter_alpha to climate.py PLATFORM_SCHEMA with range validation (0.0-1.0) - Pass
+  derivative_filter_alpha from config to PID controller - Update PID controller instantiation to
+  include derivative filter parameter - Add comprehensive tests in TestPIDDerivativeFilter: *
+  test_derivative_filter_noise_reduction: verifies filtering reduces variance *
+  test_derivative_filter_alpha_range: tests alpha 0.0, 0.5, 1.0 behavior *
+  test_derivative_filter_disable: verifies alpha=1.0 disables filter *
+  test_derivative_filter_persistence_through_samples_clear: verifies reset - Fix
+  test_derivative_calculation_hourly_units to disable filter (alpha=1.0)
+
+All 19 PID controller tests pass, including 4 new derivative filter tests.
+
+- Add disturbance rejection to adaptive learning
+  ([`fa53cfc`](https://github.com/afewyards/ha-adaptive-thermostat/commit/fa53cfc998ac888c0b8b5b4b88ec38163a97f510))
+
+- Create DisturbanceDetector class with solar, wind, outdoor swing, and occupancy detection - Add
+  disturbances field to CycleMetrics data model with is_disturbed property - Integrate detector in
+  CycleTrackerManager._finalize_cycle() - Filter out disturbed cycles in
+  AdaptiveLearner.calculate_pid_adjustment() - Add CONF_DISTURBANCE_REJECTION_ENABLED configuration
+  constant - Create comprehensive tests with 10 test cases covering all detection scenarios - All
+  tests pass with proper threshold calibration
+
+- Add heater power scaling to PID gains
+  ([`842f2fe`](https://github.com/afewyards/ha-adaptive-thermostat/commit/842f2fe43f8429f8cbf28cfcd1eb988bb6b6f701))
+
+- Add CONF_MAX_POWER_W configuration parameter for total heater power - Add baseline_power_w_m2 to
+  HEATING_TYPE_CHARACTERISTICS (20-80 W/m²) - Implement calculate_power_scaling_factor() with
+  inverse relationship - Undersized systems (low W/m²) get higher gains (up to 4x) - Oversized
+  systems (high W/m²) get lower gains (down to 0.25x) - Safety clamping to 0.25x - 4.0x range -
+  Update calculate_initial_pid() to accept area_m2 and max_power_w - Apply power scaling to Kp and
+  Ki (not Kd - derivative responds to rate) - Update climate.py to pass max_power_w from config -
+  Add 9 comprehensive tests for power scaling functionality
+
+Power scaling accounts for process gain differences between systems, improving initial PID tuning
+  for undersized or oversized heaters.
+
+- Add hysteresis to PID rule thresholds to prevent oscillation
+  ([`54ee35e`](https://github.com/afewyards/ha-adaptive-thermostat/commit/54ee35eeea41c8000a0a41842a165cd4b2fb7920))
+
+Implemented RuleStateTracker with 20% hysteresis band to prevent rapid on/off rule activation when
+  metrics hover near thresholds.
+
+Features: - RuleStateTracker class with activate/release threshold logic - 20% default hysteresis
+  band (configurable) - Independent state tracking for each rule - Backward compatible (optional
+  state_tracker parameter) - Integrated into AdaptiveLearner
+
+Hysteresis example (0.2°C activation, 20% band): - Inactive → Active: metric > 0.2°C - Active →
+  Inactive: metric < 0.16°C (release threshold) - Between 0.16-0.2°C: maintains current state
+
+Testing: - 12 comprehensive tests covering: * Activation/release thresholds * Hysteresis band
+  behavior * Multiple independent rules * Integration with evaluate_pid_rules * Backward
+  compatibility - All 120 tests passing (108 existing + 12 new)
+
+Files modified: - custom_components/adaptive_thermostat/const.py -
+  custom_components/adaptive_thermostat/adaptive/pid_rules.py -
+  custom_components/adaptive_thermostat/adaptive/learning.py - tests/test_rule_hysteresis.py (new)
+
+- Add learned heating rate to night setback recovery
+  ([`71b27f0`](https://github.com/afewyards/ha-adaptive-thermostat/commit/71b27f0fc528f9caf915c1fcc757b25bdbbdf372))
+
+- Modified NightSetback class to accept ThermalRateLearner and heating_type parameters - Added
+  _get_heating_rate() method with 3-level fallback hierarchy: 1. Learned rate from
+  ThermalRateLearner (if available) 2. Heating type estimate (floor=0.5, radiator=1.2,
+  convector=2.0, forced_air=4.0°C/h) 3. Default 1.0°C/h - Added _get_cold_soak_margin() method with
+  heating-type-specific margins: - floor_hydronic: 50% margin (high thermal mass) - radiator: 30%
+  margin - convector: 20% margin - forced_air: 10% margin (low thermal mass) - Updated
+  should_start_recovery() to use learned heating rate with cold-soak margin - Added comprehensive
+  logging showing rate source and recovery calculations - Created 8 new tests covering learned rate,
+  fallback hierarchy, and margin behavior - All 23 tests pass (14 existing + 9 new)
+
+Night setback recovery now uses actual learned heating rates for more accurate recovery timing, with
+  intelligent fallbacks when learned data is unavailable.
+
+- Add outdoor temperature correlation diagnostic for slow response rule
+  ([`b4047c7`](https://github.com/afewyards/ha-adaptive-thermostat/commit/b4047c743160f525975750184496e00f57e7748c))
+
+- Add outdoor_temp_avg field to CycleMetrics for tracking outdoor conditions - Update
+  CycleTrackerManager to collect outdoor temperature history during cycles - Create Pearson
+  correlation helper function for statistical analysis - Add diagnostic logic to slow_response rule:
+  * Strong negative correlation (r < -0.6) indicates Ki deficiency → increase Ki by 30% * Weak/no
+  correlation indicates Kp deficiency → increase Kp by 10% (default) - Add MIN_OUTDOOR_TEMP_RANGE
+  (3.0°C) and SLOW_RESPONSE_CORRELATION_THRESHOLD (0.6) - Add 7 comprehensive tests for correlation
+  calculation and diagnostics - Update existing tests to reflect new overshoot behavior (Kd increase
+  vs Kp reduction)
+
+This enables the system to diagnose the root cause of slow rise times: - Cold weather correlation
+  suggests integral accumulation is too slow - No correlation suggests proportional gain is
+  insufficient
+
+Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
+
+- Add PWM + climate entity validation to prevent nested control loops
+  ([`6aab040`](https://github.com/afewyards/ha-adaptive-thermostat/commit/6aab0409a138907b666a56b06a5d6a70e7947d64))
+
+Added validation to prevent using PWM mode with climate entities, which causes nested control loops
+  and unstable behavior. Climate entities have their own internal PID controllers, making PWM
+  modulation inappropriate.
+
+Changes: - Added validate_pwm_compatibility() function in climate.py - Validation checks heater and
+  cooler entities for climate. prefix - Raises vol.Invalid with helpful error messages suggesting
+  solutions - Allows valve mode (PWM=0) with climate entities - Added comprehensive test suite with
+  10 test cases
+
+Test coverage: - Valid configs: PWM with switch/light, valve mode with climate - Invalid configs:
+  PWM with climate entities (heater/cooler) - Error messages provide clear solutions
+
+All 767 tests pass (10 new tests added, 0 regressions)
+
+- Add wind compensation to PID control (Ke_wind parameter)
+  ([`0f90c1e`](https://github.com/afewyards/ha-adaptive-thermostat/commit/0f90c1eb17842419fe597de78afca21f86920e21))
+
+- Add CONF_WIND_SPEED_SENSOR to domain config - Add Ke_wind parameter to PID controller (default
+  0.02 per m/s) - Modify external term: Ke*dext + Ke_wind*wind_speed*dext - Add wind speed state
+  listener in climate.py - Add calculate_ke_wind() in adaptive/physics.py based on insulation - Add
+  wind speed callback to ControlOutputManager - Gracefully handle unavailable wind sensor (treat as
+  0 m/s) - Add 6 comprehensive tests for wind compensation
+
+- Dynamic settling timeout based on thermal mass
+  ([`bf6b02f`](https://github.com/afewyards/ha-adaptive-thermostat/commit/bf6b02f16c043b2c4bfc6f4ffa16823c38e3c154))
+
+- Add SETTLING_TIMEOUT_MULTIPLIER, MIN, MAX constants - Calculate timeout: max(60, min(240, tau *
+  30)) - Floor hydronic (tau=8h) -> 240 min - Forced air (tau=2h) -> 60 min - Support optional
+  settling_timeout_minutes override - Store thermal_time_constant in climate entity - Pass tau to
+  CycleTrackerManager - Log timeout value and source (calculated/override/default) - Comprehensive
+  tests for all timeout scenarios
+
+Fixes high thermal mass systems timing out prematurely during settling phase.
+
+- Filter oscillation rules in PWM mode
+  ([`7c931be`](https://github.com/afewyards/ha-adaptive-thermostat/commit/7c931be41a2550886229b7f4c9fd2553235325d7))
+
+- Add pwm_seconds parameter to calculate_pid_adjustment() - Filter out oscillation rules when
+  pwm_seconds > 0 - PWM cycling is expected behavior, not control instability - Add heater_cycles
+  metric to CycleMetrics (informational only) - Update count_oscillations docstring to clarify it
+  counts temp oscillations - Pass pwm_seconds from zone_data in all service call sites - Add
+  pwm_seconds to zone_data during registration - Create comprehensive tests for PWM vs valve mode
+  filtering
+
+Testing: - test_oscillation_counting_pwm_mode_filters_rules: Verifies rules filtered in PWM -
+  test_oscillation_counting_valve_mode_triggers_rules: Verifies rules fire in valve mode -
+  test_heater_cycles_separate_from_oscillations: Verifies metrics are separate -
+  test_pwm_mode_allows_non_oscillation_rules: Verifies other rules still fire - All 12 new tests
+  pass - All 90 existing learning tests pass - All 48 cycle tracker tests pass
+
+Impact: - PWM mode systems won't get false oscillation warnings - Valve mode systems maintain full
+  oscillation detection - Heater cycles tracked separately for future analysis - Backward compatible
+  (pwm_seconds defaults to 0 = valve mode)
+
+- Implement adaptive convergence detection with confidence-based learning
+  ([`b60fbf7`](https://github.com/afewyards/ha-adaptive-thermostat/commit/b60fbf7f3c03e59175e8a0af6163f7d1cf41b8b1))
+
+- Add convergence confidence tracking (0.0-1.0 scale) - Confidence increases with good cycles (+10%
+  per cycle) - Confidence decreases with poor cycles (-5% per cycle) - Daily confidence decay (2%
+  per day) to account for drift - Learning rate multiplier scales adjustments based on confidence -
+  Low confidence (0.0): 2.0x faster learning - High confidence (1.0): 0.5x slower learning - Add
+  performance degradation detection (baseline vs recent cycles) - Add seasonal shift detection (10°C
+  outdoor temp change threshold) - Scale PID adjustment factors by learning rate multiplier -
+  Comprehensive test coverage with 19 tests
+
+All tests pass. Pre-existing failures unrelated to this feature.
+
+- Implement hybrid rate limiting (3 cycles AND 8h)
+  ([`97b8c85`](https://github.com/afewyards/ha-adaptive-thermostat/commit/97b8c85f39c76f453a841c221a0c31bd554408d4))
+
+- Update MIN_ADJUSTMENT_INTERVAL from 24h to 8h for faster convergence - Add MIN_ADJUSTMENT_CYCLES
+  constant (default 3 cycles) - Add _cycles_since_last_adjustment counter to AdaptiveLearner -
+  Modify calculate_pid_adjustment() to check BOTH time AND cycle gates - Reset cycle counter on
+  adjustment application - Add comprehensive tests for hybrid rate limiting (10 tests) - Update
+  existing rate limiting tests for new behavior
+
+Impact: - Faster PID convergence: adjustments now allowed after 8h+3cycles instead of 24h - More
+  responsive to system changes while preventing over-tuning - Hybrid gates ensure both sufficient
+  time AND data before adjustment
+
+- Implement Ke-First learning (learn outdoor compensation before PID tuning)
+  ([`a76fbf9`](https://github.com/afewyards/ha-adaptive-thermostat/commit/a76fbf9543a659b63af4e899070c7189540b4189))
+
+Implements story 8.1 from PRD - a "Ke-First" approach where outdoor temperature compensation (Ke) is
+  learned before PID tuning begins. This ensures PID gains are tuned with correct external
+  disturbance compensation already in place.
+
+Key Features: - KeFirstLearner class for steady-state cycle tracking - Linear regression on
+  temperature drop rates vs. temp difference - Convergence based on R² > 0.7 threshold with 10-15
+  cycles minimum - Blocks PID tuning in AdaptiveLearner until Ke converges - Progress tracking
+  showing convergence percentage - Full state persistence (to_dict/from_dict)
+
+Implementation Details: - Detects steady-state periods (duty cycle stable ±5% for 60+ min) - Tracks
+  temperature drop when heater is off during steady state - Calculates Ke = slope from regression:
+  drop_rate vs. temp_difference - Requires outdoor temp range >5°C for valid correlation - Clamped
+  to PID_LIMITS (ke_min, ke_max)
+
+Benefits: 1. Better PID initialization - Ke learned first prevents integral compensation 2. Faster
+  overall convergence - correct Ke reduces PID tuning iterations 3. More accurate control - proper
+  outdoor compensation from the start 4. Strong correlation requirement (R²>0.7) ensures quality
+  learning
+
+Testing: - 20 comprehensive tests covering: - Steady-state detection logic - Cycle recording and
+  validation - Linear regression calculation - Convergence requirements (cycles, temp range, R²) -
+  Integration with AdaptiveLearner PID blocking - State persistence - 15-cycle integration test with
+  realistic outdoor variation
+
+All tests pass including existing 90 learning tests.
+
+- Implement outdoor temperature lag (exponential moving average)
+  ([`07ad22b`](https://github.com/afewyards/ha-adaptive-thermostat/commit/07ad22b46f416ac9f689178cc4fbcd68499da604))
+
+- Add outdoor_temp_lag_tau parameter to PID.__init__() (default 4.0 hours) - Add
+  _outdoor_temp_lagged attribute to store filtered outdoor temperature - Apply EMA filter in calc()
+  method before calculating dext - Formula: alpha = dt / (tau * 3600), lagged = alpha*current +
+  (1-alpha)*prev - Initialize _outdoor_temp_lagged on first outdoor temp reading (no warmup) - Reset
+  _outdoor_temp_lagged to None in clear_samples() - Add outdoor_temp_lagged property with
+  getter/setter for state persistence - Calculate tau_lag = 2 * tau_building in climate.py
+  initialization - Pass outdoor_temp_lag_tau to PID controller instantiation - Add state attributes
+  for outdoor_temp_lagged and outdoor_temp_lag_tau - Add state restoration logic in
+  state_restorer.py - Add 4 comprehensive tests in TestPIDOutdoorTempLag: -
+  test_outdoor_temp_ema_filter: Verifies EMA filtering with sunny day scenario -
+  test_outdoor_temp_lag_initialization: Verifies first-reading initialization -
+  test_outdoor_temp_lag_reset_on_clear_samples: Verifies reset on mode change -
+  test_outdoor_temp_lag_state_persistence: Verifies state can be saved/restored
+
+All 762 tests pass (4 new tests added, 0 regressions)
+
+- Implement proportional-on-measurement (P-on-M) for smoother setpoint changes
+  ([`17ff947`](https://github.com/afewyards/ha-adaptive-thermostat/commit/17ff94732eef1b4f28545598d840c4ef7392575e))
+
+- Add CONF_PROPORTIONAL_ON_MEASUREMENT to const.py and climate.py schema - Add
+  proportional_on_measurement parameter to PID.__init__() (default False for backward compatibility)
+  - Modify calc() to split P term behavior: - P-on-M: P = -Kp * (measurement - last_measurement)
+  (responds to measurement changes) - P-on-E: P = Kp * error (traditional behavior) - P-on-M mode
+  preserves integral on setpoint changes (no reset) - P-on-E mode resets integral on setpoint
+  changes (original behavior) - Climate entity defaults to P-on-M enabled
+  (proportional_on_measurement: true) - Add comprehensive test suite (5 tests) verifying: - No
+  output spike on setpoint change with P-on-M - Integral preservation with P-on-M vs reset with
+  P-on-E - Measurement-based proportional calculation - Traditional error-based proportional
+  calculation - Update CLAUDE.md with P-on-M vs P-on-E trade-offs and configuration - All 32 PID
+  controller tests pass
+
+- Implement robust outlier detection with MAD for adaptive learning
+  ([`0b12606`](https://github.com/afewyards/ha-adaptive-thermostat/commit/0b12606d73516cc9b70bcaf8d418522ae93d854d))
+
+- Create adaptive/robust_stats.py with robust statistics functions - calculate_median(): Compute
+  median of value list - calculate_mad(): Median Absolute Deviation for robust variability -
+  detect_outliers_modified_zscore(): Detect outliers using MAD-based Z-score - robust_average():
+  Median with outlier removal (max 30%, min 4 valid) - Update MIN_CYCLES_FOR_LEARNING from 3 to 6 in
+  const.py - Increased to support robust outlier detection - Requires 6 cycles for meaningful MAD
+  statistics - Update AdaptiveLearner.calculate_pid_adjustment() to use robust_average() - Replaces
+  statistics.mean() with MAD-based outlier rejection - Logs which cycles are excluded as outliers -
+  Applies to overshoot, undershoot, settling_time, oscillations, rise_time - Create comprehensive
+  tests in tests/test_robust_stats.py - TestCalculateMedian: 5 tests for median calculation -
+  TestCalculateMAD: 5 tests for MAD calculation - TestDetectOutliersModifiedZScore: 7 tests for
+  outlier detection - TestRobustAverage: 9 tests including sunny day scenario - Update
+  tests/test_learning.py for MIN_CYCLES_FOR_LEARNING=6 - Change all test cycles from 3 to 6 - Fix
+  PID limit assertions for v0.7.0 values (ke_max=0.02, ki_max=1000, kd_max=5.0) - Update Kd test
+  values to respect new kd_max=5.0 limit
+
+All 116 tests pass (90 learning + 26 robust_stats)
+
+- Increase undershoot rule Ki adjustment from 20% to 100%
+  ([`2d2c40e`](https://github.com/afewyards/ha-adaptive-thermostat/commit/2d2c40e02de6f363730ec2373939a88c0f3218ca))
+
+Changed undershoot rule to allow up to 100% Ki increase (doubling) per learning cycle instead of 20%
+  cap. This enables faster convergence for systems with significant steady-state error.
+
+Changes: - Modified formula: min(1.0, avg_undershoot * 2.0) instead of min(0.20, avg_undershoot *
+  0.4) - Gradient-based: larger undershoot gets proportionally larger correction - Updated reason
+  message to show percentage increase (+X% Ki) - Safety enforced by existing PID_LIMITS ki_max
+  (1000.0)
+
+Testing: - test_undershoot_rule_aggressive_increase: 50% undershoot → 100% Ki increase -
+  test_undershoot_rule_moderate_increase: 35% undershoot → 70% Ki increase -
+  test_undershoot_rule_convergence_speed: ~67% faster than old 20% limit -
+  test_undershoot_rule_safety_limits: respects ki_max clamping -
+  test_undershoot_rule_gradient_based: larger undershoot → larger correction -
+  test_undershoot_rule_no_trigger_below_threshold: <0.3°C doesn't trigger
+
+All 6 new tests pass, all 90 existing learning tests pass.
+
+### Refactoring
+
+- Implement hybrid multi-point PID initialization
+  ([`20ff135`](https://github.com/afewyards/ha-adaptive-thermostat/commit/20ff135fbfb901845aa75f49e5e71d8513495f62))
+
+- Replace single reference building with multi-point empirical model - Add 3-5 reference profiles
+  per heating type across tau range 0.5-8h - Implement improved tau scaling: Kp ∝ 1/(tau × √tau), Ki
+  ∝ 1/tau, Kd ∝ tau - Linear interpolation between reference points for smooth scaling -
+  Extrapolation with improved formulas beyond reference boundaries - Better adaptation to diverse
+  building characteristics (tau 2h-10h) - Power scaling still applies for undersized/oversized
+  systems - Update tests for multi-point model (55 passing physics tests) - v0.7.1 hybrid approach
+  combines reference calibration with continuous scaling
+
+- Standardize cycle interruption handling
+  ([`2dbe5c3`](https://github.com/afewyards/ha-adaptive-thermostat/commit/2dbe5c384c783fcc3af531474f58f1f5f3282f3c))
+
+- Add InterruptionType enum with SETPOINT_MAJOR, SETPOINT_MINOR, MODE_CHANGE, CONTACT_SENSOR,
+  TIMEOUT, EXTERNAL - Create InterruptionClassifier with classify_setpoint_change(),
+  classify_mode_change(), classify_contact_sensor() - Add _handle_interruption() method to
+  CycleTrackerManager centralizing all interruption logic - Refactor on_setpoint_changed(),
+  on_contact_sensor_pause(), on_mode_changed() to use classifier - Add interruption_history field to
+  CycleMetrics for debugging (List[Tuple[datetime, str]]) - Replace _was_interrupted and
+  _setpoint_changes with _interruption_history tracking - Add interruption decision matrix table to
+  CLAUDE.md documenting all interruption types - Create comprehensive tests in
+  test_interruption_classification.py (10 tests) - Update existing tests to use new
+  interruption_history attribute
+
+Thresholds: - SETPOINT_MAJOR_THRESHOLD = 0.5°C for major vs minor classification -
+  CONTACT_GRACE_PERIOD = 300s (5 min) for brief contact sensor openings
+
+All 49 cycle tracker tests pass (39 existing + 10 new interruption tests)
+
+### Testing
+
+- Add Ke v0.7.1 migration tests
+  ([`0174728`](https://github.com/afewyards/ha-adaptive-thermostat/commit/0174728a795df0248957e5c27337591f1e0b1e05))
+
+- Added migration logic to MockAdaptiveThermostatForStateRestore - test_ke_migration_v071_from_v070:
+  Verifies Ke < 0.05 scales 100x - test_ke_no_migration_when_marker_present: Verifies marker
+  prevents re-migration - test_ke_no_migration_for_already_correct_values: Verifies Ke >= 0.05 not
+  scaled - test_ke_migration_edge_case_at_threshold: Tests 0.05 threshold boundary
+
+Migration triggers when: - Ke < 0.05 (v0.7.0 range) - ke_v071_migrated marker absent or False Scales
+  Ke by 100x to restore correct outdoor compensation range (0.1-2.0)
+
+- Update MIN_DT threshold tests to 5.0 seconds
+  ([`ab8cc63`](https://github.com/afewyards/ha-adaptive-thermostat/commit/ab8cc63c59a15099c72730dbda4cc86154d95236))
+
+Updated TestPIDDerivativeTimingProtection class to reflect new 5.0s threshold: -
+  test_tiny_dt_freezes_integral_and_derivative: Updated docstring (< 10s → < 5s) -
+  test_boundary_conditions: Updated test boundaries (9.5s/10.0s/15s → 4.5s/5.0s/7.5s) -
+  test_normal_operation_preserved: Updated docstring (≥ 10s → ≥ 5s)
+
+All TestPIDDerivativeTimingProtection tests pass (8/8). Full test_pid_controller.py suite passes
+  (53/53).
+
+- Update test_heating_curves.py Ke assertions for v0.7.1 restored scaling
+  ([`86ace5b`](https://github.com/afewyards/ha-adaptive-thermostat/commit/86ace5b3a777dcb1c02d71febec4b5056366f43e))
+
+Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
+
+- Update test_integral_windup_prevention to validate directional anti-windup
+  ([`fe0333a`](https://github.com/afewyards/ha-adaptive-thermostat/commit/fe0333ac75b4f28e0a81992965e927b0f4abc7c3))
+
+Extended test to validate back-calculation anti-windup behavior: 1. Blocks integration when error
+  drives further saturation (same direction) 2. Allows integration when error opposes saturation
+  (wind-down)
+
+Test uses P-on-E mode with low Kp to build up integral for saturation, then verifies integral is
+  blocked when saturated with positive error, but allowed to decrease when saturated with negative
+  error (overshoot recovery).
+
+- Update test_ke_learning.py Ke assertions for v0.7.1 restored scaling
+  ([`e0935fd`](https://github.com/afewyards/ha-adaptive-thermostat/commit/e0935fd5aed61e24fb7015d06bfb32f3c6e62abc))
+
+- Scale initial_ke test values: 0.003→0.3 (100x) - Update test_default_values expected range:
+  0.003-0.007 → 0.3-0.7 - Update docstrings to reflect v0.7.1 restored scaling - All values now
+  match v0.7.1 ke_max=2.0 limit - pytest tests/test_ke_learning.py: 40/40 tests PASSED
+
+- Update test_physics.py Ke assertions for v0.7.1 restored scaling
+  ([`a0a8b1c`](https://github.com/afewyards/ha-adaptive-thermostat/commit/a0a8b1c0647d33445c277c190b1cdf528fc3cbc3))
+
+Scale all Ke test expectations by 100x to match v0.7.1 restoration: - Update range: 0.001-0.02 →
+  0.1-2.0 - Update A++++ expected: 0.001 → 0.1 - Update G expected: 0.013 → 1.3 - Update A expected:
+  0.0045 → 0.45 - Update heating type factors: floor 0.54, radiator 0.45, forced_air 0.27 - Update E
+  term ratio validation: now 10-30% outdoor compensation (industry standard) - Update docstrings to
+  reflect v0.7.1 restoration from v0.7.0 incorrect scaling
+
+All tests pass - Ke values now provide meaningful outdoor compensation.
+
+- Update tests for v0.7.0 Ke scaling and PID rule changes
+  ([`134a029`](https://github.com/afewyards/ha-adaptive-thermostat/commit/134a029ccc814232badb7fa88b14c72dd168856f))
+
+- Update Ke values to v0.7.0 scale (100x smaller: 0.003-0.015 instead of 0.3-1.5) - Fix
+  calculate_recommended_ke() base values for new scale - Update Ke learning threshold from 0.01 to
+  0.0001 - Update all tests to use MIN_CYCLES_FOR_LEARNING (6) instead of hardcoded 3 - Fix Kd
+  initial values in tests to respect new limit (kd_max=5.0, was 200.0) - Update Ki limit
+  expectations (ki_max=1000.0, was 100.0) - Update tests for v0.7.0 PID rule changes (moderate
+  overshoot increases Kd only, extreme overshoot >1.0°C reduces Kp) - Add PIL availability check to
+  skip chart tests when Pillow not installed - Fix cycle tracker interruption tests to use
+  _interruption_history - Update thermal time constant test expectation (40% max reduction)
+
+All tests passing: 1015 passed, 3 skipped
+
+- Validate Kd clamping at 3.3 in tests
+  ([`c0a979e`](https://github.com/afewyards/ha-adaptive-thermostat/commit/c0a979e234275dad90f728b4c148890f120653ad))
+
+- Reduced floor_hydronic tau=6.0 Kd from 3.5 to 3.3 to fit kd_max - Updated all test assertions from
+  4.2 → 3.2 and 3.5 → 3.3 - Updated extrapolation test expectations (5.25 → 4.0, 7.88 → 6.0) - Added
+  test_kd_reference_profiles_respect_kd_max to verify limits - Updated trend assertions to account
+  for kd_max capping - All 57 test_physics.py tests pass
+
+- Verify Ke integral clamping is correct after Ke reduction
+  ([`f8af0af`](https://github.com/afewyards/ha-adaptive-thermostat/commit/f8af0af8fc4516dc3998b29171c1de977dd7bc51))
+
+
 ## v0.6.5 (2026-01-15)
 
 ### Bug Fixes
