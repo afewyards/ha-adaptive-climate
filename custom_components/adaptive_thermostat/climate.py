@@ -244,6 +244,7 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         'invert_heater': config.get(const.CONF_INVERT_HEATER),
         'sensor_entity_id': config.get(const.CONF_SENSOR),
         'ext_sensor_entity_id': hass.data.get(DOMAIN, {}).get("outdoor_sensor"),
+        'weather_entity_id': hass.data.get(DOMAIN, {}).get("weather_entity"),
         'wind_speed_sensor_entity_id': hass.data.get(DOMAIN, {}).get("wind_speed_sensor"),
         'min_temp': config.get(const.CONF_MIN_TEMP),
         'max_temp': config.get(const.CONF_MAX_TEMP),
@@ -367,6 +368,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         self._heater_polarity_invert = kwargs.get('invert_heater')
         self._sensor_entity_id = kwargs.get('sensor_entity_id')
         self._ext_sensor_entity_id = kwargs.get('ext_sensor_entity_id')
+        self._weather_entity_id = kwargs.get('weather_entity_id')
         self._wind_speed_sensor_entity_id = kwargs.get('wind_speed_sensor_entity_id')
         if self._unique_id == 'none':
             self._unique_id = slugify(f"{DOMAIN}_{self._name}_{self._heater_entity_id}")
@@ -737,7 +739,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         # Physics-based Ke is stored in KeLearner as reference for later application
         # Get energy rating now that hass is available
         energy_rating = self.hass.data.get(DOMAIN, {}).get("house_energy_rating")
-        if self._ext_sensor_entity_id:
+        if self._has_outdoor_temp_source:
             # Calculate physics-based Ke as reference (not applied yet)
             initial_ke = calculate_initial_ke(
                 energy_rating=energy_rating,
@@ -751,15 +753,16 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
             self._ke_learner = KeLearner(initial_ke=initial_ke)
             # PID controller starts without Ke compensation
             self._pid_controller.set_pid_param(ke=0.0)
+            temp_source = "outdoor sensor" if self._ext_sensor_entity_id else "weather entity"
             _LOGGER.info(
-                "%s: Ke learning initialized (physics reference Ke=%.2f, "
+                "%s: Ke learning initialized using %s (physics reference Ke=%.2f, "
                 "starting with Ke=0 until PID stabilizes) "
                 "(energy_rating=%s, heating_type=%s)",
-                self.entity_id, initial_ke, energy_rating or "default", self._heating_type
+                self.entity_id, temp_source, initial_ke, energy_rating or "default", self._heating_type
             )
         else:
             _LOGGER.debug(
-                "%s: Ke learning disabled - no outdoor sensor configured",
+                "%s: Ke learning disabled - no outdoor temperature source configured",
                 self.entity_id
             )
 
@@ -925,6 +928,17 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                     self.hass,
                     self._ext_sensor_entity_id,
                     self._async_ext_sensor_changed))
+        elif self._weather_entity_id is not None:
+            # Use weather entity temperature as fallback when no outdoor sensor
+            _LOGGER.info(
+                "%s: Using weather entity %s temperature as outdoor temperature fallback",
+                self.entity_id, self._weather_entity_id
+            )
+            self.async_on_remove(
+                async_track_state_change_event(
+                    self.hass,
+                    self._weather_entity_id,
+                    self._async_weather_entity_changed))
 
         # Wind speed sensor listener
         if self._wind_speed_sensor_entity_id is not None:
@@ -993,6 +1007,11 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                 ext_sensor_state = self.hass.states.get(self._ext_sensor_entity_id)
                 if ext_sensor_state and ext_sensor_state.state != STATE_UNKNOWN:
                     self._async_update_ext_temp(ext_sensor_state)
+            elif self._weather_entity_id is not None:
+                # Use weather entity temperature as fallback
+                weather_state = self.hass.states.get(self._weather_entity_id)
+                if weather_state and weather_state.state != STATE_UNKNOWN:
+                    self._async_update_ext_temp_from_weather(weather_state)
 
             # Initialize wind speed sensor state
             if self._wind_speed_sensor_entity_id is not None:
@@ -1025,6 +1044,11 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
     def should_poll(self):
         """Return the polling state."""
         return False
+
+    @property
+    def _has_outdoor_temp_source(self) -> bool:
+        """Check if any outdoor temperature source is configured."""
+        return self._ext_sensor_entity_id is not None or self._weather_entity_id is not None
 
     @property
     def name(self):
@@ -1406,6 +1430,17 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         _LOGGER.debug("%s: Received new external temperature: %s", self.entity_id, self._ext_temp)
         await self._async_control_heating(calc_pid=False, is_temp_sensor_update=False)
 
+    async def _async_weather_entity_changed(self, event: Event[EventStateChangedData]):
+        """Handle weather entity changes - extract temperature attribute as fallback."""
+        new_state = event.data["new_state"]
+        if new_state is None:
+            return
+
+        self._async_update_ext_temp_from_weather(new_state)
+        self._trigger_source = 'weather_entity'
+        _LOGGER.debug("%s: Received outdoor temperature from weather entity: %s", self.entity_id, self._ext_temp)
+        await self._async_control_heating(calc_pid=False, is_temp_sensor_update=False)
+
     async def _async_wind_speed_sensor_changed(self, event: Event[EventStateChangedData]):
         """Handle wind speed changes."""
         new_state = event.data["new_state"]
@@ -1498,6 +1533,23 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         except ValueError as ex:
             _LOGGER.debug("%s: Unable to update from sensor %s: %s", self.entity_id,
                           self._ext_sensor_entity_id, ex)
+
+    @callback
+    def _async_update_ext_temp_from_weather(self, state):
+        """Update outdoor temp from weather entity's temperature attribute."""
+        if state.state in (STATE_UNKNOWN, STATE_UNAVAILABLE, None):
+            _LOGGER.debug("%s: Weather entity %s is %s, skipping outdoor temp update",
+                          self.entity_id, self._weather_entity_id, state.state)
+            return
+
+        temp = state.attributes.get("temperature")
+        if temp is not None:
+            try:
+                self._ext_temp = float(temp)
+                self._last_ext_sensor_update = time.time()
+            except (ValueError, TypeError) as ex:
+                _LOGGER.debug("%s: Unable to get temperature from weather entity %s: %s",
+                              self.entity_id, self._weather_entity_id, ex)
 
     @callback
     def _async_update_wind_speed(self, state):
