@@ -1,6 +1,20 @@
 # CHANGELOG
 
 
+## v0.10.1 (2026-01-16)
+
+### Bug Fixes
+
+- Add cycle_tracker to zone_data for state_attributes access
+  ([`4d8f359`](https://github.com/afewyards/ha-adaptive-thermostat/commit/4d8f359d2ae9d1a3679df3762f3334976b929679))
+
+The cycle_tracker was being created but not added to the coordinator's zone_data dict, causing
+  _add_learning_status_attributes() to return early.
+
+Now adds cycle_tracker to zone_data after initialization so learning status attributes are properly
+  exposed on climate entities.
+
+
 ## v0.10.0 (2026-01-16)
 
 ### Documentation
