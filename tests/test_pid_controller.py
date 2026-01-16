@@ -1404,7 +1404,7 @@ class TestPIDDerivativeTimingProtection:
     """Test PID derivative spike prevention via timing threshold."""
 
     def test_tiny_dt_freezes_integral_and_derivative(self):
-        """Test that tiny dt (< 10s) freezes I and D to prevent spikes."""
+        """Test that tiny dt (< 5s) freezes I and D to prevent spikes."""
         # Create PID controller with known parameters
         # Use larger out_min to avoid clamping issues in test
         pid = PID(kp=10, ki=1.0, kd=50, out_min=-50, out_max=100, proportional_on_measurement=False)
@@ -1429,7 +1429,7 @@ class TestPIDDerivativeTimingProtection:
         assert pid.derivative == derivative_after_normal
 
     def test_boundary_conditions(self):
-        """Test boundary conditions around 10s threshold."""
+        """Test boundary conditions around 5s threshold."""
         # Use wider output range and smaller gains to avoid saturation
         pid = PID(kp=2, ki=0.1, kd=5, out_min=-50, out_max=100, proportional_on_measurement=False)
 
@@ -1441,19 +1441,19 @@ class TestPIDDerivativeTimingProtection:
         baseline_integral = pid.integral
         baseline_derivative = pid.derivative
 
-        # dt = 9.5s (below threshold) - should freeze
-        pid.calc(input_val=20.2, set_point=22.0, input_time=39.5, last_input_time=30.0)
+        # dt = 4.5s (below threshold) - should freeze
+        pid.calc(input_val=20.2, set_point=22.0, input_time=34.5, last_input_time=30.0)
         assert pid.integral == baseline_integral  # Frozen
         assert pid.derivative == baseline_derivative  # Frozen
 
-        # dt = 10.0s (exactly at threshold) - should update
-        pid.calc(input_val=20.3, set_point=22.0, input_time=49.5, last_input_time=39.5)
+        # dt = 5.0s (exactly at threshold) - should update
+        pid.calc(input_val=20.3, set_point=22.0, input_time=39.5, last_input_time=34.5)
         assert pid.integral > baseline_integral  # Updated
 
-        # dt = 15s (above threshold) - should update
+        # dt = 7.5s (above threshold) - should update
         # Use a larger dt to ensure integral accumulates
         new_baseline = pid.integral
-        pid.calc(input_val=20.4, set_point=22.0, input_time=64.5, last_input_time=49.5)
+        pid.calc(input_val=20.4, set_point=22.0, input_time=47.0, last_input_time=39.5)
         assert pid.integral > new_baseline  # Updated
 
     def test_rapid_calls_sequence(self):
@@ -1484,7 +1484,7 @@ class TestPIDDerivativeTimingProtection:
         assert pid.derivative == derivative_after_sensor
 
     def test_normal_operation_preserved(self):
-        """Test that normal operation (dt ≥ 10s) is unchanged."""
+        """Test that normal operation (dt ≥ 5s) is unchanged."""
         # Use wider output range and smaller gains to avoid saturation
         pid = PID(kp=5, ki=0.5, kd=10, out_min=-50, out_max=100, proportional_on_measurement=False)
 
