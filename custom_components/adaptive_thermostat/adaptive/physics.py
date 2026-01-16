@@ -211,7 +211,7 @@ def calculate_initial_pid(
             # (tau_hours, kp, ki, kd) - calibrated reference points
             (2.0, 0.45, 2.0, 1.4),     # Well-insulated floor heating, fast response
             (4.0, 0.30, 1.2, 2.5),     # Standard floor heating, moderate mass
-            (6.0, 0.22, 0.8, 3.5),     # High thermal mass floor, slow response
+            (6.0, 0.22, 0.8, 3.3),     # High thermal mass floor, slow response (reduced from 3.5 to fit kd_max=3.3)
             (8.0, 0.18, 0.6, 3.2),     # Very slow floor heating, high mass (reduced from 4.2 to fit kd_max=3.3)
         ],
         "radiator": [
