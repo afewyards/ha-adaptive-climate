@@ -1,6 +1,41 @@
 # CHANGELOG
 
 
+## v0.10.0 (2026-01-16)
+
+### Documentation
+
+- Add learning status dashboard card examples
+  ([`a2d1520`](https://github.com/afewyards/ha-adaptive-thermostat/commit/a2d15203d0e0ae99858862820c642f38e9af6d79))
+
+Add comprehensive guide with 14 ready-to-use Home Assistant card examples: - Basic entities and
+  markdown cards - Progress bars and gauges - Conditional cards for warnings - Multi-zone comparison
+  layouts (Mushroom, table) - Advanced layouts (Custom Button Card) - Automation examples
+  (notifications, daily summaries) - Template sensors for advanced use - Color coding guidelines
+
+Examples range from simple (no custom cards) to advanced (Mushroom, bar-card, button-card).
+
+### Features
+
+- Expose learning/adaptation state via climate entity attributes
+  ([`07f9387`](https://github.com/afewyards/ha-adaptive-thermostat/commit/07f9387a239706dbe935d68ff663a87e8124a445))
+
+Add comprehensive learning status visibility through new state attributes: - learning_status:
+  "collecting" | "ready" | "active" | "converged" - cycles_collected: number of completed cycles -
+  cycles_required_for_learning: minimum cycles needed (6) - convergence_confidence_pct: tuning
+  confidence (0-100%) - current_cycle_state: real-time cycle state (idle/heating/settling/cooling) -
+  last_cycle_interrupted: interruption reason or null - last_pid_adjustment: ISO 8601 timestamp of
+  last adjustment
+
+Implementation: - Add _compute_learning_status() helper in state_attributes.py - Add
+  _add_learning_status_attributes() to populate new attributes - Add get_state_name() method to
+  CycleTrackerManager - Add get_last_interruption_reason() method to CycleTrackerManager - Persist
+  interruption reasons across cycle resets
+
+Tests: - Add 21 tests in test_state_attributes.py covering all status transitions - Add 11 tests in
+  test_cycle_tracker.py for state access methods - All 1071 tests pass
+
+
 ## v0.9.0 (2026-01-16)
 
 ### Documentation
