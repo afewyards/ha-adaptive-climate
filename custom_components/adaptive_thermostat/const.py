@@ -201,7 +201,7 @@ def get_convergence_thresholds(heating_type: Optional[str] = None) -> Dict[str, 
 RULE_THRESHOLD_MULTIPLIERS = {
     "moderate_overshoot": 1.0,   # Activate at convergence threshold (0.2°C baseline)
     "high_overshoot": 5.0,       # Activate at 5x convergence threshold (1.0°C baseline)
-    "slow_response": 1.33,       # Activate at 1.33x rise time max (60 min baseline)
+    "slow_response": 4 / 3,      # Activate at 1.33x rise time max (60 min baseline)
     "slow_settling": 1.5,        # Activate at 1.5x settling time max (90 min baseline)
     "undershoot": 1.5,           # Activate at 1.5x convergence threshold (0.3°C baseline)
     "many_oscillations": 3.0,    # Activate at 3x oscillation max (3 oscillations baseline)
