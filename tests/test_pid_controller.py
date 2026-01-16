@@ -1567,5 +1567,142 @@ class TestPIDDerivativeTimingProtection:
         assert pid.proportional == 10 * 1.5
 
 
+class TestPIDAntiWindupWindDown:
+    """Test back-calculation anti-windup allows integral wind-down when error opposes saturation."""
+
+    def test_antiwindup_allows_winddown_from_high_saturation(self):
+        """Test integral can wind down when saturated high but error negative."""
+        # Use P-on-E mode (proportional_on_measurement=False) so P term is based on error
+        # Create PID with low Kp (2) so integral must build up to reach saturation
+        # With error=10, P=20, need I to build up to ~80 for saturation at 100%
+        pid = PID(kp=2, ki=10, kd=0, out_min=-50, out_max=100, proportional_on_measurement=False)
+
+        # First call: establish baseline
+        pid.calc(input_val=10.0, set_point=20.0, input_time=0.0, last_input_time=None)
+
+        # Build up integral over time to saturate output
+        # error = 10.0, P = 20.0, Ki = 10, dt = 100s = 100/3600 hours
+        # Each iteration: delta_I = 10 * 10 * (100/3600) ≈ 2.778
+        # Need ~29 iterations to build I to 80
+        for i in range(1, 35):
+            last_time = 100.0 * (i - 1)
+            current_time = 100.0 * i
+            output, _ = pid.calc(input_val=10.0, set_point=20.0, input_time=current_time, last_input_time=last_time)
+
+        # Should now be saturated at 100%
+        assert output == 100.0, f"Expected saturation, got output={output}, I={pid.integral}, P={pid.proportional}"
+        assert pid.integral > 70.0, f"Integral should have built up, got {pid.integral}"
+        initial_integral = pid.integral
+
+        # Now create negative error (temperature overshoots setpoint)
+        # error = 20.0 - 22.0 = -2.0, P = -4.0 (P-on-E mode)
+        # _last_output = 100 (saturated), error = -2.0 (negative)
+        # saturated_high = (100 >= 100) and (-2.0 > 0) = True and False = False
+        # So integration SHOULD proceed
+        output_final, _ = pid.calc(input_val=22.0, set_point=20.0, input_time=3500.0, last_input_time=3400.0)
+
+        # Integral should decrease (wind down) because error is negative
+        # dt = 100s = 100/3600 hours, error = -2.0, Ki = 10
+        # delta_I = 10 * (-2.0) * (100/3600) ≈ -0.556
+        assert pid.integral < initial_integral, \
+            f"Integral should wind down when error opposes saturation: I={pid.integral} vs initial={initial_integral}"
+
+    def test_antiwindup_allows_winddown_from_low_saturation(self):
+        """Test integral can wind down when saturated low but error positive."""
+        # Create PID for cooling scenario - use P-on-E mode
+        pid = PID(kp=2, ki=10, kd=0, out_min=-50, out_max=100, proportional_on_measurement=False)
+
+        # Establish baseline
+        pid.calc(input_val=30.0, set_point=20.0, input_time=0.0, last_input_time=None)
+
+        # Build up negative integral to saturate output low
+        # error = 20.0 - 30.0 = -10.0, P = -20.0
+        # Need I to build down to ~-30 for saturation at -50%
+        for i in range(1, 15):
+            last_time = 100.0 * (i - 1)
+            current_time = 100.0 * i
+            output, _ = pid.calc(input_val=30.0, set_point=20.0, input_time=current_time, last_input_time=last_time)
+
+        # Should now be saturated at -50%
+        assert output == -50.0, f"Expected low saturation, got {output}"
+        assert pid.integral < -25.0, f"Integral should have built down, got {pid.integral}"
+        initial_integral = pid.integral
+
+        # Now create positive error (temperature drops below setpoint)
+        # error = 20.0 - 18.0 = 2.0, P = 4.0
+        # _last_output = -50 (saturated), error = 2.0 (positive)
+        # saturated_low = (-50 <= -50) and (2.0 < 0) = True and False = False
+        # So integration SHOULD proceed
+        pid.calc(input_val=18.0, set_point=20.0, input_time=1500.0, last_input_time=1400.0)
+
+        # Integral should increase because error is positive
+        # dt = 100s = 100/3600 hours, error = 2.0, Ki = 10
+        # delta_I = 10 * 2.0 * (100/3600) ≈ 0.556
+        assert pid.integral > initial_integral, \
+            f"Integral should wind up when error opposes low saturation: {pid.integral} <= {initial_integral}"
+
+    def test_antiwindup_blocks_further_windup_at_saturation(self):
+        """Test integral blocked when saturated AND error drives further saturation."""
+        # Use P-on-E mode
+        pid = PID(kp=2, ki=10, kd=0, out_min=-50, out_max=100, proportional_on_measurement=False)
+
+        # Establish baseline
+        pid.calc(input_val=10.0, set_point=20.0, input_time=0.0, last_input_time=None)
+
+        # Build up integral to saturate
+        for i in range(1, 35):
+            last_time = 100.0 * (i - 1)
+            current_time = 100.0 * i
+            output, _ = pid.calc(input_val=10.0, set_point=20.0, input_time=current_time, last_input_time=last_time)
+
+        # Saturate output high
+        assert output == 100.0
+        saturated_integral = pid.integral
+
+        # Continue with positive error (same saturation direction)
+        # error = 20.0 - 5.0 = 15.0 (still positive, drives saturation)
+        # _last_output = 100, error = 15.0
+        # saturated_high = (100 >= 100) and (15.0 > 0) = True
+        # Integration should be BLOCKED
+        pid.calc(input_val=5.0, set_point=20.0, input_time=3500.0, last_input_time=3400.0)
+
+        # Integral should NOT increase beyond saturation point
+        # New directional check should PREVENT integration entirely
+        assert pid.integral == saturated_integral, \
+            f"Integral should be blocked when error drives further saturation: {pid.integral} != {saturated_integral}"
+
+    def test_antiwindup_proportional_on_measurement_mode(self):
+        """Test anti-windup wind-down works in P-on-M mode."""
+        # P-on-M mode (proportional_on_measurement=True) - default
+        pid = PID(kp=2, ki=10, kd=0, out_min=-50, out_max=100, proportional_on_measurement=True)
+
+        # Establish baseline
+        pid.calc(input_val=10.0, set_point=20.0, input_time=0.0, last_input_time=None)
+
+        # Build up integral by varying measurement to create P term
+        # Lower measurement → larger error → build up integral
+        for i in range(1, 35):
+            last_time = 100.0 * (i - 1)
+            current_time = 100.0 * i
+            # Vary measurement slightly to generate P term in P-on-M mode
+            measurement = 10.0 - 0.01 * (i % 2)  # Oscillate slightly
+            output, _ = pid.calc(input_val=measurement, set_point=20.0, input_time=current_time, last_input_time=last_time)
+
+        # Should be saturated at 100%
+        assert output == 100.0 or pid.integral > 70.0, f"Expected high integral or saturation, got output={output}, I={pid.integral}"
+        initial_integral = pid.integral
+
+        # Create situation where measurement increases (overshoot)
+        # In P-on-M mode: P = -Kp * (new_measurement - last_measurement)
+        # If new_measurement > last_measurement, P is negative
+        pid.calc(input_val=22.0, set_point=20.0, input_time=3500.0, last_input_time=3400.0)
+
+        # Should allow wind-down in P-on-M mode too
+        # error = 20.0 - 22.0 = -2.0 (negative)
+        # _last_output >= 100, error < 0 → saturated_high = False → integration proceeds
+        assert pid.integral < initial_integral, \
+            f"P-on-M mode should also allow integral wind-down: {pid.integral} >= {initial_integral}"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

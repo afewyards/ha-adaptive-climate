@@ -371,12 +371,16 @@ class PID:
         # Apply timing threshold to prevent derivative spikes from rapid non-sensor calls
         # Only update integral and derivative if dt >= MIN_DT_FOR_DERIVATIVE
         if self._dt >= MIN_DT_FOR_DERIVATIVE:
-            # In order to prevent windup, only integrate if the process is not saturated
+            # Back-calculation anti-windup: prevent windup when saturated AND error drives further saturation
+            # Allow wind-down when error opposes saturation (e.g., saturated high but error negative)
             # For P-on-M mode: allow integration even when setpoint changes (no integral reset)
             # For P-on-E mode: only integrate when setpoint is stable
             if self._proportional_on_measurement:
                 # P-on-M: integrate continuously, no reset on setpoint change
-                if self._out_min < self._last_output < self._out_max:
+                # Directional saturation check: only block integration when saturated AND error drives further saturation
+                saturated_high = self._last_output >= self._out_max and self._error > 0
+                saturated_low = self._last_output <= self._out_min and self._error < 0
+                if not (saturated_high or saturated_low):
                     # Convert dt from seconds to hours for dimensional correctness
                     # Ki has units of %/(°C·hour), so dt must be in hours
                     dt_hours = self._dt / 3600.0
@@ -388,7 +392,10 @@ class PID:
                     self._integral = max(min(self._integral, self._out_max - self._external), self._out_min - self._external)
             else:
                 # P-on-E: original behavior with setpoint stability check and integral reset
-                if self._out_min < self._last_output < self._out_max and \
+                # Directional saturation check: only block integration when saturated AND error drives further saturation
+                saturated_high = self._last_output >= self._out_max and self._error > 0
+                saturated_low = self._last_output <= self._out_min and self._error < 0
+                if not (saturated_high or saturated_low) and \
                         self._last_set_point == self._set_point:
                     # Convert dt from seconds to hours for dimensional correctness
                     # Ki has units of %/(°C·hour), so dt must be in hours
