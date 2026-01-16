@@ -17,6 +17,7 @@ from ..const import (
     CONFIDENCE_DECAY_RATE_DAILY,
     CONFIDENCE_INCREASE_PER_GOOD_CYCLE,
     get_convergence_thresholds,
+    get_rule_thresholds,
 )
 
 # Import PID rule engine components
@@ -74,6 +75,7 @@ class AdaptiveLearner:
         self._max_history = max_history
         self._heating_type = heating_type
         self._convergence_thresholds = get_convergence_thresholds(heating_type)
+        self._rule_thresholds = get_rule_thresholds(heating_type)
         self._last_adjustment_time: Optional[datetime] = None
         # Convergence tracking for Ke learning activation
         self._consecutive_converged_cycles: int = 0
@@ -367,6 +369,7 @@ class AdaptiveLearner:
             recent_rise_times=rise_time_values,
             recent_outdoor_temps=outdoor_temp_values,
             state_tracker=self._rule_state_tracker,
+            rule_thresholds=self._rule_thresholds,
         )
 
         if not rule_results:
