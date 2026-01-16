@@ -92,6 +92,7 @@ class CycleTrackerManager:
         self._outdoor_temp_history: list[tuple[datetime, float]] = []
         self._settling_timeout_handle = None
         self._interruption_history: list[tuple[datetime, str]] = []
+        self._last_interruption_reason: str | None = None  # Persists across cycle resets
 
         # Calculate dynamic settling timeout based on thermal mass
         self._settling_timeout_source = "default"
@@ -137,6 +138,28 @@ class CycleTrackerManager:
         """Return temperature history."""
         return self._temperature_history.copy()
 
+    def get_state_name(self) -> str:
+        """Return current cycle state as lowercase string.
+
+        Returns:
+            Cycle state name: "idle", "heating", "cooling", or "settling"
+        """
+        return self._state.value
+
+    def get_last_interruption_reason(self) -> str | None:
+        """Return last interruption reason or None if no interruptions.
+
+        Maps InterruptionType enum values to user-friendly strings:
+        - "setpoint_major" or "setpoint_minor" -> "setpoint_change"
+        - "mode_change" -> "mode_change"
+        - "contact_sensor" -> "contact_sensor"
+        - "timeout" -> None (treated as successful completion)
+
+        Returns:
+            Interruption reason string or None if no interruptions
+        """
+        return self._last_interruption_reason
+
     def on_heating_started(self, timestamp: datetime) -> None:
         """Handle heating start event.
 
@@ -157,6 +180,8 @@ class CycleTrackerManager:
         self._cycle_target_temp = self._get_target_temp()
         self._temperature_history.clear()
         self._outdoor_temp_history.clear()
+        # Clear last interruption reason when starting a new cycle
+        self._last_interruption_reason = None
 
         current_temp = self._get_current_temp()
         self._logger.info(
@@ -209,6 +234,8 @@ class CycleTrackerManager:
         self._cycle_start_time = timestamp
         self._cycle_target_temp = self._get_target_temp()
         self._temperature_history.clear()
+        # Clear last interruption reason when starting a new cycle
+        self._last_interruption_reason = None
 
         current_temp = self._get_current_temp()
         self._logger.info(
@@ -317,6 +344,15 @@ class CycleTrackerManager:
 
         # Record interruption in history
         self._interruption_history.append((datetime.now(), interruption_type))
+
+        # Map interruption type to user-friendly string for persistence
+        if interruption_type in ("setpoint_major", "setpoint_minor"):
+            self._last_interruption_reason = "setpoint_change"
+        elif interruption_type == "mode_change":
+            self._last_interruption_reason = "mode_change"
+        elif interruption_type == "contact_sensor":
+            self._last_interruption_reason = "contact_sensor"
+        # timeout or other interruptions don't set a persistent reason
 
         if should_abort:
             # Abort the cycle

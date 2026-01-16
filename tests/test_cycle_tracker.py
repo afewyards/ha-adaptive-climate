@@ -1139,3 +1139,120 @@ class TestCycleTrackerSettlingTimeout:
         # Verify default timeout (120 minutes)
         assert cycle_tracker._max_settling_time_minutes == 120
         assert cycle_tracker._settling_timeout_source == "default"
+
+
+class TestCycleTrackerStateAccess:
+    """Tests for state access methods."""
+
+    def test_get_state_name_idle(self, cycle_tracker):
+        """Test get_state_name returns 'idle' in IDLE state."""
+        assert cycle_tracker.state == CycleState.IDLE
+        assert cycle_tracker.get_state_name() == "idle"
+
+    def test_get_state_name_heating(self, cycle_tracker):
+        """Test get_state_name returns 'heating' in HEATING state."""
+        cycle_tracker.on_heating_started(datetime.now())
+        assert cycle_tracker.state == CycleState.HEATING
+        assert cycle_tracker.get_state_name() == "heating"
+
+    def test_get_state_name_settling(self, cycle_tracker):
+        """Test get_state_name returns 'settling' in SETTLING state."""
+        cycle_tracker.on_heating_started(datetime.now())
+        cycle_tracker.on_heating_stopped(datetime.now())
+        assert cycle_tracker.state == CycleState.SETTLING
+        assert cycle_tracker.get_state_name() == "settling"
+
+    def test_get_state_name_cooling(self, cycle_tracker):
+        """Test get_state_name returns 'cooling' in COOLING state."""
+        cycle_tracker.on_cooling_started(datetime.now())
+        assert cycle_tracker.state == CycleState.COOLING
+        assert cycle_tracker.get_state_name() == "cooling"
+
+    def test_get_last_interruption_reason_none_initially(self, cycle_tracker):
+        """Test get_last_interruption_reason returns None with no interruptions."""
+        assert cycle_tracker.get_last_interruption_reason() is None
+
+    def test_get_last_interruption_reason_setpoint_major(self, cycle_tracker, mock_callbacks):
+        """Test interruption reason for major setpoint change."""
+        # Start a cycle
+        cycle_tracker.on_heating_started(datetime.now())
+
+        # Trigger major setpoint change (device inactive)
+        mock_callbacks["get_target_temp"].return_value = 22.0
+        cycle_tracker.on_setpoint_changed(20.0, 22.0)  # >0.5°C change
+
+        # Should map to "setpoint_change"
+        assert cycle_tracker.get_last_interruption_reason() == "setpoint_change"
+
+    def test_get_last_interruption_reason_setpoint_minor(self, cycle_tracker, mock_callbacks):
+        """Test interruption reason for minor setpoint change."""
+        # Start a cycle
+        cycle_tracker.on_heating_started(datetime.now())
+
+        # Create mock for is_device_active
+        mock_is_device_active = Mock(return_value=True)
+        cycle_tracker._get_is_device_active = mock_is_device_active
+
+        # Trigger minor setpoint change (device active)
+        mock_callbacks["get_target_temp"].return_value = 20.3
+        cycle_tracker.on_setpoint_changed(20.0, 20.3)  # <0.5°C change
+
+        # Should map to "setpoint_change"
+        assert cycle_tracker.get_last_interruption_reason() == "setpoint_change"
+
+    def test_get_last_interruption_reason_mode_change(self, cycle_tracker, mock_callbacks):
+        """Test interruption reason for mode change."""
+        # Start a cycle
+        cycle_tracker.on_heating_started(datetime.now())
+
+        # Change mode
+        mock_callbacks["get_hvac_mode"].return_value = "off"
+        cycle_tracker.on_mode_changed("heat", "off")
+
+        # Should map to "mode_change"
+        assert cycle_tracker.get_last_interruption_reason() == "mode_change"
+
+    def test_get_last_interruption_reason_contact_sensor(self, cycle_tracker):
+        """Test interruption reason for contact sensor."""
+        # Start a cycle
+        cycle_tracker.on_heating_started(datetime.now())
+
+        # Trigger contact sensor pause
+        cycle_tracker.on_contact_sensor_pause()
+
+        # Should map to "contact_sensor"
+        assert cycle_tracker.get_last_interruption_reason() == "contact_sensor"
+
+    def test_get_last_interruption_reason_clears_on_reset(self, cycle_tracker):
+        """Test interruption reason is cleared when cycle resets."""
+        # Start a cycle and interrupt it
+        cycle_tracker.on_heating_started(datetime.now())
+        cycle_tracker.on_contact_sensor_pause()
+
+        assert cycle_tracker.get_last_interruption_reason() == "contact_sensor"
+
+        # After reset, interruption history should be cleared
+        # (This happens automatically in _reset_cycle_state which is called on interruption)
+        assert cycle_tracker.state == CycleState.IDLE
+
+        # After starting a new cycle, no interruptions yet
+        cycle_tracker.on_heating_started(datetime.now())
+        assert cycle_tracker.get_last_interruption_reason() is None
+
+    def test_get_last_interruption_reason_returns_most_recent(self, cycle_tracker):
+        """Test that most recent interruption is returned."""
+        # Start a cycle
+        cycle_tracker.on_heating_started(datetime.now())
+
+        # First interruption (but continue tracking)
+        mock_is_device_active = Mock(return_value=True)
+        cycle_tracker._get_is_device_active = mock_is_device_active
+        cycle_tracker.on_setpoint_changed(20.0, 20.3)  # Minor change, continues
+
+        assert cycle_tracker.get_last_interruption_reason() == "setpoint_change"
+
+        # Second interruption
+        cycle_tracker.on_mode_changed("heat", "off")  # This aborts
+
+        # Should return the most recent one
+        assert cycle_tracker.get_last_interruption_reason() == "mode_change"

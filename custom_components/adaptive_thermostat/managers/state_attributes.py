@@ -7,6 +7,16 @@ if TYPE_CHECKING:
     from ..climate import SmartThermostat
 
 
+# Learning/adaptation state attribute constants
+ATTR_LEARNING_STATUS = "learning_status"
+ATTR_CYCLES_COLLECTED = "cycles_collected"
+ATTR_CYCLES_REQUIRED = "cycles_required_for_learning"
+ATTR_CONVERGENCE_CONFIDENCE = "convergence_confidence_pct"
+ATTR_CURRENT_CYCLE_STATE = "current_cycle_state"
+ATTR_LAST_CYCLE_INTERRUPTED = "last_cycle_interrupted"
+ATTR_LAST_PID_ADJUSTMENT = "last_pid_adjustment"
+
+
 def build_state_attributes(thermostat: SmartThermostat) -> dict[str, Any]:
     """Build the extra state attributes dictionary for a thermostat entity.
 
@@ -81,6 +91,9 @@ def build_state_attributes(thermostat: SmartThermostat) -> dict[str, Any]:
 
     # Ke learning status
     _add_ke_learning_attributes(thermostat, attrs)
+
+    # Learning/adaptation status
+    _add_learning_status_attributes(thermostat, attrs)
 
     return attrs
 
@@ -174,3 +187,85 @@ def _add_ke_learning_attributes(
                             adaptive_learner.get_consecutive_converged_cycles()
                         )
                     break
+
+
+def _compute_learning_status(
+    cycle_count: int,
+    convergence_confidence: float,
+    consecutive_converged: int,
+) -> str:
+    """Compute learning status based on cycle metrics.
+
+    Args:
+        cycle_count: Number of cycles collected
+        convergence_confidence: Convergence confidence (0.0-1.0)
+        consecutive_converged: Number of consecutive converged cycles
+
+    Returns:
+        Learning status string: "collecting" | "ready" | "active" | "converged"
+    """
+    from ..const import MIN_CYCLES_FOR_LEARNING, MIN_CONVERGENCE_CYCLES_FOR_KE
+
+    if cycle_count < MIN_CYCLES_FOR_LEARNING:
+        return "collecting"
+    elif consecutive_converged >= MIN_CONVERGENCE_CYCLES_FOR_KE:
+        return "converged"
+    elif convergence_confidence >= 0.5:
+        return "active"
+    else:
+        return "ready"
+
+
+def _add_learning_status_attributes(
+    thermostat: SmartThermostat, attrs: dict[str, Any]
+) -> None:
+    """Add learning/adaptation status attributes."""
+    from ..const import DOMAIN, MIN_CYCLES_FOR_LEARNING
+
+    # Get adaptive learner and cycle tracker from coordinator
+    coordinator = thermostat.hass.data.get(DOMAIN, {}).get("coordinator")
+    if not coordinator:
+        return
+
+    all_zones = coordinator.get_all_zones()
+    for zone_id, zone_data in all_zones.items():
+        if zone_data.get("climate_entity_id") == thermostat.entity_id:
+            adaptive_learner = zone_data.get("adaptive_learner")
+            cycle_tracker = zone_data.get("cycle_tracker")
+
+            if not adaptive_learner or not cycle_tracker:
+                return
+
+            # Get cycle count
+            cycle_count = adaptive_learner.get_cycle_count()
+            attrs[ATTR_CYCLES_COLLECTED] = cycle_count
+            attrs[ATTR_CYCLES_REQUIRED] = MIN_CYCLES_FOR_LEARNING
+
+            # Get convergence confidence (0.0-1.0 -> 0-100%)
+            convergence_confidence = adaptive_learner.get_convergence_confidence()
+            attrs[ATTR_CONVERGENCE_CONFIDENCE] = round(convergence_confidence * 100)
+
+            # Get consecutive converged cycles
+            consecutive_converged = adaptive_learner.get_consecutive_converged_cycles()
+
+            # Compute learning status
+            attrs[ATTR_LEARNING_STATUS] = _compute_learning_status(
+                cycle_count, convergence_confidence, consecutive_converged
+            )
+
+            # Get current cycle state
+            attrs[ATTR_CURRENT_CYCLE_STATE] = cycle_tracker.get_state_name()
+
+            # Get last interruption reason
+            last_interruption = cycle_tracker.get_last_interruption_reason()
+            attrs[ATTR_LAST_CYCLE_INTERRUPTED] = last_interruption
+
+            # Get last PID adjustment timestamp
+            last_adjustment = adaptive_learner.get_last_adjustment_time()
+            if last_adjustment:
+                # Format as ISO 8601 timestamp
+                attrs[ATTR_LAST_PID_ADJUSTMENT] = last_adjustment.isoformat()
+            else:
+                attrs[ATTR_LAST_PID_ADJUSTMENT] = None
+
+            break
