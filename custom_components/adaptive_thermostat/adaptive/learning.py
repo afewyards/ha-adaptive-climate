@@ -60,7 +60,7 @@ _LOGGER = logging.getLogger(__name__)
 class AdaptiveLearner:
     """Adaptive PID tuning based on observed heating cycle performance."""
 
-    def __init__(self, max_history: int = MAX_CYCLE_HISTORY, heating_type: Optional[str] = None):
+    def __init__(self, max_history: int = MAX_CYCLE_HISTORY, heating_type: Optional[str] = None, ke_first_learner=None):
         """
         Initialize the AdaptiveLearner.
 
@@ -68,6 +68,7 @@ class AdaptiveLearner:
             max_history: Maximum number of cycles to retain in history (FIFO eviction)
             heating_type: Heating system type (floor_hydronic, radiator, convector, forced_air)
                          Used to select appropriate convergence thresholds
+            ke_first_learner: Optional KeFirstLearner instance for Ke-First learning
         """
         self._cycle_history: List[CycleMetrics] = []
         self._max_history = max_history
@@ -86,6 +87,8 @@ class AdaptiveLearner:
         self._cycles_since_last_adjustment: int = 0
         # Rule state tracker with hysteresis to prevent oscillation
         self._rule_state_tracker = RuleStateTracker()
+        # Ke-First learning: block PID tuning until Ke converges
+        self._ke_first_learner = ke_first_learner
 
     @property
     def cycle_history(self) -> List[CycleMetrics]:
@@ -260,6 +263,16 @@ class AdaptiveLearner:
             Dictionary with recommended kp, ki, kd values, or None if insufficient data,
             system is converged, or rate limited
         """
+        # Ke-First gate: block PID tuning until Ke has converged
+        if self._ke_first_learner and not self._ke_first_learner.converged:
+            summary = self._ke_first_learner.get_summary()
+            _LOGGER.debug(
+                f"PID tuning blocked - waiting for Ke-First convergence: "
+                f"{summary['cycle_count']}/{summary['min_cycles']} cycles, "
+                f"R²={summary['r_squared']}, progress={summary['convergence_progress']:.1f}%"
+            )
+            return None
+
         # Check hybrid rate limiting first (both time AND cycles)
         if self._check_rate_limit(min_interval_hours, min_adjustment_cycles):
             return None

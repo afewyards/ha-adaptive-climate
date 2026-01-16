@@ -67,6 +67,7 @@ CONF_HEATING_TYPE = "heating_type"
 CONF_DERIVATIVE_FILTER = "derivative_filter_alpha"
 CONF_PROPORTIONAL_ON_MEASUREMENT = "proportional_on_measurement"
 CONF_DISTURBANCE_REJECTION_ENABLED = "disturbance_rejection_enabled"
+CONF_KE_LEARNING_FIRST = "ke_learning_first"
 
 # Heating system types
 HEATING_TYPE_FLOOR_HYDRONIC = "floor_hydronic"
