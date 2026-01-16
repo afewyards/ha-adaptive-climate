@@ -217,6 +217,60 @@ RULE_THRESHOLD_FLOORS = {
 }
 
 
+def get_rule_thresholds(heating_type: Optional[str] = None) -> Dict[str, float]:
+    """
+    Get rule activation thresholds for a specific heating type.
+
+    Rule thresholds are coupled to convergence thresholds to maintain consistency:
+    each rule threshold is computed by multiplying the corresponding convergence
+    threshold by a multiplier from RULE_THRESHOLD_MULTIPLIERS. Floors from
+    RULE_THRESHOLD_FLOORS are applied to prevent excessive sensitivity.
+
+    This coupling ensures that slow systems (high thermal mass) get proportionally
+    relaxed rule thresholds to match their relaxed convergence criteria.
+
+    Args:
+        heating_type: One of HEATING_TYPE_* constants, or None for default thresholds
+
+    Returns:
+        Dict with rule threshold values (moderate_overshoot, high_overshoot,
+        slow_response, slow_settling, undershoot, many_oscillations, some_oscillations)
+
+    Example:
+        >>> thresholds = get_rule_thresholds(HEATING_TYPE_FLOOR_HYDRONIC)
+        >>> thresholds["slow_response"]
+        120.0  # 90 min rise_time_max * 1.33 multiplier
+        >>> thresholds["moderate_overshoot"]
+        0.3  # 0.3°C overshoot_max * 1.0 multiplier (no floor applied)
+    """
+    # Get base convergence thresholds for this heating type
+    convergence = get_convergence_thresholds(heating_type)
+
+    # Compute rule thresholds by multiplying convergence values by multipliers
+    moderate_overshoot = convergence["overshoot_max"] * RULE_THRESHOLD_MULTIPLIERS["moderate_overshoot"]
+    high_overshoot = convergence["overshoot_max"] * RULE_THRESHOLD_MULTIPLIERS["high_overshoot"]
+    slow_response = convergence["rise_time_max"] * RULE_THRESHOLD_MULTIPLIERS["slow_response"]
+    slow_settling = convergence["settling_time_max"] * RULE_THRESHOLD_MULTIPLIERS["slow_settling"]
+    undershoot = convergence["overshoot_max"] * RULE_THRESHOLD_MULTIPLIERS["undershoot"]
+    many_oscillations = convergence["oscillations_max"] * RULE_THRESHOLD_MULTIPLIERS["many_oscillations"]
+    some_oscillations = convergence["oscillations_max"] * RULE_THRESHOLD_MULTIPLIERS["some_oscillations"]
+
+    # Apply floors to prevent excessive sensitivity
+    moderate_overshoot = max(moderate_overshoot, RULE_THRESHOLD_FLOORS["moderate_overshoot"])
+    high_overshoot = max(high_overshoot, RULE_THRESHOLD_FLOORS["high_overshoot"])
+    undershoot = max(undershoot, RULE_THRESHOLD_FLOORS["undershoot"])
+
+    return {
+        "moderate_overshoot": moderate_overshoot,
+        "high_overshoot": high_overshoot,
+        "slow_response": slow_response,
+        "slow_settling": slow_settling,
+        "undershoot": undershoot,
+        "many_oscillations": many_oscillations,
+        "some_oscillations": some_oscillations,
+    }
+
+
 # Rule priority levels for PID adjustment conflict resolution
 # Higher priority = takes precedence when rules conflict
 RULE_PRIORITY_OSCILLATION = 3   # Safety - prevent oscillation damage
