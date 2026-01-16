@@ -337,43 +337,43 @@ class TestPWMPeriod:
 class TestKeCalculation:
     """Tests for Ke (outdoor temperature compensation) calculation.
 
-    Feature 1.3: Ke values reduced by 100x in v0.7.0 to match corrected Ki dimensional analysis.
-    New range: 0.001 - 0.02 (was 0.1 - 2.0)
+    Feature 1.5: Ke values restored by 100x in v0.7.1 to fix v0.7.0 incorrect scaling.
+    New range: 0.1 - 2.0 (restored from incorrect 0.001 - 0.02 in v0.7.0)
     """
 
     def test_ke_magnitude_sanity_check(self):
-        """Test that all Ke values are within new 0.001-0.02 range after 100x reduction."""
+        """Test that all Ke values are within restored 0.1-2.0 range after 100x restoration."""
         # Test all energy ratings
         for rating in ENERGY_RATING_TO_INSULATION.keys():
             ke = calculate_initial_ke(energy_rating=rating, heating_type="radiator")
-            assert ke >= 0.001, f"Ke too low for {rating}: {ke}"
-            assert ke <= 0.02, f"Ke too high for {rating}: {ke}"
+            assert ke >= 0.1, f"Ke too low for {rating}: {ke}"
+            assert ke <= 2.0, f"Ke too high for {rating}: {ke}"
 
         # Test all heating types with moderate insulation
         for heating_type in ["floor_hydronic", "radiator", "convector", "forced_air"]:
             ke = calculate_initial_ke(energy_rating="B", heating_type=heating_type)
-            assert ke >= 0.001, f"Ke too low for {heating_type}: {ke}"
-            assert ke <= 0.02, f"Ke too high for {heating_type}: {ke}"
+            assert ke >= 0.1, f"Ke too low for {heating_type}: {ke}"
+            assert ke <= 2.0, f"Ke too high for {heating_type}: {ke}"
 
     def test_ke_energy_rating_values(self):
-        """Test Ke values for different energy ratings (100x scaling)."""
+        """Test Ke values for different energy ratings (v0.7.1 restored scaling)."""
         # A++++ (best) should have lowest Ke
         ke_best = calculate_initial_ke(energy_rating="A++++", heating_type="radiator")
-        assert ke_best == pytest.approx(0.001, abs=0.0001)
+        assert ke_best == pytest.approx(0.1, abs=0.01)
 
         # G (worst) should have highest Ke
         ke_worst = calculate_initial_ke(energy_rating="G", heating_type="radiator")
-        assert ke_worst == pytest.approx(0.013, abs=0.001)
+        assert ke_worst == pytest.approx(1.3, abs=0.1)
 
         # A (standard) should be moderate
         ke_standard = calculate_initial_ke(energy_rating="A", heating_type="radiator")
-        assert ke_standard == pytest.approx(0.0045, abs=0.0005)
+        assert ke_standard == pytest.approx(0.45, abs=0.05)
 
         # Better insulation = lower Ke
         assert ke_best < ke_standard < ke_worst
 
     def test_ke_heating_type_factors(self):
-        """Test Ke adjustment by heating type (100x scaling maintained)."""
+        """Test Ke adjustment by heating type (v0.7.1 restored scaling)."""
         # Floor hydronic should have highest Ke (slow response, benefits from compensation)
         ke_floor = calculate_initial_ke(energy_rating="A", heating_type="floor_hydronic")
 
@@ -386,45 +386,45 @@ class TestKeCalculation:
         # Verify relationship
         assert ke_floor > ke_rad > ke_air
 
-        # Check approximate values (A rating base is 0.0045)
-        assert ke_floor == pytest.approx(0.0054, abs=0.0005)  # 0.0045 * 1.2
-        assert ke_rad == pytest.approx(0.0045, abs=0.0005)    # 0.0045 * 1.0
-        assert ke_air == pytest.approx(0.0027, abs=0.0005)    # 0.0045 * 0.6
+        # Check approximate values (A rating base is 0.45)
+        assert ke_floor == pytest.approx(0.54, abs=0.05)  # 0.45 * 1.2
+        assert ke_rad == pytest.approx(0.45, abs=0.05)    # 0.45 * 1.0
+        assert ke_air == pytest.approx(0.27, abs=0.05)    # 0.45 * 0.6
 
     def test_ke_vs_p_term_ratio(self):
-        """Test that Ke contributes 20-50% of P term in typical scenarios.
+        """Test that Ke contributes 10-30% outdoor compensation in typical scenarios.
 
-        This verifies the fix is correct: Ke should provide meaningful but not
-        dominant outdoor compensation compared to the proportional term.
+        This verifies the v0.7.1 restoration: Ke should provide meaningful
+        outdoor compensation matching industry standard 10-30% feed-forward.
         """
         # Typical scenario:
         # - Indoor target: 20°C, current: 19°C (error = 1°C)
         # - Outdoor: -10°C (delta = 30°C from 20°C reference)
-        # - Kp = 150, Ke = 0.005 (moderate insulation, convector)
+        # - Kp = 150, Ke = 0.5 (moderate insulation, convector)
 
         kp = 150.0
-        ke = 0.005
+        ke = 0.5
         indoor_error = 1.0  # °C
         outdoor_delta = 30.0  # °C
 
         p_term = kp * indoor_error  # 150% power contribution
-        e_term = ke * outdoor_delta  # 0.005 * 30 = 0.15% power contribution
+        e_term = ke * outdoor_delta  # 0.5 * 30 = 15% power contribution
 
-        # E term should be 0.1% (well below P term)
+        # E term should be 10% (meaningful outdoor compensation)
         ratio = e_term / p_term
-        assert ratio < 0.01, f"E term too dominant: {ratio:.2%} of P term"
-        assert ratio > 0.0001, f"E term too weak: {ratio:.2%} of P term"
+        assert ratio < 0.3, f"E term too dominant: {ratio:.2%} of P term"
+        assert ratio > 0.05, f"E term too weak: {ratio:.2%} of P term"
 
         # In extreme cold (-20°C, delta = 40°C)
         outdoor_delta_extreme = 40.0
-        e_term_extreme = ke * outdoor_delta_extreme  # 0.005 * 40 = 0.20%
+        e_term_extreme = ke * outdoor_delta_extreme  # 0.5 * 40 = 20%
         ratio_extreme = e_term_extreme / p_term
 
-        # Even in extreme conditions, E term should be modest
-        assert ratio_extreme < 0.005, f"E term too dominant in extreme cold: {ratio_extreme:.2%}"
+        # Even in extreme conditions, E term should be within industry standard range
+        assert ratio_extreme < 0.35, f"E term too dominant in extreme cold: {ratio_extreme:.2%}"
 
     def test_ke_with_windows_adjustment(self):
-        """Test Ke window area adjustment maintains new scale (100x)."""
+        """Test Ke window area adjustment maintains restored scale."""
         # Base Ke without windows
         ke_base = calculate_initial_ke(energy_rating="B", heating_type="radiator")
 
@@ -438,8 +438,8 @@ class TestKeCalculation:
         )
 
         # Both should be in valid range
-        assert 0.001 <= ke_base <= 0.02
-        assert 0.001 <= ke_with_windows <= 0.02
+        assert 0.1 <= ke_base <= 2.0
+        assert 0.1 <= ke_with_windows <= 2.0
 
         # Windows should increase Ke (more heat loss)
         assert ke_with_windows > ke_base
@@ -451,9 +451,9 @@ class TestKeCalculation:
         """Test Ke defaults to moderate value when energy rating not specified."""
         ke_default = calculate_initial_ke(heating_type="radiator")
 
-        # Should default to B rating equivalent (0.0045 * 1.0 = 0.0045)
-        assert ke_default == pytest.approx(0.0045, abs=0.0005)
-        assert 0.001 <= ke_default <= 0.02
+        # Should default to B rating equivalent (0.45 * 1.0 = 0.45)
+        assert ke_default == pytest.approx(0.45, abs=0.05)
+        assert 0.1 <= ke_default <= 2.0
 
 
 class TestKdValues:
