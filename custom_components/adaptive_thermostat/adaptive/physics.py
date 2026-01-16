@@ -374,7 +374,8 @@ def calculate_initial_ke(
 
     # Adjust for heating system type
     # Slower systems benefit more from outdoor compensation
-    # Values restored to correct scale in v0.7.1 (100x from v0.7.0 incorrect scaling)
+    # These are multiplicative factors (not absolute values), applied to base_ke
+    # No scaling needed for v0.7.1 - these remain as dimensionless multipliers
     heating_type_factors = {
         "floor_hydronic": 1.2,   # Slow response - more benefit from Ke
         "radiator": 1.0,         # Baseline
