@@ -429,8 +429,8 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         self._output_precision = kwargs.get('output_precision')
         self._output_min = kwargs.get('output_min')
         self._output_max = kwargs.get('output_max')
-        self._output_clamp_low = kwargs.get('output_clamp_low')
-        self._output_clamp_high = kwargs.get('output_clamp_high')
+        self._output_clamp_low = kwargs.get('output_clamp_low') or const.DEFAULT_OUT_CLAMP_LOW
+        self._output_clamp_high = kwargs.get('output_clamp_high') or const.DEFAULT_OUT_CLAMP_HIGH
         self._difference = self._output_max - self._output_min
         if self._ac_mode:
             self._attr_hvac_modes = [HVACMode.COOL, HVACMode.HEAT, HVACMode.OFF]
