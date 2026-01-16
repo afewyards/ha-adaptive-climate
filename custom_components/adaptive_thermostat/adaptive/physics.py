@@ -9,19 +9,19 @@ from typing import Tuple, Optional, Dict
 
 # Energy rating to insulation quality mapping
 # Higher insulation = less impact from outdoor temperature = lower initial Ke
-# Values scaled by 1/100 to match corrected Ki dimensional analysis (v0.7.0)
+# Values restored to correct scale in v0.7.1 (100x from v0.7.0 incorrect scaling)
 ENERGY_RATING_TO_INSULATION: Dict[str, float] = {
-    "A++++": 0.001,   # Outstanding insulation - extremely minimal outdoor impact
-    "A+++": 0.0015,   # Excellent insulation - minimal outdoor impact
-    "A++": 0.0025,    # Very good insulation
-    "A+": 0.0035,     # Good insulation
-    "A": 0.0045,      # Standard good insulation
-    "B": 0.0055,      # Moderate insulation
-    "C": 0.007,       # Poor insulation - significant outdoor impact
-    "D": 0.0085,      # Very poor insulation
-    "E": 0.010,       # Minimal insulation
-    "F": 0.0115,      # Below minimum standards
-    "G": 0.013,       # No effective insulation
+    "A++++": 0.1,   # Outstanding insulation - extremely minimal outdoor impact
+    "A+++": 0.15,   # Excellent insulation - minimal outdoor impact
+    "A++": 0.25,    # Very good insulation
+    "A+": 0.35,     # Good insulation
+    "A": 0.45,      # Standard good insulation
+    "B": 0.55,      # Moderate insulation
+    "C": 0.7,       # Poor insulation - significant outdoor impact
+    "D": 0.85,      # Very poor insulation
+    "E": 1.0,       # Minimal insulation
+    "F": 1.15,      # Below minimum standards
+    "G": 1.3,       # No effective insulation
 }
 
 
@@ -347,16 +347,15 @@ def calculate_initial_ke(
                       benefit more from outdoor compensation.
 
     Returns:
-        Initial Ke value (typically 0.001 - 0.008 for well-insulated buildings,
-        0.008 - 0.015 for poorly insulated buildings). Scaled by 1/100 in v0.7.0
-        to match corrected Ki dimensional analysis.
+        Initial Ke value (typically 0.1 - 0.8 for well-insulated buildings,
+        0.8 - 1.5 for poorly insulated buildings). Restored to correct scale in v0.7.1.
     """
     # Base Ke from energy rating
     if energy_rating:
-        base_ke = ENERGY_RATING_TO_INSULATION.get(energy_rating.upper(), 0.0045)
+        base_ke = ENERGY_RATING_TO_INSULATION.get(energy_rating.upper(), 0.45)
     else:
         # Default to moderate insulation if not specified
-        base_ke = 0.0045
+        base_ke = 0.45
 
     # Adjust for window heat loss
     if window_area_m2 and floor_area_m2 and floor_area_m2 > 0:
@@ -375,7 +374,7 @@ def calculate_initial_ke(
 
     # Adjust for heating system type
     # Slower systems benefit more from outdoor compensation
-    # Values scaled by 1/100 to match corrected Ki dimensional analysis (v0.7.0)
+    # Values restored to correct scale in v0.7.1 (100x from v0.7.0 incorrect scaling)
     heating_type_factors = {
         "floor_hydronic": 1.2,   # Slow response - more benefit from Ke
         "radiator": 1.0,         # Baseline
