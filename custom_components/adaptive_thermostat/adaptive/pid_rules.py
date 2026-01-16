@@ -173,6 +173,7 @@ def evaluate_pid_rules(
     recent_rise_times: Optional[List[float]] = None,
     recent_outdoor_temps: Optional[List[float]] = None,
     state_tracker: Optional[RuleStateTracker] = None,
+    rule_thresholds: Optional[Dict[str, float]] = None,
 ) -> List[PIDRuleResult]:
     """
     Evaluate all PID tuning rules against current metrics.
@@ -186,11 +187,26 @@ def evaluate_pid_rules(
         recent_rise_times: List of recent rise times for correlation analysis (optional)
         recent_outdoor_temps: List of recent outdoor temps for correlation analysis (optional)
         state_tracker: Optional RuleStateTracker for hysteresis logic (optional, backward compatible)
+        rule_thresholds: Optional dict of rule thresholds (optional, uses defaults if not provided).
+            Supported keys: moderate_overshoot, high_overshoot, slow_response, slow_settling,
+            undershoot, many_oscillations, some_oscillations
 
     Returns:
         List of applicable rule results (rules that would fire)
     """
     from ..const import MIN_OUTDOOR_TEMP_RANGE, SLOW_RESPONSE_CORRELATION_THRESHOLD
+
+    # Default thresholds for backward compatibility
+    if rule_thresholds is None:
+        rule_thresholds = {
+            'moderate_overshoot': 0.2,
+            'high_overshoot': 1.0,
+            'slow_response': 60,
+            'slow_settling': 90,
+            'undershoot': 0.3,
+            'many_oscillations': 3,
+            'some_oscillations': 1,
+        }
 
     results: List[PIDRuleResult] = []
 
@@ -205,7 +221,7 @@ def evaluate_pid_rules(
 
     # Rule 1: High overshoot (>1.0C) - Extreme case
     # Thermal lag is root cause, Kd addresses it. For extreme cases, also reduce Kp.
-    if should_fire(PIDRule.HIGH_OVERSHOOT, avg_overshoot, 1.0):
+    if should_fire(PIDRule.HIGH_OVERSHOOT, avg_overshoot, rule_thresholds['high_overshoot']):
         results.append(PIDRuleResult(
             rule=PIDRule.HIGH_OVERSHOOT,
             kp_factor=0.90,  # Reduce Kp by 10% for extreme overshoot
@@ -215,7 +231,7 @@ def evaluate_pid_rules(
         ))
     # Rule 2: Moderate overshoot (0.2-1.0C) - Increase Kd only
     # Thermal lag is root cause, Kd addresses it without touching Kp
-    elif should_fire(PIDRule.MODERATE_OVERSHOOT, avg_overshoot, 0.2):
+    elif should_fire(PIDRule.MODERATE_OVERSHOOT, avg_overshoot, rule_thresholds['moderate_overshoot']):
         results.append(PIDRuleResult(
             rule=PIDRule.MODERATE_OVERSHOOT,
             kp_factor=1.0,
@@ -226,7 +242,7 @@ def evaluate_pid_rules(
 
     # Rule 3: Slow response (rise time >60 min)
     # Diagnose root cause: Ki (outdoor correlation) vs Kp (no correlation)
-    if should_fire(PIDRule.SLOW_RESPONSE, avg_rise_time, 60):
+    if should_fire(PIDRule.SLOW_RESPONSE, avg_rise_time, rule_thresholds['slow_response']):
         # Default to old behavior (increase Kp)
         kp_factor = 1.10
         ki_factor = 1.0
@@ -267,7 +283,7 @@ def evaluate_pid_rules(
         ))
 
     # Rule 4: Undershoot (>0.3C)
-    if should_fire(PIDRule.UNDERSHOOT, avg_undershoot, 0.3):
+    if should_fire(PIDRule.UNDERSHOOT, avg_undershoot, rule_thresholds['undershoot']):
         increase = min(1.0, avg_undershoot * 2.0)  # Up to 100% increase (doubling)
         increase_pct = increase * 100.0
         results.append(PIDRuleResult(
@@ -279,7 +295,7 @@ def evaluate_pid_rules(
         ))
 
     # Rule 5: Many oscillations (>3)
-    if should_fire(PIDRule.MANY_OSCILLATIONS, avg_oscillations, 3):
+    if should_fire(PIDRule.MANY_OSCILLATIONS, avg_oscillations, rule_thresholds['many_oscillations']):
         results.append(PIDRuleResult(
             rule=PIDRule.MANY_OSCILLATIONS,
             kp_factor=0.90,
@@ -288,7 +304,7 @@ def evaluate_pid_rules(
             reason=f"Many oscillations ({avg_oscillations:.1f})"
         ))
     # Rule 6: Some oscillations (>1, only if many didn't fire)
-    elif should_fire(PIDRule.SOME_OSCILLATIONS, avg_oscillations, 1):
+    elif should_fire(PIDRule.SOME_OSCILLATIONS, avg_oscillations, rule_thresholds['some_oscillations']):
         results.append(PIDRuleResult(
             rule=PIDRule.SOME_OSCILLATIONS,
             kp_factor=1.0,
@@ -298,7 +314,7 @@ def evaluate_pid_rules(
         ))
 
     # Rule 7: Slow settling (>90 min)
-    if should_fire(PIDRule.SLOW_SETTLING, avg_settling_time, 90):
+    if should_fire(PIDRule.SLOW_SETTLING, avg_settling_time, rule_thresholds['slow_settling']):
         results.append(PIDRuleResult(
             rule=PIDRule.SLOW_SETTLING,
             kp_factor=1.0,
