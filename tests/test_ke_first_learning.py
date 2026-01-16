@@ -306,9 +306,10 @@ class TestKeFirstLearner:
         assert learner.converged
         assert learner.r_squared > KE_FIRST_R_SQUARED_THRESHOLD
 
-        # Ke should be reasonable (clamped to ke_max of 0.02)
-        # Our simulation uses 0.04 but it gets clamped
-        assert 0.015 <= learner.current_ke <= 0.02
+        # Ke should be reasonable (from physics regression, ~0.04)
+        # Note: KeFirstLearner calculates physical Ke from temperature drop rates,
+        # which produces smaller values than the scaled Ke used in PID calculations
+        assert 0.03 <= learner.current_ke <= 0.05
 
     def test_blocks_pid_learning_integration(self):
         """Test that KeFirstLearner blocks PID tuning until converged."""

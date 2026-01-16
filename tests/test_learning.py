@@ -1479,11 +1479,11 @@ class TestPIDLimitsConstants:
         assert "ke_max" in PID_LIMITS
 
     def test_ke_limits_values(self):
-        """Test Ke limits have correct default values (0.0 to 0.02) after v0.7.0."""
+        """Test Ke limits have correct default values (0.0 to 2.0) after v0.7.1."""
         from custom_components.adaptive_thermostat.const import PID_LIMITS
 
         assert PID_LIMITS["ke_min"] == 0.0
-        assert PID_LIMITS["ke_max"] == 0.02  # Reduced by 100x in v0.7.0 (issue 1.3)
+        assert PID_LIMITS["ke_max"] == 2.0  # Restored by 100x in v0.7.1 (issue 1.3)
 
     def test_ke_limits_range_is_valid(self):
         """Test that ke_min is less than ke_max."""
@@ -1513,7 +1513,7 @@ def test_pid_limits():
 
     Story 7.4: Add Ke limits to PID_LIMITS constant.
     - ke_min = 0.0 (no weather compensation)
-    - ke_max = 0.02 (reduced by 100x in v0.7.0 - issue 1.3)
+    - ke_max = 2.0 (restored by 100x in v0.7.1 - issue 1.3)
     """
     from custom_components.adaptive_thermostat.const import PID_LIMITS
 
@@ -1523,15 +1523,15 @@ def test_pid_limits():
 
     # Verify Ke limits have correct values
     assert PID_LIMITS["ke_min"] == 0.0, f"ke_min should be 0.0, got {PID_LIMITS['ke_min']}"
-    assert PID_LIMITS["ke_max"] == 0.02, f"ke_max should be 0.02, got {PID_LIMITS['ke_max']}"
+    assert PID_LIMITS["ke_max"] == 2.0, f"ke_max should be 2.0, got {PID_LIMITS['ke_max']}"
 
-    # Verify existing limits (note: ki_max and kd_max changed in v0.7.0)
+    # Verify existing limits (note: ki_max, kd_max, and ke_max changed in v0.7.0 and v0.7.1)
     assert PID_LIMITS["kp_min"] == 10.0
     assert PID_LIMITS["kp_max"] == 500.0
     assert PID_LIMITS["ki_min"] == 0.0
     assert PID_LIMITS["ki_max"] == 1000.0  # Increased from 100.0 in v0.7.0 (issue 1.4)
     assert PID_LIMITS["kd_min"] == 0.0
-    assert PID_LIMITS["kd_max"] == 5.0  # Reduced from 200.0 in v0.7.0 (issue 1.8)
+    assert PID_LIMITS["kd_max"] == 3.3  # Reduced from 5.0 in v0.7.1 (issue 4.1), was 200.0 in v0.7.0
 
 
 # ============================================================================
