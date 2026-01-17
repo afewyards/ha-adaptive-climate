@@ -860,7 +860,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                         get_target_temp=lambda: self._target_temp,
                         get_current_temp=lambda: self._current_temp,
                         get_hvac_mode=lambda: self._hvac_mode,
-                        get_in_grace_period=lambda: self._in_grace_period,
+                        get_in_grace_period=lambda: self.in_learning_grace_period,
                         get_is_device_active=lambda: self._is_device_active,
                         thermal_time_constant=self._thermal_time_constant,
                         get_outdoor_temp=lambda: self._ext_temp,
