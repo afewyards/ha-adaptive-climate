@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v0.10.2 (2026-01-17)
+
+### Bug Fixes
+
+- Use correct grace period property in cycle tracker callback
+  ([`3694fe3`](https://github.com/afewyards/ha-adaptive-thermostat/commit/3694fe3590515e21a2ff8ff25e4579df0a2d62a5))
+
+Change get_in_grace_period callback to use in_learning_grace_period property instead of private
+  _in_grace_period attribute.
+
+
 ## v0.10.1 (2026-01-16)
 
 ### Bug Fixes
