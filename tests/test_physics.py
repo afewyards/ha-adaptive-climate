@@ -1403,11 +1403,11 @@ class TestFloorConstructionValidation:
         assert errors == []
 
     def test_screed_thickness_at_max_boundary(self):
-        """Test screed thickness at maximum boundary (80mm)."""
+        """Test screed thickness at maximum boundary (100mm)."""
         config = {
             'layers': [
                 {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
-                {'type': 'screed', 'material': 'cement', 'thickness_mm': 80},
+                {'type': 'screed', 'material': 'cement', 'thickness_mm': 100},
             ],
             'pipe_spacing_mm': 150,
         }
@@ -1425,7 +1425,7 @@ class TestFloorConstructionValidation:
         }
         errors = validate_floor_construction(config)
         assert len(errors) == 1
-        assert "thickness_mm must be between 30-80mm" in errors[0]
+        assert "thickness_mm must be between 30-100mm" in errors[0]
         assert "25mm" in errors[0]
 
     def test_screed_thickness_above_max(self):
@@ -1433,14 +1433,14 @@ class TestFloorConstructionValidation:
         config = {
             'layers': [
                 {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
-                {'type': 'screed', 'material': 'cement', 'thickness_mm': 85},
+                {'type': 'screed', 'material': 'cement', 'thickness_mm': 105},
             ],
             'pipe_spacing_mm': 150,
         }
         errors = validate_floor_construction(config)
         assert len(errors) == 1
-        assert "thickness_mm must be between 30-80mm" in errors[0]
-        assert "85mm" in errors[0]
+        assert "thickness_mm must be between 30-100mm" in errors[0]
+        assert "105mm" in errors[0]
 
     def test_unknown_top_floor_material(self):
         """Test unknown top floor material."""

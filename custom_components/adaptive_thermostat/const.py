@@ -592,5 +592,5 @@ PIPE_SPACING_EFFICIENCY = {
 # Used for validation of user-provided thickness values
 FLOOR_THICKNESS_LIMITS = {
     'top_floor': (5, 25),
-    'screed': (30, 80),
+    'screed': (30, 100),
 }

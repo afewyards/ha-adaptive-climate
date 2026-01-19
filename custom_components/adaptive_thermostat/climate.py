@@ -158,6 +158,18 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
             vol.Optional(const.CONF_NIGHT_SETBACK_SOLAR_RECOVERY): cv.boolean,
             vol.Optional(const.CONF_MIN_EFFECTIVE_ELEVATION, default=const.DEFAULT_MIN_EFFECTIVE_ELEVATION): vol.Coerce(float),
         }),
+        # Floor construction (for floor_hydronic heating type)
+        vol.Optional(const.CONF_FLOOR_CONSTRUCTION): vol.Schema({
+            vol.Optional(const.CONF_PIPE_SPACING_MM, default=150): vol.In([100, 150, 200, 300]),
+            vol.Required('layers'): vol.All(
+                cv.ensure_list,
+                [vol.Schema({
+                    vol.Required('type'): vol.In(['top_floor', 'screed']),
+                    vol.Required('material'): cv.string,
+                    vol.Required('thickness_mm'): vol.All(vol.Coerce(int), vol.Range(min=5, max=100)),
+                })]
+            ),
+        }),
     }
 )
 
