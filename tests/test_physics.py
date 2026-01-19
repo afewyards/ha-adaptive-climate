@@ -1676,3 +1676,289 @@ class TestFloorConstructionValidation:
         errors = validate_floor_construction(config)
         assert len(errors) == 1
         assert "material name is required" in errors[0]
+
+
+class TestThermalTimeConstantWithFloor:
+    """Tests for calculate_thermal_time_constant with floor_construction integration."""
+
+    def test_floor_construction_applied_only_for_floor_hydronic(self):
+        """Test floor construction tau modifier only applied for floor_hydronic heating."""
+        floor_config = {
+            'layers': [
+                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
+                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            ],
+            'pipe_spacing_mm': 150,
+        }
+        area_m2 = 50.0
+
+        # Base tau without floor construction
+        tau_base = calculate_thermal_time_constant(energy_rating="A")
+        assert tau_base == 4.0
+
+        # With floor_hydronic - should apply modifier
+        tau_floor_hydronic = calculate_thermal_time_constant(
+            energy_rating="A",
+            floor_construction=floor_config,
+            area_m2=area_m2,
+            heating_type='floor_hydronic'
+        )
+        # tau_modifier for this config is approximately 1.24
+        # tau = 4.0 * 1.24 = 4.96
+        assert tau_floor_hydronic == pytest.approx(4.96, abs=0.1)
+        assert tau_floor_hydronic > tau_base  # Should increase tau
+
+        # With radiator - should NOT apply modifier
+        tau_radiator = calculate_thermal_time_constant(
+            energy_rating="A",
+            floor_construction=floor_config,
+            area_m2=area_m2,
+            heating_type='radiator'
+        )
+        assert tau_radiator == tau_base  # Unchanged
+
+    def test_floor_construction_with_heavy_construction(self):
+        """Test floor construction with heavy construction increases tau significantly."""
+        heavy_floor_config = {
+            'layers': [
+                {'type': 'top_floor', 'material': 'natural_stone', 'thickness_mm': 20},
+                {'type': 'screed', 'material': 'cement', 'thickness_mm': 60},
+            ],
+            'pipe_spacing_mm': 150,
+        }
+        area_m2 = 40.0
+
+        tau_base = calculate_thermal_time_constant(energy_rating="B")
+        assert tau_base == 3.0
+
+        tau_with_heavy_floor = calculate_thermal_time_constant(
+            energy_rating="B",
+            floor_construction=heavy_floor_config,
+            area_m2=area_m2,
+            heating_type='floor_hydronic'
+        )
+
+        # tau_modifier for heavy construction is approximately 1.77
+        # tau = 3.0 * 1.77 = 5.31
+        assert tau_with_heavy_floor == pytest.approx(5.31, abs=0.15)
+        assert tau_with_heavy_floor > tau_base * 1.5  # Significant increase
+
+    def test_floor_construction_with_lightweight_construction(self):
+        """Test floor construction with lightweight construction decreases tau."""
+        lightweight_floor_config = {
+            'layers': [
+                {'type': 'top_floor', 'material': 'vinyl', 'thickness_mm': 5},
+                {'type': 'screed', 'material': 'lightweight', 'thickness_mm': 40},
+            ],
+            'pipe_spacing_mm': 150,
+        }
+        area_m2 = 30.0
+
+        tau_base = calculate_thermal_time_constant(energy_rating="A")
+        assert tau_base == 4.0
+
+        tau_with_light_floor = calculate_thermal_time_constant(
+            energy_rating="A",
+            floor_construction=lightweight_floor_config,
+            area_m2=area_m2,
+            heating_type='floor_hydronic'
+        )
+
+        # tau_modifier for lightweight construction is approximately 0.56
+        # tau = 4.0 * 0.56 = 2.24
+        assert tau_with_light_floor == pytest.approx(2.24, abs=0.1)
+        assert tau_with_light_floor < tau_base  # Decreased tau
+
+    def test_floor_construction_with_different_pipe_spacings(self):
+        """Test floor construction tau modifier varies with pipe spacing."""
+        floor_config_base = {
+            'layers': [
+                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
+                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            ],
+        }
+        area_m2 = 50.0
+
+        tau_base = calculate_thermal_time_constant(volume_m3=200)  # tau = 4.0
+
+        # 100mm spacing (higher efficiency 0.92)
+        floor_config_100 = {**floor_config_base, 'pipe_spacing_mm': 100}
+        tau_100mm = calculate_thermal_time_constant(
+            volume_m3=200,
+            floor_construction=floor_config_100,
+            area_m2=area_m2,
+            heating_type='floor_hydronic'
+        )
+
+        # 150mm spacing (baseline efficiency 0.87)
+        floor_config_150 = {**floor_config_base, 'pipe_spacing_mm': 150}
+        tau_150mm = calculate_thermal_time_constant(
+            volume_m3=200,
+            floor_construction=floor_config_150,
+            area_m2=area_m2,
+            heating_type='floor_hydronic'
+        )
+
+        # 300mm spacing (lower efficiency 0.68)
+        floor_config_300 = {**floor_config_base, 'pipe_spacing_mm': 300}
+        tau_300mm = calculate_thermal_time_constant(
+            volume_m3=200,
+            floor_construction=floor_config_300,
+            area_m2=area_m2,
+            heating_type='floor_hydronic'
+        )
+
+        # Wider spacing = lower efficiency = higher tau
+        assert tau_300mm > tau_150mm > tau_100mm
+        # All should be higher than base
+        assert tau_100mm > tau_base
+
+    def test_floor_construction_combined_with_window_adjustment(self):
+        """Test floor construction modifier applies after window adjustment."""
+        floor_config = {
+            'layers': [
+                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
+                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            ],
+            'pipe_spacing_mm': 150,
+        }
+        area_m2 = 25.0
+        window_area_m2 = 5.0  # 20% window ratio
+
+        # Base tau with window adjustment
+        tau_base_with_windows = calculate_thermal_time_constant(
+            volume_m3=200,
+            window_area_m2=window_area_m2,
+            floor_area_m2=area_m2,
+            window_rating="hr++"
+        )
+        # tau = 4.0 * 0.85 (window reduction) = 3.4
+
+        # With floor construction on top of window adjustment
+        tau_combined = calculate_thermal_time_constant(
+            volume_m3=200,
+            window_area_m2=window_area_m2,
+            floor_area_m2=area_m2,
+            window_rating="hr++",
+            floor_construction=floor_config,
+            area_m2=area_m2,
+            heating_type='floor_hydronic'
+        )
+
+        # tau = (4.0 * 0.85) * 1.24 = 3.4 * 1.24 = 4.216
+        assert tau_combined == pytest.approx(4.216, abs=0.1)
+        assert tau_combined > tau_base_with_windows
+
+    def test_floor_construction_requires_area_m2(self):
+        """Test floor_construction requires area_m2 parameter."""
+        floor_config = {
+            'layers': [
+                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
+                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            ],
+            'pipe_spacing_mm': 150,
+        }
+
+        with pytest.raises(ValueError, match="area_m2 is required when floor_construction is provided"):
+            calculate_thermal_time_constant(
+                energy_rating="A",
+                floor_construction=floor_config,
+                heating_type='floor_hydronic'
+                # Missing area_m2
+            )
+
+    def test_floor_construction_requires_heating_type(self):
+        """Test floor_construction requires heating_type parameter."""
+        floor_config = {
+            'layers': [
+                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
+                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            ],
+            'pipe_spacing_mm': 150,
+        }
+
+        with pytest.raises(ValueError, match="heating_type is required when floor_construction is provided"):
+            calculate_thermal_time_constant(
+                energy_rating="A",
+                floor_construction=floor_config,
+                area_m2=50.0
+                # Missing heating_type
+            )
+
+    def test_floor_construction_with_volume_m3(self):
+        """Test floor construction works with volume_m3 as base tau."""
+        floor_config = {
+            'layers': [
+                {'type': 'top_floor', 'material': 'porcelain', 'thickness_mm': 12},
+                {'type': 'screed', 'material': 'cement', 'thickness_mm': 45},
+            ],
+            'pipe_spacing_mm': 150,
+        }
+        area_m2 = 60.0
+
+        tau_base = calculate_thermal_time_constant(volume_m3=300)  # tau = 6.0
+
+        tau_with_floor = calculate_thermal_time_constant(
+            volume_m3=300,
+            floor_construction=floor_config,
+            area_m2=area_m2,
+            heating_type='floor_hydronic'
+        )
+
+        # Should apply tau_modifier to volume-based tau
+        assert tau_with_floor > tau_base
+        assert tau_with_floor == pytest.approx(tau_base * 1.2, abs=0.3)
+
+    def test_floor_construction_with_custom_materials(self):
+        """Test floor construction with custom material properties."""
+        floor_config = {
+            'layers': [
+                {
+                    'type': 'top_floor',
+                    'material': 'custom_tile',
+                    'thickness_mm': 15,
+                    'conductivity': 2.0,
+                    'density': 2500,
+                    'specific_heat': 900,
+                },
+                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            ],
+            'pipe_spacing_mm': 150,
+        }
+        area_m2 = 50.0
+
+        tau_base = calculate_thermal_time_constant(energy_rating="A+")
+        assert tau_base == 5.0
+
+        tau_with_custom = calculate_thermal_time_constant(
+            energy_rating="A+",
+            floor_construction=floor_config,
+            area_m2=area_m2,
+            heating_type='floor_hydronic'
+        )
+
+        # Custom material should work and modify tau
+        assert tau_with_custom > tau_base
+
+    def test_floor_construction_does_not_affect_other_heating_types(self):
+        """Test floor construction ignored for non-floor_hydronic heating types."""
+        floor_config = {
+            'layers': [
+                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
+                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            ],
+            'pipe_spacing_mm': 150,
+        }
+        area_m2 = 50.0
+
+        tau_base = calculate_thermal_time_constant(energy_rating="B")
+
+        # Test all non-floor_hydronic heating types
+        for heating_type in ['radiator', 'convector', 'forced_air']:
+            tau_with_floor = calculate_thermal_time_constant(
+                energy_rating="B",
+                floor_construction=floor_config,
+                area_m2=area_m2,
+                heating_type=heating_type
+            )
+            assert tau_with_floor == tau_base, f"Floor construction should not affect {heating_type}"

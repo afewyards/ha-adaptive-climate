@@ -43,12 +43,16 @@ def calculate_thermal_time_constant(
     window_area_m2: Optional[float] = None,
     floor_area_m2: Optional[float] = None,
     window_rating: str = "hr++",
+    floor_construction: Optional[Dict] = None,
+    area_m2: Optional[float] = None,
+    heating_type: Optional[str] = None,
 ) -> float:
     """Calculate thermal time constant (tau) in hours.
 
     The thermal time constant represents how quickly a zone responds to
     heating changes. It can be estimated from zone volume or energy rating,
-    and adjusted for window heat loss.
+    and adjusted for window heat loss. For floor heating systems, it can
+    be further adjusted based on floor construction thermal properties.
 
     Args:
         volume_m3: Zone volume in cubic meters. If provided, tau is estimated
@@ -59,12 +63,21 @@ def calculate_thermal_time_constant(
         floor_area_m2: Zone floor area in square meters (needed for window ratio).
         window_rating: Glazing type (single, double, hr, hr+, hr++, hr+++, triple).
                        Higher ratings mean better insulation. Default: hr++.
+        floor_construction: Optional floor construction configuration dict with:
+                           - 'layers': List of layer dicts
+                           - 'pipe_spacing_mm': Pipe spacing in millimeters
+                           When provided with heating_type='floor_hydronic', adjusts tau
+                           based on floor thermal properties.
+        area_m2: Zone area in square meters. Required if floor_construction provided.
+        heating_type: Heating system type. Required if floor_construction provided.
 
     Returns:
         Thermal time constant in hours.
 
     Raises:
         ValueError: If neither volume_m3 nor energy_rating is provided.
+        ValueError: If floor_construction provided but area_m2 is missing.
+        ValueError: If floor_construction provided but heating_type is missing.
     """
     if volume_m3 is not None:
         # Estimate tau based on zone volume
@@ -103,6 +116,31 @@ def calculate_thermal_time_constant(
         # Factor of 0.15 means: at baseline (HR++, 20% windows), reduction is 15%
         tau_reduction = min(heat_loss_factor * 0.15, 0.4)
         tau_base *= (1 - tau_reduction)
+
+    # Adjust tau for floor construction if provided (only for floor_hydronic)
+    if floor_construction is not None:
+        # Validate required parameters
+        if area_m2 is None:
+            raise ValueError("area_m2 is required when floor_construction is provided")
+        if heating_type is None:
+            raise ValueError("heating_type is required when floor_construction is provided")
+
+        # Only apply floor construction modifier for floor hydronic heating
+        if heating_type == 'floor_hydronic':
+            # Extract layers and pipe spacing from floor_construction dict
+            layers = floor_construction.get('layers')
+            pipe_spacing_mm = floor_construction.get('pipe_spacing_mm', 150)
+
+            # Calculate floor thermal properties
+            floor_props = calculate_floor_thermal_properties(
+                layers=layers,
+                area_m2=area_m2,
+                pipe_spacing_mm=pipe_spacing_mm
+            )
+
+            # Apply tau modifier
+            tau_modifier = floor_props['tau_modifier']
+            tau_base *= tau_modifier
 
     return tau_base
 
