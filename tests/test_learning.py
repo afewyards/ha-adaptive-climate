@@ -1874,3 +1874,208 @@ def test_adaptive_learner_serialization_exists():
     learner = AdaptiveLearner()
     assert hasattr(learner, 'to_dict')
     assert callable(learner.to_dict)
+
+
+# ============================================================================
+# AdaptiveLearner Restoration Tests (Story 1.2)
+# ============================================================================
+
+
+class TestAdaptiveLearnerRestoration:
+    """Tests for AdaptiveLearner.restore_from_dict() restoration method."""
+
+    def test_adaptive_learner_restore_empty(self):
+        """Test restore_from_dict restores empty state without error."""
+        learner = AdaptiveLearner()
+
+        # Add some data to ensure it gets cleared
+        learner.add_cycle_metrics(CycleMetrics(overshoot=0.5, oscillations=1))
+        learner._consecutive_converged_cycles = 3
+        learner._pid_converged_for_ke = True
+        learner._auto_apply_count = 2
+
+        # Restore empty state
+        empty_data = {
+            "cycle_history": [],
+            "last_adjustment_time": None,
+            "consecutive_converged_cycles": 0,
+            "pid_converged_for_ke": False,
+            "auto_apply_count": 0,
+        }
+        learner.restore_from_dict(empty_data)
+
+        # Verify state is cleared
+        assert len(learner._cycle_history) == 0
+        assert learner._last_adjustment_time is None
+        assert learner._consecutive_converged_cycles == 0
+        assert learner._pid_converged_for_ke is False
+        assert learner._auto_apply_count == 0
+
+    def test_adaptive_learner_restore_cycles(self):
+        """Test restore_from_dict restores CycleMetrics from dict list."""
+        learner = AdaptiveLearner()
+
+        # Prepare data with cycles
+        data = {
+            "cycle_history": [
+                {
+                    "overshoot": 0.5,
+                    "undershoot": 0.2,
+                    "settling_time": 45.0,
+                    "oscillations": 1,
+                    "rise_time": 30.0,
+                },
+                {
+                    "overshoot": 0.3,
+                    "undershoot": 0.1,
+                    "settling_time": 40.0,
+                    "oscillations": 0,
+                    "rise_time": 25.0,
+                },
+                {
+                    "overshoot": None,
+                    "undershoot": None,
+                    "settling_time": None,
+                    "oscillations": 2,
+                    "rise_time": None,
+                },
+            ],
+            "last_adjustment_time": None,
+            "consecutive_converged_cycles": 0,
+            "pid_converged_for_ke": False,
+            "auto_apply_count": 0,
+        }
+
+        learner.restore_from_dict(data)
+
+        # Verify cycles are restored
+        assert len(learner._cycle_history) == 3
+
+        # Verify first cycle
+        cycle1 = learner._cycle_history[0]
+        assert isinstance(cycle1, CycleMetrics)
+        assert cycle1.overshoot == 0.5
+        assert cycle1.undershoot == 0.2
+        assert cycle1.settling_time == 45.0
+        assert cycle1.oscillations == 1
+        assert cycle1.rise_time == 30.0
+
+        # Verify second cycle
+        cycle2 = learner._cycle_history[1]
+        assert isinstance(cycle2, CycleMetrics)
+        assert cycle2.overshoot == 0.3
+        assert cycle2.undershoot == 0.1
+        assert cycle2.settling_time == 40.0
+        assert cycle2.oscillations == 0
+        assert cycle2.rise_time == 25.0
+
+        # Verify third cycle with None values
+        cycle3 = learner._cycle_history[2]
+        assert isinstance(cycle3, CycleMetrics)
+        assert cycle3.overshoot is None
+        assert cycle3.undershoot is None
+        assert cycle3.settling_time is None
+        assert cycle3.oscillations == 2
+        assert cycle3.rise_time is None
+
+    def test_adaptive_learner_restore_convergence(self):
+        """Test restore_from_dict restores convergence tracking state."""
+        learner = AdaptiveLearner()
+
+        # Prepare data with convergence state
+        data = {
+            "cycle_history": [],
+            "last_adjustment_time": None,
+            "consecutive_converged_cycles": 7,
+            "pid_converged_for_ke": True,
+            "auto_apply_count": 4,
+        }
+
+        learner.restore_from_dict(data)
+
+        # Verify convergence state is restored
+        assert learner._consecutive_converged_cycles == 7
+        assert learner._pid_converged_for_ke is True
+        assert learner._auto_apply_count == 4
+
+    def test_adaptive_learner_restore_timestamps(self):
+        """Test restore_from_dict parses ISO string to datetime."""
+        learner = AdaptiveLearner()
+
+        # Prepare data with timestamp
+        test_time = datetime(2024, 1, 15, 10, 30, 45)
+        data = {
+            "cycle_history": [],
+            "last_adjustment_time": test_time.isoformat(),
+            "consecutive_converged_cycles": 0,
+            "pid_converged_for_ke": False,
+            "auto_apply_count": 0,
+        }
+
+        learner.restore_from_dict(data)
+
+        # Verify timestamp is parsed
+        assert learner._last_adjustment_time is not None
+        assert isinstance(learner._last_adjustment_time, datetime)
+        assert learner._last_adjustment_time == test_time
+
+    def test_adaptive_learner_restore_roundtrip(self):
+        """Test that to_dict -> restore_from_dict preserves all state."""
+        learner1 = AdaptiveLearner()
+
+        # Set up state
+        learner1.add_cycle_metrics(CycleMetrics(
+            overshoot=0.5,
+            undershoot=0.2,
+            settling_time=45.0,
+            oscillations=1,
+            rise_time=30.0,
+        ))
+        learner1.add_cycle_metrics(CycleMetrics(
+            overshoot=None,
+            undershoot=None,
+            settling_time=None,
+            oscillations=2,
+            rise_time=None,
+        ))
+        learner1._consecutive_converged_cycles = 5
+        learner1._pid_converged_for_ke = True
+        learner1._auto_apply_count = 3
+        learner1._last_adjustment_time = datetime(2024, 1, 15, 10, 30, 45)
+
+        # Serialize
+        data = learner1.to_dict()
+
+        # Restore to new learner
+        learner2 = AdaptiveLearner()
+        learner2.restore_from_dict(data)
+
+        # Verify all state matches
+        assert len(learner2._cycle_history) == 2
+        assert learner2._consecutive_converged_cycles == 5
+        assert learner2._pid_converged_for_ke is True
+        assert learner2._auto_apply_count == 3
+        assert learner2._last_adjustment_time == datetime(2024, 1, 15, 10, 30, 45)
+
+        # Verify cycle data
+        cycle1 = learner2._cycle_history[0]
+        assert cycle1.overshoot == 0.5
+        assert cycle1.undershoot == 0.2
+        assert cycle1.settling_time == 45.0
+        assert cycle1.oscillations == 1
+        assert cycle1.rise_time == 30.0
+
+        cycle2 = learner2._cycle_history[1]
+        assert cycle2.overshoot is None
+        assert cycle2.undershoot is None
+        assert cycle2.settling_time is None
+        assert cycle2.oscillations == 2
+        assert cycle2.rise_time is None
+
+
+# Marker test for Story 1.2
+def test_adaptive_learner_restoration_exists():
+    """Marker test to ensure restore_from_dict method exists on AdaptiveLearner."""
+    learner = AdaptiveLearner()
+    assert hasattr(learner, 'restore_from_dict')
+    assert callable(learner.restore_from_dict)

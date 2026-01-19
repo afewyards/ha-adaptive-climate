@@ -1218,3 +1218,51 @@ class AdaptiveLearner:
             "pid_converged_for_ke": self._pid_converged_for_ke,
             "auto_apply_count": self._auto_apply_count,
         }
+
+    def restore_from_dict(self, data: Dict[str, Any]) -> None:
+        """Restore AdaptiveLearner state from a dictionary.
+
+        Performs in-place restoration by clearing existing state and
+        repopulating from the provided data dictionary.
+
+        Args:
+            data: Dictionary containing:
+                - cycle_history: List of serialized CycleMetrics dicts
+                - last_adjustment_time: ISO timestamp string or None
+                - consecutive_converged_cycles: Number of consecutive converged cycles
+                - pid_converged_for_ke: Whether PID has converged for Ke learning
+                - auto_apply_count: Number of times PID has been auto-applied
+        """
+        # Clear existing cycle history
+        self._cycle_history.clear()
+
+        # Restore cycle history by creating CycleMetrics from dicts
+        for cycle_dict in data.get("cycle_history", []):
+            cycle = CycleMetrics(
+                overshoot=cycle_dict.get("overshoot"),
+                undershoot=cycle_dict.get("undershoot"),
+                settling_time=cycle_dict.get("settling_time"),
+                oscillations=cycle_dict.get("oscillations", 0),
+                rise_time=cycle_dict.get("rise_time"),
+            )
+            self._cycle_history.append(cycle)
+
+        # Restore last_adjustment_time (parse ISO string to datetime)
+        last_adj_time = data.get("last_adjustment_time")
+        if last_adj_time is not None and isinstance(last_adj_time, str):
+            self._last_adjustment_time = datetime.fromisoformat(last_adj_time)
+        else:
+            self._last_adjustment_time = None
+
+        # Restore convergence tracking fields
+        self._consecutive_converged_cycles = data.get("consecutive_converged_cycles", 0)
+        self._pid_converged_for_ke = data.get("pid_converged_for_ke", False)
+        self._auto_apply_count = data.get("auto_apply_count", 0)
+
+        _LOGGER.info(
+            "AdaptiveLearner state restored: %d cycles, %d consecutive converged, "
+            "auto_apply_count=%d",
+            len(self._cycle_history),
+            self._consecutive_converged_cycles,
+            self._auto_apply_count,
+        )
