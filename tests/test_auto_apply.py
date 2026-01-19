@@ -15,6 +15,12 @@ from custom_components.adaptive_thermostat.const import (
     SEASONAL_SHIFT_BLOCK_DAYS,
     VALIDATION_CYCLE_COUNT,
     VALIDATION_DEGRADATION_THRESHOLD,
+    AUTO_APPLY_THRESHOLDS,
+    get_auto_apply_thresholds,
+    HEATING_TYPE_FLOOR_HYDRONIC,
+    HEATING_TYPE_RADIATOR,
+    HEATING_TYPE_CONVECTOR,
+    HEATING_TYPE_FORCED_AIR,
 )
 
 
@@ -425,3 +431,93 @@ class TestSeasonalShiftRecording:
 
         learner._auto_apply_count = 7
         assert learner.get_auto_apply_count() == 7
+
+
+# ============================================================================
+# Heating-Type-Specific Threshold Tests
+# ============================================================================
+
+
+class TestHeatingTypeThresholds:
+    """Tests for heating-type-specific auto-apply thresholds."""
+
+    def test_auto_apply_threshold_floor_hydronic(self):
+        """Test floor_hydronic heating type has correct confidence_first=0.80."""
+        thresholds = get_auto_apply_thresholds(HEATING_TYPE_FLOOR_HYDRONIC)
+
+        assert thresholds["confidence_first"] == 0.80
+        assert thresholds["confidence_subsequent"] == 0.90
+        assert thresholds["min_cycles"] == 8
+        assert thresholds["cooldown_hours"] == 96
+        assert thresholds["cooldown_cycles"] == 15
+
+    def test_auto_apply_threshold_forced_air(self):
+        """Test forced_air heating type has confidence_first=0.60, cooldown_hours=36."""
+        thresholds = get_auto_apply_thresholds(HEATING_TYPE_FORCED_AIR)
+
+        assert thresholds["confidence_first"] == 0.60
+        assert thresholds["cooldown_hours"] == 36
+        assert thresholds["confidence_subsequent"] == 0.80
+        assert thresholds["min_cycles"] == 6
+        assert thresholds["cooldown_cycles"] == 8
+
+    def test_auto_apply_threshold_radiator(self):
+        """Test radiator heating type has correct thresholds."""
+        thresholds = get_auto_apply_thresholds(HEATING_TYPE_RADIATOR)
+
+        assert thresholds["confidence_first"] == 0.70
+        assert thresholds["confidence_subsequent"] == 0.85
+        assert thresholds["min_cycles"] == 7
+        assert thresholds["cooldown_hours"] == 72
+        assert thresholds["cooldown_cycles"] == 12
+
+    def test_auto_apply_threshold_convector(self):
+        """Test convector heating type (baseline) has correct thresholds."""
+        thresholds = get_auto_apply_thresholds(HEATING_TYPE_CONVECTOR)
+
+        assert thresholds["confidence_first"] == 0.60
+        assert thresholds["confidence_subsequent"] == 0.80
+        assert thresholds["min_cycles"] == 6
+        assert thresholds["cooldown_hours"] == 48
+        assert thresholds["cooldown_cycles"] == 10
+
+    def test_auto_apply_threshold_unknown_defaults_to_convector(self):
+        """Test unknown heating type defaults to convector thresholds."""
+        thresholds = get_auto_apply_thresholds("unknown_type")
+        convector_thresholds = get_auto_apply_thresholds(HEATING_TYPE_CONVECTOR)
+
+        # Unknown type should return same values as convector
+        assert thresholds == convector_thresholds
+        assert thresholds["confidence_first"] == 0.60
+        assert thresholds["confidence_subsequent"] == 0.80
+
+    def test_auto_apply_threshold_none_defaults_to_convector(self):
+        """Test None heating type defaults to convector thresholds."""
+        thresholds = get_auto_apply_thresholds(None)
+        convector_thresholds = get_auto_apply_thresholds(HEATING_TYPE_CONVECTOR)
+
+        assert thresholds == convector_thresholds
+
+    def test_threshold_dict_has_all_heating_types(self):
+        """Test AUTO_APPLY_THRESHOLDS contains all 4 heating types."""
+        assert len(AUTO_APPLY_THRESHOLDS) == 4
+        assert HEATING_TYPE_FLOOR_HYDRONIC in AUTO_APPLY_THRESHOLDS
+        assert HEATING_TYPE_RADIATOR in AUTO_APPLY_THRESHOLDS
+        assert HEATING_TYPE_CONVECTOR in AUTO_APPLY_THRESHOLDS
+        assert HEATING_TYPE_FORCED_AIR in AUTO_APPLY_THRESHOLDS
+
+    def test_learner_uses_heating_type_for_threshold_lookup(self):
+        """Test AdaptiveLearner stores heating_type for threshold lookup."""
+        learner_floor = AdaptiveLearner(heating_type=HEATING_TYPE_FLOOR_HYDRONIC)
+        learner_forced = AdaptiveLearner(heating_type=HEATING_TYPE_FORCED_AIR)
+
+        # Learners should have heating_type set
+        assert learner_floor._heating_type == HEATING_TYPE_FLOOR_HYDRONIC
+        assert learner_forced._heating_type == HEATING_TYPE_FORCED_AIR
+
+        # Their thresholds should be retrievable
+        floor_thresholds = get_auto_apply_thresholds(learner_floor._heating_type)
+        forced_thresholds = get_auto_apply_thresholds(learner_forced._heating_type)
+
+        assert floor_thresholds["confidence_first"] == 0.80  # More conservative
+        assert forced_thresholds["confidence_first"] == 0.60  # Less conservative
