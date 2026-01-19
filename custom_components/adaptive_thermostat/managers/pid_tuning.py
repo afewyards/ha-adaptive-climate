@@ -52,6 +52,8 @@ class PIDTuningManager:
         get_hass: callable,
         get_zone_id: callable,
         get_floor_construction: callable,
+        get_supply_temperature: callable,
+        get_max_power_w: callable,
         async_control_heating: callable,
         async_write_ha_state: callable,
     ):
@@ -76,6 +78,8 @@ class PIDTuningManager:
             get_hass: Callback to get Home Assistant instance
             get_zone_id: Callback to get zone ID
             get_floor_construction: Callback to get floor construction config
+            get_supply_temperature: Callback to get supply temperature
+            get_max_power_w: Callback to get max power in watts
             async_control_heating: Async callback to trigger heating control
             async_write_ha_state: Async callback to write HA state
         """
@@ -95,6 +99,8 @@ class PIDTuningManager:
         self._get_hass = get_hass
         self._get_zone_id = get_zone_id
         self._get_floor_construction = get_floor_construction
+        self._get_supply_temperature = get_supply_temperature
+        self._get_max_power_w = get_max_power_w
 
         # Setters
         self._set_kp = set_kp
@@ -173,7 +179,11 @@ class PIDTuningManager:
             area_m2=area_m2,
             heating_type=heating_type,
         )
-        kp, ki, kd = calculate_initial_pid(tau, heating_type, area_m2=area_m2)
+        max_power_w = self._get_max_power_w()
+        supply_temperature = self._get_supply_temperature()
+        kp, ki, kd = calculate_initial_pid(
+            tau, heating_type, area_m2=area_m2, max_power_w=max_power_w, supply_temperature=supply_temperature
+        )
 
         self._set_kp(kp)
         self._set_ki(ki)
@@ -189,14 +199,18 @@ class PIDTuningManager:
             self._get_ke(),
         )
 
+        power_info = f", power={max_power_w}W" if max_power_w else ""
+        supply_info = f", supply={supply_temperature}°C" if supply_temperature else ""
         _LOGGER.info(
-            "%s: Reset PID to physics defaults (tau=%.2f, type=%s, window=%s, floor=%s): "
+            "%s: Reset PID to physics defaults (tau=%.2f, type=%s, window=%s, floor=%s%s%s): "
             "Kp=%.4f, Ki=%.5f, Kd=%.3f",
             self._thermostat.entity_id,
             tau,
             heating_type,
             window_rating,
             "configured" if floor_construction else "none",
+            power_info,
+            supply_info,
             kp,
             ki,
             kd,

@@ -149,60 +149,83 @@ def calculate_power_scaling_factor(
     heating_type: str,
     area_m2: Optional[float],
     max_power_w: Optional[float],
+    supply_temperature: Optional[float] = None,
 ) -> float:
-    """Calculate power scaling factor for PID gains based on heater power.
+    """Calculate power scaling factor for PID gains based on heater power and supply temp.
 
-    The process gain (system response to heating input) depends on heater power.
-    Systems with lower power density (W/m²) respond more slowly and need higher
-    PID gains (higher controller output for same temperature error).
+    The process gain (system response to heating input) depends on heater power
+    and supply water temperature. Systems with lower power density (W/m²) or
+    lower supply temperature respond more slowly and need higher PID gains.
 
     This function calculates a scaling factor that adjusts PID gains to account
-    for heater power deviating from the baseline for each heating type.
+    for heater power and supply temperature deviating from the baseline for each
+    heating type.
 
     Args:
         heating_type: Type of heating system (floor_hydronic, radiator, etc.)
         area_m2: Zone floor area in square meters. Required if max_power_w provided.
-        max_power_w: Total heater power in watts. If None, returns 1.0 (no scaling).
+        max_power_w: Total heater power in watts. If None, power scaling is 1.0.
+        supply_temperature: Actual supply water temperature in °C. If None, temp
+                           scaling is 1.0. Lower temps than reference → higher gains.
 
     Returns:
-        Power scaling factor (0.25 - 4.0). Values > 1.0 indicate undersized system
-        (needs higher gains), < 1.0 indicates oversized system (needs lower gains).
+        Combined scaling factor (0.25 - 4.0). Values > 1.0 indicate undersized system
+        or low supply temp (needs higher gains), < 1.0 indicates oversized system
+        or high supply temp (needs lower gains).
 
     Formula:
-        scaling = baseline_power_density / actual_power_density
+        power_factor = baseline_power_density / actual_power_density
+        temp_factor = reference_ΔT / actual_ΔT  (where ΔT = supply_temp - 20°C)
+        combined = power_factor * temp_factor
 
     Example:
-        - 50m² zone with floor_hydronic (baseline 20 W/m²)
-        - 500W heater installed (10 W/m² actual)
-        - scaling = 20 / 10 = 2.0 (double the PID gains for undersized system)
+        - 50m² zone with floor_hydronic (baseline 20 W/m², reference 45°C)
+        - 500W heater installed (10 W/m² actual), 35°C supply temp
+        - power_factor = 20 / 10 = 2.0
+        - temp_factor = (45-20) / (35-20) = 25 / 15 = 1.67
+        - combined = 2.0 * 1.67 = 3.33 (higher gains for low-temp undersized system)
     """
     # Import here to avoid circular dependency
     from ..const import HEATING_TYPE_CHARACTERISTICS
 
-    # Return 1.0 (no scaling) if power not configured
-    if max_power_w is None or area_m2 is None or area_m2 <= 0:
-        return 1.0
-
-    # Get baseline power density for heating type
+    # Get characteristics for heating type
     heating_chars = HEATING_TYPE_CHARACTERISTICS.get(
         heating_type, HEATING_TYPE_CHARACTERISTICS["convector"]
     )
-    baseline_power_w_m2 = heating_chars.get("baseline_power_w_m2", 60)
 
-    # Calculate actual power density
-    actual_power_w_m2 = max_power_w / area_m2
+    # Calculate power scaling factor
+    if max_power_w is None or area_m2 is None or area_m2 <= 0:
+        power_factor = 1.0
+    else:
+        baseline_power_w_m2 = heating_chars.get("baseline_power_w_m2", 60)
+        actual_power_w_m2 = max_power_w / area_m2
+        # Power scaling: inverse relationship
+        # Lower power density → higher gains needed (slower response)
+        power_factor = baseline_power_w_m2 / actual_power_w_m2
 
-    # Power scaling: inverse relationship
-    # Lower power density → higher gains needed (slower response)
-    # Higher power density → lower gains needed (faster response)
-    power_factor = baseline_power_w_m2 / actual_power_w_m2
+    # Calculate supply temperature scaling factor
+    if supply_temperature is not None:
+        ref_supply = heating_chars.get("reference_supply_temp", 55.0)
+        # Reference ΔT = reference supply temp - room temp (20°C)
+        ref_delta_t = ref_supply - 20.0
+        # Actual ΔT = actual supply temp - room temp, clamped to 5-60°C range
+        actual_delta_t = max(5.0, min(60.0, supply_temperature - 20.0))
+        # Lower supply temp → smaller ΔT → higher gains needed
+        temp_factor = ref_delta_t / actual_delta_t
+        # Clamp temp_factor to 0.5 - 2.0 range for safety
+        temp_factor = max(0.5, min(2.0, temp_factor))
+    else:
+        temp_factor = 1.0
 
-    # Clamp to 0.25x - 4.0x range for safety
-    # 0.25x = system 4x oversized (very fast, needs conservative gains)
-    # 4.0x = system 4x undersized (very slow, needs aggressive gains)
-    power_factor = max(0.25, min(4.0, power_factor))
+    # Combined scaling factor
+    combined_factor = power_factor * temp_factor
 
-    return power_factor
+    # Clamp combined to 0.25x - 4.0x range for safety
+    # 0.25x = system 4x oversized / high temp (very fast, needs conservative gains)
+    # 4.0x = system 4x undersized / low temp (very slow, needs aggressive gains)
+    combined_factor = max(0.25, min(4.0, combined_factor))
+
+    return combined_factor
 
 
 def calculate_initial_pid(
@@ -210,6 +233,7 @@ def calculate_initial_pid(
     heating_type: str = "floor_hydronic",
     area_m2: Optional[float] = None,
     max_power_w: Optional[float] = None,
+    supply_temperature: Optional[float] = None,
 ) -> Tuple[float, float, float]:
     """Calculate initial PID parameters using hybrid multi-point empirical model.
 
@@ -231,6 +255,9 @@ def calculate_initial_pid(
         area_m2: Zone floor area in square meters. Required for power scaling.
         max_power_w: Total heater power in watts. If provided with area_m2,
                      PID gains are scaled based on power density.
+        supply_temperature: Supply water temperature in °C. If provided, PID gains
+                           are scaled based on deviation from reference supply temp.
+                           Lower temps than reference → higher gains needed.
 
     Returns:
         Tuple of (Kp, Ki, Kd) PID parameters.
@@ -238,7 +265,7 @@ def calculate_initial_pid(
     Notes:
         - Reference points calibrated from real-world systems across tau range
         - Continuous scaling allows interpolation between reference points
-        - Power scaling accounts for undersized/oversized heating systems
+        - Power and supply temp scaling account for undersized/low-temp systems
         - v0.7.1: Hybrid model with improved tau scaling formulas
     """
     # Multi-point reference building profiles (v0.7.1)
@@ -319,13 +346,15 @@ def calculate_initial_pid(
         Ki = ki_lower + alpha * (ki_upper - ki_lower)
         Kd = kd_lower + alpha * (kd_upper - kd_lower)
 
-    # Apply power scaling if heater power configured
-    # Undersized systems need higher gains, oversized need lower gains
-    power_factor = calculate_power_scaling_factor(heating_type, area_m2, max_power_w)
-    Kp *= power_factor
-    Ki *= power_factor
+    # Apply power and supply temperature scaling if configured
+    # Undersized systems or low supply temps need higher gains
+    scaling_factor = calculate_power_scaling_factor(
+        heating_type, area_m2, max_power_w, supply_temperature
+    )
+    Kp *= scaling_factor
+    Ki *= scaling_factor
     # Note: Kd is NOT scaled - derivative term responds to rate of change,
-    # not absolute heating capacity
+    # not absolute heating capacity or supply temperature
 
     return (round(Kp, 4), round(Ki, 5), round(Kd, 2))
 

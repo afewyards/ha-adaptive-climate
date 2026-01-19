@@ -298,6 +298,8 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         'contact_delay': config.get(const.CONF_CONTACT_DELAY),
         'night_setback_config': config.get(const.CONF_NIGHT_SETBACK),
         'floor_construction': config.get(const.CONF_FLOOR_CONSTRUCTION),
+        'max_power_w': config.get(const.CONF_MAX_POWER_W),
+        'supply_temperature': hass.data.get(DOMAIN, {}).get("supply_temperature"),
     }
 
     thermostat = AdaptiveThermostat(**parameters)
@@ -457,6 +459,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         self._heating_type = kwargs.get('heating_type', 'floor_hydronic')
         self._area_m2 = kwargs.get('area_m2')
         self._max_power_w = kwargs.get('max_power_w')
+        self._supply_temperature = kwargs.get('supply_temperature')
         self._ceiling_height = kwargs.get('ceiling_height', 2.5)
         self._window_area_m2 = kwargs.get('window_area_m2')
         self._window_rating = kwargs.get('window_rating', 'hr++')
@@ -598,16 +601,17 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                 heating_type=self._heating_type,
             )
             self._kp, self._ki, self._kd = calculate_initial_pid(
-                self._thermal_time_constant, self._heating_type, self._area_m2, self._max_power_w
+                self._thermal_time_constant, self._heating_type, self._area_m2, self._max_power_w, self._supply_temperature
             )
             # Calculate outdoor temperature lag time constant: tau_lag = 2 * tau_building
             # This models the thermal inertia of the building envelope
             self._outdoor_temp_lag_tau = 2.0 * self._thermal_time_constant
 
-            # Log power scaling info if configured
+            # Log power and supply temp scaling info if configured
             power_info = f", power={self._max_power_w}W" if self._max_power_w else ""
-            _LOGGER.info("%s: Physics-based PID init (tau=%.2f, type=%s, window=%s%s): Kp=%.4f, Ki=%.5f, Kd=%.3f, outdoor_lag_tau=%.2f",
-                         self.unique_id, self._thermal_time_constant, self._heating_type, self._window_rating, power_info, self._kp, self._ki, self._kd, self._outdoor_temp_lag_tau)
+            supply_info = f", supply={self._supply_temperature}°C" if self._supply_temperature else ""
+            _LOGGER.info("%s: Physics-based PID init (tau=%.2f, type=%s, window=%s%s%s): Kp=%.4f, Ki=%.5f, Kd=%.3f, outdoor_lag_tau=%.2f",
+                         self.unique_id, self._thermal_time_constant, self._heating_type, self._window_rating, power_info, supply_info, self._kp, self._ki, self._kd, self._outdoor_temp_lag_tau)
         else:
             # Fallback defaults if no zone properties
             self._thermal_time_constant = None
@@ -818,6 +822,8 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
             get_hass=lambda: self.hass,
             get_zone_id=lambda: self._zone_id,
             get_floor_construction=lambda: self._floor_construction,
+            get_supply_temperature=lambda: self._supply_temperature,
+            get_max_power_w=lambda: self._max_power_w,
             async_control_heating=self._async_control_heating_internal,
             async_write_ha_state=self._async_write_ha_state_internal,
         )

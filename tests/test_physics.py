@@ -2136,3 +2136,195 @@ class TestFloorHydronicIntegration:
         assert kp_tile < kp_carpet
         assert ki_tile < ki_carpet
         assert kd_tile > kd_carpet
+
+
+class TestSupplyTemperatureScaling:
+    """Tests for supply temperature scaling functionality."""
+
+    def test_supply_temp_scaling_low_temp_floor_heating(self):
+        """Test supply temp scaling for low-temp floor heating (35°C vs 45°C ref)."""
+        # floor_hydronic reference is 45°C
+        # With 35°C supply: temp_factor = (45-20) / (35-20) = 25 / 15 = 1.67
+        heating_type = "floor_hydronic"
+        area_m2 = 50.0
+
+        scaling = calculate_power_scaling_factor(
+            heating_type, area_m2, max_power_w=None, supply_temperature=35.0
+        )
+
+        assert scaling == pytest.approx(1.67, abs=0.02)
+
+    def test_supply_temp_scaling_low_temp_radiator(self):
+        """Test supply temp scaling for low-temp radiator (55°C vs 70°C ref)."""
+        # radiator reference is 70°C
+        # With 55°C supply: temp_factor = (70-20) / (55-20) = 50 / 35 = 1.43
+        heating_type = "radiator"
+        area_m2 = 30.0
+
+        scaling = calculate_power_scaling_factor(
+            heating_type, area_m2, max_power_w=None, supply_temperature=55.0
+        )
+
+        assert scaling == pytest.approx(1.43, abs=0.02)
+
+    def test_supply_temp_scaling_none_returns_1(self):
+        """Test supply temp scaling returns 1.0 when no supply temp configured."""
+        heating_type = "floor_hydronic"
+        area_m2 = 50.0
+
+        scaling = calculate_power_scaling_factor(
+            heating_type, area_m2, max_power_w=None, supply_temperature=None
+        )
+
+        assert scaling == pytest.approx(1.0, abs=0.01)
+
+    def test_supply_temp_scaling_reference_temp_returns_1(self):
+        """Test supply temp scaling returns 1.0 when supply equals reference."""
+        # floor_hydronic reference is 45°C
+        heating_type = "floor_hydronic"
+        area_m2 = 50.0
+
+        scaling = calculate_power_scaling_factor(
+            heating_type, area_m2, max_power_w=None, supply_temperature=45.0
+        )
+
+        assert scaling == pytest.approx(1.0, abs=0.01)
+
+    def test_supply_temp_scaling_high_temp_returns_less_than_1(self):
+        """Test supply temp scaling for high-temp system (80°C vs 70°C ref radiator)."""
+        # radiator reference is 70°C
+        # With 80°C supply: temp_factor = (70-20) / (80-20) = 50 / 60 = 0.83
+        heating_type = "radiator"
+        area_m2 = 30.0
+
+        scaling = calculate_power_scaling_factor(
+            heating_type, area_m2, max_power_w=None, supply_temperature=80.0
+        )
+
+        assert scaling == pytest.approx(0.83, abs=0.02)
+
+    def test_supply_temp_scaling_clamped_min(self):
+        """Test supply temp scaling clamps to 0.5x minimum."""
+        # radiator reference is 70°C
+        # With very high supply 150°C: unclamped = (70-20) / (150-20) = 50 / 130 = 0.38
+        # But supply temp delta is clamped to 60°C max: actual_delta_t = 60°C
+        # So: temp_factor = 50 / 60 = 0.83, which is > 0.5 so no clamping needed
+        # Let's test with a scenario that would exceed bounds
+        # Actually supply temps > 80 are typically clamped in validation, let's test
+        # the temp_factor clamping itself with supply = 150°C
+        # actual_delta_t = min(60, 150-20) = 60
+        # temp_factor = 50 / 60 = 0.83, still above 0.5
+        # The 0.5 clamp would apply if ref_delta_t / actual_delta_t < 0.5
+        # For radiator (ref=70): 50 / actual < 0.5 means actual > 100
+        # But actual_delta is clamped to 60, so min temp_factor = 50/60 = 0.83
+        # So we can't easily hit the 0.5 clamp with radiator
+        # Let's use floor_hydronic (ref=45): 25 / actual < 0.5 means actual > 50
+        # With supply=80: actual_delta = 60 (clamped), temp_factor = 25/60 = 0.42
+        # This gets clamped to 0.5
+        heating_type = "floor_hydronic"
+        area_m2 = 50.0
+
+        scaling = calculate_power_scaling_factor(
+            heating_type, area_m2, max_power_w=None, supply_temperature=80.0
+        )
+
+        assert scaling == pytest.approx(0.5, abs=0.02)
+
+    def test_supply_temp_scaling_clamped_max(self):
+        """Test supply temp scaling clamps to 2.0x maximum."""
+        # floor_hydronic reference is 45°C
+        # With supply 25°C: temp_factor = (45-20) / (25-20) = 25 / 5 = 5.0
+        # Clamped to 2.0x
+        heating_type = "floor_hydronic"
+        area_m2 = 50.0
+
+        scaling = calculate_power_scaling_factor(
+            heating_type, area_m2, max_power_w=None, supply_temperature=25.0
+        )
+
+        assert scaling == pytest.approx(2.0, abs=0.01)
+
+    def test_supply_temp_combined_with_power_scaling(self):
+        """Test combined power and supply temp scaling."""
+        # floor_hydronic: baseline 20 W/m², reference 45°C
+        # 500W on 50m² = 10 W/m² → power_factor = 20/10 = 2.0
+        # 35°C supply → temp_factor = 25/15 = 1.67
+        # combined = 2.0 * 1.67 = 3.33
+        heating_type = "floor_hydronic"
+        area_m2 = 50.0
+        max_power_w = 500.0
+        supply_temperature = 35.0
+
+        scaling = calculate_power_scaling_factor(
+            heating_type, area_m2, max_power_w, supply_temperature
+        )
+
+        assert scaling == pytest.approx(3.33, abs=0.05)
+
+    def test_supply_temp_combined_clamped_max(self):
+        """Test combined scaling clamps to 4.0x maximum."""
+        # floor_hydronic: baseline 20 W/m², reference 45°C
+        # 200W on 50m² = 4 W/m² → power_factor = 20/4 = 5.0
+        # 25°C supply → temp_factor = 2.0 (clamped)
+        # combined = 5.0 * 2.0 = 10.0, clamped to 4.0
+        heating_type = "floor_hydronic"
+        area_m2 = 50.0
+        max_power_w = 200.0
+        supply_temperature = 25.0
+
+        scaling = calculate_power_scaling_factor(
+            heating_type, area_m2, max_power_w, supply_temperature
+        )
+
+        assert scaling == pytest.approx(4.0, abs=0.01)
+
+    def test_supply_temp_applied_to_pid_gains(self):
+        """Test that supply temp scaling is correctly applied to Kp and Ki (not Kd)."""
+        tau = 4.0
+        heating_type = "floor_hydronic"
+        area_m2 = 50.0
+
+        # Calculate baseline PID (no supply temp scaling)
+        kp_baseline, ki_baseline, kd_baseline = calculate_initial_pid(
+            tau, heating_type, area_m2=None, max_power_w=None, supply_temperature=None
+        )
+
+        # Calculate with low supply temp (35°C vs 45°C ref = 1.67x scaling)
+        kp_scaled, ki_scaled, kd_scaled = calculate_initial_pid(
+            tau, heating_type, area_m2=area_m2, max_power_w=None, supply_temperature=35.0
+        )
+
+        # Kp and Ki should be multiplied by temp_factor (~1.67)
+        assert kp_scaled == pytest.approx(kp_baseline * 1.67, abs=0.02)
+        assert ki_scaled == pytest.approx(ki_baseline * 1.67, abs=0.01)
+        # Kd should remain unchanged (not scaled)
+        assert kd_scaled == pytest.approx(kd_baseline, abs=0.01)
+
+    def test_different_heating_types_reference_temps(self):
+        """Test that each heating type uses its own reference supply temp."""
+        area_m2 = 50.0
+        supply_temp = 45.0  # Same supply temp for all
+
+        # floor_hydronic: ref=45°C → temp_factor = 25/25 = 1.0
+        scaling_floor = calculate_power_scaling_factor(
+            "floor_hydronic", area_m2, max_power_w=None, supply_temperature=supply_temp
+        )
+        assert scaling_floor == pytest.approx(1.0, abs=0.01)
+
+        # radiator: ref=70°C → temp_factor = 50/25 = 2.0
+        scaling_radiator = calculate_power_scaling_factor(
+            "radiator", area_m2, max_power_w=None, supply_temperature=supply_temp
+        )
+        assert scaling_radiator == pytest.approx(2.0, abs=0.01)
+
+        # convector: ref=55°C → temp_factor = 35/25 = 1.4
+        scaling_convector = calculate_power_scaling_factor(
+            "convector", area_m2, max_power_w=None, supply_temperature=supply_temp
+        )
+        assert scaling_convector == pytest.approx(1.4, abs=0.02)
+
+        # forced_air: ref=45°C → temp_factor = 25/25 = 1.0
+        scaling_forced = calculate_power_scaling_factor(
+            "forced_air", area_m2, max_power_w=None, supply_temperature=supply_temp
+        )
+        assert scaling_forced == pytest.approx(1.0, abs=0.01)

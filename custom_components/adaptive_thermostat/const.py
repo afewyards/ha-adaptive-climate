@@ -91,6 +91,7 @@ HEATING_TYPE_CHARACTERISTICS = {
         "pwm_period": 900,        # 15 minutes
         "derivative_filter_alpha": 0.05,  # Heavy filtering - high thermal mass reduces noise sensitivity
         "baseline_power_w_m2": 20,  # Baseline power density for process gain scaling (W/m²)
+        "reference_supply_temp": 45.0,  # Reference supply temp for PID scaling (°C) - typical floor heating
         "description": "Floor heating with water - high thermal mass, slow response",
     },
     HEATING_TYPE_RADIATOR: {
@@ -98,6 +99,7 @@ HEATING_TYPE_CHARACTERISTICS = {
         "pwm_period": 600,        # 10 minutes
         "derivative_filter_alpha": 0.10,  # Moderate filtering
         "baseline_power_w_m2": 50,  # Baseline power density for process gain scaling (W/m²)
+        "reference_supply_temp": 70.0,  # Reference supply temp for PID scaling (°C) - traditional radiator
         "description": "Traditional radiators - moderate thermal mass",
     },
     HEATING_TYPE_CONVECTOR: {
@@ -105,6 +107,7 @@ HEATING_TYPE_CHARACTERISTICS = {
         "pwm_period": 300,        # 5 minutes
         "derivative_filter_alpha": 0.15,  # Light filtering - default balance
         "baseline_power_w_m2": 60,  # Baseline power density for process gain scaling (W/m²)
+        "reference_supply_temp": 55.0,  # Reference supply temp for PID scaling (°C)
         "description": "Convection heaters - low thermal mass, faster response",
     },
     HEATING_TYPE_FORCED_AIR: {
@@ -112,6 +115,7 @@ HEATING_TYPE_CHARACTERISTICS = {
         "pwm_period": 180,        # 3 minutes
         "derivative_filter_alpha": 0.25,  # Minimal filtering - fast response needed
         "baseline_power_w_m2": 80,  # Baseline power density for process gain scaling (W/m²)
+        "reference_supply_temp": 45.0,  # Reference supply temp for PID scaling (°C) - heat pump typical
         "description": "Forced air heating - very low thermal mass, fast response",
     },
 }
@@ -341,6 +345,11 @@ CONF_VOLUME_METER_ENTITY = "volume_meter_entity"
 CONF_FALLBACK_FLOW_RATE = "fallback_flow_rate"
 CONF_ENERGY_METER_ENTITY = "energy_meter_entity"
 CONF_ENERGY_COST_ENTITY = "energy_cost_entity"
+CONF_SUPPLY_TEMPERATURE = "supply_temperature"
+
+# Supply temperature validation bounds
+SUPPLY_TEMP_MIN = 25.0
+SUPPLY_TEMP_MAX = 80.0
 
 # Per-zone configuration
 CONF_AREA_M2 = "area_m2"

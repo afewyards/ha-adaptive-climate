@@ -34,6 +34,9 @@ from .const import (
     CONF_PERSISTENT_NOTIFICATION,
     CONF_ENERGY_METER_ENTITY,
     CONF_ENERGY_COST_ENTITY,
+    CONF_SUPPLY_TEMPERATURE,
+    SUPPLY_TEMP_MIN,
+    SUPPLY_TEMP_MAX,
     CONF_MAIN_HEATER_SWITCH,
     CONF_MAIN_COOLER_SWITCH,
     CONF_SOURCE_STARTUP_DELAY,
@@ -146,6 +149,16 @@ if HAS_HOMEASSISTANT:
                 # Energy tracking
                 vol.Optional(CONF_ENERGY_METER_ENTITY): cv.entity_id,
                 vol.Optional(CONF_ENERGY_COST_ENTITY): cv.entity_id,
+
+                # Supply temperature for physics-based PID scaling
+                vol.Optional(CONF_SUPPLY_TEMPERATURE): vol.All(
+                    vol.Coerce(float),
+                    vol.Range(
+                        min=SUPPLY_TEMP_MIN,
+                        max=SUPPLY_TEMP_MAX,
+                        msg=f"supply_temperature must be between {SUPPLY_TEMP_MIN} and {SUPPLY_TEMP_MAX}°C"
+                    )
+                ),
 
                 # Central heat source control
                 vol.Optional(CONF_MAIN_HEATER_SWITCH): cv.entity_ids,
@@ -390,6 +403,12 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     hass.data[DOMAIN]["debug"] = domain_config.get(CONF_DEBUG, DEFAULT_DEBUG)
     hass.data[DOMAIN]["energy_meter_entity"] = energy_meter
     hass.data[DOMAIN]["energy_cost_entity"] = energy_cost
+
+    # Supply temperature for physics-based PID scaling
+    supply_temperature = domain_config.get(CONF_SUPPLY_TEMPERATURE)
+    hass.data[DOMAIN]["supply_temperature"] = supply_temperature
+    if supply_temperature:
+        _LOGGER.info("Supply temperature configured: %.1f°C", supply_temperature)
 
     # Central heat source control
     main_heater_switch = domain_config.get(CONF_MAIN_HEATER_SWITCH)

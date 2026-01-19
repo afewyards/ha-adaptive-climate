@@ -142,12 +142,42 @@ flowchart TD
 
 ### Heating Types
 
-| Type | Description | PID Modifier | PWM Period |
-|------|-------------|--------------|------------|
-| `floor_hydronic` | Underfloor water | 0.5x (conservative) | 15 min |
-| `radiator` | Traditional radiators | 0.7x | 10 min |
-| `convector` | Convection heaters | 1.0x (baseline) | 5 min |
-| `forced_air` | Forced air / HVAC | 1.3x (aggressive) | 3 min |
+| Type | Description | PID Modifier | PWM Period | Reference Supply Temp |
+|------|-------------|--------------|------------|----------------------|
+| `floor_hydronic` | Underfloor water | 0.5x (conservative) | 15 min | 45°C |
+| `radiator` | Traditional radiators | 0.7x | 10 min | 70°C |
+| `convector` | Convection heaters | 1.0x (baseline) | 5 min | 55°C |
+| `forced_air` | Forced air / HVAC | 1.3x (aggressive) | 3 min | 45°C |
+
+### Supply Temperature Scaling
+
+Optional domain-level configuration to adjust physics-based PID initialization for systems with non-standard supply temperatures (e.g., low-temperature floor heating with heat pumps).
+
+**How it works:**
+- Lower supply temperature → less heat transfer per degree → higher PID gains needed
+- Scaling formula: `temp_factor = reference_ΔT / actual_ΔT` where `ΔT = supply_temp - 20°C`
+- Combined with power scaling for total adjustment factor
+
+**Configuration:**
+
+```yaml
+adaptive_thermostat:
+  supply_temperature: 35  # Low-temp floor heating with heat pump
+```
+
+**Scaling Examples:**
+
+| Heating Type | Reference | Actual Supply | Scaling Factor |
+|--------------|-----------|---------------|----------------|
+| `floor_hydronic` | 45°C | 35°C | 1.67x (25/15) |
+| `floor_hydronic` | 45°C | 45°C | 1.0x (no change) |
+| `radiator` | 70°C | 55°C | 1.43x (50/35) |
+| `radiator` | 70°C | 80°C | 0.83x (50/60) |
+
+**Validation:**
+- Range: 25°C - 80°C
+- Temp factor clamped to 0.5x - 2.0x for safety
+- Combined power+temp scaling clamped to 0.25x - 4.0x
 
 ### Floor Construction
 
