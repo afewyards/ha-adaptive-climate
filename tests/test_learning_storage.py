@@ -565,3 +565,78 @@ async def test_learning_store_concurrent_saves(mock_hass):
 
         # async_save should have been called twice (once per zone save)
         assert mock_store_instance.async_save.call_count == 2
+
+
+def test_update_zone_data_new_zone(mock_hass):
+    """Test update_zone_data creates zone if doesn't exist."""
+    store = LearningDataStore(mock_hass)
+
+    # Verify zone doesn't exist yet
+    assert "new_zone" not in store._data["zones"]
+
+    # Update zone data
+    adaptive_data = {"cycle_history": [{"overshoot": 0.3}]}
+    store.update_zone_data("new_zone", adaptive_data=adaptive_data)
+
+    # Verify zone was created
+    assert "new_zone" in store._data["zones"]
+    assert store._data["zones"]["new_zone"]["adaptive_learner"] == adaptive_data
+    assert "last_updated" in store._data["zones"]["new_zone"]
+
+
+def test_update_zone_data_existing_zone(mock_hass):
+    """Test update_zone_data updates existing zone."""
+    store = LearningDataStore(mock_hass)
+
+    # Create initial zone data
+    store._data["zones"]["existing_zone"] = {
+        "adaptive_learner": {"cycle_history": []},
+        "ke_learner": {"current_ke": 0.3},
+    }
+
+    # Update only adaptive data
+    new_adaptive_data = {"cycle_history": [{"overshoot": 0.5}]}
+    store.update_zone_data("existing_zone", adaptive_data=new_adaptive_data)
+
+    # Verify adaptive data was updated but ke_learner preserved
+    assert store._data["zones"]["existing_zone"]["adaptive_learner"] == new_adaptive_data
+    assert store._data["zones"]["existing_zone"]["ke_learner"]["current_ke"] == 0.3
+
+
+def test_update_zone_data_does_not_trigger_save(mock_hass):
+    """Test update_zone_data does not trigger disk save."""
+    # Create mock Store class
+    mock_store_class = Mock()
+    mock_store_instance = Mock()
+    mock_store_instance.async_save = Mock()
+    mock_store_instance.async_delay_save = Mock()
+    mock_store_class.return_value = mock_store_instance
+
+    with patch.dict('sys.modules', {'homeassistant.helpers.storage': Mock(Store=mock_store_class)}):
+        store = LearningDataStore(mock_hass)
+        store._store = mock_store_instance  # Simulate initialized store
+
+        # Update zone data
+        store.update_zone_data("test_zone", adaptive_data={"cycle_history": []})
+
+        # Verify no save methods were called
+        mock_store_instance.async_save.assert_not_called()
+        mock_store_instance.async_delay_save.assert_not_called()
+
+
+def test_update_zone_data_with_ke_data(mock_hass):
+    """Test update_zone_data can update ke_data."""
+    store = LearningDataStore(mock_hass)
+
+    adaptive_data = {"cycle_history": []}
+    ke_data = {"current_ke": 0.5, "observations": []}
+
+    store.update_zone_data(
+        zone_id="test_zone",
+        adaptive_data=adaptive_data,
+        ke_data=ke_data,
+    )
+
+    # Verify both were updated
+    assert store._data["zones"]["test_zone"]["adaptive_learner"] == adaptive_data
+    assert store._data["zones"]["test_zone"]["ke_learner"] == ke_data

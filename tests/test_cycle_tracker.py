@@ -1412,3 +1412,169 @@ class TestCycleTrackerRestoration:
         assert cycle_tracker.temperature_history[0] == (datetime(2025, 1, 14, 10, 0, 30), 18.5)
         assert cycle_tracker.temperature_history[1] == (datetime(2025, 1, 14, 10, 1, 0), 19.0)
         assert cycle_tracker.temperature_history[2] == (datetime(2025, 1, 14, 10, 1, 30), 19.5)
+
+
+class TestCycleTrackerFinalizeSave:
+    """Tests for cycle finalization save functionality."""
+
+    @pytest.mark.asyncio
+    async def test_finalize_cycle_schedules_save(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks
+    ):
+        """Test that finalize_cycle calls schedule_zone_save after adding metrics."""
+        # Create mock learning store
+        mock_learning_store = MagicMock()
+        mock_learning_store.update_zone_data = MagicMock()
+        mock_learning_store.schedule_zone_save = MagicMock()
+
+        # Setup hass.data with DOMAIN and learning_store
+        mock_hass.data = {
+            "adaptive_thermostat": {
+                "learning_store": mock_learning_store,
+            }
+        }
+
+        # Setup adaptive_learner to return dict
+        mock_adaptive_learner.to_dict = MagicMock(return_value={
+            "cycle_history": [],
+            "last_adjustment_time": None,
+            "consecutive_converged_cycles": 0,
+            "pid_converged_for_ke": False,
+            "auto_apply_count": 0,
+        })
+        mock_adaptive_learner.is_in_validation_mode = MagicMock(return_value=False)
+        mock_adaptive_learner.update_convergence_confidence = MagicMock()
+
+        # Create cycle tracker
+        cycle_tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            **mock_callbacks,
+        )
+        cycle_tracker.set_restoration_complete()
+
+        # Set target temperature
+        mock_callbacks["get_target_temp"].return_value = 20.0
+
+        # Start cycle 6 minutes ago (> 5 min minimum duration)
+        start_time = datetime(2025, 1, 14, 10, 0, 0)
+        cycle_tracker.on_heating_started(start_time)
+
+        # Add temperature samples during heating
+        for i in range(6):
+            await cycle_tracker.update_temperature(
+                datetime(2025, 1, 14, 10, i, 0), 18.0 + i * 0.4
+            )
+
+        # Finalize cycle
+        await cycle_tracker._finalize_cycle()
+
+        # Verify metrics were recorded
+        mock_adaptive_learner.add_cycle_metrics.assert_called_once()
+
+        # Verify schedule_zone_save was called
+        mock_learning_store.schedule_zone_save.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_finalize_cycle_passes_adaptive_data(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks
+    ):
+        """Test that finalize_cycle passes adaptive_learner.to_dict() to save."""
+        # Create mock learning store
+        mock_learning_store = MagicMock()
+        mock_learning_store.update_zone_data = MagicMock()
+        mock_learning_store.schedule_zone_save = MagicMock()
+
+        # Setup hass.data with DOMAIN and learning_store
+        mock_hass.data = {
+            "adaptive_thermostat": {
+                "learning_store": mock_learning_store,
+            }
+        }
+
+        # Setup adaptive_learner to return specific dict
+        expected_adaptive_data = {
+            "cycle_history": [{"overshoot": 0.5, "undershoot": 0.1}],
+            "last_adjustment_time": "2025-01-14T10:00:00",
+            "consecutive_converged_cycles": 3,
+            "pid_converged_for_ke": True,
+            "auto_apply_count": 1,
+        }
+        mock_adaptive_learner.to_dict = MagicMock(return_value=expected_adaptive_data)
+        mock_adaptive_learner.is_in_validation_mode = MagicMock(return_value=False)
+        mock_adaptive_learner.update_convergence_confidence = MagicMock()
+
+        # Create cycle tracker
+        cycle_tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            **mock_callbacks,
+        )
+        cycle_tracker.set_restoration_complete()
+
+        # Set target temperature
+        mock_callbacks["get_target_temp"].return_value = 20.0
+
+        # Start cycle
+        start_time = datetime(2025, 1, 14, 10, 0, 0)
+        cycle_tracker.on_heating_started(start_time)
+
+        # Add temperature samples
+        for i in range(6):
+            await cycle_tracker.update_temperature(
+                datetime(2025, 1, 14, 10, i, 0), 18.0 + i * 0.4
+            )
+
+        # Finalize cycle
+        await cycle_tracker._finalize_cycle()
+
+        # Verify update_zone_data was called with the correct adaptive data
+        mock_learning_store.update_zone_data.assert_called_once_with(
+            zone_id="test_zone",
+            adaptive_data=expected_adaptive_data,
+        )
+
+    @pytest.mark.asyncio
+    async def test_finalize_cycle_no_store_gracefully_skips(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks
+    ):
+        """Test that finalize_cycle gracefully handles missing learning store."""
+        # Setup hass.data WITHOUT learning_store
+        mock_hass.data = {}
+
+        mock_adaptive_learner.to_dict = MagicMock(return_value={})
+        mock_adaptive_learner.is_in_validation_mode = MagicMock(return_value=False)
+        mock_adaptive_learner.update_convergence_confidence = MagicMock()
+
+        # Create cycle tracker
+        cycle_tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            **mock_callbacks,
+        )
+        cycle_tracker.set_restoration_complete()
+
+        # Set target temperature
+        mock_callbacks["get_target_temp"].return_value = 20.0
+
+        # Start cycle
+        start_time = datetime(2025, 1, 14, 10, 0, 0)
+        cycle_tracker.on_heating_started(start_time)
+
+        # Add temperature samples
+        for i in range(6):
+            await cycle_tracker.update_temperature(
+                datetime(2025, 1, 14, 10, i, 0), 18.0 + i * 0.4
+            )
+
+        # Finalize cycle should not raise exception
+        await cycle_tracker._finalize_cycle()
+
+        # Verify metrics were still recorded
+        mock_adaptive_learner.add_cycle_metrics.assert_called_once()
+
+        # Verify state is IDLE
+        assert cycle_tracker.state == CycleState.IDLE

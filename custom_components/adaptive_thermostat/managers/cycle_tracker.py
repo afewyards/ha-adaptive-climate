@@ -407,6 +407,36 @@ class CycleTrackerManager:
             self._settling_timeout_handle()
             self._settling_timeout_handle = None
 
+    def _schedule_learning_save(self) -> None:
+        """Schedule a debounced save of learning data to storage.
+
+        Gets the learning store from hass.data and triggers a delayed save
+        with the current adaptive learner data. This ensures cycle metrics
+        are persisted after finalization without blocking on disk I/O.
+        """
+        from ..const import DOMAIN
+
+        # Get learning store from hass.data
+        learning_store = self._hass.data.get(DOMAIN, {}).get("learning_store")
+        if learning_store is None:
+            self._logger.debug("No learning store available, skipping save")
+            return
+
+        # Update zone data in memory with current adaptive learner state
+        adaptive_data = self._adaptive_learner.to_dict()
+        learning_store.update_zone_data(
+            zone_id=self._zone_id,
+            adaptive_data=adaptive_data,
+        )
+
+        # Schedule debounced save (30s delay)
+        learning_store.schedule_zone_save()
+
+        self._logger.debug(
+            "Scheduled learning data save for zone %s after cycle finalization",
+            self._zone_id,
+        )
+
     def _calculate_mad(self, values: list[float]) -> float:
         """Calculate Median Absolute Deviation (MAD) for robust variability measure.
 
@@ -756,6 +786,9 @@ class CycleTrackerManager:
         # Trigger auto-apply check if callback configured (and not in validation mode)
         if self._on_auto_apply_check is not None and not self._adaptive_learner.is_in_validation_mode():
             self._hass.async_create_task(self._on_auto_apply_check())
+
+        # Schedule debounced save of learning data
+        self._schedule_learning_save()
 
         # Reset cycle state (clears interruption flags and transitions to IDLE)
         self._reset_cycle_state()

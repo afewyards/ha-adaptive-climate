@@ -197,6 +197,45 @@ class LearningDataStore:
 
         _LOGGER.debug(f"Scheduled zone save with {SAVE_DELAY_SECONDS}s delay")
 
+    def update_zone_data(
+        self,
+        zone_id: str,
+        adaptive_data: Optional[Dict[str, Any]] = None,
+        ke_data: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """
+        Update zone data in memory without triggering immediate save.
+
+        This method updates the internal data structure but does not persist
+        to disk. Call schedule_zone_save() after to trigger a debounced save.
+
+        Args:
+            zone_id: Zone identifier
+            adaptive_data: AdaptiveLearner data dictionary (optional)
+            ke_data: KeLearner data dictionary (optional)
+        """
+        # Ensure zone exists in data structure
+        if zone_id not in self._data["zones"]:
+            self._data["zones"][zone_id] = {}
+
+        zone_data = self._data["zones"][zone_id]
+
+        # Update adaptive learner data
+        if adaptive_data is not None:
+            zone_data["adaptive_learner"] = adaptive_data
+
+        # Update Ke learner data
+        if ke_data is not None:
+            zone_data["ke_learner"] = ke_data
+
+        # Update timestamp
+        zone_data["last_updated"] = datetime.now().isoformat()
+
+        _LOGGER.debug(
+            f"Updated zone data for '{zone_id}' in memory: "
+            f"adaptive={adaptive_data is not None}, ke={ke_data is not None}"
+        )
+
     def save(
         self,
         thermal_learner: Optional["ThermalRateLearner"] = None,
