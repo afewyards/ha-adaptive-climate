@@ -82,6 +82,7 @@ class PID:
         self._proportional = 0
         self._derivative = 0
         self._external = 0
+        self._feedforward = 0.0
         self._mode = 'AUTO'
         self._sampling_period = sampling_period
         self._cold_tolerance = cold_tolerance
@@ -153,6 +154,22 @@ class PID:
         return self._external
 
     @property
+    def feedforward(self):
+        """Get the current feedforward term value."""
+        return self._feedforward
+
+    def set_feedforward(self, ff):
+        """Set the feedforward term for thermal coupling compensation.
+
+        The feedforward term is subtracted from the PID output to reduce
+        heating demand when neighboring zones are providing thermal coupling.
+
+        Args:
+            ff: Feedforward value in % (0-100). Positive values reduce output.
+        """
+        self._feedforward = ff
+
+    @property
     def dt(self):
         return self._dt
 
@@ -203,13 +220,13 @@ class PID:
             return
 
         # Calculate required integral to match last output
-        # Output = P + I + D + E, so I = Output - P - E (D=0 on first calc after OFF)
-        required_integral = self._last_output_before_off - self._proportional - self._external
+        # Output = P + I + D + E - F, so I = Output - P - E + F (D=0 on first calc after OFF)
+        required_integral = self._last_output_before_off - self._proportional - self._external + self._feedforward
 
-        # Clamp to valid range accounting for external term
+        # Clamp to valid range accounting for external and feedforward terms
         required_integral = max(
-            min(required_integral, self._out_max - self._external),
-            self._out_min - self._external
+            min(required_integral, self._out_max - self._external - self._feedforward),
+            self._out_min - self._external - self._feedforward
         )
 
         self._integral = required_integral
@@ -371,11 +388,17 @@ class PID:
                 # Ki has units of %/(°C·hour), so dt must be in hours
                 dt_hours = self._dt / 3600.0
                 self._integral += self._Ki * self._error * dt_hours
-                # Integral clamping accounts for external term to ensure total output respects bounds
-                # Formula: I_max = out_max - E, I_min = out_min - E
-                # This ensures P + I + D + E stays within [out_min, out_max]
-                # After v0.7.0 Ke reduction (100x), E typically <1%, leaving >99% headroom for integral
-                self._integral = max(min(self._integral, self._out_max - self._external), self._out_min - self._external)
+
+            # Integral clamping accounts for external and feedforward terms to ensure total output respects bounds
+            # Formula: I_max = out_max - E - F, I_min = out_min - E - F
+            # This ensures P + I + D + E - F stays within [out_min, out_max]
+            # After v0.7.0 Ke reduction (100x), E typically <1%, leaving >99% headroom for integral
+            # Feedforward (F) reduces available headroom when thermal coupling is active
+            # Note: Clamping always runs (not just when accumulating) to handle feedforward changes
+            self._integral = max(
+                min(self._integral, self._out_max - self._external - self._feedforward),
+                self._out_min - self._external - self._feedforward
+            )
 
             # Calculate derivative
             # Convert dt to hours for dimensional correctness
@@ -408,6 +431,8 @@ class PID:
             self._derivative_filtered = 0.0
 
         # Compute PID Output
-        output = self._proportional + self._integral + self._derivative + self._external
+        # Formula: output = P + I + D + E - F
+        # Feedforward (F) is subtracted to reduce output when thermal coupling provides heat
+        output = self._proportional + self._integral + self._derivative + self._external - self._feedforward
         self._output = max(min(output, self._out_max), self._out_min)
         return self._output, True

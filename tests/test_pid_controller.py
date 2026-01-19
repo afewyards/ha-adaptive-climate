@@ -1569,5 +1569,138 @@ class TestPIDAntiWindupWindDown:
             f"Integral should wind down when error opposes saturation: {pid.integral} >= {initial_integral}"
 
 
+class TestPIDFeedforward:
+    """Test feedforward term for thermal coupling compensation."""
+
+    def test_pid_feedforward_init(self):
+        """Test feedforward defaults to 0 at initialization."""
+        pid = PID(kp=10, ki=1.0, kd=2, out_min=0, out_max=100)
+
+        # Feedforward should default to 0
+        assert pid._feedforward == 0.0
+        assert pid.feedforward == 0.0
+
+    def test_pid_set_feedforward(self):
+        """Test set_feedforward updates internal value."""
+        pid = PID(kp=10, ki=1.0, kd=2, out_min=0, out_max=100)
+
+        # Set feedforward to various values
+        pid.set_feedforward(5.0)
+        assert pid.feedforward == 5.0
+
+        pid.set_feedforward(15.5)
+        assert pid.feedforward == 15.5
+
+        pid.set_feedforward(0.0)
+        assert pid.feedforward == 0.0
+
+        # Negative feedforward (edge case)
+        pid.set_feedforward(-2.0)
+        assert pid.feedforward == -2.0
+
+    def test_pid_output_includes_feedforward(self):
+        """Test output = P + I + D + E - F (feedforward subtracts from output)."""
+        pid = PID(kp=10, ki=1.0, kd=0, ke=0, out_min=0, out_max=100)
+
+        # First call to establish baseline
+        pid.calc(input_val=20.0, set_point=22.0, input_time=0.0, last_input_time=None)
+
+        # Second call with dt >= MIN_DT_FOR_DERIVATIVE
+        output_no_ff, _ = pid.calc(input_val=20.0, set_point=22.0, input_time=60.0, last_input_time=0.0)
+        # Output is based on P + I + D + E (no feedforward yet)
+        # error = 2.0, Ki = 1.0, dt = 60s = 60/3600 hours
+        # P = 0 (P-on-M, no measurement change)
+        # I = 1.0 * 2.0 * (60/3600) = 0.0333...
+        # D = 0 (no change)
+        # E = 0 (no ext_temp)
+        # Output ≈ 0.0333...
+        assert 0.03 < output_no_ff < 0.04
+
+        # Now set feedforward to 10% - output should decrease by 10
+        pid.set_feedforward(10.0)
+
+        # Third call - feedforward should be subtracted
+        output_with_ff, _ = pid.calc(input_val=20.0, set_point=22.0, input_time=120.0, last_input_time=60.0)
+        # Additional I accumulation: 1.0 * 2.0 * (60/3600) = 0.0333...
+        # Total I ≈ 0.0667...
+        # Output = P + I + D + E - F = 0 + 0.0667 + 0 + 0 - 10 = -9.93
+        # Clamped to out_min = 0
+        assert output_with_ff == 0.0
+
+        # Test with larger integral to see feedforward effect
+        pid2 = PID(kp=10, ki=50.0, kd=0, ke=0, out_min=0, out_max=100)
+
+        # Build up integral
+        pid2.calc(input_val=18.0, set_point=20.0, input_time=0.0, last_input_time=None)
+        pid2.calc(input_val=18.0, set_point=20.0, input_time=3600.0, last_input_time=0.0)
+        # I = 50 * 2.0 * 1.0 = 100 (clamped to 100)
+        output_before_ff = pid2._output
+        assert output_before_ff == 100.0
+
+        # Set feedforward to reduce output
+        pid2.set_feedforward(30.0)
+        output_after_ff, _ = pid2.calc(input_val=18.0, set_point=20.0, input_time=7200.0, last_input_time=3600.0)
+
+        # Now: I clamped to (100 - 0 - 30) = 70 max
+        # Output = P + I + D + E - F = 0 + 70 + 0 + 0 - 30 = 40
+        # But integral was already 100, now clamped to 70
+        # After clamp: Output = 0 + 70 + 0 + 0 - 30 = 40
+        assert output_after_ff < output_before_ff
+        assert output_after_ff == pytest.approx(40.0, abs=1.0)
+
+    def test_pid_antiwindup_accounts_for_feedforward(self):
+        """Test integral clamping: I_max = out_max - E - F."""
+        pid = PID(kp=10, ki=100.0, kd=0, ke=0.005, out_min=0, out_max=100)
+
+        # Initialize with outdoor temp - use same input as second call to get P=0
+        pid.calc(input_val=15.0, set_point=20.0, input_time=0.0, last_input_time=None, ext_temp=5.0)
+        # E = 0.005 * (20 - 5) = 0.075
+
+        # Set feedforward
+        pid.set_feedforward(25.0)
+
+        # Build up integral over 1 hour with large error (5.0°C)
+        # Using same input_val=15.0 as first call so P=0 (no measurement change)
+        pid.calc(input_val=15.0, set_point=20.0, input_time=3600.0, last_input_time=0.0, ext_temp=5.0)
+
+        # I should accumulate: Ki * error * dt_hours = 100 * 5.0 * 1.0 = 500
+        # But clamped to: out_max - E - F = 100 - 0.075 - 25 = 74.925
+        assert pid.integral == pytest.approx(74.925, abs=0.1)
+
+        # Total output: P + I + D + E - F = 0 + 74.925 + 0 + 0.075 - 25 = 50
+        # P = 0 because input_val didn't change (P-on-M)
+        # Final clamp to [0, 100]
+        assert pid._output == pytest.approx(50.0, abs=0.5)
+
+    def test_feedforward_zero_default_behavior(self):
+        """Test that zero feedforward doesn't change existing PID behavior."""
+        pid_with_ff = PID(kp=10, ki=1.0, kd=2, ke=0.005, out_min=0, out_max=100)
+        pid_without_ff = PID(kp=10, ki=1.0, kd=2, ke=0.005, out_min=0, out_max=100)
+
+        # Run identical calculations
+        for i in range(5):
+            t = i * 60.0
+            last_t = t - 60.0 if i > 0 else None
+            out1, _ = pid_with_ff.calc(input_val=19.0 + i * 0.2, set_point=21.0,
+                                        input_time=t, last_input_time=last_t, ext_temp=10.0)
+            out2, _ = pid_without_ff.calc(input_val=19.0 + i * 0.2, set_point=21.0,
+                                           input_time=t, last_input_time=last_t, ext_temp=10.0)
+            # With feedforward = 0, behavior should be identical
+            assert out1 == out2
+            assert pid_with_ff.integral == pid_without_ff.integral
+            assert pid_with_ff.external == pid_without_ff.external
+
+    def test_feedforward_property_readonly(self):
+        """Test feedforward property is readable."""
+        pid = PID(kp=10, ki=1.0, kd=2, out_min=0, out_max=100)
+
+        # Read via property
+        assert pid.feedforward == 0.0
+
+        # Set via method
+        pid.set_feedforward(12.5)
+        assert pid.feedforward == 12.5
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
