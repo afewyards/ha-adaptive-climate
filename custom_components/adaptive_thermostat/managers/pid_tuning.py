@@ -201,6 +201,24 @@ class PIDTuningManager:
             self._get_ke(),
         )
 
+        # Record physics baseline and PID snapshot for auto-apply tracking
+        hass = self._get_hass()
+        coordinator = hass.data.get(DOMAIN, {}).get("coordinator")
+        if coordinator:
+            all_zones = coordinator.get_all_zones()
+            for zone_id, zone_data in all_zones.items():
+                if zone_data.get("climate_entity_id") == self._thermostat.entity_id:
+                    adaptive_learner = zone_data.get("adaptive_learner")
+                    if adaptive_learner:
+                        adaptive_learner.set_physics_baseline(kp, ki, kd)
+                        adaptive_learner.record_pid_snapshot(
+                            kp=kp,
+                            ki=ki,
+                            kd=kd,
+                            reason="physics_reset",
+                        )
+                    break
+
         power_info = f", power={max_power_w}W" if max_power_w else ""
         supply_info = f", supply={supply_temperature}°C" if supply_temperature else ""
         _LOGGER.info(
@@ -287,6 +305,24 @@ class PIDTuningManager:
             self._get_kd(),
             self._get_ke(),
         )
+
+        # Record PID snapshot and clear learning history for manual apply
+        hass = self._get_hass()
+        coordinator = hass.data.get(DOMAIN, {}).get("coordinator")
+        if coordinator:
+            all_zones = coordinator.get_all_zones()
+            for zone_id, zone_data in all_zones.items():
+                if zone_data.get("climate_entity_id") == self._thermostat.entity_id:
+                    learner = zone_data.get("adaptive_learner")
+                    if learner:
+                        learner.record_pid_snapshot(
+                            kp=recommendation["kp"],
+                            ki=recommendation["ki"],
+                            kd=recommendation["kd"],
+                            reason="manual_apply",
+                        )
+                        learner.clear_history()
+                    break
 
         _LOGGER.info(
             "%s: Applied adaptive PID: Kp=%.4f (was %.4f), Ki=%.5f (was %.5f), "
