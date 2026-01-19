@@ -25,6 +25,7 @@ from ..const import (
     SEASONAL_SHIFT_BLOCK_DAYS,
     get_convergence_thresholds,
     get_rule_thresholds,
+    get_auto_apply_thresholds,
 )
 
 # Import PID rule engine components
@@ -255,6 +256,8 @@ class AdaptiveLearner:
         min_interval_hours: int = MIN_ADJUSTMENT_INTERVAL,
         min_adjustment_cycles: int = MIN_ADJUSTMENT_CYCLES,
         pwm_seconds: float = 0,
+        check_auto_apply: bool = False,
+        outdoor_temp: Optional[float] = None,
     ) -> Optional[Dict[str, float]]:
         """
         Calculate PID adjustments based on observed cycle performance.
@@ -271,6 +274,13 @@ class AdaptiveLearner:
         Rate limiting prevents adjustments too frequently using hybrid gates
         (both time AND cycles must be satisfied).
 
+        When check_auto_apply is True, additional safety gates are enforced:
+        - Validation mode check (skip if in validation)
+        - Lifetime and seasonal auto-apply limits
+        - Cumulative drift from physics baseline limit
+        - Seasonal shift blocking
+        - Heating-type-specific confidence thresholds
+
         Args:
             current_kp: Current proportional gain
             current_ki: Current integral gain
@@ -279,11 +289,67 @@ class AdaptiveLearner:
             min_interval_hours: Minimum hours between adjustments (hybrid time gate)
             min_adjustment_cycles: Minimum cycles between adjustments (hybrid cycle gate)
             pwm_seconds: PWM period in seconds (0 for valve mode, >0 for PWM mode)
+            check_auto_apply: If True, enforce auto-apply safety gates and use
+                heating-type-specific thresholds
+            outdoor_temp: Current outdoor temperature for seasonal shift detection
 
         Returns:
             Dictionary with recommended kp, ki, kd values, or None if insufficient data,
-            system is converged, or rate limited
+            system is converged, rate limited, or blocked by auto-apply safety gates
         """
+        # Auto-apply safety gates (when called for automatic PID application)
+        if check_auto_apply:
+            # Check 1: Skip if in validation mode (validating previous auto-apply)
+            if self._validation_mode:
+                _LOGGER.debug(
+                    "Auto-apply blocked: currently in validation mode, "
+                    "waiting for validation to complete"
+                )
+                return None
+
+            # Check 2: Safety limits (lifetime, seasonal, drift, shift cooldown)
+            limit_msg = self.check_auto_apply_limits(current_kp, current_ki, current_kd)
+            if limit_msg:
+                _LOGGER.warning(f"Auto-apply blocked: {limit_msg}")
+                return None
+
+            # Check 3: Seasonal shift detection
+            if outdoor_temp is not None and self.check_seasonal_shift(outdoor_temp):
+                self.record_seasonal_shift()
+                _LOGGER.warning(
+                    "Auto-apply blocked: seasonal temperature shift detected, "
+                    f"blocking for {SEASONAL_SHIFT_BLOCK_DAYS} days"
+                )
+                return None
+
+            # Get heating-type-specific thresholds
+            thresholds = get_auto_apply_thresholds(self._heating_type)
+
+            # Check 4: Confidence threshold (first apply vs subsequent)
+            confidence_threshold = (
+                thresholds["confidence_first"]
+                if self._auto_apply_count == 0
+                else thresholds["confidence_subsequent"]
+            )
+            if self._convergence_confidence < confidence_threshold:
+                _LOGGER.debug(
+                    f"Auto-apply blocked: confidence {self._convergence_confidence:.2f} "
+                    f"< threshold {confidence_threshold:.2f} "
+                    f"(heating_type={self._heating_type}, "
+                    f"apply_count={self._auto_apply_count})"
+                )
+                return None
+
+            # Override rate limiting parameters with heating-type-specific values
+            min_interval_hours = thresholds["cooldown_hours"]
+            min_adjustment_cycles = thresholds["cooldown_cycles"]
+            min_cycles = thresholds["min_cycles"]
+
+            _LOGGER.debug(
+                f"Auto-apply checks passed: confidence={self._convergence_confidence:.2f}, "
+                f"threshold={confidence_threshold:.2f}, heating_type={self._heating_type}"
+            )
+
         # Check hybrid rate limiting first (both time AND cycles)
         if self._check_rate_limit(min_interval_hours, min_adjustment_cycles):
             return None
