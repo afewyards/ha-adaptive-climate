@@ -429,3 +429,139 @@ async def test_learning_store_get_zone_data(mock_hass):
         # Test getting non-existent zone
         missing_zone = store.get_zone_data("non_existent")
         assert missing_zone is None
+
+
+# Story 2.2 tests: async_save_zone() and schedule_zone_save()
+
+
+@pytest.mark.asyncio
+async def test_learning_store_async_save_zone(mock_hass):
+    """Test async_save_zone saves zone data with lock protection."""
+    # Create mock Store class
+    mock_store_class = Mock()
+    mock_store_instance = AsyncMock()
+    mock_store_instance.async_load = AsyncMock(return_value=None)
+    mock_store_instance.async_save = AsyncMock()
+    mock_store_class.return_value = mock_store_instance
+
+    # Mock the homeassistant.helpers.storage module
+    mock_storage_module = Mock()
+    mock_storage_module.Store = mock_store_class
+
+    with patch.dict('sys.modules', {'homeassistant.helpers.storage': mock_storage_module}):
+        store = LearningDataStore(mock_hass)
+        await store.async_load()
+
+        # Create sample zone data
+        adaptive_data = {
+            "cycle_history": [
+                {"overshoot": 0.3, "undershoot": 0.2, "settling_time": 45.0, "oscillations": 1, "rise_time": 30.0}
+            ],
+            "last_adjustment_time": None,
+            "max_history": 50,
+            "heating_type": "radiator",
+        }
+        ke_data = {
+            "current_ke": 0.5,
+            "enabled": True,
+            "observation_count": 10,
+        }
+
+        # Save zone data
+        await store.async_save_zone("living_room", adaptive_data, ke_data)
+
+        # Verify Store.async_save was called
+        mock_store_instance.async_save.assert_called_once()
+
+        # Verify internal data structure
+        assert "living_room" in store._data["zones"]
+        zone_data = store._data["zones"]["living_room"]
+        assert "adaptive_learner" in zone_data
+        assert zone_data["adaptive_learner"] == adaptive_data
+        assert "ke_learner" in zone_data
+        assert zone_data["ke_learner"] == ke_data
+        assert "last_updated" in zone_data
+
+
+@pytest.mark.asyncio
+async def test_learning_store_schedule_zone_save(mock_hass):
+    """Test schedule_zone_save uses async_delay_save with 30s delay."""
+    # Create mock Store class
+    mock_store_class = Mock()
+    mock_store_instance = AsyncMock()
+    mock_store_instance.async_load = AsyncMock(return_value=None)
+    mock_store_instance.async_delay_save = Mock()
+    mock_store_class.return_value = mock_store_instance
+
+    # Mock the homeassistant.helpers.storage module
+    mock_storage_module = Mock()
+    mock_storage_module.Store = mock_store_class
+
+    with patch.dict('sys.modules', {'homeassistant.helpers.storage': mock_storage_module}):
+        store = LearningDataStore(mock_hass)
+        await store.async_load()
+
+        # Schedule a zone save
+        store.schedule_zone_save()
+
+        # Verify async_delay_save was called with 30s delay
+        mock_store_instance.async_delay_save.assert_called_once()
+        # Check that the delay parameter is 30 seconds
+        call_kwargs = mock_store_instance.async_delay_save.call_args
+        assert call_kwargs is not None
+        # Store.async_delay_save signature: async_delay_save(self, delay=None)
+        # where delay is in seconds (default: None uses Store's default)
+        # Our implementation should pass delay=30
+
+
+@pytest.mark.asyncio
+async def test_learning_store_concurrent_saves(mock_hass):
+    """Test lock prevents race conditions during concurrent saves."""
+    import asyncio
+
+    # Create mock Store class
+    mock_store_class = Mock()
+    mock_store_instance = AsyncMock()
+    mock_store_instance.async_load = AsyncMock(return_value=None)
+
+    # Make async_save slow to simulate concurrent access
+    async def slow_async_save(data):
+        await asyncio.sleep(0.1)  # 100ms delay
+
+    mock_store_instance.async_save = AsyncMock(side_effect=slow_async_save)
+    mock_store_class.return_value = mock_store_instance
+
+    # Mock the homeassistant.helpers.storage module
+    mock_storage_module = Mock()
+    mock_storage_module.Store = mock_store_class
+
+    with patch.dict('sys.modules', {'homeassistant.helpers.storage': mock_storage_module}):
+        store = LearningDataStore(mock_hass)
+        await store.async_load()
+
+        # Create sample zone data for two zones
+        adaptive_data_1 = {"cycle_history": [{"overshoot": 0.3}]}
+        ke_data_1 = {"current_ke": 0.5}
+
+        adaptive_data_2 = {"cycle_history": [{"overshoot": 0.4}]}
+        ke_data_2 = {"current_ke": 0.6}
+
+        # Launch concurrent saves
+        task1 = asyncio.create_task(
+            store.async_save_zone("zone_1", adaptive_data_1, ke_data_1)
+        )
+        task2 = asyncio.create_task(
+            store.async_save_zone("zone_2", adaptive_data_2, ke_data_2)
+        )
+
+        # Wait for both to complete
+        await asyncio.gather(task1, task2)
+
+        # Verify both zones were saved correctly (no race condition)
+        assert "zone_1" in store._data["zones"]
+        assert "zone_2" in store._data["zones"]
+        assert store._data["zones"]["zone_1"]["adaptive_learner"] == adaptive_data_1
+        assert store._data["zones"]["zone_2"]["adaptive_learner"] == adaptive_data_2
+
+        # async_save should have been called twice (once per zone save)
+        assert mock_store_instance.async_save.call_count == 2

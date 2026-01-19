@@ -1,6 +1,8 @@
 """Persistence layer for adaptive learning data."""
 
+import asyncio
 from datetime import datetime
+import threading
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 import json
 import logging
@@ -18,6 +20,7 @@ _LOGGER = logging.getLogger(__name__)
 
 STORAGE_KEY = "adaptive_thermostat_learning"
 STORAGE_VERSION = 3
+SAVE_DELAY_SECONDS = 30
 
 
 class LearningDataStore:
@@ -38,6 +41,7 @@ class LearningDataStore:
             self.hass = None
             self._store = None
             self._data = {"version": 3, "zones": {}}
+            self._save_lock = None  # Legacy API doesn't need locks (synchronous)
         else:
             # New API - HA Store based
             self.hass = hass_or_path
@@ -45,6 +49,7 @@ class LearningDataStore:
             self.storage_file = None
             self._store = None
             self._data = {"version": 3, "zones": {}}
+            self._save_lock = None  # Lazily initialized in async context
 
     async def async_load(self) -> Dict[str, Any]:
         """
@@ -57,6 +62,10 @@ class LearningDataStore:
             raise RuntimeError("async_load requires HomeAssistant instance")
 
         from homeassistant.helpers.storage import Store
+
+        # Lazily initialize lock in async context
+        if self._save_lock is None:
+            self._save_lock = asyncio.Lock()
 
         if self._store is None:
             self._store = Store(self.hass, STORAGE_VERSION, STORAGE_KEY)
@@ -116,6 +125,77 @@ class LearningDataStore:
             Zone data dictionary or None if zone doesn't exist
         """
         return self._data["zones"].get(zone_id)
+
+    async def async_save_zone(
+        self,
+        zone_id: str,
+        adaptive_data: Optional[Dict[str, Any]] = None,
+        ke_data: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """
+        Save learning data for a specific zone.
+
+        Args:
+            zone_id: Zone identifier
+            adaptive_data: AdaptiveLearner data dictionary
+            ke_data: KeLearner data dictionary
+        """
+        if self.hass is None:
+            raise RuntimeError("async_save_zone requires HomeAssistant instance")
+
+        if self._store is None:
+            raise RuntimeError("Store not initialized - call async_load() first")
+
+        # Lazily initialize lock if needed (should be done by async_load, but safety check)
+        if self._save_lock is None:
+            self._save_lock = asyncio.Lock()
+
+        async with self._save_lock:
+            # Ensure zone exists in data structure
+            if zone_id not in self._data["zones"]:
+                self._data["zones"][zone_id] = {}
+
+            zone_data = self._data["zones"][zone_id]
+
+            # Update adaptive learner data
+            if adaptive_data is not None:
+                zone_data["adaptive_learner"] = adaptive_data
+
+            # Update Ke learner data
+            if ke_data is not None:
+                zone_data["ke_learner"] = ke_data
+
+            # Update timestamp
+            zone_data["last_updated"] = datetime.now().isoformat()
+
+            # Save to disk
+            await self._store.async_save(self._data)
+
+            _LOGGER.debug(
+                f"Saved learning data for zone '{zone_id}': "
+                f"adaptive={adaptive_data is not None}, ke={ke_data is not None}"
+            )
+
+    def schedule_zone_save(self) -> None:
+        """
+        Schedule a delayed save operation.
+
+        Uses HA Store's async_delay_save() to debounce frequent save operations.
+        The save will be executed after SAVE_DELAY_SECONDS (30s) unless another
+        schedule_zone_save() call resets the timer.
+        """
+        if self.hass is None:
+            raise RuntimeError("schedule_zone_save requires HomeAssistant instance")
+
+        if self._store is None:
+            raise RuntimeError("Store not initialized - call async_load() first")
+
+        # Schedule delayed save with 30-second delay
+        # The Store helper handles debouncing - multiple calls within the delay
+        # period will reset the timer, ensuring only one save occurs
+        self._store.async_delay_save(lambda: self._data, SAVE_DELAY_SECONDS)
+
+        _LOGGER.debug(f"Scheduled zone save with {SAVE_DELAY_SECONDS}s delay")
 
     def save(
         self,
