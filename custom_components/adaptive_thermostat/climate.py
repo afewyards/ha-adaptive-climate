@@ -75,6 +75,7 @@ from . import DOMAIN, PLATFORMS
 from . import const
 from . import pid_controller
 from .adaptive.learning import AdaptiveLearner, ThermalRateLearner
+from .adaptive.persistence import LearningDataStore
 from .managers import ControlOutputManager, HeaterController, KeController, NightSetbackController, PIDTuningManager, StateRestorer, TemperatureManager, CycleTrackerManager
 from .managers.state_attributes import build_state_attributes
 
@@ -230,6 +231,18 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     name = config.get(CONF_NAME)
     zone_id = slugify(name)
 
+    # Create LearningDataStore singleton if it doesn't exist
+    if DOMAIN not in hass.data:
+        hass.data[DOMAIN] = {}
+
+    if "learning_store" not in hass.data[DOMAIN]:
+        learning_store = LearningDataStore(hass)
+        await learning_store.async_load()
+        hass.data[DOMAIN]["learning_store"] = learning_store
+        _LOGGER.info("Created LearningDataStore singleton")
+    else:
+        learning_store = hass.data[DOMAIN]["learning_store"]
+
     # Validate that at least one output entity is configured
     heater = config.get(const.CONF_HEATER)
     cooler = config.get(const.CONF_COOLER)
@@ -322,16 +335,33 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     # This ensures zone_data is available when async_added_to_hass runs
     coordinator = hass.data.get(DOMAIN, {}).get("coordinator")
     if coordinator:
+        # Create AdaptiveLearner and restore from storage if data exists
+        adaptive_learner = AdaptiveLearner(heating_type=config.get(const.CONF_HEATING_TYPE))
+
+        # Get stored zone data from LearningDataStore
+        stored_zone_data = learning_store.get_zone_data(zone_id)
+        if stored_zone_data:
+            # Restore adaptive learner state
+            if "adaptive_learner" in stored_zone_data:
+                adaptive_learner.restore_from_dict(stored_zone_data["adaptive_learner"])
+                _LOGGER.info("Restored AdaptiveLearner for zone %s from storage", zone_id)
+
         zone_data = {
             "climate_entity_id": f"climate.{zone_id}",
             "zone_name": name,
             "area_m2": config.get(const.CONF_AREA_M2, 0),
             "heating_type": config.get(const.CONF_HEATING_TYPE),
             "learning_enabled": True,  # Always enabled, vacation mode can toggle
-            "adaptive_learner": AdaptiveLearner(heating_type=config.get(const.CONF_HEATING_TYPE)),
+            "adaptive_learner": adaptive_learner,
             "linked_zones": config.get(const.CONF_LINKED_ZONES, []),
             "pwm_seconds": config.get(const.CONF_PWM).seconds if config.get(const.CONF_PWM) else 0,
         }
+
+        # Store ke_learner data for async_added_to_hass to use
+        if stored_zone_data and "ke_learner" in stored_zone_data:
+            zone_data["stored_ke_data"] = stored_zone_data["ke_learner"]
+            _LOGGER.info("Stored ke_learner data for zone %s for later restoration", zone_id)
+
         coordinator.register_zone(zone_id, zone_data)
         _LOGGER.info("Registered zone %s with coordinator", zone_id)
 

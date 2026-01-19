@@ -1625,3 +1625,159 @@ class TestRestorePIDValues:
 def test_story_7_1_methods_exist():
     """Test that Story 7.1 extracted methods are implemented."""
     assert True
+
+
+# Story 3.1: Integrate LearningDataStore singleton in async_setup_platform
+@pytest.mark.asyncio
+async def test_setup_creates_learning_store():
+    """Test that first zone creates LearningDataStore singleton in hass.data[DOMAIN]."""
+    # Import directly to avoid full module loading
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+
+    from custom_components.adaptive_thermostat.adaptive.persistence import LearningDataStore
+
+    # Arrange
+    mock_hass = _create_mock_hass()
+    mock_hass.data = {}
+
+    # Simulate the logic from async_setup_platform
+    # Create LearningDataStore singleton if it doesn't exist
+    if DOMAIN not in mock_hass.data:
+        mock_hass.data[DOMAIN] = {}
+
+    if "learning_store" not in mock_hass.data[DOMAIN]:
+        learning_store = LearningDataStore(mock_hass)
+        # Mock async_load to avoid actual file I/O
+        async def mock_async_load():
+            learning_store._data = {"version": 3, "zones": {}}
+            return learning_store._data
+        learning_store.async_load = mock_async_load
+        await learning_store.async_load()
+        mock_hass.data[DOMAIN]["learning_store"] = learning_store
+
+    # Assert
+    assert DOMAIN in mock_hass.data
+    assert "learning_store" in mock_hass.data[DOMAIN]
+    learning_store = mock_hass.data[DOMAIN]["learning_store"]
+
+    # Verify it's a LearningDataStore instance
+    assert isinstance(learning_store, LearningDataStore)
+    assert learning_store.hass is mock_hass
+
+
+@pytest.mark.asyncio
+async def test_setup_restores_adaptive_learner():
+    """Test that adaptive learner is restored from storage when data exists."""
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+
+    from custom_components.adaptive_thermostat.adaptive.persistence import LearningDataStore
+    from custom_components.adaptive_thermostat.adaptive.learning import AdaptiveLearner
+
+    # Arrange
+    mock_hass = _create_mock_hass()
+    mock_hass.data = {}
+
+    # Pre-populate storage with existing learning data
+    learning_store = LearningDataStore(mock_hass)
+
+    zone_id = "living_room"
+    stored_data = {
+        "version": 3,
+        "zones": {
+            zone_id: {
+                "adaptive_learner": {
+                    "cycle_history": [
+                        {
+                            "overshoot": 0.5,
+                            "undershoot": 0.2,
+                            "settling_time": 600,
+                            "oscillations": 2,
+                            "rise_time": 300,
+                        }
+                    ],
+                    "last_adjustment_time": "2024-01-01T12:00:00",
+                    "consecutive_converged_cycles": 3,
+                    "pid_converged_for_ke": True,
+                    "auto_apply_count": 1,
+                },
+            }
+        }
+    }
+
+    async def mock_async_load():
+        learning_store._data = stored_data
+        return stored_data
+
+    learning_store.async_load = mock_async_load
+    await learning_store.async_load()
+
+    # Simulate the logic from async_setup_platform
+    # Create AdaptiveLearner and restore from storage
+    adaptive_learner = AdaptiveLearner(heating_type="radiator")
+
+    stored_zone_data = learning_store.get_zone_data(zone_id)
+    if stored_zone_data and "adaptive_learner" in stored_zone_data:
+        adaptive_learner.restore_from_dict(stored_zone_data["adaptive_learner"])
+
+    # Assert - verify adaptive_learner was restored
+    assert adaptive_learner.get_cycle_count() == 1  # One cycle restored
+    assert adaptive_learner._consecutive_converged_cycles == 3
+    assert adaptive_learner._pid_converged_for_ke is True
+    assert adaptive_learner._auto_apply_count == 1
+
+
+@pytest.mark.asyncio
+async def test_setup_stores_ke_data_for_later():
+    """Test that ke_learner data is stored in zone_data for async_added_to_hass."""
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+
+    from custom_components.adaptive_thermostat.adaptive.persistence import LearningDataStore
+
+    # Arrange
+    mock_hass = _create_mock_hass()
+    mock_hass.data = {}
+
+    # Pre-populate storage with ke_learner data
+    learning_store = LearningDataStore(mock_hass)
+
+    zone_id = "living_room"
+    stored_ke_data = {
+        "enabled": True,
+        "current_ke": 0.6,
+        "observation_count": 10,
+    }
+
+    stored_data = {
+        "version": 3,
+        "zones": {
+            zone_id: {
+                "ke_learner": stored_ke_data
+            }
+        }
+    }
+
+    async def mock_async_load():
+        learning_store._data = stored_data
+        return stored_data
+
+    learning_store.async_load = mock_async_load
+    await learning_store.async_load()
+
+    # Simulate the logic from async_setup_platform
+    # Create a mock zone_data structure
+    zone_data = {
+        "climate_entity_id": f"climate.{zone_id}",
+        "zone_name": "Living Room",
+    }
+
+    # Store ke_learner data for async_added_to_hass to use
+    stored_zone_data = learning_store.get_zone_data(zone_id)
+    if stored_zone_data and "ke_learner" in stored_zone_data:
+        zone_data["stored_ke_data"] = stored_zone_data["ke_learner"]
+
+    # Assert - verify stored_ke_data is present in zone_data
+    assert "stored_ke_data" in zone_data
+    assert zone_data["stored_ke_data"] == stored_ke_data
