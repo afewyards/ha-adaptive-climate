@@ -464,6 +464,104 @@ class PIDTuningManager:
             },
         }
 
+    async def async_rollback_pid(self) -> bool:
+        """Rollback PID values to the previous configuration.
+
+        Retrieves the second-to-last PID snapshot from history and restores
+        those values. This is typically used when validation fails after
+        an auto-apply, or when a user wants to undo a recent change.
+
+        Returns:
+            bool: True if rollback succeeded, False if no history available
+        """
+        hass = self._get_hass()
+        coordinator = hass.data.get(DOMAIN, {}).get("coordinator")
+        if not coordinator:
+            _LOGGER.warning(
+                "%s: Cannot rollback PID - no coordinator",
+                self._thermostat.entity_id
+            )
+            return False
+
+        # Find adaptive learner for this thermostat
+        all_zones = coordinator.get_all_zones()
+        adaptive_learner = None
+
+        for zone_id, zone_data in all_zones.items():
+            if zone_data.get("climate_entity_id") == self._thermostat.entity_id:
+                adaptive_learner = zone_data.get("adaptive_learner")
+                break
+
+        if not adaptive_learner:
+            _LOGGER.warning(
+                "%s: Cannot rollback PID - no adaptive learner",
+                self._thermostat.entity_id
+            )
+            return False
+
+        # Get previous PID values
+        previous_pid = adaptive_learner.get_previous_pid()
+        if previous_pid is None:
+            _LOGGER.warning(
+                "%s: Cannot rollback PID - no previous configuration in history",
+                self._thermostat.entity_id
+            )
+            return False
+
+        # Store current values for logging
+        current_kp = self._get_kp()
+        current_ki = self._get_ki()
+        current_kd = self._get_kd()
+
+        # Apply previous PID values
+        self._set_kp(previous_pid["kp"])
+        self._set_ki(previous_pid["ki"])
+        self._set_kd(previous_pid["kd"])
+
+        # Clear integral to avoid wind-up
+        self._pid_controller.integral = 0.0
+
+        self._pid_controller.set_pid_param(
+            self._get_kp(),
+            self._get_ki(),
+            self._get_kd(),
+            self._get_ke(),
+        )
+
+        # Record rollback snapshot
+        adaptive_learner.record_pid_snapshot(
+            kp=previous_pid["kp"],
+            ki=previous_pid["ki"],
+            kd=previous_pid["kd"],
+            reason="rollback",
+            metrics={
+                "rolled_back_from_kp": current_kp,
+                "rolled_back_from_ki": current_ki,
+                "rolled_back_from_kd": current_kd,
+            },
+        )
+
+        # Clear history to reset learning state
+        adaptive_learner.clear_history()
+
+        _LOGGER.warning(
+            "%s: Rolled back PID to previous config (from %s): "
+            "Kp=%.4f→%.4f, Ki=%.5f→%.5f, Kd=%.3f→%.3f",
+            self._thermostat.entity_id,
+            previous_pid.get("timestamp", "unknown"),
+            current_kp,
+            previous_pid["kp"],
+            current_ki,
+            previous_pid["ki"],
+            current_kd,
+            previous_pid["kd"],
+        )
+
+        await self._async_control_heating(calc_pid=True)
+        await self._async_write_ha_state()
+
+        return True
+
     async def async_apply_adaptive_ke(self, **kwargs) -> None:
         """Apply adaptive Ke value based on learned outdoor temperature correlations.
 
