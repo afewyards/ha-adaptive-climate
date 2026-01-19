@@ -285,9 +285,9 @@ class CycleTrackerManager:
                 "Settling timeout reached (%d minutes), finalizing cycle",
                 self._max_settling_time_minutes,
             )
-            # Note: _finalize_cycle() will be implemented in feature 2.3
-            self._state = CycleState.IDLE
+            # Clear handle before finalize to avoid double-cancel attempt
             self._settling_timeout_handle = None
+            await self._finalize_cycle()
 
         # Store the cancel handle
         self._settling_timeout_handle = async_call_later(

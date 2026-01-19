@@ -1256,3 +1256,81 @@ class TestCycleTrackerStateAccess:
 
         # Should return the most recent one
         assert cycle_tracker.get_last_interruption_reason() == "mode_change"
+
+
+class TestCycleTrackerSettlingTimeoutFinalization:
+    """Tests for settling timeout cycle finalization."""
+
+    @pytest.mark.asyncio
+    async def test_settling_timeout_records_metrics(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks
+    ):
+        """Test settling timeout finalizes cycle and records metrics.
+
+        This tests the fix for the bug where settling timeout would discard
+        the cycle instead of recording metrics (the TODO comment that said
+        '_finalize_cycle() will be implemented in feature 2.3').
+        """
+        import sys
+        from datetime import timedelta
+
+        # Create cycle tracker
+        cycle_tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            **mock_callbacks,
+        )
+
+        # Get the mocked async_call_later from conftest
+        mock_async_call_later = sys.modules["homeassistant.helpers.event"].async_call_later
+        mock_async_call_later.reset_mock()
+
+        # Set target temperature
+        mock_callbacks["get_target_temp"].return_value = 20.0
+
+        # Start cycle 6 minutes ago (> 5 min minimum duration)
+        start_time = datetime.now() - timedelta(minutes=6)
+        cycle_tracker.on_heating_started(start_time)
+
+        # Add temperature samples during heating (rising)
+        for i in range(5):
+            await cycle_tracker.update_temperature(
+                start_time + timedelta(minutes=i), 18.0 + i * 0.5
+            )
+
+        # Stop heating
+        stop_time = start_time + timedelta(minutes=5)
+        cycle_tracker.on_heating_stopped(stop_time)
+
+        # Add settling samples with HIGH overshoot (far from target)
+        # This simulates the GF bug: temperature stays high and doesn't settle
+        for i in range(5):
+            await cycle_tracker.update_temperature(
+                stop_time + timedelta(minutes=i), 21.5  # 1.5°C above target
+            )
+
+        # Verify still in settling (too far from 0.5°C requirement)
+        assert cycle_tracker.state == CycleState.SETTLING
+
+        # Verify timeout was scheduled
+        mock_async_call_later.assert_called_once()
+
+        # Get the timeout callback and execute it
+        timeout_callback = mock_async_call_later.call_args[0][2]
+        timeout_callback(None)
+
+        # Await the async task that was created
+        task_arg = mock_hass.async_create_task.call_args[0][0]
+        await task_arg
+
+        # State should transition to IDLE
+        assert cycle_tracker.state == CycleState.IDLE
+
+        # CRITICAL: Verify metrics were recorded (this is the fix!)
+        mock_adaptive_learner.add_cycle_metrics.assert_called_once()
+
+        # Verify the recorded metrics include overshoot
+        recorded_metrics = mock_adaptive_learner.add_cycle_metrics.call_args[0][0]
+        assert recorded_metrics.overshoot is not None
+        assert recorded_metrics.overshoot > 1.0  # Should capture the 1.5°C overshoot
