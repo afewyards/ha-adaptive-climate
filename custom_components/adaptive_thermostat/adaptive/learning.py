@@ -17,6 +17,8 @@ from ..const import (
     CONFIDENCE_DECAY_RATE_DAILY,
     CONFIDENCE_INCREASE_PER_GOOD_CYCLE,
     PID_HISTORY_SIZE,
+    VALIDATION_CYCLE_COUNT,
+    VALIDATION_DEGRADATION_THRESHOLD,
     get_convergence_thresholds,
     get_rule_thresholds,
 )
@@ -868,3 +870,101 @@ class AdaptiveLearner:
             Confidence in range [0.0, 1.0]
         """
         return self._convergence_confidence
+
+    def start_validation_mode(self, baseline_overshoot: float) -> None:
+        """Start validation mode after auto-applying PID changes.
+
+        Validation mode monitors the next VALIDATION_CYCLE_COUNT cycles
+        to verify the auto-applied changes don't degrade performance.
+
+        Args:
+            baseline_overshoot: Average overshoot from cycles before auto-apply,
+                               used as reference for degradation detection.
+        """
+        self._validation_mode = True
+        self._validation_baseline_overshoot = baseline_overshoot
+        self._validation_cycles = []
+        _LOGGER.info(
+            "Validation mode started: monitoring next %d cycles "
+            "(baseline overshoot: %.2f°C)",
+            VALIDATION_CYCLE_COUNT,
+            baseline_overshoot,
+        )
+
+    def add_validation_cycle(self, metrics: CycleMetrics) -> Optional[str]:
+        """Add a cycle to validation tracking and check for completion.
+
+        Collects cycles during validation mode and evaluates performance
+        once VALIDATION_CYCLE_COUNT cycles have been recorded.
+
+        Args:
+            metrics: CycleMetrics from the completed cycle
+
+        Returns:
+            None if still collecting cycles,
+            'success' if validation passed (performance maintained or improved),
+            'rollback' if validation failed (significant degradation detected).
+        """
+        if not self._validation_mode:
+            return None
+
+        self._validation_cycles.append(metrics)
+        _LOGGER.debug(
+            "Validation cycle %d/%d added (overshoot: %.2f°C)",
+            len(self._validation_cycles),
+            VALIDATION_CYCLE_COUNT,
+            metrics.overshoot if metrics.overshoot is not None else 0.0,
+        )
+
+        # Still collecting cycles
+        if len(self._validation_cycles) < VALIDATION_CYCLE_COUNT:
+            return None
+
+        # Validation complete - calculate average overshoot
+        overshoot_values = [
+            c.overshoot for c in self._validation_cycles if c.overshoot is not None
+        ]
+
+        if not overshoot_values:
+            _LOGGER.warning(
+                "Validation complete but no overshoot data - assuming success"
+            )
+            self._validation_mode = False
+            return "success"
+
+        avg_overshoot = statistics.mean(overshoot_values)
+        baseline = self._validation_baseline_overshoot or 0.1  # Avoid division by zero
+
+        # Calculate degradation as percentage increase from baseline
+        # Use max(baseline, 0.1) to handle very small baseline values
+        degradation_pct = (avg_overshoot - baseline) / max(baseline, 0.1)
+
+        if degradation_pct > VALIDATION_DEGRADATION_THRESHOLD:
+            _LOGGER.warning(
+                "Validation FAILED: overshoot degraded %.1f%% "
+                "(baseline: %.2f°C, validation avg: %.2f°C, threshold: %.0f%%)",
+                degradation_pct * 100,
+                baseline,
+                avg_overshoot,
+                VALIDATION_DEGRADATION_THRESHOLD * 100,
+            )
+            self._validation_mode = False
+            return "rollback"
+
+        _LOGGER.info(
+            "Validation SUCCESS: overshoot change %.1f%% within threshold "
+            "(baseline: %.2f°C, validation avg: %.2f°C)",
+            degradation_pct * 100,
+            baseline,
+            avg_overshoot,
+        )
+        self._validation_mode = False
+        return "success"
+
+    def is_in_validation_mode(self) -> bool:
+        """Check if currently in validation mode.
+
+        Returns:
+            True if validation mode is active, False otherwise.
+        """
+        return self._validation_mode
