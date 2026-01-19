@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v0.13.1 (2026-01-19)
+
+### Bug Fixes
+
+- Add floor_construction schema to PLATFORM_SCHEMA
+  ([`425525f`](https://github.com/afewyards/ha-adaptive-thermostat/commit/425525f41f76d716487c86fe80fbb9b9c994d90e))
+
+- Added missing floor_construction validation to climate platform schema - Extended screed thickness
+  limit from 80mm to 100mm for thick heated screeds - Updated tests to match new thickness limits
+
+
 ## v0.13.0 (2026-01-19)
 
 ### Chores
