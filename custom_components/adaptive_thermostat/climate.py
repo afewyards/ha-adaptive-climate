@@ -375,6 +375,11 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         {},
         "async_clear_learning",
     )
+    platform.async_register_entity_service(  # type: ignore
+        "rollback_pid",
+        {},
+        "async_rollback_pid",
+    )
 
 
 class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
@@ -1423,6 +1428,14 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         Delegates to PIDTuningManager for the actual implementation.
         """
         await self._pid_tuning_manager.async_clear_learning(**kwargs)
+
+    async def async_rollback_pid(self, **kwargs):
+        """Rollback PID to previous configuration.
+
+        Service call handler for rollback_pid.
+        Delegates to PIDTuningManager for the actual implementation.
+        """
+        await self._pid_tuning_manager.async_rollback_pid()
 
     async def _check_auto_apply_pid(self) -> None:
         """Check and potentially auto-apply adaptive PID recommendations.
