@@ -295,6 +295,70 @@ The adaptive learning system uses heating-type-specific thresholds for rule acti
 | Oscillations > many_oscillations threshold (3×) | Reduce Kp 10%, increase Kd 20% |
 | Slow settling > slow_settling threshold (settling_time_max × 1.5) | Increase Kd by 15% |
 
+### Automatic PID Application (in `adaptive/learning.py` and `managers/pid_tuning.py`)
+
+When `auto_apply_pid: true` (default), PID adjustments are applied automatically when convergence confidence reaches heating-type-specific thresholds. The system includes safety limits and a validation window to prevent runaway tuning.
+
+**Auto-Apply Flow:**
+
+```mermaid
+flowchart TD
+    A[Cycle Finalized] --> B{Confidence >= Threshold?}
+    B -->|No| C[Continue Learning]
+    B -->|Yes| D{Safety Checks Pass?}
+    D -->|No| E[Log Warning, Skip]
+    D -->|Yes| F[Record PID Snapshot]
+    F --> G[Apply New PID Values]
+    G --> H[Clear Learning History]
+    H --> I[Enter Validation Mode]
+    I --> J[Collect 5 Validation Cycles]
+    J --> K{Overshoot Degraded >30%?}
+    K -->|Yes| L[Auto-Rollback to Previous]
+    K -->|No| M[Validation Success]
+    L --> N[Notify User]
+    M --> N
+```
+
+**Safety Limits (in `const.py`):**
+
+| Constant | Value | Purpose |
+|----------|-------|---------|
+| `MAX_AUTO_APPLIES_PER_SEASON` | 5 | Prevents runaway tuning within 90 days |
+| `MAX_AUTO_APPLIES_LIFETIME` | 20 | Requires manual review after extensive tuning |
+| `MAX_CUMULATIVE_DRIFT_PCT` | 50% | PID can't drift >1.5× from physics baseline |
+| `VALIDATION_CYCLE_COUNT` | 5 | Cycles to validate new PID |
+| `VALIDATION_DEGRADATION_THRESHOLD` | 30% | Overshoot increase that triggers rollback |
+| `SEASONAL_SHIFT_BLOCK_DAYS` | 7 | Days blocked after large outdoor temp shift |
+| `PID_HISTORY_SIZE` | 10 | Snapshots retained for rollback |
+
+**Auto-Apply Thresholds by Heating Type:**
+
+| Type | confidence_first | confidence_subsequent | min_cycles | cooldown_hours | cooldown_cycles |
+|------|------------------|----------------------|------------|----------------|-----------------|
+| `floor_hydronic` | 80% | 90% | 8 | 96h | 15 |
+| `radiator` | 70% | 85% | 7 | 72h | 12 |
+| `convector` | 60% | 80% | 6 | 48h | 10 |
+| `forced_air` | 60% | 80% | 6 | 36h | 8 |
+
+Slow systems require higher confidence because mistakes take longer to recover from.
+
+**Key Methods:**
+
+- `AdaptiveLearner.check_auto_apply_limits()` - Verifies all safety limits
+- `AdaptiveLearner.start_validation_mode()` - Begins 5-cycle validation window
+- `AdaptiveLearner.add_validation_cycle()` - Returns `'success'`, `'rollback'`, or `None` (collecting)
+- `PIDTuningManager.async_auto_apply_adaptive_pid()` - Orchestrates the auto-apply flow
+- `PIDTuningManager.async_rollback_pid()` - Reverts to previous PID from history
+
+**Entity Attributes Exposed:**
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `auto_apply_pid_enabled` | bool | Whether auto-apply is enabled |
+| `auto_apply_count` | int | Number of times PID has been auto-applied |
+| `validation_mode` | bool | Currently validating new PID values |
+| `pid_history` | list | Last 3 PID configurations (timestamp, kp, ki, kd, reason) |
+
 ### Proportional-on-Measurement (P-on-M)
 
 The PID controller supports two modes for the proportional term:

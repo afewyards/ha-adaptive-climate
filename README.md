@@ -29,7 +29,7 @@ An advanced thermostat integration featuring PID control with automatic tuning, 
 ### Key Features
 
 - **PID Control** - Four-term PID controller (P+I+D+E) with proportional-on-measurement for smooth operation
-- **Adaptive Learning** - Automatically learns thermal characteristics and optimizes PID parameters from real heating cycles
+- **Adaptive Learning** - Automatically learns thermal characteristics and optimizes PID parameters from real heating cycles, with automatic application and validation
 - **Physics-Based Initialization** - Initial PID values calculated from zone properties using empirical HVAC data
 - **Multi-Zone Coordination** - Central heat source control, mode synchronization, and zone linking for connected spaces
 - **Energy Optimization** - Night setback with dynamic sunrise timing, solar gain prediction, contact sensors, outdoor compensation
@@ -218,7 +218,9 @@ Tracks on→off cycles and fires maintenance alerts at 80% and 90% wear. [Learn 
 
 ### Entity Services
 - `adaptive_thermostat.reset_pid_to_physics` - Reset PID to physics-based defaults
-- `adaptive_thermostat.apply_adaptive_pid` - Apply learned PID adjustments
+- `adaptive_thermostat.apply_adaptive_pid` - Apply learned PID adjustments (manual)
+- `adaptive_thermostat.rollback_pid` - Revert to previous PID configuration
+- `adaptive_thermostat.clear_learning` - Clear all learning data and reset to physics defaults
 - `adaptive_thermostat.apply_adaptive_ke` - Apply outdoor compensation tuning
 
 ### Domain Services
@@ -232,13 +234,62 @@ Tracks on→off cycles and fires maintenance alerts at 80% and 90% wear. [Learn 
 
 [Full service documentation →](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Services)
 
+## Automatic PID Tuning
+
+By default, PID parameters are automatically applied when the system reaches sufficient confidence. This happens transparently with built-in safety measures.
+
+### How It Works
+1. **Learning** - System collects heating cycle metrics (overshoot, settling time, oscillations)
+2. **Confidence** - Convergence confidence builds as patterns stabilize
+3. **Auto-Apply** - When confidence reaches threshold, new PID values are applied automatically
+4. **Validation** - 5-cycle validation window monitors performance
+5. **Rollback** - If performance degrades >30%, automatically reverts to previous values
+
+### Safety Limits
+- **5 auto-applies per season** (90 days) - prevents runaway tuning
+- **20 lifetime limit** - requires manual review after extensive tuning
+- **50% max drift** - PID values can't drift too far from physics baseline
+- **Seasonal blocking** - 7-day pause after large outdoor temperature shifts
+
+### Heating-Type Thresholds
+
+| Type | First Apply | Subsequent | Min Cycles | Cooldown |
+|------|-------------|------------|------------|----------|
+| `floor_hydronic` | 80% | 90% | 8 | 96h |
+| `radiator` | 70% | 85% | 7 | 72h |
+| `convector` | 60% | 80% | 6 | 48h |
+| `forced_air` | 60% | 80% | 6 | 36h |
+
+Slow systems (high thermal mass) require higher confidence because mistakes are costly to recover from.
+
+### Disabling Auto-Apply
+```yaml
+climate:
+  - platform: adaptive_thermostat
+    name: Living Room
+    heater: switch.heating_living
+    target_sensor: sensor.temp_living
+    heating_type: radiator
+    area_m2: 20
+    auto_apply_pid: false  # Disable automatic application
+```
+
+With `auto_apply_pid: false`, use `adaptive_thermostat.apply_adaptive_pid` service to manually apply learned values.
+
+### Entity Attributes
+Monitor auto-apply status via entity attributes:
+- `auto_apply_pid_enabled` - Whether auto-apply is enabled
+- `auto_apply_count` - Number of times PID has been auto-applied
+- `validation_mode` - Currently validating new PID values
+- `pid_history` - Last 3 PID configurations (timestamp, values, reason)
+
 ## Troubleshooting
 
 ### Let Adaptive Learning Work
 The thermostat automatically learns and adjusts. Give it time:
 - Initial values come from physics-based calculations
-- After 3+ heating cycles, apply learned adjustments using `adaptive_thermostat.apply_adaptive_pid`
-- When `outdoor_sensor` configured, Ke (outdoor compensation) is learned first (10-15 cycles)
+- PID adjustments are auto-applied when confidence reaches heating-type threshold
+- Manual application available via `adaptive_thermostat.apply_adaptive_pid` service
 
 ### Common Issues
 
