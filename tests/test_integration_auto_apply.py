@@ -797,6 +797,84 @@ class TestSeasonalShiftBlocking:
         if result is not None:
             assert "Seasonal shift" not in result
 
+    @pytest.mark.asyncio
+    async def test_seasonal_shift_blocks_auto_apply_integration(self, adaptive_learner):
+        """Test complete seasonal shift detection and blocking flow.
+
+        Integration test for story 9.5:
+        1. Build confidence to 70%
+        2. Set outdoor_temp history to stable 15°C average
+        3. Simulate outdoor_temp drop to 3°C (12°C shift)
+        4. Call calculate_pid_adjustment with outdoor_temp=3°C and check_auto_apply=True
+        5. Verify check_seasonal_shift detects shift
+        6. Verify record_seasonal_shift called
+        7. Verify calculate_pid_adjustment returns None (blocked)
+        8. Wait 8 days (mock time), attempt auto-apply again, verify unblocked
+        """
+        # Step 1: Build confidence to 70%
+        adaptive_learner._convergence_confidence = 0.70
+
+        # Step 2: Set outdoor_temp history to stable 15°C average
+        # Need at least 10 readings for shift detection
+        for _ in range(15):
+            adaptive_learner._outdoor_temp_history.append(15.0)
+
+        # Set last_seasonal_check to allow check to proceed
+        adaptive_learner._last_seasonal_check = datetime.now() - timedelta(days=2)
+
+        # Verify initial state - no seasonal shift recorded
+        assert adaptive_learner._last_seasonal_shift is None
+
+        # Step 3: Simulate outdoor_temp drop to 3°C (12°C shift)
+        # Add 10 more readings at 3°C to establish new regime
+        for _ in range(10):
+            adaptive_learner._outdoor_temp_history.append(3.0)
+
+        # Step 4 & 5: Call calculate_pid_adjustment with outdoor_temp=3°C and check_auto_apply=True
+        # This should internally call check_seasonal_shift and record_seasonal_shift
+        adjustment = adaptive_learner.calculate_pid_adjustment(
+            current_kp=100.0,
+            current_ki=0.01,
+            current_kd=50.0,
+            check_auto_apply=True,
+            outdoor_temp=3.0,
+        )
+
+        # Step 6: Verify check_seasonal_shift detected shift (via log) and record_seasonal_shift was called
+        assert adaptive_learner._last_seasonal_shift is not None, "record_seasonal_shift should have been called"
+
+        # Step 7: Verify calculate_pid_adjustment returns None (blocked)
+        assert adjustment is None, "calculate_pid_adjustment should return None when seasonal shift blocks auto-apply"
+
+        # Step 8: Wait 8 days (mock time), attempt auto-apply again, verify unblocked
+        # Mock the shift as happening 8 days ago
+        adaptive_learner._last_seasonal_shift = datetime.now() - timedelta(days=8)
+
+        # Verify seasonal shift block is no longer active
+        limit_check = adaptive_learner.check_auto_apply_limits(100.0, 0.01, 50.0)
+        if limit_check is not None:
+            assert "Seasonal shift" not in limit_check, "Seasonal shift block should have expired after 8 days"
+
+        # Add some cycles to pass the cycle gate for adjustment
+        for i in range(6):
+            metrics = create_good_cycle_metrics(overshoot=0.12)
+            adaptive_learner.add_cycle_metrics(metrics)
+
+        # Now calculate_pid_adjustment should not be blocked by seasonal shift
+        # (may still return None due to convergence, but not due to seasonal shift)
+        adjustment = adaptive_learner.calculate_pid_adjustment(
+            current_kp=100.0,
+            current_ki=0.01,
+            current_kd=50.0,
+            check_auto_apply=True,
+            outdoor_temp=3.0,
+        )
+
+        # We don't assert that adjustment is not None, because the system might
+        # be converged or have other reasons to skip adjustment.
+        # The key is that it's NOT blocked by seasonal shift anymore.
+        # We already verified this with the limit_check above.
+
 
 class TestManualRollbackService:
     """Test manual rollback service functionality."""
