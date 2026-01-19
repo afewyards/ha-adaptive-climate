@@ -1125,6 +1125,115 @@ class TestValidationModeBlocking:
         assert len(auto_apply_calls) == 0
 
 
+class TestHARestartEdgeCases:
+    """Test edge cases around Home Assistant restarts."""
+
+    @pytest.mark.asyncio
+    async def test_ha_restart_during_validation(self, adaptive_learner):
+        """Test HA restart during validation mode results in state loss.
+
+        This test verifies the edge case where Home Assistant restarts while
+        validation mode is active (e.g., 3 out of 5 validation cycles complete).
+
+        Expected behavior (DOCUMENTED LIMITATION):
+        - Validation state (_validation_mode, _validation_cycles, _validation_baseline_overshoot)
+          is stored in instance variables and NOT persisted to state
+        - After HA restart, a new AdaptiveLearner instance is created
+        - The new instance has validation_mode=False (state lost)
+        - This is ACCEPTABLE: the system will rebuild confidence naturally
+        - PID gains ARE persisted, so the auto-applied values remain active
+
+        Integration test for story 10.1:
+        1. Build confidence and trigger auto-apply to enter validation mode
+        2. Add 3 validation cycles (out of 5 needed)
+        3. Verify validation_mode=True and _validation_cycles has 3 entries
+        4. Simulate HA restart by creating fresh AdaptiveLearner instance
+        5. Verify new instance has validation_mode=False (state lost)
+        6. Document that this is expected behavior - validation state loss is acceptable
+        """
+        # Phase 1: Build confidence and trigger auto-apply to enter validation mode
+        # Simulate 8 good cycles to build 80% confidence
+        for i in range(8):
+            metrics = create_good_cycle_metrics(overshoot=0.15)
+            adaptive_learner.add_cycle_metrics(metrics)
+            adaptive_learner.update_convergence_confidence(metrics)
+
+        # Verify confidence reached threshold
+        assert adaptive_learner.get_convergence_confidence() >= 0.60
+
+        # Simulate auto-apply: record PID snapshot and start validation
+        baseline_overshoot = 0.15
+        adaptive_learner.record_pid_snapshot(
+            kp=100.0, ki=0.01, kd=50.0,
+            reason="before_auto_apply",
+            metrics={"baseline_overshoot": baseline_overshoot}
+        )
+        adaptive_learner.record_pid_snapshot(
+            kp=90.0, ki=0.012, kd=45.0,
+            reason="auto_apply",
+            metrics={"baseline_overshoot": baseline_overshoot}
+        )
+
+        # Clear history and start validation mode (as auto-apply does)
+        adaptive_learner.clear_history()
+        adaptive_learner.start_validation_mode(baseline_overshoot)
+
+        # Phase 2: Add 3 validation cycles (out of 5 needed)
+        for i in range(3):
+            metrics = create_good_cycle_metrics(overshoot=0.12)
+            result = adaptive_learner.add_validation_cycle(metrics)
+            # Should still be collecting (None = not complete yet)
+            assert result is None
+
+        # Phase 3: Verify validation mode active with 3 validation cycles
+        assert adaptive_learner.is_in_validation_mode() is True
+        assert len(adaptive_learner._validation_cycles) == 3
+        assert adaptive_learner._validation_baseline_overshoot == baseline_overshoot
+
+        # Phase 4: Simulate HA restart by creating a fresh AdaptiveLearner instance
+        # In reality, HA would restore some persisted state (PID gains, physics baseline),
+        # but validation state is NOT persisted (it's only in instance variables)
+        restarted_learner = AdaptiveLearner(heating_type=HEATING_TYPE_CONVECTOR)
+        restarted_learner.set_physics_baseline(100.0, 0.01, 50.0)
+
+        # In a real restart, PID history would be restored from persistent state
+        # (simulating this for completeness)
+        restarted_learner.record_pid_snapshot(
+            kp=100.0, ki=0.01, kd=50.0,
+            reason="before_auto_apply",
+            metrics={"baseline_overshoot": baseline_overshoot}
+        )
+        restarted_learner.record_pid_snapshot(
+            kp=90.0, ki=0.012, kd=45.0,
+            reason="auto_apply",
+            metrics={"baseline_overshoot": baseline_overshoot}
+        )
+
+        # Phase 5: Verify validation state is lost after restart
+        # IMPORTANT: This is EXPECTED BEHAVIOR - validation state is not persisted
+        assert restarted_learner.is_in_validation_mode() is False
+        assert len(restarted_learner._validation_cycles) == 0
+        assert restarted_learner._validation_baseline_overshoot is None
+
+        # Phase 6: Verify that PID history IS preserved (this is persisted)
+        history = restarted_learner.get_pid_history()
+        assert len(history) == 2
+        assert history[-1]["reason"] == "auto_apply"
+        assert history[-1]["kp"] == 90.0
+
+        # DOCUMENTATION NOTE:
+        # Validation state loss on HA restart is acceptable because:
+        # 1. The auto-applied PID gains remain active (they're persisted)
+        # 2. The system will continue running with the new gains
+        # 3. If the gains perform well, confidence will rebuild naturally
+        # 4. If the gains perform poorly, degradation will be detected in future cycles
+        # 5. Validation is a safety mechanism, not a critical operational requirement
+        #
+        # Future enhancement could persist validation state if needed, but current
+        # behavior is reasonable given the low likelihood of restart during validation
+        # (validation completes in 5 cycles, typically <24 hours).
+
+
 # Marker test for module existence
 def test_integration_auto_apply_module_exists():
     """Marker test to verify module can be imported."""
