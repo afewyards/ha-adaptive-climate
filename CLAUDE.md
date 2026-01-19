@@ -490,6 +490,83 @@ sequenceDiagram
     CC->>MH: Turn off main heater
 ```
 
+### Persistence
+
+Learning data (AdaptiveLearner cycle history, KeLearner observations) persists across Home Assistant restarts using the `LearningDataStore` class in `adaptive/persistence.py`.
+
+**Storage Format (v3 - zone-keyed):**
+
+```json
+{
+  "version": 3,
+  "zones": {
+    "climate.living_room": {
+      "adaptive_learner": {
+        "cycle_history": [
+          {"overshoot": 0.3, "undershoot": 0.1, "settling_time": 45.0, ...}
+        ],
+        "consecutive_converged_cycles": 3,
+        "pid_converged_for_ke": true,
+        "auto_apply_count": 1
+      },
+      "ke_learner": {
+        "current_ke": 0.55,
+        "observations": [...],
+        "enabled": true
+      },
+      "last_updated": "2025-01-14T10:30:00"
+    }
+  }
+}
+```
+
+**Key Classes:**
+- `LearningDataStore` - Singleton managing HA Store helper, zone-keyed storage
+- `AdaptiveLearner.to_dict()` / `restore_from_dict()` - Serialization/deserialization
+- `KeLearner.to_dict()` / `from_dict()` - Serialization/deserialization
+
+**Persistence Flow:**
+
+```mermaid
+flowchart TD
+    subgraph Startup
+        A[async_setup_platform] --> B{learning_store exists?}
+        B -->|No| C[Create LearningDataStore]
+        C --> D[async_load from HA Store]
+        B -->|Yes| D
+        D --> E[get_zone_data for zone]
+        E --> F{zone data exists?}
+        F -->|Yes| G[AdaptiveLearner.restore_from_dict]
+        F -->|No| H[Use physics-based defaults]
+        G --> I[async_added_to_hass]
+        H --> I
+        I --> J{stored_ke_data exists?}
+        J -->|Yes| K[KeLearner.from_dict]
+        J -->|No| L[Physics-based Ke init]
+        K --> M[CycleTrackerManager.set_restoration_complete]
+        L --> M
+    end
+
+    subgraph Runtime
+        N[Cycle finalized] --> O[AdaptiveLearner.add_cycle_metrics]
+        O --> P[update_zone_data in memory]
+        P --> Q[schedule_zone_save - 30s debounce]
+    end
+
+    subgraph Shutdown
+        R[async_will_remove_from_hass] --> S[async_save_zone]
+        S --> T[Immediate save to HA Store]
+    end
+```
+
+**Key Implementation Details:**
+- Uses Home Assistant's `Store` helper for atomic writes and versioning
+- Zone-keyed storage allows independent save/restore per thermostat entity
+- `schedule_zone_save()` uses 30-second debounce to batch frequent cycle completions
+- `async_save_zone()` with `asyncio.Lock` prevents race conditions
+- Migration support: v2 (flat format) automatically converts to v3 (zone-keyed)
+- Restoration gating: `CycleTrackerManager` ignores temperature updates until `set_restoration_complete()` is called to prevent false cycles during startup
+
 ## Important Caveats
 
 **Service calls:** Always use `hass.services.async_call()` - never directly manipulate entity states.
