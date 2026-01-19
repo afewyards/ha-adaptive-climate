@@ -68,6 +68,7 @@ CONF_DERIVATIVE_FILTER = "derivative_filter_alpha"
 CONF_PROPORTIONAL_ON_MEASUREMENT = "proportional_on_measurement"
 CONF_DISTURBANCE_REJECTION_ENABLED = "disturbance_rejection_enabled"
 CONF_KE_LEARNING_FIRST = "ke_learning_first"
+CONF_AUTO_APPLY_PID = "auto_apply_pid"
 
 # Heating system types
 HEATING_TYPE_FLOOR_HYDRONIC = "floor_hydronic"
@@ -474,6 +475,22 @@ KE_CORRELATION_THRESHOLD = 0.3
 KE_MAX_OBSERVATIONS = 100
 # Duration in minutes at target temperature to consider steady state
 KE_STEADY_STATE_DURATION = 15
+
+# Auto-apply PID constants
+# Maximum auto-applies per season (90 days) to prevent runaway tuning
+MAX_AUTO_APPLIES_PER_SEASON = 5
+# Maximum lifetime auto-applies before requiring manual review
+MAX_AUTO_APPLIES_LIFETIME = 20
+# Maximum cumulative drift from physics baseline (50% = 1.5x original values)
+MAX_CUMULATIVE_DRIFT_PCT = 50
+# Number of PID snapshots to retain for history/rollback
+PID_HISTORY_SIZE = 10
+# Number of cycles in validation window after auto-apply
+VALIDATION_CYCLE_COUNT = 5
+# Performance degradation threshold for validation failure (30% worse)
+VALIDATION_DEGRADATION_THRESHOLD = 0.30
+# Days to block auto-apply after seasonal shift detected
+SEASONAL_SHIFT_BLOCK_DAYS = 7
 
 # Floor heating construction configuration
 CONF_FLOOR_CONSTRUCTION = 'floor_construction'
