@@ -53,6 +53,7 @@ class CycleTrackerManager:
         settling_timeout_minutes: int | None = None,
         get_outdoor_temp: Callable[[], float | None] | None = None,
         on_validation_failed: Callable[[], Awaitable[None]] | None = None,
+        on_auto_apply_check: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
         """Initialize the cycle tracker manager.
 
@@ -69,6 +70,7 @@ class CycleTrackerManager:
             settling_timeout_minutes: Optional override for settling timeout in minutes
             get_outdoor_temp: Callback to get outdoor temperature (optional)
             on_validation_failed: Async callback for validation failure (triggers rollback)
+            on_auto_apply_check: Async callback for auto-apply check after cycle completion
         """
         from ..const import (
             SETTLING_TIMEOUT_MULTIPLIER,
@@ -86,6 +88,7 @@ class CycleTrackerManager:
         self._get_is_device_active = get_is_device_active
         self._get_outdoor_temp = get_outdoor_temp
         self._on_validation_failed = on_validation_failed
+        self._on_auto_apply_check = on_auto_apply_check
 
         # State tracking
         self._state: CycleState = CycleState.IDLE
@@ -735,6 +738,10 @@ class CycleTrackerManager:
             rise_time or 0.0,
             disturbance_str,
         )
+
+        # Trigger auto-apply check if callback configured (and not in validation mode)
+        if self._on_auto_apply_check is not None and not self._adaptive_learner.is_in_validation_mode():
+            self._hass.async_create_task(self._on_auto_apply_check())
 
         # Reset cycle state (clears interruption flags and transitions to IDLE)
         self._reset_cycle_state()

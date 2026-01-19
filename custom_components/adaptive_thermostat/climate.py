@@ -897,6 +897,8 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                         get_is_device_active=lambda: self._is_device_active,
                         thermal_time_constant=self._thermal_time_constant,
                         get_outdoor_temp=lambda: self._ext_temp,
+                        on_validation_failed=self._handle_validation_failure,
+                        on_auto_apply_check=self._check_auto_apply_pid,
                     )
                     # Add cycle_tracker to zone_data for state_attributes access
                     zone_data["cycle_tracker"] = self._cycle_tracker
