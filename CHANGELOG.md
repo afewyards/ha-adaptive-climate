@@ -1,6 +1,40 @@
 # CHANGELOG
 
 
+## v0.13.0 (2026-01-19)
+
+### Chores
+
+- Update manifest author and repo URLs
+  ([`51d7d1d`](https://github.com/afewyards/ha-adaptive-thermostat/commit/51d7d1d4847ef854fa594c14efae97d149532d5d))
+
+### Documentation
+
+- Add floor_construction documentation
+  ([`fce937b`](https://github.com/afewyards/ha-adaptive-thermostat/commit/fce937bfc9d245287f10377637a9e6bac8b42b1d))
+
+- Update README.md Multi-Zone example with floor_construction config - Add Floor Construction
+  section to README.md with hardwood example - Create wiki content for Configuration Reference
+  (materials, validation) - Create wiki content for PID Control (tau modifier impact)
+
+### Features
+
+- Add supply_temperature config for physics-based PID scaling
+  ([`b9e5e06`](https://github.com/afewyards/ha-adaptive-thermostat/commit/b9e5e062492d97da72ae713549fa5dcd7ac8a66f))
+
+Add optional domain-level supply_temperature configuration to adjust physics-based PID
+  initialization for systems with non-standard supply temperatures (e.g., low-temp floor heating
+  with heat pumps).
+
+Lower supply temp means less heat transfer per degree, requiring higher PID gains. The scaling
+  formula is: temp_factor = ref_ΔT / actual_ΔT where ΔT = supply_temp - 20°C (room temp).
+
+Reference supply temperatures per heating type: - floor_hydronic: 45°C - radiator: 70°C - convector:
+  55°C - forced_air: 45°C
+
+Example: 35°C supply with floor_hydronic (45°C ref) gives 1.67x scaling on Kp and Ki gains.
+
+
 ## v0.12.0 (2026-01-19)
 
 ### Features
