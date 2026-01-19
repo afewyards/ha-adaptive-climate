@@ -1,6 +1,44 @@
 # CHANGELOG
 
 
+## v0.12.0 (2026-01-19)
+
+### Features
+
+- Add clear_learning service to reset zone learning data
+  ([`4438d79`](https://github.com/afewyards/ha-adaptive-thermostat/commit/4438d792389609dbb7a472e59e617d5a045c1868))
+
+Adds entity-level service to clear all adaptive learning data and reset PID to physics defaults. Use
+  when learned values aren't working well.
+
+Clears: - Cycle history from AdaptiveLearner - Ke observations from KeLearner - Resets PID gains to
+  physics-based defaults
+
+- Apply physics-based Ke from startup instead of waiting for PID convergence
+  ([`f6758a2`](https://github.com/afewyards/ha-adaptive-thermostat/commit/f6758a29217921d8d5241a8bf756453fcb4a825a))
+
+Previously Ke was set to 0 at startup and only applied after PID converged. This caused the integral
+  term to over-compensate for outdoor temperature effects during PID learning, leading to suboptimal
+  Ki tuning.
+
+Now physics-based Ke is applied immediately, ensuring PID learning happens with correct outdoor
+  compensation from day 1.
+
+### Refactoring
+
+- Remove Ke-first learning in favor of physics-based Ke at startup
+  ([`ebde210`](https://github.com/afewyards/ha-adaptive-thermostat/commit/ebde210e2b20cb3dfd16611449f84ee83c09d11e))
+
+Ke-first learning required 10-15 steady-state cycles and 5°C outdoor temp range before PID tuning
+  could begin - impractical for real-world use.
+
+The better approach (implemented in previous commit) applies physics-based Ke immediately at
+  startup, giving PID learning correct outdoor compensation from day 1 without any waiting period.
+
+Removed: - adaptive/ke_first_learning.py - tests/test_ke_first_learning.py - ke_first_learner
+  parameter from AdaptiveLearner - README troubleshooting section for Ke-first convergence
+
+
 ## v0.11.0 (2026-01-19)
 
 ### Documentation
