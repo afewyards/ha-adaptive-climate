@@ -492,6 +492,67 @@ VALIDATION_DEGRADATION_THRESHOLD = 0.30
 # Days to block auto-apply after seasonal shift detected
 SEASONAL_SHIFT_BLOCK_DAYS = 7
 
+# Heating-type-specific auto-apply thresholds
+# Slow systems (high thermal mass) require higher confidence and longer cooldowns
+# to ensure stability before automatic PID changes are applied.
+#
+# Keys:
+#   confidence_first: Required confidence for first auto-apply (no history)
+#   confidence_subsequent: Required confidence for subsequent auto-applies
+#   min_cycles: Minimum cycles before auto-apply can trigger
+#   cooldown_hours: Minimum hours between auto-applies
+#   cooldown_cycles: Minimum cycles between auto-applies
+AUTO_APPLY_THRESHOLDS = {
+    HEATING_TYPE_FLOOR_HYDRONIC: {
+        "confidence_first": 0.80,        # High confidence - slow response makes mistakes costly
+        "confidence_subsequent": 0.90,   # Very high - each change needs strong evidence
+        "min_cycles": 8,                 # More cycles needed due to long cycle times
+        "cooldown_hours": 96,            # 4 days between applies
+        "cooldown_cycles": 15,           # ~1 week of normal operation
+    },
+    HEATING_TYPE_RADIATOR: {
+        "confidence_first": 0.70,        # Moderate confidence
+        "confidence_subsequent": 0.85,   # Higher for subsequent changes
+        "min_cycles": 7,                 # Moderate cycle requirement
+        "cooldown_hours": 72,            # 3 days between applies
+        "cooldown_cycles": 12,           # ~5 days of normal operation
+    },
+    HEATING_TYPE_CONVECTOR: {
+        "confidence_first": 0.60,        # Standard confidence threshold
+        "confidence_subsequent": 0.80,   # Higher for subsequent changes
+        "min_cycles": 6,                 # Standard cycle requirement
+        "cooldown_hours": 48,            # 2 days between applies
+        "cooldown_cycles": 10,           # ~3-4 days of normal operation
+    },
+    HEATING_TYPE_FORCED_AIR: {
+        "confidence_first": 0.60,        # Standard confidence (fast recovery if wrong)
+        "confidence_subsequent": 0.80,   # Higher for subsequent changes
+        "min_cycles": 6,                 # Standard cycle requirement
+        "cooldown_hours": 36,            # 1.5 days between applies
+        "cooldown_cycles": 8,            # ~2 days of normal operation
+    },
+}
+
+
+def get_auto_apply_thresholds(heating_type: Optional[str] = None) -> Dict[str, float]:
+    """
+    Get auto-apply thresholds for a specific heating type.
+
+    Returns heating-type-specific thresholds if available, otherwise returns
+    convector thresholds as the default baseline.
+
+    Args:
+        heating_type: One of HEATING_TYPE_* constants, or None for default
+
+    Returns:
+        Dict with auto-apply threshold values (confidence_first, confidence_subsequent,
+        min_cycles, cooldown_hours, cooldown_cycles)
+    """
+    if heating_type and heating_type in AUTO_APPLY_THRESHOLDS:
+        return AUTO_APPLY_THRESHOLDS[heating_type]
+    return AUTO_APPLY_THRESHOLDS[HEATING_TYPE_CONVECTOR]
+
+
 # Floor heating construction configuration
 CONF_FLOOR_CONSTRUCTION = 'floor_construction'
 CONF_PIPE_SPACING_MM = 'pipe_spacing_mm'
