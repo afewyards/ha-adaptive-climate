@@ -302,3 +302,46 @@ class PIDTuningManager:
                 "%s: Cannot apply adaptive Ke - no Ke controller",
                 self._thermostat.entity_id
             )
+
+    async def async_clear_learning(self, **kwargs) -> None:
+        """Clear all learning data and reset PID to physics defaults.
+
+        This clears:
+        - Cycle history from AdaptiveLearner
+        - Ke observations from KeLearner
+        - Convergence state
+        - Resets PID to physics-based defaults
+        """
+        hass = self._get_hass()
+        coordinator = hass.data.get(DOMAIN, {}).get("coordinator")
+
+        if coordinator:
+            all_zones = coordinator.get_all_zones()
+            for zone_id, zone_data in all_zones.items():
+                if zone_data.get("climate_entity_id") == self._thermostat.entity_id:
+                    # Clear AdaptiveLearner cycle history
+                    adaptive_learner = zone_data.get("adaptive_learner")
+                    if adaptive_learner:
+                        adaptive_learner.clear_history()
+                        _LOGGER.info(
+                            "%s: Cleared adaptive learning cycle history",
+                            self._thermostat.entity_id
+                        )
+                    break
+
+        # Clear Ke learner observations
+        ke_controller = getattr(self._thermostat, '_ke_controller', None)
+        if ke_controller and ke_controller.ke_learner:
+            ke_controller.ke_learner.clear_observations()
+            _LOGGER.info(
+                "%s: Cleared Ke learning observations",
+                self._thermostat.entity_id
+            )
+
+        # Reset PID to physics defaults
+        await self.async_reset_pid_to_physics()
+
+        _LOGGER.info(
+            "%s: Learning cleared and PID reset to physics defaults",
+            self._thermostat.entity_id
+        )

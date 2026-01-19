@@ -354,6 +354,11 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         {},
         "async_apply_adaptive_ke",
     )
+    platform.async_register_entity_service(  # type: ignore
+        "clear_learning",
+        {},
+        "async_clear_learning",
+    )
 
 
 class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
@@ -1386,6 +1391,13 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         """
         if self._ke_controller is not None:
             await self._ke_controller.async_apply_adaptive_ke(**kwargs)
+
+    async def async_clear_learning(self, **kwargs):
+        """Clear all learning data and reset PID to physics defaults.
+
+        Delegates to PIDTuningManager for the actual implementation.
+        """
+        await self._pid_tuning_manager.async_clear_learning(**kwargs)
 
     def _is_at_steady_state(self) -> bool:
         """Check if the system is at steady state (maintaining target temperature).

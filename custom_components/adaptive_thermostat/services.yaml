@@ -21,6 +21,17 @@ apply_adaptive_pid:
       integration: adaptive_thermostat
       domain: climate
 
+clear_learning:
+  name: Clear Learning
+  description: >-
+    Clears all adaptive learning data for the zone and resets PID to physics
+    defaults. Use this to start fresh if learned values are not working well.
+    Clears cycle history, Ke observations, and resets PID gains.
+  target:
+    entity:
+      integration: adaptive_thermostat
+      domain: climate
+
 # Domain-level services for system-wide operations
 run_learning:
   name: Run Learning
