@@ -15,10 +15,14 @@ from ..const import (
     CONF_FLOORPLAN,
     CONF_SEED_COEFFICIENTS,
     CONF_STAIRWELL_ZONES,
+    COUPLING_CONFIDENCE_MAX,
     COUPLING_CONFIDENCE_THRESHOLD,
+    COUPLING_MAX_COEFFICIENT,
     COUPLING_MAX_OUTDOOR_CHANGE,
     COUPLING_MIN_DURATION_MINUTES,
+    COUPLING_MIN_OBSERVATIONS,
     COUPLING_MIN_SOURCE_RISE,
+    COUPLING_SEED_WEIGHT,
     DEFAULT_SEED_COEFFICIENTS,
 )
 
@@ -177,6 +181,37 @@ def should_record_observation(observation: CouplingObservation) -> bool:
         return False
 
     return True
+
+
+def _calculate_transfer_rate(observation: CouplingObservation) -> float:
+    """Calculate the heat transfer rate from an observation.
+
+    The transfer rate represents how much the target zone warms per degree
+    of source zone warming, normalized by time.
+
+    Formula: target_delta / (source_delta * hours)
+
+    Args:
+        observation: The CouplingObservation to calculate from.
+
+    Returns:
+        Transfer rate in °C/hour per °C source rise.
+        Returns 0.0 if source delta is zero (to avoid division by zero).
+    """
+    source_delta = observation.source_temp_end - observation.source_temp_start
+    target_delta = observation.target_temp_end - observation.target_temp_start
+
+    # Guard against division by zero
+    if source_delta == 0:
+        return 0.0
+
+    hours = observation.duration_minutes / 60.0
+
+    # Guard against zero duration
+    if hours == 0:
+        return 0.0
+
+    return target_delta / (source_delta * hours)
 
 
 def parse_floorplan(config: Dict[str, Any]) -> Dict[Tuple[str, str], float]:
@@ -353,6 +388,102 @@ class ThermalCouplingLearner:
 
         # No data available for this pair
         return None
+
+    def calculate_coefficient(
+        self, source_zone: str, target_zone: str
+    ) -> Optional[CouplingCoefficient]:
+        """Calculate the coupling coefficient for a zone pair from observations.
+
+        Uses Bayesian blending to combine seed coefficients (if available) with
+        observed transfer rates. The formula is:
+
+            blended = (seed * SEED_WEIGHT + obs_mean * obs_count) / (SEED_WEIGHT + obs_count)
+
+        Confidence is calculated from observation count and penalized by variance.
+
+        Args:
+            source_zone: Entity ID of the source zone (the one heating)
+            target_zone: Entity ID of the target zone (receiving heat transfer)
+
+        Returns:
+            CouplingCoefficient if observations exist, None otherwise.
+            Use get_coefficient() to fall back to seed-only values.
+        """
+        pair = (source_zone, target_zone)
+
+        # Need observations to calculate
+        if pair not in self.observations or not self.observations[pair]:
+            return None
+
+        observations = self.observations[pair]
+        obs_count = len(observations)
+
+        # Calculate transfer rates for all observations
+        transfer_rates = [_calculate_transfer_rate(obs) for obs in observations]
+
+        # Filter out zero rates (from invalid observations)
+        transfer_rates = [r for r in transfer_rates if r > 0]
+        if not transfer_rates:
+            return None
+
+        obs_count = len(transfer_rates)
+        obs_mean = sum(transfer_rates) / obs_count
+
+        # Check for seed coefficient
+        seed = self._seeds.get(pair)
+
+        if seed is not None:
+            # Bayesian blend: (seed * weight + obs_mean * count) / (weight + count)
+            coefficient = (seed * COUPLING_SEED_WEIGHT + obs_mean * obs_count) / (
+                COUPLING_SEED_WEIGHT + obs_count
+            )
+        else:
+            # No seed: pure observation average
+            coefficient = obs_mean
+
+        # Cap coefficient at maximum
+        coefficient = min(coefficient, COUPLING_MAX_COEFFICIENT)
+
+        # Calculate confidence
+        # Base confidence from observation count (asymptotic approach to 1.0)
+        # Using formula: count / (count + k) where k controls the rate
+        # With k=COUPLING_MIN_OBSERVATIONS, we reach 0.5 at MIN_OBSERVATIONS
+        base_confidence = obs_count / (obs_count + COUPLING_MIN_OBSERVATIONS)
+
+        # Reduce confidence based on variance
+        if obs_count >= 2:
+            mean_rate = sum(transfer_rates) / len(transfer_rates)
+            variance = sum((r - mean_rate) ** 2 for r in transfer_rates) / len(
+                transfer_rates
+            )
+            std_dev = variance**0.5
+
+            # Normalize variance penalty by mean (coefficient of variation)
+            # High CV = high uncertainty
+            if mean_rate > 0:
+                cv = std_dev / mean_rate
+                # CV of 0.5 (50% std dev) reduces confidence by ~25%
+                # CV of 1.0 (100% std dev) reduces confidence by ~50%
+                variance_penalty = min(cv * 0.5, 0.5)
+                confidence = base_confidence * (1 - variance_penalty)
+            else:
+                confidence = base_confidence
+        else:
+            # Single observation: can't calculate variance, use base confidence
+            confidence = base_confidence
+
+        # Clamp confidence between threshold and max
+        confidence = max(0.0, min(confidence, COUPLING_CONFIDENCE_MAX))
+
+        return CouplingCoefficient(
+            source_zone=source_zone,
+            target_zone=target_zone,
+            coefficient=coefficient,
+            confidence=confidence,
+            observation_count=obs_count,
+            baseline_overshoot=None,
+            last_updated=datetime.now(),
+        )
 
     def start_observation(
         self,

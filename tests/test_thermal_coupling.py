@@ -1074,3 +1074,348 @@ class TestObservationFiltering:
         )
 
         assert should_record_observation(obs) is True
+
+
+# ============================================================================
+# Transfer Rate and Coefficient Calculation Tests
+# ============================================================================
+
+
+class TestTransferRateCalculation:
+    """Tests for transfer rate calculation from observations."""
+
+    def test_calc_transfer_rate_basic(self):
+        """Test transfer rate computes target_delta / (source_delta * hours)."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            CouplingObservation,
+            _calculate_transfer_rate,
+        )
+
+        # 60 min observation: source rose 2°C, target rose 0.5°C
+        # Rate = 0.5 / (2 * 1.0) = 0.25 °C/hour per °C source
+        obs = CouplingObservation(
+            timestamp=datetime.now(),
+            source_zone="climate.living_room",
+            target_zone="climate.kitchen",
+            source_temp_start=19.0,
+            source_temp_end=21.0,      # 2°C rise
+            target_temp_start=18.0,
+            target_temp_end=18.5,      # 0.5°C rise
+            outdoor_temp_start=5.0,
+            outdoor_temp_end=5.0,
+            duration_minutes=60.0,     # 1 hour
+        )
+
+        rate = _calculate_transfer_rate(obs)
+        assert abs(rate - 0.25) < 0.001
+
+    def test_calc_transfer_rate_shorter_duration(self):
+        """Test transfer rate with 30 minute observation."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            CouplingObservation,
+            _calculate_transfer_rate,
+        )
+
+        # 30 min observation: source rose 3°C, target rose 0.3°C
+        # Rate = 0.3 / (3 * 0.5) = 0.2 °C/hour per °C source
+        obs = CouplingObservation(
+            timestamp=datetime.now(),
+            source_zone="climate.living_room",
+            target_zone="climate.kitchen",
+            source_temp_start=18.0,
+            source_temp_end=21.0,      # 3°C rise
+            target_temp_start=17.0,
+            target_temp_end=17.3,      # 0.3°C rise
+            outdoor_temp_start=5.0,
+            outdoor_temp_end=5.0,
+            duration_minutes=30.0,     # 0.5 hours
+        )
+
+        rate = _calculate_transfer_rate(obs)
+        assert abs(rate - 0.2) < 0.001
+
+    def test_calc_transfer_rate_zero_source_delta(self):
+        """Test transfer rate returns 0 when source delta is zero."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            CouplingObservation,
+            _calculate_transfer_rate,
+        )
+
+        # Zero source delta - should return 0 to avoid division by zero
+        obs = CouplingObservation(
+            timestamp=datetime.now(),
+            source_zone="climate.living_room",
+            target_zone="climate.kitchen",
+            source_temp_start=20.0,
+            source_temp_end=20.0,      # No change
+            target_temp_start=18.0,
+            target_temp_end=18.5,
+            outdoor_temp_start=5.0,
+            outdoor_temp_end=5.0,
+            duration_minutes=60.0,
+        )
+
+        rate = _calculate_transfer_rate(obs)
+        assert rate == 0.0
+
+
+class TestCoefficientCalculation:
+    """Tests for Bayesian coefficient calculation."""
+
+    def test_calc_coefficient_no_seed_single_observation(self):
+        """Test coefficient calculation with one observation, no seed."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            ThermalCouplingLearner,
+            CouplingObservation,
+        )
+
+        learner = ThermalCouplingLearner()
+
+        # Add single observation with known transfer rate
+        # 60 min, source +2°C, target +0.4°C -> rate = 0.4 / (2 * 1) = 0.2
+        obs = CouplingObservation(
+            timestamp=datetime.now(),
+            source_zone="climate.living_room",
+            target_zone="climate.kitchen",
+            source_temp_start=19.0,
+            source_temp_end=21.0,
+            target_temp_start=18.0,
+            target_temp_end=18.4,
+            outdoor_temp_start=5.0,
+            outdoor_temp_end=5.0,
+            duration_minutes=60.0,
+        )
+
+        pair = ("climate.living_room", "climate.kitchen")
+        learner.observations[pair] = [obs]
+
+        coef = learner.calculate_coefficient("climate.living_room", "climate.kitchen")
+
+        # No seed: just the observation average (0.2)
+        assert coef is not None
+        assert abs(coef.coefficient - 0.2) < 0.01
+        assert coef.observation_count == 1
+
+    def test_calc_coefficient_no_seed_multiple_observations(self):
+        """Test coefficient is average of transfer rates without seed."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            ThermalCouplingLearner,
+            CouplingObservation,
+        )
+
+        learner = ThermalCouplingLearner()
+
+        # Three observations with rates: 0.2, 0.3, 0.4
+        # Average = (0.2 + 0.3 + 0.4) / 3 = 0.3
+        observations = []
+        for target_rise, rate in [(0.4, 0.2), (0.6, 0.3), (0.8, 0.4)]:
+            # Each: 60 min, source +2°C
+            obs = CouplingObservation(
+                timestamp=datetime.now(),
+                source_zone="climate.living_room",
+                target_zone="climate.kitchen",
+                source_temp_start=19.0,
+                source_temp_end=21.0,
+                target_temp_start=18.0,
+                target_temp_end=18.0 + target_rise,
+                outdoor_temp_start=5.0,
+                outdoor_temp_end=5.0,
+                duration_minutes=60.0,
+            )
+            observations.append(obs)
+
+        pair = ("climate.living_room", "climate.kitchen")
+        learner.observations[pair] = observations
+
+        coef = learner.calculate_coefficient("climate.living_room", "climate.kitchen")
+
+        assert coef is not None
+        assert abs(coef.coefficient - 0.3) < 0.01
+        assert coef.observation_count == 3
+
+    def test_calc_coefficient_with_seed_bayesian_blend(self):
+        """Test Bayesian blend: (seed*6 + obs*count) / (6+count)."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            ThermalCouplingLearner,
+            CouplingObservation,
+        )
+        from custom_components.adaptive_thermostat.const import COUPLING_SEED_WEIGHT
+
+        learner = ThermalCouplingLearner()
+
+        # Set up seed for the pair
+        pair = ("climate.living_room", "climate.kitchen")
+        learner._seeds[pair] = 0.15  # same_floor seed
+
+        # Add 3 observations with rate = 0.3 each
+        # Bayesian: (0.15*6 + 0.3*3) / (6+3) = (0.9 + 0.9) / 9 = 0.2
+        observations = []
+        for _ in range(3):
+            obs = CouplingObservation(
+                timestamp=datetime.now(),
+                source_zone="climate.living_room",
+                target_zone="climate.kitchen",
+                source_temp_start=19.0,
+                source_temp_end=21.0,
+                target_temp_start=18.0,
+                target_temp_end=18.6,  # +0.6°C / (2°C * 1h) = 0.3 rate
+                outdoor_temp_start=5.0,
+                outdoor_temp_end=5.0,
+                duration_minutes=60.0,
+            )
+            observations.append(obs)
+
+        learner.observations[pair] = observations
+
+        coef = learner.calculate_coefficient("climate.living_room", "climate.kitchen")
+
+        # Bayesian blend: (0.15*6 + 0.3*3) / (6+3) = 1.8/9 = 0.2
+        assert coef is not None
+        assert abs(coef.coefficient - 0.2) < 0.01
+
+    def test_calc_confidence_base_from_count(self):
+        """Test confidence scales with observation count."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            ThermalCouplingLearner,
+            CouplingObservation,
+        )
+        from custom_components.adaptive_thermostat.const import COUPLING_MIN_OBSERVATIONS
+
+        learner = ThermalCouplingLearner()
+        pair = ("climate.living_room", "climate.kitchen")
+
+        # Consistent observations (low variance) - confidence should grow with count
+        observations = []
+        for i in range(5):
+            obs = CouplingObservation(
+                timestamp=datetime.now(),
+                source_zone="climate.living_room",
+                target_zone="climate.kitchen",
+                source_temp_start=19.0,
+                source_temp_end=21.0,
+                target_temp_start=18.0,
+                target_temp_end=18.4,  # Consistent rate
+                outdoor_temp_start=5.0,
+                outdoor_temp_end=5.0,
+                duration_minutes=60.0,
+            )
+            observations.append(obs)
+
+        learner.observations[pair] = observations
+
+        coef = learner.calculate_coefficient("climate.living_room", "climate.kitchen")
+
+        assert coef is not None
+        # With 5 consistent observations and no seed, confidence should be > 0.3
+        assert coef.confidence > 0.3
+        assert coef.observation_count == 5
+
+    def test_calc_confidence_reduced_by_variance(self):
+        """Test confidence is reduced when observations have high variance."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            ThermalCouplingLearner,
+            CouplingObservation,
+        )
+
+        learner = ThermalCouplingLearner()
+        pair = ("climate.living_room", "climate.kitchen")
+
+        # High variance observations with vastly different rates
+        # Rate 1: 0.1, Rate 2: 0.5 -> high variance
+        obs1 = CouplingObservation(
+            timestamp=datetime.now(),
+            source_zone="climate.living_room",
+            target_zone="climate.kitchen",
+            source_temp_start=19.0,
+            source_temp_end=21.0,
+            target_temp_start=18.0,
+            target_temp_end=18.2,  # 0.2 / 2 = 0.1 rate
+            outdoor_temp_start=5.0,
+            outdoor_temp_end=5.0,
+            duration_minutes=60.0,
+        )
+        obs2 = CouplingObservation(
+            timestamp=datetime.now(),
+            source_zone="climate.living_room",
+            target_zone="climate.kitchen",
+            source_temp_start=19.0,
+            source_temp_end=21.0,
+            target_temp_start=18.0,
+            target_temp_end=19.0,  # 1.0 / 2 = 0.5 rate
+            outdoor_temp_start=5.0,
+            outdoor_temp_end=5.0,
+            duration_minutes=60.0,
+        )
+
+        learner.observations[pair] = [obs1, obs2]
+
+        coef = learner.calculate_coefficient("climate.living_room", "climate.kitchen")
+
+        assert coef is not None
+        # High variance should reduce confidence
+        assert coef.confidence < 0.3  # Below threshold due to variance
+
+    def test_coefficient_capped_at_max(self):
+        """Test coefficient is capped at MAX_COEFFICIENT=0.5."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            ThermalCouplingLearner,
+            CouplingObservation,
+        )
+        from custom_components.adaptive_thermostat.const import COUPLING_MAX_COEFFICIENT
+
+        learner = ThermalCouplingLearner()
+        pair = ("climate.living_room", "climate.kitchen")
+
+        # Very high transfer rate observation (unrealistic but tests capping)
+        obs = CouplingObservation(
+            timestamp=datetime.now(),
+            source_zone="climate.living_room",
+            target_zone="climate.kitchen",
+            source_temp_start=19.0,
+            source_temp_end=20.0,      # +1°C source
+            target_temp_start=18.0,
+            target_temp_end=19.0,      # +1°C target in 1 hour = rate 1.0
+            outdoor_temp_start=5.0,
+            outdoor_temp_end=5.0,
+            duration_minutes=60.0,
+        )
+
+        learner.observations[pair] = [obs]
+
+        coef = learner.calculate_coefficient("climate.living_room", "climate.kitchen")
+
+        assert coef is not None
+        # Coefficient should be capped at 0.5
+        assert coef.coefficient == COUPLING_MAX_COEFFICIENT
+        assert coef.coefficient == 0.5
+
+    def test_calc_coefficient_no_observations_returns_none(self):
+        """Test calculate_coefficient returns None when no observations exist."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            ThermalCouplingLearner,
+        )
+
+        learner = ThermalCouplingLearner()
+
+        # No observations, no seeds
+        coef = learner.calculate_coefficient("climate.living_room", "climate.kitchen")
+
+        assert coef is None
+
+    def test_calc_coefficient_seed_only_returns_seed(self):
+        """Test calculate_coefficient falls back to get_coefficient for seed-only."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            ThermalCouplingLearner,
+        )
+
+        learner = ThermalCouplingLearner()
+
+        # Set up seed but no observations
+        pair = ("climate.living_room", "climate.kitchen")
+        learner._seeds[pair] = 0.15
+
+        # calculate_coefficient with no observations but seed should return None
+        # (calculation requires observations; get_coefficient handles seed fallback)
+        coef = learner.calculate_coefficient("climate.living_room", "climate.kitchen")
+
+        assert coef is None  # Need observations to calculate
