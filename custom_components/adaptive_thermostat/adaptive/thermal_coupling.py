@@ -302,3 +302,108 @@ class ThermalCouplingLearner:
 
         # No data available for this pair
         return None
+
+    def start_observation(
+        self,
+        source_zone: str,
+        all_zone_temps: Dict[str, float],
+        outdoor_temp: float,
+    ) -> None:
+        """Start an observation when a zone begins heating.
+
+        Creates an ObservationContext that captures the initial state of all zones
+        so we can calculate temperature deltas when the source zone stops heating.
+
+        If an observation is already pending for this source zone, this call is
+        ignored to prevent duplicate observations.
+
+        Args:
+            source_zone: Entity ID of the zone that started heating
+            all_zone_temps: Current temperatures of all zones {entity_id: temp}
+            outdoor_temp: Current outdoor temperature (°C)
+        """
+        # Skip if observation already pending for this zone
+        if source_zone in self._pending:
+            return
+
+        # Extract source temp and build target temps dict (excluding source)
+        source_temp = all_zone_temps.get(source_zone, 0.0)
+        target_temps = {
+            zone: temp
+            for zone, temp in all_zone_temps.items()
+            if zone != source_zone
+        }
+
+        # Create observation context
+        self._pending[source_zone] = ObservationContext(
+            source_zone=source_zone,
+            start_time=datetime.now(),
+            source_temp_start=source_temp,
+            target_temps_start=target_temps,
+            outdoor_temp_start=outdoor_temp,
+        )
+
+    def end_observation(
+        self,
+        source_zone: str,
+        current_temps: Dict[str, float],
+        outdoor_temp: float,
+        idle_zones: set,
+    ) -> List[CouplingObservation]:
+        """End an observation when a zone stops heating.
+
+        Creates CouplingObservation records for each target zone that was idle
+        (not heating) during the observation period.
+
+        Args:
+            source_zone: Entity ID of the zone that stopped heating
+            current_temps: Current temperatures of all zones {entity_id: temp}
+            outdoor_temp: Current outdoor temperature (°C)
+            idle_zones: Set of zone entity IDs that were idle during the observation
+
+        Returns:
+            List of CouplingObservation records created for idle target zones.
+            Returns empty list if no pending observation exists for source_zone.
+        """
+        # Check if we have a pending observation for this zone
+        if source_zone not in self._pending:
+            return []
+
+        context = self._pending.pop(source_zone)
+        now = datetime.now()
+
+        # Calculate duration in minutes
+        duration_minutes = (now - context.start_time).total_seconds() / 60.0
+
+        # Get current source temp
+        source_temp_end = current_temps.get(source_zone, context.source_temp_start)
+
+        observations: List[CouplingObservation] = []
+
+        # Create observation for each target zone that was idle
+        for target_zone, target_temp_start in context.target_temps_start.items():
+            # Skip if target wasn't idle (was also heating)
+            if target_zone not in idle_zones:
+                continue
+
+            # Skip if we don't have current temp for target
+            if target_zone not in current_temps:
+                continue
+
+            target_temp_end = current_temps[target_zone]
+
+            observation = CouplingObservation(
+                timestamp=now,
+                source_zone=source_zone,
+                target_zone=target_zone,
+                source_temp_start=context.source_temp_start,
+                source_temp_end=source_temp_end,
+                target_temp_start=target_temp_start,
+                target_temp_end=target_temp_end,
+                outdoor_temp_start=context.outdoor_temp_start,
+                outdoor_temp_end=outdoor_temp,
+                duration_minutes=duration_minutes,
+            )
+            observations.append(observation)
+
+        return observations

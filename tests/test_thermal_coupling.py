@@ -602,3 +602,239 @@ class TestThermalCouplingLearner:
         # Seed-only confidence should be COUPLING_CONFIDENCE_THRESHOLD (0.3)
         assert result.confidence == 0.3
         assert result.observation_count == 0
+
+
+# ============================================================================
+# Observation Start/End Lifecycle Tests
+# ============================================================================
+
+
+class TestObservationLifecycle:
+    """Tests for observation start/end lifecycle methods."""
+
+    def test_start_observation(self):
+        """Test start_observation creates ObservationContext for source zone."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            ThermalCouplingLearner,
+            ObservationContext,
+        )
+
+        learner = ThermalCouplingLearner()
+
+        all_zone_temps = {
+            "climate.living_room": 19.0,
+            "climate.kitchen": 18.5,
+            "climate.bedroom": 17.0,
+        }
+        outdoor_temp = 5.0
+
+        learner.start_observation(
+            source_zone="climate.living_room",
+            all_zone_temps=all_zone_temps,
+            outdoor_temp=outdoor_temp,
+        )
+
+        # Should have a pending observation for the source zone
+        assert "climate.living_room" in learner._pending
+        context = learner._pending["climate.living_room"]
+        assert isinstance(context, ObservationContext)
+        assert context.source_zone == "climate.living_room"
+        assert context.source_temp_start == 19.0
+        assert context.outdoor_temp_start == 5.0
+        # Target temps should NOT include the source zone
+        assert "climate.living_room" not in context.target_temps_start
+        assert context.target_temps_start["climate.kitchen"] == 18.5
+        assert context.target_temps_start["climate.bedroom"] == 17.0
+
+    def test_start_observation_skips_if_pending(self):
+        """Test start_observation does not create duplicate observations for same source."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            ThermalCouplingLearner,
+        )
+        from datetime import datetime, timedelta
+
+        learner = ThermalCouplingLearner()
+
+        all_zone_temps = {
+            "climate.living_room": 19.0,
+            "climate.kitchen": 18.5,
+        }
+
+        # Start first observation
+        learner.start_observation(
+            source_zone="climate.living_room",
+            all_zone_temps=all_zone_temps,
+            outdoor_temp=5.0,
+        )
+        original_start_time = learner._pending["climate.living_room"].start_time
+
+        # Try to start another observation for same zone
+        learner.start_observation(
+            source_zone="climate.living_room",
+            all_zone_temps={"climate.living_room": 20.0, "climate.kitchen": 19.0},
+            outdoor_temp=6.0,
+        )
+
+        # Should still have the original observation, not a new one
+        assert learner._pending["climate.living_room"].start_time == original_start_time
+        assert learner._pending["climate.living_room"].source_temp_start == 19.0
+
+    def test_end_observation_creates_records(self):
+        """Test end_observation creates CouplingObservation for each target zone."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            ThermalCouplingLearner,
+            CouplingObservation,
+        )
+        from datetime import datetime, timedelta
+        from unittest.mock import patch
+
+        learner = ThermalCouplingLearner()
+
+        # Set up initial temps
+        all_zone_temps_start = {
+            "climate.living_room": 19.0,
+            "climate.kitchen": 18.5,
+            "climate.bedroom": 17.0,
+        }
+
+        # Manually create a pending observation with a known start time
+        start_time = datetime.now() - timedelta(minutes=30)
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            ObservationContext,
+        )
+        learner._pending["climate.living_room"] = ObservationContext(
+            source_zone="climate.living_room",
+            start_time=start_time,
+            source_temp_start=19.0,
+            target_temps_start={"climate.kitchen": 18.5, "climate.bedroom": 17.0},
+            outdoor_temp_start=5.0,
+        )
+
+        # End observation with new temps
+        current_temps = {
+            "climate.living_room": 21.5,  # Source rose 2.5°C
+            "climate.kitchen": 19.2,      # Target rose 0.7°C
+            "climate.bedroom": 17.5,      # Target rose 0.5°C
+        }
+        idle_zones = {"climate.kitchen", "climate.bedroom"}
+
+        observations = learner.end_observation(
+            source_zone="climate.living_room",
+            current_temps=current_temps,
+            outdoor_temp=5.5,
+            idle_zones=idle_zones,
+        )
+
+        # Should return observations for each target zone
+        assert len(observations) == 2
+
+        # Check kitchen observation
+        kitchen_obs = next((o for o in observations if o.target_zone == "climate.kitchen"), None)
+        assert kitchen_obs is not None
+        assert kitchen_obs.source_zone == "climate.living_room"
+        assert kitchen_obs.source_temp_start == 19.0
+        assert kitchen_obs.source_temp_end == 21.5
+        assert kitchen_obs.target_temp_start == 18.5
+        assert kitchen_obs.target_temp_end == 19.2
+        assert kitchen_obs.outdoor_temp_start == 5.0
+        assert kitchen_obs.outdoor_temp_end == 5.5
+        assert 29 <= kitchen_obs.duration_minutes <= 31  # ~30 minutes
+
+        # Pending observation should be cleared
+        assert "climate.living_room" not in learner._pending
+
+    def test_end_observation_calculates_deltas(self):
+        """Test end_observation computes source_temp_delta and target_temp_delta correctly."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            ThermalCouplingLearner,
+            ObservationContext,
+        )
+        from datetime import datetime, timedelta
+
+        learner = ThermalCouplingLearner()
+
+        start_time = datetime.now() - timedelta(minutes=45)
+        learner._pending["climate.office"] = ObservationContext(
+            source_zone="climate.office",
+            start_time=start_time,
+            source_temp_start=18.0,
+            target_temps_start={"climate.hallway": 16.0},
+            outdoor_temp_start=2.0,
+        )
+
+        observations = learner.end_observation(
+            source_zone="climate.office",
+            current_temps={"climate.office": 21.0, "climate.hallway": 17.2},
+            outdoor_temp=2.5,
+            idle_zones={"climate.hallway"},
+        )
+
+        assert len(observations) == 1
+        obs = observations[0]
+
+        # Verify deltas are correct
+        source_delta = obs.source_temp_end - obs.source_temp_start
+        target_delta = obs.target_temp_end - obs.target_temp_start
+
+        assert source_delta == 3.0  # 21.0 - 18.0
+        assert abs(target_delta - 1.2) < 0.001  # 17.2 - 16.0 (with floating point tolerance)
+
+    def test_end_observation_no_pending(self):
+        """Test end_observation returns empty list if no pending observation."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            ThermalCouplingLearner,
+        )
+
+        learner = ThermalCouplingLearner()
+
+        observations = learner.end_observation(
+            source_zone="climate.unknown",
+            current_temps={"climate.unknown": 20.0},
+            outdoor_temp=5.0,
+            idle_zones=set(),
+        )
+
+        assert observations == []
+
+    def test_end_observation_only_idle_zones(self):
+        """Test end_observation only creates observations for zones that were idle."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            ThermalCouplingLearner,
+            ObservationContext,
+        )
+        from datetime import datetime, timedelta
+
+        learner = ThermalCouplingLearner()
+
+        start_time = datetime.now() - timedelta(minutes=30)
+        learner._pending["climate.living_room"] = ObservationContext(
+            source_zone="climate.living_room",
+            start_time=start_time,
+            source_temp_start=19.0,
+            target_temps_start={
+                "climate.kitchen": 18.5,
+                "climate.bedroom": 17.0,
+                "climate.bathroom": 20.0,
+            },
+            outdoor_temp_start=5.0,
+        )
+
+        # Only kitchen was idle, bedroom and bathroom were also heating
+        current_temps = {
+            "climate.living_room": 21.5,
+            "climate.kitchen": 19.2,
+            "climate.bedroom": 19.0,
+            "climate.bathroom": 22.0,
+        }
+        idle_zones = {"climate.kitchen"}  # Only kitchen was idle
+
+        observations = learner.end_observation(
+            source_zone="climate.living_room",
+            current_temps=current_temps,
+            outdoor_temp=5.5,
+            idle_zones=idle_zones,
+        )
+
+        # Should only have observation for kitchen (the only idle zone)
+        assert len(observations) == 1
+        assert observations[0].target_zone == "climate.kitchen"
