@@ -133,6 +133,7 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Optional(const.CONF_HEATING_TYPE): vol.In(const.VALID_HEATING_TYPES),
         vol.Optional(const.CONF_DERIVATIVE_FILTER): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=1.0)),
         vol.Optional(const.CONF_PROPORTIONAL_ON_MEASUREMENT, default=True): cv.boolean,
+        vol.Optional(const.CONF_AUTO_APPLY_PID, default=True): cv.boolean,
         vol.Optional(const.CONF_AREA_M2): vol.Coerce(float),
         vol.Optional(const.CONF_MAX_POWER_W): vol.Coerce(float),
         vol.Optional(const.CONF_CEILING_HEIGHT, default=const.DEFAULT_CEILING_HEIGHT): vol.Coerce(float),
