@@ -298,6 +298,7 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         'heating_type': config.get(const.CONF_HEATING_TYPE),
         'derivative_filter_alpha': config.get(const.CONF_DERIVATIVE_FILTER),
         'proportional_on_measurement': config.get(const.CONF_PROPORTIONAL_ON_MEASUREMENT),
+        'auto_apply_pid': config.get(const.CONF_AUTO_APPLY_PID),
         'area_m2': config.get(const.CONF_AREA_M2),
         'ceiling_height': config.get(const.CONF_CEILING_HEIGHT),
         'window_area_m2': config.get(const.CONF_WINDOW_AREA_M2),
@@ -488,6 +489,9 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
 
         # Proportional-on-measurement (P-on-M) mode
         self._proportional_on_measurement = kwargs.get('proportional_on_measurement', True)
+
+        # Auto-apply PID mode (automatic application of adaptive PID recommendations)
+        self._auto_apply_pid = kwargs.get('auto_apply_pid', True)
 
         # Night setback
         self._night_setback = None
@@ -1417,6 +1421,111 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         Delegates to PIDTuningManager for the actual implementation.
         """
         await self._pid_tuning_manager.async_clear_learning(**kwargs)
+
+    async def _check_auto_apply_pid(self) -> None:
+        """Check and potentially auto-apply adaptive PID recommendations.
+
+        Called after each cycle finalization when auto_apply_pid is enabled.
+        Obtains outdoor temperature from sensor state if available and triggers
+        auto-apply evaluation through PIDTuningManager.
+        """
+        if not self._auto_apply_pid or not self._pid_tuning_manager:
+            return
+
+        # Get outdoor temperature from sensor state if available
+        outdoor_temp = None
+        if self._ext_sensor_entity_id is not None:
+            ext_sensor_state = self.hass.states.get(self._ext_sensor_entity_id)
+            if ext_sensor_state and ext_sensor_state.state not in (
+                STATE_UNAVAILABLE, STATE_UNKNOWN
+            ):
+                try:
+                    outdoor_temp = float(ext_sensor_state.state)
+                except (ValueError, TypeError):
+                    pass
+        elif self._ext_temp is not None:
+            outdoor_temp = self._ext_temp
+
+        result = await self._pid_tuning_manager.async_auto_apply_adaptive_pid(outdoor_temp)
+
+        if result.get("applied"):
+            # Send persistent notification about auto-apply
+            recommendation = result.get("recommendation", {})
+            old_values = result.get("old_values", {})
+            new_values = result.get("new_values", {})
+
+            await self.hass.services.async_call(
+                "persistent_notification",
+                "create",
+                {
+                    "notification_id": f"adaptive_thermostat_auto_apply_{self._zone_id}",
+                    "title": f"🔧 PID Auto-Applied: {self._name}",
+                    "message": (
+                        f"Adaptive PID values have been automatically applied.\n\n"
+                        f"**Previous values:**\n"
+                        f"- Kp: {old_values.get('kp', 'N/A'):.4f}\n"
+                        f"- Ki: {old_values.get('ki', 'N/A'):.5f}\n"
+                        f"- Kd: {old_values.get('kd', 'N/A'):.3f}\n\n"
+                        f"**New values:**\n"
+                        f"- Kp: {new_values.get('kp', 'N/A'):.4f}\n"
+                        f"- Ki: {new_values.get('ki', 'N/A'):.5f}\n"
+                        f"- Kd: {new_values.get('kd', 'N/A'):.3f}\n\n"
+                        f"The system will validate performance over the next 5 cycles. "
+                        f"If performance degrades, it will automatically rollback.\n\n"
+                        f"To manually rollback, call service: "
+                        f"`adaptive_thermostat.rollback_pid`"
+                    ),
+                },
+                blocking=False,
+            )
+            _LOGGER.info(
+                "%s: Auto-applied PID values: Kp=%.4f→%.4f, Ki=%.5f→%.5f, Kd=%.3f→%.3f",
+                self.entity_id,
+                old_values.get("kp", 0),
+                new_values.get("kp", 0),
+                old_values.get("ki", 0),
+                new_values.get("ki", 0),
+                old_values.get("kd", 0),
+                new_values.get("kd", 0),
+            )
+
+    async def _handle_validation_failure(self) -> None:
+        """Handle validation failure by rolling back PID values.
+
+        Called by CycleTrackerManager when validation detects performance degradation
+        after an auto-apply. Triggers automatic rollback and notifies the user.
+        """
+        if not self._pid_tuning_manager:
+            return
+
+        success = await self._pid_tuning_manager.async_rollback_pid()
+
+        if success:
+            await self.hass.services.async_call(
+                "persistent_notification",
+                "create",
+                {
+                    "notification_id": f"adaptive_thermostat_rollback_{self._zone_id}",
+                    "title": f"⚠️ PID Rolled Back: {self._name}",
+                    "message": (
+                        f"The auto-applied PID values caused performance degradation "
+                        f"(>30% worse overshoot). The system has automatically rolled "
+                        f"back to the previous configuration.\n\n"
+                        f"Learning will continue and may recommend new values "
+                        f"when confidence improves."
+                    ),
+                },
+                blocking=False,
+            )
+            _LOGGER.warning(
+                "%s: Validation failed - PID values rolled back automatically",
+                self.entity_id,
+            )
+        else:
+            _LOGGER.error(
+                "%s: Validation failed but rollback failed - no previous PID history",
+                self.entity_id,
+            )
 
     def _is_at_steady_state(self) -> bool:
         """Check if the system is at steady state (maintaining target temperature).
