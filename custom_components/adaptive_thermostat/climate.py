@@ -297,6 +297,7 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         'contact_action': config.get(const.CONF_CONTACT_ACTION),
         'contact_delay': config.get(const.CONF_CONTACT_DELAY),
         'night_setback_config': config.get(const.CONF_NIGHT_SETBACK),
+        'floor_construction': config.get(const.CONF_FLOOR_CONSTRUCTION),
     }
 
     thermostat = AdaptiveThermostat(**parameters)
@@ -455,6 +456,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         self._window_area_m2 = kwargs.get('window_area_m2')
         self._window_rating = kwargs.get('window_rating', 'hr++')
         self._window_orientation = kwargs.get('window_orientation')
+        self._floor_construction = kwargs.get('floor_construction')
 
         # Derivative filter alpha - get from config or use heating-type-specific default
         self._derivative_filter_alpha = kwargs.get('derivative_filter_alpha')
@@ -586,6 +588,9 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                 window_area_m2=self._window_area_m2,
                 floor_area_m2=self._area_m2,
                 window_rating=self._window_rating,
+                floor_construction=self._floor_construction,
+                area_m2=self._area_m2,
+                heating_type=self._heating_type,
             )
             self._kp, self._ki, self._kd = calculate_initial_pid(
                 self._thermal_time_constant, self._heating_type, self._area_m2, self._max_power_w
