@@ -1651,7 +1651,7 @@ class TestFloorConstructionValidation:
         config = {
             'layers': [
                 {'type': 'top_floor', 'material': 'unobtanium', 'thickness_mm': 3},  # Unknown material + too thin
-                {'type': 'screed', 'material': 'vibranium', 'thickness_mm': 90},  # Unknown material + too thick
+                {'type': 'screed', 'material': 'vibranium', 'thickness_mm': 110},  # Unknown material + too thick
             ],
             'pipe_spacing_mm': 175,  # Invalid spacing
         }
