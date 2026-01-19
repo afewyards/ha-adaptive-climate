@@ -465,3 +465,123 @@ KE_CORRELATION_THRESHOLD = 0.3
 KE_MAX_OBSERVATIONS = 100
 # Duration in minutes at target temperature to consider steady state
 KE_STEADY_STATE_DURATION = 15
+
+# Floor heating construction configuration
+CONF_FLOOR_CONSTRUCTION = 'floor_construction'
+CONF_PIPE_SPACING_MM = 'pipe_spacing_mm'
+
+# Top floor material thermal properties
+# Properties: conductivity (W/(m·K)), density (kg/m³), specific_heat (J/(kg·K))
+TOP_FLOOR_MATERIALS = {
+    "ceramic_tile": {
+        "conductivity": 1.3,
+        "density": 2300,
+        "specific_heat": 840,
+    },
+    "porcelain": {
+        "conductivity": 1.5,
+        "density": 2400,
+        "specific_heat": 880,
+    },
+    "natural_stone": {
+        "conductivity": 2.8,
+        "density": 2700,
+        "specific_heat": 900,
+    },
+    "terrazzo": {
+        "conductivity": 1.8,
+        "density": 2200,
+        "specific_heat": 850,
+    },
+    "polished_concrete": {
+        "conductivity": 1.4,
+        "density": 2100,
+        "specific_heat": 880,
+    },
+    "hardwood": {
+        "conductivity": 0.15,
+        "density": 700,
+        "specific_heat": 1600,
+    },
+    "engineered_wood": {
+        "conductivity": 0.13,
+        "density": 650,
+        "specific_heat": 1600,
+    },
+    "laminate": {
+        "conductivity": 0.17,
+        "density": 800,
+        "specific_heat": 1500,
+    },
+    "vinyl": {
+        "conductivity": 0.19,
+        "density": 1200,
+        "specific_heat": 1400,
+    },
+    "carpet": {
+        "conductivity": 0.06,
+        "density": 200,
+        "specific_heat": 1300,
+    },
+    "cork": {
+        "conductivity": 0.04,
+        "density": 200,
+        "specific_heat": 1800,
+    },
+}
+
+# Screed material thermal properties
+# Properties: conductivity (W/(m·K)), density (kg/m³), specific_heat (J/(kg·K))
+SCREED_MATERIALS = {
+    "cement": {
+        "conductivity": 1.4,
+        "density": 2100,
+        "specific_heat": 840,
+    },
+    "anhydrite": {
+        "conductivity": 1.2,
+        "density": 2000,
+        "specific_heat": 1000,
+    },
+    "lightweight": {
+        "conductivity": 0.47,
+        "density": 1000,
+        "specific_heat": 1000,
+    },
+    "mastic_asphalt": {
+        "conductivity": 0.7,
+        "density": 2100,
+        "specific_heat": 920,
+    },
+    "synthetic": {
+        "conductivity": 0.3,
+        "density": 1200,
+        "specific_heat": 1200,
+    },
+    "self_leveling": {
+        "conductivity": 1.3,
+        "density": 1900,
+        "specific_heat": 900,
+    },
+    "dry_screed": {
+        "conductivity": 0.2,
+        "density": 800,
+        "specific_heat": 1000,
+    },
+}
+
+# Pipe spacing efficiency factors
+# Maps pipe spacing (mm) to heat distribution efficiency (0-1)
+PIPE_SPACING_EFFICIENCY = {
+    100: 0.92,
+    150: 0.87,
+    200: 0.80,
+    300: 0.68,
+}
+
+# Floor construction thickness limits (mm)
+# Used for validation of user-provided thickness values
+FLOOR_THICKNESS_LIMITS = {
+    'top_floor': (5, 25),
+    'screed': (30, 80),
+}
