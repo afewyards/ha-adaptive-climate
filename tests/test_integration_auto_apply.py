@@ -290,6 +290,98 @@ class TestValidationSuccess:
 
         assert adaptive_learner.get_auto_apply_count() == 1
 
+    @pytest.mark.asyncio
+    async def test_full_validation_success_flow(
+        self, mock_hass, adaptive_learner, mock_callbacks
+    ):
+        """Test complete validation success flow from auto-apply through validation completion.
+
+        Integration test for story 9.2:
+        1. Trigger auto-apply (6 good cycles reaching 60% confidence)
+        2. Verify validation mode started with baseline_overshoot
+        3. Simulate 5 validation cycles with equal/better overshoot
+        4. On 5th cycle, verify add_validation_cycle returns 'success'
+        5. Verify validation_mode = False
+        6. Verify auto_apply_count incremented to 1
+        """
+        # Phase 1: Build confidence to trigger auto-apply conditions
+        # Simulate 8 good cycles (convector confidence_first=0.60)
+        for i in range(8):
+            metrics = create_good_cycle_metrics(overshoot=0.15)
+            adaptive_learner.add_cycle_metrics(metrics)
+            adaptive_learner.update_convergence_confidence(metrics)
+
+        # Verify confidence reached required threshold
+        assert adaptive_learner.get_convergence_confidence() >= 0.60
+
+        # Phase 2: Simulate auto-apply (what async_auto_apply_adaptive_pid does)
+        # Record baseline overshoot from last 6 cycles
+        import statistics
+        recent_overshoots = [0.15] * 6  # All cycles had 0.15°C overshoot
+        baseline_overshoot = statistics.mean(recent_overshoots)
+        assert baseline_overshoot == 0.15
+
+        # Record PID snapshot before auto-apply
+        adaptive_learner.record_pid_snapshot(
+            kp=100.0, ki=0.01, kd=50.0,
+            reason="before_auto_apply",
+            metrics={"baseline_overshoot": baseline_overshoot}
+        )
+
+        # Apply new PID values (simulated)
+        new_kp, new_ki, new_kd = 90.0, 0.012, 45.0
+
+        # Record PID snapshot after auto-apply
+        adaptive_learner.record_pid_snapshot(
+            kp=new_kp, ki=new_ki, kd=new_kd,
+            reason="auto_apply",
+            metrics={"baseline_overshoot": baseline_overshoot}
+        )
+
+        # Clear learning history (as auto-apply does)
+        adaptive_learner.clear_history()
+        assert adaptive_learner.get_cycle_count() == 0
+        assert adaptive_learner._convergence_confidence == 0.0
+
+        # Increment auto_apply_count (done in async_auto_apply_adaptive_pid)
+        adaptive_learner._auto_apply_count += 1
+        assert adaptive_learner.get_auto_apply_count() == 1
+
+        # Start validation mode with baseline
+        adaptive_learner.start_validation_mode(baseline_overshoot)
+
+        # Phase 3: Verify validation mode is active with correct baseline
+        assert adaptive_learner.is_in_validation_mode() is True
+        assert adaptive_learner._validation_baseline_overshoot == baseline_overshoot
+        assert len(adaptive_learner._validation_cycles) == 0
+
+        # Phase 4: Complete 5 validation cycles with improved overshoot
+        validation_overshoot = 0.12  # Better than 0.15°C baseline
+        for i in range(VALIDATION_CYCLE_COUNT):
+            metrics = create_good_cycle_metrics(overshoot=validation_overshoot)
+            result = adaptive_learner.add_validation_cycle(metrics)
+
+            if i < VALIDATION_CYCLE_COUNT - 1:
+                # Still collecting cycles
+                assert result is None
+                assert adaptive_learner.is_in_validation_mode() is True
+                assert len(adaptive_learner._validation_cycles) == i + 1
+            else:
+                # 5th cycle - validation should complete with success
+                assert result == "success"
+
+        # Phase 5: Verify validation completed successfully
+        assert adaptive_learner.is_in_validation_mode() is False
+
+        # Phase 6: Verify auto_apply_count is 1 (was incremented before validation)
+        assert adaptive_learner.get_auto_apply_count() == 1
+
+        # Verify PID history contains the auto-apply record
+        history = adaptive_learner.get_pid_history()
+        assert len(history) == 2
+        assert history[1]["reason"] == "auto_apply"
+        assert history[1]["kp"] == 90.0
+
 
 class TestValidationFailureAndRollback:
     """Test validation failure and automatic rollback scenario."""
