@@ -1728,3 +1728,149 @@ def test_calculate_rise_time_module_exists():
         calculate_rise_time,
     )
     assert calculate_rise_time is not None
+
+
+# ============================================================================
+# AdaptiveLearner Serialization Tests (Story 1.1)
+# ============================================================================
+
+
+class TestAdaptiveLearnerSerialization:
+    """Tests for AdaptiveLearner.to_dict() serialization method."""
+
+    def test_adaptive_learner_to_dict_empty(self):
+        """Test to_dict returns dict with expected keys when no cycles."""
+        learner = AdaptiveLearner()
+
+        result = learner.to_dict()
+
+        # Verify structure
+        assert isinstance(result, dict)
+        assert "cycle_history" in result
+        assert "last_adjustment_time" in result
+        assert "consecutive_converged_cycles" in result
+        assert "pid_converged_for_ke" in result
+        assert "auto_apply_count" in result
+
+        # Verify empty state
+        assert result["cycle_history"] == []
+        assert result["last_adjustment_time"] is None
+        assert result["consecutive_converged_cycles"] == 0
+        assert result["pid_converged_for_ke"] is False
+        assert result["auto_apply_count"] == 0
+
+    def test_adaptive_learner_to_dict_with_cycles(self):
+        """Test to_dict serializes CycleMetrics correctly."""
+        learner = AdaptiveLearner()
+
+        # Add cycles with various metrics
+        learner.add_cycle_metrics(CycleMetrics(
+            overshoot=0.5,
+            undershoot=0.2,
+            settling_time=45.0,
+            oscillations=1,
+            rise_time=30.0,
+        ))
+        learner.add_cycle_metrics(CycleMetrics(
+            overshoot=0.3,
+            undershoot=0.1,
+            settling_time=40.0,
+            oscillations=0,
+            rise_time=25.0,
+        ))
+
+        result = learner.to_dict()
+
+        # Verify cycle_history is serialized
+        assert len(result["cycle_history"]) == 2
+
+        # Verify first cycle structure
+        cycle1 = result["cycle_history"][0]
+        assert cycle1["overshoot"] == 0.5
+        assert cycle1["undershoot"] == 0.2
+        assert cycle1["settling_time"] == 45.0
+        assert cycle1["oscillations"] == 1
+        assert cycle1["rise_time"] == 30.0
+
+        # Verify second cycle structure
+        cycle2 = result["cycle_history"][1]
+        assert cycle2["overshoot"] == 0.3
+        assert cycle2["undershoot"] == 0.1
+        assert cycle2["settling_time"] == 40.0
+        assert cycle2["oscillations"] == 0
+        assert cycle2["rise_time"] == 25.0
+
+    def test_adaptive_learner_to_dict_timestamps(self):
+        """Test to_dict converts datetime to ISO string and handles None."""
+        learner = AdaptiveLearner()
+
+        # Before any adjustment - should be None
+        result1 = learner.to_dict()
+        assert result1["last_adjustment_time"] is None
+
+        # Add cycles and make adjustment to set last_adjustment_time
+        for _ in range(6):
+            learner.add_cycle_metrics(CycleMetrics(
+                overshoot=0.6,
+                oscillations=0,
+                settling_time=30,
+                rise_time=20,
+            ))
+
+        # Trigger adjustment
+        learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
+
+        result2 = learner.to_dict()
+
+        # Should be ISO string now
+        assert result2["last_adjustment_time"] is not None
+        assert isinstance(result2["last_adjustment_time"], str)
+        # Verify it's valid ISO format by parsing it
+        from datetime import datetime
+        parsed = datetime.fromisoformat(result2["last_adjustment_time"])
+        assert isinstance(parsed, datetime)
+
+    def test_adaptive_learner_to_dict_with_none_metrics(self):
+        """Test to_dict handles CycleMetrics with None values correctly."""
+        learner = AdaptiveLearner()
+
+        # Add cycle with some None values
+        learner.add_cycle_metrics(CycleMetrics(
+            overshoot=None,
+            undershoot=None,
+            settling_time=None,
+            oscillations=2,
+            rise_time=None,
+        ))
+
+        result = learner.to_dict()
+
+        cycle = result["cycle_history"][0]
+        assert cycle["overshoot"] is None
+        assert cycle["undershoot"] is None
+        assert cycle["settling_time"] is None
+        assert cycle["oscillations"] == 2
+        assert cycle["rise_time"] is None
+
+    def test_adaptive_learner_to_dict_convergence_state(self):
+        """Test to_dict serializes convergence tracking state."""
+        learner = AdaptiveLearner()
+
+        # Set up convergence state
+        learner._consecutive_converged_cycles = 5
+        learner._pid_converged_for_ke = True
+        learner._auto_apply_count = 3
+
+        result = learner.to_dict()
+
+        assert result["consecutive_converged_cycles"] == 5
+        assert result["pid_converged_for_ke"] is True
+        assert result["auto_apply_count"] == 3
+
+
+# Marker test for Story 1.1
+def test_adaptive_learner_serialization_exists():
+    """Marker test to ensure to_dict method exists on AdaptiveLearner."""
+    learner = AdaptiveLearner()
+    assert hasattr(learner, 'to_dict')
+    assert callable(learner.to_dict)

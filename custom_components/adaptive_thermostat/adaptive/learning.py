@@ -1178,3 +1178,43 @@ class AdaptiveLearner:
             Total count of auto-applied PID adjustments in the learner's lifetime.
         """
         return self._auto_apply_count
+
+    def _serialize_cycle(self, cycle: CycleMetrics) -> Dict[str, Any]:
+        """Convert a CycleMetrics object to a dictionary.
+
+        Args:
+            cycle: CycleMetrics object to serialize
+
+        Returns:
+            Dictionary representation of the cycle metrics
+        """
+        return {
+            "overshoot": cycle.overshoot,
+            "undershoot": cycle.undershoot,
+            "settling_time": cycle.settling_time,
+            "oscillations": cycle.oscillations,
+            "rise_time": cycle.rise_time,
+        }
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize AdaptiveLearner state to a dictionary.
+
+        Returns:
+            Dictionary containing:
+            - cycle_history: List of serialized CycleMetrics
+            - last_adjustment_time: ISO timestamp string or None
+            - consecutive_converged_cycles: Number of consecutive converged cycles
+            - pid_converged_for_ke: Whether PID has converged for Ke learning
+            - auto_apply_count: Number of times PID has been auto-applied
+        """
+        return {
+            "cycle_history": [self._serialize_cycle(cycle) for cycle in self._cycle_history],
+            "last_adjustment_time": (
+                self._last_adjustment_time.isoformat()
+                if self._last_adjustment_time is not None
+                else None
+            ),
+            "consecutive_converged_cycles": self._consecutive_converged_cycles,
+            "pid_converged_for_ke": self._pid_converged_for_ke,
+            "auto_apply_count": self._auto_apply_count,
+        }
