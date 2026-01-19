@@ -268,4 +268,33 @@ def _add_learning_status_attributes(
             else:
                 attrs[ATTR_LAST_PID_ADJUSTMENT] = None
 
+            # Auto-apply status attributes
+            from ..const import (
+                ATTR_AUTO_APPLY_ENABLED,
+                ATTR_AUTO_APPLY_COUNT,
+                ATTR_VALIDATION_MODE,
+                ATTR_PID_HISTORY,
+            )
+
+            attrs[ATTR_AUTO_APPLY_ENABLED] = getattr(thermostat, "_auto_apply_pid", False)
+            attrs[ATTR_AUTO_APPLY_COUNT] = adaptive_learner.get_auto_apply_count()
+            attrs[ATTR_VALIDATION_MODE] = adaptive_learner.is_in_validation_mode()
+
+            # Format PID history (last 3 entries)
+            pid_history = adaptive_learner.get_pid_history()
+            if pid_history:
+                formatted_history = [
+                    {
+                        "timestamp": entry["timestamp"].isoformat(),
+                        "kp": round(entry["kp"], 2),
+                        "ki": round(entry["ki"], 4),
+                        "kd": round(entry["kd"], 2),
+                        "reason": entry["reason"],
+                    }
+                    for entry in pid_history[-3:]  # Last 3 entries
+                ]
+                attrs[ATTR_PID_HISTORY] = formatted_history
+            else:
+                attrs[ATTR_PID_HISTORY] = []
+
             break
