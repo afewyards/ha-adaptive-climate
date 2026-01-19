@@ -920,6 +920,19 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         state_restorer = StateRestorer(self)
         state_restorer.restore(old_state)
 
+        # Set physics baseline for adaptive learning after PID values are finalized
+        # (either restored from previous state or calculated from physics in __init__)
+        if coordinator and self._zone_id and self._area_m2:
+            zone_data = coordinator.get_zone_data(self._zone_id)
+            if zone_data:
+                adaptive_learner = zone_data.get("adaptive_learner")
+                if adaptive_learner:
+                    adaptive_learner.set_physics_baseline(self._kp, self._ki, self._kd)
+                    _LOGGER.info(
+                        "%s: Set physics baseline for adaptive learning (Kp=%.4f, Ki=%.5f, Kd=%.3f)",
+                        self.entity_id, self._kp, self._ki, self._kd
+                    )
+
         # Set default state to off
         if not self._hvac_mode:
             self._hvac_mode = HVACMode.OFF
