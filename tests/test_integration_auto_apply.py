@@ -1291,6 +1291,106 @@ class TestValidationModeBlocking:
         # (the callback triggers only when not in validation mode)
         assert len(auto_apply_calls) == 0
 
+    @pytest.mark.asyncio
+    async def test_manual_pid_change_during_validation(self, adaptive_learner):
+        """Test that manual PID change aborts validation mode.
+
+        Integration test for story 10.3:
+        1. Trigger auto-apply and enter validation mode
+        2. Complete 2 out of 5 validation cycles
+        3. User manually calls adaptive_thermostat.set_pid service
+        4. Verify manual change records snapshot with reason='manual_apply'
+        5. Verify clear_history called, which resets validation_mode=False
+        6. Verify validation aborted (validation_cycles cleared)
+        7. Verify normal operation continues (no validation completion)
+        """
+        # Phase 1: Trigger auto-apply and enter validation mode
+        # Build confidence to 70%
+        for i in range(7):
+            metrics = create_good_cycle_metrics(overshoot=0.15)
+            adaptive_learner.add_cycle_metrics(metrics)
+            adaptive_learner.update_convergence_confidence(metrics)
+
+        assert adaptive_learner.get_convergence_confidence() >= 0.60
+
+        # Simulate auto-apply
+        baseline_overshoot = 0.15
+        adaptive_learner.record_pid_snapshot(
+            kp=100.0, ki=0.01, kd=50.0,
+            reason="before_auto_apply",
+            metrics={"baseline_overshoot": baseline_overshoot}
+        )
+        adaptive_learner.record_pid_snapshot(
+            kp=90.0, ki=0.012, kd=45.0,
+            reason="auto_apply",
+            metrics={"baseline_overshoot": baseline_overshoot}
+        )
+
+        # Clear history and start validation mode
+        adaptive_learner.clear_history()
+        adaptive_learner.start_validation_mode(baseline_overshoot)
+
+        # Verify validation mode is active
+        assert adaptive_learner.is_in_validation_mode() is True
+        assert len(adaptive_learner._validation_cycles) == 0
+
+        # Phase 2: Complete 2 out of 5 validation cycles
+        for i in range(2):
+            metrics = create_good_cycle_metrics(overshoot=0.12)
+            result = adaptive_learner.add_validation_cycle(metrics)
+            # Should still be collecting (None = not complete yet)
+            assert result is None
+
+        # Verify we have 2 validation cycles collected
+        assert len(adaptive_learner._validation_cycles) == 2
+        assert adaptive_learner.is_in_validation_mode() is True
+
+        # Phase 3: User manually calls adaptive_thermostat.set_pid service
+        # This simulates what PIDTuningManager.async_apply_adaptive_pid does
+        # when called manually via service
+
+        # Phase 4: Verify manual change records snapshot with reason='manual_apply'
+        manual_kp, manual_ki, manual_kd = 110.0, 0.015, 55.0
+        adaptive_learner.record_pid_snapshot(
+            kp=manual_kp,
+            ki=manual_ki,
+            kd=manual_kd,
+            reason="manual_apply",
+            metrics={"source": "user_service_call"}
+        )
+
+        # Verify snapshot was recorded
+        history = adaptive_learner.get_pid_history()
+        assert len(history) == 3  # before_auto_apply, auto_apply, manual_apply
+        assert history[-1]["reason"] == "manual_apply"
+        assert history[-1]["kp"] == manual_kp
+        assert history[-1]["ki"] == manual_ki
+        assert history[-1]["kd"] == manual_kd
+
+        # Phase 5 & 6: Verify clear_history called, which resets validation_mode=False
+        # and clears validation_cycles
+        adaptive_learner.clear_history()
+
+        # Phase 6: Verify validation aborted (validation_cycles cleared)
+        assert adaptive_learner.is_in_validation_mode() is False
+        assert len(adaptive_learner._validation_cycles) == 0
+        # Note: _validation_baseline_overshoot is not cleared by clear_history(),
+        # but validation_mode=False is the key indicator that validation is aborted
+
+        # Verify learning state was reset
+        assert adaptive_learner.get_cycle_count() == 0
+        assert adaptive_learner._convergence_confidence == 0.0
+
+        # Phase 7: Verify normal operation continues (no validation completion)
+        # System can now collect new cycles and build confidence from scratch
+        new_metrics = create_good_cycle_metrics(overshoot=0.13)
+        adaptive_learner.add_cycle_metrics(new_metrics)
+
+        # Verify new cycle was added (normal operation)
+        assert adaptive_learner.get_cycle_count() == 1
+        # Still not in validation mode
+        assert adaptive_learner.is_in_validation_mode() is False
+
 
 class TestHARestartEdgeCases:
     """Test edge cases around Home Assistant restarts."""
