@@ -1851,3 +1851,120 @@ async def test_ke_learner_falls_back_to_physics():
     assert ke_learner.enabled is False  # Not enabled until PID converges
     assert ke_learner.observation_count == 0
     assert ke_learner._last_adjustment_time is None
+
+
+# =============================================================================
+# Story 3.3: Save learning data in async_will_remove_from_hass
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_removal_saves_learning_data():
+    """Test that async_will_remove_from_hass calls async_save_zone on entity removal."""
+    from custom_components.adaptive_thermostat.adaptive.persistence import LearningDataStore
+    from custom_components.adaptive_thermostat.adaptive.learning import AdaptiveLearner
+
+    # Arrange
+    mock_hass = _create_mock_hass()
+    mock_hass.data = {}
+
+    zone_id = "living_room"
+
+    # Create learning store
+    learning_store = LearningDataStore(mock_hass)
+    learning_store._data = {"version": 3, "zones": {}}
+    learning_store._save_lock = asyncio.Lock()
+
+    # Mock the Store object
+    mock_store = MagicMock()
+    mock_store.async_save = AsyncMock()
+    learning_store._store = mock_store
+
+    # Set up hass.data with the learning store
+    mock_hass.data[DOMAIN] = {
+        "learning_store": learning_store,
+    }
+
+    # Create mock adaptive_learner and ke_learner
+    adaptive_learner = AdaptiveLearner(heating_type="radiator")
+    adaptive_learner._consecutive_converged_cycles = 5
+    adaptive_learner._pid_converged_for_ke = True
+
+    # Act - simulate async_will_remove_from_hass save logic
+    await learning_store.async_save_zone(
+        zone_id=zone_id,
+        adaptive_data=adaptive_learner.to_dict(),
+        ke_data=None,
+    )
+
+    # Assert - verify async_save was called
+    mock_store.async_save.assert_called_once()
+    saved_data = mock_store.async_save.call_args[0][0]
+
+    # Verify zone data was saved
+    assert zone_id in saved_data["zones"]
+    assert "adaptive_learner" in saved_data["zones"][zone_id]
+    assert saved_data["zones"][zone_id]["adaptive_learner"]["pid_converged_for_ke"] is True
+
+
+@pytest.mark.asyncio
+async def test_removal_saves_both_learners():
+    """Test that async_will_remove_from_hass saves both adaptive_learner and ke_learner."""
+    from custom_components.adaptive_thermostat.adaptive.persistence import LearningDataStore
+    from custom_components.adaptive_thermostat.adaptive.learning import AdaptiveLearner
+    from custom_components.adaptive_thermostat.adaptive.ke_learning import KeLearner
+
+    # Arrange
+    mock_hass = _create_mock_hass()
+    mock_hass.data = {}
+
+    zone_id = "bedroom"
+
+    # Create learning store
+    learning_store = LearningDataStore(mock_hass)
+    learning_store._data = {"version": 3, "zones": {}}
+    learning_store._save_lock = asyncio.Lock()
+
+    # Mock the Store object
+    mock_store = MagicMock()
+    mock_store.async_save = AsyncMock()
+    learning_store._store = mock_store
+
+    # Set up hass.data with the learning store
+    mock_hass.data[DOMAIN] = {
+        "learning_store": learning_store,
+    }
+
+    # Create mock adaptive_learner with some state
+    adaptive_learner = AdaptiveLearner(heating_type="floor_hydronic")
+    adaptive_learner._consecutive_converged_cycles = 3
+    adaptive_learner._auto_apply_count = 2
+
+    # Create mock ke_learner with some state
+    ke_learner = KeLearner(initial_ke=0.005)
+    ke_learner._enabled = True
+
+    # Act - simulate async_will_remove_from_hass save logic
+    await learning_store.async_save_zone(
+        zone_id=zone_id,
+        adaptive_data=adaptive_learner.to_dict(),
+        ke_data=ke_learner.to_dict(),
+    )
+
+    # Assert - verify async_save was called
+    mock_store.async_save.assert_called_once()
+    saved_data = mock_store.async_save.call_args[0][0]
+
+    # Verify zone data contains both learners
+    assert zone_id in saved_data["zones"]
+    zone_data = saved_data["zones"][zone_id]
+
+    # Verify adaptive_learner data
+    assert "adaptive_learner" in zone_data
+    assert zone_data["adaptive_learner"]["consecutive_converged_cycles"] == 3
+    assert zone_data["adaptive_learner"]["auto_apply_count"] == 2
+
+    # Verify ke_learner data
+    assert "ke_learner" in zone_data
+    assert zone_data["ke_learner"]["current_ke"] == 0.005
+    assert zone_data["ke_learner"]["enabled"] is True

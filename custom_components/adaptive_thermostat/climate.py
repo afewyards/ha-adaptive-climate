@@ -987,10 +987,44 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
     async def async_will_remove_from_hass(self) -> None:
         """Run when entity is being removed from Home Assistant.
 
-        This method unregisters the zone from the coordinator to ensure
-        clean removal and prevent stale zone data.
+        This method saves learning data and unregisters the zone from the
+        coordinator to ensure clean removal and prevent stale zone data.
         """
         await super().async_will_remove_from_hass()
+
+        # Save learning data before removal
+        if self._zone_id:
+            learning_store = self.hass.data.get(DOMAIN, {}).get("learning_store")
+            if learning_store:
+                # Get adaptive_learner from coordinator zone_data
+                coordinator = self.hass.data.get(DOMAIN, {}).get("coordinator")
+                adaptive_data = None
+                if coordinator:
+                    zone_data = coordinator.get_zone_data(self._zone_id)
+                    if zone_data:
+                        adaptive_learner = zone_data.get("adaptive_learner")
+                        if adaptive_learner:
+                            adaptive_data = adaptive_learner.to_dict()
+
+                # Get ke_learner data from this entity
+                ke_data = None
+                if self._ke_learner:
+                    ke_data = self._ke_learner.to_dict()
+
+                # Save both learners to storage
+                await learning_store.async_save_zone(
+                    zone_id=self._zone_id,
+                    adaptive_data=adaptive_data,
+                    ke_data=ke_data,
+                )
+                _LOGGER.info(
+                    "%s: Saved learning data for zone %s on removal "
+                    "(adaptive=%s, ke=%s)",
+                    self.entity_id,
+                    self._zone_id,
+                    adaptive_data is not None,
+                    ke_data is not None,
+                )
 
         # Unregister zone from coordinator
         if self._zone_id:
