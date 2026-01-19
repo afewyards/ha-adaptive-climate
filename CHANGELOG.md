@@ -1,6 +1,71 @@
 # CHANGELOG
 
 
+## v0.11.0 (2026-01-19)
+
+### Documentation
+
+- Add floor construction documentation to CLAUDE.md
+  ([`9ff4001`](https://github.com/afewyards/ha-adaptive-thermostat/commit/9ff4001287e703ad13e62a6f53834132a5136a5f))
+
+Add comprehensive floor construction documentation including: - Material libraries (11 top floor
+  materials, 7 screed materials) - Thermal properties tables (conductivity, density, specific heat)
+  - Pipe spacing efficiency values (100/150/200/300mm) - YAML configuration example - Validation
+  rules (layer order, thickness ranges) - Tau modifier calculation formula and example
+
+### Features
+
+- Add floor construction validation function
+  ([`f2d671d`](https://github.com/afewyards/ha-adaptive-thermostat/commit/f2d671de19a744b0f00a95f6b42e810f56a1c9d3))
+
+- Create validate_floor_construction() in physics.py - Validate pipe_spacing_mm is one of 100, 150,
+  200, 300 - Validate layers list is not empty - Ensure top_floor layers precede screed layers
+  (order validation) - Validate thickness: top_floor 5-25mm, screed 30-80mm - Check material type
+  exists in lookup OR has all three custom properties - Return list of validation error strings
+  (empty if valid) - Add 31 comprehensive tests in TestFloorConstructionValidation class
+
+- Add floor_construction config extraction in climate.py
+  ([`502d800`](https://github.com/afewyards/ha-adaptive-thermostat/commit/502d800ba4ef12c8cd28836cdc873e5ca9b9e23f))
+
+- Add material property constants to const.py
+  ([`62cec9f`](https://github.com/afewyards/ha-adaptive-thermostat/commit/62cec9f870b3aae9bc29412455f8ae399db9ecce))
+
+- Implement calculate_floor_thermal_properties() in physics.py
+  ([`12c2df4`](https://github.com/afewyards/ha-adaptive-thermostat/commit/12c2df475a3ed9deada09767cd232e5131730177))
+
+- Add calculate_floor_thermal_properties() function to calculate thermal mass, thermal resistance,
+  and tau modifier - Support lookup of material properties from TOP_FLOOR_MATERIALS and
+  SCREED_MATERIALS - Allow custom material properties via conductivity/density/specific_heat
+  overrides - Calculate per-layer thermal mass and sum across all layers - Calculate tau_modifier
+  relative to 50mm cement screed reference - Apply pipe spacing efficiency factor
+  (100mm/150mm/200mm/300mm) - Add comprehensive test suite (16 tests) covering basic usage, edge
+  cases, and error handling - All tests pass successfully
+
+- Integrate floor_construction into calculate_thermal_time_constant()
+  ([`b3a7f06`](https://github.com/afewyards/ha-adaptive-thermostat/commit/b3a7f064a5dd982e478ff25ecc2760563ba43e78))
+
+- Update reset_to_physics service in pid_tuning.py
+  ([`5d72122`](https://github.com/afewyards/ha-adaptive-thermostat/commit/5d721222ada92f5d24779cdd8c127d81910612c4))
+
+- Add get_floor_construction parameter to PIDTuningManager constructor - Pass floor_construction to
+  calculate_thermal_time_constant() in reset_pid_to_physics - Pass floor_construction parameters
+  (area_m2, heating_type) to physics functions - Update service to retrieve floor_construction from
+  entity config via callback - Add floor construction status to reset log message - All physics
+  tests pass (114/114)
+
+### Testing
+
+- Add floor_hydronic integration tests
+  ([`01ff6b8`](https://github.com/afewyards/ha-adaptive-thermostat/commit/01ff6b89d77ecd6b4cdc36922791aa68acf45cb2))
+
+Add TestFloorHydronicIntegration class with 4 integration tests: - test_tau_with_floor_construction:
+  verifies floor construction modifies tau - test_pid_gains_heavy_floor: thick screed → higher tau →
+  lower Kp - test_pid_gains_light_floor: thin lightweight screed → lower tau → higher Kp -
+  test_carpet_vs_tile: tile has higher thermal mass → higher tau → lower Kp
+
+Tests verify complete flow: floor_construction → tau adjustment → PID gains
+
+
 ## v0.10.3 (2026-01-19)
 
 ### Bug Fixes
