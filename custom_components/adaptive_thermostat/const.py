@@ -358,8 +358,12 @@ CONF_WINDOW_AREA_M2 = "window_area_m2"
 CONF_WINDOW_ORIENTATION = "window_orientation"
 CONF_WINDOW_RATING = "window_rating"
 CONF_DEMAND_SWITCH = "demand_switch"
-CONF_LINKED_ZONES = "linked_zones"
-CONF_LINK_DELAY_MINUTES = "link_delay_minutes"
+
+# Thermal coupling configuration
+CONF_THERMAL_COUPLING = "thermal_coupling"
+CONF_FLOORPLAN = "floorplan"
+CONF_STAIRWELL_ZONES = "stairwell_zones"
+CONF_SEED_COEFFICIENTS = "seed_coefficients"
 CONF_MIN_LEARNING_EVENTS = "min_learning_events"
 CONF_MIN_CYCLE_TIME_WARNING = "min_cycle_time_warning"
 CONF_MIN_CYCLE_TIME_CRITICAL = "min_cycle_time_critical"
@@ -439,7 +443,6 @@ VALID_ENERGY_RATINGS = [
 
 # Default values for new configuration options
 DEFAULT_SOURCE_STARTUP_DELAY = 30
-DEFAULT_LINK_DELAY_MINUTES = 20  # ~25% of typical floor heating PWM cycle
 DEFAULT_CONTACT_DELAY = 120
 DEFAULT_CONTACT_LEARNING_GRACE = 300
 DEFAULT_LEARNING_WINDOW_DAYS = 7
@@ -474,6 +477,39 @@ KE_CORRELATION_THRESHOLD = 0.3
 KE_MAX_OBSERVATIONS = 100
 # Duration in minutes at target temperature to consider steady state
 KE_STEADY_STATE_DURATION = 15
+
+# Thermal coupling constants
+# Default seed coefficients for thermal coupling between zones
+# Values represent expected heat transfer rate (°C/hour per °C source rise)
+DEFAULT_SEED_COEFFICIENTS = {
+    "same_floor": 0.15,      # Adjacent zones on same floor
+    "up": 0.40,              # Heat rises - zone above gets more heat
+    "down": 0.10,            # Zone below gets less heat (heat rises)
+    "open": 0.60,            # Open floor plan - high coupling
+    "stairwell_up": 0.45,    # Stairwell acts as heat chimney
+    "stairwell_down": 0.10,  # Stairwell downward (minimal)
+}
+
+# Maximum coupling compensation by heating type (°C reduction)
+# Faster systems can compensate more aggressively
+MAX_COUPLING_COMPENSATION = {
+    HEATING_TYPE_FLOOR_HYDRONIC: 1.0,  # Conservative - slow response
+    HEATING_TYPE_RADIATOR: 1.2,        # Moderate
+    HEATING_TYPE_CONVECTOR: 1.5,       # Standard
+    HEATING_TYPE_FORCED_AIR: 2.0,      # Aggressive - fast recovery
+}
+
+# Coupling learner constants
+COUPLING_MIN_OBSERVATIONS = 3           # Min observations before using learned coefficient
+COUPLING_MAX_OBSERVATIONS_PER_PAIR = 50  # Max observations to retain per zone pair (FIFO)
+COUPLING_SEED_WEIGHT = 6                # Weight of seed in Bayesian blend (pseudo-observations)
+COUPLING_MAX_COEFFICIENT = 0.5          # Maximum allowed coupling coefficient
+COUPLING_MIN_DURATION_MINUTES = 15      # Minimum heating duration for valid observation
+COUPLING_MIN_SOURCE_RISE = 0.3          # Minimum source temp rise (°C) for valid observation
+COUPLING_MAX_OUTDOOR_CHANGE = 3.0       # Max outdoor temp change (°C) during observation
+COUPLING_CONFIDENCE_THRESHOLD = 0.3     # Min confidence to use coefficient
+COUPLING_CONFIDENCE_MAX = 0.5           # Confidence level for full effect
+COUPLING_MASS_RECOVERY_THRESHOLD = 0.5  # Skip observation if >50% zones demanding
 
 # Auto-apply PID constants
 # Maximum auto-applies per season (90 days) to prevent runaway tuning
