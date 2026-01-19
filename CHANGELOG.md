@@ -1,6 +1,265 @@
 # CHANGELOG
 
 
+## v0.14.0 (2026-01-19)
+
+### Bug Fixes
+
+- **test**: Use thickness exceeding limit in validation test
+  ([`d6cf93c`](https://github.com/afewyards/ha-adaptive-thermostat/commit/d6cf93c54c2348ee08991fb22ca1964e404332d3))
+
+Screed thickness 90mm was within the valid 30-100mm range. Changed to 110mm to properly trigger the
+  validation error.
+
+### Features
+
+- Add _check_auto_apply_pid() and _handle_validation_failure() to climate.py
+  ([`819ff03`](https://github.com/afewyards/ha-adaptive-thermostat/commit/819ff03d28318c94173b7ac5f050e27addf7a80b))
+
+- Add self._auto_apply_pid config option reading in __init__ - Pass auto_apply_pid from config to
+  parameters dictionary - Add _check_auto_apply_pid() async method: - Early return if auto_apply_pid
+  disabled or no PID tuning manager - Get outdoor temperature from sensor state if available - Call
+  async_auto_apply_adaptive_pid() and send persistent notification on success - Add
+  _handle_validation_failure() async method: - Called by CycleTrackerManager when validation detects
+  degradation - Triggers async_rollback_pid() and sends notification about rollback
+
+- Add auto-apply PID configuration constants
+  ([`bbf7511`](https://github.com/afewyards/ha-adaptive-thermostat/commit/bbf751143e7f48b7279e904046d3bf0baae3caec))
+
+Add CONF_AUTO_APPLY_PID config key and auto-apply constants: - MAX_AUTO_APPLIES_PER_SEASON (5 per 90
+  days) - MAX_AUTO_APPLIES_LIFETIME (20 total) - MAX_CUMULATIVE_DRIFT_PCT (50%) - PID_HISTORY_SIZE
+  (10 snapshots) - VALIDATION_CYCLE_COUNT (5 cycles) - VALIDATION_DEGRADATION_THRESHOLD (30%) -
+  SEASONAL_SHIFT_BLOCK_DAYS (7 days)
+
+- Add auto-apply safety checks to calculate_pid_adjustment()
+  ([`8d3881d`](https://github.com/afewyards/ha-adaptive-thermostat/commit/8d3881d7a575860a7b9fa013ed065bc03e68c84b))
+
+Add check_auto_apply and outdoor_temp parameters to enable safety gates when called for automatic
+  PID application: - Validation mode check (skip if validating previous auto-apply) - Safety limits
+  via check_auto_apply_limits() (lifetime, seasonal, drift) - Seasonal shift detection and blocking
+  - Heating-type-specific confidence thresholds - Override rate limiting params with heating-type
+  values
+
+- Add auto-apply tracking state to AdaptiveLearner.__init__()
+  ([`bce9dfa`](https://github.com/afewyards/ha-adaptive-thermostat/commit/bce9dfa1f3a3a106b834f7e0a4710f989eac8d29))
+
+Add state variables for PID auto-apply feature: - _auto_apply_count: tracks number of auto-applied
+  changes - _last_seasonal_shift: timestamp of last detected seasonal shift - _pid_history: list of
+  PID snapshot history - _physics_baseline_kp/ki/kd: physics-based baseline for drift calc -
+  _validation_mode: flag for post-apply validation window - _validation_baseline_overshoot: baseline
+  overshoot for validation - _validation_cycles: collected cycles during validation
+
+- Add check_auto_apply_limits() method for safety gates
+  ([`5bf90bf`](https://github.com/afewyards/ha-adaptive-thermostat/commit/5bf90bfde83b1bd74346cea4dc821e44b06698f1))
+
+Implements 4 safety checks before allowing auto-apply: 1. Lifetime limit: Max 20 auto-applies total
+  2. Seasonal limit: Max 5 auto-applies per 90-day period 3. Drift limit: Max 50% cumulative drift
+  from physics baseline 4. Seasonal shift block: 7-day cooldown after weather regime change
+
+Returns None if all checks pass, error message string if blocked.
+
+- Add entity attribute constants for auto-apply status
+  ([`902f432`](https://github.com/afewyards/ha-adaptive-thermostat/commit/902f4325108148e7ad0fe5778301e5b749e489c9))
+
+- Add get_pid_history() method for debugging access
+  ([`64f2e7f`](https://github.com/afewyards/ha-adaptive-thermostat/commit/64f2e7fcdc753f014caababa9e81875cdc31b69c))
+
+- Add get_previous_pid() method for rollback retrieval
+  ([`ad4e036`](https://github.com/afewyards/ha-adaptive-thermostat/commit/ad4e0369d3fccd4c1401bfad32e0adb902020249))
+
+- Add heating-type-specific auto-apply thresholds dictionary
+  ([`df72417`](https://github.com/afewyards/ha-adaptive-thermostat/commit/df72417ab0c86aaac4ea7f092f1c173dfff59377))
+
+Add AUTO_APPLY_THRESHOLDS dictionary with per-heating-type configuration for automatic PID
+  application. Slow systems (high thermal mass) get more conservative thresholds:
+
+- floor_hydronic: 80%/90% confidence, 8 min cycles, 96h/15 cycle cooldown - radiator: 70%/85%
+  confidence, 7 min cycles, 72h/12 cycle cooldown - convector: 60%/80% confidence, 6 min cycles,
+  48h/10 cycle cooldown - forced_air: 60%/80% confidence, 6 min cycles, 36h/8 cycle cooldown
+
+Add get_auto_apply_thresholds() helper function that falls back to convector thresholds for unknown
+  heating types.
+
+- Add on_validation_failed callback parameter to CycleTrackerManager
+  ([`2ac9344`](https://github.com/afewyards/ha-adaptive-thermostat/commit/2ac9344e8a17d2c717d382d93a9cc53965fa0739))
+
+- Add on_validation_failed: Callable[[], Awaitable[None]] parameter - Store callback in __init__
+  body as self._on_validation_failed - Simplify validation check to use direct attribute access
+  instead of hasattr - Update docstring with parameter description
+
+Story 3.2
+
+- Add PID snapshot recording to manual apply and physics reset methods
+  ([`abcbb96`](https://github.com/afewyards/ha-adaptive-thermostat/commit/abcbb96951f96d10e2a5291b747c9bc1a2274986))
+
+- async_apply_adaptive_pid() now records snapshot with reason='manual_apply' and clears learning
+  history after manual PID changes - async_reset_pid_to_physics() now sets physics baseline via
+  set_physics_baseline() and records snapshot with reason='physics_reset'
+
+- Add record_pid_snapshot() method for PID history tracking
+  ([`4056d2a`](https://github.com/afewyards/ha-adaptive-thermostat/commit/4056d2a5e3d0aa597920f315dd0dba71da3e203c))
+
+Add record_pid_snapshot() method to AdaptiveLearner for maintaining a FIFO history of PID
+  configurations. Enables rollback capability and debugging of PID changes.
+
+- Accept kp, ki, kd, reason, and optional metrics parameters - Implement FIFO eviction when history
+  exceeds PID_HISTORY_SIZE - Log debug message with PID values and reason
+
+- Add record_seasonal_shift() and get_auto_apply_count() methods
+  ([`e341b21`](https://github.com/afewyards/ha-adaptive-thermostat/commit/e341b21add061e4eaffc9e3d62eb6fda60289005))
+
+- Add rollback_pid service to services.yaml
+  ([`04a53bc`](https://github.com/afewyards/ha-adaptive-thermostat/commit/04a53bcedaba24b523dbee5f8c34513fb969232c))
+
+- Add set_physics_baseline() and calculate_drift_from_baseline() methods
+  ([`913a8c7`](https://github.com/afewyards/ha-adaptive-thermostat/commit/913a8c77b71a748fca3a5f904eb95826e46e1e71))
+
+- Add validation mode methods (start, add_cycle, is_in)
+  ([`5060652`](https://github.com/afewyards/ha-adaptive-thermostat/commit/50606525565cdb3cc7cb1b434948e4b3da9ba6c0))
+
+- start_validation_mode(baseline_overshoot): Enters validation mode with baseline for comparison -
+  add_validation_cycle(metrics): Collects cycles, returns 'success' or 'rollback' after
+  VALIDATION_CYCLE_COUNT cycles - is_in_validation_mode(): Simple getter for validation state
+
+Validation detects >30% overshoot degradation vs baseline.
+
+- Applied auto_apply_pid to climate
+  ([`8ac7107`](https://github.com/afewyards/ha-adaptive-thermostat/commit/8ac7107a2a144d2051f4665b6019b21723b97d6e))
+
+- Expose auto-apply status in entity attributes
+  ([`adb926a`](https://github.com/afewyards/ha-adaptive-thermostat/commit/adb926aa8f12f2d2d6f12af8c8d3a1b2e13c7ab8))
+
+- Implement async_auto_apply_adaptive_pid() in PIDTuningManager
+  ([`0d2d602`](https://github.com/afewyards/ha-adaptive-thermostat/commit/0d2d602da2a8c709edcf31f89d36df1d33a563cb))
+
+- Add async_auto_apply_adaptive_pid() method with full auto-apply workflow - Get adaptive learner
+  and heating type from coordinator - Calculate baseline overshoot from last 6 cycles - Call
+  calculate_pid_adjustment() with check_auto_apply=True for safety checks - Record PID snapshots
+  before and after applying - Apply new PID values and clear integral - Clear learning history after
+  apply - Increment auto_apply_count - Start validation mode with baseline overshoot - Return dict
+  with applied status, reason, old/new values
+
+- Implement async_rollback_pid() in PIDTuningManager
+  ([`d2d7978`](https://github.com/afewyards/ha-adaptive-thermostat/commit/d2d7978e3d54d43dbebe58ea57aaad085bf3265a))
+
+- Added async_rollback_pid() method to rollback PID values to previous config - Gets coordinator and
+  adaptive_learner from hass.data - Calls get_previous_pid() to retrieve second-to-last snapshot -
+  Returns False if no history available (with warning log) - Stores current PID values before
+  applying rollback - Applies previous PID values and clears integral - Records rollback snapshot
+  with reason='rollback' - Clears learning history to reset state - Logs warning with before/after
+  values and timestamp - Calls _async_control_heating and _async_write_ha_state - Returns True on
+  success
+
+- Pass auto-apply callbacks to CycleTrackerManager
+  ([`3882ab6`](https://github.com/afewyards/ha-adaptive-thermostat/commit/3882ab66f144cf111d5bf072200f755bd61d01fd))
+
+Add on_auto_apply_check and on_validation_failed callback parameters to CycleTrackerManager
+  initialization in climate.py. Also add the on_auto_apply_check parameter to CycleTrackerManager
+  and call it at the end of _finalize_cycle() when not in validation mode.
+
+- Register rollback_pid service in climate.py
+  ([`2577be6`](https://github.com/afewyards/ha-adaptive-thermostat/commit/2577be6adcd2bca449e8b2755d1795a88c564fb5))
+
+- Set physics baseline during initialization in climate.py
+  ([`c1bf5de`](https://github.com/afewyards/ha-adaptive-thermostat/commit/c1bf5de93dee74f05af5e19bfb632e04230eb74a))
+
+- Update clear_history() to reset validation state
+  ([`e445496`](https://github.com/afewyards/ha-adaptive-thermostat/commit/e445496f250550b94e59766701178bb22f9a1fde))
+
+- Wire up confidence updates and validation handling in cycle_tracker.py
+  ([`d1df5de`](https://github.com/afewyards/ha-adaptive-thermostat/commit/d1df5de76ac150a78526049788d2dedaddbec922))
+
+### Testing
+
+- Add edge case test for 20th lifetime auto-apply limit
+  ([`5f2a81c`](https://github.com/afewyards/ha-adaptive-thermostat/commit/5f2a81c0c38de64f81e072a06e44360c219cc11b))
+
+- Add edge case test for HA restart during validation
+  ([`31f9e65`](https://github.com/afewyards/ha-adaptive-thermostat/commit/31f9e65fa0b813d449c115a7eb4a6a00bc361800))
+
+- Add edge case test for manual PID change during validation
+  ([`d0397ca`](https://github.com/afewyards/ha-adaptive-thermostat/commit/d0397cacd32097236722d1f5a31456a2bccda8e5))
+
+- Add edge case test for multiple zones auto-applying
+  ([`48a0a2b`](https://github.com/afewyards/ha-adaptive-thermostat/commit/48a0a2bed28baa5616980f4f5c32016a308ac039))
+
+Add test_multiple_zones_auto_apply_simultaneously to verify that multiple zones can trigger
+  auto-apply independently in the same event loop iteration without interference. Test creates two
+  zones (convector and radiator) with different confidence levels (60% and 70%), completes cycles
+  simultaneously, and verifies both auto-apply callbacks trigger while maintaining independent
+  state.
+
+- Add integration test for manual rollback service
+  ([`83d6cb8`](https://github.com/afewyards/ha-adaptive-thermostat/commit/83d6cb8a13dc69215136118bf1d5fbd80bf69c7a))
+
+Story 9.6: Test complete manual rollback service flow: - Set initial PID (kp=100, ki=0.01, kd=50) -
+  Trigger auto-apply to new PID (kp=90, ki=0.012, kd=55) - Verify PID history has 2 entries - Call
+  rollback_pid service (simulated) - Verify PID reverted to initial values - Verify rollback
+  snapshot recorded with reason='rollback' - Verify learning history cleared - Verify persistent
+  notification sent about rollback
+
+- Add integration test for seasonal shift blocking
+  ([`f6e9397`](https://github.com/afewyards/ha-adaptive-thermostat/commit/f6e939723698203c1a03ab6b09d1b5820c7a5b14))
+
+- Add integration test for validation failure with automatic rollback
+  ([`5a9cf16`](https://github.com/afewyards/ha-adaptive-thermostat/commit/5a9cf16bd08e66997858ca3b9acf8818ec63cae4))
+
+- Add integration test for validation success scenario
+  ([`02626e4`](https://github.com/afewyards/ha-adaptive-thermostat/commit/02626e4999abd4601988359a2e3126025f66780d))
+
+- Add integration tests for full auto-apply flow
+  ([`f86494f`](https://github.com/afewyards/ha-adaptive-thermostat/commit/f86494feb2af24d2e9c920a4cbafb26dc65cae89))
+
+- TestFullAutoApplyFlow: complete auto-apply flow, validation mode, PID snapshots -
+  TestValidationSuccess: validation success after 5 good cycles - TestValidationFailureAndRollback:
+  rollback callback triggering - TestLimitEnforcement: seasonal and drift limit blocking -
+  TestSeasonalShiftBlocking: 7-day blocking after weather regime change - TestManualRollbackService:
+  rollback retrieves previous config - TestAutoApplyDisabled: no callback when disabled -
+  TestValidationModeBlocking: auto-apply blocked during validation
+
+Story 9.1: Write integration test for full auto-apply flow
+
+- Add integration tests for limit enforcement
+  ([`9271258`](https://github.com/afewyards/ha-adaptive-thermostat/commit/9271258d2624e7840eac8d8aa32517f034e513bf))
+
+Enhanced test_seasonal_limit_blocks_sixth_apply to fully cover PRD story 9.4: - Simulates 5
+  auto-applies within 90 days via PID snapshots - Builds convergence confidence to 80% for 6th
+  attempt - Verifies check_auto_apply_limits blocks with seasonal limit error - Verifies
+  calculate_pid_adjustment returns None when limit reached
+
+Enhanced test_drift_limit_blocks_apply to fully cover PRD story 9.4: - Sets physics baseline (100,
+  0.01, 50) - Simulates 3 incremental auto-applies creating drift progression (20% -> 35% -> 50%) -
+  Tests 4th attempt with 55% drift exceeding 50% limit - Verifies both check_auto_apply_limits and
+  calculate_pid_adjustment block
+
+All 20 integration tests pass.
+
+- Add unit tests for heating-type-specific auto-apply thresholds
+  ([`29e909c`](https://github.com/afewyards/ha-adaptive-thermostat/commit/29e909c1badbb8c92fc533e5f2b5e9c96a31336d))
+
+- test_auto_apply_threshold_floor_hydronic: verify confidence_first=0.80 -
+  test_auto_apply_threshold_forced_air: verify confidence_first=0.60, cooldown_hours=36 -
+  test_auto_apply_threshold_unknown_defaults_to_convector: verify fallback to convector -
+  test_auto_apply_threshold_none_defaults_to_convector: verify None handling -
+  test_threshold_dict_has_all_heating_types: verify all 4 types present -
+  test_learner_uses_heating_type_for_threshold_lookup: verify learner integration -
+  test_auto_apply_threshold_radiator and _convector: complete coverage
+
+All 33 auto_apply tests passing.
+
+- Add unit tests for PID history and rollback functionality
+  ([`6167004`](https://github.com/afewyards/ha-adaptive-thermostat/commit/616700464604f9ca95761de68703cdca32ccf411))
+
+- Add TestPIDHistory: tests for recording snapshots, FIFO eviction, get_previous_pid, and history
+  copy semantics - Add TestPhysicsBaselineAndDrift: tests for set_physics_baseline and
+  calculate_drift_from_baseline including edge cases - Add TestValidationMode: tests for
+  start/add_validation_cycle, success and rollback scenarios, and clear_history reset - Add
+  TestAutoApplyLimits: tests for lifetime, seasonal, drift, and seasonal shift blocking checks - Add
+  TestSeasonalShiftRecording: tests for record_seasonal_shift and get_auto_apply_count
+
+Story 8.1 complete with 25 passing tests.
+
+
 ## v0.13.1 (2026-01-19)
 
 ### Bug Fixes
