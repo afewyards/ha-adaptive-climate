@@ -495,3 +495,189 @@ def test_integration_cycle_learning_module_exists():
     )
     assert CycleTrackerManager is not None
     assert CycleState is not None
+
+
+class TestPersistenceRoundtrip:
+    """Integration tests for persistence round-trip."""
+
+    def test_adaptive_learner_persistence_roundtrip(self):
+        """Test AdaptiveLearner data persists and restores correctly.
+
+        Creates a learner, adds cycles, saves to dict, creates new learner,
+        restores from dict, and verifies all cycles and state match.
+        """
+        from custom_components.adaptive_thermostat.adaptive.learning import AdaptiveLearner
+        from custom_components.adaptive_thermostat.adaptive.cycle_analysis import CycleMetrics
+
+        # Create learner and add cycles
+        original_learner = AdaptiveLearner(heating_type="floor_hydronic")
+
+        # Add 5 cycles with varying metrics
+        cycles_data = [
+            {"overshoot": 0.3, "undershoot": 0.1, "settling_time": 45.0, "oscillations": 1, "rise_time": 30.0},
+            {"overshoot": 0.25, "undershoot": 0.15, "settling_time": 42.0, "oscillations": 0, "rise_time": 28.0},
+            {"overshoot": 0.2, "undershoot": 0.1, "settling_time": 40.0, "oscillations": 0, "rise_time": 25.0},
+            {"overshoot": 0.15, "undershoot": 0.05, "settling_time": 38.0, "oscillations": 0, "rise_time": 22.0},
+            {"overshoot": 0.1, "undershoot": 0.0, "settling_time": 35.0, "oscillations": 0, "rise_time": 20.0},
+        ]
+
+        for cycle_data in cycles_data:
+            metrics = CycleMetrics(**cycle_data)
+            original_learner.add_cycle_metrics(metrics)
+            original_learner.update_convergence_tracking(metrics)
+
+        # Set some convergence state
+        original_learner._consecutive_converged_cycles = 3
+        original_learner._pid_converged_for_ke = True
+        original_learner._auto_apply_count = 2
+
+        # Serialize to dict
+        serialized = original_learner.to_dict()
+
+        # Verify serialization contains expected data
+        assert "cycle_history" in serialized
+        assert len(serialized["cycle_history"]) == 5
+        assert serialized["consecutive_converged_cycles"] == 3
+        assert serialized["pid_converged_for_ke"] is True
+        assert serialized["auto_apply_count"] == 2
+
+        # Create new learner and restore from dict
+        restored_learner = AdaptiveLearner(heating_type="floor_hydronic")
+        restored_learner.restore_from_dict(serialized)
+
+        # Verify cycle count matches
+        assert restored_learner.get_cycle_count() == original_learner.get_cycle_count()
+        assert restored_learner.get_cycle_count() == 5
+
+        # Verify each cycle's metrics match
+        original_history = original_learner._cycle_history
+        restored_history = restored_learner._cycle_history
+
+        for i, (orig, restored) in enumerate(zip(original_history, restored_history)):
+            assert orig.overshoot == restored.overshoot, f"Cycle {i} overshoot mismatch"
+            assert orig.undershoot == restored.undershoot, f"Cycle {i} undershoot mismatch"
+            assert orig.settling_time == restored.settling_time, f"Cycle {i} settling_time mismatch"
+            assert orig.oscillations == restored.oscillations, f"Cycle {i} oscillations mismatch"
+            assert orig.rise_time == restored.rise_time, f"Cycle {i} rise_time mismatch"
+
+        # Verify convergence state matches
+        assert restored_learner._consecutive_converged_cycles == original_learner._consecutive_converged_cycles
+        assert restored_learner._pid_converged_for_ke == original_learner._pid_converged_for_ke
+        assert restored_learner._auto_apply_count == original_learner._auto_apply_count
+
+    def test_ke_learner_persistence_roundtrip(self):
+        """Test KeLearner observations persist and restore correctly."""
+        from custom_components.adaptive_thermostat.adaptive.ke_learning import KeLearner, KeObservation
+
+        # Create learner and add observations
+        original_learner = KeLearner(initial_ke=0.5)
+
+        # Enable learning
+        original_learner.enable()
+
+        # Add observations using proper KeObservation objects
+        original_learner._observations = [
+            KeObservation(timestamp=datetime.now(), outdoor_temp=5.0, pid_output=50.0,
+                         indoor_temp=21.0, target_temp=21.0),
+            KeObservation(timestamp=datetime.now(), outdoor_temp=0.0, pid_output=55.0,
+                         indoor_temp=20.5, target_temp=21.0),
+            KeObservation(timestamp=datetime.now(), outdoor_temp=-5.0, pid_output=60.0,
+                         indoor_temp=20.0, target_temp=21.0),
+        ]
+        original_learner._current_ke = 0.65
+
+        # Serialize to dict
+        serialized = original_learner.to_dict()
+
+        # Verify serialization
+        assert "current_ke" in serialized
+        assert serialized["current_ke"] == 0.65
+        assert "observations" in serialized
+        assert len(serialized["observations"]) == 3
+        assert serialized["enabled"] is True
+
+        # Create new learner from dict
+        restored_learner = KeLearner.from_dict(serialized)
+
+        # Verify Ke value matches
+        assert restored_learner.current_ke == original_learner.current_ke
+
+        # Verify observation count matches
+        assert restored_learner.observation_count == original_learner.observation_count
+
+        # Verify enabled state matches
+        assert restored_learner.enabled == original_learner.enabled
+
+    def test_full_persistence_roundtrip_with_store(self):
+        """Test complete persistence flow using LearningDataStore."""
+        from custom_components.adaptive_thermostat.adaptive.learning import AdaptiveLearner
+        from custom_components.adaptive_thermostat.adaptive.persistence import LearningDataStore
+        from custom_components.adaptive_thermostat.adaptive.cycle_analysis import CycleMetrics
+        from custom_components.adaptive_thermostat.adaptive.ke_learning import KeLearner, KeObservation
+        from unittest.mock import MagicMock
+
+        # Create mock hass for the store
+        mock_hass = MagicMock()
+        store = LearningDataStore(mock_hass)
+
+        # Create and populate AdaptiveLearner
+        adaptive_learner = AdaptiveLearner(heating_type="radiator")
+        for i in range(3):
+            metrics = CycleMetrics(
+                overshoot=0.2 + i * 0.05,
+                undershoot=0.1,
+                settling_time=40.0 - i * 2,
+                oscillations=max(0, 2 - i),
+                rise_time=25.0 - i,
+            )
+            adaptive_learner.add_cycle_metrics(metrics)
+        adaptive_learner._consecutive_converged_cycles = 2
+        adaptive_learner._pid_converged_for_ke = True
+
+        # Create and populate KeLearner
+        ke_learner = KeLearner(initial_ke=0.4)
+        ke_learner.enable()
+        ke_learner._current_ke = 0.55
+        # Add some observations for the count
+        ke_learner._observations = [
+            KeObservation(timestamp=datetime.now(), outdoor_temp=i * 2.0, pid_output=50.0,
+                         indoor_temp=20.0, target_temp=21.0)
+            for i in range(5)
+        ]
+
+        # Update store with zone data
+        zone_id = "living_room"
+        store.update_zone_data(
+            zone_id=zone_id,
+            adaptive_data=adaptive_learner.to_dict(),
+            ke_data=ke_learner.to_dict(),
+        )
+
+        # Verify data is in store
+        zone_data = store.get_zone_data(zone_id)
+        assert zone_data is not None
+        assert "adaptive_learner" in zone_data
+        assert "ke_learner" in zone_data
+
+        # Create new learners and restore from store
+        restored_adaptive = AdaptiveLearner(heating_type="radiator")
+        restored_adaptive.restore_from_dict(zone_data["adaptive_learner"])
+
+        restored_ke = KeLearner.from_dict(zone_data["ke_learner"])
+
+        # Verify AdaptiveLearner restoration
+        assert restored_adaptive.get_cycle_count() == 3
+        assert restored_adaptive._consecutive_converged_cycles == 2
+        assert restored_adaptive._pid_converged_for_ke is True
+
+        # Verify cycle metrics
+        original_cycles = adaptive_learner._cycle_history
+        restored_cycles = restored_adaptive._cycle_history
+        for i, (orig, restored) in enumerate(zip(original_cycles, restored_cycles)):
+            assert abs(orig.overshoot - restored.overshoot) < 0.001, f"Cycle {i} overshoot mismatch"
+            assert abs(orig.settling_time - restored.settling_time) < 0.001, f"Cycle {i} settling_time mismatch"
+
+        # Verify KeLearner restoration
+        assert restored_ke.current_ke == 0.55
+        assert restored_ke.observation_count == 5
+        assert restored_ke.enabled is True
