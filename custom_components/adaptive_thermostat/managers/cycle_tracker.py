@@ -699,6 +699,26 @@ class CycleTrackerManager:
         # Record metrics with adaptive learner
         self._adaptive_learner.add_cycle_metrics(metrics)
         self._adaptive_learner.update_convergence_tracking(metrics)
+        self._adaptive_learner.update_convergence_confidence(metrics)
+
+        # Check if we're in validation mode and handle validation
+        if self._adaptive_learner.is_in_validation_mode():
+            validation_result = self._adaptive_learner.add_validation_cycle(metrics)
+
+            if validation_result == 'rollback':
+                # Validation failed - call rollback callback if available
+                if hasattr(self, '_on_validation_failed') and self._on_validation_failed is not None:
+                    self._logger.warning("Validation failed, triggering rollback callback")
+                    # Schedule callback as async task
+                    self._hass.async_create_task(self._on_validation_failed())
+                else:
+                    self._logger.warning(
+                        "Validation failed but no rollback callback configured"
+                    )
+            elif validation_result == 'success':
+                self._logger.info(
+                    "Validation completed successfully - PID changes verified"
+                )
 
         # Log cycle completion with all metrics
         disturbance_str = f", disturbances={disturbances}" if disturbances else ""
