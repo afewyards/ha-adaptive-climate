@@ -302,7 +302,7 @@ async def test_learning_store_init(mock_hass):
     # Should not create Store instance until async_load is called
     assert store.hass == mock_hass
     assert store._store is None
-    assert store._data == {"version": 3, "zones": {}}
+    assert store._data == {"version": 4, "zones": {}}
 
 
 @pytest.mark.asyncio
@@ -323,16 +323,16 @@ async def test_learning_store_async_load_empty(mock_hass):
         data = await store.async_load()
 
         # Should create Store with correct parameters
-        mock_store_class.assert_called_once_with(mock_hass, 3, "adaptive_thermostat_learning")
+        mock_store_class.assert_called_once_with(mock_hass, 4, "adaptive_thermostat_learning")
 
         # Should return default structure when no data
-        assert data == {"version": 3, "zones": {}}
-        assert store._data == {"version": 3, "zones": {}}
+        assert data == {"version": 4, "zones": {}}
+        assert store._data == {"version": 4, "zones": {}}
 
 
 @pytest.mark.asyncio
 async def test_learning_store_async_load_v2_migration(mock_hass):
-    """Test async_load migrates v2 format to v3 zone-keyed format."""
+    """Test async_load migrates v2 format through v3 to v4."""
     # Simulate old v2 format (flat structure, no zones)
     v2_data = {
         "version": 2,
@@ -372,8 +372,8 @@ async def test_learning_store_async_load_v2_migration(mock_hass):
         store = LearningDataStore(mock_hass)
         data = await store.async_load()
 
-        # Should migrate to v3 format with zone-keyed storage
-        assert data["version"] == 3
+        # Should migrate through v3 to v4 format
+        assert data["version"] == 4
         assert "zones" in data
         assert "default_zone" in data["zones"]
 
@@ -385,6 +385,12 @@ async def test_learning_store_async_load_v2_migration(mock_hass):
         assert len(default_zone["adaptive_learner"]["cycle_history"]) == 1
         assert "valve_tracker" in default_zone
         assert default_zone["valve_tracker"]["cycle_count"] == 2
+
+        # v4 migration should add thermal_coupling
+        assert "thermal_coupling" in data
+        assert data["thermal_coupling"]["observations"] == {}
+        assert data["thermal_coupling"]["coefficients"] == {}
+        assert data["thermal_coupling"]["seeds"] == {}
 
 
 @pytest.mark.asyncio
@@ -640,3 +646,204 @@ def test_update_zone_data_with_ke_data(mock_hass):
     # Verify both were updated
     assert store._data["zones"]["test_zone"]["adaptive_learner"] == adaptive_data
     assert store._data["zones"]["test_zone"]["ke_learner"] == ke_data
+
+
+# ============================================================================
+# Story 3.1: v3 to v4 migration tests (thermal coupling support)
+# ============================================================================
+
+
+def test_migrate_v3_to_v4(mock_hass):
+    """Test _migrate_v3_to_v4 adds thermal_coupling key with empty dicts."""
+    store = LearningDataStore(mock_hass)
+
+    # Simulate v3 data structure
+    v3_data = {
+        "version": 3,
+        "zones": {
+            "climate.living_room": {
+                "adaptive_learner": {
+                    "cycle_history": [{"overshoot": 0.3}],
+                },
+                "ke_learner": {
+                    "current_ke": 0.5,
+                },
+            },
+            "climate.bedroom": {
+                "adaptive_learner": {
+                    "cycle_history": [],
+                },
+            },
+        },
+    }
+
+    # Call migration method
+    v4_data = store._migrate_v3_to_v4(v3_data)
+
+    # Verify version updated to 4
+    assert v4_data["version"] == 4
+
+    # Verify zones preserved
+    assert "zones" in v4_data
+    assert "climate.living_room" in v4_data["zones"]
+    assert "climate.bedroom" in v4_data["zones"]
+    assert v4_data["zones"]["climate.living_room"]["adaptive_learner"]["cycle_history"] == [{"overshoot": 0.3}]
+    assert v4_data["zones"]["climate.living_room"]["ke_learner"]["current_ke"] == 0.5
+
+    # Verify thermal_coupling key added with empty dicts
+    assert "thermal_coupling" in v4_data
+    assert "observations" in v4_data["thermal_coupling"]
+    assert "coefficients" in v4_data["thermal_coupling"]
+    assert "seeds" in v4_data["thermal_coupling"]
+    assert v4_data["thermal_coupling"]["observations"] == {}
+    assert v4_data["thermal_coupling"]["coefficients"] == {}
+    assert v4_data["thermal_coupling"]["seeds"] == {}
+
+
+@pytest.mark.asyncio
+async def test_load_v3_auto_migrates(mock_hass):
+    """Test loading v3 data returns v4 format via automatic migration."""
+    # Simulate v3 format stored data
+    v3_data = {
+        "version": 3,
+        "zones": {
+            "climate.kitchen": {
+                "adaptive_learner": {
+                    "cycle_history": [{"overshoot": 0.2, "undershoot": 0.1}],
+                    "consecutive_converged_cycles": 5,
+                },
+                "ke_learner": {
+                    "current_ke": 0.45,
+                    "enabled": True,
+                },
+                "last_updated": "2026-01-20T10:00:00",
+            },
+        },
+    }
+
+    # Create mock Store class
+    mock_store_class = Mock()
+    mock_store_instance = AsyncMock()
+    mock_store_instance.async_load = AsyncMock(return_value=v3_data)
+    mock_store_class.return_value = mock_store_instance
+
+    # Mock the homeassistant.helpers.storage module
+    mock_storage_module = Mock()
+    mock_storage_module.Store = mock_store_class
+
+    with patch.dict('sys.modules', {'homeassistant.helpers.storage': mock_storage_module}):
+        store = LearningDataStore(mock_hass)
+        data = await store.async_load()
+
+        # Should migrate to v4 format
+        assert data["version"] == 4
+
+        # Original zone data should be preserved
+        assert "zones" in data
+        assert "climate.kitchen" in data["zones"]
+        assert data["zones"]["climate.kitchen"]["adaptive_learner"]["cycle_history"] == [
+            {"overshoot": 0.2, "undershoot": 0.1}
+        ]
+        assert data["zones"]["climate.kitchen"]["ke_learner"]["current_ke"] == 0.45
+
+        # thermal_coupling should be added with empty dicts
+        assert "thermal_coupling" in data
+        assert data["thermal_coupling"]["observations"] == {}
+        assert data["thermal_coupling"]["coefficients"] == {}
+        assert data["thermal_coupling"]["seeds"] == {}
+
+
+@pytest.mark.asyncio
+async def test_load_v4_no_migration(mock_hass):
+    """Test loading v4 data does not trigger migration."""
+    # Simulate v4 format stored data (already migrated)
+    v4_data = {
+        "version": 4,
+        "zones": {
+            "climate.office": {
+                "adaptive_learner": {"cycle_history": []},
+            },
+        },
+        "thermal_coupling": {
+            "observations": {
+                "climate.living_room|climate.kitchen": [
+                    {"timestamp": "2026-01-20T12:00:00", "source_temp_start": 19.0}
+                ]
+            },
+            "coefficients": {
+                "climate.living_room|climate.kitchen": {
+                    "coefficient": 0.25,
+                    "confidence": 0.7,
+                }
+            },
+            "seeds": {
+                "climate.living_room|climate.kitchen": 0.15,
+            },
+        },
+    }
+
+    # Create mock Store class
+    mock_store_class = Mock()
+    mock_store_instance = AsyncMock()
+    mock_store_instance.async_load = AsyncMock(return_value=v4_data)
+    mock_store_class.return_value = mock_store_instance
+
+    # Mock the homeassistant.helpers.storage module
+    mock_storage_module = Mock()
+    mock_storage_module.Store = mock_store_class
+
+    with patch.dict('sys.modules', {'homeassistant.helpers.storage': mock_storage_module}):
+        store = LearningDataStore(mock_hass)
+        data = await store.async_load()
+
+        # Should remain v4 with no changes
+        assert data["version"] == 4
+
+        # Existing thermal_coupling data should be preserved
+        assert "climate.living_room|climate.kitchen" in data["thermal_coupling"]["observations"]
+        assert data["thermal_coupling"]["coefficients"]["climate.living_room|climate.kitchen"]["coefficient"] == 0.25
+        assert data["thermal_coupling"]["seeds"]["climate.living_room|climate.kitchen"] == 0.15
+
+
+@pytest.mark.asyncio
+async def test_load_v2_migrates_through_v3_to_v4(mock_hass):
+    """Test loading v2 data migrates through v3 to v4."""
+    # Simulate v2 format (flat, no zones)
+    v2_data = {
+        "version": 2,
+        "adaptive_learner": {
+            "cycle_history": [{"overshoot": 0.4}],
+        },
+        "ke_learner": {
+            "current_ke": 0.3,
+        },
+    }
+
+    # Create mock Store class
+    mock_store_class = Mock()
+    mock_store_instance = AsyncMock()
+    mock_store_instance.async_load = AsyncMock(return_value=v2_data)
+    mock_store_class.return_value = mock_store_instance
+
+    # Mock the homeassistant.helpers.storage module
+    mock_storage_module = Mock()
+    mock_storage_module.Store = mock_store_class
+
+    with patch.dict('sys.modules', {'homeassistant.helpers.storage': mock_storage_module}):
+        store = LearningDataStore(mock_hass)
+        data = await store.async_load()
+
+        # Should be migrated all the way to v4
+        assert data["version"] == 4
+
+        # v2 data should be in default_zone (from v2->v3 migration)
+        assert "zones" in data
+        assert "default_zone" in data["zones"]
+        assert data["zones"]["default_zone"]["adaptive_learner"]["cycle_history"] == [{"overshoot": 0.4}]
+        assert data["zones"]["default_zone"]["ke_learner"]["current_ke"] == 0.3
+
+        # thermal_coupling should be added (from v3->v4 migration)
+        assert "thermal_coupling" in data
+        assert data["thermal_coupling"]["observations"] == {}
+        assert data["thermal_coupling"]["coefficients"] == {}
+        assert data["thermal_coupling"]["seeds"] == {}

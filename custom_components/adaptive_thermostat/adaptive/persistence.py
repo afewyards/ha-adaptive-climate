@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 STORAGE_KEY = "adaptive_thermostat_learning"
-STORAGE_VERSION = 3
+STORAGE_VERSION = 4
 SAVE_DELAY_SECONDS = 30
 
 
@@ -40,7 +40,7 @@ class LearningDataStore:
             self.storage_file = os.path.join(hass_or_path, "adaptive_thermostat_learning.json")
             self.hass = None
             self._store = None
-            self._data = {"version": 3, "zones": {}}
+            self._data = {"version": 4, "zones": {}}
             self._save_lock = None  # Legacy API doesn't need locks (synchronous)
         else:
             # New API - HA Store based
@@ -48,7 +48,7 @@ class LearningDataStore:
             self.storage_path = None
             self.storage_file = None
             self._store = None
-            self._data = {"version": 3, "zones": {}}
+            self._data = {"version": 4, "zones": {}}
             self._save_lock = None  # Lazily initialized in async context
 
     async def async_load(self) -> Dict[str, Any]:
@@ -74,13 +74,17 @@ class LearningDataStore:
 
         if data is None:
             # No existing data - return default structure
-            self._data = {"version": 3, "zones": {}}
+            self._data = {"version": 4, "zones": {}}
             return self._data
 
-        # Check if migration is needed (v2 -> v3)
+        # Check if migration is needed (v2 -> v3 -> v4)
         if data.get("version") == 2:
             _LOGGER.info("Migrating learning data from v2 to v3 (zone-keyed storage)")
             data = self._migrate_v2_to_v3(data)
+
+        if data.get("version") == 3:
+            _LOGGER.info("Migrating learning data from v3 to v4 (thermal coupling support)")
+            data = self._migrate_v3_to_v4(data)
 
         self._data = data
         return data
@@ -113,6 +117,32 @@ class LearningDataStore:
         )
 
         return v3_data
+
+    def _migrate_v3_to_v4(self, v3_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Migrate v3 format to v4 format (thermal coupling support).
+
+        Args:
+            v3_data: v3 format with zones but no thermal_coupling key
+
+        Returns:
+            v4 format with thermal_coupling key containing empty dicts
+        """
+        v4_data = {
+            "version": 4,
+            "zones": v3_data.get("zones", {}),
+            "thermal_coupling": {
+                "observations": {},
+                "coefficients": {},
+                "seeds": {},
+            },
+        }
+
+        _LOGGER.info(
+            "Migrated v3 data to v4: added thermal_coupling with empty dicts"
+        )
+
+        return v4_data
 
     def get_zone_data(self, zone_id: str) -> Optional[Dict[str, Any]]:
         """
