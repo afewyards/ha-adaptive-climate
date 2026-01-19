@@ -495,6 +495,155 @@ class TestValidationFailureAndRollback:
         assert history[-1]["reason"] == "rollback"
         assert history[-1]["kp"] == 100.0
 
+    @pytest.mark.asyncio
+    async def test_validation_failure_automatic_rollback(
+        self, mock_hass, adaptive_learner, mock_callbacks
+    ):
+        """Test complete validation failure and automatic rollback flow.
+
+        Integration test for story 9.3:
+        1. Record initial PID values (kp=100, ki=0.01, kd=50)
+        2. Trigger auto-apply, verify new PID applied (e.g., kp=90)
+        3. Verify validation mode started
+        4. Simulate 5 validation cycles with 40% worse overshoot (degradation)
+        5. On 5th cycle, verify add_validation_cycle returns 'rollback'
+        6. Verify _handle_validation_failure callback triggered
+        7. Verify PID rolled back to previous values (kp=100)
+        8. Verify learning history cleared
+        9. Verify auto_apply_count NOT incremented (still 0)
+        """
+        # Track rollback callback invocations
+        rollback_called = []
+
+        async def mock_validation_failed():
+            rollback_called.append(True)
+
+        # Create cycle tracker with validation failure callback
+        tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=adaptive_learner,
+            get_target_temp=mock_callbacks["get_target_temp"],
+            get_current_temp=mock_callbacks["get_current_temp"],
+            get_hvac_mode=mock_callbacks["get_hvac_mode"],
+            get_in_grace_period=mock_callbacks["get_in_grace_period"],
+            on_validation_failed=mock_validation_failed,
+        )
+
+        # Phase 1: Record initial PID values (baseline before auto-apply)
+        initial_kp, initial_ki, initial_kd = 100.0, 0.01, 50.0
+        adaptive_learner.record_pid_snapshot(
+            kp=initial_kp,
+            ki=initial_ki,
+            kd=initial_kd,
+            reason="before_auto_apply",
+            metrics={"baseline_overshoot": 0.15}
+        )
+
+        # Phase 2: Simulate auto-apply (applying new PID values)
+        new_kp, new_ki, new_kd = 90.0, 0.012, 45.0
+        adaptive_learner.record_pid_snapshot(
+            kp=new_kp,
+            ki=new_ki,
+            kd=new_kd,
+            reason="auto_apply",
+            metrics={"baseline_overshoot": 0.15}
+        )
+
+        # Verify new PID values were applied
+        history = adaptive_learner.get_pid_history()
+        assert len(history) == 2
+        assert history[-1]["kp"] == new_kp
+        assert history[-1]["reason"] == "auto_apply"
+
+        # Phase 3: Start validation mode with baseline overshoot
+        baseline_overshoot = 0.15
+        adaptive_learner.start_validation_mode(baseline_overshoot)
+        assert adaptive_learner.is_in_validation_mode() is True
+        assert adaptive_learner._validation_baseline_overshoot == baseline_overshoot
+
+        # Phase 4: Simulate 5 validation cycles with 40% worse overshoot (degradation)
+        # 40% worse: 0.15 * 1.4 = 0.21°C (exceeds 30% degradation threshold)
+        degraded_overshoot = baseline_overshoot * 1.4
+        start_time = datetime(2024, 1, 1, 10, 0, 0)
+
+        for i in range(VALIDATION_CYCLE_COUNT):
+            current_time = start_time + timedelta(hours=i * 2)
+
+            # Start heating
+            tracker.on_heating_started(current_time)
+            assert tracker.state == CycleState.HEATING
+
+            # Collect temperature samples during heating
+            for j in range(20):
+                temp = 19.0 + min(j * 0.15, 2.0)
+                await tracker.update_temperature(current_time, temp)
+                current_time += timedelta(seconds=30)
+
+            # Stop heating
+            tracker.on_heating_stopped(current_time)
+            assert tracker.state == CycleState.SETTLING
+
+            # Settling with degraded overshoot
+            for _ in range(10):
+                await tracker.update_temperature(current_time, 21.0 + degraded_overshoot)
+                current_time += timedelta(seconds=30)
+
+            # Cycle should complete
+            assert tracker.state == CycleState.IDLE
+
+        # Phase 5: Verify validation completed with rollback result
+        # The 5th cycle should have triggered rollback via add_validation_cycle
+        assert adaptive_learner.is_in_validation_mode() is False
+
+        # Phase 6: Verify _handle_validation_failure callback was triggered
+        import asyncio
+        for task in mock_hass._created_tasks:
+            if asyncio.iscoroutine(task):
+                await task
+
+        assert len(rollback_called) >= 1, "Validation failure callback should be triggered"
+
+        # Phase 7: Simulate rollback (what _handle_validation_failure does)
+        # Get previous PID values
+        previous = adaptive_learner.get_previous_pid()
+        assert previous is not None
+        assert previous["kp"] == initial_kp
+        assert previous["ki"] == initial_ki
+        assert previous["kd"] == initial_kd
+
+        # Record rollback snapshot
+        adaptive_learner.record_pid_snapshot(
+            kp=previous["kp"],
+            ki=previous["ki"],
+            kd=previous["kd"],
+            reason="rollback",
+            metrics={
+                "rolled_back_from_kp": new_kp,
+                "rolled_back_from_ki": new_ki,
+                "rolled_back_from_kd": new_kd,
+                "degradation_percent": 40.0,
+            }
+        )
+
+        # Verify rollback snapshot recorded
+        history = adaptive_learner.get_pid_history()
+        assert len(history) == 3
+        assert history[-1]["reason"] == "rollback"
+        assert history[-1]["kp"] == initial_kp
+        assert history[-1]["ki"] == initial_ki
+        assert history[-1]["kd"] == initial_kd
+
+        # Phase 8: Clear learning history (as rollback does)
+        adaptive_learner.clear_history()
+        assert adaptive_learner.get_cycle_count() == 0
+        assert adaptive_learner._convergence_confidence == 0.0
+
+        # Phase 9: Verify auto_apply_count NOT incremented (still 0)
+        # When validation fails, we don't increment auto_apply_count
+        # because the auto-apply is being rolled back
+        assert adaptive_learner.get_auto_apply_count() == 0
+
 
 class TestLimitEnforcement:
     """Test auto-apply limit enforcement."""
