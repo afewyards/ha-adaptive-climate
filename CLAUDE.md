@@ -149,6 +149,97 @@ flowchart TD
 | `convector` | Convection heaters | 1.0x (baseline) | 5 min |
 | `forced_air` | Forced air / HVAC | 1.3x (aggressive) | 3 min |
 
+### Floor Construction
+
+For `floor_hydronic` systems, you can specify floor construction details to improve thermal time constant calculations. The system uses material thermal properties and pipe spacing to calculate a `tau_modifier` that adjusts the base thermal time constant.
+
+**Material Libraries:**
+
+**Top Floor Materials** (11 materials with thermal properties):
+
+| Material | Conductivity W/(m·K) | Density kg/m³ | Specific Heat J/(kg·K) |
+|----------|---------------------|---------------|------------------------|
+| `ceramic_tile` | 1.3 | 2300 | 840 |
+| `porcelain` | 1.5 | 2400 | 880 |
+| `natural_stone` | 2.8 | 2700 | 900 |
+| `terrazzo` | 1.8 | 2200 | 850 |
+| `polished_concrete` | 1.4 | 2100 | 880 |
+| `hardwood` | 0.15 | 700 | 1600 |
+| `engineered_wood` | 0.13 | 650 | 1600 |
+| `laminate` | 0.17 | 800 | 1500 |
+| `vinyl` | 0.19 | 1200 | 1400 |
+| `carpet` | 0.06 | 200 | 1300 |
+| `cork` | 0.04 | 200 | 1800 |
+
+**Screed Materials** (7 materials with thermal properties):
+
+| Material | Conductivity W/(m·K) | Density kg/m³ | Specific Heat J/(kg·K) |
+|----------|---------------------|---------------|------------------------|
+| `cement` | 1.4 | 2100 | 840 |
+| `anhydrite` | 1.2 | 2000 | 1000 |
+| `lightweight` | 0.47 | 1000 | 1000 |
+| `mastic_asphalt` | 0.7 | 2100 | 920 |
+| `synthetic` | 0.3 | 1200 | 1200 |
+| `self_leveling` | 1.3 | 1900 | 900 |
+| `dry_screed` | 0.2 | 800 | 1000 |
+
+**Pipe Spacing Efficiency:**
+
+| Spacing (mm) | Efficiency | Notes |
+|--------------|-----------|-------|
+| 100 | 0.92 | Tight spacing - best heat distribution |
+| 150 | 0.87 | Standard spacing (default) |
+| 200 | 0.80 | Wide spacing - moderate efficiency |
+| 300 | 0.68 | Very wide spacing - reduced efficiency |
+
+**YAML Configuration Example:**
+
+```yaml
+climate:
+  - platform: adaptive_thermostat
+    heating_type: floor_hydronic
+    area_m2: 50
+    floor_construction:
+      pipe_spacing_mm: 150
+      layers:
+        - type: top_floor
+          material: ceramic_tile
+          thickness_mm: 10
+        - type: screed
+          material: cement
+          thickness_mm: 50
+```
+
+**Validation Rules:**
+
+1. **Layer Order:** Top floor layers must precede screed layers
+2. **Thickness Ranges:**
+   - Top floor: 5-25 mm
+   - Screed: 30-80 mm
+3. **Material Types:** Must exist in `TOP_FLOOR_MATERIALS` or `SCREED_MATERIALS`
+4. **Pipe Spacing:** One of 100, 150, 200, 300 mm (defaults to 150 if not specified)
+
+**Tau Modifier Calculation:**
+
+The `tau_modifier` adjusts the base thermal time constant based on actual floor mass relative to a reference 50mm cement screed:
+
+```
+tau_modifier = (total_mass / reference_mass) / spacing_efficiency
+```
+
+Where:
+- `total_mass = Σ(thickness_m × area_m2 × density × specific_heat)` for all layers
+- `reference_mass = 50mm cement screed thermal mass`
+- `spacing_efficiency = PIPE_SPACING_EFFICIENCY[pipe_spacing_mm]`
+
+Example: A floor with 10mm ceramic tile + 50mm cement screed at 150mm pipe spacing:
+- Total mass ≈ 1.1× reference mass (tile adds 10% thermal mass)
+- Spacing efficiency = 0.87
+- `tau_modifier = 1.1 / 0.87 ≈ 1.26`
+- Final tau = base_tau × 1.26 (26% slower response due to added thermal mass)
+
+Higher tau modifier = slower system response (more conservative PID tuning).
+
 ### PID Adjustment Rules (in `adaptive/learning.py`)
 
 The adaptive learning system uses heating-type-specific thresholds for rule activation. These thresholds are derived from convergence thresholds using multipliers defined in `RULE_THRESHOLD_MULTIPLIERS`, ensuring that slow systems (high thermal mass) get proportionally relaxed criteria to match their physical characteristics.
