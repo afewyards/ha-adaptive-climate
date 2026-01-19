@@ -1,4 +1,5 @@
 [tool.semantic_release]
+major_on_zero = false
 version_toml = ["pyproject.toml:project.version"]
 version_variables = [
     "custom_components/adaptive_thermostat/manifest.json:version"
