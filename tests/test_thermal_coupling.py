@@ -1477,3 +1477,355 @@ class TestGraduatedConfidence:
         # Just below max (0.49): should be close to 1.0
         # (0.49 - 0.3) / (0.5 - 0.3) = 0.19 / 0.2 = 0.95
         assert abs(graduated_confidence(0.49) - 0.95) < 0.001
+
+
+# ============================================================================
+# Learner Serialization Tests
+# ============================================================================
+
+
+class TestLearnerSerialization:
+    """Tests for ThermalCouplingLearner serialization/deserialization."""
+
+    def test_learner_to_dict_empty(self):
+        """Test to_dict on empty learner returns valid structure."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            ThermalCouplingLearner,
+        )
+
+        learner = ThermalCouplingLearner()
+        data = learner.to_dict()
+
+        assert "observations" in data
+        assert "coefficients" in data
+        assert "seeds" in data
+        assert data["observations"] == {}
+        assert data["coefficients"] == {}
+        assert data["seeds"] == {}
+
+    def test_learner_to_dict_with_observations(self):
+        """Test to_dict serializes observations correctly."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            ThermalCouplingLearner,
+            CouplingObservation,
+        )
+
+        learner = ThermalCouplingLearner()
+
+        # Add observations
+        obs = CouplingObservation(
+            timestamp=datetime(2024, 1, 15, 12, 30, 0),
+            source_zone="climate.living_room",
+            target_zone="climate.kitchen",
+            source_temp_start=19.0,
+            source_temp_end=21.0,
+            target_temp_start=18.0,
+            target_temp_end=18.5,
+            outdoor_temp_start=5.0,
+            outdoor_temp_end=5.0,
+            duration_minutes=60.0,
+        )
+        pair = ("climate.living_room", "climate.kitchen")
+        learner.observations[pair] = [obs]
+
+        data = learner.to_dict()
+
+        # Observations should be keyed by "source_zone|target_zone"
+        obs_key = "climate.living_room|climate.kitchen"
+        assert obs_key in data["observations"]
+        assert len(data["observations"][obs_key]) == 1
+        assert data["observations"][obs_key][0]["timestamp"] == "2024-01-15T12:30:00"
+
+    def test_learner_to_dict_with_coefficients(self):
+        """Test to_dict serializes coefficients correctly."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            ThermalCouplingLearner,
+            CouplingCoefficient,
+        )
+
+        learner = ThermalCouplingLearner()
+
+        # Add coefficient
+        coef = CouplingCoefficient(
+            source_zone="climate.living_room",
+            target_zone="climate.kitchen",
+            coefficient=0.25,
+            confidence=0.7,
+            observation_count=5,
+            baseline_overshoot=0.3,
+            last_updated=datetime(2024, 1, 15, 14, 0, 0),
+        )
+        pair = ("climate.living_room", "climate.kitchen")
+        learner.coefficients[pair] = coef
+
+        data = learner.to_dict()
+
+        # Coefficients should be keyed by "source_zone|target_zone"
+        coef_key = "climate.living_room|climate.kitchen"
+        assert coef_key in data["coefficients"]
+        assert data["coefficients"][coef_key]["coefficient"] == 0.25
+        assert data["coefficients"][coef_key]["confidence"] == 0.7
+
+    def test_learner_to_dict_with_seeds(self):
+        """Test to_dict serializes seeds correctly."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            ThermalCouplingLearner,
+        )
+
+        learner = ThermalCouplingLearner()
+
+        # Initialize seeds
+        learner.initialize_seeds({
+            "floorplan": [
+                {"floor": 1, "zones": ["climate.living_room", "climate.kitchen"]}
+            ]
+        })
+
+        data = learner.to_dict()
+
+        # Seeds should be serialized with pipe-separated keys
+        assert "climate.living_room|climate.kitchen" in data["seeds"]
+        assert "climate.kitchen|climate.living_room" in data["seeds"]
+
+    def test_learner_from_dict_empty(self):
+        """Test from_dict restores empty learner."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            ThermalCouplingLearner,
+        )
+
+        data = {
+            "observations": {},
+            "coefficients": {},
+            "seeds": {},
+        }
+
+        learner = ThermalCouplingLearner.from_dict(data)
+
+        assert learner.observations == {}
+        assert learner.coefficients == {}
+        assert learner._seeds == {}
+
+    def test_learner_from_dict_with_observations(self):
+        """Test from_dict restores observations correctly."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            ThermalCouplingLearner,
+            CouplingObservation,
+        )
+
+        data = {
+            "observations": {
+                "climate.living_room|climate.kitchen": [
+                    {
+                        "timestamp": "2024-01-15T12:30:00",
+                        "source_zone": "climate.living_room",
+                        "target_zone": "climate.kitchen",
+                        "source_temp_start": 19.0,
+                        "source_temp_end": 21.0,
+                        "target_temp_start": 18.0,
+                        "target_temp_end": 18.5,
+                        "outdoor_temp_start": 5.0,
+                        "outdoor_temp_end": 5.0,
+                        "duration_minutes": 60.0,
+                    }
+                ]
+            },
+            "coefficients": {},
+            "seeds": {},
+        }
+
+        learner = ThermalCouplingLearner.from_dict(data)
+
+        pair = ("climate.living_room", "climate.kitchen")
+        assert pair in learner.observations
+        assert len(learner.observations[pair]) == 1
+        obs = learner.observations[pair][0]
+        assert isinstance(obs, CouplingObservation)
+        assert obs.timestamp == datetime(2024, 1, 15, 12, 30, 0)
+        assert obs.source_temp_end == 21.0
+
+    def test_learner_from_dict_with_coefficients(self):
+        """Test from_dict restores coefficients correctly."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            ThermalCouplingLearner,
+            CouplingCoefficient,
+        )
+
+        data = {
+            "observations": {},
+            "coefficients": {
+                "climate.living_room|climate.kitchen": {
+                    "source_zone": "climate.living_room",
+                    "target_zone": "climate.kitchen",
+                    "coefficient": 0.25,
+                    "confidence": 0.7,
+                    "observation_count": 5,
+                    "baseline_overshoot": 0.3,
+                    "last_updated": "2024-01-15T14:00:00",
+                }
+            },
+            "seeds": {},
+        }
+
+        learner = ThermalCouplingLearner.from_dict(data)
+
+        pair = ("climate.living_room", "climate.kitchen")
+        assert pair in learner.coefficients
+        coef = learner.coefficients[pair]
+        assert isinstance(coef, CouplingCoefficient)
+        assert coef.coefficient == 0.25
+        assert coef.confidence == 0.7
+
+    def test_learner_from_dict_with_seeds(self):
+        """Test from_dict restores seeds correctly."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            ThermalCouplingLearner,
+        )
+
+        data = {
+            "observations": {},
+            "coefficients": {},
+            "seeds": {
+                "climate.living_room|climate.kitchen": 0.15,
+                "climate.kitchen|climate.living_room": 0.15,
+            },
+        }
+
+        learner = ThermalCouplingLearner.from_dict(data)
+
+        assert learner._seeds[("climate.living_room", "climate.kitchen")] == 0.15
+        assert learner._seeds[("climate.kitchen", "climate.living_room")] == 0.15
+
+    def test_learner_from_dict_error_recovery(self):
+        """Test from_dict skips invalid items and continues."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            ThermalCouplingLearner,
+        )
+
+        data = {
+            "observations": {
+                # Valid observation
+                "climate.living_room|climate.kitchen": [
+                    {
+                        "timestamp": "2024-01-15T12:30:00",
+                        "source_zone": "climate.living_room",
+                        "target_zone": "climate.kitchen",
+                        "source_temp_start": 19.0,
+                        "source_temp_end": 21.0,
+                        "target_temp_start": 18.0,
+                        "target_temp_end": 18.5,
+                        "outdoor_temp_start": 5.0,
+                        "outdoor_temp_end": 5.0,
+                        "duration_minutes": 60.0,
+                    }
+                ],
+                # Invalid observation (missing timestamp)
+                "climate.bedroom|climate.bathroom": [
+                    {
+                        "source_zone": "climate.bedroom",
+                        "target_zone": "climate.bathroom",
+                    }
+                ],
+            },
+            "coefficients": {
+                # Valid coefficient
+                "climate.living_room|climate.kitchen": {
+                    "source_zone": "climate.living_room",
+                    "target_zone": "climate.kitchen",
+                    "coefficient": 0.25,
+                    "confidence": 0.7,
+                    "observation_count": 5,
+                    "baseline_overshoot": None,
+                    "last_updated": "2024-01-15T14:00:00",
+                },
+                # Invalid coefficient (missing fields)
+                "climate.bad|climate.data": {
+                    "coefficient": 0.1,
+                },
+            },
+            "seeds": {
+                "climate.a|climate.b": 0.15,
+            },
+        }
+
+        # Should not raise, should skip invalid items
+        learner = ThermalCouplingLearner.from_dict(data)
+
+        # Valid items should be restored
+        assert ("climate.living_room", "climate.kitchen") in learner.observations
+        assert ("climate.living_room", "climate.kitchen") in learner.coefficients
+        assert ("climate.a", "climate.b") in learner._seeds
+
+        # Invalid items should be skipped
+        assert ("climate.bedroom", "climate.bathroom") not in learner.observations
+        assert ("climate.bad", "climate.data") not in learner.coefficients
+
+    def test_learner_roundtrip(self):
+        """Test to_dict then from_dict preserves state."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            ThermalCouplingLearner,
+            CouplingObservation,
+            CouplingCoefficient,
+        )
+
+        # Create learner with full state
+        original = ThermalCouplingLearner()
+
+        # Add seeds
+        original.initialize_seeds({
+            "floorplan": [
+                {"floor": 1, "zones": ["climate.living_room", "climate.kitchen"]}
+            ]
+        })
+
+        # Add observation
+        obs = CouplingObservation(
+            timestamp=datetime(2024, 1, 15, 12, 30, 0),
+            source_zone="climate.living_room",
+            target_zone="climate.kitchen",
+            source_temp_start=19.0,
+            source_temp_end=21.0,
+            target_temp_start=18.0,
+            target_temp_end=18.5,
+            outdoor_temp_start=5.0,
+            outdoor_temp_end=5.0,
+            duration_minutes=60.0,
+        )
+        pair = ("climate.living_room", "climate.kitchen")
+        original.observations[pair] = [obs]
+
+        # Add coefficient
+        coef = CouplingCoefficient(
+            source_zone="climate.living_room",
+            target_zone="climate.kitchen",
+            coefficient=0.25,
+            confidence=0.7,
+            observation_count=5,
+            baseline_overshoot=0.3,
+            last_updated=datetime(2024, 1, 15, 14, 0, 0),
+        )
+        original.coefficients[pair] = coef
+
+        # Roundtrip
+        data = original.to_dict()
+        restored = ThermalCouplingLearner.from_dict(data)
+
+        # Verify seeds
+        assert restored._seeds == original._seeds
+
+        # Verify observations
+        assert list(restored.observations.keys()) == list(original.observations.keys())
+        orig_obs = original.observations[pair][0]
+        rest_obs = restored.observations[pair][0]
+        assert rest_obs.timestamp == orig_obs.timestamp
+        assert rest_obs.source_temp_end == orig_obs.source_temp_end
+        assert rest_obs.target_temp_end == orig_obs.target_temp_end
+
+        # Verify coefficients
+        assert list(restored.coefficients.keys()) == list(original.coefficients.keys())
+        orig_coef = original.coefficients[pair]
+        rest_coef = restored.coefficients[pair]
+        assert rest_coef.coefficient == orig_coef.coefficient
+        assert rest_coef.confidence == orig_coef.confidence
+        assert rest_coef.observation_count == orig_coef.observation_count
+        assert rest_coef.baseline_overshoot == orig_coef.baseline_overshoot
+        assert rest_coef.last_updated == orig_coef.last_updated

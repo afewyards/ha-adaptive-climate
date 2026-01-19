@@ -628,3 +628,109 @@ class ThermalCouplingLearner:
             observations.append(observation)
 
         return observations
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize the learner state to a dictionary for persistence.
+
+        The dictionary format uses pipe-separated zone pairs as keys for
+        observations, coefficients, and seeds to enable JSON serialization.
+
+        Returns:
+            Dict containing:
+                - observations: Dict of zone pair -> list of observation dicts
+                - coefficients: Dict of zone pair -> coefficient dict
+                - seeds: Dict of zone pair -> seed value
+        """
+        # Serialize observations: (source, target) tuple -> "source|target" string key
+        observations_dict: Dict[str, List[Dict[str, Any]]] = {}
+        for (source, target), obs_list in self.observations.items():
+            key = f"{source}|{target}"
+            observations_dict[key] = [obs.to_dict() for obs in obs_list]
+
+        # Serialize coefficients
+        coefficients_dict: Dict[str, Dict[str, Any]] = {}
+        for (source, target), coef in self.coefficients.items():
+            key = f"{source}|{target}"
+            coefficients_dict[key] = coef.to_dict()
+
+        # Serialize seeds
+        seeds_dict: Dict[str, float] = {}
+        for (source, target), seed_value in self._seeds.items():
+            key = f"{source}|{target}"
+            seeds_dict[key] = seed_value
+
+        return {
+            "observations": observations_dict,
+            "coefficients": coefficients_dict,
+            "seeds": seeds_dict,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ThermalCouplingLearner":
+        """Restore learner state from a dictionary.
+
+        Implements error recovery per item - invalid observations or coefficients
+        are skipped with a warning logged, allowing partial restoration.
+
+        Args:
+            data: Dict with observations, coefficients, and seeds keys.
+
+        Returns:
+            ThermalCouplingLearner with restored state.
+        """
+        import logging
+
+        _LOGGER = logging.getLogger(__name__)
+
+        learner = cls()
+
+        # Restore seeds first (simple float values, unlikely to fail)
+        seeds_data = data.get("seeds", {})
+        for key, seed_value in seeds_data.items():
+            try:
+                parts = key.split("|")
+                if len(parts) == 2:
+                    pair = (parts[0], parts[1])
+                    learner._seeds[pair] = seed_value
+            except Exception as exc:
+                _LOGGER.warning("Failed to restore seed %s: %s", key, exc)
+
+        # Restore observations with error recovery
+        observations_data = data.get("observations", {})
+        for key, obs_list_data in observations_data.items():
+            try:
+                parts = key.split("|")
+                if len(parts) != 2:
+                    continue
+                pair = (parts[0], parts[1])
+
+                observations: List[CouplingObservation] = []
+                for obs_data in obs_list_data:
+                    try:
+                        obs = CouplingObservation.from_dict(obs_data)
+                        observations.append(obs)
+                    except Exception as exc:
+                        _LOGGER.warning(
+                            "Failed to restore observation for %s: %s", key, exc
+                        )
+
+                if observations:
+                    learner.observations[pair] = observations
+            except Exception as exc:
+                _LOGGER.warning("Failed to restore observations for %s: %s", key, exc)
+
+        # Restore coefficients with error recovery
+        coefficients_data = data.get("coefficients", {})
+        for key, coef_data in coefficients_data.items():
+            try:
+                parts = key.split("|")
+                if len(parts) != 2:
+                    continue
+                pair = (parts[0], parts[1])
+
+                coef = CouplingCoefficient.from_dict(coef_data)
+                learner.coefficients[pair] = coef
+            except Exception as exc:
+                _LOGGER.warning("Failed to restore coefficient for %s: %s", key, exc)
+
+        return learner
