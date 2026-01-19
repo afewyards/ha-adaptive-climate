@@ -89,6 +89,21 @@ class AdaptiveLearner:
         # Rule state tracker with hysteresis to prevent oscillation
         self._rule_state_tracker = RuleStateTracker()
 
+        # Auto-apply tracking state
+        self._auto_apply_count: int = 0
+        self._last_seasonal_shift: Optional[datetime] = None
+        self._pid_history: List[Dict[str, Any]] = []
+
+        # Physics baseline for drift calculation
+        self._physics_baseline_kp: Optional[float] = None
+        self._physics_baseline_ki: Optional[float] = None
+        self._physics_baseline_kd: Optional[float] = None
+
+        # Validation mode state
+        self._validation_mode: bool = False
+        self._validation_baseline_overshoot: Optional[float] = None
+        self._validation_cycles: List[CycleMetrics] = []
+
     @property
     def cycle_history(self) -> List[CycleMetrics]:
         """Return cycle history for external access."""
