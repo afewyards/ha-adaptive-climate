@@ -801,30 +801,46 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                     self.entity_id,
                 )
 
-        # Initialize Ke learning - start with Ke=0, let PID stabilize first
-        # Physics-based Ke is stored in KeLearner as reference for later application
-        # Get energy rating now that hass is available
+        # Initialize Ke learning
+        # Check if we have stored ke_learner data from persistence
+        coordinator = self.hass.data.get(DOMAIN, {}).get("coordinator")
+        stored_ke_data = None
+        if coordinator and self._zone_id:
+            zone_data = coordinator.get_zone_data(self._zone_id)
+            if zone_data:
+                stored_ke_data = zone_data.get("stored_ke_data")
+
         energy_rating = self.hass.data.get(DOMAIN, {}).get("house_energy_rating")
         if self._has_outdoor_temp_source:
-            # Calculate physics-based Ke as reference (not applied yet)
-            initial_ke = calculate_initial_ke(
-                energy_rating=energy_rating,
-                window_area_m2=self._window_area_m2,
-                floor_area_m2=self._area_m2,
-                window_rating=self._window_rating,
-                heating_type=self._heating_type,
-            )
-            # Apply physics-based Ke from startup for accurate PID learning
-            self._ke = initial_ke
-            self._ke_learner = KeLearner(initial_ke=initial_ke)
-            # PID controller starts with physics-based Ke compensation
-            self._pid_controller.set_pid_param(ke=initial_ke)
-            temp_source = "outdoor sensor" if self._ext_sensor_entity_id else "weather entity"
-            _LOGGER.info(
-                "%s: Ke initialized from physics using %s (Ke=%.4f) "
-                "(energy_rating=%s, heating_type=%s)",
-                self.entity_id, temp_source, initial_ke, energy_rating or "default", self._heating_type
-            )
+            if stored_ke_data:
+                # Restore KeLearner from storage
+                self._ke_learner = KeLearner.from_dict(stored_ke_data)
+                self._ke = self._ke_learner.current_ke
+                self._pid_controller.set_pid_param(ke=self._ke)
+                _LOGGER.info(
+                    "%s: KeLearner restored from storage (Ke=%.4f, enabled=%s, observations=%d)",
+                    self.entity_id, self._ke, self._ke_learner.enabled, self._ke_learner.observation_count
+                )
+            else:
+                # Calculate physics-based Ke as reference
+                initial_ke = calculate_initial_ke(
+                    energy_rating=energy_rating,
+                    window_area_m2=self._window_area_m2,
+                    floor_area_m2=self._area_m2,
+                    window_rating=self._window_rating,
+                    heating_type=self._heating_type,
+                )
+                # Apply physics-based Ke from startup for accurate PID learning
+                self._ke = initial_ke
+                self._ke_learner = KeLearner(initial_ke=initial_ke)
+                # PID controller starts with physics-based Ke compensation
+                self._pid_controller.set_pid_param(ke=initial_ke)
+                temp_source = "outdoor sensor" if self._ext_sensor_entity_id else "weather entity"
+                _LOGGER.info(
+                    "%s: Ke initialized from physics using %s (Ke=%.4f) "
+                    "(energy_rating=%s, heating_type=%s)",
+                    self.entity_id, temp_source, initial_ke, energy_rating or "default", self._heating_type
+                )
         else:
             _LOGGER.debug(
                 "%s: Ke learning disabled - no outdoor temperature source configured",

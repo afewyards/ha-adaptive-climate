@@ -1781,3 +1781,73 @@ async def test_setup_stores_ke_data_for_later():
     # Assert - verify stored_ke_data is present in zone_data
     assert "stored_ke_data" in zone_data
     assert zone_data["stored_ke_data"] == stored_ke_data
+
+
+# =============================================================================
+# Story 3.2: Restore KeLearner from storage in async_added_to_hass
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_ke_learner_restored_from_storage():
+    """Test that KeLearner is restored from storage when stored_ke_data exists."""
+    from custom_components.adaptive_thermostat.adaptive.ke_learning import KeLearner
+
+    # Arrange - create stored ke_learner data with observations
+    stored_ke_data = {
+        "current_ke": 0.0045,
+        "enabled": True,
+        "max_observations": 1000,
+        "last_adjustment_time": "2024-01-15T10:30:00",
+        "observations": [
+            {
+                "timestamp": "2024-01-15T08:00:00",
+                "outdoor_temp": 5.0,
+                "pid_output": 75.0,
+                "indoor_temp": 20.5,
+                "target_temp": 21.0,
+            },
+            {
+                "timestamp": "2024-01-15T09:00:00",
+                "outdoor_temp": 7.0,
+                "pid_output": 65.0,
+                "indoor_temp": 20.8,
+                "target_temp": 21.0,
+            },
+        ],
+    }
+
+    # Act - restore KeLearner from storage
+    ke_learner = KeLearner.from_dict(stored_ke_data)
+
+    # Assert - verify KeLearner was restored correctly
+    assert ke_learner.current_ke == 0.0045
+    assert ke_learner.enabled is True
+    assert ke_learner.observation_count == 2
+    assert ke_learner._last_adjustment_time is not None
+    assert ke_learner._last_adjustment_time.isoformat() == "2024-01-15T10:30:00"
+
+
+@pytest.mark.asyncio
+async def test_ke_learner_falls_back_to_physics():
+    """Test that KeLearner is created from physics when no stored data exists."""
+    from custom_components.adaptive_thermostat.adaptive.ke_learning import KeLearner
+    from custom_components.adaptive_thermostat.adaptive.physics import calculate_initial_ke
+
+    # Arrange - calculate physics-based Ke
+    physics_ke = calculate_initial_ke(
+        energy_rating="average",
+        window_area_m2=2.0,
+        floor_area_m2=20.0,
+        window_rating="double",
+        heating_type="radiator",
+    )
+
+    # Act - create KeLearner with physics-based Ke (no stored data)
+    ke_learner = KeLearner(initial_ke=physics_ke)
+
+    # Assert - verify KeLearner was created with physics-based values
+    assert ke_learner.current_ke == physics_ke
+    assert ke_learner.enabled is False  # Not enabled until PID converges
+    assert ke_learner.observation_count == 0
+    assert ke_learner._last_adjustment_time is None
