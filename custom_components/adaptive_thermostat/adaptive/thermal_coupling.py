@@ -16,6 +16,9 @@ from ..const import (
     CONF_SEED_COEFFICIENTS,
     CONF_STAIRWELL_ZONES,
     COUPLING_CONFIDENCE_THRESHOLD,
+    COUPLING_MAX_OUTDOOR_CHANGE,
+    COUPLING_MIN_DURATION_MINUTES,
+    COUPLING_MIN_SOURCE_RISE,
     DEFAULT_SEED_COEFFICIENTS,
 )
 
@@ -126,6 +129,54 @@ class ObservationContext:
     source_temp_start: float                 # Source zone temp at start (°C)
     target_temps_start: Dict[str, float]     # All other zone temps at start {entity_id: temp}
     outdoor_temp_start: float                # Outdoor temp at start (°C)
+
+
+def should_record_observation(observation: CouplingObservation) -> bool:
+    """Determine if an observation should be recorded for learning.
+
+    Filters out observations that are unlikely to provide useful coupling data
+    due to noise, external factors, or invalid conditions.
+
+    Args:
+        observation: The CouplingObservation to evaluate.
+
+    Returns:
+        True if the observation should be recorded, False otherwise.
+
+    Filtering criteria:
+        1. Duration must be >= COUPLING_MIN_DURATION_MINUTES (15 min)
+        2. Source temp rise must be >= COUPLING_MIN_SOURCE_RISE (0.3°C)
+        3. Target must have been cooler than source at start
+        4. Outdoor temp change must be <= COUPLING_MAX_OUTDOOR_CHANGE (3°C)
+        5. Target temp must not have dropped (delta >= 0)
+    """
+    # Filter 1: Skip short duration observations
+    if observation.duration_minutes < COUPLING_MIN_DURATION_MINUTES:
+        return False
+
+    # Filter 2: Skip if source temp rise is too low
+    source_delta = observation.source_temp_end - observation.source_temp_start
+    if source_delta < COUPLING_MIN_SOURCE_RISE:
+        return False
+
+    # Filter 3: Skip if target was warmer than source at start
+    # Heat flows from hot to cold, so target should be cooler
+    if observation.target_temp_start >= observation.source_temp_start:
+        return False
+
+    # Filter 4: Skip if outdoor temp changed too much
+    # Large outdoor changes indicate external factors affecting temps
+    outdoor_delta = abs(observation.outdoor_temp_end - observation.outdoor_temp_start)
+    if outdoor_delta > COUPLING_MAX_OUTDOOR_CHANGE:
+        return False
+
+    # Filter 5: Skip if target temp dropped
+    # Negative delta means something else caused cooling, not coupling
+    target_delta = observation.target_temp_end - observation.target_temp_start
+    if target_delta < 0:
+        return False
+
+    return True
 
 
 def parse_floorplan(config: Dict[str, Any]) -> Dict[Tuple[str, str], float]:

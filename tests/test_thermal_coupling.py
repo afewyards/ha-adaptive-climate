@@ -838,3 +838,239 @@ class TestObservationLifecycle:
         # Should only have observation for kitchen (the only idle zone)
         assert len(observations) == 1
         assert observations[0].target_zone == "climate.kitchen"
+
+
+# ============================================================================
+# Observation Filtering Tests
+# ============================================================================
+
+
+class TestObservationFiltering:
+    """Tests for observation filtering logic."""
+
+    def test_filter_skip_short_duration(self):
+        """Test observations < 15 min are filtered out."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            CouplingObservation,
+            should_record_observation,
+        )
+
+        # Observation with short duration (10 min < 15 min minimum)
+        obs = CouplingObservation(
+            timestamp=datetime.now(),
+            source_zone="climate.living_room",
+            target_zone="climate.kitchen",
+            source_temp_start=19.0,
+            source_temp_end=21.0,
+            target_temp_start=18.0,
+            target_temp_end=18.5,
+            outdoor_temp_start=5.0,
+            outdoor_temp_end=5.0,
+            duration_minutes=10.0,  # Too short!
+        )
+
+        assert should_record_observation(obs) is False
+
+    def test_filter_skip_low_source_rise(self):
+        """Test observations with source temp rise < 0.3C are filtered out."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            CouplingObservation,
+            should_record_observation,
+        )
+
+        # Observation with low source temp rise (0.2C < 0.3C minimum)
+        obs = CouplingObservation(
+            timestamp=datetime.now(),
+            source_zone="climate.living_room",
+            target_zone="climate.kitchen",
+            source_temp_start=20.0,
+            source_temp_end=20.2,  # Only 0.2C rise
+            target_temp_start=18.0,
+            target_temp_end=18.1,
+            outdoor_temp_start=5.0,
+            outdoor_temp_end=5.0,
+            duration_minutes=30.0,
+        )
+
+        assert should_record_observation(obs) is False
+
+    def test_filter_skip_target_warmer(self):
+        """Test observations are filtered if target was warmer than source at start."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            CouplingObservation,
+            should_record_observation,
+        )
+
+        # Target was warmer than source at start - no meaningful coupling
+        obs = CouplingObservation(
+            timestamp=datetime.now(),
+            source_zone="climate.living_room",
+            target_zone="climate.kitchen",
+            source_temp_start=18.0,
+            source_temp_end=21.0,
+            target_temp_start=19.0,  # Warmer than source start!
+            target_temp_end=19.5,
+            outdoor_temp_start=5.0,
+            outdoor_temp_end=5.0,
+            duration_minutes=30.0,
+        )
+
+        assert should_record_observation(obs) is False
+
+    def test_filter_skip_outdoor_change(self):
+        """Test observations are filtered if outdoor temp changed > 3C."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            CouplingObservation,
+            should_record_observation,
+        )
+
+        # Large outdoor temp change indicates external factors
+        obs = CouplingObservation(
+            timestamp=datetime.now(),
+            source_zone="climate.living_room",
+            target_zone="climate.kitchen",
+            source_temp_start=19.0,
+            source_temp_end=22.0,
+            target_temp_start=18.0,
+            target_temp_end=19.0,
+            outdoor_temp_start=5.0,
+            outdoor_temp_end=9.0,  # 4C change > 3C max
+            duration_minutes=30.0,
+        )
+
+        assert should_record_observation(obs) is False
+
+    def test_filter_skip_target_dropped(self):
+        """Test observations are filtered if target temp dropped."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            CouplingObservation,
+            should_record_observation,
+        )
+
+        # Target temp dropped - can't learn coupling from negative delta
+        obs = CouplingObservation(
+            timestamp=datetime.now(),
+            source_zone="climate.living_room",
+            target_zone="climate.kitchen",
+            source_temp_start=19.0,
+            source_temp_end=22.0,
+            target_temp_start=18.0,
+            target_temp_end=17.5,  # Temp dropped!
+            outdoor_temp_start=5.0,
+            outdoor_temp_end=5.0,
+            duration_minutes=30.0,
+        )
+
+        assert should_record_observation(obs) is False
+
+    def test_filter_pass_valid_observation(self):
+        """Test valid observations pass all filters."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            CouplingObservation,
+            should_record_observation,
+        )
+
+        # Valid observation meeting all criteria
+        obs = CouplingObservation(
+            timestamp=datetime.now(),
+            source_zone="climate.living_room",
+            target_zone="climate.kitchen",
+            source_temp_start=19.0,
+            source_temp_end=22.0,      # 3C rise > 0.3C min
+            target_temp_start=18.0,     # Cooler than source
+            target_temp_end=19.0,       # Increased (positive delta)
+            outdoor_temp_start=5.0,
+            outdoor_temp_end=6.0,       # Only 1C change < 3C max
+            duration_minutes=30.0,      # > 15 min
+        )
+
+        assert should_record_observation(obs) is True
+
+    def test_filter_outdoor_negative_change(self):
+        """Test outdoor temp drop > 3C also triggers filter."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            CouplingObservation,
+            should_record_observation,
+        )
+
+        # Outdoor temp dropped significantly
+        obs = CouplingObservation(
+            timestamp=datetime.now(),
+            source_zone="climate.living_room",
+            target_zone="climate.kitchen",
+            source_temp_start=19.0,
+            source_temp_end=22.0,
+            target_temp_start=18.0,
+            target_temp_end=19.0,
+            outdoor_temp_start=10.0,
+            outdoor_temp_end=5.0,  # -5C change, abs() > 3C max
+            duration_minutes=30.0,
+        )
+
+        assert should_record_observation(obs) is False
+
+    def test_filter_boundary_duration(self):
+        """Test exactly 15 min duration passes."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            CouplingObservation,
+            should_record_observation,
+        )
+
+        obs = CouplingObservation(
+            timestamp=datetime.now(),
+            source_zone="climate.living_room",
+            target_zone="climate.kitchen",
+            source_temp_start=19.0,
+            source_temp_end=22.0,
+            target_temp_start=18.0,
+            target_temp_end=19.0,
+            outdoor_temp_start=5.0,
+            outdoor_temp_end=5.0,
+            duration_minutes=15.0,  # Exactly at boundary
+        )
+
+        assert should_record_observation(obs) is True
+
+    def test_filter_boundary_source_rise(self):
+        """Test exactly 0.3C source rise passes."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            CouplingObservation,
+            should_record_observation,
+        )
+
+        obs = CouplingObservation(
+            timestamp=datetime.now(),
+            source_zone="climate.living_room",
+            target_zone="climate.kitchen",
+            source_temp_start=19.0,
+            source_temp_end=19.3,  # Exactly 0.3C rise
+            target_temp_start=18.0,
+            target_temp_end=18.1,
+            outdoor_temp_start=5.0,
+            outdoor_temp_end=5.0,
+            duration_minutes=30.0,
+        )
+
+        assert should_record_observation(obs) is True
+
+    def test_filter_boundary_outdoor_change(self):
+        """Test exactly 3C outdoor change passes."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            CouplingObservation,
+            should_record_observation,
+        )
+
+        obs = CouplingObservation(
+            timestamp=datetime.now(),
+            source_zone="climate.living_room",
+            target_zone="climate.kitchen",
+            source_temp_start=19.0,
+            source_temp_end=22.0,
+            target_temp_start=18.0,
+            target_temp_end=19.0,
+            outdoor_temp_start=5.0,
+            outdoor_temp_end=8.0,  # Exactly 3C change
+            duration_minutes=30.0,
+        )
+
+        assert should_record_observation(obs) is True
