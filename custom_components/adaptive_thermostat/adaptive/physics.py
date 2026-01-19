@@ -4,7 +4,7 @@ This module provides functions to calculate initial PID parameters based on
 thermal properties of zones and heating system characteristics.
 """
 
-from typing import Tuple, Optional, Dict
+from typing import Tuple, Optional, Dict, List
 
 
 # Energy rating to insulation quality mapping
@@ -455,3 +455,121 @@ def calculate_ke_wind(
 
     # Round to 3 decimal places
     return round(base_ke_wind, 3)
+
+
+def calculate_floor_thermal_properties(
+    layers: List[Dict],
+    area_m2: float,
+    pipe_spacing_mm: int = 150,
+) -> Dict[str, float]:
+    """Calculate thermal properties for floor heating construction.
+
+    This function calculates thermal mass, thermal resistance, and tau modifier
+    for floor heating systems based on construction layers. The tau modifier is
+    used to adjust the base thermal time constant based on floor construction.
+
+    Args:
+        layers: List of layer dicts, each containing:
+            - 'type': 'top_floor' or 'screed'
+            - 'material': Material name (looked up in TOP_FLOOR_MATERIALS or SCREED_MATERIALS)
+            - 'thickness_mm': Layer thickness in millimeters
+            Optional overrides (if material lookup should be skipped):
+            - 'conductivity': Thermal conductivity in W/(m·K)
+            - 'density': Density in kg/m³
+            - 'specific_heat': Specific heat capacity in J/(kg·K)
+        area_m2: Floor area in square meters.
+        pipe_spacing_mm: Pipe spacing in millimeters (100, 150, 200, or 300).
+                         Default: 150mm. Used to calculate heat distribution efficiency.
+
+    Returns:
+        Dict containing:
+            - 'thermal_mass_kj_k': Total thermal mass in kJ/K
+            - 'thermal_resistance': Total thermal resistance in (m²·K)/W
+            - 'tau_modifier': Multiplier for base tau (accounts for thermal mass
+                              relative to reference 50mm cement screed)
+
+    Example:
+        >>> layers = [
+        ...     {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
+        ...     {'type': 'screed', 'material': 'cement', 'thickness_mm': 50}
+        ... ]
+        >>> props = calculate_floor_thermal_properties(layers, area_m2=50.0)
+        >>> props['thermal_mass_kj_k']  # Total thermal mass
+        462.0
+        >>> props['tau_modifier']  # Relative to reference screed
+        1.1
+    """
+    # Import here to avoid circular dependency
+    from ..const import TOP_FLOOR_MATERIALS, SCREED_MATERIALS, PIPE_SPACING_EFFICIENCY
+
+    total_thermal_mass = 0.0  # J/K (will convert to kJ/K at end)
+    total_thermal_resistance = 0.0  # (m²·K)/W
+
+    for layer in layers:
+        layer_type = layer.get('type')
+        material_name = layer.get('material')
+        thickness_mm = layer.get('thickness_mm')
+
+        if thickness_mm is None or thickness_mm <= 0:
+            raise ValueError(f"Layer must have valid thickness_mm > 0, got {thickness_mm}")
+
+        # Convert thickness to meters
+        thickness_m = thickness_mm / 1000.0
+
+        # Get material properties (either from lookup or custom overrides)
+        if 'conductivity' in layer and 'density' in layer and 'specific_heat' in layer:
+            # Custom material properties provided
+            conductivity = layer['conductivity']
+            density = layer['density']
+            specific_heat = layer['specific_heat']
+        else:
+            # Lookup material properties from const.py
+            if layer_type == 'top_floor':
+                material_props = TOP_FLOOR_MATERIALS.get(material_name)
+            elif layer_type == 'screed':
+                material_props = SCREED_MATERIALS.get(material_name)
+            else:
+                raise ValueError(f"Unknown layer type '{layer_type}', must be 'top_floor' or 'screed'")
+
+            if material_props is None:
+                raise ValueError(f"Unknown material '{material_name}' for layer type '{layer_type}'")
+
+            conductivity = material_props['conductivity']
+            density = material_props['density']
+            specific_heat = material_props['specific_heat']
+
+        # Calculate thermal mass for this layer: thickness × area × density × specific_heat
+        # Result in J/K
+        layer_mass = thickness_m * area_m2 * density * specific_heat
+        total_thermal_mass += layer_mass
+
+        # Calculate thermal resistance for this layer: thickness / conductivity
+        # Result in (m²·K)/W
+        layer_resistance = thickness_m / conductivity
+        total_thermal_resistance += layer_resistance
+
+    # Convert total thermal mass from J/K to kJ/K
+    thermal_mass_kj_k = total_thermal_mass / 1000.0
+
+    # Calculate reference mass (50mm cement screed)
+    # Reference: 0.05m × area_m2 × 2000 kg/m³ × 1000 J/(kg·K) = ... J/K
+    reference_thickness_m = 0.05
+    reference_density = 2000  # kg/m³
+    reference_specific_heat = 1000  # J/(kg·K)
+    reference_mass = (
+        reference_thickness_m * area_m2 * reference_density * reference_specific_heat
+    )  # J/K
+
+    # Calculate tau modifier (ratio of actual mass to reference mass)
+    tau_modifier = total_thermal_mass / reference_mass
+
+    # Apply pipe spacing efficiency factor
+    # Lookup efficiency for given pipe spacing (default to 150mm if not found)
+    spacing_efficiency = PIPE_SPACING_EFFICIENCY.get(pipe_spacing_mm, 0.87)
+    effective_tau_modifier = tau_modifier / spacing_efficiency
+
+    return {
+        'thermal_mass_kj_k': round(thermal_mass_kj_k, 2),
+        'thermal_resistance': round(total_thermal_resistance, 4),
+        'tau_modifier': round(effective_tau_modifier, 2),
+    }

@@ -7,6 +7,7 @@ from custom_components.adaptive_thermostat.adaptive.physics import (
     calculate_initial_pwm_period,
     calculate_initial_ke,
     calculate_power_scaling_factor,
+    calculate_floor_thermal_properties,
     GLAZING_U_VALUES,
     ENERGY_RATING_TO_INSULATION,
 )
@@ -975,3 +976,279 @@ class TestPhysicsInitDiverseBuildings:
             assert 0.1 < kp < 2.0, f"{heating_type}: Kp out of expected range"
             assert 0.5 < ki < 15.0, f"{heating_type}: Ki out of expected range"
             assert 0.3 < kd < 5.0, f"{heating_type}: Kd out of expected range"
+
+
+class TestFloorConstruction:
+    """Tests for calculate_floor_thermal_properties function."""
+
+    def test_basic_ceramic_tile_cement_screed(self):
+        """Test basic floor construction: 10mm ceramic tile + 50mm cement screed."""
+        layers = [
+            {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
+            {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+        ]
+        area_m2 = 50.0
+
+        result = calculate_floor_thermal_properties(layers, area_m2)
+
+        # Ceramic tile: 0.01m × 50m² × 2300kg/m³ × 840J/(kg·K) = 966,000 J/K
+        # Cement screed: 0.05m × 50m² × 2100kg/m³ × 840J/(kg·K) = 4,410,000 J/K
+        # Total: 5,376,000 J/K = 5376.0 kJ/K
+        assert result['thermal_mass_kj_k'] == pytest.approx(5376.0, abs=1.0)
+
+        # Thermal resistance:
+        # Ceramic tile: 0.01m / 1.3 W/(m·K) = 0.00769 (m²·K)/W
+        # Cement screed: 0.05m / 1.4 W/(m·K) = 0.03571 (m²·K)/W
+        # Total: 0.0434 (m²·K)/W
+        assert result['thermal_resistance'] == pytest.approx(0.0434, abs=0.001)
+
+        # Reference mass (50mm cement screed):
+        # 0.05m × 50m² × 2000kg/m³ × 1000J/(kg·K) = 5,000,000 J/K
+        # tau_modifier = 5,376,000 / 5,000,000 = 1.0752
+        # With 150mm pipe spacing (efficiency 0.87): 1.0752 / 0.87 = 1.24
+        assert result['tau_modifier'] == pytest.approx(1.24, abs=0.05)
+
+    def test_heavy_stone_construction(self):
+        """Test heavy floor construction with natural stone."""
+        layers = [
+            {'type': 'top_floor', 'material': 'natural_stone', 'thickness_mm': 20},
+            {'type': 'screed', 'material': 'cement', 'thickness_mm': 60},
+        ]
+        area_m2 = 40.0
+
+        result = calculate_floor_thermal_properties(layers, area_m2)
+
+        # Natural stone: 0.02m × 40m² × 2700kg/m³ × 900J/(kg·K) = 1,944,000 J/K
+        # Cement screed: 0.06m × 40m² × 2100kg/m³ × 840J/(kg·K) = 4,233,600 J/K
+        # Total: 6,177,600 J/K = 6177.6 kJ/K
+        assert result['thermal_mass_kj_k'] == pytest.approx(6177.6, abs=10.0)
+
+        # Reference mass: 0.05m × 40m² × 2000kg/m³ × 1000J/(kg·K) = 4,000,000 J/K
+        # tau_modifier = 6,177,600 / 4,000,000 = 1.544
+        # With 150mm pipe spacing: 1.544 / 0.87 = 1.77
+        assert result['tau_modifier'] == pytest.approx(1.77, abs=0.05)
+
+    def test_lightweight_construction(self):
+        """Test lightweight floor construction with vinyl and lightweight screed."""
+        layers = [
+            {'type': 'top_floor', 'material': 'vinyl', 'thickness_mm': 5},
+            {'type': 'screed', 'material': 'lightweight', 'thickness_mm': 40},
+        ]
+        area_m2 = 30.0
+
+        result = calculate_floor_thermal_properties(layers, area_m2)
+
+        # Vinyl: 0.005m × 30m² × 1200kg/m³ × 1400J/(kg·K) = 252,000 J/K
+        # Lightweight screed: 0.04m × 30m² × 1000kg/m³ × 1000J/(kg·K) = 1,200,000 J/K
+        # Total: 1,452,000 J/K = 1452.0 kJ/K
+        assert result['thermal_mass_kj_k'] == pytest.approx(1452.0, abs=5.0)
+
+        # Reference mass: 0.05m × 30m² × 2000kg/m³ × 1000J/(kg·K) = 3,000,000 J/K
+        # tau_modifier = 1,452,000 / 3,000,000 = 0.484
+        # With 150mm pipe spacing: 0.484 / 0.87 = 0.56
+        assert result['tau_modifier'] == pytest.approx(0.56, abs=0.02)
+
+    def test_pipe_spacing_100mm(self):
+        """Test pipe spacing effect with 100mm spacing (higher efficiency)."""
+        layers = [
+            {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
+            {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+        ]
+        area_m2 = 50.0
+
+        result = calculate_floor_thermal_properties(layers, area_m2, pipe_spacing_mm=100)
+
+        # Same thermal mass as test_basic_ceramic_tile_cement_screed
+        assert result['thermal_mass_kj_k'] == pytest.approx(5376.0, abs=1.0)
+
+        # tau_modifier with 100mm spacing (efficiency 0.92): 1.0752 / 0.92 = 1.17
+        assert result['tau_modifier'] == pytest.approx(1.17, abs=0.02)
+
+    def test_pipe_spacing_300mm(self):
+        """Test pipe spacing effect with 300mm spacing (lower efficiency)."""
+        layers = [
+            {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
+            {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+        ]
+        area_m2 = 50.0
+
+        result = calculate_floor_thermal_properties(layers, area_m2, pipe_spacing_mm=300)
+
+        # Same thermal mass as test_basic_ceramic_tile_cement_screed
+        assert result['thermal_mass_kj_k'] == pytest.approx(5376.0, abs=1.0)
+
+        # tau_modifier with 300mm spacing (efficiency 0.68): 1.0752 / 0.68 = 1.58
+        assert result['tau_modifier'] == pytest.approx(1.58, abs=0.02)
+
+    def test_custom_material_properties(self):
+        """Test custom material properties override material lookup."""
+        layers = [
+            {
+                'type': 'top_floor',
+                'material': 'custom_tile',  # Unknown material
+                'thickness_mm': 15,
+                'conductivity': 2.0,  # Custom properties
+                'density': 2500,
+                'specific_heat': 900,
+            },
+            {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+        ]
+        area_m2 = 50.0
+
+        result = calculate_floor_thermal_properties(layers, area_m2)
+
+        # Custom tile: 0.015m × 50m² × 2500kg/m³ × 900J/(kg·K) = 1,687,500 J/K
+        # Cement screed: 0.05m × 50m² × 2100kg/m³ × 840J/(kg·K) = 4,410,000 J/K
+        # Total: 6,097,500 J/K = 6097.5 kJ/K
+        assert result['thermal_mass_kj_k'] == pytest.approx(6097.5, abs=10.0)
+
+        # Thermal resistance:
+        # Custom tile: 0.015m / 2.0 W/(m·K) = 0.0075 (m²·K)/W
+        # Cement screed: 0.05m / 1.4 W/(m·K) = 0.0357 (m²·K)/W
+        # Total: 0.0432 (m²·K)/W
+        assert result['thermal_resistance'] == pytest.approx(0.0432, abs=0.001)
+
+    def test_multi_layer_construction(self):
+        """Test multi-layer construction with multiple screed layers."""
+        layers = [
+            {'type': 'top_floor', 'material': 'porcelain', 'thickness_mm': 12},
+            {'type': 'screed', 'material': 'self_leveling', 'thickness_mm': 5},
+            {'type': 'screed', 'material': 'cement', 'thickness_mm': 45},
+        ]
+        area_m2 = 60.0
+
+        result = calculate_floor_thermal_properties(layers, area_m2)
+
+        # Porcelain: 0.012m × 60m² × 2400kg/m³ × 880J/(kg·K) = 1,520,640 J/K
+        # Self-leveling: 0.005m × 60m² × 1900kg/m³ × 900J/(kg·K) = 513,000 J/K
+        # Cement: 0.045m × 60m² × 2100kg/m³ × 840J/(kg·K) = 4,762,800 J/K
+        # Total: 6,796,440 J/K = 6796.44 kJ/K
+        assert result['thermal_mass_kj_k'] == pytest.approx(6796.44, abs=10.0)
+
+        # Thermal resistance:
+        # Porcelain: 0.012m / 1.5 = 0.008
+        # Self-leveling: 0.005m / 1.3 = 0.00385
+        # Cement: 0.045m / 1.4 = 0.03214
+        # Total: 0.04399
+        assert result['thermal_resistance'] == pytest.approx(0.044, abs=0.001)
+
+    def test_thermal_resistance_high(self):
+        """Test thermal resistance calculation with insulating materials."""
+        layers = [
+            {'type': 'top_floor', 'material': 'carpet', 'thickness_mm': 8},
+            {'type': 'screed', 'material': 'dry_screed', 'thickness_mm': 40},
+        ]
+        area_m2 = 25.0
+
+        result = calculate_floor_thermal_properties(layers, area_m2)
+
+        # Thermal resistance (high due to insulating materials):
+        # Carpet: 0.008m / 0.06 W/(m·K) = 0.1333 (m²·K)/W
+        # Dry screed: 0.04m / 0.2 W/(m·K) = 0.2000 (m²·K)/W
+        # Total: 0.3333 (m²·K)/W
+        assert result['thermal_resistance'] == pytest.approx(0.3333, abs=0.01)
+
+    def test_unknown_material_raises_error(self):
+        """Test that unknown material raises ValueError."""
+        layers = [
+            {'type': 'top_floor', 'material': 'unobtanium', 'thickness_mm': 10},
+        ]
+        area_m2 = 50.0
+
+        with pytest.raises(ValueError, match="Unknown material 'unobtanium'"):
+            calculate_floor_thermal_properties(layers, area_m2)
+
+    def test_unknown_layer_type_raises_error(self):
+        """Test that unknown layer type raises ValueError."""
+        layers = [
+            {'type': 'insulation', 'material': 'ceramic_tile', 'thickness_mm': 10},
+        ]
+        area_m2 = 50.0
+
+        with pytest.raises(ValueError, match="Unknown layer type 'insulation'"):
+            calculate_floor_thermal_properties(layers, area_m2)
+
+    def test_invalid_thickness_raises_error(self):
+        """Test that invalid thickness raises ValueError."""
+        layers = [
+            {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 0},
+        ]
+        area_m2 = 50.0
+
+        with pytest.raises(ValueError, match="Layer must have valid thickness_mm"):
+            calculate_floor_thermal_properties(layers, area_m2)
+
+    def test_missing_thickness_raises_error(self):
+        """Test that missing thickness raises ValueError."""
+        layers = [
+            {'type': 'top_floor', 'material': 'ceramic_tile'},
+        ]
+        area_m2 = 50.0
+
+        with pytest.raises(ValueError, match="Layer must have valid thickness_mm"):
+            calculate_floor_thermal_properties(layers, area_m2)
+
+    def test_all_top_floor_materials(self):
+        """Test that all defined top floor materials work."""
+        from custom_components.adaptive_thermostat.const import TOP_FLOOR_MATERIALS
+
+        for material in TOP_FLOOR_MATERIALS.keys():
+            layers = [
+                {'type': 'top_floor', 'material': material, 'thickness_mm': 10},
+                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            ]
+            result = calculate_floor_thermal_properties(layers, area_m2=50.0)
+
+            # All should produce valid results
+            assert result['thermal_mass_kj_k'] > 0
+            assert result['thermal_resistance'] > 0
+            assert result['tau_modifier'] > 0
+
+    def test_all_screed_materials(self):
+        """Test that all defined screed materials work."""
+        from custom_components.adaptive_thermostat.const import SCREED_MATERIALS
+
+        for material in SCREED_MATERIALS.keys():
+            layers = [
+                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
+                {'type': 'screed', 'material': material, 'thickness_mm': 50},
+            ]
+            result = calculate_floor_thermal_properties(layers, area_m2=50.0)
+
+            # All should produce valid results
+            assert result['thermal_mass_kj_k'] > 0
+            assert result['thermal_resistance'] > 0
+            assert result['tau_modifier'] > 0
+
+    def test_tau_modifier_range_validation(self):
+        """Test that tau_modifier values are in reasonable range (0.3 - 3.0)."""
+        # Lightweight construction
+        layers_light = [
+            {'type': 'top_floor', 'material': 'vinyl', 'thickness_mm': 5},
+            {'type': 'screed', 'material': 'lightweight', 'thickness_mm': 35},
+        ]
+        result_light = calculate_floor_thermal_properties(layers_light, area_m2=30.0)
+        assert 0.3 <= result_light['tau_modifier'] <= 3.0
+
+        # Heavy construction
+        layers_heavy = [
+            {'type': 'top_floor', 'material': 'natural_stone', 'thickness_mm': 25},
+            {'type': 'screed', 'material': 'cement', 'thickness_mm': 70},
+        ]
+        result_heavy = calculate_floor_thermal_properties(layers_heavy, area_m2=40.0)
+        assert 0.3 <= result_heavy['tau_modifier'] <= 3.0
+
+    def test_default_pipe_spacing(self):
+        """Test that default pipe spacing is 150mm."""
+        layers = [
+            {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
+            {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+        ]
+        area_m2 = 50.0
+
+        # Call without pipe_spacing_mm parameter
+        result = calculate_floor_thermal_properties(layers, area_m2)
+
+        # Should use 150mm spacing (efficiency 0.87)
+        # Same as test_basic_ceramic_tile_cement_screed
+        assert result['tau_modifier'] == pytest.approx(1.24, abs=0.05)
