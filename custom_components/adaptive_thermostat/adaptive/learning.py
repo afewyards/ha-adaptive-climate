@@ -19,6 +19,10 @@ from ..const import (
     PID_HISTORY_SIZE,
     VALIDATION_CYCLE_COUNT,
     VALIDATION_DEGRADATION_THRESHOLD,
+    MAX_AUTO_APPLIES_PER_SEASON,
+    MAX_AUTO_APPLIES_LIFETIME,
+    MAX_CUMULATIVE_DRIFT_PCT,
+    SEASONAL_SHIFT_BLOCK_DAYS,
     get_convergence_thresholds,
     get_rule_thresholds,
 )
@@ -968,3 +972,69 @@ class AdaptiveLearner:
             True if validation mode is active, False otherwise.
         """
         return self._validation_mode
+
+    def check_auto_apply_limits(
+        self,
+        current_kp: float,
+        current_ki: float,
+        current_kd: float,
+    ) -> Optional[str]:
+        """Check if auto-apply is allowed based on safety limits.
+
+        Performs four safety checks before allowing auto-apply:
+        1. Lifetime limit: Maximum total auto-applies (prevents runaway drift)
+        2. Seasonal limit: Maximum auto-applies per 90-day season
+        3. Drift limit: Maximum cumulative drift from physics baseline
+        4. Seasonal shift block: Cooldown period after weather regime change
+
+        Args:
+            current_kp: Current proportional gain
+            current_ki: Current integral gain
+            current_kd: Current derivative gain
+
+        Returns:
+            None if all checks pass (OK to auto-apply),
+            Error message string if any check fails (blocked).
+        """
+        # Check 1: Lifetime limit
+        if self._auto_apply_count >= MAX_AUTO_APPLIES_LIFETIME:
+            return (
+                f"Lifetime limit reached: {self._auto_apply_count} auto-applies "
+                f"(max {MAX_AUTO_APPLIES_LIFETIME}). Manual review required."
+            )
+
+        # Check 2: Seasonal limit (auto-applies in last 90 days)
+        now = datetime.now()
+        cutoff = now - timedelta(days=90)
+        recent_applies = [
+            entry
+            for entry in self._pid_history
+            if entry.get("reason") == "auto_apply" and entry.get("timestamp", now) > cutoff
+        ]
+        if len(recent_applies) >= MAX_AUTO_APPLIES_PER_SEASON:
+            return (
+                f"Seasonal limit reached: {len(recent_applies)} auto-applies in last 90 days "
+                f"(max {MAX_AUTO_APPLIES_PER_SEASON})."
+            )
+
+        # Check 3: Drift limit (cumulative drift from physics baseline)
+        drift_pct = self.calculate_drift_from_baseline(current_kp, current_ki, current_kd)
+        max_drift = MAX_CUMULATIVE_DRIFT_PCT / 100.0
+        if drift_pct > max_drift:
+            return (
+                f"Cumulative drift limit exceeded: {drift_pct * 100:.1f}% drift from physics baseline "
+                f"(max {MAX_CUMULATIVE_DRIFT_PCT}%). Consider reset_pid_to_physics service."
+            )
+
+        # Check 4: Seasonal shift block (cooldown after weather regime change)
+        if self._last_seasonal_shift is not None:
+            days_since_shift = (now - self._last_seasonal_shift).total_seconds() / 86400
+            if days_since_shift < SEASONAL_SHIFT_BLOCK_DAYS:
+                days_remaining = SEASONAL_SHIFT_BLOCK_DAYS - days_since_shift
+                return (
+                    f"Seasonal shift block active: {days_remaining:.1f} days remaining "
+                    f"(of {SEASONAL_SHIFT_BLOCK_DAYS} day cooldown after weather regime change)."
+                )
+
+        # All checks passed
+        return None
