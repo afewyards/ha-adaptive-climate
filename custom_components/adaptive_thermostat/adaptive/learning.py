@@ -473,10 +473,20 @@ class AdaptiveLearner:
         return self._last_adjustment_time
 
     def clear_history(self) -> None:
-        """Clear all stored cycle metrics and reset last adjustment time and cycle counter."""
+        """Clear all stored cycle metrics, reset adjustment tracking, and exit validation mode.
+
+        This resets:
+        - Cycle history
+        - Last adjustment time and cycle counter
+        - Convergence confidence
+        - Validation mode state and collected validation cycles
+        """
         self._cycle_history.clear()
         self._last_adjustment_time = None
         self._cycles_since_last_adjustment = 0
+        self._convergence_confidence = 0.0
+        self._validation_mode = False
+        self._validation_cycles = []
 
     def record_pid_snapshot(
         self,
