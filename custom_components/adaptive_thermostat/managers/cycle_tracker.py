@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 from enum import Enum
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Awaitable, Callable
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -52,6 +52,7 @@ class CycleTrackerManager:
         thermal_time_constant: float | None = None,
         settling_timeout_minutes: int | None = None,
         get_outdoor_temp: Callable[[], float | None] | None = None,
+        on_validation_failed: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
         """Initialize the cycle tracker manager.
 
@@ -67,6 +68,7 @@ class CycleTrackerManager:
             thermal_time_constant: Building thermal time constant in hours (tau)
             settling_timeout_minutes: Optional override for settling timeout in minutes
             get_outdoor_temp: Callback to get outdoor temperature (optional)
+            on_validation_failed: Async callback for validation failure (triggers rollback)
         """
         from ..const import (
             SETTLING_TIMEOUT_MULTIPLIER,
@@ -83,6 +85,7 @@ class CycleTrackerManager:
         self._get_in_grace_period = get_in_grace_period
         self._get_is_device_active = get_is_device_active
         self._get_outdoor_temp = get_outdoor_temp
+        self._on_validation_failed = on_validation_failed
 
         # State tracking
         self._state: CycleState = CycleState.IDLE
@@ -707,7 +710,7 @@ class CycleTrackerManager:
 
             if validation_result == 'rollback':
                 # Validation failed - call rollback callback if available
-                if hasattr(self, '_on_validation_failed') and self._on_validation_failed is not None:
+                if self._on_validation_failed is not None:
                     self._logger.warning("Validation failed, triggering rollback callback")
                     # Schedule callback as async task
                     self._hass.async_create_task(self._on_validation_failed())
