@@ -1038,3 +1038,25 @@ class AdaptiveLearner:
 
         # All checks passed
         return None
+
+    def record_seasonal_shift(self) -> None:
+        """Record that a seasonal shift has occurred.
+
+        Sets the last_seasonal_shift timestamp to now, which starts
+        the SEASONAL_SHIFT_BLOCK_DAYS cooldown period for auto-apply.
+        This prevents auto-applying PID changes during weather regime transitions
+        when system behavior may be unstable.
+        """
+        self._last_seasonal_shift = datetime.now()
+        _LOGGER.warning(
+            "Seasonal shift recorded - auto-apply blocked for next %d days",
+            SEASONAL_SHIFT_BLOCK_DAYS,
+        )
+
+    def get_auto_apply_count(self) -> int:
+        """Get number of times PID has been auto-applied.
+
+        Returns:
+            Total count of auto-applied PID adjustments in the learner's lifetime.
+        """
+        return self._auto_apply_count
