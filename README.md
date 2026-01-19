@@ -96,6 +96,15 @@ climate:
     heating_type: floor_hydronic
     area_m2: 28
     window_orientation: south
+    floor_construction:
+      pipe_spacing_mm: 150
+      layers:
+        - type: top_floor
+          material: ceramic_tile
+          thickness_mm: 10
+        - type: screed
+          material: cement
+          thickness_mm: 50
     linked_zones:
       - climate.kitchen
 
@@ -152,6 +161,28 @@ climate:
     heating_type: forced_air
     area_m2: 20
 ```
+
+### Floor Construction (Underfloor Heating)
+```yaml
+climate:
+  - platform: adaptive_thermostat
+    name: Living Room UFH
+    heater: switch.ufh_living
+    target_sensor: sensor.temp_living
+    heating_type: floor_hydronic
+    area_m2: 32
+    floor_construction:
+      pipe_spacing_mm: 100
+      layers:
+        - type: top_floor
+          material: hardwood
+          thickness_mm: 16
+        - type: screed
+          material: anhydrite
+          thickness_mm: 70
+```
+
+Specifying floor construction improves PID initialization by calculating thermal mass from actual materials. Heavier floors get more conservative tuning. [Learn more →](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Configuration-Reference#floor_construction)
 
 ### Actuator Wear Tracking
 ```yaml
