@@ -5,6 +5,7 @@ from datetime import datetime
 
 from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
     CouplingObservation,
+    CouplingCoefficient,
 )
 
 
@@ -129,3 +130,148 @@ class TestCouplingObservation:
         assert restored.outdoor_temp_start == original.outdoor_temp_start
         assert restored.outdoor_temp_end == original.outdoor_temp_end
         assert restored.duration_minutes == original.duration_minutes
+
+
+# ============================================================================
+# CouplingCoefficient Tests
+# ============================================================================
+
+
+class TestCouplingCoefficient:
+    """Tests for the CouplingCoefficient dataclass."""
+
+    def test_coupling_coefficient_creation(self):
+        """Test basic coefficient creation with all fields including baseline_overshoot."""
+        now = datetime.now()
+        coef = CouplingCoefficient(
+            source_zone="climate.living_room",
+            target_zone="climate.kitchen",
+            coefficient=0.25,
+            confidence=0.7,
+            observation_count=5,
+            baseline_overshoot=0.3,
+            last_updated=now,
+        )
+
+        assert coef.source_zone == "climate.living_room"
+        assert coef.target_zone == "climate.kitchen"
+        assert coef.coefficient == 0.25
+        assert coef.confidence == 0.7
+        assert coef.observation_count == 5
+        assert coef.baseline_overshoot == 0.3
+        assert coef.last_updated == now
+
+    def test_coupling_coefficient_optional_baseline(self):
+        """Test coefficient creation with None baseline_overshoot."""
+        coef = CouplingCoefficient(
+            source_zone="climate.bedroom",
+            target_zone="climate.bathroom",
+            coefficient=0.15,
+            confidence=0.5,
+            observation_count=3,
+            baseline_overshoot=None,
+            last_updated=datetime.now(),
+        )
+
+        assert coef.baseline_overshoot is None
+
+    def test_coupling_coefficient_to_dict(self):
+        """Test coefficient serialization."""
+        timestamp = datetime(2024, 1, 15, 12, 30, 0)
+        coef = CouplingCoefficient(
+            source_zone="climate.office",
+            target_zone="climate.hallway",
+            coefficient=0.35,
+            confidence=0.85,
+            observation_count=10,
+            baseline_overshoot=0.25,
+            last_updated=timestamp,
+        )
+
+        data = coef.to_dict()
+
+        assert data["source_zone"] == "climate.office"
+        assert data["target_zone"] == "climate.hallway"
+        assert data["coefficient"] == 0.35
+        assert data["confidence"] == 0.85
+        assert data["observation_count"] == 10
+        assert data["baseline_overshoot"] == 0.25
+        assert data["last_updated"] == "2024-01-15T12:30:00"
+
+    def test_coupling_coefficient_to_dict_none_baseline(self):
+        """Test serialization handles None baseline_overshoot."""
+        coef = CouplingCoefficient(
+            source_zone="climate.zone_a",
+            target_zone="climate.zone_b",
+            coefficient=0.20,
+            confidence=0.4,
+            observation_count=2,
+            baseline_overshoot=None,
+            last_updated=datetime(2024, 2, 1, 10, 0, 0),
+        )
+
+        data = coef.to_dict()
+
+        assert data["baseline_overshoot"] is None
+
+    def test_coupling_coefficient_from_dict(self):
+        """Test coefficient deserialization from dict."""
+        data = {
+            "source_zone": "climate.garage",
+            "target_zone": "climate.mudroom",
+            "coefficient": 0.18,
+            "confidence": 0.65,
+            "observation_count": 7,
+            "baseline_overshoot": 0.4,
+            "last_updated": "2024-03-10T14:45:00",
+        }
+
+        coef = CouplingCoefficient.from_dict(data)
+
+        assert coef.source_zone == "climate.garage"
+        assert coef.target_zone == "climate.mudroom"
+        assert coef.coefficient == 0.18
+        assert coef.confidence == 0.65
+        assert coef.observation_count == 7
+        assert coef.baseline_overshoot == 0.4
+        assert coef.last_updated == datetime(2024, 3, 10, 14, 45, 0)
+
+    def test_coupling_coefficient_from_dict_none_baseline(self):
+        """Test deserialization handles None baseline_overshoot."""
+        data = {
+            "source_zone": "climate.attic",
+            "target_zone": "climate.upstairs",
+            "coefficient": 0.30,
+            "confidence": 0.55,
+            "observation_count": 4,
+            "baseline_overshoot": None,
+            "last_updated": "2024-04-20T08:00:00",
+        }
+
+        coef = CouplingCoefficient.from_dict(data)
+
+        assert coef.baseline_overshoot is None
+
+    def test_coupling_coefficient_roundtrip(self):
+        """Test serialization roundtrip preserves all data."""
+        original = CouplingCoefficient(
+            source_zone="climate.master_bedroom",
+            target_zone="climate.en_suite",
+            coefficient=0.42,
+            confidence=0.92,
+            observation_count=15,
+            baseline_overshoot=0.28,
+            last_updated=datetime(2024, 5, 15, 16, 30, 45),
+        )
+
+        # Convert to dict and back
+        data = original.to_dict()
+        restored = CouplingCoefficient.from_dict(data)
+
+        assert restored.source_zone == original.source_zone
+        assert restored.target_zone == original.target_zone
+        assert restored.coefficient == original.coefficient
+        assert restored.confidence == original.confidence
+        assert restored.observation_count == original.observation_count
+        assert restored.baseline_overshoot == original.baseline_overshoot
+        assert restored.last_updated == original.last_updated
