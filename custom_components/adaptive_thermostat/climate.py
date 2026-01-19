@@ -753,15 +753,14 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                 window_rating=self._window_rating,
                 heating_type=self._heating_type,
             )
-            # Start with Ke=0 - don't apply until PID reaches equilibrium
-            self._ke = 0.0
+            # Apply physics-based Ke from startup for accurate PID learning
+            self._ke = initial_ke
             self._ke_learner = KeLearner(initial_ke=initial_ke)
-            # PID controller starts without Ke compensation
-            self._pid_controller.set_pid_param(ke=0.0)
+            # PID controller starts with physics-based Ke compensation
+            self._pid_controller.set_pid_param(ke=initial_ke)
             temp_source = "outdoor sensor" if self._ext_sensor_entity_id else "weather entity"
             _LOGGER.info(
-                "%s: Ke learning initialized using %s (physics reference Ke=%.2f, "
-                "starting with Ke=0 until PID stabilizes) "
+                "%s: Ke initialized from physics using %s (Ke=%.4f) "
                 "(energy_rating=%s, heating_type=%s)",
                 self.entity_id, temp_source, initial_ke, energy_rating or "default", self._heating_type
             )
