@@ -636,6 +636,48 @@ class AdaptiveLearner:
         """
         return self._pid_history.copy()
 
+    def restore_pid_history(self, history: List[Dict[str, Any]]) -> None:
+        """Restore PID history from state restoration.
+
+        Parses ISO timestamp strings back to datetime objects and validates entries.
+        Used during Home Assistant startup to restore history from previous session.
+
+        Args:
+            history: List of PID snapshot dictionaries with ISO timestamp strings
+        """
+        if not history:
+            return
+
+        restored = []
+        for entry in history:
+            try:
+                # Parse ISO timestamp string back to datetime
+                timestamp = entry.get("timestamp")
+                if isinstance(timestamp, str):
+                    timestamp = datetime.fromisoformat(timestamp)
+                elif not isinstance(timestamp, datetime):
+                    _LOGGER.warning("Invalid timestamp in PID history entry: %s", entry)
+                    continue
+
+                restored.append({
+                    "timestamp": timestamp,
+                    "kp": float(entry.get("kp", 0)),
+                    "ki": float(entry.get("ki", 0)),
+                    "kd": float(entry.get("kd", 0)),
+                    "reason": entry.get("reason", "restored"),
+                    "metrics": entry.get("metrics"),
+                })
+            except (ValueError, TypeError) as e:
+                _LOGGER.warning("Failed to restore PID history entry: %s - %s", entry, e)
+                continue
+
+        # Apply FIFO limit
+        if len(restored) > PID_HISTORY_SIZE:
+            restored = restored[-PID_HISTORY_SIZE:]
+
+        self._pid_history = restored
+        _LOGGER.info("Restored %d PID history entries", len(restored))
+
     def set_physics_baseline(self, kp: float, ki: float, kd: float) -> None:
         """Set the physics-based baseline PID values for drift calculation.
 

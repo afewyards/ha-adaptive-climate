@@ -19,6 +19,7 @@ class StateRestorer:
     - Active preset mode
     - HVAC mode
     - PID controller values (integral, gains, mode)
+    - PID history for rollback support
     """
 
     def __init__(self, thermostat: AdaptiveThermostat) -> None:
@@ -216,3 +217,52 @@ class StateRestorer:
                 thermostat._heater_controller.set_cooler_cycle_count(int(cooler_cycles))
                 _LOGGER.info("%s: Restored cooler_cycle_count=%d",
                             thermostat.entity_id, int(cooler_cycles))
+
+        # Restore PID history for rollback support
+        self._restore_pid_history(old_state)
+
+    def _restore_pid_history(self, old_state: State) -> None:
+        """Restore PID history from Home Assistant's state restoration.
+
+        This enables rollback to previous PID configurations across restarts.
+
+        Args:
+            old_state: The restored state object from async_get_last_state().
+        """
+        from ..const import DOMAIN, ATTR_PID_HISTORY
+
+        thermostat = self._thermostat
+
+        pid_history = old_state.attributes.get(ATTR_PID_HISTORY)
+        if not pid_history:
+            return
+
+        # Get the adaptive learner from coordinator
+        coordinator = thermostat.hass.data.get(DOMAIN, {}).get("coordinator")
+        if not coordinator:
+            _LOGGER.debug("%s: No coordinator available for PID history restoration",
+                         thermostat.entity_id)
+            return
+
+        zone_id = getattr(thermostat, "_zone_id", None)
+        if not zone_id:
+            _LOGGER.debug("%s: No zone_id available for PID history restoration",
+                         thermostat.entity_id)
+            return
+
+        zone_data = coordinator.get_zone_data(zone_id)
+        if not zone_data:
+            _LOGGER.debug("%s: No zone_data available for PID history restoration",
+                         thermostat.entity_id)
+            return
+
+        adaptive_learner = zone_data.get("adaptive_learner")
+        if not adaptive_learner:
+            _LOGGER.debug("%s: No adaptive_learner available for PID history restoration",
+                         thermostat.entity_id)
+            return
+
+        # Restore the history
+        adaptive_learner.restore_pid_history(pid_history)
+        _LOGGER.info("%s: Restored PID history with %d entries",
+                    thermostat.entity_id, len(pid_history))
