@@ -1,6 +1,143 @@
 # CHANGELOG
 
 
+## v0.15.0 (2026-01-19)
+
+### Documentation
+
+- Add auto-apply dashboard card examples
+  ([`97c7755`](https://github.com/afewyards/ha-adaptive-thermostat/commit/97c77555494228b5d7be882b89ac56f05ff1dc8f))
+
+- Add persistence architecture to CLAUDE.md
+  ([`6af1f32`](https://github.com/afewyards/ha-adaptive-thermostat/commit/6af1f321085245b6403477da961014b8f6cc4b76))
+
+Documents the learning data persistence system: - Storage format v3 (zone-keyed JSON structure) -
+  Key classes: LearningDataStore, to_dict/restore methods - Persistence flow diagram showing
+  startup, runtime, and shutdown - Implementation details: HA Store helper, debouncing, locking,
+  migration
+
+- Add v0.14.0 documentation for automatic PID application
+  ([`9d8ff36`](https://github.com/afewyards/ha-adaptive-thermostat/commit/9d8ff36f88829d042d591921dfe50ea6b14461fc))
+
+- Add CHANGELOG entry for v0.14.0 auto-apply feature - Add "Automatic PID Tuning" section to README
+  with thresholds, config, attributes - Add auto-apply architecture docs to CLAUDE.md (flow diagram,
+  safety limits, methods) - Create wiki page for Automatic PID Application feature - Bump version to
+  0.14.0 in manifest.json
+
+### Features
+
+- Add restoration gating to CycleTrackerManager
+  ([`79530a1`](https://github.com/afewyards/ha-adaptive-thermostat/commit/79530a1770fe496e64bdfaf3298508f5c86eb5da))
+
+- Add restore_from_dict() method to AdaptiveLearner
+  ([`a95d8ca`](https://github.com/afewyards/ha-adaptive-thermostat/commit/a95d8caa92e271350866c6f6469d46f97ccced9c))
+
+Add in-place restoration method that deserializes AdaptiveLearner state: - Clears existing cycle
+  history and repopulates from dict - Creates CycleMetrics objects from serialized dicts - Parses
+  ISO timestamp strings back to datetime objects - Restores convergence tracking state
+  (consecutive_converged_cycles, pid_converged_for_ke, auto_apply_count)
+
+Implementation follows TDD approach with comprehensive test coverage: -
+  test_adaptive_learner_restore_empty - clears existing state - test_adaptive_learner_restore_cycles
+  - restores CycleMetrics with None handling - test_adaptive_learner_restore_convergence - restores
+  convergence state - test_adaptive_learner_restore_timestamps - parses ISO strings to datetime -
+  test_adaptive_learner_restore_roundtrip - verifies to_dict -> restore_from_dict
+
+All 102 tests in test_learning.py pass.
+
+Story: learning-persistence.json (1.2)
+
+- Add to_dict() serialization to AdaptiveLearner
+  ([`d72ee78`](https://github.com/afewyards/ha-adaptive-thermostat/commit/d72ee785e6f93cb84b4c846f33e99da80b6a2512))
+
+- Add to_dict() method to AdaptiveLearner for state serialization - Add _serialize_cycle() helper to
+  convert CycleMetrics to dict - Serialize cycle_history, last_adjustment_time,
+  consecutive_converged_cycles, pid_converged_for_ke, and auto_apply_count - Handle datetime to ISO
+  string conversion - Handle None values in CycleMetrics and last_adjustment_time - Add
+  comprehensive tests for all serialization scenarios
+
+- Integrate LearningDataStore singleton in async_setup_platform
+  ([`c104076`](https://github.com/afewyards/ha-adaptive-thermostat/commit/c1040767951b3caa17eac6a23fe37f2a954b4f2e))
+
+- Create LearningDataStore singleton on first zone setup - Call async_load() to load persisted
+  learning data from HA Store - Restore AdaptiveLearner state from storage using restore_from_dict()
+  - Store ke_learner data in zone_data for later restoration in async_added_to_hass - Add tests for
+  LearningDataStore creation, AdaptiveLearner restoration, and ke_data storage
+
+Story 3.1 from learning-persistence.json PRD
+
+- Persist PID history across restarts
+  ([`807496d`](https://github.com/afewyards/ha-adaptive-thermostat/commit/807496deb444dc212ea9933597c2996fbf186f37))
+
+Add state restoration for PID history to enable rollback support after Home Assistant restarts.
+  Changes: - Add restore_pid_history() to AdaptiveLearner - Export all PID history entries (up to
+  10) instead of last 3 - Restore history via StateRestorer during startup
+
+- Restore KeLearner from storage in async_added_to_hass
+  ([`55b4e0d`](https://github.com/afewyards/ha-adaptive-thermostat/commit/55b4e0dca7052b2692495cf3992834cefeaf29ca))
+
+- Check for stored_ke_data in zone_data before Ke initialization - Use KeLearner.from_dict() to
+  restore learner state when data exists - Fall back to physics-based initialization when no stored
+  data - Add 2 tests: test_ke_learner_restored_from_storage, test_ke_learner_falls_back_to_physics
+
+- Save learning data in async_will_remove_from_hass
+  ([`182ac57`](https://github.com/afewyards/ha-adaptive-thermostat/commit/182ac57cfc8239c39924173b1f482bde1855c502))
+
+- Saves AdaptiveLearner and KeLearner data to storage when entity is removed - Gets adaptive_learner
+  from coordinator zone_data, ke_learner from entity - Calls learning_store.async_save_zone() with
+  both to_dict() results - Added 2 tests: test_removal_saves_learning_data,
+  test_removal_saves_both_learners
+
+- Trigger debounced save after cycle finalization
+  ([`bd29ff9`](https://github.com/afewyards/ha-adaptive-thermostat/commit/bd29ff9a43fdf82839eed8f408b3f92cd3b7570e))
+
+- Add update_zone_data() to LearningDataStore for in-memory updates without immediate save - Add
+  _schedule_learning_save() to CycleTrackerManager to trigger debounced save - Call
+  schedule_zone_save() in _finalize_cycle() after recording metrics - Pass
+  adaptive_learner.to_dict() data to the learning store
+
+Tests: - test_finalize_cycle_schedules_save: verifies schedule_zone_save is called -
+  test_finalize_cycle_passes_adaptive_data: verifies correct data passed -
+  test_finalize_cycle_no_store_gracefully_skips: handles missing store - test_update_zone_data_*: 4
+  tests for the new update_zone_data method
+
+All 1218 tests pass.
+
+### Refactoring
+
+- Add async_save_zone() and schedule_zone_save() to LearningDataStore
+  ([`d978dd3`](https://github.com/afewyards/ha-adaptive-thermostat/commit/d978dd315b39fec3250c6713878f0e4b2a15f3e0))
+
+- Add async_save_zone(zone_id, adaptive_data, ke_data) with asyncio.Lock for thread safety - Add
+  schedule_zone_save() using Store.async_delay_save() with 30s delay for debouncing - Lazily
+  initialize asyncio.Lock in async_load() to avoid event loop issues in legacy tests - Add
+  SAVE_DELAY_SECONDS constant (30s) for configurable debounce delay - Add comprehensive tests for
+  save functionality, including concurrent save protection - All 1205 tests passing
+
+- Use HA Store helper in LearningDataStore with zone-keyed storage
+  ([`088acee`](https://github.com/afewyards/ha-adaptive-thermostat/commit/088acee0f6be3d570a3fbc94bfb7ecd4879fa47c))
+
+- Replace file I/O in __init__ with homeassistant.helpers.storage.Store - Add async_load() method
+  using Store.async_load() with default fallback - Add _migrate_v2_to_v3() to convert old flat
+  format to zones dict - Add get_zone_data(zone_id) to retrieve zone-specific learning data -
+  Maintain backward compatibility with legacy API (string path) - Storage version bumped to 3 for
+  zone-keyed format - All tests pass including v2 to v3 migration tests
+
+### Testing
+
+- Add persistence round-trip integration tests
+  ([`c93c445`](https://github.com/afewyards/ha-adaptive-thermostat/commit/c93c445da8917c52ef8e307d5412e3b60ad36cd4))
+
+Adds TestPersistenceRoundtrip class with 3 integration tests: -
+  test_adaptive_learner_persistence_roundtrip: verifies AdaptiveLearner serializes and restores with
+  all cycle history and convergence state - test_ke_learner_persistence_roundtrip: verifies
+  KeLearner observations and Ke value persist and restore correctly -
+  test_full_persistence_roundtrip_with_store: end-to-end test using LearningDataStore with both
+  learners
+
+All 1221 tests pass.
+
+
 ## v0.14.0 (2026-01-19)
 
 ### Bug Fixes
