@@ -229,11 +229,6 @@ The thermostat automatically learns and adjusts. Give it time:
 - Normal behavior initially
 - Adaptive learning will detect overshoot and reduce Kp automatically
 
-**Ke-First learning not converging**
-- Requires >5°C outdoor temperature variation over 10-15 cycles
-- Check climate entity attributes for `ke_first_convergence_progress`
-- May take 1-14 days depending on weather stability
-
 ### Health Warnings
 
 Monitor sensor values for performance issues:
