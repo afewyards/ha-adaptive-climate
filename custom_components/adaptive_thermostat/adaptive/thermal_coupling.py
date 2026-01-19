@@ -5,6 +5,7 @@ zones, enabling feedforward compensation to reduce overshoot when neighboring
 zones are heating.
 """
 
+import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime
 from itertools import combinations
@@ -14,6 +15,7 @@ from ..const import (
     CONF_FLOORPLAN,
     CONF_SEED_COEFFICIENTS,
     CONF_STAIRWELL_ZONES,
+    COUPLING_CONFIDENCE_THRESHOLD,
     DEFAULT_SEED_COEFFICIENTS,
 )
 
@@ -210,3 +212,93 @@ def parse_floorplan(config: Dict[str, Any]) -> Dict[Tuple[str, str], float]:
                     seeds[(upper_zone, lower_zone)] = seed_values["down"]
 
     return seeds
+
+
+class ThermalCouplingLearner:
+    """Learns thermal coupling coefficients between zones from heating observations.
+
+    This class tracks heating events and temperature changes across zones to learn
+    how heat transfers between adjacent spaces. Learned coefficients enable
+    feedforward compensation to reduce overshoot when neighboring zones are heating.
+
+    The learner uses Bayesian blending to combine seed coefficients (from floorplan
+    configuration) with observed data, gradually increasing confidence as more
+    observations are collected.
+    """
+
+    def __init__(self) -> None:
+        """Initialize the thermal coupling learner with empty state."""
+        # Dict mapping (source_zone, target_zone) -> list of CouplingObservation
+        self.observations: Dict[Tuple[str, str], List[CouplingObservation]] = {}
+
+        # Dict mapping (source_zone, target_zone) -> CouplingCoefficient
+        self.coefficients: Dict[Tuple[str, str], CouplingCoefficient] = {}
+
+        # Seed coefficients from floorplan (used as Bayesian prior)
+        self._seeds: Dict[Tuple[str, str], float] = {}
+
+        # Pending observations (zones currently heating)
+        self._pending: Dict[str, ObservationContext] = {}
+
+        # Lock for thread-safe access to shared state (lazy initialized)
+        self._lock: Optional[asyncio.Lock] = None
+
+    @property
+    def _async_lock(self) -> asyncio.Lock:
+        """Get the asyncio lock, creating it if needed.
+
+        Lazy initialization avoids issues with event loop availability
+        at construction time in Python 3.9.
+        """
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        return self._lock
+
+    def initialize_seeds(self, floorplan_config: Dict[str, Any]) -> None:
+        """Initialize seed coefficients from floorplan configuration.
+
+        Seeds provide the Bayesian prior for coefficient estimation. They are
+        blended with observed data using COUPLING_SEED_WEIGHT pseudo-observations.
+
+        Args:
+            floorplan_config: Configuration dict containing floorplan, stairwell_zones,
+                and optional seed_coefficients override.
+        """
+        self._seeds = parse_floorplan(floorplan_config)
+
+    def get_coefficient(
+        self, source_zone: str, target_zone: str
+    ) -> Optional[CouplingCoefficient]:
+        """Get the coupling coefficient for a zone pair.
+
+        Returns the learned coefficient if available, falls back to seed coefficient
+        if no observations exist, or returns None if no data is available for this pair.
+
+        Args:
+            source_zone: Entity ID of the source zone (the one heating)
+            target_zone: Entity ID of the target zone (receiving heat transfer)
+
+        Returns:
+            CouplingCoefficient if data is available, None otherwise.
+            Seed-only coefficients have confidence=0.3 (COUPLING_CONFIDENCE_THRESHOLD).
+        """
+        pair = (source_zone, target_zone)
+
+        # Check if we have a learned coefficient
+        if pair in self.coefficients:
+            return self.coefficients[pair]
+
+        # Fall back to seed coefficient if available
+        if pair in self._seeds:
+            return CouplingCoefficient(
+                source_zone=source_zone,
+                target_zone=target_zone,
+                coefficient=self._seeds[pair],
+                confidence=COUPLING_CONFIDENCE_THRESHOLD,  # 0.3 for seed-only
+                observation_count=0,
+                baseline_overshoot=None,
+                last_updated=datetime.now(),
+            )
+
+        # No data available for this pair
+        return None

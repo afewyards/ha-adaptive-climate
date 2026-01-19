@@ -507,3 +507,98 @@ class TestParseFloorplan:
         # Non-stairwell vertical: bedroom to hallway
         assert seeds[("climate.hallway", "climate.bedroom")] == DEFAULT_SEED_COEFFICIENTS["up"]
         assert seeds[("climate.bedroom", "climate.hallway")] == DEFAULT_SEED_COEFFICIENTS["down"]
+
+
+# ============================================================================
+# ThermalCouplingLearner Tests
+# ============================================================================
+
+
+class TestThermalCouplingLearner:
+    """Tests for the ThermalCouplingLearner class."""
+
+    def test_learner_initialization(self):
+        """Test learner creates empty observations/coefficients dicts."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            ThermalCouplingLearner,
+        )
+
+        learner = ThermalCouplingLearner()
+
+        # Should have empty dicts for observations and coefficients
+        assert learner.observations == {}
+        assert learner.coefficients == {}
+        # Lock is lazy initialized, so _lock starts as None
+        # The _async_lock property creates it on first access (in async context)
+        assert learner._lock is None  # Not yet created
+        # Note: _async_lock property tested in async context elsewhere
+
+    def test_learner_seed_initialization(self):
+        """Test learner loads seeds from floorplan config."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            ThermalCouplingLearner,
+        )
+
+        learner = ThermalCouplingLearner()
+
+        floorplan_config = {
+            "floorplan": [
+                {
+                    "floor": 1,
+                    "zones": ["climate.living_room", "climate.kitchen"],
+                }
+            ]
+        }
+
+        learner.initialize_seeds(floorplan_config)
+
+        # Should have seeds for the zone pairs
+        assert ("climate.living_room", "climate.kitchen") in learner._seeds
+        assert ("climate.kitchen", "climate.living_room") in learner._seeds
+        # Seeds should match default same_floor value
+        assert learner._seeds[("climate.living_room", "climate.kitchen")] == DEFAULT_SEED_COEFFICIENTS["same_floor"]
+
+    def test_learner_get_coefficient_no_data(self):
+        """Test get_coefficient returns None for unknown pair with no seed."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            ThermalCouplingLearner,
+        )
+
+        learner = ThermalCouplingLearner()
+
+        # No seeds or observations for this pair
+        result = learner.get_coefficient("climate.unknown_a", "climate.unknown_b")
+
+        assert result is None
+
+    def test_learner_get_coefficient_seed_only(self):
+        """Test get_coefficient returns seed with 0.3 confidence when only seed available."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            ThermalCouplingLearner,
+            CouplingCoefficient,
+        )
+
+        learner = ThermalCouplingLearner()
+
+        floorplan_config = {
+            "floorplan": [
+                {
+                    "floor": 1,
+                    "zones": ["climate.living_room", "climate.kitchen"],
+                }
+            ]
+        }
+
+        learner.initialize_seeds(floorplan_config)
+
+        result = learner.get_coefficient("climate.living_room", "climate.kitchen")
+
+        # Should return a CouplingCoefficient based on seed
+        assert result is not None
+        assert isinstance(result, CouplingCoefficient)
+        assert result.source_zone == "climate.living_room"
+        assert result.target_zone == "climate.kitchen"
+        assert result.coefficient == DEFAULT_SEED_COEFFICIENTS["same_floor"]
+        # Seed-only confidence should be COUPLING_CONFIDENCE_THRESHOLD (0.3)
+        assert result.confidence == 0.3
+        assert result.observation_count == 0
