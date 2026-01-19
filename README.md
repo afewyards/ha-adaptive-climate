@@ -42,7 +42,7 @@ An advanced thermostat integration featuring PID control with automatic tuning, 
 
 - [Installation & Setup](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Installation-&-Setup) - Detailed installation guide and first-time configuration
 - [Configuration Reference](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Configuration-Reference) - Complete parameter reference with 60+ parameters
-- [PID Control](https://github.com/afewyards/ha-adaptive-thermostat/wiki/PID-Control) - How PID works, P-on-M vs P-on-E, PWM vs valve control
+- [PID Control](https://github.com/afewyards/ha-adaptive-thermostat/wiki/PID-Control) - How PID works, PWM vs valve control
 - [Adaptive Learning](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Adaptive-Learning) - Cycle tracking, learning rules, Ke-First process
 - [Multi-Zone Coordination](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Multi-Zone-Coordination) - Architecture and configuration
 - [Energy Optimization](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Energy-Optimization) - Night setback, solar recovery, outdoor compensation

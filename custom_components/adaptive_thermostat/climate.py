@@ -133,7 +133,6 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         # Adaptive learning options
         vol.Optional(const.CONF_HEATING_TYPE): vol.In(const.VALID_HEATING_TYPES),
         vol.Optional(const.CONF_DERIVATIVE_FILTER): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=1.0)),
-        vol.Optional(const.CONF_PROPORTIONAL_ON_MEASUREMENT, default=True): cv.boolean,
         vol.Optional(const.CONF_AUTO_APPLY_PID, default=True): cv.boolean,
         vol.Optional(const.CONF_AREA_M2): vol.Coerce(float),
         vol.Optional(const.CONF_MAX_POWER_W): vol.Coerce(float),
@@ -310,7 +309,6 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         'zone_id': zone_id,
         'heating_type': config.get(const.CONF_HEATING_TYPE),
         'derivative_filter_alpha': config.get(const.CONF_DERIVATIVE_FILTER),
-        'proportional_on_measurement': config.get(const.CONF_PROPORTIONAL_ON_MEASUREMENT),
         'auto_apply_pid': config.get(const.CONF_AUTO_APPLY_PID),
         'area_m2': config.get(const.CONF_AREA_M2),
         'ceiling_height': config.get(const.CONF_CEILING_HEIGHT),
@@ -522,9 +520,6 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
             heating_chars = const.HEATING_TYPE_CHARACTERISTICS.get(self._heating_type, {})
             self._derivative_filter_alpha = heating_chars.get('derivative_filter_alpha', 0.15)
 
-        # Proportional-on-measurement (P-on-M) mode
-        self._proportional_on_measurement = kwargs.get('proportional_on_measurement', True)
-
         # Auto-apply PID mode (automatic application of adaptive PID recommendations)
         self._auto_apply_pid = kwargs.get('auto_apply_pid', True)
 
@@ -693,16 +688,15 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         self._time_changed = time.time()
         self._last_sensor_update = time.time()
         self._last_ext_sensor_update = time.time()
-        _LOGGER.info("%s: Active PID values - Kp=%.4f, Ki=%.5f, Kd=%.3f, Ke=%s, D_filter_alpha=%.2f, outdoor_lag_tau=%.2f, P-on-M=%s",
-                     self.unique_id, self._kp, self._ki, self._kd, self._ke or 0, self._derivative_filter_alpha, self._outdoor_temp_lag_tau, self._proportional_on_measurement)
+        _LOGGER.info("%s: Active PID values - Kp=%.4f, Ki=%.5f, Kd=%.3f, Ke=%s, D_filter_alpha=%.2f, outdoor_lag_tau=%.2f",
+                     self.unique_id, self._kp, self._ki, self._kd, self._ke or 0, self._derivative_filter_alpha, self._outdoor_temp_lag_tau)
         self._pid_controller = pid_controller.PID(self._kp, self._ki, self._kd, self._ke,
                                                   out_min=self._min_out, out_max=self._max_out,
                                                   sampling_period=self._sampling_period,
                                                   cold_tolerance=self._cold_tolerance,
                                                   hot_tolerance=self._hot_tolerance,
                                                   derivative_filter_alpha=self._derivative_filter_alpha,
-                                                  outdoor_temp_lag_tau=self._outdoor_temp_lag_tau,
-                                                  proportional_on_measurement=self._proportional_on_measurement)
+                                                  outdoor_temp_lag_tau=self._outdoor_temp_lag_tau)
         self._pid_controller.mode = "AUTO"
 
     async def async_added_to_hass(self):

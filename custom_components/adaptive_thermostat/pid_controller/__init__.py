@@ -17,8 +17,8 @@ class PID:
 
     def __init__(self, kp, ki, kd, ke=0, ke_wind=0.02, out_min=float('-inf'), out_max=float('+inf'),
                  sampling_period=0, cold_tolerance=0.3, hot_tolerance=0.3, derivative_filter_alpha=0.15,
-                 outdoor_temp_lag_tau=4.0, proportional_on_measurement=False):
-        """A proportional-integral-derivative controller.
+                 outdoor_temp_lag_tau=4.0):
+        """A proportional-integral-derivative controller using P-on-M (proportional-on-measurement).
             :param kp: Proportional coefficient.
             :type kp: float
             :param ki: Integral coefficient in units of %/(°C·hour).
@@ -45,10 +45,6 @@ class PID:
             :param outdoor_temp_lag_tau: Time constant in hours for outdoor temperature EMA filter.
                                         Larger values = slower response to outdoor temp changes.
             :type outdoor_temp_lag_tau: float
-            :param proportional_on_measurement: Use proportional-on-measurement (P-on-M) instead of
-                                               proportional-on-error (P-on-E). P-on-M eliminates
-                                               output spikes on setpoint changes but reduces response speed.
-            :type proportional_on_measurement: bool
         """
         if kp is None:
             raise ValueError('kp must be specified')
@@ -93,7 +89,6 @@ class PID:
         self._outdoor_temp_lag_tau = outdoor_temp_lag_tau  # Time constant in hours
         self._outdoor_temp_lagged = None  # Will be initialized on first outdoor temp reading
         self._last_output_before_off = None  # Stores output before switching to OFF mode for bumpless transfer
-        self._proportional_on_measurement = proportional_on_measurement  # P-on-M vs P-on-E mode
         self._wind_speed = 0.0  # Current wind speed in m/s (defaults to 0 if unavailable)
 
     @property
@@ -349,19 +344,13 @@ class PID:
         # Wind increases heat loss proportionally to temperature difference
         self._external = self._Ke * self._dext + self._Ke_wind * self._wind_speed * self._dext
 
-        # Calculate proportional term
-        # P-on-M (proportional-on-measurement): responds to changes in measurement, not error
-        # P-on-E (proportional-on-error): responds to changes in error
-        if self._proportional_on_measurement:
-            # P-on-M: proportional term based on negative derivative of measurement
-            # This eliminates output spikes when setpoint changes
-            if self._last_input is not None and self._dt != 0:
-                self._proportional = -self._Kp * self._input_diff
-            else:
-                self._proportional = 0.0
+        # Calculate proportional term using P-on-M (proportional-on-measurement)
+        # P-on-M: proportional term based on negative derivative of measurement
+        # This eliminates output spikes when setpoint changes
+        if self._last_input is not None and self._dt != 0:
+            self._proportional = -self._Kp * self._input_diff
         else:
-            # P-on-E: traditional proportional term based on error
-            self._proportional = self._Kp * self._error
+            self._proportional = 0.0
 
         # Apply bumpless transfer if transitioning from OFF to AUTO
         # This must be done after P and E terms are calculated but before integral updates
@@ -373,38 +362,20 @@ class PID:
         if self._dt >= MIN_DT_FOR_DERIVATIVE:
             # Back-calculation anti-windup: prevent windup when saturated AND error drives further saturation
             # Allow wind-down when error opposes saturation (e.g., saturated high but error negative)
-            # For P-on-M mode: allow integration even when setpoint changes (no integral reset)
-            # For P-on-E mode: only integrate when setpoint is stable
-            if self._proportional_on_measurement:
-                # P-on-M: integrate continuously, no reset on setpoint change
-                # Directional saturation check: only block integration when saturated AND error drives further saturation
-                saturated_high = self._last_output >= self._out_max and self._error > 0
-                saturated_low = self._last_output <= self._out_min and self._error < 0
-                if not (saturated_high or saturated_low):
-                    # Convert dt from seconds to hours for dimensional correctness
-                    # Ki has units of %/(°C·hour), so dt must be in hours
-                    dt_hours = self._dt / 3600.0
-                    self._integral += self._Ki * self._error * dt_hours
-                    # Integral clamping accounts for external term to ensure total output respects bounds
-                    # Formula: I_max = out_max - E, I_min = out_min - E
-                    # This ensures P + I + D + E stays within [out_min, out_max]
-                    # After v0.7.0 Ke reduction (100x), E typically <1%, leaving >99% headroom for integral
-                    self._integral = max(min(self._integral, self._out_max - self._external), self._out_min - self._external)
-            else:
-                # P-on-E: original behavior with setpoint stability check and integral reset
-                # Directional saturation check: only block integration when saturated AND error drives further saturation
-                saturated_high = self._last_output >= self._out_max and self._error > 0
-                saturated_low = self._last_output <= self._out_min and self._error < 0
-                if not (saturated_high or saturated_low) and \
-                        self._last_set_point == self._set_point:
-                    # Convert dt from seconds to hours for dimensional correctness
-                    # Ki has units of %/(°C·hour), so dt must be in hours
-                    dt_hours = self._dt / 3600.0
-                    self._integral += self._Ki * self._error * dt_hours
-                    # Integral clamping accounts for external term (same formula as P-on-M above)
-                    self._integral = max(min(self._integral, self._out_max - self._external), self._out_min - self._external)
-                if self._last_set_point != self._set_point:
-                    self._integral = 0  # Reset integral if set point has changed as system will need to converge to a new value
+            # P-on-M: integrate continuously, no reset on setpoint change
+            # Directional saturation check: only block integration when saturated AND error drives further saturation
+            saturated_high = self._last_output >= self._out_max and self._error > 0
+            saturated_low = self._last_output <= self._out_min and self._error < 0
+            if not (saturated_high or saturated_low):
+                # Convert dt from seconds to hours for dimensional correctness
+                # Ki has units of %/(°C·hour), so dt must be in hours
+                dt_hours = self._dt / 3600.0
+                self._integral += self._Ki * self._error * dt_hours
+                # Integral clamping accounts for external term to ensure total output respects bounds
+                # Formula: I_max = out_max - E, I_min = out_min - E
+                # This ensures P + I + D + E stays within [out_min, out_max]
+                # After v0.7.0 Ke reduction (100x), E typically <1%, leaving >99% headroom for integral
+                self._integral = max(min(self._integral, self._out_max - self._external), self._out_min - self._external)
 
             # Calculate derivative
             # Convert dt to hours for dimensional correctness

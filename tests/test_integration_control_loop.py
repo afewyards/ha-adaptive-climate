@@ -119,10 +119,14 @@ def zone_linker(mock_hass, coord):
 
 @pytest.fixture
 def pid():
-    """Create a PID controller instance with conservative tuning."""
+    """Create a PID controller instance with tuning suitable for tests.
+
+    Ki is set high enough that integral accumulates meaningful demand
+    within test time intervals (10 min = 600s).
+    """
     return pid_controller.PID(
         kp=50.0,
-        ki=0.01,
+        ki=100.0,  # High enough for 10-min test intervals
         kd=100.0,
         ke=0,
         out_min=0,
@@ -162,11 +166,14 @@ async def test_full_control_loop_temperature_triggers_heating(
     })
 
     # Simulate PID calculation with temp below setpoint
+    # With P-on-M, first call has P=0, so we need to call twice to build up integral
+    # Use 10-min interval for meaningful integral accumulation
     current_temp = 18.0
     target_temp = 21.0
-    output, _ = pid.calc(current_temp, target_temp)
+    pid.calc(current_temp, target_temp, input_time=0.0, last_input_time=None)
+    output, _ = pid.calc(current_temp, target_temp, input_time=600.0, last_input_time=0.0)
 
-    # Output should be positive (heating demand)
+    # Output should be positive (heating demand) from integral accumulation
     assert output > 0, f"Expected positive PID output, got {output}"
 
     # Simulate demand switch update based on PID output
@@ -385,10 +392,13 @@ def test_pid_output_drives_pwm_cycle(pid):
     Verifies that PID output translates to sensible on/off times.
     """
     # Simulate temperature slightly below setpoint
+    # With P-on-M, first call has P=0, so we need to call twice to build up integral
+    # Use 10-min interval for meaningful integral accumulation
     current_temp = 20.5
     target_temp = 21.0
 
-    output, _ = pid.calc(current_temp, target_temp)
+    pid.calc(current_temp, target_temp, input_time=0.0, last_input_time=None)
+    output, _ = pid.calc(current_temp, target_temp, input_time=600.0, last_input_time=0.0)
 
     # For floor heating with conservative tuning, output should be modest
     assert 0 < output < 100, f"Output {output} should be between 0 and 100"
@@ -411,13 +421,21 @@ def test_pid_output_scales_with_error(pid):
     """
     target_temp = 21.0
 
-    # Small error
-    output_small, _ = pid.calc(20.5, target_temp)
+    # Test with two separate PID instances to avoid state contamination
+    # Small error - need two calls for P-on-M
+    # Use 10-min interval for meaningful integral accumulation
+    pid.calc(20.5, target_temp, input_time=0.0, last_input_time=None)
+    output_small, _ = pid.calc(20.5, target_temp, input_time=600.0, last_input_time=0.0)
 
-    # Large error
-    output_large, _ = pid.calc(18.0, target_temp)
+    # Reset PID for large error test
+    pid.clear_samples()
+    pid._integral = 0.0
 
-    # Larger error should produce higher output
+    # Large error - need two calls for P-on-M
+    pid.calc(18.0, target_temp, input_time=0.0, last_input_time=None)
+    output_large, _ = pid.calc(18.0, target_temp, input_time=600.0, last_input_time=0.0)
+
+    # Larger error should produce higher output (from integral accumulation)
     assert output_large > output_small, (
         f"Large error output {output_large} should exceed small error output {output_small}"
     )
@@ -538,19 +556,24 @@ async def test_multiple_zones_with_independent_pid(
     mock_hass.states.is_state = state_registry.is_state
 
     # Create PIDs for each zone with different tuning
-    pid_living = pid_controller.PID(kp=50.0, ki=0.01, kd=100.0, out_min=0, out_max=100)
-    pid_bedroom = pid_controller.PID(kp=40.0, ki=0.008, kd=80.0, out_min=0, out_max=100)
+    # Use higher Ki for faster integral accumulation in tests (10-min intervals)
+    pid_living = pid_controller.PID(kp=50.0, ki=100.0, kd=100.0, out_min=0, out_max=100)
+    pid_bedroom = pid_controller.PID(kp=40.0, ki=100.0, kd=80.0, out_min=0, out_max=100)
 
     # Register zones
     coord.register_zone("living_room", {"zone_name": "Living Room"})
     coord.register_zone("bedroom", {"zone_name": "Bedroom"})
 
     # Living room: needs heat (temp below setpoint)
-    output_living, _ = pid_living.calc(18.0, 21.0)
+    # With P-on-M, first call has P=0, need second call to build integral
+    # Use 10-min interval for meaningful integral accumulation
+    pid_living.calc(18.0, 21.0, input_time=0.0, last_input_time=None)
+    output_living, _ = pid_living.calc(18.0, 21.0, input_time=600.0, last_input_time=0.0)
     has_demand_living = output_living > 5.0
 
-    # Bedroom: satisfied (temp at setpoint)
-    output_bedroom, _ = pid_bedroom.calc(21.0, 21.0)
+    # Bedroom: satisfied (temp at setpoint, so error=0, no demand)
+    pid_bedroom.calc(21.0, 21.0, input_time=0.0, last_input_time=None)
+    output_bedroom, _ = pid_bedroom.calc(21.0, 21.0, input_time=600.0, last_input_time=0.0)
     has_demand_bedroom = output_bedroom > 5.0
 
     # Update demands

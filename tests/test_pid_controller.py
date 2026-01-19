@@ -27,14 +27,13 @@ class TestPIDController:
 
         # Should produce output since error exists (setpoint - input = 2.0)
         assert changed is True
-        assert output > 0  # Should be heating
         assert 0 <= output <= 100  # Within bounds
 
         # Check error is correct
         assert pid.error == 2.0
 
-        # Check proportional term
-        assert pid.proportional == 20.0  # Kp * error = 10 * 2.0
+        # Check proportional term (P-on-M: 0 on first call since no previous measurement)
+        assert pid.proportional == 0.0
 
     def test_pid_output_limits(self):
         """Test PID output respects min/max limits."""
@@ -61,29 +60,30 @@ class TestPIDController:
         1. Blocks integration when error drives further saturation (same direction)
         2. Allows integration when error opposes saturation (wind-down)
         """
-        # Use P-on-E mode for simpler test (P term based on error, not measurement change)
         # Create PID with low Kp so integral must build up to saturate
-        pid = PID(kp=2, ki=10, kd=0, out_min=0, out_max=100, proportional_on_measurement=False)
+        pid = PID(kp=2, ki=10, kd=0, out_min=0, out_max=100)
 
         # First call establishes baseline
         pid.calc(input_val=10.0, set_point=20.0, input_time=0.0, last_input_time=None)
 
         # Build up integral over time to saturate output at 100%
-        # error = 10, P = 20, Ki = 10, dt = 100s = 100/3600 hours
+        # With P-on-M and constant input, P=0, so output = integral only
+        # error = 10, Ki = 10, dt = 100s = 100/3600 hours
         # Each iteration adds approximately 2.778 to integral
-        for i in range(1, 35):
+        # Need ~37 iterations to reach 100%
+        for i in range(1, 40):
             last_time = 100.0 * (i - 1)
             current_time = 100.0 * i
             output, _ = pid.calc(input_val=10.0, set_point=20.0, input_time=current_time, last_input_time=last_time)
 
         # Should now be saturated at 100%
         assert output == 100.0
-        assert pid.integral > 70.0
+        assert pid.integral >= 100.0  # Clamped at 100%
 
         # Test case 1: error in same direction as saturation (positive error, saturated high)
         # Integral should NOT increase (anti-windup blocks further windup)
         integral_before_same_direction = pid.integral
-        output2, _ = pid.calc(input_val=10.0, set_point=20.0, input_time=3500.0, last_input_time=3400.0)
+        output2, _ = pid.calc(input_val=10.0, set_point=20.0, input_time=4000.0, last_input_time=3900.0)
 
         # Output still saturated
         assert output2 == 100.0
@@ -95,10 +95,10 @@ class TestPIDController:
         # This simulates overshoot - integral SHOULD decrease (wind-down allowed)
         integral_before_opposite = pid.integral
         # Create negative error: input > setpoint
-        output3, _ = pid.calc(input_val=22.0, set_point=20.0, input_time=3600.0, last_input_time=3500.0)
+        output3, _ = pid.calc(input_val=22.0, set_point=20.0, input_time=4100.0, last_input_time=4000.0)
 
-        # Output may drop below 100% as integral winds down and P term goes negative
-        # P = 2 * (20-22) = -4, and integral decreases, so output < 100
+        # Output may drop below 100% as integral winds down and P term responds to measurement change
+        # With P-on-M: P = -2 * (22 - 10) = -24, and integral decreases
         assert output3 < 100.0
 
         # Integral should decrease when error opposes saturation
@@ -271,11 +271,11 @@ class TestPIDController:
         # Verify dt was calculated correctly
         assert pid.dt == 100.0  # input_time - last_input_time = 100 - 0
 
-    def test_integral_reset_on_setpoint_change_without_ext_temp(self):
-        """Test that integral resets on setpoint change even without ext_temp.
+    def test_integral_preserved_on_setpoint_change(self):
+        """Test that integral is preserved on setpoint change with P-on-M.
 
-        This tests the fix for inconsistent integral reset behavior where
-        the integral was only reset when ext_temp was provided.
+        With proportional-on-measurement mode, the integral term is NOT reset
+        when the setpoint changes. This provides smoother transitions.
         """
         pid = PID(kp=10, ki=1.0, kd=0, out_min=0, out_max=100)
 
@@ -292,8 +292,8 @@ class TestPIDController:
         # Change setpoint WITHOUT providing ext_temp
         pid.calc(input_val=21.0, set_point=25.0, input_time=45.0, last_input_time=30.0)
 
-        # Integral should be reset to 0 regardless of ext_temp presence
-        assert pid.integral == 0, "Integral should be reset on setpoint change"
+        # Integral should be preserved and continue accumulating (P-on-M behavior)
+        assert pid.integral > integral_before, "Integral should continue accumulating with larger error"
 
     def test_mode_switch_off_to_auto_clears_samples(self):
         """Test that switching from OFF to AUTO clears samples.
@@ -332,9 +332,16 @@ class TestPIDController:
         assert pid._last_input_time is None
 
         # First calculation after mode switch should work correctly
-        output, changed = pid.calc(input_val=21.0, set_point=22.0, input_time=200.0)
-        assert changed is True
-        assert output > 0  # Should be heating
+        # With P-on-M, first call has P=0 since there's no previous measurement
+        output1, changed1 = pid.calc(input_val=21.0, set_point=22.0, input_time=200.0)
+        assert changed1 is True
+        assert output1 == 0  # P=0 on first call with P-on-M (no previous measurement)
+
+        # Second call should have P term responding to measurement change
+        output2, changed2 = pid.calc(input_val=21.0, set_point=22.0, input_time=210.0, last_input_time=200.0)
+        assert changed2 is True
+        # Integral should start accumulating with positive error
+        assert pid.integral > 0
 
     def test_nan_inf_input_validation(self):
         """Test that NaN and Inf inputs return cached output without corrupting state.
@@ -438,14 +445,14 @@ class TestPIDIntegralDimensionalFix:
         # Use floor hydronic typical values from physics.py (after 100x increase)
         pid = PID(kp=0.3, ki=1.2, kd=2.5, out_min=0, out_max=100)
 
-        # First calculation establishes setpoint (integral will be reset to 0 due to setpoint change from 0->20)
-        # Must pass both input_time and last_input_time for event-driven mode (sampling_period=0)
+        # First calculation establishes baseline
+        # With P-on-M, first call has P=0 (no previous measurement)
         output1, _ = pid.calc(input_val=19.0, set_point=20.0, input_time=0.0, last_input_time=None)
-        assert abs(output1 - 0.3) < 0.01  # Proportional only: 0.3 * 1.0
-        assert pid.integral == 0.0  # Reset due to setpoint change
+        assert output1 == 0  # P=0 on first call with P-on-M
+        assert pid.integral == 0.0  # First call initializes to 0
 
         # Second calculation with dt >= 10s to meet MIN_DT_FOR_DERIVATIVE threshold
-        # Now setpoint is stable (20 -> 20), so integration can occur
+        # Integral starts accumulating
         output2, _ = pid.calc(input_val=19.0, set_point=20.0, input_time=15.0, last_input_time=0.0)
         # Integral accumulation over 15 seconds = 1.2 * 1.0 * (15/3600) = 0.005%
         assert pid.integral > 0, f"Expected integral > 0, got {pid.integral}"
@@ -458,8 +465,8 @@ class TestPIDIntegralDimensionalFix:
         # Total integral = small_integral + 1.2 ≈ 1.2%
         assert abs(pid.integral - 1.2) < 0.01, f"Expected integral ~1.2, got {pid.integral}"
 
-        # Verify proportional term is still correct
-        assert abs(pid.proportional - 0.3) < 0.01  # Kp * error = 0.3 * 1.0
+        # With P-on-M and constant input, P=0 (no measurement change)
+        assert pid.proportional == 0.0
 
     def test_derivative_calculation_hourly_units(self):
         """Test that derivative calculates correctly with hourly rate units.
@@ -491,9 +498,9 @@ class TestPIDIntegralDimensionalFix:
         pid = PID(kp=0.3, ki=1.2, kd=0.8, out_min=0, out_max=100)
 
         # Start 3°C below setpoint (cold floor)
+        # With P-on-M, first call has P=0 (no previous measurement)
         pid.calc(input_val=18.0, set_point=21.0, input_time=0.0, last_input_time=None)
-        initial_output = pid.proportional  # Only P term active
-        assert abs(initial_output - 0.9) < 0.01  # 0.3 * 3.0
+        assert pid.proportional == 0.0  # P=0 on first call with P-on-M
 
         # After 30 minutes (1800 seconds), temp rises to 18.5°C slowly
         # Error = 2.5°C, dt = 0.5 hours, rate of change = 1°C/hour
@@ -818,10 +825,11 @@ class TestPIDBumplessTransfer:
         pid = PID(kp=10.0, ki=1.2, kd=2.5, ke=0.005, out_min=0, out_max=100)
 
         # Run in AUTO mode to establish an output value
+        # With P-on-M, first call has P=0, so output starts at 0
         t = 0.0
         output1, _ = pid.calc(input_val=19.5, set_point=21.0, input_time=t,
                              last_input_time=None, ext_temp=10.0)
-        assert output1 > 0  # Should have some output
+        # First call has P=0 with P-on-M
 
         # Continue running to build up integral term
         for i in range(1, 6):
@@ -829,9 +837,9 @@ class TestPIDBumplessTransfer:
             output_before, _ = pid.calc(input_val=19.8, set_point=21.0, input_time=t,
                                        last_input_time=t - 60.0, ext_temp=10.0)
 
-        # Store the last output value
+        # Store the last output value - should have accumulated integral by now
         last_output = pid._output
-        assert last_output > 0
+        assert pid.integral > 0  # Integral should have accumulated
 
         # Switch to OFF mode
         pid.mode = 'OFF'
@@ -887,8 +895,9 @@ class TestPIDBumplessTransfer:
 
         # Transfer should have been skipped due to setpoint change > 2°C
         assert not pid.has_transfer_state
-        # Integral should have been reset due to setpoint change
-        assert pid.integral == 0.0
+        # With P-on-M, integral is NOT reset on setpoint change - it continues accumulating
+        # The integral should be greater than before (larger error with new setpoint)
+        assert pid.integral > last_integral, "Integral should continue accumulating with P-on-M"
 
     def test_bumpless_transfer_skips_on_large_error(self):
         """Test that bumpless transfer is skipped when error is too large."""
@@ -925,177 +934,6 @@ class TestPIDBumplessTransfer:
         assert hasattr(pid, '_last_output_before_off')
 
 
-class TestPIDProportionalOnMeasurement:
-    """Test proportional-on-measurement (P-on-M) functionality."""
-
-    def test_proportional_on_measurement_setpoint_change(self):
-        """Test P-on-M eliminates output spike on setpoint change and preserves integral."""
-        # Create PID with P-on-M enabled (default)
-        # Use out_min=-10 to avoid windup prevention blocking integration at output=0
-        pid_p_on_m = PID(kp=10.0, ki=1.2, kd=2.5, out_min=-10, out_max=100, proportional_on_measurement=True)
-
-        # Create PID with P-on-E for comparison
-        pid_p_on_e = PID(kp=10.0, ki=1.2, kd=2.5, out_min=-10, out_max=100, proportional_on_measurement=False)
-
-        # Run both controllers for a few cycles to build up integral term
-        current_temp = 19.0
-        setpoint = 20.0
-        output_before_m = 0
-        output_before_e = 0
-        for i in range(5):
-            time = float(i * 3600)  # 1 hour intervals
-            last_time = float((i - 1) * 3600) if i > 0 else None
-            output_before_m, _ = pid_p_on_m.calc(current_temp, setpoint, input_time=time, last_input_time=last_time)
-            output_before_e, _ = pid_p_on_e.calc(current_temp, setpoint, input_time=time, last_input_time=last_time)
-            current_temp += 0.1  # Slowly approaching setpoint
-
-        # Store state before setpoint change
-        integral_before_m = pid_p_on_m.integral
-        integral_before_e = pid_p_on_e.integral
-
-        # Now change setpoint from 20.0 to 22.0 (sudden +2°C change)
-        new_setpoint = 22.0
-        time_after_change = 5.0 * 3600
-        last_time_after_change = 4.0 * 3600
-
-        output_m, _ = pid_p_on_m.calc(current_temp, new_setpoint, input_time=time_after_change, last_input_time=last_time_after_change)
-        output_e, _ = pid_p_on_e.calc(current_temp, new_setpoint, input_time=time_after_change, last_input_time=last_time_after_change)
-
-        # P-on-M: Integral should NOT be reset (continues accumulating)
-        assert pid_p_on_m.integral != 0, "P-on-M should preserve integral on setpoint change"
-        assert pid_p_on_m.integral >= integral_before_m, "P-on-M integral should continue accumulating"
-
-        # P-on-E: Integral SHOULD be reset to zero
-        assert pid_p_on_e.integral == 0, "P-on-E should reset integral on setpoint change"
-
-        # P-on-M: Output change should be smaller (no proportional spike)
-        output_delta_m = abs(output_m - output_before_m)
-        output_delta_e = abs(output_e - output_before_e)
-
-        # P-on-E will have larger output change due to proportional term responding to error change
-        assert output_delta_m < output_delta_e, "P-on-M should have smaller output change than P-on-E on setpoint change"
-
-    def test_proportional_on_measurement_faster_recovery(self):
-        """Test that P-on-M provides smoother recovery from setpoint changes due to preserved integral."""
-        # Create two PID controllers
-        # Use out_min=-10 to avoid windup prevention blocking integration at output=0
-        pid_p_on_m = PID(kp=10.0, ki=1.2, kd=2.5, out_min=-10, out_max=100, proportional_on_measurement=True)
-        pid_p_on_e = PID(kp=10.0, ki=1.2, kd=2.5, out_min=-10, out_max=100, proportional_on_measurement=False)
-
-        # Build up integral by maintaining small error (19.5°C -> 20°C setpoint)
-        # This simulates a system slowly approaching setpoint
-        current_temp = 19.5
-        for i in range(10):
-            time = float(i * 3600)
-            last_time = float((i - 1) * 3600) if i > 0 else None
-            pid_p_on_m.calc(current_temp, 20.0, input_time=time, last_input_time=last_time)
-            pid_p_on_e.calc(current_temp, 20.0, input_time=time, last_input_time=last_time)
-
-        # Verify integral has accumulated (0.5°C error * 1.2 Ki * 10 hours = 6%)
-        assert pid_p_on_m.integral > 0, "Should have accumulated integral"
-        assert pid_p_on_e.integral > 0, "Should have accumulated integral"
-
-        # Change setpoint to 22°C (keeping temp at 19.5°C)
-        time = 10.0 * 3600
-        last_time = 9.0 * 3600
-        output_m, _ = pid_p_on_m.calc(19.5, 22.0, input_time=time, last_input_time=last_time)
-        output_e, _ = pid_p_on_e.calc(19.5, 22.0, input_time=time, last_input_time=last_time)
-
-        # P-on-M maintains integral, P-on-E resets it
-        # This means P-on-M has a "head start" on recovery
-        assert pid_p_on_m.integral > 0, "P-on-M should maintain positive integral"
-        assert pid_p_on_e.integral == 0, "P-on-E should reset integral to zero"
-
-        # Simulate temperature rising slowly toward new setpoint
-        current_temp = 20.0
-        outputs_m = []
-        outputs_e = []
-
-        for i in range(10):
-            time = float((11 + i) * 3600)
-            last_time = float((10 + i) * 3600)
-            current_temp += 0.15  # Rising toward 22°C
-
-            out_m, _ = pid_p_on_m.calc(current_temp, 22.0, input_time=time, last_input_time=last_time)
-            out_e, _ = pid_p_on_e.calc(current_temp, 22.0, input_time=time, last_input_time=last_time)
-
-            outputs_m.append(out_m)
-            outputs_e.append(out_e)
-
-        # P-on-M should have more consistent output due to preserved integral
-        # P-on-E needs to rebuild integral from zero
-        avg_output_m = sum(outputs_m) / len(outputs_m)
-        avg_output_e = sum(outputs_e) / len(outputs_e)
-
-        # Both should produce reasonable outputs
-        assert avg_output_m > 0, "P-on-M should produce positive output"
-        assert avg_output_e > 0, "P-on-E should produce positive output"
-
-    def test_proportional_on_measurement_measurement_changes(self):
-        """Test that P-on-M proportional term responds to measurement changes, not error changes."""
-        pid = PID(kp=10.0, ki=1.2, kd=2.5, out_min=0, out_max=100, proportional_on_measurement=True)
-
-        # First calculation at 19°C, setpoint 20°C
-        time1 = 0.0
-        output1, _ = pid.calc(19.0, 20.0, input_time=time1, last_input_time=None)
-
-        # Proportional term should be 0 on first call (no previous measurement)
-        assert pid.proportional == 0.0, "First P-on-M proportional should be 0"
-
-        # Second calculation: temperature rises to 19.5°C
-        time2 = 3600.0  # 1 hour later
-        output2, _ = pid.calc(19.5, 20.0, input_time=time2, last_input_time=time1)
-
-        # Proportional term should respond to measurement change (negative, since temp increased)
-        # P = -Kp * (input - last_input) = -10.0 * (19.5 - 19.0) = -10.0 * 0.5 = -5.0
-        assert pid.proportional == pytest.approx(-5.0), "P-on-M proportional should be -Kp * measurement_change"
-
-        # Third calculation: temperature continues to 20.0°C (reaching setpoint)
-        time3 = 7200.0  # 2 hours total
-        output3, _ = pid.calc(20.0, 20.0, input_time=time3, last_input_time=time2)
-
-        # P = -10.0 * (20.0 - 19.5) = -5.0
-        assert pid.proportional == pytest.approx(-5.0), "P-on-M proportional continues responding to measurement"
-
-    def test_proportional_on_error_traditional_behavior(self):
-        """Test that P-on-E (traditional mode) responds to error, not measurement."""
-        pid = PID(kp=10.0, ki=1.2, kd=2.5, out_min=0, out_max=100, proportional_on_measurement=False)
-
-        # First calculation at 19°C, setpoint 20°C
-        time1 = 0.0
-        output1, _ = pid.calc(19.0, 20.0, input_time=time1, last_input_time=None)
-
-        # P = Kp * error = 10.0 * (20.0 - 19.0) = 10.0
-        assert pid.proportional == pytest.approx(10.0), "P-on-E should be Kp * error"
-
-        # Second calculation: temperature rises to 19.5°C, error reduces to 0.5°C
-        time2 = 3600.0
-        output2, _ = pid.calc(19.5, 20.0, input_time=time2, last_input_time=time1)
-
-        # P = 10.0 * (20.0 - 19.5) = 5.0
-        assert pid.proportional == pytest.approx(5.0), "P-on-E proportional based on error"
-
-        # Third calculation: setpoint changes to 22°C (error jumps from 0.5 to 2.5°C)
-        time3 = 7200.0
-        output3, _ = pid.calc(19.5, 22.0, input_time=time3, last_input_time=time2)
-
-        # P = 10.0 * (22.0 - 19.5) = 25.0 (large spike due to setpoint change)
-        assert pid.proportional == pytest.approx(25.0), "P-on-E spikes on setpoint change"
-
-        # Integral should be reset on setpoint change
-        assert pid.integral == 0.0, "P-on-E resets integral on setpoint change"
-
-    def test_proportional_on_measurement_module_exists(self):
-        """Marker test to verify P-on-M functionality exists."""
-        # Verify P-on-M mode can be enabled/disabled
-        pid_m = PID(kp=10.0, ki=1.2, kd=2.5, out_min=0, out_max=100, proportional_on_measurement=True)
-        pid_e = PID(kp=10.0, ki=1.2, kd=2.5, out_min=0, out_max=100, proportional_on_measurement=False)
-
-        assert hasattr(pid_m, '_proportional_on_measurement')
-        assert pid_m._proportional_on_measurement is True
-        assert pid_e._proportional_on_measurement is False
-
-
 class TestPIDKeIntegralClamping:
     """Test integral clamping with reduced Ke values (v0.7.0).
 
@@ -1122,8 +960,7 @@ class TestPIDKeIntegralClamping:
             kd=2.5,
             ke=0.013,  # G-rated house (worst insulation)
             out_min=0,
-            out_max=100,
-            proportional_on_measurement=True
+            out_max=100
         )
 
         # First calculation to initialize
@@ -1162,8 +999,7 @@ class TestPIDKeIntegralClamping:
             kd=2.5,
             ke=0.013,  # G-rated house
             out_min=0,
-            out_max=100,
-            proportional_on_measurement=True
+            out_max=100
         )
 
         # Initialize PID
@@ -1224,8 +1060,7 @@ class TestPIDKeIntegralClamping:
             kd=2.0,
             ke=0.005,  # A-rated house
             out_min=0,
-            out_max=100,
-            proportional_on_measurement=True
+            out_max=100
         )
 
         # Initialize at 20°C indoor, 0°C outdoor
@@ -1407,7 +1242,7 @@ class TestPIDDerivativeTimingProtection:
         """Test that tiny dt (< 5s) freezes I and D to prevent spikes."""
         # Create PID controller with known parameters
         # Use larger out_min to avoid clamping issues in test
-        pid = PID(kp=10, ki=1.0, kd=50, out_min=-50, out_max=100, proportional_on_measurement=False)
+        pid = PID(kp=10, ki=1.0, kd=50, out_min=-50, out_max=100)
 
         # First call: establish baseline with normal dt (30s)
         output1, _ = pid.calc(input_val=20.0, set_point=22.0, input_time=0.0, last_input_time=None)
@@ -1431,7 +1266,7 @@ class TestPIDDerivativeTimingProtection:
     def test_boundary_conditions(self):
         """Test boundary conditions around 5s threshold."""
         # Use wider output range and smaller gains to avoid saturation
-        pid = PID(kp=2, ki=0.1, kd=5, out_min=-50, out_max=100, proportional_on_measurement=False)
+        pid = PID(kp=2, ki=0.1, kd=5, out_min=-50, out_max=100)
 
         # First call: establish baseline
         pid.calc(input_val=20.0, set_point=22.0, input_time=0.0, last_input_time=None)
@@ -1461,7 +1296,7 @@ class TestPIDDerivativeTimingProtection:
 
         Only the first (sensor) call with normal dt should update I&D.
         """
-        pid = PID(kp=10, ki=1.0, kd=50, out_min=0, out_max=100, proportional_on_measurement=False)
+        pid = PID(kp=10, ki=1.0, kd=50, out_min=0, out_max=100)
 
         # First call: establish baseline
         pid.calc(input_val=20.0, set_point=22.0, input_time=0.0, last_input_time=None)
@@ -1486,7 +1321,7 @@ class TestPIDDerivativeTimingProtection:
     def test_normal_operation_preserved(self):
         """Test that normal operation (dt ≥ 5s) is unchanged."""
         # Use wider output range and smaller gains to avoid saturation
-        pid = PID(kp=5, ki=0.5, kd=10, out_min=-50, out_max=100, proportional_on_measurement=False)
+        pid = PID(kp=5, ki=0.5, kd=10, out_min=-50, out_max=100)
 
         # First call
         pid.calc(input_val=20.0, set_point=22.0, input_time=0.0, last_input_time=None)
@@ -1509,7 +1344,7 @@ class TestPIDDerivativeTimingProtection:
 
     def test_first_call_initializes_to_zero(self):
         """Test that first call (dt=0) initializes I and D to zero."""
-        pid = PID(kp=10, ki=1.0, kd=50, out_min=0, out_max=100, proportional_on_measurement=False)
+        pid = PID(kp=10, ki=1.0, kd=50, out_min=0, out_max=100)
 
         # First call with dt=0 (implicit from last_input_time=None)
         output, _ = pid.calc(input_val=20.0, set_point=22.0, input_time=0.0, last_input_time=None)
@@ -1522,7 +1357,7 @@ class TestPIDDerivativeTimingProtection:
     def test_ema_filter_state_preserved_when_frozen(self):
         """Test that EMA filter state is preserved during freeze."""
         pid = PID(kp=10, ki=1.0, kd=50, out_min=0, out_max=100,
-                  derivative_filter_alpha=0.3, proportional_on_measurement=False)
+                  derivative_filter_alpha=0.3)
 
         # First call
         pid.calc(input_val=20.0, set_point=22.0, input_time=0.0, last_input_time=None)
@@ -1550,8 +1385,7 @@ class TestPIDDerivativeTimingProtection:
 
     def test_no_derivative_spike_from_noise(self):
         """Test that sensor noise with tiny dt doesn't cause derivative spikes."""
-        pid = PID(kp=10, ki=1.0, kd=500, out_min=0, out_max=100,
-                  proportional_on_measurement=False)
+        pid = PID(kp=10, ki=1.0, kd=500, out_min=0, out_max=100)
 
         # First call
         pid.calc(input_val=20.0, set_point=22.0, input_time=0.0, last_input_time=None)
@@ -1574,7 +1408,7 @@ class TestPIDDerivativeTimingProtection:
 
     def test_proportional_term_updates_even_when_id_frozen(self):
         """Test that proportional term updates even when I and D are frozen."""
-        pid = PID(kp=10, ki=1.0, kd=50, out_min=0, out_max=100, proportional_on_measurement=False)
+        pid = PID(kp=10, ki=1.0, kd=50, out_min=0, out_max=100)
 
         # First call
         pid.calc(input_val=20.0, set_point=22.0, input_time=0.0, last_input_time=None)
@@ -1591,8 +1425,9 @@ class TestPIDDerivativeTimingProtection:
         assert pid.integral == integral_before
         assert pid.derivative == derivative_before
 
-        # P should reflect new error (22.0 - 20.5 = 1.5)
-        assert pid.proportional == 10 * 1.5
+        # P-on-M: P should reflect measurement change (20.5 - 20.1 = 0.4)
+        # P = -Kp * input_diff = -10 * 0.4 = -4.0
+        assert pid.proportional == pytest.approx(-4.0)
 
 
 class TestPIDAntiWindupWindDown:
@@ -1600,34 +1435,33 @@ class TestPIDAntiWindupWindDown:
 
     def test_antiwindup_allows_winddown_from_high_saturation(self):
         """Test integral can wind down when saturated high but error negative."""
-        # Use P-on-E mode (proportional_on_measurement=False) so P term is based on error
         # Create PID with low Kp (2) so integral must build up to reach saturation
-        # With error=10, P=20, need I to build up to ~80 for saturation at 100%
-        pid = PID(kp=2, ki=10, kd=0, out_min=-50, out_max=100, proportional_on_measurement=False)
+        pid = PID(kp=2, ki=10, kd=0, out_min=-50, out_max=100)
 
         # First call: establish baseline
         pid.calc(input_val=10.0, set_point=20.0, input_time=0.0, last_input_time=None)
 
         # Build up integral over time to saturate output
-        # error = 10.0, P = 20.0, Ki = 10, dt = 100s = 100/3600 hours
+        # With P-on-M and constant input, P=0, so output = integral only
+        # error = 10.0, Ki = 10, dt = 100s = 100/3600 hours
         # Each iteration: delta_I = 10 * 10 * (100/3600) ≈ 2.778
-        # Need ~29 iterations to build I to 80
-        for i in range(1, 35):
+        # Need ~37 iterations to build I to 100%
+        for i in range(1, 40):
             last_time = 100.0 * (i - 1)
             current_time = 100.0 * i
             output, _ = pid.calc(input_val=10.0, set_point=20.0, input_time=current_time, last_input_time=last_time)
 
         # Should now be saturated at 100%
         assert output == 100.0, f"Expected saturation, got output={output}, I={pid.integral}, P={pid.proportional}"
-        assert pid.integral > 70.0, f"Integral should have built up, got {pid.integral}"
+        assert pid.integral >= 100.0, f"Integral should be clamped at 100, got {pid.integral}"
         initial_integral = pid.integral
 
         # Now create negative error (temperature overshoots setpoint)
-        # error = 20.0 - 22.0 = -2.0, P = -4.0 (P-on-E mode)
+        # error = 20.0 - 22.0 = -2.0
         # _last_output = 100 (saturated), error = -2.0 (negative)
         # saturated_high = (100 >= 100) and (-2.0 > 0) = True and False = False
         # So integration SHOULD proceed
-        output_final, _ = pid.calc(input_val=22.0, set_point=20.0, input_time=3500.0, last_input_time=3400.0)
+        output_final, _ = pid.calc(input_val=22.0, set_point=20.0, input_time=4000.0, last_input_time=3900.0)
 
         # Integral should decrease (wind down) because error is negative
         # dt = 100s = 100/3600 hours, error = -2.0, Ki = 10
@@ -1637,31 +1471,34 @@ class TestPIDAntiWindupWindDown:
 
     def test_antiwindup_allows_winddown_from_low_saturation(self):
         """Test integral can wind down when saturated low but error positive."""
-        # Create PID for cooling scenario - use P-on-E mode
-        pid = PID(kp=2, ki=10, kd=0, out_min=-50, out_max=100, proportional_on_measurement=False)
+        # Create PID for cooling scenario
+        pid = PID(kp=2, ki=10, kd=0, out_min=-50, out_max=100)
 
         # Establish baseline
         pid.calc(input_val=30.0, set_point=20.0, input_time=0.0, last_input_time=None)
 
         # Build up negative integral to saturate output low
-        # error = 20.0 - 30.0 = -10.0, P = -20.0
-        # Need I to build down to ~-30 for saturation at -50%
-        for i in range(1, 15):
+        # With P-on-M and constant input, P=0, so output = integral only
+        # error = 20.0 - 30.0 = -10.0
+        # Need I to build down to -50 for saturation at -50%
+        # Each iteration: delta_I = 10 * (-10) * (100/3600) ≈ -2.778
+        # Need ~20 iterations to reach -50%
+        for i in range(1, 25):
             last_time = 100.0 * (i - 1)
             current_time = 100.0 * i
             output, _ = pid.calc(input_val=30.0, set_point=20.0, input_time=current_time, last_input_time=last_time)
 
         # Should now be saturated at -50%
         assert output == -50.0, f"Expected low saturation, got {output}"
-        assert pid.integral < -25.0, f"Integral should have built down, got {pid.integral}"
+        assert pid.integral <= -50.0, f"Integral should be clamped at -50, got {pid.integral}"
         initial_integral = pid.integral
 
         # Now create positive error (temperature drops below setpoint)
-        # error = 20.0 - 18.0 = 2.0, P = 4.0
+        # error = 20.0 - 18.0 = 2.0
         # _last_output = -50 (saturated), error = 2.0 (positive)
         # saturated_low = (-50 <= -50) and (2.0 < 0) = True and False = False
         # So integration SHOULD proceed
-        pid.calc(input_val=18.0, set_point=20.0, input_time=1500.0, last_input_time=1400.0)
+        pid.calc(input_val=18.0, set_point=20.0, input_time=2500.0, last_input_time=2400.0)
 
         # Integral should increase because error is positive
         # dt = 100s = 100/3600 hours, error = 2.0, Ki = 10
@@ -1671,14 +1508,15 @@ class TestPIDAntiWindupWindDown:
 
     def test_antiwindup_blocks_further_windup_at_saturation(self):
         """Test integral blocked when saturated AND error drives further saturation."""
-        # Use P-on-E mode
-        pid = PID(kp=2, ki=10, kd=0, out_min=-50, out_max=100, proportional_on_measurement=False)
+        pid = PID(kp=2, ki=10, kd=0, out_min=-50, out_max=100)
 
         # Establish baseline
         pid.calc(input_val=10.0, set_point=20.0, input_time=0.0, last_input_time=None)
 
         # Build up integral to saturate
-        for i in range(1, 35):
+        # With P-on-M and constant input, P=0, so output = integral only
+        # Need ~37 iterations to reach 100%
+        for i in range(1, 40):
             last_time = 100.0 * (i - 1)
             current_time = 100.0 * i
             output, _ = pid.calc(input_val=10.0, set_point=20.0, input_time=current_time, last_input_time=last_time)
@@ -1692,27 +1530,26 @@ class TestPIDAntiWindupWindDown:
         # _last_output = 100, error = 15.0
         # saturated_high = (100 >= 100) and (15.0 > 0) = True
         # Integration should be BLOCKED
-        pid.calc(input_val=5.0, set_point=20.0, input_time=3500.0, last_input_time=3400.0)
+        pid.calc(input_val=5.0, set_point=20.0, input_time=4000.0, last_input_time=3900.0)
 
         # Integral should NOT increase beyond saturation point
         # New directional check should PREVENT integration entirely
         assert pid.integral == saturated_integral, \
             f"Integral should be blocked when error drives further saturation: {pid.integral} != {saturated_integral}"
 
-    def test_antiwindup_proportional_on_measurement_mode(self):
-        """Test anti-windup wind-down works in P-on-M mode."""
-        # P-on-M mode (proportional_on_measurement=True) - default
-        pid = PID(kp=2, ki=10, kd=0, out_min=-50, out_max=100, proportional_on_measurement=True)
+    def test_antiwindup_wind_down_with_measurement_change(self):
+        """Test anti-windup wind-down works with varying measurements."""
+        pid = PID(kp=2, ki=10, kd=0, out_min=-50, out_max=100)
 
         # Establish baseline
         pid.calc(input_val=10.0, set_point=20.0, input_time=0.0, last_input_time=None)
 
-        # Build up integral by varying measurement to create P term
+        # Build up integral by varying measurement to generate P term
         # Lower measurement → larger error → build up integral
         for i in range(1, 35):
             last_time = 100.0 * (i - 1)
             current_time = 100.0 * i
-            # Vary measurement slightly to generate P term in P-on-M mode
+            # Vary measurement slightly to generate P term
             measurement = 10.0 - 0.01 * (i % 2)  # Oscillate slightly
             output, _ = pid.calc(input_val=measurement, set_point=20.0, input_time=current_time, last_input_time=last_time)
 
@@ -1721,15 +1558,15 @@ class TestPIDAntiWindupWindDown:
         initial_integral = pid.integral
 
         # Create situation where measurement increases (overshoot)
-        # In P-on-M mode: P = -Kp * (new_measurement - last_measurement)
+        # P = -Kp * (new_measurement - last_measurement)
         # If new_measurement > last_measurement, P is negative
         pid.calc(input_val=22.0, set_point=20.0, input_time=3500.0, last_input_time=3400.0)
 
-        # Should allow wind-down in P-on-M mode too
+        # Should allow wind-down
         # error = 20.0 - 22.0 = -2.0 (negative)
         # _last_output >= 100, error < 0 → saturated_high = False → integration proceeds
         assert pid.integral < initial_integral, \
-            f"P-on-M mode should also allow integral wind-down: {pid.integral} >= {initial_integral}"
+            f"Integral should wind down when error opposes saturation: {pid.integral} >= {initial_integral}"
 
 
 if __name__ == "__main__":

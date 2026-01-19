@@ -469,9 +469,13 @@ def test_adaptive_pid_applied_to_controller(adaptive_learner, pid):
     assert pid._Kd == result["kd"]
 
     # Verify PID still works after update
-    output, updated = pid.calc(19.0, 21.0)
-    assert updated is True
-    assert output > 0  # Should have heating demand
+    # First call initializes PID (P=0 with P-on-M since no previous measurement)
+    output1, updated1 = pid.calc(19.0, 21.0, input_time=0.0, last_input_time=None)
+    assert updated1 is True
+    # Second call allows integral to accumulate
+    output2, updated2 = pid.calc(19.0, 21.0, input_time=60.0, last_input_time=0.0)
+    assert updated2 is True
+    assert pid.integral > 0  # Should have integral accumulation with positive error
 
 
 # =============================================================================

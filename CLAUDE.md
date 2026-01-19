@@ -359,35 +359,6 @@ Slow systems require higher confidence because mistakes take longer to recover f
 | `validation_mode` | bool | Currently validating new PID values |
 | `pid_history` | list | Last 3 PID configurations (timestamp, kp, ki, kd, reason) |
 
-### Proportional-on-Measurement (P-on-M)
-
-The PID controller supports two modes for the proportional term:
-
-**Proportional-on-Error (P-on-E)** - Traditional PID behavior:
-- Proportional term: `P = Kp × error` where `error = setpoint - measurement`
-- **Pros:** Immediate response to setpoint changes, faster initial recovery
-- **Cons:** Large output spike when setpoint changes, integral reset required
-- **Use case:** Systems requiring aggressive setpoint tracking
-
-**Proportional-on-Measurement (P-on-M)** - Derivative-like proportional (default):
-- Proportional term: `P = -Kp × (measurement - last_measurement)`
-- **Pros:** No output spike on setpoint changes, integral preserved across setpoint changes, smoother control
-- **Cons:** Slower initial response to setpoint changes (relies on integral for recovery)
-- **Use case:** Comfort-focused applications where smooth transitions matter (thermostats)
-
-**Configuration:**
-```yaml
-climate:
-  - platform: adaptive_thermostat
-    proportional_on_measurement: true  # Default: true (P-on-M)
-```
-
-**Trade-offs:**
-- P-on-M is **recommended for thermostats** to avoid temperature spikes when users adjust setpoints
-- P-on-M relies more heavily on the integral term for setpoint tracking
-- With P-on-M, the controller maintains smoother output during manual setpoint adjustments
-- P-on-E may converge faster but at the cost of comfort during transitions
-
 ### Cycle Tracking State Machine
 
 The `CycleTrackerManager` implements a three-state machine for real-time learning:
