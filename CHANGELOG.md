@@ -1,6 +1,28 @@
 # CHANGELOG
 
 
+## v1.0.0 (2026-01-19)
+
+### Refactoring
+
+- Remove P-on-E support, P-on-M is now the only behavior
+  ([`e63bbc3`](https://github.com/afewyards/ha-adaptive-thermostat/commit/e63bbc3e3a8bbf04c8abdd6695a9523dc90afdfd))
+
+- Remove proportional_on_measurement config option from const.py, climate.py - Simplify PID
+  controller to hardcode P-on-M (no conditional logic) - Remove integral reset on setpoint change
+  (P-on-M preserves integral) - Delete TestPIDProportionalOnMeasurement test class (170 lines) -
+  Update tests for P-on-M behavior (P=0 on first call, integral accumulates) - Update CLAUDE.md and
+  README.md documentation
+
+BREAKING CHANGE: proportional_on_measurement config option removed. P-on-M is now always used (was
+  already the default).
+
+### Breaking Changes
+
+- Proportional_on_measurement config option removed. P-on-M is now always used (was already the
+  default).
+
+
 ## v0.15.0 (2026-01-19)
 
 ### Documentation
