@@ -1,7 +1,15 @@
 # CHANGELOG
 
 
-## v1.0.0 (2026-01-19)
+## v0.16.0 (2026-01-19)
+
+### Chores
+
+- Prevent breaking changes from bumping to 1.0.0
+  ([`dafcc03`](https://github.com/afewyards/ha-adaptive-thermostat/commit/dafcc03340fecbc6ddbab8cdc7225144382914bc))
+
+Set major_on_zero = false in semantic-release config to keep project in alpha (0.x.x) until
+  explicitly ready for stable release.
 
 ### Refactoring
 
