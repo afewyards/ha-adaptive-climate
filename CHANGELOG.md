@@ -1,6 +1,18 @@
 # CHANGELOG
 
 
+## v0.10.3 (2026-01-19)
+
+### Bug Fixes
+
+- Finalize cycle on settling timeout instead of discarding
+  ([`2b52f82`](https://github.com/afewyards/ha-adaptive-thermostat/commit/2b52f827a28112f0f0312368b6f533cd8c78f8ee))
+
+Previously, when settling timed out after 120 minutes, the cycle was discarded without recording
+  metrics. Now calls _finalize_cycle() to capture overshoot and other metrics even when temperature
+  doesn't stabilize within the threshold.
+
+
 ## v0.10.2 (2026-01-17)
 
 ### Bug Fixes
