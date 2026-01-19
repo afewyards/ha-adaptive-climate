@@ -554,6 +554,76 @@ class AdaptiveLearner:
         """
         return self._pid_history.copy()
 
+    def set_physics_baseline(self, kp: float, ki: float, kd: float) -> None:
+        """Set the physics-based baseline PID values for drift calculation.
+
+        The baseline represents the initial physics-calculated PID values.
+        Used to calculate how far the adaptive tuning has drifted from
+        the original physics-based estimates.
+
+        Args:
+            kp: Physics-based proportional gain
+            ki: Physics-based integral gain
+            kd: Physics-based derivative gain
+        """
+        self._physics_baseline_kp = kp
+        self._physics_baseline_ki = ki
+        self._physics_baseline_kd = kd
+        _LOGGER.info(
+            "Physics baseline set: Kp=%.2f, Ki=%.4f, Kd=%.2f",
+            kp,
+            ki,
+            kd,
+        )
+
+    def calculate_drift_from_baseline(
+        self,
+        current_kp: float,
+        current_ki: float,
+        current_kd: float,
+    ) -> float:
+        """Calculate how far current PID values have drifted from physics baseline.
+
+        Returns the maximum percentage drift across all three PID parameters.
+        Used to enforce safety limits on cumulative adaptive changes.
+
+        Args:
+            current_kp: Current proportional gain
+            current_ki: Current integral gain
+            current_kd: Current derivative gain
+
+        Returns:
+            Maximum drift as a decimal (e.g., 0.5 = 50% drift).
+            Returns 0.0 if no baseline is set.
+        """
+        if self._physics_baseline_kp is None:
+            _LOGGER.debug("No physics baseline set, drift calculation returns 0.0")
+            return 0.0
+
+        # Calculate percentage drift for each parameter
+        # Use absolute difference divided by baseline value
+        kp_drift = abs(current_kp - self._physics_baseline_kp) / self._physics_baseline_kp
+        ki_drift = (
+            abs(current_ki - self._physics_baseline_ki) / self._physics_baseline_ki
+            if self._physics_baseline_ki > 0
+            else 0.0
+        )
+        kd_drift = (
+            abs(current_kd - self._physics_baseline_kd) / self._physics_baseline_kd
+            if self._physics_baseline_kd > 0
+            else 0.0
+        )
+
+        max_drift = max(kp_drift, ki_drift, kd_drift)
+        _LOGGER.debug(
+            "PID drift from baseline: Kp=%.1f%%, Ki=%.1f%%, Kd=%.1f%%, max=%.1f%%",
+            kp_drift * 100,
+            ki_drift * 100,
+            kd_drift * 100,
+            max_drift * 100,
+        )
+        return max_drift
+
     def update_convergence_tracking(self, metrics: CycleMetrics) -> bool:
         """Update convergence tracking based on latest cycle metrics.
 
