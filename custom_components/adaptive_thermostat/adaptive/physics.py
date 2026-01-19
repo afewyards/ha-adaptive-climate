@@ -457,6 +457,152 @@ def calculate_ke_wind(
     return round(base_ke_wind, 3)
 
 
+def validate_floor_construction(floor_config: dict) -> list[str]:
+    """Validate floor heating construction configuration.
+
+    This function validates the floor construction configuration to ensure
+    all parameters are within acceptable ranges and material specifications
+    are complete.
+
+    Args:
+        floor_config: Dict containing:
+            - 'layers': List of layer dicts (required)
+            - 'pipe_spacing_mm': Pipe spacing in millimeters (required)
+
+    Returns:
+        List of validation error strings. Empty list if valid.
+
+    Example:
+        >>> config = {
+        ...     'layers': [
+        ...         {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
+        ...         {'type': 'screed', 'material': 'cement', 'thickness_mm': 50}
+        ...     ],
+        ...     'pipe_spacing_mm': 150
+        ... }
+        >>> errors = validate_floor_construction(config)
+        >>> len(errors)
+        0
+    """
+    # Import here to avoid circular dependency
+    from ..const import (
+        TOP_FLOOR_MATERIALS,
+        SCREED_MATERIALS,
+        PIPE_SPACING_EFFICIENCY,
+        FLOOR_THICKNESS_LIMITS,
+    )
+
+    errors = []
+
+    # Check pipe_spacing_mm is valid
+    pipe_spacing_mm = floor_config.get('pipe_spacing_mm')
+    if pipe_spacing_mm is None:
+        errors.append("pipe_spacing_mm is required")
+    elif pipe_spacing_mm not in PIPE_SPACING_EFFICIENCY:
+        valid_spacings = sorted(PIPE_SPACING_EFFICIENCY.keys())
+        errors.append(
+            f"pipe_spacing_mm must be one of {valid_spacings}, got {pipe_spacing_mm}"
+        )
+
+    # Check layers list exists and is not empty
+    layers = floor_config.get('layers')
+    if layers is None:
+        errors.append("layers is required")
+        return errors  # Can't proceed without layers
+
+    if not isinstance(layers, list):
+        errors.append("layers must be a list")
+        return errors  # Can't proceed if not a list
+
+    if len(layers) == 0:
+        errors.append("layers list cannot be empty")
+        return errors  # Can't proceed with empty list
+
+    # Track layer order for validation
+    top_floor_indices = []
+    screed_indices = []
+
+    # Validate each layer
+    for i, layer in enumerate(layers):
+        layer_type = layer.get('type')
+        material_name = layer.get('material')
+        thickness_mm = layer.get('thickness_mm')
+
+        # Validate layer type
+        if layer_type not in ['top_floor', 'screed']:
+            errors.append(
+                f"Layer {i}: type must be 'top_floor' or 'screed', got '{layer_type}'"
+            )
+            continue
+
+        # Track layer indices for order validation
+        if layer_type == 'top_floor':
+            top_floor_indices.append(i)
+        elif layer_type == 'screed':
+            screed_indices.append(i)
+
+        # Validate thickness
+        if thickness_mm is None:
+            errors.append(f"Layer {i} ({layer_type}): thickness_mm is required")
+        elif not isinstance(thickness_mm, (int, float)) or thickness_mm <= 0:
+            errors.append(
+                f"Layer {i} ({layer_type}): thickness_mm must be a positive number, got {thickness_mm}"
+            )
+        else:
+            # Check thickness range for layer type
+            min_thickness, max_thickness = FLOOR_THICKNESS_LIMITS[layer_type]
+            if thickness_mm < min_thickness or thickness_mm > max_thickness:
+                errors.append(
+                    f"Layer {i} ({layer_type}): thickness_mm must be between "
+                    f"{min_thickness}-{max_thickness}mm, got {thickness_mm}mm"
+                )
+
+        # Validate material specification
+        # Material can be specified either by name (lookup) or custom properties
+        has_custom_properties = all(
+            prop in layer for prop in ['conductivity', 'density', 'specific_heat']
+        )
+
+        if not has_custom_properties:
+            # Must have valid material name for lookup
+            if material_name is None:
+                errors.append(
+                    f"Layer {i} ({layer_type}): material name is required "
+                    "(or provide custom conductivity, density, and specific_heat)"
+                )
+            else:
+                # Check if material exists in lookup
+                if layer_type == 'top_floor':
+                    if material_name not in TOP_FLOOR_MATERIALS:
+                        errors.append(
+                            f"Layer {i} ({layer_type}): unknown material '{material_name}'"
+                        )
+                elif layer_type == 'screed':
+                    if material_name not in SCREED_MATERIALS:
+                        errors.append(
+                            f"Layer {i} ({layer_type}): unknown material '{material_name}'"
+                        )
+        else:
+            # Validate custom properties are valid numbers
+            for prop in ['conductivity', 'density', 'specific_heat']:
+                value = layer.get(prop)
+                if not isinstance(value, (int, float)) or value <= 0:
+                    errors.append(
+                        f"Layer {i} ({layer_type}): {prop} must be a positive number, got {value}"
+                    )
+
+    # Validate layer order: all top_floor layers must precede all screed layers
+    if top_floor_indices and screed_indices:
+        max_top_floor_index = max(top_floor_indices)
+        min_screed_index = min(screed_indices)
+        if max_top_floor_index > min_screed_index:
+            errors.append(
+                "Layer order invalid: all 'top_floor' layers must precede all 'screed' layers"
+            )
+
+    return errors
+
+
 def calculate_floor_thermal_properties(
     layers: List[Dict],
     area_m2: float,

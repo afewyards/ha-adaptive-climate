@@ -8,6 +8,7 @@ from custom_components.adaptive_thermostat.adaptive.physics import (
     calculate_initial_ke,
     calculate_power_scaling_factor,
     calculate_floor_thermal_properties,
+    validate_floor_construction,
     GLAZING_U_VALUES,
     ENERGY_RATING_TO_INSULATION,
 )
@@ -1252,3 +1253,426 @@ class TestFloorConstruction:
         # Should use 150mm spacing (efficiency 0.87)
         # Same as test_basic_ceramic_tile_cement_screed
         assert result['tau_modifier'] == pytest.approx(1.24, abs=0.05)
+
+
+class TestFloorConstructionValidation:
+    """Tests for validate_floor_construction function."""
+
+    def test_valid_basic_configuration(self):
+        """Test valid basic floor configuration."""
+        config = {
+            'layers': [
+                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
+                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            ],
+            'pipe_spacing_mm': 150,
+        }
+        errors = validate_floor_construction(config)
+        assert errors == []
+
+    def test_valid_all_pipe_spacings(self):
+        """Test all valid pipe spacing values."""
+        for spacing in [100, 150, 200, 300]:
+            config = {
+                'layers': [
+                    {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
+                    {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+                ],
+                'pipe_spacing_mm': spacing,
+            }
+            errors = validate_floor_construction(config)
+            assert errors == [], f"Valid spacing {spacing} should not produce errors"
+
+    def test_invalid_pipe_spacing(self):
+        """Test invalid pipe spacing value."""
+        config = {
+            'layers': [
+                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
+                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            ],
+            'pipe_spacing_mm': 175,  # Invalid spacing
+        }
+        errors = validate_floor_construction(config)
+        assert len(errors) == 1
+        assert "pipe_spacing_mm must be one of [100, 150, 200, 300]" in errors[0]
+        assert "175" in errors[0]
+
+    def test_missing_pipe_spacing(self):
+        """Test missing pipe_spacing_mm."""
+        config = {
+            'layers': [
+                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
+                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            ],
+        }
+        errors = validate_floor_construction(config)
+        assert len(errors) == 1
+        assert "pipe_spacing_mm is required" in errors[0]
+
+    def test_empty_layers_list(self):
+        """Test empty layers list."""
+        config = {
+            'layers': [],
+            'pipe_spacing_mm': 150,
+        }
+        errors = validate_floor_construction(config)
+        assert len(errors) == 1
+        assert "layers list cannot be empty" in errors[0]
+
+    def test_missing_layers(self):
+        """Test missing layers key."""
+        config = {
+            'pipe_spacing_mm': 150,
+        }
+        errors = validate_floor_construction(config)
+        assert len(errors) == 1
+        assert "layers is required" in errors[0]
+
+    def test_layers_not_a_list(self):
+        """Test layers is not a list."""
+        config = {
+            'layers': "not a list",
+            'pipe_spacing_mm': 150,
+        }
+        errors = validate_floor_construction(config)
+        assert len(errors) == 1
+        assert "layers must be a list" in errors[0]
+
+    def test_top_floor_thickness_at_min_boundary(self):
+        """Test top_floor thickness at minimum boundary (5mm)."""
+        config = {
+            'layers': [
+                {'type': 'top_floor', 'material': 'vinyl', 'thickness_mm': 5},
+                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            ],
+            'pipe_spacing_mm': 150,
+        }
+        errors = validate_floor_construction(config)
+        assert errors == []
+
+    def test_top_floor_thickness_at_max_boundary(self):
+        """Test top_floor thickness at maximum boundary (25mm)."""
+        config = {
+            'layers': [
+                {'type': 'top_floor', 'material': 'natural_stone', 'thickness_mm': 25},
+                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            ],
+            'pipe_spacing_mm': 150,
+        }
+        errors = validate_floor_construction(config)
+        assert errors == []
+
+    def test_top_floor_thickness_below_min(self):
+        """Test top_floor thickness below minimum."""
+        config = {
+            'layers': [
+                {'type': 'top_floor', 'material': 'vinyl', 'thickness_mm': 3},
+                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            ],
+            'pipe_spacing_mm': 150,
+        }
+        errors = validate_floor_construction(config)
+        assert len(errors) == 1
+        assert "thickness_mm must be between 5-25mm" in errors[0]
+        assert "3mm" in errors[0]
+
+    def test_top_floor_thickness_above_max(self):
+        """Test top_floor thickness above maximum."""
+        config = {
+            'layers': [
+                {'type': 'top_floor', 'material': 'natural_stone', 'thickness_mm': 30},
+                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            ],
+            'pipe_spacing_mm': 150,
+        }
+        errors = validate_floor_construction(config)
+        assert len(errors) == 1
+        assert "thickness_mm must be between 5-25mm" in errors[0]
+        assert "30mm" in errors[0]
+
+    def test_screed_thickness_at_min_boundary(self):
+        """Test screed thickness at minimum boundary (30mm)."""
+        config = {
+            'layers': [
+                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
+                {'type': 'screed', 'material': 'cement', 'thickness_mm': 30},
+            ],
+            'pipe_spacing_mm': 150,
+        }
+        errors = validate_floor_construction(config)
+        assert errors == []
+
+    def test_screed_thickness_at_max_boundary(self):
+        """Test screed thickness at maximum boundary (80mm)."""
+        config = {
+            'layers': [
+                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
+                {'type': 'screed', 'material': 'cement', 'thickness_mm': 80},
+            ],
+            'pipe_spacing_mm': 150,
+        }
+        errors = validate_floor_construction(config)
+        assert errors == []
+
+    def test_screed_thickness_below_min(self):
+        """Test screed thickness below minimum."""
+        config = {
+            'layers': [
+                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
+                {'type': 'screed', 'material': 'cement', 'thickness_mm': 25},
+            ],
+            'pipe_spacing_mm': 150,
+        }
+        errors = validate_floor_construction(config)
+        assert len(errors) == 1
+        assert "thickness_mm must be between 30-80mm" in errors[0]
+        assert "25mm" in errors[0]
+
+    def test_screed_thickness_above_max(self):
+        """Test screed thickness above maximum."""
+        config = {
+            'layers': [
+                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
+                {'type': 'screed', 'material': 'cement', 'thickness_mm': 85},
+            ],
+            'pipe_spacing_mm': 150,
+        }
+        errors = validate_floor_construction(config)
+        assert len(errors) == 1
+        assert "thickness_mm must be between 30-80mm" in errors[0]
+        assert "85mm" in errors[0]
+
+    def test_unknown_top_floor_material(self):
+        """Test unknown top floor material."""
+        config = {
+            'layers': [
+                {'type': 'top_floor', 'material': 'unobtanium', 'thickness_mm': 10},
+                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            ],
+            'pipe_spacing_mm': 150,
+        }
+        errors = validate_floor_construction(config)
+        assert len(errors) == 1
+        assert "unknown material 'unobtanium'" in errors[0]
+
+    def test_unknown_screed_material(self):
+        """Test unknown screed material."""
+        config = {
+            'layers': [
+                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
+                {'type': 'screed', 'material': 'vibranium', 'thickness_mm': 50},
+            ],
+            'pipe_spacing_mm': 150,
+        }
+        errors = validate_floor_construction(config)
+        assert len(errors) == 1
+        assert "unknown material 'vibranium'" in errors[0]
+
+    def test_valid_custom_material_properties(self):
+        """Test valid custom material properties."""
+        config = {
+            'layers': [
+                {
+                    'type': 'top_floor',
+                    'material': 'custom_tile',
+                    'thickness_mm': 10,
+                    'conductivity': 1.5,
+                    'density': 2400,
+                    'specific_heat': 900,
+                },
+                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            ],
+            'pipe_spacing_mm': 150,
+        }
+        errors = validate_floor_construction(config)
+        assert errors == []
+
+    def test_custom_properties_incomplete(self):
+        """Test incomplete custom properties (missing specific_heat)."""
+        config = {
+            'layers': [
+                {
+                    'type': 'top_floor',
+                    'material': 'custom_tile',
+                    'thickness_mm': 10,
+                    'conductivity': 1.5,
+                    'density': 2400,
+                    # Missing specific_heat
+                },
+                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            ],
+            'pipe_spacing_mm': 150,
+        }
+        errors = validate_floor_construction(config)
+        assert len(errors) == 1
+        # Without all three custom properties, it tries to look up the material name
+        assert "unknown material 'custom_tile'" in errors[0]
+
+    def test_custom_properties_invalid_value(self):
+        """Test invalid custom property value (negative conductivity)."""
+        config = {
+            'layers': [
+                {
+                    'type': 'top_floor',
+                    'material': 'custom_tile',
+                    'thickness_mm': 10,
+                    'conductivity': -1.5,
+                    'density': 2400,
+                    'specific_heat': 900,
+                },
+                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            ],
+            'pipe_spacing_mm': 150,
+        }
+        errors = validate_floor_construction(config)
+        assert len(errors) == 1
+        assert "conductivity must be a positive number" in errors[0]
+
+    def test_layer_order_valid_top_floor_then_screed(self):
+        """Test valid layer order: top_floor before screed."""
+        config = {
+            'layers': [
+                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
+                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            ],
+            'pipe_spacing_mm': 150,
+        }
+        errors = validate_floor_construction(config)
+        assert errors == []
+
+    def test_layer_order_valid_multiple_top_floors(self):
+        """Test valid layer order: multiple top_floor layers before screed."""
+        config = {
+            'layers': [
+                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 8},
+                {'type': 'top_floor', 'material': 'vinyl', 'thickness_mm': 5},
+                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            ],
+            'pipe_spacing_mm': 150,
+        }
+        errors = validate_floor_construction(config)
+        assert errors == []
+
+    def test_layer_order_valid_multiple_screeds(self):
+        """Test valid layer order: top_floor before multiple screed layers."""
+        config = {
+            'layers': [
+                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
+                {'type': 'screed', 'material': 'anhydrite', 'thickness_mm': 35},
+                {'type': 'screed', 'material': 'cement', 'thickness_mm': 45},
+            ],
+            'pipe_spacing_mm': 150,
+        }
+        errors = validate_floor_construction(config)
+        assert errors == []
+
+    def test_layer_order_invalid_screed_before_top_floor(self):
+        """Test invalid layer order: screed before top_floor."""
+        config = {
+            'layers': [
+                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
+            ],
+            'pipe_spacing_mm': 150,
+        }
+        errors = validate_floor_construction(config)
+        assert len(errors) == 1
+        assert "Layer order invalid" in errors[0]
+        assert "top_floor' layers must precede all 'screed' layers" in errors[0]
+
+    def test_layer_order_invalid_interleaved(self):
+        """Test invalid layer order: interleaved top_floor and screed."""
+        config = {
+            'layers': [
+                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
+                {'type': 'screed', 'material': 'cement', 'thickness_mm': 30},
+                {'type': 'top_floor', 'material': 'vinyl', 'thickness_mm': 5},  # Invalid position
+            ],
+            'pipe_spacing_mm': 150,
+        }
+        errors = validate_floor_construction(config)
+        assert len(errors) == 1
+        assert "Layer order invalid" in errors[0]
+
+    def test_missing_thickness(self):
+        """Test missing thickness_mm."""
+        config = {
+            'layers': [
+                {'type': 'top_floor', 'material': 'ceramic_tile'},  # Missing thickness
+                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            ],
+            'pipe_spacing_mm': 150,
+        }
+        errors = validate_floor_construction(config)
+        assert len(errors) == 1
+        assert "thickness_mm is required" in errors[0]
+
+    def test_invalid_thickness_zero(self):
+        """Test invalid thickness value (zero)."""
+        config = {
+            'layers': [
+                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 0},
+                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            ],
+            'pipe_spacing_mm': 150,
+        }
+        errors = validate_floor_construction(config)
+        assert len(errors) == 1
+        assert "thickness_mm must be a positive number" in errors[0]
+
+    def test_invalid_thickness_negative(self):
+        """Test invalid thickness value (negative)."""
+        config = {
+            'layers': [
+                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': -10},
+                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            ],
+            'pipe_spacing_mm': 150,
+        }
+        errors = validate_floor_construction(config)
+        assert len(errors) == 1
+        assert "thickness_mm must be a positive number" in errors[0]
+
+    def test_invalid_layer_type(self):
+        """Test invalid layer type."""
+        config = {
+            'layers': [
+                {'type': 'insulation', 'material': 'foam', 'thickness_mm': 20},
+            ],
+            'pipe_spacing_mm': 150,
+        }
+        errors = validate_floor_construction(config)
+        assert len(errors) == 1
+        assert "type must be 'top_floor' or 'screed'" in errors[0]
+        assert "insulation" in errors[0]
+
+    def test_multiple_validation_errors(self):
+        """Test multiple validation errors are collected."""
+        config = {
+            'layers': [
+                {'type': 'top_floor', 'material': 'unobtanium', 'thickness_mm': 3},  # Unknown material + too thin
+                {'type': 'screed', 'material': 'vibranium', 'thickness_mm': 90},  # Unknown material + too thick
+            ],
+            'pipe_spacing_mm': 175,  # Invalid spacing
+        }
+        errors = validate_floor_construction(config)
+        # Should have at least 5 errors
+        assert len(errors) >= 5
+        # Check that different types of errors are present
+        error_text = ' '.join(errors)
+        assert "pipe_spacing_mm" in error_text
+        assert "thickness_mm" in error_text
+        assert "unknown material" in error_text
+
+    def test_missing_material_without_custom_properties(self):
+        """Test missing material name without custom properties."""
+        config = {
+            'layers': [
+                {'type': 'top_floor', 'thickness_mm': 10},  # Missing material
+                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            ],
+            'pipe_spacing_mm': 150,
+        }
+        errors = validate_floor_construction(config)
+        assert len(errors) == 1
+        assert "material name is required" in errors[0]
