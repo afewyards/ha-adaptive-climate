@@ -7,7 +7,15 @@ zones are heating.
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, Any, Optional
+from itertools import combinations
+from typing import Dict, Any, List, Optional, Tuple
+
+from ..const import (
+    CONF_FLOORPLAN,
+    CONF_SEED_COEFFICIENTS,
+    CONF_STAIRWELL_ZONES,
+    DEFAULT_SEED_COEFFICIENTS,
+)
 
 
 @dataclass
@@ -116,3 +124,89 @@ class ObservationContext:
     source_temp_start: float                 # Source zone temp at start (°C)
     target_temps_start: Dict[str, float]     # All other zone temps at start {entity_id: temp}
     outdoor_temp_start: float                # Outdoor temp at start (°C)
+
+
+def parse_floorplan(config: Dict[str, Any]) -> Dict[Tuple[str, str], float]:
+    """Parse floorplan configuration and generate seed coefficients for zone pairs.
+
+    Args:
+        config: Configuration dict containing:
+            - floorplan: List of floor definitions, each with:
+                - floor: Floor number (int)
+                - zones: List of zone entity IDs on this floor
+                - open: Optional list of zones with open floor plan (high coupling)
+            - stairwell_zones: Optional list of zones connected by stairwell
+            - seed_coefficients: Optional dict to override default seed values
+
+    Returns:
+        Dict mapping (source_zone, target_zone) tuples to seed coefficient values.
+        Coefficients represent expected heat transfer rate (°C/hour per °C source rise).
+    """
+    floorplan = config.get(CONF_FLOORPLAN, [])
+    if not floorplan:
+        return {}
+
+    # Merge custom seed coefficients with defaults
+    seed_values = {**DEFAULT_SEED_COEFFICIENTS}
+    custom_seeds = config.get(CONF_SEED_COEFFICIENTS, {})
+    seed_values.update(custom_seeds)
+
+    stairwell_zones = set(config.get(CONF_STAIRWELL_ZONES, []))
+
+    # Build floor index: zone -> floor number
+    zone_to_floor: Dict[str, int] = {}
+    floor_to_zones: Dict[int, List[str]] = {}
+    floor_open_zones: Dict[int, set] = {}
+
+    for floor_def in floorplan:
+        floor_num = floor_def.get("floor", 0)
+        zones = floor_def.get("zones", [])
+        open_zones = set(floor_def.get("open", []))
+
+        floor_to_zones[floor_num] = zones
+        floor_open_zones[floor_num] = open_zones
+
+        for zone in zones:
+            zone_to_floor[zone] = floor_num
+
+    seeds: Dict[Tuple[str, str], float] = {}
+
+    # Generate same-floor pairs (including open floor plan)
+    for floor_num, zones in floor_to_zones.items():
+        open_zones = floor_open_zones.get(floor_num, set())
+
+        for zone_a, zone_b in combinations(zones, 2):
+            # Check if both zones are in open floor plan
+            if zone_a in open_zones and zone_b in open_zones:
+                seed_type = "open"
+            else:
+                seed_type = "same_floor"
+
+            # Bidirectional: A->B and B->A
+            seeds[(zone_a, zone_b)] = seed_values[seed_type]
+            seeds[(zone_b, zone_a)] = seed_values[seed_type]
+
+    # Generate vertical (cross-floor) pairs for adjacent floors
+    sorted_floors = sorted(floor_to_zones.keys())
+
+    for i in range(len(sorted_floors) - 1):
+        lower_floor = sorted_floors[i]
+        upper_floor = sorted_floors[i + 1]
+
+        lower_zones = floor_to_zones[lower_floor]
+        upper_zones = floor_to_zones[upper_floor]
+
+        for lower_zone in lower_zones:
+            for upper_zone in upper_zones:
+                # Determine if this is a stairwell connection
+                is_stairwell = lower_zone in stairwell_zones and upper_zone in stairwell_zones
+
+                # Lower -> Upper: heat rises (up or stairwell_up)
+                if is_stairwell:
+                    seeds[(lower_zone, upper_zone)] = seed_values["stairwell_up"]
+                    seeds[(upper_zone, lower_zone)] = seed_values["stairwell_down"]
+                else:
+                    seeds[(lower_zone, upper_zone)] = seed_values["up"]
+                    seeds[(upper_zone, lower_zone)] = seed_values["down"]
+
+    return seeds

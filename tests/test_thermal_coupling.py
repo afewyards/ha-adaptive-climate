@@ -7,7 +7,9 @@ from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
     CouplingObservation,
     CouplingCoefficient,
     ObservationContext,
+    parse_floorplan,
 )
+from custom_components.adaptive_thermostat.const import DEFAULT_SEED_COEFFICIENTS
 
 
 # ============================================================================
@@ -324,3 +326,184 @@ class TestObservationContext:
 
         assert context.source_zone == "climate.only_zone"
         assert context.target_temps_start == {}
+
+
+# ============================================================================
+# Floorplan Parser Tests
+# ============================================================================
+
+
+class TestParseFloorplan:
+    """Tests for the floorplan parser function."""
+
+    def test_parse_floorplan_same_floor(self):
+        """Zones on same floor get same_floor seed for all pairs."""
+        config = {
+            "floorplan": [
+                {
+                    "floor": 1,
+                    "zones": ["climate.living_room", "climate.kitchen", "climate.dining"],
+                }
+            ]
+        }
+
+        seeds = parse_floorplan(config)
+
+        # Each zone pair should have same_floor seed (bidirectional)
+        assert seeds[("climate.living_room", "climate.kitchen")] == DEFAULT_SEED_COEFFICIENTS["same_floor"]
+        assert seeds[("climate.kitchen", "climate.living_room")] == DEFAULT_SEED_COEFFICIENTS["same_floor"]
+        assert seeds[("climate.living_room", "climate.dining")] == DEFAULT_SEED_COEFFICIENTS["same_floor"]
+        assert seeds[("climate.dining", "climate.living_room")] == DEFAULT_SEED_COEFFICIENTS["same_floor"]
+        assert seeds[("climate.kitchen", "climate.dining")] == DEFAULT_SEED_COEFFICIENTS["same_floor"]
+        assert seeds[("climate.dining", "climate.kitchen")] == DEFAULT_SEED_COEFFICIENTS["same_floor"]
+
+    def test_parse_floorplan_vertical(self):
+        """Floor N to N+1 gets 'up' seed, N+1 to N gets 'down' seed."""
+        config = {
+            "floorplan": [
+                {"floor": 0, "zones": ["climate.garage"]},
+                {"floor": 1, "zones": ["climate.living_room"]},
+                {"floor": 2, "zones": ["climate.bedroom"]},
+            ]
+        }
+
+        seeds = parse_floorplan(config)
+
+        # Floor 0 -> Floor 1: up (heat rises from garage to living_room)
+        assert seeds[("climate.garage", "climate.living_room")] == DEFAULT_SEED_COEFFICIENTS["up"]
+        # Floor 1 -> Floor 0: down
+        assert seeds[("climate.living_room", "climate.garage")] == DEFAULT_SEED_COEFFICIENTS["down"]
+
+        # Floor 1 -> Floor 2: up
+        assert seeds[("climate.living_room", "climate.bedroom")] == DEFAULT_SEED_COEFFICIENTS["up"]
+        # Floor 2 -> Floor 1: down
+        assert seeds[("climate.bedroom", "climate.living_room")] == DEFAULT_SEED_COEFFICIENTS["down"]
+
+        # Non-adjacent floors should not have entries (floor 0 and floor 2)
+        assert ("climate.garage", "climate.bedroom") not in seeds
+        assert ("climate.bedroom", "climate.garage") not in seeds
+
+    def test_parse_floorplan_open(self):
+        """Zones listed in 'open' array get open seed (overrides same_floor)."""
+        config = {
+            "floorplan": [
+                {
+                    "floor": 1,
+                    "zones": ["climate.living_room", "climate.kitchen", "climate.hallway"],
+                    "open": ["climate.living_room", "climate.kitchen"],
+                }
+            ]
+        }
+
+        seeds = parse_floorplan(config)
+
+        # Open zones get open seed (bidirectional)
+        assert seeds[("climate.living_room", "climate.kitchen")] == DEFAULT_SEED_COEFFICIENTS["open"]
+        assert seeds[("climate.kitchen", "climate.living_room")] == DEFAULT_SEED_COEFFICIENTS["open"]
+
+        # Non-open zone pairs on same floor get same_floor seed
+        assert seeds[("climate.living_room", "climate.hallway")] == DEFAULT_SEED_COEFFICIENTS["same_floor"]
+        assert seeds[("climate.hallway", "climate.living_room")] == DEFAULT_SEED_COEFFICIENTS["same_floor"]
+        assert seeds[("climate.kitchen", "climate.hallway")] == DEFAULT_SEED_COEFFICIENTS["same_floor"]
+        assert seeds[("climate.hallway", "climate.kitchen")] == DEFAULT_SEED_COEFFICIENTS["same_floor"]
+
+    def test_parse_floorplan_stairwell(self):
+        """Stairwell_zones get stairwell_up/down seeds for vertical relationships."""
+        config = {
+            "floorplan": [
+                {"floor": 0, "zones": ["climate.hallway_ground"]},
+                {"floor": 1, "zones": ["climate.hallway_first"]},
+                {"floor": 2, "zones": ["climate.hallway_second"]},
+            ],
+            "stairwell_zones": [
+                "climate.hallway_ground",
+                "climate.hallway_first",
+                "climate.hallway_second",
+            ],
+        }
+
+        seeds = parse_floorplan(config)
+
+        # Stairwell vertical: upward gets stairwell_up
+        assert seeds[("climate.hallway_ground", "climate.hallway_first")] == DEFAULT_SEED_COEFFICIENTS["stairwell_up"]
+        assert seeds[("climate.hallway_first", "climate.hallway_second")] == DEFAULT_SEED_COEFFICIENTS["stairwell_up"]
+
+        # Stairwell vertical: downward gets stairwell_down
+        assert seeds[("climate.hallway_first", "climate.hallway_ground")] == DEFAULT_SEED_COEFFICIENTS["stairwell_down"]
+        assert seeds[("climate.hallway_second", "climate.hallway_first")] == DEFAULT_SEED_COEFFICIENTS["stairwell_down"]
+
+    def test_parse_floorplan_custom_seeds(self):
+        """Override default seed values from config."""
+        config = {
+            "floorplan": [
+                {
+                    "floor": 1,
+                    "zones": ["climate.living_room", "climate.kitchen"],
+                }
+            ],
+            "seed_coefficients": {
+                "same_floor": 0.20,  # Override default 0.15
+            },
+        }
+
+        seeds = parse_floorplan(config)
+
+        # Should use custom seed value
+        assert seeds[("climate.living_room", "climate.kitchen")] == 0.20
+        assert seeds[("climate.kitchen", "climate.living_room")] == 0.20
+
+    def test_parse_floorplan_empty_config(self):
+        """Empty or missing floorplan returns empty dict."""
+        assert parse_floorplan({}) == {}
+        assert parse_floorplan({"floorplan": []}) == {}
+
+    def test_parse_floorplan_single_zone_floor(self):
+        """Single zone on a floor creates no same_floor pairs."""
+        config = {
+            "floorplan": [
+                {"floor": 1, "zones": ["climate.only_zone"]},
+            ]
+        }
+
+        seeds = parse_floorplan(config)
+
+        # No pairs should be generated for a single zone
+        assert seeds == {}
+
+    def test_parse_floorplan_mixed_scenario(self):
+        """Complex scenario with multiple floors, open plan, and stairwell."""
+        config = {
+            "floorplan": [
+                {"floor": 0, "zones": ["climate.garage", "climate.utility"]},
+                {
+                    "floor": 1,
+                    "zones": ["climate.living_room", "climate.kitchen", "climate.hallway"],
+                    "open": ["climate.living_room", "climate.kitchen"],
+                },
+                {"floor": 2, "zones": ["climate.bedroom", "climate.bathroom", "climate.landing"]},
+            ],
+            "stairwell_zones": ["climate.hallway", "climate.landing"],
+        }
+
+        seeds = parse_floorplan(config)
+
+        # Floor 0: same_floor between garage and utility
+        assert seeds[("climate.garage", "climate.utility")] == DEFAULT_SEED_COEFFICIENTS["same_floor"]
+
+        # Floor 1: open between living_room and kitchen
+        assert seeds[("climate.living_room", "climate.kitchen")] == DEFAULT_SEED_COEFFICIENTS["open"]
+
+        # Floor 1: same_floor for hallway with other zones
+        assert seeds[("climate.hallway", "climate.living_room")] == DEFAULT_SEED_COEFFICIENTS["same_floor"]
+
+        # Vertical: floor 0 to floor 1 (normal up/down)
+        assert seeds[("climate.garage", "climate.living_room")] == DEFAULT_SEED_COEFFICIENTS["up"]
+        assert seeds[("climate.living_room", "climate.garage")] == DEFAULT_SEED_COEFFICIENTS["down"]
+
+        # Stairwell: hallway (floor 1) to landing (floor 2)
+        assert seeds[("climate.hallway", "climate.landing")] == DEFAULT_SEED_COEFFICIENTS["stairwell_up"]
+        assert seeds[("climate.landing", "climate.hallway")] == DEFAULT_SEED_COEFFICIENTS["stairwell_down"]
+
+        # Non-stairwell vertical: bedroom to hallway
+        assert seeds[("climate.hallway", "climate.bedroom")] == DEFAULT_SEED_COEFFICIENTS["up"]
+        assert seeds[("climate.bedroom", "climate.hallway")] == DEFAULT_SEED_COEFFICIENTS["down"]
