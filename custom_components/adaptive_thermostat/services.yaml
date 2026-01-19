@@ -21,6 +21,17 @@ apply_adaptive_pid:
       integration: adaptive_thermostat
       domain: climate
 
+rollback_pid:
+  name: Rollback PID
+  description: >-
+    Rolls back to the previous PID configuration, clears validation history,
+    and exits validation mode. Use this if newly applied PID values are
+    performing worse than the previous configuration.
+  target:
+    entity:
+      integration: adaptive_thermostat
+      domain: climate
+
 clear_learning:
   name: Clear Learning
   description: >-
