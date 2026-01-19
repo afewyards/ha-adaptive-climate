@@ -16,6 +16,7 @@ from ..const import (
     CONVERGENCE_CONFIDENCE_HIGH,
     CONFIDENCE_DECAY_RATE_DAILY,
     CONFIDENCE_INCREASE_PER_GOOD_CYCLE,
+    PID_HISTORY_SIZE,
     get_convergence_thresholds,
     get_rule_thresholds,
 )
@@ -470,6 +471,47 @@ class AdaptiveLearner:
         self._cycle_history.clear()
         self._last_adjustment_time = None
         self._cycles_since_last_adjustment = 0
+
+    def record_pid_snapshot(
+        self,
+        kp: float,
+        ki: float,
+        kd: float,
+        reason: str,
+        metrics: Optional[Dict[str, float]] = None,
+    ) -> None:
+        """Record a PID configuration snapshot for history tracking.
+
+        Maintains a FIFO history of PID configurations for rollback and debugging.
+
+        Args:
+            kp: Proportional gain value
+            ki: Integral gain value
+            kd: Derivative gain value
+            reason: Why this snapshot was recorded (auto_apply, manual, physics_reset, rollback)
+            metrics: Optional performance metrics at time of snapshot
+        """
+        snapshot = {
+            "timestamp": datetime.now(),
+            "kp": kp,
+            "ki": ki,
+            "kd": kd,
+            "reason": reason,
+            "metrics": metrics,
+        }
+        self._pid_history.append(snapshot)
+
+        # FIFO eviction: keep only the last PID_HISTORY_SIZE entries
+        if len(self._pid_history) > PID_HISTORY_SIZE:
+            self._pid_history = self._pid_history[-PID_HISTORY_SIZE:]
+
+        _LOGGER.debug(
+            "Recorded PID snapshot: Kp=%.2f, Ki=%.4f, Kd=%.2f, reason=%s",
+            kp,
+            ki,
+            kd,
+            reason,
+        )
 
     def update_convergence_tracking(self, metrics: CycleMetrics) -> bool:
         """Update convergence tracking based on latest cycle metrics.
