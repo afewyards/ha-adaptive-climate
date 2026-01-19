@@ -553,6 +553,13 @@ def get_auto_apply_thresholds(heating_type: Optional[str] = None) -> Dict[str, f
     return AUTO_APPLY_THRESHOLDS[HEATING_TYPE_CONVECTOR]
 
 
+# Entity attribute constants for auto-apply status
+ATTR_AUTO_APPLY_ENABLED = "auto_apply_pid_enabled"
+ATTR_AUTO_APPLY_COUNT = "auto_apply_count"
+ATTR_VALIDATION_MODE = "validation_mode"
+ATTR_PID_HISTORY = "pid_history"
+ATTR_PENDING_RECOMMENDATION = "pending_recommendation"
+
 # Floor heating construction configuration
 CONF_FLOOR_CONSTRUCTION = 'floor_construction'
 CONF_PIPE_SPACING_MM = 'pipe_spacing_mm'
