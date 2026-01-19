@@ -847,3 +847,353 @@ async def test_load_v2_migrates_through_v3_to_v4(mock_hass):
         assert data["thermal_coupling"]["observations"] == {}
         assert data["thermal_coupling"]["coefficients"] == {}
         assert data["thermal_coupling"]["seeds"] == {}
+
+
+# ============================================================================
+# Story 3.2: Coupling data storage methods
+# ============================================================================
+
+
+def test_get_coupling_data_empty(mock_hass):
+    """Test get_coupling_data returns None when no coupling data exists."""
+    store = LearningDataStore(mock_hass)
+
+    # Default data has no thermal_coupling key
+    assert store._data == {"version": 4, "zones": {}}
+
+    # Should return None when no coupling data
+    result = store.get_coupling_data()
+    assert result is None
+
+
+def test_get_coupling_data_after_migration(mock_hass):
+    """Test get_coupling_data returns empty dicts after v3->v4 migration."""
+    store = LearningDataStore(mock_hass)
+
+    # Simulate migrated data (has thermal_coupling but empty dicts)
+    store._data = {
+        "version": 4,
+        "zones": {},
+        "thermal_coupling": {
+            "observations": {},
+            "coefficients": {},
+            "seeds": {},
+        },
+    }
+
+    result = store.get_coupling_data()
+    assert result is not None
+    assert result["observations"] == {}
+    assert result["coefficients"] == {}
+    assert result["seeds"] == {}
+
+
+def test_get_coupling_data_with_data(mock_hass):
+    """Test get_coupling_data returns existing coupling data."""
+    store = LearningDataStore(mock_hass)
+
+    # Simulate data with coupling observations and coefficients
+    store._data = {
+        "version": 4,
+        "zones": {},
+        "thermal_coupling": {
+            "observations": {
+                "climate.living_room|climate.kitchen": [
+                    {
+                        "timestamp": "2026-01-20T12:00:00",
+                        "source_temp_start": 19.0,
+                        "target_temp_delta": 0.5,
+                    }
+                ]
+            },
+            "coefficients": {
+                "climate.living_room|climate.kitchen": {
+                    "coefficient": 0.25,
+                    "confidence": 0.7,
+                    "observation_count": 5,
+                }
+            },
+            "seeds": {
+                "climate.living_room|climate.kitchen": 0.15,
+            },
+        },
+    }
+
+    result = store.get_coupling_data()
+    assert result is not None
+    assert "climate.living_room|climate.kitchen" in result["observations"]
+    assert result["coefficients"]["climate.living_room|climate.kitchen"]["coefficient"] == 0.25
+    assert result["seeds"]["climate.living_room|climate.kitchen"] == 0.15
+
+
+def test_update_coupling_data(mock_hass):
+    """Test update_coupling_data stores coupling learner dict in memory."""
+    store = LearningDataStore(mock_hass)
+
+    # Initial state has no thermal_coupling
+    assert "thermal_coupling" not in store._data
+
+    # Sample coupling data (simulating ThermalCouplingLearner.to_dict() output)
+    coupling_data = {
+        "observations": {
+            "zone_a|zone_b": [
+                {
+                    "timestamp": "2026-01-20T10:00:00",
+                    "source_zone": "zone_a",
+                    "target_zone": "zone_b",
+                    "source_temp_delta": 2.0,
+                    "target_temp_delta": 0.4,
+                    "duration_minutes": 45.0,
+                }
+            ]
+        },
+        "coefficients": {
+            "zone_a|zone_b": {
+                "source_zone": "zone_a",
+                "target_zone": "zone_b",
+                "coefficient": 0.20,
+                "confidence": 0.55,
+                "observation_count": 3,
+            }
+        },
+        "seeds": {
+            "zone_a|zone_b": 0.15,
+        },
+    }
+
+    # Update coupling data
+    store.update_coupling_data(coupling_data)
+
+    # Verify data stored
+    assert "thermal_coupling" in store._data
+    assert store._data["thermal_coupling"] == coupling_data
+
+
+def test_update_coupling_data_overwrites_existing(mock_hass):
+    """Test update_coupling_data overwrites existing coupling data."""
+    store = LearningDataStore(mock_hass)
+
+    # Initial coupling data
+    store._data = {
+        "version": 4,
+        "zones": {},
+        "thermal_coupling": {
+            "observations": {"old_pair": []},
+            "coefficients": {},
+            "seeds": {"old_pair": 0.10},
+        },
+    }
+
+    # New coupling data
+    new_data = {
+        "observations": {"new_pair": []},
+        "coefficients": {"new_pair": {"coefficient": 0.30}},
+        "seeds": {"new_pair": 0.20},
+    }
+
+    # Update should replace entirely
+    store.update_coupling_data(new_data)
+
+    # Old data should be gone
+    assert "old_pair" not in store._data["thermal_coupling"]["seeds"]
+    # New data should be present
+    assert store._data["thermal_coupling"] == new_data
+
+
+@pytest.mark.asyncio
+async def test_save_coupling_data(mock_hass):
+    """Test async_save_coupling persists coupling data to HA Store."""
+    # Create mock Store class
+    mock_store_class = Mock()
+    mock_store_instance = AsyncMock()
+    mock_store_instance.async_load = AsyncMock(return_value=None)
+    mock_store_instance.async_save = AsyncMock()
+    mock_store_class.return_value = mock_store_instance
+
+    # Mock the homeassistant.helpers.storage module
+    mock_storage_module = Mock()
+    mock_storage_module.Store = mock_store_class
+
+    with patch.dict('sys.modules', {'homeassistant.helpers.storage': mock_storage_module}):
+        store = LearningDataStore(mock_hass)
+        await store.async_load()
+
+        # Sample coupling data
+        coupling_data = {
+            "observations": {
+                "zone_a|zone_b": [{"timestamp": "2026-01-20T10:00:00"}]
+            },
+            "coefficients": {
+                "zone_a|zone_b": {"coefficient": 0.25}
+            },
+            "seeds": {
+                "zone_a|zone_b": 0.15,
+            },
+        }
+
+        # Save coupling data
+        await store.async_save_coupling(coupling_data)
+
+        # Verify Store.async_save was called
+        mock_store_instance.async_save.assert_called_once()
+
+        # Verify internal data structure was updated
+        assert "thermal_coupling" in store._data
+        assert store._data["thermal_coupling"] == coupling_data
+
+
+@pytest.mark.asyncio
+async def test_save_coupling_data_preserves_zones(mock_hass):
+    """Test async_save_coupling preserves existing zone data."""
+    # Create mock Store class
+    mock_store_class = Mock()
+    mock_store_instance = AsyncMock()
+
+    # Existing data with zone learners
+    existing_data = {
+        "version": 4,
+        "zones": {
+            "climate.living_room": {
+                "adaptive_learner": {"cycle_history": [{"overshoot": 0.3}]},
+                "ke_learner": {"current_ke": 0.5},
+            },
+        },
+        "thermal_coupling": {
+            "observations": {},
+            "coefficients": {},
+            "seeds": {},
+        },
+    }
+
+    mock_store_instance.async_load = AsyncMock(return_value=existing_data)
+    mock_store_instance.async_save = AsyncMock()
+    mock_store_class.return_value = mock_store_instance
+
+    # Mock the homeassistant.helpers.storage module
+    mock_storage_module = Mock()
+    mock_storage_module.Store = mock_store_class
+
+    with patch.dict('sys.modules', {'homeassistant.helpers.storage': mock_storage_module}):
+        store = LearningDataStore(mock_hass)
+        await store.async_load()
+
+        # New coupling data
+        new_coupling = {
+            "observations": {"zone_a|zone_b": []},
+            "coefficients": {},
+            "seeds": {"zone_a|zone_b": 0.15},
+        }
+
+        # Save coupling data
+        await store.async_save_coupling(new_coupling)
+
+        # Zone data should be preserved
+        assert "climate.living_room" in store._data["zones"]
+        assert store._data["zones"]["climate.living_room"]["adaptive_learner"]["cycle_history"] == [
+            {"overshoot": 0.3}
+        ]
+
+        # Coupling data should be updated
+        assert store._data["thermal_coupling"]["seeds"]["zone_a|zone_b"] == 0.15
+
+
+@pytest.mark.asyncio
+async def test_coupling_data_roundtrip(mock_hass):
+    """Test save then load preserves coupling data."""
+    # Use a capture dict to store saved data
+    saved_data = {}
+
+    # Create mock Store class that captures saved data
+    mock_store_class = Mock()
+    mock_store_instance = AsyncMock()
+
+    # Initially return empty data
+    mock_store_instance.async_load = AsyncMock(return_value=None)
+
+    # Capture saves and update load return value
+    async def capture_save(data):
+        saved_data["data"] = data
+        # Update what async_load returns for subsequent calls
+        mock_store_instance.async_load.return_value = data
+
+    mock_store_instance.async_save = AsyncMock(side_effect=capture_save)
+    mock_store_class.return_value = mock_store_instance
+
+    # Mock the homeassistant.helpers.storage module
+    mock_storage_module = Mock()
+    mock_storage_module.Store = mock_store_class
+
+    with patch.dict('sys.modules', {'homeassistant.helpers.storage': mock_storage_module}):
+        # Create store and load initial empty data
+        store = LearningDataStore(mock_hass)
+        await store.async_load()
+
+        # Original coupling data with observations and coefficients
+        original_coupling = {
+            "observations": {
+                "zone_a|zone_b": [
+                    {
+                        "timestamp": "2026-01-20T10:00:00",
+                        "source_zone": "zone_a",
+                        "target_zone": "zone_b",
+                        "source_temp_delta": 2.5,
+                        "target_temp_delta": 0.5,
+                        "duration_minutes": 60.0,
+                        "outdoor_temp_start": 5.0,
+                        "outdoor_temp_end": 5.5,
+                    }
+                ],
+                "zone_b|zone_c": [
+                    {
+                        "timestamp": "2026-01-20T11:00:00",
+                        "source_zone": "zone_b",
+                        "target_zone": "zone_c",
+                        "source_temp_delta": 3.0,
+                        "target_temp_delta": 0.3,
+                        "duration_minutes": 45.0,
+                        "outdoor_temp_start": 6.0,
+                        "outdoor_temp_end": 6.2,
+                    }
+                ],
+            },
+            "coefficients": {
+                "zone_a|zone_b": {
+                    "source_zone": "zone_a",
+                    "target_zone": "zone_b",
+                    "coefficient": 0.20,
+                    "confidence": 0.65,
+                    "observation_count": 5,
+                    "baseline_overshoot": 0.3,
+                    "last_updated": "2026-01-20T10:30:00",
+                }
+            },
+            "seeds": {
+                "zone_a|zone_b": 0.15,
+                "zone_b|zone_c": 0.40,
+            },
+        }
+
+        # Save coupling data
+        await store.async_save_coupling(original_coupling)
+
+        # Create a new store instance and load
+        store2 = LearningDataStore(mock_hass)
+        store2._store = mock_store_instance  # Reuse same mock store
+        data = await store2.async_load()
+
+        # Verify roundtrip preserved data exactly
+        loaded_coupling = store2.get_coupling_data()
+        assert loaded_coupling is not None
+        assert loaded_coupling == original_coupling
+
+        # Verify specific fields
+        assert "zone_a|zone_b" in loaded_coupling["observations"]
+        assert len(loaded_coupling["observations"]["zone_a|zone_b"]) == 1
+        assert loaded_coupling["observations"]["zone_a|zone_b"][0]["source_temp_delta"] == 2.5
+
+        assert "zone_a|zone_b" in loaded_coupling["coefficients"]
+        assert loaded_coupling["coefficients"]["zone_a|zone_b"]["coefficient"] == 0.20
+        assert loaded_coupling["coefficients"]["zone_a|zone_b"]["confidence"] == 0.65
+
+        assert loaded_coupling["seeds"]["zone_a|zone_b"] == 0.15
+        assert loaded_coupling["seeds"]["zone_b|zone_c"] == 0.40
