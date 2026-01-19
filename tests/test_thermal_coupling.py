@@ -6,6 +6,7 @@ from datetime import datetime
 from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
     CouplingObservation,
     CouplingCoefficient,
+    ObservationContext,
 )
 
 
@@ -275,3 +276,51 @@ class TestCouplingCoefficient:
         assert restored.observation_count == original.observation_count
         assert restored.baseline_overshoot == original.baseline_overshoot
         assert restored.last_updated == original.last_updated
+
+
+# ============================================================================
+# ObservationContext Tests
+# ============================================================================
+
+
+class TestObservationContext:
+    """Tests for the ObservationContext dataclass."""
+
+    def test_observation_context_creation(self):
+        """Test context creation - tracks source zone and start temps."""
+        start_time = datetime.now()
+        target_temps = {
+            "climate.kitchen": 18.5,
+            "climate.bedroom": 17.0,
+            "climate.bathroom": 19.0,
+        }
+
+        context = ObservationContext(
+            source_zone="climate.living_room",
+            start_time=start_time,
+            source_temp_start=19.0,
+            target_temps_start=target_temps,
+            outdoor_temp_start=5.0,
+        )
+
+        assert context.source_zone == "climate.living_room"
+        assert context.start_time == start_time
+        assert context.source_temp_start == 19.0
+        assert context.target_temps_start == target_temps
+        assert context.target_temps_start["climate.kitchen"] == 18.5
+        assert context.target_temps_start["climate.bedroom"] == 17.0
+        assert context.target_temps_start["climate.bathroom"] == 19.0
+        assert context.outdoor_temp_start == 5.0
+
+    def test_observation_context_empty_targets(self):
+        """Test context creation with no target zones."""
+        context = ObservationContext(
+            source_zone="climate.only_zone",
+            start_time=datetime.now(),
+            source_temp_start=20.0,
+            target_temps_start={},
+            outdoor_temp_start=0.0,
+        )
+
+        assert context.source_zone == "climate.only_zone"
+        assert context.target_temps_start == {}

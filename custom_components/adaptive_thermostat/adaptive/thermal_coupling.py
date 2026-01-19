@@ -5,7 +5,7 @@ zones, enabling feedforward compensation to reduce overshoot when neighboring
 zones are heating.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, Any, Optional
 
@@ -101,3 +101,18 @@ class CouplingCoefficient:
             baseline_overshoot=data["baseline_overshoot"],
             last_updated=datetime.fromisoformat(data["last_updated"]),
         )
+
+
+@dataclass
+class ObservationContext:
+    """Context for a pending thermal coupling observation.
+
+    Captures the initial state when a zone starts heating, so we can
+    calculate temperature deltas when it stops heating.
+    """
+
+    source_zone: str                         # Entity ID of the zone that started heating
+    start_time: datetime                     # When the observation started
+    source_temp_start: float                 # Source zone temp at start (°C)
+    target_temps_start: Dict[str, float]     # All other zone temps at start {entity_id: temp}
+    outdoor_temp_start: float                # Outdoor temp at start (°C)
