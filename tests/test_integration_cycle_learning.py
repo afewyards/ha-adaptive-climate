@@ -56,7 +56,7 @@ def mock_callbacks():
 @pytest.fixture
 def cycle_tracker(mock_hass, mock_adaptive_learner, mock_callbacks):
     """Create a CycleTrackerManager instance with mocks."""
-    return CycleTrackerManager(
+    tracker = CycleTrackerManager(
         hass=mock_hass,
         zone_id="bedroom",
         adaptive_learner=mock_adaptive_learner,
@@ -65,6 +65,9 @@ def cycle_tracker(mock_hass, mock_adaptive_learner, mock_callbacks):
         get_hvac_mode=mock_callbacks["get_hvac_mode"],
         get_in_grace_period=mock_callbacks["get_in_grace_period"],
     )
+    # Mark restoration complete for testing
+    tracker.set_restoration_complete()
+    return tracker
 
 
 class TestCompleteHeatingCycle:
@@ -240,6 +243,7 @@ class TestCycleDuringVacationMode:
             get_hvac_mode=mock_callbacks["get_hvac_mode"],
             get_in_grace_period=mock_callbacks["get_in_grace_period"],
         )
+        tracker.set_restoration_complete()
 
         # Complete a full cycle
         start_time = datetime(2024, 1, 1, 10, 0, 0)
@@ -357,6 +361,7 @@ class TestCycleResumedAfterSetpointChange:
             get_in_grace_period=mock_callbacks["get_in_grace_period"],
             get_is_device_active=mock_is_device_active,
         )
+        tracker.set_restoration_complete()
 
         # Start heating
         start_time = datetime(2024, 1, 1, 10, 0, 0)
@@ -430,6 +435,7 @@ class TestSetpointChangeInCoolingMode:
             get_in_grace_period=mock_callbacks["get_in_grace_period"],
             get_is_device_active=mock_is_device_active,
         )
+        tracker.set_restoration_complete()
 
         # Start cooling cycle
         start_time = datetime(2024, 7, 15, 14, 0, 0)  # Summer afternoon

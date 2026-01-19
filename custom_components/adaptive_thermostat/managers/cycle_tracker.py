@@ -99,6 +99,7 @@ class CycleTrackerManager:
         self._settling_timeout_handle = None
         self._interruption_history: list[tuple[datetime, str]] = []
         self._last_interruption_reason: str | None = None  # Persists across cycle resets
+        self._restoration_complete: bool = False  # Gate temperature updates until restoration done
 
         # Calculate dynamic settling timeout based on thermal mass
         self._settling_timeout_source = "default"
@@ -165,6 +166,15 @@ class CycleTrackerManager:
             Interruption reason string or None if no interruptions
         """
         return self._last_interruption_reason
+
+    def set_restoration_complete(self) -> None:
+        """Mark restoration as complete, allowing temperature updates to be processed.
+
+        This method should be called after the thermostat has restored its state
+        from storage to prevent collecting stale temperature samples during startup.
+        """
+        self._restoration_complete = True
+        self._logger.debug("Restoration complete, temperature updates now enabled")
 
     def on_heating_started(self, timestamp: datetime) -> None:
         """Handle heating start event.
@@ -310,6 +320,10 @@ class CycleTrackerManager:
             timestamp: Time of temperature reading
             temperature: Current temperature value
         """
+        # Gate updates until restoration is complete
+        if not self._restoration_complete:
+            return
+
         # Only collect during active cycle tracking
         if self._state not in (CycleState.HEATING, CycleState.COOLING, CycleState.SETTLING):
             return

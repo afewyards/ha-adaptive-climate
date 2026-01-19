@@ -138,6 +138,7 @@ class TestFullAutoApplyFlow:
             get_in_grace_period=mock_callbacks["get_in_grace_period"],
             on_auto_apply_check=mock_auto_apply_check,
         )
+        tracker.set_restoration_complete()
 
         # Simulate 6 good cycles (convector confidence_first=0.60 requires 6 good cycles)
         # Each good cycle adds 0.10 to confidence
@@ -407,6 +408,7 @@ class TestValidationFailureAndRollback:
             get_in_grace_period=mock_callbacks["get_in_grace_period"],
             on_validation_failed=mock_validation_failed,
         )
+        tracker.set_restoration_complete()
 
         # Enter validation mode with baseline
         baseline_overshoot = 0.10
@@ -529,6 +531,7 @@ class TestValidationFailureAndRollback:
             get_in_grace_period=mock_callbacks["get_in_grace_period"],
             on_validation_failed=mock_validation_failed,
         )
+        tracker.set_restoration_complete()
 
         # Phase 1: Record initial PID values (baseline before auto-apply)
         initial_kp, initial_ki, initial_kd = 100.0, 0.01, 50.0
@@ -1120,6 +1123,7 @@ class TestAutoApplyDisabled:
             get_in_grace_period=mock_callbacks["get_in_grace_period"],
             # on_auto_apply_check NOT provided
         )
+        tracker.set_restoration_complete()
 
         # Complete a cycle
         start_time = datetime(2024, 1, 1, 10, 0, 0)
@@ -1203,6 +1207,7 @@ class TestMultiZoneAutoApply:
             get_in_grace_period=zone1_callbacks["get_in_grace_period"],
             on_auto_apply_check=zone1_auto_apply,
         )
+        zone1_tracker.set_restoration_complete()
 
         zone2_tracker = CycleTrackerManager(
             hass=mock_hass,
@@ -1214,6 +1219,7 @@ class TestMultiZoneAutoApply:
             get_in_grace_period=zone2_callbacks["get_in_grace_period"],
             on_auto_apply_check=zone2_auto_apply,
         )
+        zone2_tracker.set_restoration_complete()
 
         # Phase 1: Build confidence in zone1 to 60% (6 good cycles for convector)
         start_time = datetime(2024, 1, 1, 10, 0, 0)
@@ -1332,6 +1338,7 @@ class TestValidationModeBlocking:
             get_in_grace_period=mock_callbacks["get_in_grace_period"],
             on_auto_apply_check=mock_auto_apply,
         )
+        tracker.set_restoration_complete()
 
         # Enter validation mode
         adaptive_learner.start_validation_mode(baseline_overshoot=0.15)

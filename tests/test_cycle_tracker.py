@@ -52,7 +52,7 @@ def mock_callbacks():
 @pytest.fixture
 def cycle_tracker(mock_hass, mock_adaptive_learner, mock_callbacks):
     """Create a cycle tracker instance."""
-    return CycleTrackerManager(
+    tracker = CycleTrackerManager(
         hass=mock_hass,
         zone_id="test_zone",
         adaptive_learner=mock_adaptive_learner,
@@ -61,6 +61,9 @@ def cycle_tracker(mock_hass, mock_adaptive_learner, mock_callbacks):
         get_hvac_mode=mock_callbacks["get_hvac_mode"],
         get_in_grace_period=mock_callbacks["get_in_grace_period"],
     )
+    # Mark restoration complete for most tests (except restoration tests)
+    tracker.set_restoration_complete()
+    return tracker
 
 
 class TestCycleTrackerBasic:
@@ -1281,6 +1284,8 @@ class TestCycleTrackerSettlingTimeoutFinalization:
             adaptive_learner=mock_adaptive_learner,
             **mock_callbacks,
         )
+        # Mark restoration complete to allow temperature updates
+        cycle_tracker.set_restoration_complete()
 
         # Get the mocked async_call_later from conftest
         mock_async_call_later = sys.modules["homeassistant.helpers.event"].async_call_later
@@ -1334,3 +1339,76 @@ class TestCycleTrackerSettlingTimeoutFinalization:
         recorded_metrics = mock_adaptive_learner.add_cycle_metrics.call_args[0][0]
         assert recorded_metrics.overshoot is not None
         assert recorded_metrics.overshoot > 1.0  # Should capture the 1.5°C overshoot
+
+
+class TestCycleTrackerRestoration:
+    """Tests for restoration gating functionality."""
+
+    @pytest.mark.asyncio
+    async def test_cycle_tracker_ignores_updates_before_restoration(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks
+    ):
+        """Test temperature updates are ignored when restoration not complete."""
+        # Create tracker without calling set_restoration_complete()
+        cycle_tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            get_target_temp=mock_callbacks["get_target_temp"],
+            get_current_temp=mock_callbacks["get_current_temp"],
+            get_hvac_mode=mock_callbacks["get_hvac_mode"],
+            get_in_grace_period=mock_callbacks["get_in_grace_period"],
+        )
+
+        # Verify initial state
+        assert cycle_tracker._restoration_complete is False
+        assert cycle_tracker.state == CycleState.IDLE
+
+        # Start heating cycle
+        cycle_tracker.on_heating_started(datetime(2025, 1, 14, 10, 0, 0))
+        assert cycle_tracker.state == CycleState.HEATING
+
+        # Try to update temperature while restoration incomplete
+        await cycle_tracker.update_temperature(datetime(2025, 1, 14, 10, 0, 30), 18.5)
+        await cycle_tracker.update_temperature(datetime(2025, 1, 14, 10, 1, 0), 19.0)
+
+        # Temperature history should be empty (updates ignored)
+        assert len(cycle_tracker.temperature_history) == 0
+
+        # State should still be HEATING (state machine transitions still work)
+        assert cycle_tracker.state == CycleState.HEATING
+
+    @pytest.mark.asyncio
+    async def test_cycle_tracker_processes_after_restoration(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks
+    ):
+        """Test normal behavior after restoration complete."""
+        # Create tracker without calling set_restoration_complete()
+        cycle_tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            get_target_temp=mock_callbacks["get_target_temp"],
+            get_current_temp=mock_callbacks["get_current_temp"],
+            get_hvac_mode=mock_callbacks["get_hvac_mode"],
+            get_in_grace_period=mock_callbacks["get_in_grace_period"],
+        )
+
+        # Mark restoration complete
+        cycle_tracker.set_restoration_complete()
+        assert cycle_tracker._restoration_complete is True
+
+        # Start heating cycle
+        cycle_tracker.on_heating_started(datetime(2025, 1, 14, 10, 0, 0))
+        assert cycle_tracker.state == CycleState.HEATING
+
+        # Update temperature
+        await cycle_tracker.update_temperature(datetime(2025, 1, 14, 10, 0, 30), 18.5)
+        await cycle_tracker.update_temperature(datetime(2025, 1, 14, 10, 1, 0), 19.0)
+        await cycle_tracker.update_temperature(datetime(2025, 1, 14, 10, 1, 30), 19.5)
+
+        # Temperature history should contain samples (normal behavior)
+        assert len(cycle_tracker.temperature_history) == 3
+        assert cycle_tracker.temperature_history[0] == (datetime(2025, 1, 14, 10, 0, 30), 18.5)
+        assert cycle_tracker.temperature_history[1] == (datetime(2025, 1, 14, 10, 1, 0), 19.0)
+        assert cycle_tracker.temperature_history[2] == (datetime(2025, 1, 14, 10, 1, 30), 19.5)
