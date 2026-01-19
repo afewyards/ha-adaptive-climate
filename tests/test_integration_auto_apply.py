@@ -1076,6 +1076,173 @@ class TestAutoApplyDisabled:
         assert tracker._on_auto_apply_check is None
 
 
+class TestMultiZoneAutoApply:
+    """Test auto-apply behavior with multiple zones."""
+
+    @pytest.mark.asyncio
+    async def test_multiple_zones_auto_apply_simultaneously(self, mock_hass):
+        """Test that multiple zones can auto-apply simultaneously without interference.
+
+        Integration test for story 10.2:
+        1. Create 2 thermostats: zone1 (convector), zone2 (radiator)
+        2. Build confidence in both zones (60% zone1, 70% zone2)
+        3. Finalize cycles in both zones in same event loop iteration
+        4. Verify both _check_auto_apply_pid callbacks trigger
+        5. Verify both zones apply PID independently
+        6. Verify no interference (zone1 history not cleared by zone2 action)
+        """
+        from custom_components.adaptive_thermostat.const import HEATING_TYPE_RADIATOR
+
+        # Track auto-apply calls for each zone
+        zone1_auto_apply_calls = []
+        zone2_auto_apply_calls = []
+
+        async def zone1_auto_apply():
+            zone1_auto_apply_calls.append(True)
+
+        async def zone2_auto_apply():
+            zone2_auto_apply_calls.append(True)
+
+        # Create callbacks for zone1 (convector)
+        zone1_callbacks = {
+            "get_target_temp": MagicMock(return_value=21.0),
+            "get_current_temp": MagicMock(return_value=19.0),
+            "get_hvac_mode": MagicMock(return_value="heat"),
+            "get_in_grace_period": MagicMock(return_value=False),
+        }
+
+        # Create callbacks for zone2 (radiator)
+        zone2_callbacks = {
+            "get_target_temp": MagicMock(return_value=20.0),
+            "get_current_temp": MagicMock(return_value=18.0),
+            "get_hvac_mode": MagicMock(return_value="heat"),
+            "get_in_grace_period": MagicMock(return_value=False),
+        }
+
+        # Create separate AdaptiveLearner instances for each zone
+        zone1_learner = AdaptiveLearner(heating_type=HEATING_TYPE_CONVECTOR)
+        zone1_learner.set_physics_baseline(100.0, 0.01, 50.0)
+
+        zone2_learner = AdaptiveLearner(heating_type=HEATING_TYPE_RADIATOR)
+        zone2_learner.set_physics_baseline(120.0, 0.012, 60.0)
+
+        # Create separate cycle trackers for each zone
+        zone1_tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="zone1",
+            adaptive_learner=zone1_learner,
+            get_target_temp=zone1_callbacks["get_target_temp"],
+            get_current_temp=zone1_callbacks["get_current_temp"],
+            get_hvac_mode=zone1_callbacks["get_hvac_mode"],
+            get_in_grace_period=zone1_callbacks["get_in_grace_period"],
+            on_auto_apply_check=zone1_auto_apply,
+        )
+
+        zone2_tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="zone2",
+            adaptive_learner=zone2_learner,
+            get_target_temp=zone2_callbacks["get_target_temp"],
+            get_current_temp=zone2_callbacks["get_current_temp"],
+            get_hvac_mode=zone2_callbacks["get_hvac_mode"],
+            get_in_grace_period=zone2_callbacks["get_in_grace_period"],
+            on_auto_apply_check=zone2_auto_apply,
+        )
+
+        # Phase 1: Build confidence in zone1 to 60% (6 good cycles for convector)
+        start_time = datetime(2024, 1, 1, 10, 0, 0)
+        for cycle_num in range(6):
+            current_time = start_time + timedelta(hours=cycle_num * 2)
+            zone1_tracker.on_heating_started(current_time)
+
+            for i in range(20):
+                temp = 19.0 + min(i * 0.15, 2.0)
+                await zone1_tracker.update_temperature(current_time, temp)
+                current_time += timedelta(seconds=30)
+
+            zone1_tracker.on_heating_stopped(current_time)
+
+            for _ in range(10):
+                await zone1_tracker.update_temperature(current_time, 21.0)
+                current_time += timedelta(seconds=30)
+
+        # Verify zone1 confidence reached 60%
+        assert zone1_learner.get_convergence_confidence() >= 0.60
+
+        # Phase 2: Build confidence in zone2 to 70% (7 good cycles for radiator)
+        start_time = datetime(2024, 1, 1, 10, 0, 0)
+        for cycle_num in range(7):
+            current_time = start_time + timedelta(hours=cycle_num * 2)
+            zone2_tracker.on_heating_started(current_time)
+
+            for i in range(20):
+                temp = 18.0 + min(i * 0.15, 2.0)
+                await zone2_tracker.update_temperature(current_time, temp)
+                current_time += timedelta(seconds=30)
+
+            zone2_tracker.on_heating_stopped(current_time)
+
+            for _ in range(10):
+                await zone2_tracker.update_temperature(current_time, 20.0)
+                current_time += timedelta(seconds=30)
+
+        # Verify zone2 confidence reached 70%
+        assert zone2_learner.get_convergence_confidence() >= 0.70
+
+        # Phase 3: Finalize cycles in both zones "simultaneously" (same event loop iteration)
+        # Both zones complete a cycle that should trigger auto-apply check
+        zone1_time = datetime(2024, 1, 2, 10, 0, 0)
+        zone2_time = datetime(2024, 1, 2, 10, 0, 0)
+
+        # Zone1 cycle
+        zone1_tracker.on_heating_started(zone1_time)
+        for i in range(20):
+            temp = 19.0 + min(i * 0.15, 2.0)
+            await zone1_tracker.update_temperature(zone1_time, temp)
+            zone1_time += timedelta(seconds=30)
+        zone1_tracker.on_heating_stopped(zone1_time)
+        for _ in range(10):
+            await zone1_tracker.update_temperature(zone1_time, 21.0)
+            zone1_time += timedelta(seconds=30)
+
+        # Zone2 cycle
+        zone2_tracker.on_heating_started(zone2_time)
+        for i in range(20):
+            temp = 18.0 + min(i * 0.15, 2.0)
+            await zone2_tracker.update_temperature(zone2_time, temp)
+            zone2_time += timedelta(seconds=30)
+        zone2_tracker.on_heating_stopped(zone2_time)
+        for _ in range(10):
+            await zone2_tracker.update_temperature(zone2_time, 20.0)
+            zone2_time += timedelta(seconds=30)
+
+        # Phase 4: Await all created tasks (auto-apply callbacks)
+        import asyncio
+        for task in mock_hass._created_tasks:
+            if asyncio.iscoroutine(task):
+                await task
+
+        # Phase 5: Verify both zones' auto-apply callbacks were triggered
+        assert len(zone1_auto_apply_calls) >= 1, "Zone1 auto-apply callback should be triggered"
+        assert len(zone2_auto_apply_calls) >= 1, "Zone2 auto-apply callback should be triggered"
+
+        # Phase 6: Verify both zones maintain independent state (no interference)
+        # Zone1 should have 7 cycles (6 confidence-building + 1 final)
+        assert zone1_learner.get_cycle_count() == 7
+        # Zone2 should have 8 cycles (7 confidence-building + 1 final)
+        assert zone2_learner.get_cycle_count() == 8
+
+        # Verify independence: zone1's history not affected by zone2
+        zone1_confidence = zone1_learner.get_convergence_confidence()
+        zone2_confidence = zone2_learner.get_convergence_confidence()
+        assert zone1_confidence >= 0.60
+        assert zone2_confidence >= 0.70
+
+        # Verify each learner maintains its own PID baseline
+        assert zone1_learner._physics_baseline_kp == 100.0
+        assert zone2_learner._physics_baseline_kp == 120.0
+
+
 class TestValidationModeBlocking:
     """Test that auto-apply is blocked during validation mode."""
 
