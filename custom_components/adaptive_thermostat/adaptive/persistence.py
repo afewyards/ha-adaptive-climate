@@ -9,24 +9,113 @@ import os
 from ..const import MAX_CYCLE_HISTORY
 
 if TYPE_CHECKING:
+    from homeassistant.core import HomeAssistant
+    from homeassistant.helpers.storage import Store
     from .thermal_rates import ThermalRateLearner
     from .cycle_analysis import CycleMetrics
 
 _LOGGER = logging.getLogger(__name__)
 
+STORAGE_KEY = "adaptive_thermostat_learning"
+STORAGE_VERSION = 3
+
 
 class LearningDataStore:
     """Persist learning data across Home Assistant restarts."""
 
-    def __init__(self, storage_path: str):
+    def __init__(self, hass_or_path):
         """
         Initialize the LearningDataStore.
 
         Args:
-            storage_path: Path to storage directory (typically .storage/)
+            hass_or_path: Either a HomeAssistant instance (new API) or a storage path string (legacy API)
         """
-        self.storage_path = storage_path
-        self.storage_file = os.path.join(storage_path, "adaptive_thermostat_learning.json")
+        # Support both new API (HomeAssistant instance) and legacy API (storage path)
+        if isinstance(hass_or_path, str):
+            # Legacy API - file I/O based (for backwards compatibility with existing tests)
+            self.storage_path = hass_or_path
+            self.storage_file = os.path.join(hass_or_path, "adaptive_thermostat_learning.json")
+            self.hass = None
+            self._store = None
+            self._data = {"version": 3, "zones": {}}
+        else:
+            # New API - HA Store based
+            self.hass = hass_or_path
+            self.storage_path = None
+            self.storage_file = None
+            self._store = None
+            self._data = {"version": 3, "zones": {}}
+
+    async def async_load(self) -> Dict[str, Any]:
+        """
+        Load learning data from HA Store.
+
+        Returns:
+            Dictionary with learning data in v3 format (zone-keyed)
+        """
+        if self.hass is None:
+            raise RuntimeError("async_load requires HomeAssistant instance")
+
+        from homeassistant.helpers.storage import Store
+
+        if self._store is None:
+            self._store = Store(self.hass, STORAGE_VERSION, STORAGE_KEY)
+
+        data = await self._store.async_load()
+
+        if data is None:
+            # No existing data - return default structure
+            self._data = {"version": 3, "zones": {}}
+            return self._data
+
+        # Check if migration is needed (v2 -> v3)
+        if data.get("version") == 2:
+            _LOGGER.info("Migrating learning data from v2 to v3 (zone-keyed storage)")
+            data = self._migrate_v2_to_v3(data)
+
+        self._data = data
+        return data
+
+    def _migrate_v2_to_v3(self, v2_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Migrate v2 flat format to v3 zone-keyed format.
+
+        Args:
+            v2_data: Old format with thermal_learner, adaptive_learner, etc. at top level
+
+        Returns:
+            New format with zones dictionary containing default_zone
+        """
+        v3_data = {
+            "version": 3,
+            "zones": {
+                "default_zone": {}
+            }
+        }
+
+        # Move learner data into default_zone
+        for key in ["thermal_learner", "adaptive_learner", "valve_tracker", "ke_learner"]:
+            if key in v2_data:
+                v3_data["zones"]["default_zone"][key] = v2_data[key]
+
+        _LOGGER.info(
+            "Migrated v2 data to v3: moved %d learner sections to default_zone",
+            len(v3_data["zones"]["default_zone"])
+        )
+
+        return v3_data
+
+    def get_zone_data(self, zone_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get learning data for a specific zone.
+
+        Args:
+            zone_id: Zone identifier
+
+        Returns:
+            Zone data dictionary or None if zone doesn't exist
+        """
+        return self._data["zones"].get(zone_id)
 
     def save(
         self,

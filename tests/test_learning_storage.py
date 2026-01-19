@@ -3,8 +3,10 @@
 import pytest
 import json
 import os
+import sys
 import tempfile
 from datetime import datetime
+from unittest.mock import AsyncMock, MagicMock, patch, Mock
 
 from custom_components.adaptive_thermostat.adaptive.learning import (
     LearningDataStore,
@@ -278,3 +280,152 @@ def test_empty_learners(temp_storage_dir):
     restored_valve = store.restore_valve_tracker(data)
     assert restored_valve is not None
     assert restored_valve.get_cycle_count() == 0
+
+
+# New tests for Story 2.1: HA Store helper with zone-keyed storage
+
+
+@pytest.fixture
+def mock_hass():
+    """Create a mock Home Assistant instance."""
+    hass = MagicMock()
+    hass.config = MagicMock()
+    hass.config.path = MagicMock(return_value="/mock/config")
+    return hass
+
+
+@pytest.mark.asyncio
+async def test_learning_store_init(mock_hass):
+    """Test that LearningDataStore creates Store with correct key."""
+    store = LearningDataStore(mock_hass)
+
+    # Should not create Store instance until async_load is called
+    assert store.hass == mock_hass
+    assert store._store is None
+    assert store._data == {"version": 3, "zones": {}}
+
+
+@pytest.mark.asyncio
+async def test_learning_store_async_load_empty(mock_hass):
+    """Test async_load returns default structure when no file exists."""
+    # Create mock Store class
+    mock_store_class = Mock()
+    mock_store_instance = AsyncMock()
+    mock_store_instance.async_load = AsyncMock(return_value=None)
+    mock_store_class.return_value = mock_store_instance
+
+    # Mock the homeassistant.helpers.storage module
+    mock_storage_module = Mock()
+    mock_storage_module.Store = mock_store_class
+
+    with patch.dict('sys.modules', {'homeassistant.helpers.storage': mock_storage_module}):
+        store = LearningDataStore(mock_hass)
+        data = await store.async_load()
+
+        # Should create Store with correct parameters
+        mock_store_class.assert_called_once_with(mock_hass, 3, "adaptive_thermostat_learning")
+
+        # Should return default structure when no data
+        assert data == {"version": 3, "zones": {}}
+        assert store._data == {"version": 3, "zones": {}}
+
+
+@pytest.mark.asyncio
+async def test_learning_store_async_load_v2_migration(mock_hass):
+    """Test async_load migrates v2 format to v3 zone-keyed format."""
+    # Simulate old v2 format (flat structure, no zones)
+    v2_data = {
+        "version": 2,
+        "last_updated": "2026-01-19T10:00:00",
+        "thermal_learner": {
+            "cooling_rates": [0.5, 0.6],
+            "heating_rates": [2.0, 2.2],
+            "outlier_threshold": 1.5,
+        },
+        "adaptive_learner": {
+            "cycle_history": [
+                {"overshoot": 0.3, "undershoot": 0.2, "settling_time": 45.0, "oscillations": 1, "rise_time": 30.0}
+            ],
+            "last_adjustment_time": None,
+            "max_history": 50,
+            "heating_type": "radiator",
+            "consecutive_converged_cycles": 0,
+            "pid_converged_for_ke": False,
+        },
+        "valve_tracker": {
+            "cycle_count": 2,
+            "last_state": True,
+        },
+    }
+
+    # Create mock Store class
+    mock_store_class = Mock()
+    mock_store_instance = AsyncMock()
+    mock_store_instance.async_load = AsyncMock(return_value=v2_data)
+    mock_store_class.return_value = mock_store_instance
+
+    # Mock the homeassistant.helpers.storage module
+    mock_storage_module = Mock()
+    mock_storage_module.Store = mock_store_class
+
+    with patch.dict('sys.modules', {'homeassistant.helpers.storage': mock_storage_module}):
+        store = LearningDataStore(mock_hass)
+        data = await store.async_load()
+
+        # Should migrate to v3 format with zone-keyed storage
+        assert data["version"] == 3
+        assert "zones" in data
+        assert "default_zone" in data["zones"]
+
+        # Check that old data was migrated to default_zone
+        default_zone = data["zones"]["default_zone"]
+        assert "thermal_learner" in default_zone
+        assert default_zone["thermal_learner"]["cooling_rates"] == [0.5, 0.6]
+        assert "adaptive_learner" in default_zone
+        assert len(default_zone["adaptive_learner"]["cycle_history"]) == 1
+        assert "valve_tracker" in default_zone
+        assert default_zone["valve_tracker"]["cycle_count"] == 2
+
+
+@pytest.mark.asyncio
+async def test_learning_store_get_zone_data(mock_hass):
+    """Test get_zone_data returns correct zone dict or None."""
+    v3_data = {
+        "version": 3,
+        "zones": {
+            "living_room": {
+                "thermal_learner": {"cooling_rates": [0.5], "heating_rates": [2.0], "outlier_threshold": 2.0}
+            },
+            "bedroom": {
+                "thermal_learner": {"cooling_rates": [0.4], "heating_rates": [1.8], "outlier_threshold": 2.0}
+            },
+        },
+    }
+
+    # Create mock Store class
+    mock_store_class = Mock()
+    mock_store_instance = AsyncMock()
+    mock_store_instance.async_load = AsyncMock(return_value=v3_data)
+    mock_store_class.return_value = mock_store_instance
+
+    # Mock the homeassistant.helpers.storage module
+    mock_storage_module = Mock()
+    mock_storage_module.Store = mock_store_class
+
+    with patch.dict('sys.modules', {'homeassistant.helpers.storage': mock_storage_module}):
+        store = LearningDataStore(mock_hass)
+        await store.async_load()
+
+        # Test getting existing zones
+        living_room_data = store.get_zone_data("living_room")
+        assert living_room_data is not None
+        assert "thermal_learner" in living_room_data
+        assert living_room_data["thermal_learner"]["cooling_rates"] == [0.5]
+
+        bedroom_data = store.get_zone_data("bedroom")
+        assert bedroom_data is not None
+        assert bedroom_data["thermal_learner"]["heating_rates"] == [1.8]
+
+        # Test getting non-existent zone
+        missing_zone = store.get_zone_data("non_existent")
+        assert missing_zone is None
