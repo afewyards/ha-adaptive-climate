@@ -1419,3 +1419,61 @@ class TestCoefficientCalculation:
         coef = learner.calculate_coefficient("climate.living_room", "climate.kitchen")
 
         assert coef is None  # Need observations to calculate
+
+
+# ============================================================================
+# Graduated Confidence Function Tests
+# ============================================================================
+
+
+class TestGraduatedConfidence:
+    """Tests for the graduated_confidence scaling function."""
+
+    def test_graduated_confidence_below_threshold(self):
+        """Test confidence < 0.3 returns 0."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            graduated_confidence,
+        )
+
+        # Below threshold: should return 0 (no effect)
+        assert graduated_confidence(0.0) == 0.0
+        assert graduated_confidence(0.1) == 0.0
+        assert graduated_confidence(0.2) == 0.0
+        assert graduated_confidence(0.29) == 0.0
+
+    def test_graduated_confidence_above_max(self):
+        """Test confidence >= 0.5 returns 1.0."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            graduated_confidence,
+        )
+
+        # At or above max: should return 1.0 (full effect)
+        assert graduated_confidence(0.5) == 1.0
+        assert graduated_confidence(0.6) == 1.0
+        assert graduated_confidence(0.8) == 1.0
+        assert graduated_confidence(1.0) == 1.0
+
+    def test_graduated_confidence_linear_ramp(self):
+        """Test linear interpolation between 0.3 and 0.5."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            graduated_confidence,
+        )
+
+        # At threshold (0.3): should return 0.0
+        assert abs(graduated_confidence(0.3) - 0.0) < 0.001
+
+        # Midpoint (0.4): should return 0.5
+        # Linear formula: (0.4 - 0.3) / (0.5 - 0.3) = 0.1 / 0.2 = 0.5
+        assert abs(graduated_confidence(0.4) - 0.5) < 0.001
+
+        # At 0.35: should return 0.25
+        # (0.35 - 0.3) / (0.5 - 0.3) = 0.05 / 0.2 = 0.25
+        assert abs(graduated_confidence(0.35) - 0.25) < 0.001
+
+        # At 0.45: should return 0.75
+        # (0.45 - 0.3) / (0.5 - 0.3) = 0.15 / 0.2 = 0.75
+        assert abs(graduated_confidence(0.45) - 0.75) < 0.001
+
+        # Just below max (0.49): should be close to 1.0
+        # (0.49 - 0.3) / (0.5 - 0.3) = 0.19 / 0.2 = 0.95
+        assert abs(graduated_confidence(0.49) - 0.95) < 0.001

@@ -135,6 +135,45 @@ class ObservationContext:
     outdoor_temp_start: float                # Outdoor temp at start (°C)
 
 
+def graduated_confidence(confidence: float) -> float:
+    """Calculate graduated scaling factor based on confidence level.
+
+    Scales the effect of coupling compensation based on how confident we are
+    in the learned coefficient. Low confidence means no compensation applied.
+    High confidence means full compensation applied. In between, we ramp up linearly.
+
+    Args:
+        confidence: Confidence level (0-1) from learned coefficient.
+
+    Returns:
+        Scaling factor (0-1) where:
+        - 0.0 if confidence < COUPLING_CONFIDENCE_THRESHOLD (0.3)
+        - 1.0 if confidence >= COUPLING_CONFIDENCE_MAX (0.5)
+        - Linear interpolation between threshold and max
+
+    Examples:
+        >>> graduated_confidence(0.2)
+        0.0
+        >>> graduated_confidence(0.4)
+        0.5
+        >>> graduated_confidence(0.6)
+        1.0
+    """
+    # Below threshold: no effect
+    if confidence < COUPLING_CONFIDENCE_THRESHOLD:
+        return 0.0
+
+    # Above max: full effect
+    if confidence >= COUPLING_CONFIDENCE_MAX:
+        return 1.0
+
+    # Linear ramp between threshold and max
+    # Formula: (confidence - min) / (max - min)
+    return (confidence - COUPLING_CONFIDENCE_THRESHOLD) / (
+        COUPLING_CONFIDENCE_MAX - COUPLING_CONFIDENCE_THRESHOLD
+    )
+
+
 def should_record_observation(observation: CouplingObservation) -> bool:
     """Determine if an observation should be recorded for learning.
 
