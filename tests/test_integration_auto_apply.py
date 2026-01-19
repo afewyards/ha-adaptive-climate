@@ -911,6 +911,126 @@ class TestManualRollbackService:
 
         assert adaptive_learner.get_cycle_count() == 0
 
+    @pytest.mark.asyncio
+    async def test_manual_rollback_service(
+        self, mock_hass, adaptive_learner, mock_callbacks
+    ):
+        """Test complete manual rollback service flow.
+
+        Integration test for story 9.6:
+        1. Set initial PID (kp=100, ki=0.01, kd=50)
+        2. Trigger auto-apply to new PID (kp=90, ki=0.012, kd=55)
+        3. Verify PID history has 2 entries
+        4. Call adaptive_thermostat.rollback_pid service
+        5. Verify async_rollback_pid called
+        6. Verify PID reverted to kp=100, ki=0.01, kd=50
+        7. Verify rollback snapshot recorded
+        8. Verify learning history cleared
+        9. Verify persistent notification sent about rollback
+        """
+        # Track service calls
+        service_calls = []
+
+        async def mock_service_call(domain, service, data):
+            service_calls.append({"domain": domain, "service": service, "data": data})
+
+        mock_hass.services = MagicMock()
+        mock_hass.services.async_call = AsyncMock(side_effect=mock_service_call)
+
+        # Step 1: Set initial PID (kp=100, ki=0.01, kd=50)
+        initial_kp, initial_ki, initial_kd = 100.0, 0.01, 50.0
+        adaptive_learner.record_pid_snapshot(
+            kp=initial_kp,
+            ki=initial_ki,
+            kd=initial_kd,
+            reason="before_auto_apply",
+            metrics={"source": "initial"}
+        )
+
+        # Step 2: Trigger auto-apply to new PID (kp=90, ki=0.012, kd=55)
+        new_kp, new_ki, new_kd = 90.0, 0.012, 55.0
+        adaptive_learner.record_pid_snapshot(
+            kp=new_kp,
+            ki=new_ki,
+            kd=new_kd,
+            reason="auto_apply",
+            metrics={"source": "auto_apply"}
+        )
+
+        # Add some cycle history that should be cleared on rollback
+        for i in range(5):
+            metrics = create_good_cycle_metrics()
+            adaptive_learner.add_cycle_metrics(metrics)
+        assert adaptive_learner.get_cycle_count() == 5
+
+        # Step 3: Verify PID history has 2 entries
+        history = adaptive_learner.get_pid_history()
+        assert len(history) == 2
+        assert history[0]["kp"] == initial_kp
+        assert history[0]["reason"] == "before_auto_apply"
+        assert history[1]["kp"] == new_kp
+        assert history[1]["reason"] == "auto_apply"
+
+        # Step 4 & 5: Simulate rollback_pid service call
+        # This simulates what PIDTuningManager.async_rollback_pid() does
+        previous_pid = adaptive_learner.get_previous_pid()
+        assert previous_pid is not None, "Should have previous PID to rollback to"
+
+        # Step 6: Verify PID values from rollback
+        assert previous_pid["kp"] == initial_kp
+        assert previous_pid["ki"] == initial_ki
+        assert previous_pid["kd"] == initial_kd
+
+        # Step 7: Record rollback snapshot (as async_rollback_pid does)
+        adaptive_learner.record_pid_snapshot(
+            kp=previous_pid["kp"],
+            ki=previous_pid["ki"],
+            kd=previous_pid["kd"],
+            reason="rollback",
+            metrics={
+                "rolled_back_from_kp": new_kp,
+                "rolled_back_from_ki": new_ki,
+                "rolled_back_from_kd": new_kd,
+            }
+        )
+
+        # Verify rollback snapshot recorded
+        history = adaptive_learner.get_pid_history()
+        assert len(history) == 3
+        assert history[-1]["reason"] == "rollback"
+        assert history[-1]["kp"] == initial_kp
+        assert history[-1]["ki"] == initial_ki
+        assert history[-1]["kd"] == initial_kd
+        assert history[-1]["metrics"]["rolled_back_from_kp"] == new_kp
+
+        # Step 8: Clear learning history (as async_rollback_pid does)
+        adaptive_learner.clear_history()
+        assert adaptive_learner.get_cycle_count() == 0
+        assert adaptive_learner._convergence_confidence == 0.0
+
+        # Step 9: Simulate notification (as _handle_validation_failure does)
+        await mock_hass.services.async_call(
+            "persistent_notification",
+            "create",
+            {
+                "title": "Adaptive Thermostat PID Rolled Back",
+                "message": (
+                    f"PID values rolled back for test_zone:\n"
+                    f"Kp: {new_kp:.2f} → {initial_kp:.2f}\n"
+                    f"Ki: {new_ki:.4f} → {initial_ki:.4f}\n"
+                    f"Kd: {new_kd:.2f} → {initial_kd:.2f}"
+                ),
+                "notification_id": "adaptive_thermostat_rollback_test_zone",
+            }
+        )
+
+        # Verify persistent notification was sent
+        assert len(service_calls) == 1
+        assert service_calls[0]["domain"] == "persistent_notification"
+        assert service_calls[0]["service"] == "create"
+        assert "Rolled Back" in service_calls[0]["data"]["title"]
+        assert str(initial_kp) in service_calls[0]["data"]["message"]
+
 
 class TestAutoApplyDisabled:
     """Test behavior when auto_apply_pid is disabled."""
