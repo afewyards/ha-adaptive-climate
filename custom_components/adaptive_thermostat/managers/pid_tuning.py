@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, Optional
+import statistics
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from ..adaptive.physics import calculate_thermal_time_constant, calculate_initial_pid
 from .. import const
+from ..const import get_auto_apply_thresholds, VALIDATION_CYCLE_COUNT
 
 if TYPE_CHECKING:
     from ..climate import AdaptiveThermostat
@@ -300,6 +302,167 @@ class PIDTuningManager:
 
         await self._async_control_heating(calc_pid=True)
         await self._async_write_ha_state()
+
+    async def async_auto_apply_adaptive_pid(
+        self, outdoor_temp: Optional[float] = None
+    ) -> Dict[str, Any]:
+        """Automatically apply adaptive PID values with safety checks.
+
+        Unlike async_apply_adaptive_pid(), this method:
+        - Checks all safety limits (lifetime, seasonal, drift, cooldown)
+        - Uses heating-type-specific confidence thresholds
+        - Enters validation mode after applying
+        - Records PID snapshots for rollback capability
+
+        Args:
+            outdoor_temp: Current outdoor temperature for seasonal shift detection
+
+        Returns:
+            Dict with keys:
+                applied (bool): Whether PID was applied
+                reason (str): Why it was or wasn't applied
+                recommendation (dict or None): The PID values if applied
+                old_values (dict or None): Previous PID values if applied
+                new_values (dict or None): New PID values if applied
+        """
+        hass = self._get_hass()
+        coordinator = hass.data.get(DOMAIN, {}).get("coordinator")
+        if not coordinator:
+            return {
+                "applied": False,
+                "reason": "No coordinator available",
+                "recommendation": None,
+            }
+
+        # Find adaptive learner for this thermostat
+        all_zones = coordinator.get_all_zones()
+        adaptive_learner = None
+
+        for zone_id, zone_data in all_zones.items():
+            if zone_data.get("climate_entity_id") == self._thermostat.entity_id:
+                adaptive_learner = zone_data.get("adaptive_learner")
+                break
+
+        if not adaptive_learner:
+            return {
+                "applied": False,
+                "reason": "No adaptive learner (learning_enabled: false?)",
+                "recommendation": None,
+            }
+
+        # Get heating type and thresholds
+        heating_type = self._get_heating_type()
+        thresholds = get_auto_apply_thresholds(heating_type)
+
+        # Calculate baseline overshoot from recent cycles
+        cycle_history = adaptive_learner.cycle_history
+        recent_cycles = cycle_history[-6:] if len(cycle_history) >= 6 else cycle_history
+        overshoot_values = [
+            c.overshoot for c in recent_cycles
+            if c.overshoot is not None
+        ]
+        baseline_overshoot = (
+            statistics.mean(overshoot_values) if overshoot_values else 0.0
+        )
+
+        # Calculate recommendation with auto-apply safety checks
+        recommendation = adaptive_learner.calculate_pid_adjustment(
+            current_kp=self._get_kp(),
+            current_ki=self._get_ki(),
+            current_kd=self._get_kd(),
+            pwm_seconds=self._thermostat._pwm,
+            check_auto_apply=True,
+            outdoor_temp=outdoor_temp,
+        )
+
+        if recommendation is None:
+            return {
+                "applied": False,
+                "reason": "No recommendation (insufficient data, limits reached, or in validation)",
+                "recommendation": None,
+            }
+
+        # Store old values
+        old_kp = self._get_kp()
+        old_ki = self._get_ki()
+        old_kd = self._get_kd()
+
+        # Record PID snapshot before applying
+        adaptive_learner.record_pid_snapshot(
+            kp=old_kp,
+            ki=old_ki,
+            kd=old_kd,
+            reason="before_auto_apply",
+            metrics={
+                "baseline_overshoot": baseline_overshoot,
+            },
+        )
+
+        # Apply the recommended values
+        self._set_kp(recommendation["kp"])
+        self._set_ki(recommendation["ki"])
+        self._set_kd(recommendation["kd"])
+
+        # Clear integral to avoid wind-up from old tuning
+        self._pid_controller.integral = 0.0
+
+        self._pid_controller.set_pid_param(
+            self._get_kp(),
+            self._get_ki(),
+            self._get_kd(),
+            self._get_ke(),
+        )
+
+        # Record PID snapshot after applying
+        adaptive_learner.record_pid_snapshot(
+            kp=recommendation["kp"],
+            ki=recommendation["ki"],
+            kd=recommendation["kd"],
+            reason="auto_apply",
+            metrics={
+                "baseline_overshoot": baseline_overshoot,
+                "confidence": getattr(adaptive_learner, '_convergence_confidence', 0.0),
+            },
+        )
+
+        # Clear learning history
+        adaptive_learner.clear_history()
+
+        # Increment auto-apply count
+        adaptive_learner._auto_apply_count += 1
+
+        # Start validation mode
+        adaptive_learner.start_validation_mode(baseline_overshoot)
+
+        _LOGGER.warning(
+            "%s: Auto-applied adaptive PID (apply #%d): "
+            "Kp=%.4f→%.4f, Ki=%.5f→%.5f, Kd=%.3f→%.3f. "
+            "Entering validation mode for %d cycles.",
+            self._thermostat.entity_id,
+            adaptive_learner._auto_apply_count,
+            old_kp,
+            recommendation["kp"],
+            old_ki,
+            recommendation["ki"],
+            old_kd,
+            recommendation["kd"],
+            VALIDATION_CYCLE_COUNT,
+        )
+
+        await self._async_control_heating(calc_pid=True)
+        await self._async_write_ha_state()
+
+        return {
+            "applied": True,
+            "reason": "Auto-applied successfully",
+            "recommendation": recommendation,
+            "old_values": {"kp": old_kp, "ki": old_ki, "kd": old_kd},
+            "new_values": {
+                "kp": recommendation["kp"],
+                "ki": recommendation["ki"],
+                "kd": recommendation["kd"],
+            },
+        }
 
     async def async_apply_adaptive_ke(self, **kwargs) -> None:
         """Apply adaptive Ke value based on learned outdoor temperature correlations.
