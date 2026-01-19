@@ -513,6 +513,33 @@ class AdaptiveLearner:
             reason,
         )
 
+    def get_previous_pid(self) -> Optional[Dict[str, float]]:
+        """Get the previous PID configuration for rollback.
+
+        Returns the second-to-last PID configuration from history,
+        which represents the configuration before the most recent change.
+        Used for rollback when auto-applied changes cause degradation.
+
+        Returns:
+            Dict with kp, ki, kd, timestamp, reason if history has >= 2 entries,
+            None otherwise.
+        """
+        if len(self._pid_history) < 2:
+            _LOGGER.debug(
+                "Cannot get previous PID: insufficient history (%d entries)",
+                len(self._pid_history),
+            )
+            return None
+
+        prev = self._pid_history[-2]
+        return {
+            "kp": prev["kp"],
+            "ki": prev["ki"],
+            "kd": prev["kd"],
+            "timestamp": prev["timestamp"],
+            "reason": prev["reason"],
+        }
+
     def update_convergence_tracking(self, metrics: CycleMetrics) -> bool:
         """Update convergence tracking based on latest cycle metrics.
 
