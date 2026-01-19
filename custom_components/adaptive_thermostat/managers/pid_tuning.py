@@ -51,6 +51,7 @@ class PIDTuningManager:
         get_heating_type: callable,
         get_hass: callable,
         get_zone_id: callable,
+        get_floor_construction: callable,
         async_control_heating: callable,
         async_write_ha_state: callable,
     ):
@@ -74,6 +75,7 @@ class PIDTuningManager:
             get_heating_type: Callback to get heating type
             get_hass: Callback to get Home Assistant instance
             get_zone_id: Callback to get zone ID
+            get_floor_construction: Callback to get floor construction config
             async_control_heating: Async callback to trigger heating control
             async_write_ha_state: Async callback to write HA state
         """
@@ -92,6 +94,7 @@ class PIDTuningManager:
         self._get_heating_type = get_heating_type
         self._get_hass = get_hass
         self._get_zone_id = get_zone_id
+        self._get_floor_construction = get_floor_construction
 
         # Setters
         self._set_kp = set_kp
@@ -144,7 +147,7 @@ class PIDTuningManager:
         """Reset PID values to physics-based defaults.
 
         Calculates initial PID parameters based on room thermal properties
-        using the Ziegler-Nichols method.
+        using the Ziegler-Nichols method. Includes floor construction if configured.
         """
         area_m2 = self._get_area_m2()
         if not area_m2:
@@ -159,14 +162,18 @@ class PIDTuningManager:
         window_area_m2 = self._get_window_area_m2()
         window_rating = self._get_window_rating()
         heating_type = self._get_heating_type()
+        floor_construction = self._get_floor_construction()
 
         tau = calculate_thermal_time_constant(
             volume_m3=volume_m3,
             window_area_m2=window_area_m2,
             floor_area_m2=area_m2,
             window_rating=window_rating,
+            floor_construction=floor_construction,
+            area_m2=area_m2,
+            heating_type=heating_type,
         )
-        kp, ki, kd = calculate_initial_pid(tau, heating_type)
+        kp, ki, kd = calculate_initial_pid(tau, heating_type, area_m2=area_m2)
 
         self._set_kp(kp)
         self._set_ki(ki)
@@ -183,12 +190,13 @@ class PIDTuningManager:
         )
 
         _LOGGER.info(
-            "%s: Reset PID to physics defaults (tau=%.2f, type=%s, window=%s): "
+            "%s: Reset PID to physics defaults (tau=%.2f, type=%s, window=%s, floor=%s): "
             "Kp=%.4f, Ki=%.5f, Kd=%.3f",
             self._thermostat.entity_id,
             tau,
             heating_type,
             window_rating,
+            "configured" if floor_construction else "none",
             kp,
             ki,
             kd,

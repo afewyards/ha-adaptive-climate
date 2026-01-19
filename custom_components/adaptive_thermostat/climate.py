@@ -813,6 +813,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
             get_heating_type=lambda: self._heating_type,
             get_hass=lambda: self.hass,
             get_zone_id=lambda: self._zone_id,
+            get_floor_construction=lambda: self._floor_construction,
             async_control_heating=self._async_control_heating_internal,
             async_write_ha_state=self._async_write_ha_state_internal,
         )
