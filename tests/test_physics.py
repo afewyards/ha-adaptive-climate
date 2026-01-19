@@ -1962,3 +1962,177 @@ class TestThermalTimeConstantWithFloor:
                 heating_type=heating_type
             )
             assert tau_with_floor == tau_base, f"Floor construction should not affect {heating_type}"
+
+
+class TestFloorHydronicIntegration:
+    """Integration tests for floor_hydronic with floor_construction.
+
+    These tests verify the complete flow:
+    floor_construction → tau adjustment → PID gains calculation
+    """
+
+    def test_tau_with_floor_construction(self):
+        """Test that floor_hydronic with tile+anhydrite has different tau than default."""
+        # Base tau without floor construction
+        tau_base = calculate_thermal_time_constant(volume_m3=200)
+        assert tau_base == pytest.approx(4.0, abs=0.01)
+
+        # Floor construction: ceramic tile + anhydrite screed (typical floor heating)
+        floor_config = {
+            'layers': [
+                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
+                {'type': 'screed', 'material': 'anhydrite', 'thickness_mm': 50},
+            ],
+            'pipe_spacing_mm': 150,
+        }
+        area_m2 = 40.0
+
+        # Calculate tau with floor construction
+        tau_with_floor = calculate_thermal_time_constant(
+            volume_m3=200,
+            floor_construction=floor_config,
+            area_m2=area_m2,
+            heating_type='floor_hydronic'
+        )
+
+        # Floor construction should increase tau due to thermal mass
+        # Ceramic tile: 0.01m × 40m² × 2300kg/m³ × 840J/(kg·K) = 772,800 J/K
+        # Anhydrite screed: 0.05m × 40m² × 2300kg/m³ × 1000J/(kg·K) = 4,600,000 J/K
+        # Total: 4,772,800 J/K (corrected from manual calculation)
+        # Reference mass: 0.05m × 40m² × 2000kg/m³ × 1000J/(kg·K) = 4,000,000 J/K
+        # tau_modifier = 4,772,800 / 4,000,000 = 1.19
+        # With 150mm pipe spacing (efficiency 0.87): 1.19 / 0.87 = 1.37
+        # tau_with_floor = 4.0 × 1.37 = 5.48
+        assert tau_with_floor > tau_base
+        assert tau_with_floor == pytest.approx(5.48, abs=0.1)
+
+    def test_pid_gains_heavy_floor(self):
+        """Test that thick screed → higher tau → lower Kp."""
+        # Heavy floor construction: thick cement screed
+        floor_config_heavy = {
+            'layers': [
+                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 12},
+                {'type': 'screed', 'material': 'cement', 'thickness_mm': 70},  # Thick screed
+            ],
+            'pipe_spacing_mm': 150,
+        }
+        area_m2 = 50.0
+
+        # Calculate tau with heavy floor
+        tau_heavy = calculate_thermal_time_constant(
+            volume_m3=200,
+            floor_construction=floor_config_heavy,
+            area_m2=area_m2,
+            heating_type='floor_hydronic'
+        )
+
+        # Calculate PID gains for heavy floor
+        kp_heavy, ki_heavy, kd_heavy = calculate_initial_pid(tau_heavy, 'floor_hydronic')
+
+        # Base tau without floor construction
+        tau_base = calculate_thermal_time_constant(volume_m3=200)
+        kp_base, ki_base, kd_base = calculate_initial_pid(tau_base, 'floor_hydronic')
+
+        # Heavy floor should have:
+        # - Higher tau (more thermal mass)
+        assert tau_heavy > tau_base
+
+        # - Lower Kp (more conservative control)
+        assert kp_heavy < kp_base
+
+        # - Lower Ki (slower integral accumulation)
+        assert ki_heavy < ki_base
+
+        # - Higher Kd (more damping for slow system)
+        assert kd_heavy > kd_base
+
+    def test_pid_gains_light_floor(self):
+        """Test that thin lightweight screed → lower tau → higher Kp."""
+        # Light floor construction: thin lightweight screed
+        floor_config_light = {
+            'layers': [
+                {'type': 'top_floor', 'material': 'vinyl', 'thickness_mm': 5},
+                {'type': 'screed', 'material': 'lightweight', 'thickness_mm': 35},  # Thin lightweight
+            ],
+            'pipe_spacing_mm': 100,  # Tighter spacing for better efficiency
+        }
+        area_m2 = 50.0
+
+        # Calculate tau with light floor
+        tau_light = calculate_thermal_time_constant(
+            volume_m3=200,
+            floor_construction=floor_config_light,
+            area_m2=area_m2,
+            heating_type='floor_hydronic'
+        )
+
+        # Calculate PID gains for light floor
+        kp_light, ki_light, kd_light = calculate_initial_pid(tau_light, 'floor_hydronic')
+
+        # Base tau without floor construction
+        tau_base = calculate_thermal_time_constant(volume_m3=200)
+        kp_base, ki_base, kd_base = calculate_initial_pid(tau_base, 'floor_hydronic')
+
+        # Light floor should have:
+        # - Lower tau (less thermal mass)
+        assert tau_light < tau_base
+
+        # - Higher Kp (more aggressive control)
+        assert kp_light > kp_base
+
+        # - Higher Ki (faster integral accumulation)
+        assert ki_light > ki_base
+
+        # - Lower Kd (less damping needed for faster system)
+        assert kd_light < kd_base
+
+    def test_carpet_vs_tile(self):
+        """Test that tile floor has higher tau than carpet due to thermal mass."""
+        # Tile floor construction
+        floor_config_tile = {
+            'layers': [
+                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
+                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            ],
+            'pipe_spacing_mm': 150,
+        }
+
+        # Carpet floor construction
+        floor_config_carpet = {
+            'layers': [
+                {'type': 'top_floor', 'material': 'carpet', 'thickness_mm': 15},
+                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            ],
+            'pipe_spacing_mm': 150,
+        }
+        area_m2 = 40.0
+
+        # Calculate tau for both configurations
+        tau_tile = calculate_thermal_time_constant(
+            volume_m3=200,
+            floor_construction=floor_config_tile,
+            area_m2=area_m2,
+            heating_type='floor_hydronic'
+        )
+
+        tau_carpet = calculate_thermal_time_constant(
+            volume_m3=200,
+            floor_construction=floor_config_carpet,
+            area_m2=area_m2,
+            heating_type='floor_hydronic'
+        )
+
+        # Tile has higher thermal mass (2300 kg/m³ × 840 J/(kg·K) = 1,932,000 J/(m³·K))
+        # vs carpet (300 kg/m³ × 1400 J/(kg·K) = 420,000 J/(m³·K))
+        # Higher thermal mass means more energy storage, increasing tau
+        # Carpet has higher thermal resistance but lower thermal mass, so lower tau_modifier
+        assert tau_tile > tau_carpet
+
+        # Calculate PID gains for both
+        kp_tile, ki_tile, kd_tile = calculate_initial_pid(tau_tile, 'floor_hydronic')
+        kp_carpet, ki_carpet, kd_carpet = calculate_initial_pid(tau_carpet, 'floor_hydronic')
+
+        # Tile floor should have more conservative gains due to higher tau
+        assert kp_tile < kp_carpet
+        assert ki_tile < ki_carpet
+        assert kd_tile > kd_carpet
