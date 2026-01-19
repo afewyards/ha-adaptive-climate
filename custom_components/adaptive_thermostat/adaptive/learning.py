@@ -540,6 +540,20 @@ class AdaptiveLearner:
             "reason": prev["reason"],
         }
 
+    def get_pid_history(self) -> List[Dict[str, Any]]:
+        """Get full PID history for debugging.
+
+        Returns a copy of the PID history list to prevent external mutation.
+
+        Returns:
+            List of PID snapshot dictionaries, each containing:
+            - timestamp: When the snapshot was recorded
+            - kp, ki, kd: PID gain values
+            - reason: Why this snapshot was recorded
+            - metrics: Optional performance metrics at time of snapshot
+        """
+        return self._pid_history.copy()
+
     def update_convergence_tracking(self, metrics: CycleMetrics) -> bool:
         """Update convergence tracking based on latest cycle metrics.
 
