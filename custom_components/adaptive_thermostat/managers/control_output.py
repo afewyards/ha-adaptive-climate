@@ -233,11 +233,6 @@ class ControlOutputManager:
         hvac_mode: HVACMode,
         *,
         get_cycle_start_time: Callable[[], float],
-        zone_linker: Any,
-        unique_id: str,
-        linked_zones: list[str],
-        link_delay_minutes: float,
-        is_heating: bool,
         set_is_heating: Callable[[bool], None],
         set_last_heat_cycle_time: Callable[[float], None],
         time_changed: float,
@@ -255,11 +250,6 @@ class ControlOutputManager:
             control_output: Current PID control output
             hvac_mode: Current HVAC mode
             get_cycle_start_time: Callable that returns cycle start time
-            zone_linker: Zone linker instance (may be None)
-            unique_id: Thermostat unique ID
-            linked_zones: List of linked zone IDs
-            link_delay_minutes: Link delay in minutes
-            is_heating: Current heating state
             set_is_heating: Callback to set heating state
             set_last_heat_cycle_time: Callback to set last heat cycle time
             time_changed: Last time state changed
@@ -288,11 +278,6 @@ class ControlOutputManager:
             control_output=control_output,
             hvac_mode=hvac_mode,
             get_cycle_start_time=get_cycle_start_time,
-            zone_linker=zone_linker,
-            unique_id=unique_id,
-            linked_zones=linked_zones,
-            link_delay_minutes=link_delay_minutes,
-            is_heating=is_heating,
             set_is_heating=set_is_heating,
             set_last_heat_cycle_time=set_last_heat_cycle_time,
             time_changed=time_changed,
@@ -309,11 +294,6 @@ class ControlOutputManager:
         hvac_mode: HVACMode,
         *,
         get_cycle_start_time: Callable[[], float],
-        zone_linker: Any,
-        unique_id: str,
-        linked_zones: list[str],
-        link_delay_minutes: float,
-        is_heating: bool,
         set_is_heating: Callable[[bool], None],
         set_last_heat_cycle_time: Callable[[float], None],
         time_changed: float,
@@ -333,11 +313,6 @@ class ControlOutputManager:
             control_output: Current PID control output
             hvac_mode: Current HVAC mode
             get_cycle_start_time: Callable that returns cycle start time
-            zone_linker: Zone linker instance (may be None)
-            unique_id: Thermostat unique ID
-            linked_zones: List of linked zone IDs
-            link_delay_minutes: Link delay in minutes
-            is_heating: Current heating state
             set_is_heating: Callback to set heating state
             set_last_heat_cycle_time: Callback to set last heat cycle time
             time_changed: Last time state changed
@@ -366,11 +341,6 @@ class ControlOutputManager:
             control_output=control_output,
             hvac_mode=hvac_mode,
             get_cycle_start_time=get_cycle_start_time,
-            zone_linker=zone_linker,
-            unique_id=unique_id,
-            linked_zones=linked_zones,
-            link_delay_minutes=link_delay_minutes,
-            is_heating=is_heating,
             set_is_heating=set_is_heating,
             set_last_heat_cycle_time=set_last_heat_cycle_time,
             time_changed=time_changed,

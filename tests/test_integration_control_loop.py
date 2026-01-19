@@ -112,12 +112,6 @@ def central_controller(mock_hass, coord):
 
 
 @pytest.fixture
-def zone_linker(mock_hass, coord):
-    """Create a zone linker instance."""
-    return coordinator.ZoneLinker(mock_hass, coord)
-
-
-@pytest.fixture
 def pid():
     """Create a PID controller instance with tuning suitable for tests.
 
@@ -313,71 +307,6 @@ async def test_multi_zone_demand_aggregation(
     # Heater should be OFF now
     turn_off_calls = [c for c in mock_hass._service_call_history if c["service"] == "turn_off"]
     assert len(turn_off_calls) > 0
-
-
-# =============================================================================
-# Test: Zone Linking Delays Heating
-# =============================================================================
-
-
-@pytest.mark.asyncio
-async def test_zone_linking_delays_heating(mock_hass, coord, zone_linker):
-    """
-    Integration test: Zone linking delays heating in thermally connected zones.
-
-    Scenario: Kitchen heats, adjacent living room heating is delayed.
-    """
-    coord.register_zone("kitchen", {"zone_name": "Kitchen"})
-    coord.register_zone("living_room", {"zone_name": "Living Room"})
-
-    # Configure linking: kitchen heats -> living_room delayed
-    zone_linker.configure_linked_zones("kitchen", ["living_room"])
-
-    # Kitchen starts heating
-    await zone_linker.on_zone_heating_started("kitchen", delay_minutes=20)
-
-    # Living room should be delayed
-    assert zone_linker.is_zone_delayed("living_room") is True
-
-    # Kitchen should NOT be delayed
-    assert zone_linker.is_zone_delayed("kitchen") is False
-
-    # Check remaining time
-    remaining = zone_linker.get_delay_remaining_minutes("living_room")
-    assert remaining is not None
-    assert remaining > 19  # Should be close to 20 minutes
-
-
-@pytest.mark.asyncio
-async def test_zone_linking_bidirectional(mock_hass, coord, zone_linker):
-    """
-    Integration test: Bidirectional zone linking works correctly.
-
-    Both zones are thermally connected - when either heats, the other is delayed.
-    """
-    coord.register_zone("zone_a", {"zone_name": "Zone A"})
-    coord.register_zone("zone_b", {"zone_name": "Zone B"})
-
-    # Configure bidirectional linking
-    zone_linker.configure_linked_zones("zone_a", ["zone_b"])
-    zone_linker.configure_linked_zones("zone_b", ["zone_a"])
-
-    # Zone A starts heating
-    await zone_linker.on_zone_heating_started("zone_a", delay_minutes=15)
-
-    # Zone B should be delayed
-    assert zone_linker.is_zone_delayed("zone_b") is True
-    assert zone_linker.is_zone_delayed("zone_a") is False
-
-    # Clear delay and test reverse
-    zone_linker.clear_delay("zone_b")
-
-    # Zone B starts heating
-    await zone_linker.on_zone_heating_started("zone_b", delay_minutes=15)
-
-    # Zone A should now be delayed
-    assert zone_linker.is_zone_delayed("zone_a") is True
-    assert zone_linker.is_zone_delayed("zone_b") is False
 
 
 # =============================================================================

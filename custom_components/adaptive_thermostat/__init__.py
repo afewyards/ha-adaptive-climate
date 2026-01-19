@@ -353,7 +353,6 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         AdaptiveThermostatCoordinator,
         CentralController,
         ModeSync,
-        ZoneLinker,
     )
     from .adaptive.vacation import VacationMode
 
@@ -449,11 +448,6 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         mode_sync = ModeSync(hass=hass, coordinator=coordinator)
         hass.data[DOMAIN]["mode_sync"] = mode_sync
         _LOGGER.info("Mode synchronization enabled")
-
-    # Zone linking for thermally connected zones
-    zone_linker = ZoneLinker(hass=hass, coordinator=coordinator)
-    hass.data[DOMAIN]["zone_linker"] = zone_linker
-    _LOGGER.debug("Zone linker initialized")
 
     # Learning configuration
     learning_window_days = domain_config.get(
@@ -627,11 +621,6 @@ async def async_unload(hass: HomeAssistant) -> bool:
     mode_sync = hass.data[DOMAIN].get("mode_sync")
     if mode_sync is not None:
         _LOGGER.debug("Cleaned up mode sync")
-
-    # Clean up zone linker if it exists
-    zone_linker = hass.data[DOMAIN].get("zone_linker")
-    if zone_linker is not None:
-        _LOGGER.debug("Cleaned up zone linker")
 
     # Clean up vacation mode if it exists
     vacation_mode = hass.data[DOMAIN].get("vacation_mode")

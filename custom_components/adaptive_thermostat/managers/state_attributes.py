@@ -125,17 +125,8 @@ def _add_learning_grace_attributes(
 def _add_zone_linking_attributes(
     thermostat: SmartThermostat, attrs: dict[str, Any]
 ) -> None:
-    """Add zone linking status attributes."""
-    if thermostat._zone_linker:
-        is_delayed = thermostat._zone_linker.is_zone_delayed(thermostat._unique_id)
-        attrs["zone_link_delayed"] = is_delayed
-        if is_delayed:
-            remaining = thermostat._zone_linker.get_delay_remaining_minutes(
-                thermostat._unique_id
-            )
-            attrs["zone_link_delay_remaining"] = round(remaining, 1) if remaining else 0
-        if thermostat._linked_zones:
-            attrs["linked_zones"] = thermostat._linked_zones
+    """Add zone linking status attributes (deprecated - removed in thermal coupling migration)."""
+    pass
 
 
 def _add_heater_failure_attributes(

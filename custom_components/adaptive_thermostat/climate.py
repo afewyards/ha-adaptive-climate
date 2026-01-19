@@ -580,12 +580,6 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                         min_effective_elevation=self._night_setback_config['min_effective_elevation'],
                     )
 
-        # Zone linking for thermally connected zones
-        self._linked_zones = kwargs.get('linked_zones', [])
-        self._link_delay_minutes = kwargs.get('link_delay_minutes', const.DEFAULT_LINK_DELAY_MINUTES)
-        self._zone_linker = None  # Will be set in async_added_to_hass
-        self._is_heating = False  # Track heating state for zone linking
-
         # Contact sensors (window/door open detection)
         self._contact_sensor_handler = None
         contact_sensors = kwargs.get('contact_sensors')
@@ -765,17 +759,6 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
             "%s: Temperature manager initialized",
             self.entity_id
         )
-
-        # Configure zone linking if linked zones are defined
-        if self._linked_zones:
-            zone_linker = self.hass.data.get(DOMAIN, {}).get("zone_linker")
-            if zone_linker:
-                self._zone_linker = zone_linker
-                zone_linker.configure_linked_zones(self._unique_id, self._linked_zones)
-                _LOGGER.info(
-                    "%s: Zone linking configured with %s (delay=%d min)",
-                    self.entity_id, self._linked_zones, self._link_delay_minutes
-                )
 
         # Initialize sun position calculator for dynamic solar recovery
         if self._solar_recovery:
@@ -2152,11 +2135,6 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         await self._heater_controller.async_turn_on(
             hvac_mode=self.hvac_mode,
             get_cycle_start_time=self._get_cycle_start_time,
-            zone_linker=self._zone_linker,
-            unique_id=self._unique_id,
-            linked_zones=self._linked_zones,
-            link_delay_minutes=self._link_delay_minutes,
-            is_heating=self._is_heating,
             set_is_heating=self._set_is_heating,
             set_last_heat_cycle_time=self._set_last_heat_cycle_time,
         )
@@ -2226,11 +2204,6 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
             control_output=self._control_output,
             hvac_mode=self.hvac_mode,
             get_cycle_start_time=self._get_cycle_start_time,
-            zone_linker=self._zone_linker,
-            unique_id=self._unique_id,
-            linked_zones=self._linked_zones,
-            link_delay_minutes=self._link_delay_minutes,
-            is_heating=self._is_heating,
             set_is_heating=self._set_is_heating,
             set_last_heat_cycle_time=self._set_last_heat_cycle_time,
             time_changed=self._time_changed,
@@ -2262,11 +2235,6 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
             control_output=self._control_output,
             hvac_mode=self.hvac_mode,
             get_cycle_start_time=self._get_cycle_start_time,
-            zone_linker=self._zone_linker,
-            unique_id=self._unique_id,
-            linked_zones=self._linked_zones,
-            link_delay_minutes=self._link_delay_minutes,
-            is_heating=self._is_heating,
             set_is_heating=self._set_is_heating,
             set_last_heat_cycle_time=self._set_last_heat_cycle_time,
             time_changed=self._time_changed,

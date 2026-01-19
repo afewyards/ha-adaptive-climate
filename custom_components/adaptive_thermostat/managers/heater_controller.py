@@ -383,11 +383,6 @@ class HeaterController:
         self,
         hvac_mode: HVACMode,
         get_cycle_start_time: Callable[[], float],
-        zone_linker: Any,
-        unique_id: str,
-        linked_zones: List[str],
-        link_delay_minutes: float,
-        is_heating: bool,
         set_is_heating: Callable[[bool], None],
         set_last_heat_cycle_time: Callable[[float], None],
     ) -> None:
@@ -396,25 +391,11 @@ class HeaterController:
         Args:
             hvac_mode: Current HVAC mode
             get_cycle_start_time: Callable that returns cycle start time
-            zone_linker: Zone linker instance (may be None)
-            unique_id: Thermostat unique ID
-            linked_zones: List of linked zone IDs
-            link_delay_minutes: Link delay in minutes
-            is_heating: Current heating state
             set_is_heating: Callback to set heating state
             set_last_heat_cycle_time: Callback to set last heat cycle time
         """
         entities = self.get_entities(hvac_mode)
         thermostat_entity_id = self._thermostat.entity_id
-
-        # Check if zone is delayed due to linked zone heating
-        if zone_linker and zone_linker.is_zone_delayed(unique_id):
-            remaining = zone_linker.get_delay_remaining_minutes(unique_id)
-            _LOGGER.info(
-                "%s: Zone linking delay active - heating delayed for %.1f more minutes",
-                thermostat_entity_id, remaining or 0
-            )
-            return
 
         is_device_active = self.is_active(hvac_mode)
 
@@ -443,12 +424,7 @@ class HeaterController:
             else:
                 self._last_heater_state = True
 
-            # Notify zone linker that this zone started heating (for linked zones)
-            if zone_linker and linked_zones and not is_heating:
-                set_is_heating(True)
-                await zone_linker.on_zone_heating_started(
-                    unique_id, link_delay_minutes
-                )
+            set_is_heating(True)
         else:
             _LOGGER.info(
                 "%s: Reject request turning ON %s: Cycle is too short",
@@ -602,11 +578,6 @@ class HeaterController:
         control_output: float,
         hvac_mode: HVACMode,
         get_cycle_start_time: Callable[[], float],
-        zone_linker: Any,
-        unique_id: str,
-        linked_zones: List[str],
-        link_delay_minutes: float,
-        is_heating: bool,
         set_is_heating: Callable[[bool], None],
         set_last_heat_cycle_time: Callable[[float], None],
         time_changed: float,
@@ -622,11 +593,6 @@ class HeaterController:
             control_output: Current PID control output
             hvac_mode: Current HVAC mode
             get_cycle_start_time: Callable that returns cycle start time
-            zone_linker: Zone linker instance (may be None)
-            unique_id: Thermostat unique ID
-            linked_zones: List of linked zone IDs
-            link_delay_minutes: Link delay in minutes
-            is_heating: Current heating state
             set_is_heating: Callback to set heating state
             set_last_heat_cycle_time: Callback to set last heat cycle time
             time_changed: Last time state changed
@@ -652,11 +618,6 @@ class HeaterController:
                 await self.async_turn_on(
                     hvac_mode=hvac_mode,
                     get_cycle_start_time=get_cycle_start_time,
-                    zone_linker=zone_linker,
-                    unique_id=unique_id,
-                    linked_zones=linked_zones,
-                    link_delay_minutes=link_delay_minutes,
-                    is_heating=is_heating,
                     set_is_heating=set_is_heating,
                     set_last_heat_cycle_time=set_last_heat_cycle_time,
                 )
@@ -665,11 +626,6 @@ class HeaterController:
                     control_output=control_output,
                     hvac_mode=hvac_mode,
                     get_cycle_start_time=get_cycle_start_time,
-                    zone_linker=zone_linker,
-                    unique_id=unique_id,
-                    linked_zones=linked_zones,
-                    link_delay_minutes=link_delay_minutes,
-                    is_heating=is_heating,
                     set_is_heating=set_is_heating,
                     set_last_heat_cycle_time=set_last_heat_cycle_time,
                     time_changed=time_changed,
@@ -701,11 +657,6 @@ class HeaterController:
         control_output: float,
         hvac_mode: HVACMode,
         get_cycle_start_time: Callable[[], float],
-        zone_linker: Any,
-        unique_id: str,
-        linked_zones: List[str],
-        link_delay_minutes: float,
-        is_heating: bool,
         set_is_heating: Callable[[bool], None],
         set_last_heat_cycle_time: Callable[[float], None],
         time_changed: float,
@@ -721,11 +672,6 @@ class HeaterController:
             control_output: Current PID control output
             hvac_mode: Current HVAC mode
             get_cycle_start_time: Callable that returns cycle start time
-            zone_linker: Zone linker instance (may be None)
-            unique_id: Thermostat unique ID
-            linked_zones: List of linked zone IDs
-            link_delay_minutes: Link delay in minutes
-            is_heating: Current heating state
             set_is_heating: Callback to set heating state
             set_last_heat_cycle_time: Callback to set last heat cycle time
             time_changed: Last time state changed
@@ -779,11 +725,6 @@ class HeaterController:
                 await self.async_turn_on(
                     hvac_mode=hvac_mode,
                     get_cycle_start_time=get_cycle_start_time,
-                    zone_linker=zone_linker,
-                    unique_id=unique_id,
-                    linked_zones=linked_zones,
-                    link_delay_minutes=link_delay_minutes,
-                    is_heating=is_heating,
                     set_is_heating=set_is_heating,
                     set_last_heat_cycle_time=set_last_heat_cycle_time,
                 )
@@ -797,11 +738,6 @@ class HeaterController:
                 await self.async_turn_on(
                     hvac_mode=hvac_mode,
                     get_cycle_start_time=get_cycle_start_time,
-                    zone_linker=zone_linker,
-                    unique_id=unique_id,
-                    linked_zones=linked_zones,
-                    link_delay_minutes=link_delay_minutes,
-                    is_heating=is_heating,
                     set_is_heating=set_is_heating,
                     set_last_heat_cycle_time=set_last_heat_cycle_time,
                 )
