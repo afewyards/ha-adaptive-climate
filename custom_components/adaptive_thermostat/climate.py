@@ -12,10 +12,9 @@ from typing import Optional
 import voluptuous as vol
 
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import condition, entity_platform, discovery
+from homeassistant.helpers import entity_platform, discovery
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 from homeassistant.const import (
-    ATTR_ENTITY_ID,
     ATTR_TEMPERATURE,
     CONF_NAME,
     CONF_UNIQUE_ID,
@@ -23,22 +22,17 @@ from homeassistant.const import (
     PRECISION_HALVES,
     PRECISION_TENTHS,
     PRECISION_WHOLE,
-    SERVICE_TURN_OFF,
     SERVICE_TURN_ON,
     STATE_ON,
     STATE_OFF,
     STATE_UNAVAILABLE,
     STATE_UNKNOWN,
 )
-from homeassistant.components.number.const import (
-    ATTR_VALUE,
-    SERVICE_SET_VALUE,
-    DOMAIN as NUMBER_DOMAIN
-)
+from homeassistant.components.number.const import DOMAIN as NUMBER_DOMAIN
 from homeassistant.components.input_number import DOMAIN as INPUT_NUMBER_DOMAIN
-from homeassistant.components.light import (DOMAIN as LIGHT_DOMAIN, SERVICE_TURN_ON as SERVICE_TURN_LIGHT_ON,
+from homeassistant.components.light import (SERVICE_TURN_ON as SERVICE_TURN_LIGHT_ON,
                                             ATTR_BRIGHTNESS_PCT)
-from homeassistant.components.valve import (DOMAIN as VALVE_DOMAIN, SERVICE_SET_VALVE_POSITION, ATTR_POSITION)
+from homeassistant.components.valve import (SERVICE_SET_VALVE_POSITION, ATTR_POSITION)
 from homeassistant.core import DOMAIN as HA_DOMAIN, CoreState, Event, EventStateChangedData, callback
 from homeassistant.util import slugify
 import homeassistant.helpers.config_validation as cv
