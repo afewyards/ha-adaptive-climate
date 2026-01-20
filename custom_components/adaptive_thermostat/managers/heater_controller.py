@@ -60,6 +60,13 @@ except ImportError:
     ServiceNotFound = Exception
 
 from ..const import DOMAIN
+from .events import (
+    CycleEventDispatcher,
+    CycleStartedEvent,
+    SettlingStartedEvent,
+    HeatingStartedEvent,
+    HeatingEndedEvent,
+)
 
 if TYPE_CHECKING:
     from ..climate import AdaptiveThermostat
@@ -86,6 +93,7 @@ class HeaterController:
         difference: float,  # output_max - output_min
         min_on_cycle_duration: float,  # in seconds
         min_off_cycle_duration: float,  # in seconds
+        dispatcher: Optional[CycleEventDispatcher] = None,
     ):
         """Initialize the HeaterController.
 
@@ -100,6 +108,7 @@ class HeaterController:
             difference: Output range (max - min)
             min_on_cycle_duration: Minimum on cycle duration in seconds
             min_off_cycle_duration: Minimum off cycle duration in seconds
+            dispatcher: Optional event dispatcher for cycle events
         """
         self._hass = hass
         self._thermostat = thermostat
@@ -111,6 +120,7 @@ class HeaterController:
         self._difference = difference
         self._min_on_cycle_duration = min_on_cycle_duration
         self._min_off_cycle_duration = min_off_cycle_duration
+        self._dispatcher = dispatcher
 
         # State tracking (owned by thermostat, but accessed here)
         self._heater_control_failed = False
@@ -122,8 +132,8 @@ class HeaterController:
         self._last_heater_state: bool = False
         self._last_cooler_state: bool = False
 
-        # Session tracking for PWM cycle tracker coordination
-        self._heating_session_active: bool = False
+        # Cycle tracking for event emission
+        self._cycle_active: bool = False
 
     def update_cycle_durations(
         self,
@@ -425,7 +435,14 @@ class HeaterController:
 
             set_is_heating(True)
 
-            # Notify cycle tracker of actual device activation
+            # Emit HEATING_STARTED event
+            if self._dispatcher:
+                self._dispatcher.emit(HeatingStartedEvent(
+                    hvac_mode=hvac_mode,
+                    timestamp=datetime.now(),
+                ))
+
+            # Backward compatibility: notify cycle tracker
             if hasattr(self._thermostat, '_cycle_tracker') and self._thermostat._cycle_tracker:
                 if hvac_mode == HVACMode.COOL:
                     self._thermostat._cycle_tracker.on_cooling_started(datetime.now())
@@ -487,6 +504,13 @@ class HeaterController:
 
             # Increment cycle counter for wear tracking (on→off transition)
             self._increment_cycle_count(hvac_mode, is_now_off=True)
+
+            # Emit HEATING_ENDED event
+            if self._dispatcher:
+                self._dispatcher.emit(HeatingEndedEvent(
+                    hvac_mode=hvac_mode,
+                    timestamp=datetime.now(),
+                ))
 
             # Reset heating state for zone linking
             set_is_heating(False)
@@ -560,6 +584,19 @@ class HeaterController:
 
         # Track new active state after valve change for cycle counting
         new_active = value > 0
+
+        # Check if we should emit SETTLING_STARTED for valve mode
+        # Criteria: demand < 5% AND temp within 0.5°C of target
+        if self._cycle_active and value < 5.0:
+            target_temp = getattr(self._thermostat, 'target_temperature', 0.0)
+            current_temp = getattr(self._thermostat, '_cur_temp', 0.0)
+            if abs(current_temp - target_temp) <= 0.5:
+                if self._dispatcher:
+                    self._dispatcher.emit(SettlingStartedEvent(
+                        hvac_mode=hvac_mode,
+                        timestamp=datetime.now(),
+                    ))
+
         # Detect heating started transition (was off, now on)
         if not old_active and new_active:
             # Update state tracking for cycle counting
@@ -567,7 +604,15 @@ class HeaterController:
                 self._last_cooler_state = True
             else:
                 self._last_heater_state = True
-            # Notify cycle tracker of activation
+
+            # Emit HEATING_STARTED event
+            if self._dispatcher:
+                self._dispatcher.emit(HeatingStartedEvent(
+                    hvac_mode=hvac_mode,
+                    timestamp=datetime.now(),
+                ))
+
+            # Backward compatibility: notify cycle tracker
             if hasattr(self._thermostat, '_cycle_tracker') and self._thermostat._cycle_tracker:
                 if hvac_mode == HVACMode.COOL:
                     self._thermostat._cycle_tracker.on_cooling_started(datetime.now())
@@ -577,7 +622,15 @@ class HeaterController:
         elif old_active and not new_active:
             # Increment cycle counter for wear tracking (on→off transition)
             self._increment_cycle_count(hvac_mode, is_now_off=True)
-            # Notify cycle tracker of session end
+
+            # Emit HEATING_ENDED event
+            if self._dispatcher:
+                self._dispatcher.emit(HeatingEndedEvent(
+                    hvac_mode=hvac_mode,
+                    timestamp=datetime.now(),
+                ))
+
+            # Backward compatibility: notify cycle tracker
             if hasattr(self._thermostat, '_cycle_tracker') and self._thermostat._cycle_tracker:
                 if hvac_mode == HVACMode.COOL:
                     self._thermostat._cycle_tracker.on_cooling_session_ended(datetime.now())
@@ -616,15 +669,35 @@ class HeaterController:
         entities = self.get_entities(hvac_mode)
         thermostat_entity_id = self._thermostat.entity_id
 
-        # Track demand state for session end detection
-        # Session END is triggered when demand drops to 0 (handled here)
-        # Session START is triggered when device actually activates (handled in async_turn_on/async_set_valve_value)
-        old_demand = self._heating_session_active
-        new_demand = abs(control_output) > 0
-        self._heating_session_active = new_demand
+        # Track demand state for cycle tracking
+        old_cycle_active = self._cycle_active
+        new_cycle_active = abs(control_output) > 0
+        self._cycle_active = new_cycle_active
 
-        # Fire session end when demand drops to 0
-        if old_demand and not new_demand:
+        # Emit CYCLE_STARTED when demand goes 0 → >0
+        if not old_cycle_active and new_cycle_active:
+            if self._dispatcher:
+                target_temp = getattr(self._thermostat, 'target_temperature', 0.0)
+                current_temp = getattr(self._thermostat, '_cur_temp', 0.0)
+                self._dispatcher.emit(CycleStartedEvent(
+                    hvac_mode=hvac_mode,
+                    timestamp=datetime.now(),
+                    target_temp=target_temp,
+                    current_temp=current_temp,
+                ))
+            # Backward compatibility: notify cycle tracker
+            if hasattr(self._thermostat, '_cycle_tracker') and self._thermostat._cycle_tracker:
+                # Note: device activation happens in async_turn_on, not here
+                pass
+
+        # Emit SETTLING_STARTED when demand drops to 0 (PWM mode)
+        if old_cycle_active and not new_cycle_active:
+            if self._dispatcher and self._pwm > 0:
+                self._dispatcher.emit(SettlingStartedEvent(
+                    hvac_mode=hvac_mode,
+                    timestamp=datetime.now(),
+                ))
+            # Backward compatibility: notify cycle tracker
             if hasattr(self._thermostat, '_cycle_tracker') and self._thermostat._cycle_tracker:
                 if hvac_mode == HVACMode.COOL:
                     self._thermostat._cycle_tracker.on_cooling_session_ended(datetime.now())

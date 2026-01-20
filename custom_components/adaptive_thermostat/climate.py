@@ -1492,7 +1492,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         old_mode = self._hvac_mode
 
         # End session explicitly before turning off
-        if self._cycle_tracker and self._heater_controller and self._heater_controller._heating_session_active:
+        if self._cycle_tracker and self._heater_controller and self._heater_controller._cycle_active:
             if self._hvac_mode == HVACMode.COOL:
                 self._cycle_tracker.on_cooling_session_ended(datetime.now())
             else:
