@@ -168,21 +168,6 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
                 })]
             ),
         }),
-        # Thermal coupling configuration (auto-discovery from HA floor/area registries)
-        vol.Optional(const.CONF_THERMAL_COUPLING): vol.Schema({
-            vol.Optional('enabled', default=True): cv.boolean,
-            # Zones in open floor plans (high coupling) - floor assignments auto-discovered
-            vol.Optional(const.CONF_OPEN_ZONES): vol.All(cv.ensure_list, [cv.entity_id]),
-            vol.Optional(const.CONF_STAIRWELL_ZONES): vol.All(cv.ensure_list, [cv.entity_id]),
-            vol.Optional(const.CONF_SEED_COEFFICIENTS): vol.Schema({
-                vol.Optional('same_floor'): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=1.0)),
-                vol.Optional('up'): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=1.0)),
-                vol.Optional('down'): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=1.0)),
-                vol.Optional('open'): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=1.0)),
-                vol.Optional('stairwell_up'): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=1.0)),
-                vol.Optional('stairwell_down'): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=1.0)),
-            }),
-        }),
     }
 )
 
@@ -277,7 +262,7 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         hass.data[DOMAIN]["coupling_learner_initialized"] = True
 
     # Initialize seeds from floorplan config or auto-discovery (if thermal_coupling is configured)
-    thermal_coupling_config = config.get(const.CONF_THERMAL_COUPLING)
+    thermal_coupling_config = hass.data[DOMAIN].get("thermal_coupling")
     if thermal_coupling_config and coordinator:
         # Check if thermal coupling is enabled (default: true)
         enabled = thermal_coupling_config.get("enabled", True)

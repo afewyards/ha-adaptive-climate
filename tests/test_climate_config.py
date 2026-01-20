@@ -29,7 +29,7 @@ CONF_FLOORPLAN = "floorplan"
 # =============================================================================
 
 def create_thermal_coupling_schema():
-    """Create the thermal_coupling schema matching climate.py PLATFORM_SCHEMA.
+    """Create the thermal_coupling schema matching __init__.py CONFIG_SCHEMA.
 
     The new schema uses auto-discovery for floor assignments. The 'open' key
     is now a simple list of entity IDs (zones in open floor plans), replacing
