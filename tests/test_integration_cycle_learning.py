@@ -497,6 +497,81 @@ def test_integration_cycle_learning_module_exists():
     assert CycleState is not None
 
 
+class TestPWMSessionTracking:
+    """Test PWM session tracking end-to-end."""
+
+    @pytest.mark.asyncio
+    async def test_pwm_cycle_completes_without_settling_interruption(
+        self, cycle_tracker, mock_adaptive_learner
+    ):
+        """Test multiple PWM pulses produce single HEATING→SETTLING transition.
+
+        Simulates PWM mode where heater turns on/off multiple times
+        while control_output stays >0. Verifies only ONE cycle is tracked
+        (session-level, not pulse-level).
+        """
+        # Start heating session at 19.0°C, target 21.0°C
+        start_time = datetime(2024, 1, 1, 10, 0, 0)
+        current_time = start_time
+
+        # Session starts: control_output 0→50
+        cycle_tracker.on_heating_started(start_time)
+        assert cycle_tracker.state == CycleState.HEATING
+
+        # Simulate 30 minutes of PWM cycling
+        # Each "pulse" represents a PWM on/off cycle, but session stays active
+        # because control_output remains >0 throughout
+        temperatures = [
+            # First 10 minutes: temperature rising (20 samples)
+            19.0, 19.1, 19.2, 19.4, 19.6, 19.8, 20.0, 20.2, 20.5, 20.7,
+            20.9, 21.0, 21.1, 21.2, 21.2, 21.3, 21.3, 21.2, 21.2, 21.1,
+            # Next 10 minutes: temperature stabilizing near setpoint
+            21.1, 21.0, 21.0, 21.1, 21.0, 21.0, 21.1, 21.0, 21.0, 21.0,
+            # Final 10 minutes: stable at setpoint
+            21.0, 21.0, 21.0, 21.0, 21.0, 21.0, 21.0, 21.0, 21.0, 21.0,
+            21.0, 21.0, 21.0, 21.0, 21.0, 21.0, 21.0, 21.0, 21.0, 21.0,
+        ]
+
+        # Collect temperature samples during PWM cycling
+        # NOTE: In PWM mode, the HeaterController turns the heater on/off
+        # internally via async_turn_on/async_turn_off, but these do NOT
+        # call on_heating_started/on_heating_stopped because the session
+        # (control_output >0) remains active. Only async_set_control_value
+        # detects session boundaries.
+        for temp in temperatures:
+            await cycle_tracker.update_temperature(current_time, temp)
+            current_time += timedelta(seconds=30)
+
+        # Verify still in HEATING state (no false transitions)
+        assert cycle_tracker.state == CycleState.HEATING
+
+        # Session ends: control_output 50→0
+        stop_time = start_time + timedelta(minutes=30)
+        cycle_tracker.on_heating_stopped(stop_time)
+
+        # Verify transition to SETTLING (first and only time)
+        assert cycle_tracker.state == CycleState.SETTLING
+
+        # Add settling samples (10 samples = 5 minutes)
+        settling_temps = [21.0, 21.0, 21.0, 21.0, 21.0, 21.0, 21.0, 21.0, 21.0, 21.0]
+        for temp in settling_temps:
+            await cycle_tracker.update_temperature(current_time, temp)
+            current_time += timedelta(seconds=30)
+
+        # Verify settling completes (stable temperature)
+        assert cycle_tracker.state == CycleState.IDLE
+
+        # Verify metrics were recorded exactly ONCE (session-level cycle, not pulse-level)
+        assert mock_adaptive_learner.add_cycle_metrics.call_count == 1
+        assert mock_adaptive_learner.update_convergence_tracking.call_count == 1
+
+        # Verify metrics object has valid data
+        recorded_metrics = mock_adaptive_learner.add_cycle_metrics.call_args[0][0]
+        assert isinstance(recorded_metrics, CycleMetrics)
+        assert recorded_metrics.overshoot is not None
+        assert recorded_metrics.rise_time is not None
+
+
 class TestPersistenceRoundtrip:
     """Integration tests for persistence round-trip."""
 
