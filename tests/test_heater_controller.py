@@ -358,3 +358,114 @@ class TestHeaterControllerSessionTracking:
         mock_cycle_tracker.on_heating_session_ended.assert_called_once()
         # Verify session is now inactive
         assert heater_controller._heating_session_active is False
+
+
+class TestHeaterControllerPWMThreshold:
+    """Tests for PWM minimum on-time threshold behavior."""
+
+    @pytest.mark.asyncio
+    async def test_pwm_skip_tiny_output(self, heater_controller, mock_thermostat):
+        """Test that PWM skips activation when on-time < min_on_cycle_duration.
+
+        With fixture config: pwm=600s, min_on=300s → threshold = 50%
+        Output 25% → on-time = 150s < 300s → should NOT turn on
+        """
+        import time as time_module
+
+        # Setup mock cycle tracker
+        mock_cycle_tracker = MagicMock()
+        mock_thermostat._cycle_tracker = mock_cycle_tracker
+
+        # Mock the service call
+        heater_controller._hass.services.async_call = MagicMock()
+        # Device starts OFF
+        heater_controller._hass.states.is_state = MagicMock(return_value=False)
+
+        # Mock required callbacks
+        get_cycle_start_time = MagicMock(return_value=0.0)
+        set_is_heating = MagicMock()
+        set_last_heat_cycle_time = MagicMock()
+        set_time_changed = MagicMock()
+        set_force_on = MagicMock()
+        set_force_off = MagicMock()
+
+        # time_changed = current time (simulates we just started a new PWM period)
+        current_time = time_module.time()
+
+        # Apply small control output (25%)
+        # With pwm=600, this gives time_on = 600 * 25 / 100 = 150s
+        # Since 150s < min_on=300s, it should skip activation
+        await heater_controller.async_set_control_value(
+            control_output=25.0,
+            hvac_mode=MockHVACMode.HEAT,
+            get_cycle_start_time=get_cycle_start_time,
+            set_is_heating=set_is_heating,
+            set_last_heat_cycle_time=set_last_heat_cycle_time,
+            time_changed=current_time,
+            set_time_changed=set_time_changed,
+            force_on=False,
+            force_off=False,
+            set_force_on=set_force_on,
+            set_force_off=set_force_off,
+        )
+
+        # Verify turn_on was NOT called (the heater should stay off)
+        # Check that no service call was made with "turn_on"
+        for call in heater_controller._hass.services.async_call.call_args_list:
+            args, kwargs = call
+            assert args[1] != "turn_on", "Device should not turn on with tiny output"
+
+    @pytest.mark.asyncio
+    async def test_pwm_activates_above_threshold(self, heater_controller, mock_thermostat):
+        """Test that PWM activates normally when on-time >= min_on_cycle_duration.
+
+        With fixture config: pwm=600s, min_on=300s → threshold = 50%
+        Output 60% → on-time = 360s >= 300s → should turn on
+        """
+        import time as time_module
+
+        # Setup mock cycle tracker
+        mock_cycle_tracker = MagicMock()
+        mock_thermostat._cycle_tracker = mock_cycle_tracker
+
+        # Mock the service call
+        heater_controller._hass.services.async_call = MagicMock()
+        # Device starts OFF, then simulate time_off has passed
+        heater_controller._hass.states.is_state = MagicMock(return_value=False)
+
+        # Mock required callbacks
+        get_cycle_start_time = MagicMock(return_value=0.0)
+        set_is_heating = MagicMock()
+        set_last_heat_cycle_time = MagicMock()
+        set_time_changed = MagicMock()
+        set_force_on = MagicMock()
+        set_force_off = MagicMock()
+
+        # Simulate off-time has passed (force PWM to turn on)
+        # time_changed was 10 minutes ago (600s), so time_off has definitely passed
+        time_changed = time_module.time() - 600
+
+        # Apply 60% output
+        # With pwm=600, this gives time_on = 360s >= min_on=300s
+        await heater_controller.async_set_control_value(
+            control_output=60.0,
+            hvac_mode=MockHVACMode.HEAT,
+            get_cycle_start_time=get_cycle_start_time,
+            set_is_heating=set_is_heating,
+            set_last_heat_cycle_time=set_last_heat_cycle_time,
+            time_changed=time_changed,
+            set_time_changed=set_time_changed,
+            force_on=False,
+            force_off=False,
+            set_force_on=set_force_on,
+            set_force_off=set_force_off,
+        )
+
+        # Verify turn_on WAS called
+        turn_on_called = False
+        for call in heater_controller._hass.services.async_call.call_args_list:
+            args, kwargs = call
+            if args[1] == "turn_on":
+                turn_on_called = True
+                break
+        assert turn_on_called, "Device should turn on with output above threshold"

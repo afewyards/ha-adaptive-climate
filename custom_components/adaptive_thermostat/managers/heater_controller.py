@@ -715,11 +715,23 @@ class HeaterController:
         time_on = self._pwm * abs(control_output) / self._difference
         time_off = self._pwm - time_on
 
-        # Check time_on and time_off are not too short
+        # If calculated on-time < min_on_cycle_duration, don't turn on at all
+        # (turning on would force staying on for min_on, overshooting demand)
         if 0 < time_on < self._min_on_cycle_duration:
-            # time_on is too short, increase time_off and time_on
-            time_off *= self._min_on_cycle_duration / time_on
-            time_on = self._min_on_cycle_duration
+            _LOGGER.debug(
+                "%s: Skipping PWM activation - calculated on-time %.0fs < min %.0fs",
+                thermostat_entity_id,
+                time_on,
+                self._min_on_cycle_duration,
+            )
+            await self.async_turn_off(
+                hvac_mode=hvac_mode,
+                get_cycle_start_time=get_cycle_start_time,
+                set_is_heating=set_is_heating,
+                set_last_heat_cycle_time=set_last_heat_cycle_time,
+            )
+            return
+
         if 0 < time_off < self._min_off_cycle_duration:
             # time_off is too short, increase time_on and time_off
             time_on *= self._min_off_cycle_duration / time_off
