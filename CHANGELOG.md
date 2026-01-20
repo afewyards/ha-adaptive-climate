@@ -1,6 +1,26 @@
 # CHANGELOG
 
 
+## v0.20.2 (2026-01-20)
+
+### Bug Fixes
+
+- Resolve undefined constant and wrong attribute reference
+  ([`3881848`](https://github.com/afewyards/ha-adaptive-thermostat/commit/3881848b46e9a8ddf0f661218515afaa58e1a7be))
+
+- Import CONF_FLOORPLAN from thermal_coupling module - Fix _CONF_FLOORPLAN typo (undefined name) in
+  climate.py - Fix _control_output to _control_output_manager in state_attributes.py
+  (_control_output is a float, _control_output_manager is the manager)
+
+### Refactoring
+
+- **config**: Change area option from name to ID lookup
+  ([`6667be0`](https://github.com/afewyards/ha-adaptive-thermostat/commit/6667be0649e42c698289e2bf1ae1b18c21d4cf9d))
+
+Area config now expects area ID instead of name. Removes auto-create behavior - logs warning if area
+  ID not found.
+
+
 ## v0.20.1 (2026-01-20)
 
 ### Bug Fixes
