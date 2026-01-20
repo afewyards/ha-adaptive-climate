@@ -206,3 +206,62 @@ class TestHeaterControllerSessionTracking:
         mock_cycle_tracker.on_heating_stopped.assert_not_called()
         # Session should still be active
         assert heater_controller._heating_session_active is True
+
+    @pytest.mark.asyncio
+    async def test_turn_on_no_tracker_notify(self, heater_controller, mock_thermostat):
+        """Test that async_turn_on does not call on_heating_started (session tracking is in async_set_control_value)."""
+        # Setup mock cycle tracker
+        mock_cycle_tracker = MagicMock()
+        mock_thermostat._cycle_tracker = mock_cycle_tracker
+
+        # Mock the service call
+        heater_controller._hass.services.async_call = MagicMock()
+        heater_controller._hass.states.is_state = MagicMock(return_value=False)
+
+        # Mock required callbacks
+        get_cycle_start_time = MagicMock(return_value=0.0)
+        set_is_heating = MagicMock()
+        set_last_heat_cycle_time = MagicMock()
+
+        # Call async_turn_on directly (not through async_set_control_value)
+        await heater_controller.async_turn_on(
+            hvac_mode=MockHVACMode.HEAT,
+            get_cycle_start_time=get_cycle_start_time,
+            set_is_heating=set_is_heating,
+            set_last_heat_cycle_time=set_last_heat_cycle_time,
+        )
+
+        # Verify on_heating_started was NOT called
+        # Session tracking happens in async_set_control_value, not here
+        mock_cycle_tracker.on_heating_started.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_turn_off_no_tracker_notify(self, heater_controller, mock_thermostat):
+        """Test that async_turn_off does not call on_heating_stopped (session tracking is in async_set_control_value)."""
+        # Setup mock cycle tracker
+        mock_cycle_tracker = MagicMock()
+        mock_thermostat._cycle_tracker = mock_cycle_tracker
+
+        # Mock the service call
+        heater_controller._hass.services.async_call = MagicMock()
+        heater_controller._hass.states.is_state = MagicMock(return_value=True)
+
+        # Mock required callbacks
+        get_cycle_start_time = MagicMock(return_value=0.0)
+        set_is_heating = MagicMock()
+        set_last_heat_cycle_time = MagicMock()
+
+        # Set heater as previously on for cycle count test
+        heater_controller._last_heater_state = True
+
+        # Call async_turn_off directly (not through async_set_control_value)
+        await heater_controller.async_turn_off(
+            hvac_mode=MockHVACMode.HEAT,
+            get_cycle_start_time=get_cycle_start_time,
+            set_is_heating=set_is_heating,
+            set_last_heat_cycle_time=set_last_heat_cycle_time,
+        )
+
+        # Verify on_heating_stopped was NOT called
+        # Session tracking happens in async_set_control_value, not here
+        mock_cycle_tracker.on_heating_stopped.assert_not_called()
