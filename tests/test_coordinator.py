@@ -28,6 +28,9 @@ sys.modules['homeassistant.helpers.update_coordinator'].DataUpdateCoordinator = 
 # Import const to get DOMAIN
 import const
 
+# Import thermal_coupling BEFORE coordinator (to ensure it's in sys.modules)
+from adaptive.thermal_coupling import ThermalCouplingLearner
+
 # Now we can import the coordinator
 import coordinator
 
@@ -297,6 +300,173 @@ def test_unregister_all_zones(coord):
     assert len(coord.get_all_zones()) == 0
     assert len(coord._demand_states) == 0
     assert coord.get_aggregate_demand()["heating"] is False
+
+
+# =============================================================================
+# Thermal Coupling Integration Tests (Story 5.2)
+# =============================================================================
+
+
+def test_coordinator_has_coupling_learner(coord):
+    """Test that coordinator has a thermal coupling learner accessible."""
+    # Learner should be accessible via property
+    assert hasattr(coord, "thermal_coupling_learner")
+    learner = coord.thermal_coupling_learner
+    assert learner is not None
+
+    # Verify it's a ThermalCouplingLearner instance
+    assert isinstance(learner, ThermalCouplingLearner)
+
+
+def test_coordinator_outdoor_temp_access(hass):
+    """Test that coordinator provides outdoor temperature."""
+    # Set up weather entity in hass.data
+    hass.data = {
+        const.DOMAIN: {
+            "weather_entity": "weather.home"
+        }
+    }
+
+    # Mock weather entity state with temperature attribute
+    mock_state = MagicMock()
+    mock_state.state = "sunny"
+    mock_state.attributes = {"temperature": 5.5}
+    hass.states.get.return_value = mock_state
+
+    coord = coordinator.AdaptiveThermostatCoordinator(hass)
+
+    # Access outdoor temp
+    outdoor_temp = coord.outdoor_temp
+    assert outdoor_temp == 5.5
+
+
+def test_coordinator_outdoor_temp_unavailable(hass):
+    """Test that outdoor_temp returns None when weather entity unavailable."""
+    # No weather entity configured
+    hass.data = {}
+    coord = coordinator.AdaptiveThermostatCoordinator(hass)
+
+    # Should return None when no weather entity
+    assert coord.outdoor_temp is None
+
+
+def test_coordinator_outdoor_temp_missing_attribute(hass):
+    """Test that outdoor_temp returns None when temperature attribute missing."""
+    hass.data = {
+        const.DOMAIN: {
+            "weather_entity": "weather.home"
+        }
+    }
+
+    # Mock weather entity state without temperature attribute
+    mock_state = MagicMock()
+    mock_state.state = "sunny"
+    mock_state.attributes = {}
+    hass.states.get.return_value = mock_state
+
+    coord = coordinator.AdaptiveThermostatCoordinator(hass)
+    assert coord.outdoor_temp is None
+
+
+def test_coordinator_get_active_zones(coord):
+    """Test that get_active_zones returns zones with has_demand=True."""
+    # Register zones
+    coord.register_zone("zone1", {"name": "Zone 1"})
+    coord.register_zone("zone2", {"name": "Zone 2"})
+    coord.register_zone("zone3", {"name": "Zone 3"})
+
+    # No demand initially
+    active = coord.get_active_zones()
+    assert active == {}
+
+    # Zone1 has heating demand
+    coord.update_zone_demand("zone1", True, "heat")
+    active = coord.get_active_zones()
+    assert "zone1" in active
+    assert "zone2" not in active
+    assert "zone3" not in active
+
+    # Zone1 and zone3 have heating demand
+    coord.update_zone_demand("zone3", True, "heat")
+    active = coord.get_active_zones()
+    assert "zone1" in active
+    assert "zone2" not in active
+    assert "zone3" in active
+
+
+def test_coordinator_get_active_zones_mode_filter(coord):
+    """Test that get_active_zones only returns zones with specified mode."""
+    # Register zones
+    coord.register_zone("zone1", {"name": "Zone 1"})
+    coord.register_zone("zone2", {"name": "Zone 2"})
+
+    # Zone1 has heating demand, zone2 has cooling demand
+    coord.update_zone_demand("zone1", True, "heat")
+    coord.update_zone_demand("zone2", True, "cool")
+
+    # Default returns all active zones
+    active = coord.get_active_zones()
+    assert "zone1" in active
+    assert "zone2" in active
+
+    # Filter by heat mode
+    active_heat = coord.get_active_zones(hvac_mode="heat")
+    assert "zone1" in active_heat
+    assert "zone2" not in active_heat
+
+    # Filter by cool mode
+    active_cool = coord.get_active_zones(hvac_mode="cool")
+    assert "zone1" not in active_cool
+    assert "zone2" in active_cool
+
+
+def test_coordinator_zone_temps(coord):
+    """Test that get_zone_temps provides current temperature per zone."""
+    # Register zones with current_temp in zone_data
+    coord.register_zone("zone1", {"name": "Zone 1", "current_temp": 20.5})
+    coord.register_zone("zone2", {"name": "Zone 2", "current_temp": 21.0})
+    coord.register_zone("zone3", {"name": "Zone 3", "current_temp": 19.5})
+
+    temps = coord.get_zone_temps()
+
+    assert temps["zone1"] == 20.5
+    assert temps["zone2"] == 21.0
+    assert temps["zone3"] == 19.5
+
+
+def test_coordinator_zone_temps_missing(coord):
+    """Test that get_zone_temps handles zones without temperature."""
+    # Zone1 has temp, zone2 doesn't
+    coord.register_zone("zone1", {"name": "Zone 1", "current_temp": 20.5})
+    coord.register_zone("zone2", {"name": "Zone 2"})
+
+    temps = coord.get_zone_temps()
+
+    # Only zone1 should be in temps dict
+    assert "zone1" in temps
+    assert temps["zone1"] == 20.5
+    assert "zone2" not in temps
+
+
+def test_coordinator_update_zone_temp(coord):
+    """Test that zone temperatures can be updated."""
+    coord.register_zone("zone1", {"name": "Zone 1", "current_temp": 20.5})
+
+    # Update zone temperature
+    coord.update_zone_temp("zone1", 21.0)
+
+    temps = coord.get_zone_temps()
+    assert temps["zone1"] == 21.0
+
+
+def test_coordinator_update_zone_temp_unknown_zone(coord):
+    """Test that updating temp for unknown zone is handled gracefully."""
+    # Should not raise an error
+    coord.update_zone_temp("nonexistent_zone", 21.0)
+
+    # Should still work without issues
+    temps = coord.get_zone_temps()
+    assert "nonexistent_zone" not in temps
 
 
 if __name__ == "__main__":

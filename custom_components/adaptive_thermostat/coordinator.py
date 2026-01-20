@@ -10,8 +10,10 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 try:
     from .const import DOMAIN
+    from .adaptive.thermal_coupling import ThermalCouplingLearner
 except ImportError:
     from const import DOMAIN
+    from adaptive.thermal_coupling import ThermalCouplingLearner
 
 # Re-export CentralController and constants for backwards compatibility
 try:
@@ -51,10 +53,49 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
         self._zones: dict[str, dict[str, Any]] = {}
         self._demand_states: dict[str, bool] = {}
         self._central_controller: "CentralController | None" = None
+        self._thermal_coupling_learner = ThermalCouplingLearner()
 
     def set_central_controller(self, controller: "CentralController") -> None:
         """Set the central controller reference for push-based updates."""
         self._central_controller = controller
+
+    @property
+    def thermal_coupling_learner(self) -> ThermalCouplingLearner:
+        """Get the thermal coupling learner instance.
+
+        Returns:
+            ThermalCouplingLearner instance for thermal coupling coefficient learning.
+        """
+        return self._thermal_coupling_learner
+
+    @property
+    def outdoor_temp(self) -> float | None:
+        """Get the current outdoor temperature from the weather entity.
+
+        Returns:
+            Outdoor temperature in °C, or None if unavailable.
+        """
+        # Get weather entity from hass.data
+        domain_data = self.hass.data.get(DOMAIN, {})
+        weather_entity_id = domain_data.get("weather_entity")
+
+        if not weather_entity_id:
+            return None
+
+        # Get weather entity state
+        state = self.hass.states.get(weather_entity_id)
+        if state is None:
+            return None
+
+        # Extract temperature from attributes
+        temp = state.attributes.get("temperature")
+        if temp is None:
+            return None
+
+        try:
+            return float(temp)
+        except (ValueError, TypeError):
+            return None
 
     def register_zone(self, zone_id: str, zone_data: dict[str, Any]) -> None:
         """Register a zone with the coordinator.
@@ -159,6 +200,60 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
             Zone data dictionary or None if zone not found.
         """
         return self._zones.get(zone_id)
+
+    def get_active_zones(self, hvac_mode: str | None = None) -> dict[str, dict[str, Any]]:
+        """Get zones that currently have demand (are actively heating/cooling).
+
+        Args:
+            hvac_mode: Optional filter by HVAC mode ("heat" or "cool").
+                       If None, returns all zones with demand regardless of mode.
+
+        Returns:
+            Dictionary of zone_id -> zone_data for zones with active demand.
+        """
+        active_zones: dict[str, dict[str, Any]] = {}
+
+        for zone_id, demand_state in self._demand_states.items():
+            # Check if zone has demand
+            if not demand_state.get("demand"):
+                continue
+
+            # If mode filter specified, check if it matches
+            if hvac_mode is not None and demand_state.get("mode") != hvac_mode:
+                continue
+
+            # Include zone in active zones
+            zone_data = self._zones.get(zone_id)
+            if zone_data is not None:
+                active_zones[zone_id] = zone_data
+
+        return active_zones
+
+    def get_zone_temps(self) -> dict[str, float]:
+        """Get current temperatures for all zones.
+
+        Returns:
+            Dictionary of zone_id -> current_temp for zones that have temperature data.
+            Zones without a current_temp in their zone_data are excluded.
+        """
+        temps: dict[str, float] = {}
+
+        for zone_id, zone_data in self._zones.items():
+            temp = zone_data.get("current_temp")
+            if temp is not None:
+                temps[zone_id] = temp
+
+        return temps
+
+    def update_zone_temp(self, zone_id: str, temperature: float) -> None:
+        """Update the current temperature for a zone.
+
+        Args:
+            zone_id: Unique identifier for the zone
+            temperature: Current temperature in °C
+        """
+        if zone_id in self._zones:
+            self._zones[zone_id]["current_temp"] = temperature
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch data from all zones.
