@@ -760,6 +760,9 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         if self._ha_area:
             await self._async_assign_area()
 
+        # Assign integration label to this entity
+        await self._async_assign_label()
+
         # Initialize heater controller now that hass is available
         self._heater_controller = HeaterController(
             hass=self.hass,
@@ -1055,6 +1058,28 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
             self.entity_id,
             area.name,
             self._ha_area,
+        )
+
+    async def _async_assign_label(self) -> None:
+        """Assign integration label to this entity."""
+        from homeassistant.helpers import entity_registry as er, label_registry as lr
+
+        entity_registry = er.async_get(self.hass)
+        label_registry = lr.async_get(self.hass)
+
+        label_name = "Adaptive Thermostat"
+        label = label_registry.async_get_label_by_name(label_name)
+
+        if label is None:
+            label = label_registry.async_create(
+                label_name,
+                icon="mdi:thermostat-box",
+                color="indigo",
+            )
+
+        entity_registry.async_update_entity(
+            self.entity_id,
+            labels={label.label_id},
         )
 
     async def async_will_remove_from_hass(self) -> None:
