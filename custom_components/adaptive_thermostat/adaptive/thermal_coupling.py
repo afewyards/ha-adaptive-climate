@@ -9,7 +9,10 @@ import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime
 from itertools import combinations
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional, Tuple, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from homeassistant.core import HomeAssistant
 
 try:
     from ..const import (
@@ -456,8 +459,12 @@ class ThermalCouplingLearner:
     observations are collected.
     """
 
-    def __init__(self) -> None:
-        """Initialize the thermal coupling learner with empty state."""
+    def __init__(self, hass: Optional["HomeAssistant"] = None) -> None:
+        """Initialize the thermal coupling learner with empty state.
+
+        Args:
+            hass: Optional Home Assistant instance for registry access during auto-discovery.
+        """
         # Dict mapping (source_zone, target_zone) -> list of CouplingObservation
         self.observations: Dict[Tuple[str, str], List[CouplingObservation]] = {}
 
@@ -473,6 +480,9 @@ class ThermalCouplingLearner:
         # Lock for thread-safe access to shared state (lazy initialized)
         self._lock: Optional[asyncio.Lock] = None
 
+        # Home Assistant instance for registry access
+        self._hass = hass
+
     @property
     def _async_lock(self) -> asyncio.Lock:
         """Get the asyncio lock, creating it if needed.
@@ -484,17 +494,77 @@ class ThermalCouplingLearner:
             self._lock = asyncio.Lock()
         return self._lock
 
-    def initialize_seeds(self, floorplan_config: Dict[str, Any]) -> None:
-        """Initialize seed coefficients from floorplan configuration.
+    def initialize_seeds(
+        self,
+        floorplan_config: Dict[str, Any],
+        zone_entity_ids: Optional[List[str]] = None
+    ) -> None:
+        """Initialize seed coefficients from floorplan configuration or auto-discovery.
 
         Seeds provide the Bayesian prior for coefficient estimation. They are
         blended with observed data using COUPLING_SEED_WEIGHT pseudo-observations.
 
+        If a legacy floorplan is provided, it takes precedence. Otherwise, if zone_entity_ids
+        are provided and hass is available, auto-discovery will be attempted.
+
         Args:
             floorplan_config: Configuration dict containing floorplan, stairwell_zones,
                 and optional seed_coefficients override.
+            zone_entity_ids: Optional list of zone entity IDs for auto-discovery.
         """
-        self._seeds = parse_floorplan(floorplan_config)
+        import logging
+        _LOGGER = logging.getLogger(__name__)
+
+        # Check for legacy floorplan config (takes precedence)
+        floorplan = floorplan_config.get(CONF_FLOORPLAN)
+        if floorplan:
+            # Use legacy parse_floorplan for backward compatibility
+            self._seeds = parse_floorplan(floorplan_config)
+            return
+
+        # Attempt auto-discovery if hass and zone_entity_ids provided
+        if self._hass is not None and zone_entity_ids:
+            try:
+                from ..helpers.registry import discover_zone_floors
+            except ImportError:
+                try:
+                    from helpers.registry import discover_zone_floors
+                except ImportError:
+                    _LOGGER.warning(
+                        "Floor auto-discovery unavailable: helpers.registry module not found"
+                    )
+                    return
+
+            # Discover floor assignments from registries
+            zone_floors = discover_zone_floors(self._hass, zone_entity_ids)
+
+            # Log warnings for zones without floor assignment
+            for zone_id, floor in zone_floors.items():
+                if floor is None:
+                    _LOGGER.warning(
+                        "Zone %s has no floor assignment in area/floor registry. "
+                        "Thermal coupling seeds will not be auto-generated for this zone.",
+                        zone_id
+                    )
+
+            # Extract configuration for seed generation
+            open_zones = floorplan_config.get(CONF_OPEN_ZONES, [])
+            stairwell_zones = floorplan_config.get(CONF_STAIRWELL_ZONES, [])
+            seed_coefficients = floorplan_config.get(CONF_SEED_COEFFICIENTS)
+
+            # Build seeds from discovered floors
+            self._seeds = build_seeds_from_discovered_floors(
+                zone_floors=zone_floors,
+                open_zones=open_zones,
+                stairwell_zones=stairwell_zones,
+                seed_coefficients=seed_coefficients
+            )
+
+            _LOGGER.info(
+                "Auto-discovered floor assignments for %d zones, generated %d coupling seeds",
+                sum(1 for f in zone_floors.values() if f is not None),
+                len(self._seeds)
+            )
 
     def get_pending_observation_count(self) -> int:
         """Get the number of pending observations (zones currently being observed).

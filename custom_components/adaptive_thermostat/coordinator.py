@@ -55,7 +55,7 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
         self._zones: dict[str, dict[str, Any]] = {}
         self._demand_states: dict[str, bool] = {}
         self._central_controller: "CentralController | None" = None
-        self._thermal_coupling_learner = ThermalCouplingLearner()
+        self._thermal_coupling_learner = ThermalCouplingLearner(hass=hass)
         self._sun_position_calculator = SunPositionCalculator.from_hass(hass)
 
     def set_central_controller(self, controller: "CentralController") -> None:

@@ -275,25 +275,37 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
             )
         hass.data[DOMAIN]["coupling_learner_initialized"] = True
 
-    # Initialize seeds from floorplan config (if thermal_coupling is configured)
+    # Initialize seeds from floorplan config or auto-discovery (if thermal_coupling is configured)
     thermal_coupling_config = config.get(const.CONF_THERMAL_COUPLING)
     if thermal_coupling_config and coordinator:
         # Check if thermal coupling is enabled (default: true)
         enabled = thermal_coupling_config.get("enabled", True)
-        if enabled:
+        if enabled and not hass.data[DOMAIN].get("coupling_seeds_initialized"):
             floorplan = thermal_coupling_config.get(_CONF_FLOORPLAN)
-            if floorplan and not hass.data[DOMAIN].get("coupling_seeds_initialized"):
-                # Build floorplan config dict for seed generation
-                floorplan_config = {
-                    _CONF_FLOORPLAN: floorplan,
-                    const.CONF_STAIRWELL_ZONES: thermal_coupling_config.get(const.CONF_STAIRWELL_ZONES, []),
-                    const.CONF_SEED_COEFFICIENTS: thermal_coupling_config.get(const.CONF_SEED_COEFFICIENTS, {}),
-                }
-                learner = coordinator.thermal_coupling_learner
-                learner.initialize_seeds(floorplan_config)
-                hass.data[DOMAIN]["coupling_seeds_initialized"] = True
+
+            # Build floorplan config dict for seed generation
+            floorplan_config = {
+                _CONF_FLOORPLAN: floorplan,  # None if not provided (triggers auto-discovery)
+                const.CONF_OPEN_ZONES: thermal_coupling_config.get(const.CONF_OPEN_ZONES, []),
+                const.CONF_STAIRWELL_ZONES: thermal_coupling_config.get(const.CONF_STAIRWELL_ZONES, []),
+                const.CONF_SEED_COEFFICIENTS: thermal_coupling_config.get(const.CONF_SEED_COEFFICIENTS, {}),
+            }
+
+            # Get all registered zone entity IDs for auto-discovery
+            zone_entity_ids = list(coordinator.get_all_zones().keys())
+
+            learner = coordinator.thermal_coupling_learner
+            learner.initialize_seeds(floorplan_config, zone_entity_ids=zone_entity_ids)
+            hass.data[DOMAIN]["coupling_seeds_initialized"] = True
+
+            if floorplan:
                 _LOGGER.info(
-                    "Initialized ThermalCouplingLearner seeds from floorplan: %d zone pairs",
+                    "Initialized ThermalCouplingLearner seeds from legacy floorplan: %d zone pairs",
+                    len(learner._seeds),
+                )
+            else:
+                _LOGGER.info(
+                    "Initialized ThermalCouplingLearner seeds via auto-discovery: %d zone pairs",
                     len(learner._seeds),
                 )
 

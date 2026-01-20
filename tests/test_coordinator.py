@@ -846,5 +846,146 @@ def test_observation_starts_during_low_solar(hass):
         assert "zone1" in learner._pending
 
 
+# =============================================================================
+# Floor Auto-Discovery Integration Tests (Story 3.1)
+# =============================================================================
+
+
+def test_coordinator_discovers_floors_on_init(hass):
+    """Test that coordinator calls discover_zone_floors with registered zones during initialization."""
+    from unittest.mock import patch
+
+    # Set up coordinator
+    coord = coordinator.AdaptiveThermostatCoordinator(hass)
+
+    # Register zones
+    coord.register_zone("climate.living_room", {"name": "Living Room"})
+    coord.register_zone("climate.bedroom", {"name": "Bedroom"})
+    coord.register_zone("climate.kitchen", {"name": "Kitchen"})
+
+    # Mock discover_zone_floors to return floor assignments
+    mock_zone_floors = {
+        "climate.living_room": 0,
+        "climate.bedroom": 1,
+        "climate.kitchen": 0,
+    }
+
+    # Mock discover_zone_floors where it's imported (in helpers.registry)
+    with patch('helpers.registry.discover_zone_floors', return_value=mock_zone_floors) as mock_discover:
+        # Prepare floorplan config for auto-discovery
+        floorplan_config = {
+            const.CONF_OPEN_ZONES: [],
+            const.CONF_STAIRWELL_ZONES: [],
+            const.CONF_SEED_COEFFICIENTS: {},
+        }
+
+        # Get all registered zone entity IDs
+        zone_entity_ids = list(coord.get_all_zones().keys())
+
+        # Call initialize_seeds which should trigger discovery
+        coord.thermal_coupling_learner.initialize_seeds(
+            floorplan_config,
+            zone_entity_ids=zone_entity_ids
+        )
+
+        # Verify discover was called with correct zone list
+        assert mock_discover.called
+        called_zone_ids = mock_discover.call_args[0][1]
+        assert set(called_zone_ids) == {"climate.living_room", "climate.bedroom", "climate.kitchen"}
+
+
+def test_coordinator_logs_warning_for_unassigned_zones(hass, caplog):
+    """Test that coordinator logs warning when a zone has no floor assignment."""
+    import logging
+    from unittest.mock import patch
+
+    caplog.set_level(logging.WARNING)
+
+    coord = coordinator.AdaptiveThermostatCoordinator(hass)
+
+    # Register zones
+    coord.register_zone("climate.living_room", {"name": "Living Room"})
+    coord.register_zone("climate.bedroom", {"name": "Bedroom"})
+    coord.register_zone("climate.unassigned", {"name": "Unassigned"})
+
+    # Mock discover_zone_floors to return None for unassigned zone
+    mock_zone_floors = {
+        "climate.living_room": 0,
+        "climate.bedroom": 1,
+        "climate.unassigned": None,  # No floor assignment
+    }
+
+    with patch('helpers.registry.discover_zone_floors', return_value=mock_zone_floors):
+        # Prepare floorplan config for auto-discovery
+        floorplan_config = {
+            const.CONF_OPEN_ZONES: [],
+            const.CONF_STAIRWELL_ZONES: [],
+            const.CONF_SEED_COEFFICIENTS: {},
+        }
+
+        zone_entity_ids = list(coord.get_all_zones().keys())
+
+        # Call initialize_seeds which should trigger discovery and log warnings
+        coord.thermal_coupling_learner.initialize_seeds(
+            floorplan_config,
+            zone_entity_ids=zone_entity_ids
+        )
+
+    # Verify warning was logged
+    assert "climate.unassigned" in caplog.text
+    assert "no floor assignment" in caplog.text
+
+
+def test_coordinator_builds_seeds_from_discovery(hass):
+    """Test that coordinator builds seeds from discovered floor assignments."""
+    from unittest.mock import patch
+    from adaptive.thermal_coupling import build_seeds_from_discovered_floors
+
+    coord = coordinator.AdaptiveThermostatCoordinator(hass)
+
+    # Register zones
+    coord.register_zone("climate.living_room", {"name": "Living Room"})
+    coord.register_zone("climate.kitchen", {"name": "Kitchen"})
+    coord.register_zone("climate.bedroom", {"name": "Bedroom"})
+
+    # Mock discovered floors
+    mock_zone_floors = {
+        "climate.living_room": 0,
+        "climate.kitchen": 0,
+        "climate.bedroom": 1,
+    }
+
+    # Configuration for thermal coupling
+    open_zones = ["climate.living_room", "climate.kitchen"]
+    stairwell_zones = []
+    seed_coefficients = None
+
+    with patch('helpers.registry.discover_zone_floors', return_value=mock_zone_floors):
+        # Build seeds from discovered floors
+        seeds = build_seeds_from_discovered_floors(
+            zone_floors=mock_zone_floors,
+            open_zones=open_zones,
+            stairwell_zones=stairwell_zones,
+            seed_coefficients=seed_coefficients
+        )
+
+        # Verify seeds were generated for same-floor pairs (living_room <-> kitchen)
+        assert ("climate.living_room", "climate.kitchen") in seeds
+        assert ("climate.kitchen", "climate.living_room") in seeds
+
+        # These should have "open" coefficient since both are in open_zones
+        from const import DEFAULT_SEED_COEFFICIENTS
+        assert seeds[("climate.living_room", "climate.kitchen")] == DEFAULT_SEED_COEFFICIENTS["open"]
+
+        # Verify seeds for cross-floor pairs (living_room -> bedroom)
+        assert ("climate.living_room", "climate.bedroom") in seeds
+        assert ("climate.bedroom", "climate.living_room") in seeds
+
+        # Cross-floor should have "up" and "down" coefficients
+        # Floor 0 -> Floor 1 is "up", Floor 1 -> Floor 0 is "down"
+        assert seeds[("climate.living_room", "climate.bedroom")] == DEFAULT_SEED_COEFFICIENTS["up"]
+        assert seeds[("climate.bedroom", "climate.living_room")] == DEFAULT_SEED_COEFFICIENTS["down"]
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
