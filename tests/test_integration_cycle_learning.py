@@ -33,6 +33,12 @@ def mock_hass():
 
 
 @pytest.fixture
+def dispatcher():
+    """Create a cycle event dispatcher."""
+    return CycleEventDispatcher()
+
+
+@pytest.fixture
 def mock_adaptive_learner():
     """Create a mock adaptive learner."""
     learner = MagicMock()
@@ -54,7 +60,7 @@ def mock_callbacks():
 
 
 @pytest.fixture
-def cycle_tracker(mock_hass, mock_adaptive_learner, mock_callbacks):
+def cycle_tracker(mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher):
     """Create a CycleTrackerManager instance with mocks."""
     tracker = CycleTrackerManager(
         hass=mock_hass,
@@ -64,6 +70,7 @@ def cycle_tracker(mock_hass, mock_adaptive_learner, mock_callbacks):
         get_current_temp=mock_callbacks["get_current_temp"],
         get_hvac_mode=mock_callbacks["get_hvac_mode"],
         get_in_grace_period=mock_callbacks["get_in_grace_period"],
+        dispatcher=dispatcher,
     )
     # Mark restoration complete for testing
     tracker.set_restoration_complete()
@@ -80,7 +87,7 @@ class TestCompleteHeatingCycle:
         """Test complete heating cycle with realistic temperature progression."""
         # Start heating at 19.0°C, target 21.0°C
         start_time = datetime(2024, 1, 1, 10, 0, 0)
-        cycle_tracker.on_heating_started(start_time)
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=start_time, target_temp=21.0, current_temp=19.0))
 
         assert cycle_tracker.state == CycleState.HEATING
 
@@ -101,7 +108,7 @@ class TestCompleteHeatingCycle:
 
         # Stop heating after 30 minutes
         stop_time = start_time + timedelta(minutes=30)
-        cycle_tracker.on_heating_session_ended(stop_time)
+        dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=stop_time))
 
         assert cycle_tracker.state == CycleState.SETTLING
 
@@ -136,7 +143,7 @@ class TestMultipleCyclesInSequence:
         for cycle_num in range(3):
             # Start heating
             start_time = datetime(2024, 1, 1, 10 + cycle_num * 2, 0, 0)
-            cycle_tracker.on_heating_started(start_time)
+            dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=start_time, target_temp=21.0, current_temp=19.0))
 
             # Collect temperature samples (20 samples = 10 minutes)
             current_time = start_time
@@ -147,7 +154,7 @@ class TestMultipleCyclesInSequence:
 
             # Stop heating
             stop_time = current_time
-            cycle_tracker.on_heating_session_ended(stop_time)
+            dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=stop_time))
 
             # Add settling samples (10 samples at stable temp)
             for _ in range(10):
@@ -172,7 +179,7 @@ class TestCycleAbortedBySetpointChange:
         """Test that setpoint change mid-cycle aborts and doesn't record."""
         # Start heating
         start_time = datetime(2024, 1, 1, 10, 0, 0)
-        cycle_tracker.on_heating_started(start_time)
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=start_time, target_temp=21.0, current_temp=19.0))
 
         # Collect some temperature samples
         current_time = start_time
@@ -182,7 +189,7 @@ class TestCycleAbortedBySetpointChange:
             current_time += timedelta(seconds=30)
 
         # Change setpoint mid-cycle
-        cycle_tracker.on_setpoint_changed(21.0, 22.0)
+        dispatcher.emit(SetpointChangedEvent(hvac_mode="heat", timestamp=datetime.now(), old_target=21.0, new_target=22.0))
 
         # Verify cycle was aborted
         assert cycle_tracker.state == CycleState.IDLE
@@ -202,7 +209,7 @@ class TestCycleAbortedByContactSensor:
         """Test that contact sensor pause aborts cycle and doesn't record."""
         # Start heating
         start_time = datetime(2024, 1, 1, 10, 0, 0)
-        cycle_tracker.on_heating_started(start_time)
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=start_time, target_temp=21.0, current_temp=19.0))
 
         # Collect some temperature samples
         current_time = start_time
@@ -212,7 +219,7 @@ class TestCycleAbortedByContactSensor:
             current_time += timedelta(seconds=30)
 
         # Contact sensor triggers pause (window opened)
-        cycle_tracker.on_contact_sensor_pause()
+        dispatcher.emit(ContactPauseEvent(hvac_mode="heat", timestamp=datetime.now(), entity_id="binary_sensor.window"))
 
         # Verify cycle was aborted
         assert cycle_tracker.state == CycleState.IDLE
@@ -247,7 +254,7 @@ class TestCycleDuringVacationMode:
 
         # Complete a full cycle
         start_time = datetime(2024, 1, 1, 10, 0, 0)
-        tracker.on_heating_started(start_time)
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=start_time, target_temp=21.0, current_temp=19.0))
 
         # Collect temperature samples (20 samples = 10 minutes)
         current_time = start_time
@@ -257,7 +264,7 @@ class TestCycleDuringVacationMode:
             current_time += timedelta(seconds=30)
 
         # Stop heating
-        tracker.on_heating_session_ended(current_time)
+        dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=current_time))
 
         # Add settling samples
         for _ in range(10):
@@ -282,7 +289,7 @@ class TestPWMModeCycleTracking:
         current_time = start_time
 
         # First PWM on cycle
-        cycle_tracker.on_heating_started(current_time)
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=current_time, target_temp=21.0, current_temp=19.0))
 
         # Collect temps during first on period (10 minutes = 20 samples)
         for i in range(20):
@@ -291,7 +298,7 @@ class TestPWMModeCycleTracking:
             current_time += timedelta(seconds=30)
 
         # PWM turns off (heating stops)
-        cycle_tracker.on_heating_session_ended(current_time)
+        dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=current_time))
 
         # Continue collecting during settling with stable temperature (10 samples)
         for _ in range(10):
@@ -313,7 +320,7 @@ class TestValveModeCycleTracking:
         """Test that valve transitions (0 to >0) are tracked as cycles."""
         # Valve opens to 50% (tracked as heating started)
         start_time = datetime(2024, 1, 1, 10, 0, 0)
-        cycle_tracker.on_heating_started(start_time)
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=start_time, target_temp=21.0, current_temp=19.0))
 
         assert cycle_tracker.state == CycleState.HEATING
 
@@ -325,7 +332,7 @@ class TestValveModeCycleTracking:
             current_time += timedelta(seconds=30)
 
         # Valve closes to 0% (tracked as heating stopped)
-        cycle_tracker.on_heating_session_ended(current_time)
+        dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=current_time))
 
         assert cycle_tracker.state == CycleState.SETTLING
 
@@ -365,7 +372,7 @@ class TestCycleResumedAfterSetpointChange:
 
         # Start heating
         start_time = datetime(2024, 1, 1, 10, 0, 0)
-        tracker.on_heating_started(start_time)
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=start_time, target_temp=21.0, current_temp=19.0))
 
         assert tracker.state == CycleState.HEATING
 
@@ -377,7 +384,7 @@ class TestCycleResumedAfterSetpointChange:
             current_time += timedelta(seconds=30)
 
         # Change setpoint mid-cycle (heater still active)
-        tracker.on_setpoint_changed(21.0, 22.0)
+        dispatcher.emit(SetpointChangedEvent(hvac_mode="heat", timestamp=datetime.now(), old_target=21.0, new_target=22.0))
 
         # Assert state is still HEATING and cycle was interrupted (interruption_history not empty)
         assert tracker.state == CycleState.HEATING
@@ -393,7 +400,7 @@ class TestCycleResumedAfterSetpointChange:
         mock_is_device_active.return_value = False
 
         # Stop heating
-        tracker.on_heating_session_ended(current_time)
+        dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=current_time))
 
         # Assert state transitions to SETTLING
         assert tracker.state == CycleState.SETTLING
@@ -439,7 +446,7 @@ class TestSetpointChangeInCoolingMode:
 
         # Start cooling cycle
         start_time = datetime(2024, 7, 15, 14, 0, 0)  # Summer afternoon
-        tracker.on_cooling_started(start_time)
+        dispatcher.emit(CycleStartedEvent(hvac_mode="cool", timestamp=start_time, target_temp=20.0, current_temp=22.0))
 
         assert tracker.state == CycleState.COOLING
 
@@ -451,7 +458,7 @@ class TestSetpointChangeInCoolingMode:
             current_time += timedelta(seconds=30)
 
         # Change setpoint mid-cycle while cooler is active (e.g., user wants it colder)
-        tracker.on_setpoint_changed(24.0, 23.0)
+        dispatcher.emit(SetpointChangedEvent(hvac_mode="heat", timestamp=datetime.now(), old_target=24.0, new_target=23.0))
 
         # Assert state is still COOLING (same behavior as heating)
         assert tracker.state == CycleState.COOLING
@@ -471,7 +478,7 @@ class TestSetpointChangeInCoolingMode:
         mock_is_device_active.return_value = False
 
         # Stop cooling
-        tracker.on_cooling_session_ended(current_time)
+        dispatcher.emit(SettlingStartedEvent(hvac_mode="cool", timestamp=current_time))
 
         # Assert state transitions to SETTLING
         assert tracker.state == CycleState.SETTLING
@@ -487,7 +494,7 @@ class TestSetpointChangeInCoolingMode:
 
 
 # Marker test for module existence
-def test_integration_cycle_learning_module_exists():
+def test_integration_cycle_learning_module_exists(dispatcher):
     """Marker test to verify module can be imported."""
     from custom_components.adaptive_thermostat.managers.cycle_tracker import (
         CycleTrackerManager,
@@ -515,7 +522,7 @@ class TestPWMSessionTracking:
         current_time = start_time
 
         # Session starts: control_output 0→50
-        cycle_tracker.on_heating_started(start_time)
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=start_time, target_temp=21.0, current_temp=19.0))
         assert cycle_tracker.state == CycleState.HEATING
 
         # Simulate 30 minutes of PWM cycling
@@ -547,7 +554,7 @@ class TestPWMSessionTracking:
 
         # Session ends: control_output 50→0
         stop_time = start_time + timedelta(minutes=30)
-        cycle_tracker.on_heating_session_ended(stop_time)
+        dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=stop_time))
 
         # Verify transition to SETTLING (first and only time)
         assert cycle_tracker.state == CycleState.SETTLING

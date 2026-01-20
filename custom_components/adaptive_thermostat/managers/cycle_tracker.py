@@ -7,7 +7,6 @@ collects temperature data, and calculates metrics for adaptive PID tuning.
 from __future__ import annotations
 
 import logging
-import warnings
 from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Awaitable, Callable
@@ -226,35 +225,31 @@ class CycleTrackerManager:
         self._restoration_complete = True
         self._logger.debug("Restoration complete, temperature updates now enabled")
 
-    def on_heating_started(self, timestamp: datetime) -> None:
-        """Handle heating start - device actually turned ON.
-
-        .. deprecated::
-            Use event-driven architecture with CycleEventDispatcher instead.
-            This method will be removed in a future release.
-
-        Idempotent: ignores call if already in HEATING state (e.g., PWM re-activation).
-        Transitions IDLE -> HEATING, records cycle start time and target temperature.
+    def _on_cycle_started(self, event: "CycleStartedEvent") -> None:
+        """Handle CYCLE_STARTED event.
 
         Args:
-            timestamp: Time when heating started
+            event: CycleStartedEvent with hvac_mode, timestamp, target_temp, current_temp
         """
-        warnings.warn(
-            "on_heating_started() is deprecated. Use CycleEventDispatcher with "
-            "CYCLE_STARTED event instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        if self._state == CycleState.HEATING:
-            return  # Already heating, ignore (PWM re-activation)
+        # Determine cycle state based on HVAC mode
+        if event.hvac_mode == "heat":
+            new_state = CycleState.HEATING
+        elif event.hvac_mode == "cool":
+            new_state = CycleState.COOLING
+        else:
+            return
+
+        # Idempotent: ignore if already in the target state
+        if self._state == new_state:
+            return
 
         if self._state == CycleState.SETTLING:
-            self._logger.warning("Heating started while settling, resetting cycle")
+            self._logger.warning("Cycle started while settling, resetting cycle")
             self._cancel_settling_timeout()
 
-        # Transition to HEATING state
-        self._state = CycleState.HEATING
-        self._cycle_start_time = timestamp
+        # Transition to new state
+        self._state = new_state
+        self._cycle_start_time = event.timestamp
         self._cycle_target_temp = self._get_target_temp()
         self._temperature_history.clear()
         self._outdoor_temp_history.clear()
@@ -268,141 +263,36 @@ class CycleTrackerManager:
             current_temp or 0.0,
         )
 
-    def on_heating_session_ended(self, timestamp: datetime) -> None:
-        """Handle heating session end - demand dropped to 0.
-
-        .. deprecated::
-            Use event-driven architecture with CycleEventDispatcher instead.
-            This method will be removed in a future release.
-
-        Transitions from HEATING -> SETTLING and schedules settling timeout.
-
-        Args:
-            timestamp: Time when heating session ended
-        """
-        warnings.warn(
-            "on_heating_session_ended() is deprecated. Use CycleEventDispatcher with "
-            "SETTLING_STARTED event instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        if self._state != CycleState.HEATING:
-            self._logger.debug(
-                "Session ended while in state %s, ignoring", self._state
-            )
-            return
-
-        # Transition to SETTLING state
-        self._state = CycleState.SETTLING
-
-        # Schedule settling timeout
-        self._schedule_settling_timeout()
-
-        self._logger.info(
-            "Heating session ended, monitoring settling (timeout in %d minutes)",
-            self._max_settling_time_minutes,
-        )
-
-    def on_cooling_started(self, timestamp: datetime) -> None:
-        """Handle cooling start - device actually turned ON.
-
-        .. deprecated::
-            Use event-driven architecture with CycleEventDispatcher instead.
-            This method will be removed in a future release.
-
-        Idempotent: ignores call if already in COOLING state (e.g., PWM re-activation).
-        Transitions IDLE -> COOLING, records cycle start time and target temperature.
-
-        Args:
-            timestamp: Time when cooling started
-        """
-        warnings.warn(
-            "on_cooling_started() is deprecated. Use CycleEventDispatcher with "
-            "CYCLE_STARTED event instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        if self._state == CycleState.COOLING:
-            return  # Already cooling, ignore (PWM re-activation)
-
-        if self._state == CycleState.SETTLING:
-            self._logger.warning("Cooling started while settling, resetting cycle")
-            self._cancel_settling_timeout()
-
-        # Transition to COOLING state
-        self._state = CycleState.COOLING
-        self._cycle_start_time = timestamp
-        self._cycle_target_temp = self._get_target_temp()
-        self._temperature_history.clear()
-        self._outdoor_temp_history.clear()
-        # Clear last interruption reason when starting a new cycle
-        self._last_interruption_reason = None
-
-        current_temp = self._get_current_temp()
-        self._logger.info(
-            "Cooling cycle started: target=%.2f°C, current=%.2f°C",
-            self._cycle_target_temp or 0.0,
-            current_temp or 0.0,
-        )
-
-    def on_cooling_session_ended(self, timestamp: datetime) -> None:
-        """Handle cooling session end - demand dropped to 0.
-
-        .. deprecated::
-            Use event-driven architecture with CycleEventDispatcher instead.
-            This method will be removed in a future release.
-
-        Transitions from COOLING -> SETTLING and schedules settling timeout.
-
-        Args:
-            timestamp: Time when cooling session ended
-        """
-        warnings.warn(
-            "on_cooling_session_ended() is deprecated. Use CycleEventDispatcher with "
-            "SETTLING_STARTED event instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        if self._state != CycleState.COOLING:
-            self._logger.debug(
-                "Session ended while in state %s, ignoring", self._state
-            )
-            return
-
-        # Transition to SETTLING state
-        self._state = CycleState.SETTLING
-
-        # Schedule settling timeout
-        self._schedule_settling_timeout()
-
-        self._logger.info(
-            "Cooling session ended, monitoring settling (timeout in %d minutes)",
-            self._max_settling_time_minutes,
-        )
-
-    def _on_cycle_started(self, event: "CycleStartedEvent") -> None:
-        """Handle CYCLE_STARTED event.
-
-        Args:
-            event: CycleStartedEvent with hvac_mode, timestamp, target_temp, current_temp
-        """
-        # Delegate to existing on_heating_started or on_cooling_started logic
-        if event.hvac_mode == "heat":
-            self.on_heating_started(event.timestamp)
-        elif event.hvac_mode == "cool":
-            self.on_cooling_started(event.timestamp)
-
     def _on_settling_started(self, event: "SettlingStartedEvent") -> None:
         """Handle SETTLING_STARTED event.
 
         Args:
             event: SettlingStartedEvent with hvac_mode, timestamp
         """
-        # Delegate to existing on_heating_session_ended or on_cooling_session_ended
-        if event.hvac_mode == "heat":
-            self.on_heating_session_ended(event.timestamp)
-        elif event.hvac_mode == "cool":
-            self.on_cooling_session_ended(event.timestamp)
+        # Verify we're in the correct state for settling
+        if event.hvac_mode == "heat" and self._state != CycleState.HEATING:
+            self._logger.debug(
+                "Session ended while in state %s, ignoring", self._state
+            )
+            return
+        elif event.hvac_mode == "cool" and self._state != CycleState.COOLING:
+            self._logger.debug(
+                "Session ended while in state %s, ignoring", self._state
+            )
+            return
+
+        # Transition to SETTLING state
+        self._state = CycleState.SETTLING
+
+        # Schedule settling timeout
+        self._schedule_settling_timeout()
+
+        mode_str = "heating" if event.hvac_mode == "heat" else "cooling"
+        self._logger.info(
+            "%s session ended, monitoring settling (timeout in %d minutes)",
+            mode_str.capitalize(),
+            self._max_settling_time_minutes,
+        )
 
     def _on_heating_started(self, event: "HeatingStartedEvent") -> None:
         """Handle HEATING_STARTED event for duty cycle tracking.
@@ -428,8 +318,14 @@ class CycleTrackerManager:
         Args:
             event: ContactPauseEvent with hvac_mode, timestamp, entity_id
         """
-        # Delegate to existing on_contact_sensor_pause logic
-        self.on_contact_sensor_pause()
+        from ..adaptive.cycle_analysis import InterruptionType
+
+        # Use centralized interruption handler
+        self._handle_interruption(
+            InterruptionType.CONTACT_SENSOR.value,
+            should_abort=True,
+            reason="contact sensor pause (window/door opened)"
+        )
 
     def _on_contact_resume(self, event: "ContactResumeEvent") -> None:
         """Handle CONTACT_RESUME event.
@@ -447,8 +343,40 @@ class CycleTrackerManager:
         Args:
             event: SetpointChangedEvent with hvac_mode, timestamp, old_target, new_target
         """
-        # Delegate to existing on_setpoint_changed logic
-        self.on_setpoint_changed(event.old_target, event.new_target)
+        from ..adaptive.cycle_analysis import InterruptionClassifier, InterruptionType
+
+        # Only process if we're in an active cycle
+        if self._state not in (CycleState.HEATING, CycleState.COOLING, CycleState.SETTLING):
+            return
+
+        # Check if device is currently active
+        is_device_active = False
+        if self._get_is_device_active is not None:
+            is_device_active = self._get_is_device_active()
+
+        # Classify the interruption
+        interruption_type = InterruptionClassifier.classify_setpoint_change(
+            event.old_target, event.new_target, is_device_active
+        )
+
+        # Determine action based on classification
+        if interruption_type == InterruptionType.SETPOINT_MAJOR:
+            # Major change, abort cycle
+            reason = f"setpoint change: {event.old_target:.2f}°C -> {event.new_target:.2f}°C (device inactive)"
+            self._handle_interruption(
+                interruption_type.value,
+                should_abort=True,
+                reason=reason
+            )
+        else:
+            # Minor change, continue tracking with new setpoint
+            self._cycle_target_temp = event.new_target
+            reason = f"setpoint change: {event.old_target:.2f}°C -> {event.new_target:.2f}°C (device active or minor)"
+            self._handle_interruption(
+                interruption_type.value,
+                should_abort=False,
+                reason=reason
+            )
 
     def _on_mode_changed_event(self, event: "ModeChangedEvent") -> None:
         """Handle MODE_CHANGED event.
@@ -456,8 +384,28 @@ class CycleTrackerManager:
         Args:
             event: ModeChangedEvent with timestamp, old_mode, new_mode
         """
-        # Delegate to existing on_mode_changed logic
-        self.on_mode_changed(event.old_mode, event.new_mode)
+        from ..adaptive.cycle_analysis import InterruptionClassifier, InterruptionType
+
+        # Only process if we're in an active cycle
+        if self._state not in (CycleState.HEATING, CycleState.COOLING, CycleState.SETTLING):
+            return
+
+        # Map cycle state to string for classifier
+        cycle_state_str = self._state.value  # "heating", "cooling", or "settling"
+
+        # Classify the interruption
+        interruption_type = InterruptionClassifier.classify_mode_change(
+            event.old_mode, event.new_mode, cycle_state_str
+        )
+
+        if interruption_type is not None:
+            # Incompatible mode change, abort cycle
+            reason = f"mode change: {event.old_mode} -> {event.new_mode} (incompatible with {cycle_state_str})"
+            self._handle_interruption(
+                interruption_type.value,
+                should_abort=True,
+                reason=reason
+            )
 
     def _cancel_settling_timeout(self) -> None:
         """Cancel any active settling timeout."""
@@ -732,130 +680,6 @@ class CycleTrackerManager:
             return False, f"Insufficient temperature samples ({len(self._temperature_history)} < 5)"
 
         return True, "Valid"
-
-    def on_setpoint_changed(self, old_temp: float, new_temp: float) -> None:
-        """Handle setpoint change event.
-
-        .. deprecated::
-            Use event-driven architecture with CycleEventDispatcher instead.
-            This method will be removed in a future release.
-
-        Uses InterruptionClassifier to determine if change is major or minor.
-        Major changes (>0.5°C with device inactive) abort the cycle.
-        Minor changes (≤0.5°C or device active) continue tracking.
-
-        Args:
-            old_temp: Previous target temperature
-            new_temp: New target temperature
-        """
-        warnings.warn(
-            "on_setpoint_changed() is deprecated. Use CycleEventDispatcher with "
-            "SETPOINT_CHANGED event instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        from ..adaptive.cycle_analysis import InterruptionClassifier, InterruptionType
-
-        # Only process if we're in an active cycle
-        if self._state not in (CycleState.HEATING, CycleState.COOLING, CycleState.SETTLING):
-            return
-
-        # Check if device is currently active
-        is_device_active = False
-        if self._get_is_device_active is not None:
-            is_device_active = self._get_is_device_active()
-
-        # Classify the interruption
-        interruption_type = InterruptionClassifier.classify_setpoint_change(
-            old_temp, new_temp, is_device_active
-        )
-
-        # Determine action based on classification
-        if interruption_type == InterruptionType.SETPOINT_MAJOR:
-            # Major change, abort cycle
-            reason = f"setpoint change: {old_temp:.2f}°C -> {new_temp:.2f}°C (device inactive)"
-            self._handle_interruption(
-                interruption_type.value,
-                should_abort=True,
-                reason=reason
-            )
-        else:
-            # Minor change, continue tracking with new setpoint
-            self._cycle_target_temp = new_temp
-            reason = f"setpoint change: {old_temp:.2f}°C -> {new_temp:.2f}°C (device active or minor)"
-            self._handle_interruption(
-                interruption_type.value,
-                should_abort=False,
-                reason=reason
-            )
-
-    def on_contact_sensor_pause(self) -> None:
-        """Handle contact sensor pause event.
-
-        .. deprecated::
-            Use event-driven architecture with CycleEventDispatcher instead.
-            This method will be removed in a future release.
-
-        Aborts the current cycle if in HEATING, COOLING, or SETTLING state, as
-        climate control has been paused due to window/door opening.
-        """
-        warnings.warn(
-            "on_contact_sensor_pause() is deprecated. Use CycleEventDispatcher with "
-            "CONTACT_PAUSE event instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        from ..adaptive.cycle_analysis import InterruptionType
-
-        # Use centralized interruption handler
-        self._handle_interruption(
-            InterruptionType.CONTACT_SENSOR.value,
-            should_abort=True,
-            reason="contact sensor pause (window/door opened)"
-        )
-
-    def on_mode_changed(self, old_mode: str, new_mode: str) -> None:
-        """Handle HVAC mode change event.
-
-        .. deprecated::
-            Use event-driven architecture with CycleEventDispatcher instead.
-            This method will be removed in a future release.
-
-        Uses InterruptionClassifier to determine if mode change is compatible
-        with current cycle state. Incompatible changes abort the cycle.
-
-        Args:
-            old_mode: Previous HVAC mode
-            new_mode: New HVAC mode
-        """
-        warnings.warn(
-            "on_mode_changed() is deprecated. Use CycleEventDispatcher with "
-            "MODE_CHANGED event instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        from ..adaptive.cycle_analysis import InterruptionClassifier, InterruptionType
-
-        # Only process if we're in an active cycle
-        if self._state not in (CycleState.HEATING, CycleState.COOLING, CycleState.SETTLING):
-            return
-
-        # Map cycle state to string for classifier
-        cycle_state_str = self._state.value  # "heating", "cooling", or "settling"
-
-        # Classify the interruption
-        interruption_type = InterruptionClassifier.classify_mode_change(
-            old_mode, new_mode, cycle_state_str
-        )
-
-        if interruption_type is not None:
-            # Incompatible mode change, abort cycle
-            reason = f"mode change: {old_mode} -> {new_mode} (incompatible with {cycle_state_str})"
-            self._handle_interruption(
-                interruption_type.value,
-                should_abort=True,
-                reason=reason
-            )
 
     async def _finalize_cycle(self) -> None:
         """Finalize cycle and record metrics.
