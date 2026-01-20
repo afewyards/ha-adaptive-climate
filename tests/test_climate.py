@@ -2298,3 +2298,66 @@ class TestClimateDispatcherIntegration:
             )
 
         assert len(events) == 0  # No event should be emitted
+
+
+class TestClimateNoDirectCTMCalls:
+    """Test that climate.py doesn't make direct cycle_tracker method calls."""
+
+    def test_climate_no_direct_ctm_setpoint(self):
+        """Verify climate.py doesn't call cycle_tracker.on_setpoint_changed."""
+        # Static code analysis test - check that direct call doesn't exist
+        import os
+        climate_file = os.path.join(
+            os.path.dirname(__file__),
+            "..", "custom_components", "adaptive_thermostat", "climate.py"
+        )
+        with open(climate_file, "r") as f:
+            source = f.read()
+
+        # Should not contain direct call to cycle_tracker.on_setpoint_changed
+        assert "cycle_tracker.on_setpoint_changed" not in source, \
+            "climate.py should not call cycle_tracker.on_setpoint_changed directly"
+
+    def test_climate_no_direct_ctm_mode(self):
+        """Verify climate.py doesn't call cycle_tracker.on_mode_changed."""
+        import os
+        climate_file = os.path.join(
+            os.path.dirname(__file__),
+            "..", "custom_components", "adaptive_thermostat", "climate.py"
+        )
+        with open(climate_file, "r") as f:
+            source = f.read()
+
+        # Should not contain direct call to cycle_tracker.on_mode_changed
+        assert "cycle_tracker.on_mode_changed" not in source, \
+            "climate.py should not call cycle_tracker.on_mode_changed directly"
+
+    def test_climate_no_direct_ctm_contact(self):
+        """Verify climate.py doesn't call cycle_tracker.on_contact_sensor_pause."""
+        import os
+        climate_file = os.path.join(
+            os.path.dirname(__file__),
+            "..", "custom_components", "adaptive_thermostat", "climate.py"
+        )
+        with open(climate_file, "r") as f:
+            source = f.read()
+
+        # Should not contain direct call to cycle_tracker.on_contact_sensor_pause
+        assert "cycle_tracker.on_contact_sensor_pause" not in source, \
+            "climate.py should not call cycle_tracker.on_contact_sensor_pause directly"
+
+    def test_climate_no_direct_ctm_session_end(self):
+        """Verify climate.py doesn't call on_heating_session_ended in mode change."""
+        import os
+        climate_file = os.path.join(
+            os.path.dirname(__file__),
+            "..", "custom_components", "adaptive_thermostat", "climate.py"
+        )
+        with open(climate_file, "r") as f:
+            source = f.read()
+
+        # Should not contain direct calls to session_ended methods
+        assert "cycle_tracker.on_heating_session_ended" not in source, \
+            "climate.py should not call cycle_tracker.on_heating_session_ended directly"
+        assert "cycle_tracker.on_cooling_session_ended" not in source, \
+            "climate.py should not call cycle_tracker.on_cooling_session_ended directly"

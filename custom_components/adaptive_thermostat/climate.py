@@ -1509,13 +1509,6 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         """Set new target hvac mode."""
         old_mode = self._hvac_mode
 
-        # End session explicitly before turning off
-        if self._cycle_tracker and self._heater_controller and self._heater_controller._cycle_active:
-            if self._hvac_mode == HVACMode.COOL:
-                self._cycle_tracker.on_cooling_session_ended(datetime.now())
-            else:
-                self._cycle_tracker.on_heating_session_ended(datetime.now())
-
         await self._async_heater_turn_off(force=True)
         if hvac_mode == HVACMode.HEAT:
             self._min_out = self._output_clamp_low
@@ -1584,10 +1577,6 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                         new_mode=new_mode_str,
                     )
                 )
-
-            # Notify cycle tracker of mode change (deprecated path)
-            if self._cycle_tracker:
-                self._cycle_tracker.on_mode_changed(old_mode_str, new_mode_str)
 
     async def async_set_temperature(self, **kwargs):
         """Set new target temperature."""
@@ -2054,10 +2043,6 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                         "%s: Contact sensor open - pausing heating",
                         self.entity_id
                     )
-                    # Notify cycle tracker of contact sensor pause
-                    if self._cycle_tracker:
-                        self._cycle_tracker.on_contact_sensor_pause()
-
                     if self._pwm:
                         await self._async_heater_turn_off(force=True)
                     else:
@@ -2235,10 +2220,6 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                         new_target=value,
                     )
                 )
-
-            # Notify cycle tracker of setpoint change (deprecated path)
-            if self._cycle_tracker is not None:
-                self._cycle_tracker.on_setpoint_changed(old_temp, value)
 
     async def _async_set_pid_mode_internal(self, mode: str) -> None:
         """Internal callback to set PID mode from TemperatureManager."""
