@@ -14,6 +14,7 @@ pytestmark = pytest.mark.skipif(not HAS_VOLUPTUOUS, reason="voluptuous not insta
 # Import constants directly (doesn't require homeassistant)
 from custom_components.adaptive_thermostat.const import (
     CONF_THERMAL_COUPLING,
+    CONF_OPEN_ZONES,
     CONF_STAIRWELL_ZONES,
     CONF_SEED_COEFFICIENTS,
     DEFAULT_SEED_COEFFICIENTS,
@@ -28,7 +29,47 @@ CONF_FLOORPLAN = "floorplan"
 # =============================================================================
 
 def create_thermal_coupling_schema():
-    """Create the thermal_coupling schema matching climate.py PLATFORM_SCHEMA."""
+    """Create the thermal_coupling schema matching climate.py PLATFORM_SCHEMA.
+
+    The new schema uses auto-discovery for floor assignments. The 'open' key
+    is now a simple list of entity IDs (zones in open floor plans), replacing
+    the legacy 'floorplan' structure.
+    """
+    # Mock cv.entity_ids for testing
+    def mock_entity_ids(value):
+        """Mock entity_ids validator."""
+        if not isinstance(value, list):
+            raise vol.Invalid("entity_ids must be a list")
+        for entity_id in value:
+            if not isinstance(entity_id, str) or "." not in entity_id:
+                raise vol.Invalid(f"Invalid entity_id: {entity_id}")
+        return value
+
+    # Mock cv.ensure_list for testing
+    def mock_ensure_list(value):
+        """Mock ensure_list validator."""
+        if isinstance(value, list):
+            return value
+        return [value]
+
+    return vol.Schema({
+        vol.Optional('enabled', default=True): vol.Coerce(bool),
+        # New auto-discovery schema: 'open' is a simple list of entity IDs
+        vol.Optional(CONF_OPEN_ZONES): vol.All(mock_ensure_list, mock_entity_ids),
+        vol.Optional(CONF_STAIRWELL_ZONES): vol.All(mock_ensure_list, mock_entity_ids),
+        vol.Optional(CONF_SEED_COEFFICIENTS): vol.Schema({
+            vol.Optional('same_floor'): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=1.0)),
+            vol.Optional('up'): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=1.0)),
+            vol.Optional('down'): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=1.0)),
+            vol.Optional('open'): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=1.0)),
+            vol.Optional('stairwell_up'): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=1.0)),
+            vol.Optional('stairwell_down'): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=1.0)),
+        }),
+    })
+
+
+def create_legacy_thermal_coupling_schema():
+    """Create the legacy thermal_coupling schema with floorplan (for backward compat tests)."""
     # Mock cv.entity_ids for testing
     def mock_entity_ids(value):
         """Mock entity_ids validator."""
@@ -56,7 +97,7 @@ def create_thermal_coupling_schema():
                 vol.Optional('open'): mock_entity_ids,
             })]
         ),
-        vol.Optional(CONF_STAIRWELL_ZONES): mock_entity_ids,
+        vol.Optional(CONF_STAIRWELL_ZONES): vol.All(mock_ensure_list, mock_entity_ids),
         vol.Optional(CONF_SEED_COEFFICIENTS): vol.Schema({
             vol.Optional('same_floor'): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=1.0)),
             vol.Optional('up'): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=1.0)),
@@ -93,9 +134,67 @@ def test_config_thermal_coupling_enabled():
     assert validated["enabled"] is True
 
 
-def test_config_floorplan_parsed():
-    """Test that floorplan with floors and zones is parsed correctly."""
+def test_config_thermal_coupling_open_list():
+    """Test that 'open' as a list of entity IDs is parsed correctly."""
     schema = create_thermal_coupling_schema()
+
+    # Test with open as a list of zones in open floor plans
+    config = {
+        CONF_OPEN_ZONES: ["climate.living_room", "climate.kitchen", "climate.dining_room"]
+    }
+
+    validated = schema(config)
+    assert CONF_OPEN_ZONES in validated
+    assert validated[CONF_OPEN_ZONES] == ["climate.living_room", "climate.kitchen", "climate.dining_room"]
+
+
+def test_config_thermal_coupling_open_list_single_entity():
+    """Test that 'open' with a single entity is converted to list."""
+    schema = create_thermal_coupling_schema()
+
+    # Single entity should be converted to list by ensure_list
+    config = {
+        CONF_OPEN_ZONES: ["climate.living_room"]
+    }
+
+    validated = schema(config)
+    assert CONF_OPEN_ZONES in validated
+    assert validated[CONF_OPEN_ZONES] == ["climate.living_room"]
+
+
+def test_config_thermal_coupling_open_invalid_entity():
+    """Test that invalid entity IDs in 'open' are rejected."""
+    schema = create_thermal_coupling_schema()
+
+    # Invalid entity_id (no domain)
+    config = {
+        CONF_OPEN_ZONES: ["invalid_entity"]
+    }
+
+    with pytest.raises(vol.Invalid):
+        schema(config)
+
+
+def test_config_thermal_coupling_minimal():
+    """Test that enabled with no open/stairwell works (minimal config)."""
+    schema = create_thermal_coupling_schema()
+
+    # Minimal config - just enabled
+    config = {"enabled": True}
+    validated = schema(config)
+    assert validated["enabled"] is True
+    assert CONF_OPEN_ZONES not in validated
+    assert CONF_STAIRWELL_ZONES not in validated
+
+    # Empty config should default to enabled=True
+    config_empty = {}
+    validated = schema(config_empty)
+    assert validated["enabled"] is True
+
+
+def test_config_floorplan_parsed():
+    """Test that legacy floorplan with floors and zones is parsed correctly."""
+    schema = create_legacy_thermal_coupling_schema()
 
     config = {
         CONF_FLOORPLAN: [
@@ -209,8 +308,8 @@ def test_config_seed_coefficients_range_validation():
 
 
 def test_config_floorplan_invalid_entity_id():
-    """Test that invalid entity IDs in floorplan are rejected."""
-    schema = create_thermal_coupling_schema()
+    """Test that invalid entity IDs in legacy floorplan are rejected."""
+    schema = create_legacy_thermal_coupling_schema()
 
     # Test with invalid entity_id (no domain)
     config_invalid = {
@@ -227,8 +326,35 @@ def test_config_floorplan_invalid_entity_id():
 
 
 def test_config_complete_thermal_coupling():
-    """Test a complete thermal coupling configuration."""
+    """Test a complete thermal coupling configuration with new schema."""
     schema = create_thermal_coupling_schema()
+
+    config = {
+        "enabled": True,
+        CONF_OPEN_ZONES: ["climate.living_room", "climate.kitchen"],
+        CONF_STAIRWELL_ZONES: ["climate.stairwell"],
+        CONF_SEED_COEFFICIENTS: {
+            "same_floor": 0.15,
+            "up": 0.40,
+            "down": 0.10,
+            "open": 0.60,
+            "stairwell_up": 0.45,
+            "stairwell_down": 0.10,
+        }
+    }
+
+    validated = schema(config)
+
+    # Verify all components
+    assert validated["enabled"] is True
+    assert validated[CONF_OPEN_ZONES] == ["climate.living_room", "climate.kitchen"]
+    assert validated[CONF_STAIRWELL_ZONES] == ["climate.stairwell"]
+    assert validated[CONF_SEED_COEFFICIENTS]["same_floor"] == 0.15
+
+
+def test_config_complete_thermal_coupling_legacy():
+    """Test a complete legacy thermal coupling configuration with floorplan."""
+    schema = create_legacy_thermal_coupling_schema()
 
     config = {
         "enabled": True,

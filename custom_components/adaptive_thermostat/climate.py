@@ -81,9 +81,6 @@ from .managers.state_attributes import build_state_attributes
 
 _LOGGER = logging.getLogger(__name__)
 
-# Legacy constant for backward compatibility during migration to auto-discovery
-_CONF_FLOORPLAN = "floorplan"
-
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
     {
         vol.Optional(const.CONF_HEATER): cv.entity_ids,
@@ -170,18 +167,12 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
                 })]
             ),
         }),
-        # Thermal coupling configuration
+        # Thermal coupling configuration (auto-discovery from HA floor/area registries)
         vol.Optional(const.CONF_THERMAL_COUPLING): vol.Schema({
             vol.Optional('enabled', default=True): cv.boolean,
-            vol.Optional(_CONF_FLOORPLAN): vol.All(
-                cv.ensure_list,
-                [vol.Schema({
-                    vol.Required('floor'): vol.Coerce(int),
-                    vol.Required('zones'): cv.entity_ids,
-                    vol.Optional('open'): cv.entity_ids,
-                })]
-            ),
-            vol.Optional(const.CONF_STAIRWELL_ZONES): cv.entity_ids,
+            # Zones in open floor plans (high coupling) - floor assignments auto-discovered
+            vol.Optional(const.CONF_OPEN_ZONES): vol.All(cv.ensure_list, [cv.entity_id]),
+            vol.Optional(const.CONF_STAIRWELL_ZONES): vol.All(cv.ensure_list, [cv.entity_id]),
             vol.Optional(const.CONF_SEED_COEFFICIENTS): vol.Schema({
                 vol.Optional('same_floor'): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=1.0)),
                 vol.Optional('up'): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=1.0)),
