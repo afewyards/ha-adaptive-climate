@@ -441,13 +441,6 @@ class HeaterController:
                     hvac_mode=hvac_mode,
                     timestamp=datetime.now(),
                 ))
-
-            # Backward compatibility: notify cycle tracker
-            if hasattr(self._thermostat, '_cycle_tracker') and self._thermostat._cycle_tracker:
-                if hvac_mode == HVACMode.COOL:
-                    self._thermostat._cycle_tracker.on_cooling_started(datetime.now())
-                else:
-                    self._thermostat._cycle_tracker.on_heating_started(datetime.now())
         else:
             _LOGGER.info(
                 "%s: Reject request turning ON %s: Cycle is too short",
@@ -611,13 +604,6 @@ class HeaterController:
                     hvac_mode=hvac_mode,
                     timestamp=datetime.now(),
                 ))
-
-            # Backward compatibility: notify cycle tracker
-            if hasattr(self._thermostat, '_cycle_tracker') and self._thermostat._cycle_tracker:
-                if hvac_mode == HVACMode.COOL:
-                    self._thermostat._cycle_tracker.on_cooling_started(datetime.now())
-                else:
-                    self._thermostat._cycle_tracker.on_heating_started(datetime.now())
         # Detect heating stopped transition (was on, now off)
         elif old_active and not new_active:
             # Increment cycle counter for wear tracking (on→off transition)
@@ -629,13 +615,6 @@ class HeaterController:
                     hvac_mode=hvac_mode,
                     timestamp=datetime.now(),
                 ))
-
-            # Backward compatibility: notify cycle tracker
-            if hasattr(self._thermostat, '_cycle_tracker') and self._thermostat._cycle_tracker:
-                if hvac_mode == HVACMode.COOL:
-                    self._thermostat._cycle_tracker.on_cooling_session_ended(datetime.now())
-                else:
-                    self._thermostat._cycle_tracker.on_heating_session_ended(datetime.now())
 
     async def async_set_control_value(
         self,
@@ -685,10 +664,6 @@ class HeaterController:
                     target_temp=target_temp,
                     current_temp=current_temp,
                 ))
-            # Backward compatibility: notify cycle tracker
-            if hasattr(self._thermostat, '_cycle_tracker') and self._thermostat._cycle_tracker:
-                # Note: device activation happens in async_turn_on, not here
-                pass
 
         # Emit SETTLING_STARTED when demand drops to 0 (PWM mode)
         if old_cycle_active and not new_cycle_active:
@@ -697,12 +672,6 @@ class HeaterController:
                     hvac_mode=hvac_mode,
                     timestamp=datetime.now(),
                 ))
-            # Backward compatibility: notify cycle tracker
-            if hasattr(self._thermostat, '_cycle_tracker') and self._thermostat._cycle_tracker:
-                if hvac_mode == HVACMode.COOL:
-                    self._thermostat._cycle_tracker.on_cooling_session_ended(datetime.now())
-                else:
-                    self._thermostat._cycle_tracker.on_heating_session_ended(datetime.now())
 
         if self._pwm:
             if abs(control_output) == self._difference:
