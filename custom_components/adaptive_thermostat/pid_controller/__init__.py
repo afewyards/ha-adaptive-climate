@@ -401,7 +401,18 @@ class PID:
                 # Convert dt from seconds to hours for dimensional correctness
                 # Ki has units of %/(°C·hour), so dt must be in hours
                 dt_hours = self._dt / 3600.0
-                self._integral += self._Ki * self._error * dt_hours
+
+                # Asymmetric integral decay: apply multiplier when error opposes integral sign
+                # This accelerates integral wind-down during thermal overhang (e.g., floor heating
+                # where temperature overshoots setpoint due to thermal mass)
+                # Overhang conditions:
+                # - Positive integral (was heating) + negative error (temp above setpoint)
+                # - Negative integral (was cooling) + positive error (temp below setpoint)
+                is_overhang = (self._integral > 0 and self._error < 0) or \
+                              (self._integral < 0 and self._error > 0)
+                decay_multiplier = self._integral_decay_multiplier if is_overhang else 1.0
+
+                self._integral += self._Ki * self._error * dt_hours * decay_multiplier
 
             # Integral clamping accounts for external and feedforward terms to ensure total output respects bounds
             # Formula: I_max = out_max - E - F, I_min = out_min - E - F

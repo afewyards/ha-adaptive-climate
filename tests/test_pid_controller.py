@@ -1736,6 +1736,117 @@ class TestIntegralDecayConstants:
         assert DEFAULT_INTEGRAL_DECAY == 1.5
 
 
+class TestAsymmetricIntegralDecay:
+    """Test asymmetric integral decay in PID calc() for overhang situations."""
+
+    def test_integral_decay_applied_on_overhang(self):
+        """With integral>0, error<0, decay multiplier applied."""
+        # Setup: PID with integral_decay_multiplier=3.0, Ki=10
+        # Use out_min=-100 to avoid clamping when integral goes negative
+        pid = PID(kp=0, ki=10, kd=0, out_min=-100, out_max=100, integral_decay_multiplier=3.0)
+
+        # Build up positive integral first (multiple calls to build up enough)
+        base_time = 1000.0
+        pid.calc(19.0, 20.0, input_time=base_time, last_input_time=base_time - 10)  # error=+1.0
+        pid.calc(19.0, 20.0, input_time=base_time + 10, last_input_time=base_time)  # error=+1.0
+        initial_integral = pid.integral
+        assert initial_integral > 0, "Integral should be positive after heating"
+
+        # Now create overhang: temp above setpoint (error < 0)
+        # error = 20.0 - 20.5 = -0.5
+        # Without decay multiplier: delta_i = Ki * error * dt_hours = 10 * (-0.5) * (10/3600) = -0.0139
+        # With decay multiplier 3.0: delta_i = Ki * error * dt_hours * 3.0 = -0.0417
+        pid.calc(20.5, 20.0, input_time=base_time + 20, last_input_time=base_time + 10)
+
+        # Verify integral decreased more than it would without multiplier
+        delta_i = pid.integral - initial_integral
+        expected_without_decay = 10 * (-0.5) * (10 / 3600)  # -0.0139
+        expected_with_decay = expected_without_decay * 3.0  # -0.0417
+
+        assert delta_i < 0, "Integral should decrease on overhang"
+        # Allow 1% tolerance for floating point
+        assert abs(delta_i - expected_with_decay) < abs(expected_with_decay * 0.01), \
+            f"Decay should be 3x faster: got {delta_i}, expected {expected_with_decay}"
+
+    def test_integral_decay_not_applied_same_sign(self):
+        """With integral>0, error>0, multiplier=1.0 (no extra decay)."""
+        pid = PID(kp=0, ki=10, kd=0, out_min=0, out_max=100, integral_decay_multiplier=3.0)
+
+        # Build up positive integral
+        base_time = 1000.0
+        pid.calc(19.5, 20.0, input_time=base_time, last_input_time=base_time - 10)  # error=+0.5
+        initial_integral = pid.integral
+
+        # Continue heating (error still positive) - no decay multiplier
+        # error = 20.0 - 19.7 = +0.3
+        pid.calc(19.7, 20.0, input_time=base_time + 10, last_input_time=base_time)
+
+        delta_i = pid.integral - initial_integral
+        expected_normal = 10 * 0.3 * (10 / 3600)  # Normal accumulation, no multiplier
+
+        assert delta_i > 0, "Integral should increase when error is positive"
+        assert abs(delta_i - expected_normal) < abs(expected_normal * 0.01), \
+            f"Should not apply decay multiplier: got {delta_i}, expected {expected_normal}"
+
+    def test_integral_decay_negative_overhang(self):
+        """With integral<0, error>0, decay multiplier applied."""
+        # This handles cooling scenarios where integral is negative
+        pid = PID(kp=0, ki=10, kd=0, out_min=-100, out_max=100, integral_decay_multiplier=2.0)
+
+        # Build up negative integral (cooling scenario)
+        base_time = 1000.0
+        pid.calc(20.5, 20.0, input_time=base_time, last_input_time=base_time - 10)  # error=-0.5
+        initial_integral = pid.integral
+        assert initial_integral < 0, "Integral should be negative after cooling"
+
+        # Now undershoot: temp below setpoint (error > 0)
+        # error = 20.0 - 19.5 = +0.5
+        # With decay multiplier 2.0: integral should increase 2x faster
+        pid.calc(19.5, 20.0, input_time=base_time + 10, last_input_time=base_time)
+
+        delta_i = pid.integral - initial_integral
+        expected_without_decay = 10 * 0.5 * (10 / 3600)  # +0.0139
+        expected_with_decay = expected_without_decay * 2.0  # +0.0278
+
+        assert delta_i > 0, "Integral should increase toward zero on cooling undershoot"
+        assert abs(delta_i - expected_with_decay) < abs(expected_with_decay * 0.01), \
+            f"Decay should be 2x faster: got {delta_i}, expected {expected_with_decay}"
+
+    def test_integral_decay_default_value(self):
+        """Without param, uses default 1.5 multiplier during overhang."""
+        # Use out_min=-100 to avoid clamping when integral goes negative
+        pid = PID(kp=0, ki=10, kd=0, out_min=-100, out_max=100)  # default multiplier=1.5
+
+        # Build up positive integral (multiple calls to build up enough)
+        base_time = 1000.0
+        pid.calc(19.0, 20.0, input_time=base_time, last_input_time=base_time - 10)
+        pid.calc(19.0, 20.0, input_time=base_time + 10, last_input_time=base_time)
+        initial_integral = pid.integral
+
+        # Create overhang
+        pid.calc(20.5, 20.0, input_time=base_time + 20, last_input_time=base_time + 10)
+
+        delta_i = pid.integral - initial_integral
+        expected_with_decay = 10 * (-0.5) * (10 / 3600) * 1.5  # default 1.5x decay
+
+        assert abs(delta_i - expected_with_decay) < abs(expected_with_decay * 0.01), \
+            f"Should use default 1.5x decay: got {delta_i}, expected {expected_with_decay}"
+
+    def test_integral_decay_zero_integral(self):
+        """When integral is zero, no special decay behavior needed."""
+        pid = PID(kp=0, ki=10, kd=0, out_min=0, out_max=100, integral_decay_multiplier=3.0)
+
+        # First call - integral will be 0 (first call sets it to 0)
+        base_time = 1000.0
+        pid.calc(20.0, 20.0, input_time=base_time, last_input_time=None)
+        assert pid.integral == 0.0
+
+        # Second call with error - normal accumulation
+        pid.calc(19.5, 20.0, input_time=base_time + 10, last_input_time=base_time)
+        expected = 10 * 0.5 * (10 / 3600)  # Normal accumulation
+        assert abs(pid.integral - expected) < 0.001
+
+
 class TestIntegralDecayMultiplier:
     """Test integral_decay_multiplier parameter in PID controller."""
 
