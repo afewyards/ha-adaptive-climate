@@ -1,6 +1,33 @@
 # CHANGELOG
 
 
+## v0.22.1 (2026-01-20)
+
+### Bug Fixes
+
+- **cycle**: Proper cycle event triggers based on device activation
+  ([`bfa23d3`](https://github.com/afewyards/ha-adaptive-thermostat/commit/bfa23d3d560d34754230e96d1d81a76031b629a0))
+
+- Make on_heating_started/on_cooling_started idempotent (ignore if already in state) - Rename
+  on_heating_stopped -> on_heating_session_ended (same for cooling) - Fire cycle start events in
+  async_turn_on when device actually activates - Fire cycle end events in async_set_control_value
+  when demand drops to 0 - Add explicit session end call in climate.py on mode change - Add
+  _cancel_settling_timeout helper for cycle state management
+
+Fixes false cycle starts from tiny Ke outputs triggering on_heating_started when control_output > 0
+  but device not actually activated.
+
+- **pwm**: Skip activation when on-time below minimum threshold
+  ([`719bc3c`](https://github.com/afewyards/ha-adaptive-thermostat/commit/719bc3c93599614b3098971d8261b44a034640ba))
+
+Prevents overshoot from tiny control outputs (e.g., 0.5% from Ke) that would otherwise trigger
+  min_on_cycle_duration forcing the device to stay on much longer than requested.
+
+Before: 0.5% output with 2h PWM period would turn on for 15min (min_on)
+
+After: Outputs below min_on/pwm_period threshold are treated as zero
+
+
 ## v0.22.0 (2026-01-20)
 
 ### Chores
