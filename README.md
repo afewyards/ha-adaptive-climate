@@ -31,7 +31,7 @@ An advanced thermostat integration featuring PID control with automatic tuning, 
 - **PID Control** - Four-term PID controller (P+I+D+E) with proportional-on-measurement for smooth operation
 - **Adaptive Learning** - Automatically learns thermal characteristics and optimizes PID parameters from real heating cycles, with automatic application and validation
 - **Physics-Based Initialization** - Initial PID values calculated from zone properties using empirical HVAC data
-- **Multi-Zone Coordination** - Central heat source control, mode synchronization, and zone linking for connected spaces
+- **Multi-Zone Coordination** - Central heat source control, mode synchronization, and thermal coupling for connected spaces
 - **Energy Optimization** - Night setback with dynamic sunrise timing, solar gain prediction, contact sensors, outdoor compensation
 - **Actuator Wear Tracking** - Cycle counting with predictive maintenance alerts
 - **Comprehensive Monitoring** - Performance sensors, health warnings, energy tracking, and automated reports
@@ -88,6 +88,17 @@ adaptive_thermostat:
   outdoor_sensor: sensor.outdoor_temp
   sync_modes: true
 
+  # Thermal coupling learns heat transfer between zones
+  thermal_coupling:
+    floorplan:
+      - floor: 0
+        zones:
+          - climate.ground_floor
+          - climate.kitchen
+        open:
+          - climate.ground_floor
+          - climate.kitchen
+
 climate:
   - platform: adaptive_thermostat
     name: Ground Floor
@@ -105,8 +116,6 @@ climate:
         - type: screed
           material: cement
           thickness_mm: 50
-    linked_zones:
-      - climate.kitchen
 
   - platform: adaptive_thermostat
     name: Kitchen
