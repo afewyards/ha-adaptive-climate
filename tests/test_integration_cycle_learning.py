@@ -101,7 +101,7 @@ class TestCompleteHeatingCycle:
 
         # Stop heating after 30 minutes
         stop_time = start_time + timedelta(minutes=30)
-        cycle_tracker.on_heating_stopped(stop_time)
+        cycle_tracker.on_heating_session_ended(stop_time)
 
         assert cycle_tracker.state == CycleState.SETTLING
 
@@ -147,7 +147,7 @@ class TestMultipleCyclesInSequence:
 
             # Stop heating
             stop_time = current_time
-            cycle_tracker.on_heating_stopped(stop_time)
+            cycle_tracker.on_heating_session_ended(stop_time)
 
             # Add settling samples (10 samples at stable temp)
             for _ in range(10):
@@ -257,7 +257,7 @@ class TestCycleDuringVacationMode:
             current_time += timedelta(seconds=30)
 
         # Stop heating
-        tracker.on_heating_stopped(current_time)
+        tracker.on_heating_session_ended(current_time)
 
         # Add settling samples
         for _ in range(10):
@@ -291,7 +291,7 @@ class TestPWMModeCycleTracking:
             current_time += timedelta(seconds=30)
 
         # PWM turns off (heating stops)
-        cycle_tracker.on_heating_stopped(current_time)
+        cycle_tracker.on_heating_session_ended(current_time)
 
         # Continue collecting during settling with stable temperature (10 samples)
         for _ in range(10):
@@ -325,7 +325,7 @@ class TestValveModeCycleTracking:
             current_time += timedelta(seconds=30)
 
         # Valve closes to 0% (tracked as heating stopped)
-        cycle_tracker.on_heating_stopped(current_time)
+        cycle_tracker.on_heating_session_ended(current_time)
 
         assert cycle_tracker.state == CycleState.SETTLING
 
@@ -393,7 +393,7 @@ class TestCycleResumedAfterSetpointChange:
         mock_is_device_active.return_value = False
 
         # Stop heating
-        tracker.on_heating_stopped(current_time)
+        tracker.on_heating_session_ended(current_time)
 
         # Assert state transitions to SETTLING
         assert tracker.state == CycleState.SETTLING
@@ -471,7 +471,7 @@ class TestSetpointChangeInCoolingMode:
         mock_is_device_active.return_value = False
 
         # Stop cooling
-        tracker.on_cooling_stopped(current_time)
+        tracker.on_cooling_session_ended(current_time)
 
         # Assert state transitions to SETTLING
         assert tracker.state == CycleState.SETTLING
@@ -535,7 +535,7 @@ class TestPWMSessionTracking:
         # Collect temperature samples during PWM cycling
         # NOTE: In PWM mode, the HeaterController turns the heater on/off
         # internally via async_turn_on/async_turn_off, but these do NOT
-        # call on_heating_started/on_heating_stopped because the session
+        # call on_heating_started/on_heating_session_ended because the session
         # (control_output >0) remains active. Only async_set_control_value
         # detects session boundaries.
         for temp in temperatures:
@@ -547,7 +547,7 @@ class TestPWMSessionTracking:
 
         # Session ends: control_output 50→0
         stop_time = start_time + timedelta(minutes=30)
-        cycle_tracker.on_heating_stopped(stop_time)
+        cycle_tracker.on_heating_session_ended(stop_time)
 
         # Verify transition to SETTLING (first and only time)
         assert cycle_tracker.state == CycleState.SETTLING

@@ -177,18 +177,20 @@ class CycleTrackerManager:
         self._logger.debug("Restoration complete, temperature updates now enabled")
 
     def on_heating_started(self, timestamp: datetime) -> None:
-        """Handle heating start event.
+        """Handle heating start - device actually turned ON.
 
-        Transitions from IDLE -> HEATING, records cycle start time and target temperature,
-        and clears temperature history to start fresh collection.
+        Idempotent: ignores call if already in HEATING state (e.g., PWM re-activation).
+        Transitions IDLE -> HEATING, records cycle start time and target temperature.
 
         Args:
             timestamp: Time when heating started
         """
-        if self._state != CycleState.IDLE:
-            self._logger.warning(
-                "Heating started while in state %s, resetting cycle", self._state
-            )
+        if self._state == CycleState.HEATING:
+            return  # Already heating, ignore (PWM re-activation)
+
+        if self._state == CycleState.SETTLING:
+            self._logger.warning("Heating started while settling, resetting cycle")
+            self._cancel_settling_timeout()
 
         # Transition to HEATING state
         self._state = CycleState.HEATING
@@ -206,50 +208,53 @@ class CycleTrackerManager:
             current_temp or 0.0,
         )
 
-    def on_heating_stopped(self, timestamp: datetime) -> None:
-        """Handle heating stop event.
+    def on_heating_session_ended(self, timestamp: datetime) -> None:
+        """Handle heating session end - demand dropped to 0.
 
         Transitions from HEATING -> SETTLING and schedules settling timeout.
 
         Args:
-            timestamp: Time when heating stopped
+            timestamp: Time when heating session ended
         """
         if self._state != CycleState.HEATING:
-            self._logger.warning(
-                "Heating stopped while in state %s, ignoring", self._state
+            self._logger.debug(
+                "Session ended while in state %s, ignoring", self._state
             )
             return
 
         # Transition to SETTLING state
         self._state = CycleState.SETTLING
 
-        # Schedule settling timeout (120 minutes)
+        # Schedule settling timeout
         self._schedule_settling_timeout()
 
         self._logger.info(
-            "Heating stopped, monitoring settling (timeout in %d minutes)",
+            "Heating session ended, monitoring settling (timeout in %d minutes)",
             self._max_settling_time_minutes,
         )
 
     def on_cooling_started(self, timestamp: datetime) -> None:
-        """Handle cooling start event.
+        """Handle cooling start - device actually turned ON.
 
-        Transitions from IDLE -> COOLING, records cycle start time and target temperature,
-        and clears temperature history to start fresh collection.
+        Idempotent: ignores call if already in COOLING state (e.g., PWM re-activation).
+        Transitions IDLE -> COOLING, records cycle start time and target temperature.
 
         Args:
             timestamp: Time when cooling started
         """
-        if self._state != CycleState.IDLE:
-            self._logger.warning(
-                "Cooling started while in state %s, resetting cycle", self._state
-            )
+        if self._state == CycleState.COOLING:
+            return  # Already cooling, ignore (PWM re-activation)
+
+        if self._state == CycleState.SETTLING:
+            self._logger.warning("Cooling started while settling, resetting cycle")
+            self._cancel_settling_timeout()
 
         # Transition to COOLING state
         self._state = CycleState.COOLING
         self._cycle_start_time = timestamp
         self._cycle_target_temp = self._get_target_temp()
         self._temperature_history.clear()
+        self._outdoor_temp_history.clear()
         # Clear last interruption reason when starting a new cycle
         self._last_interruption_reason = None
 
@@ -260,39 +265,43 @@ class CycleTrackerManager:
             current_temp or 0.0,
         )
 
-    def on_cooling_stopped(self, timestamp: datetime) -> None:
-        """Handle cooling stop event.
+    def on_cooling_session_ended(self, timestamp: datetime) -> None:
+        """Handle cooling session end - demand dropped to 0.
 
         Transitions from COOLING -> SETTLING and schedules settling timeout.
 
         Args:
-            timestamp: Time when cooling stopped
+            timestamp: Time when cooling session ended
         """
         if self._state != CycleState.COOLING:
-            self._logger.warning(
-                "Cooling stopped while in state %s, ignoring", self._state
+            self._logger.debug(
+                "Session ended while in state %s, ignoring", self._state
             )
             return
 
         # Transition to SETTLING state
         self._state = CycleState.SETTLING
 
-        # Schedule settling timeout (120 minutes)
+        # Schedule settling timeout
         self._schedule_settling_timeout()
 
         self._logger.info(
-            "Cooling stopped, monitoring settling (timeout in %d minutes)",
+            "Cooling session ended, monitoring settling (timeout in %d minutes)",
             self._max_settling_time_minutes,
         )
+
+    def _cancel_settling_timeout(self) -> None:
+        """Cancel any active settling timeout."""
+        if self._settling_timeout_handle is not None:
+            self._settling_timeout_handle()
+            self._settling_timeout_handle = None
 
     def _schedule_settling_timeout(self) -> None:
         """Schedule timeout for settling detection."""
         from homeassistant.helpers.event import async_call_later
 
         # Cancel existing timeout if any
-        if self._settling_timeout_handle is not None:
-            self._settling_timeout_handle()
-            self._settling_timeout_handle = None
+        self._cancel_settling_timeout()
 
         # Schedule new timeout
         async def _settling_timeout(_: datetime) -> None:
@@ -403,9 +412,7 @@ class CycleTrackerManager:
         self._state = CycleState.IDLE
 
         # Cancel settling timeout if active
-        if self._settling_timeout_handle is not None:
-            self._settling_timeout_handle()
-            self._settling_timeout_handle = None
+        self._cancel_settling_timeout()
 
     def _schedule_learning_save(self) -> None:
         """Schedule a debounced save of learning data to storage.

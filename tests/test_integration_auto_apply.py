@@ -158,7 +158,7 @@ class TestFullAutoApplyFlow:
                 current_time += timedelta(seconds=30)
 
             # Stop heating
-            tracker.on_heating_stopped(current_time)
+            tracker.on_heating_session_ended(current_time)
             assert tracker.state == CycleState.SETTLING
 
             # Settling samples (stable temperature = good cycle)
@@ -428,7 +428,7 @@ class TestValidationFailureAndRollback:
                 await tracker.update_temperature(current_time, temp)
                 current_time += timedelta(seconds=30)
 
-            tracker.on_heating_stopped(current_time)
+            tracker.on_heating_session_ended(current_time)
 
             # Settling with overshoot
             for _ in range(10):
@@ -584,7 +584,7 @@ class TestValidationFailureAndRollback:
                 current_time += timedelta(seconds=30)
 
             # Stop heating
-            tracker.on_heating_stopped(current_time)
+            tracker.on_heating_session_ended(current_time)
             assert tracker.state == CycleState.SETTLING
 
             # Settling with degraded overshoot
@@ -1135,7 +1135,7 @@ class TestAutoApplyDisabled:
             await tracker.update_temperature(current_time, temp)
             current_time += timedelta(seconds=30)
 
-        tracker.on_heating_stopped(current_time)
+        tracker.on_heating_session_ended(current_time)
 
         for _ in range(10):
             await tracker.update_temperature(current_time, 21.0)
@@ -1232,7 +1232,7 @@ class TestMultiZoneAutoApply:
                 await zone1_tracker.update_temperature(current_time, temp)
                 current_time += timedelta(seconds=30)
 
-            zone1_tracker.on_heating_stopped(current_time)
+            zone1_tracker.on_heating_session_ended(current_time)
 
             for _ in range(10):
                 await zone1_tracker.update_temperature(current_time, 21.0)
@@ -1252,7 +1252,7 @@ class TestMultiZoneAutoApply:
                 await zone2_tracker.update_temperature(current_time, temp)
                 current_time += timedelta(seconds=30)
 
-            zone2_tracker.on_heating_stopped(current_time)
+            zone2_tracker.on_heating_session_ended(current_time)
 
             for _ in range(10):
                 await zone2_tracker.update_temperature(current_time, 20.0)
@@ -1272,7 +1272,7 @@ class TestMultiZoneAutoApply:
             temp = 19.0 + min(i * 0.15, 2.0)
             await zone1_tracker.update_temperature(zone1_time, temp)
             zone1_time += timedelta(seconds=30)
-        zone1_tracker.on_heating_stopped(zone1_time)
+        zone1_tracker.on_heating_session_ended(zone1_time)
         for _ in range(10):
             await zone1_tracker.update_temperature(zone1_time, 21.0)
             zone1_time += timedelta(seconds=30)
@@ -1283,7 +1283,7 @@ class TestMultiZoneAutoApply:
             temp = 18.0 + min(i * 0.15, 2.0)
             await zone2_tracker.update_temperature(zone2_time, temp)
             zone2_time += timedelta(seconds=30)
-        zone2_tracker.on_heating_stopped(zone2_time)
+        zone2_tracker.on_heating_session_ended(zone2_time)
         for _ in range(10):
             await zone2_tracker.update_temperature(zone2_time, 20.0)
             zone2_time += timedelta(seconds=30)
@@ -1354,7 +1354,7 @@ class TestValidationModeBlocking:
             await tracker.update_temperature(current_time, temp)
             current_time += timedelta(seconds=30)
 
-        tracker.on_heating_stopped(current_time)
+        tracker.on_heating_session_ended(current_time)
 
         for _ in range(10):
             await tracker.update_temperature(current_time, 21.0)

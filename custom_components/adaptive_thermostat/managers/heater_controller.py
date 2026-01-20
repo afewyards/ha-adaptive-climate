@@ -424,6 +424,13 @@ class HeaterController:
                 self._last_heater_state = True
 
             set_is_heating(True)
+
+            # Notify cycle tracker of actual device activation
+            if hasattr(self._thermostat, '_cycle_tracker') and self._thermostat._cycle_tracker:
+                if hvac_mode == HVACMode.COOL:
+                    self._thermostat._cycle_tracker.on_cooling_started(datetime.now())
+                else:
+                    self._thermostat._cycle_tracker.on_heating_started(datetime.now())
         else:
             _LOGGER.info(
                 "%s: Reject request turning ON %s: Cycle is too short",
@@ -560,10 +567,22 @@ class HeaterController:
                 self._last_cooler_state = True
             else:
                 self._last_heater_state = True
+            # Notify cycle tracker of activation
+            if hasattr(self._thermostat, '_cycle_tracker') and self._thermostat._cycle_tracker:
+                if hvac_mode == HVACMode.COOL:
+                    self._thermostat._cycle_tracker.on_cooling_started(datetime.now())
+                else:
+                    self._thermostat._cycle_tracker.on_heating_started(datetime.now())
         # Detect heating stopped transition (was on, now off)
         elif old_active and not new_active:
             # Increment cycle counter for wear tracking (on→off transition)
             self._increment_cycle_count(hvac_mode, is_now_off=True)
+            # Notify cycle tracker of session end
+            if hasattr(self._thermostat, '_cycle_tracker') and self._thermostat._cycle_tracker:
+                if hvac_mode == HVACMode.COOL:
+                    self._thermostat._cycle_tracker.on_cooling_session_ended(datetime.now())
+                else:
+                    self._thermostat._cycle_tracker.on_heating_session_ended(datetime.now())
 
     async def async_set_control_value(
         self,
@@ -597,22 +616,20 @@ class HeaterController:
         entities = self.get_entities(hvac_mode)
         thermostat_entity_id = self._thermostat.entity_id
 
-        # Session boundary detection: notify cycle tracker on transitions
-        # This tracks TRUE heating sessions (0→>0 starts, >0→0 ends)
-        # NOT individual PWM on/off pulses (which keep control_output >0)
-        old_session = self._heating_session_active
-        new_session = abs(control_output) > 0
+        # Track demand state for session end detection
+        # Session END is triggered when demand drops to 0 (handled here)
+        # Session START is triggered when device actually activates (handled in async_turn_on/async_set_valve_value)
+        old_demand = self._heating_session_active
+        new_demand = abs(control_output) > 0
+        self._heating_session_active = new_demand
 
-        if hasattr(self._thermostat, '_cycle_tracker') and self._thermostat._cycle_tracker:
-            # Session started: 0 → >0
-            if not old_session and new_session:
-                self._thermostat._cycle_tracker.on_heating_started(datetime.now())
-            # Session ended: >0 → 0
-            elif old_session and not new_session:
-                self._thermostat._cycle_tracker.on_heating_stopped(datetime.now())
-
-        # Update session state
-        self._heating_session_active = new_session
+        # Fire session end when demand drops to 0
+        if old_demand and not new_demand:
+            if hasattr(self._thermostat, '_cycle_tracker') and self._thermostat._cycle_tracker:
+                if hvac_mode == HVACMode.COOL:
+                    self._thermostat._cycle_tracker.on_cooling_session_ended(datetime.now())
+                else:
+                    self._thermostat._cycle_tracker.on_heating_session_ended(datetime.now())
 
         if self._pwm:
             if abs(control_output) == self._difference:

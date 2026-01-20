@@ -85,7 +85,7 @@ class TestCycleTrackerBasic:
         assert cycle_tracker.state == CycleState.HEATING
 
         # HEATING -> SETTLING
-        cycle_tracker.on_heating_stopped(datetime.now())
+        cycle_tracker.on_heating_session_ended(datetime.now())
         assert cycle_tracker.state == CycleState.SETTLING
 
     def test_on_heating_started_records_state(self, cycle_tracker, mock_callbacks):
@@ -100,8 +100,8 @@ class TestCycleTrackerBasic:
         assert cycle_tracker._cycle_target_temp == 21.5
         assert len(cycle_tracker.temperature_history) == 0  # Cleared
 
-    def test_on_heating_stopped_transitions_to_settling(self, cycle_tracker, mock_hass):
-        """Test on_heating_stopped() transitions to SETTLING."""
+    def test_on_heating_session_ended_transitions_to_settling(self, cycle_tracker, mock_hass):
+        """Test on_heating_session_ended() transitions to SETTLING."""
         import sys
 
         # Get the mocked async_call_later from conftest
@@ -113,7 +113,7 @@ class TestCycleTrackerBasic:
         assert cycle_tracker.state == CycleState.HEATING
 
         # Then stop heating
-        cycle_tracker.on_heating_stopped(datetime.now())
+        cycle_tracker.on_heating_session_ended(datetime.now())
 
         assert cycle_tracker.state == CycleState.SETTLING
         # Verify timeout was scheduled
@@ -121,13 +121,13 @@ class TestCycleTrackerBasic:
         call_args = mock_async_call_later.call_args
         assert call_args[0][1] == 120 * 60  # 120 minutes in seconds (2nd arg after hass)
 
-    def test_on_heating_stopped_ignores_when_not_heating(self, cycle_tracker):
-        """Test on_heating_stopped() ignores call when not in HEATING state."""
+    def test_on_heating_session_ended_ignores_when_not_heating(self, cycle_tracker):
+        """Test on_heating_session_ended() ignores call when not in HEATING state."""
         # Start in IDLE state
         assert cycle_tracker.state == CycleState.IDLE
 
         # Try to stop heating
-        cycle_tracker.on_heating_stopped(datetime.now())
+        cycle_tracker.on_heating_session_ended(datetime.now())
 
         # Should remain in IDLE
         assert cycle_tracker.state == CycleState.IDLE
@@ -137,7 +137,7 @@ class TestCycleTrackerBasic:
         # Start heating
         first_start = datetime(2025, 1, 14, 10, 0, 0)
         cycle_tracker.on_heating_started(first_start)
-        cycle_tracker.on_heating_stopped(datetime.now())
+        cycle_tracker.on_heating_session_ended(datetime.now())
         assert cycle_tracker.state == CycleState.SETTLING
 
         # Start heating again without going through IDLE
@@ -188,7 +188,7 @@ class TestCycleTrackerTemperatureCollection:
         """Test temperature samples are collected during SETTLING state."""
         # Start and stop heating
         cycle_tracker.on_heating_started(datetime(2025, 1, 14, 10, 0, 0))
-        cycle_tracker.on_heating_stopped(datetime(2025, 1, 14, 10, 30, 0))
+        cycle_tracker.on_heating_session_ended(datetime(2025, 1, 14, 10, 30, 0))
 
         # Add temperature samples
         await cycle_tracker.update_temperature(datetime(2025, 1, 14, 10, 30, 30), 20.0)
@@ -225,7 +225,7 @@ class TestCycleTrackerSettling:
 
         # Start heating and stop
         cycle_tracker.on_heating_started(datetime(2025, 1, 14, 10, 0, 0))
-        cycle_tracker.on_heating_stopped(datetime(2025, 1, 14, 10, 30, 0))
+        cycle_tracker.on_heating_session_ended(datetime(2025, 1, 14, 10, 30, 0))
 
         # Add 10 stable temperature samples near target (variance < 0.01, within 0.5°C)
         base_time = datetime(2025, 1, 14, 10, 30, 0)
@@ -246,7 +246,7 @@ class TestCycleTrackerSettling:
 
         # Start heating and stop
         cycle_tracker.on_heating_started(datetime(2025, 1, 14, 10, 0, 0))
-        cycle_tracker.on_heating_stopped(datetime(2025, 1, 14, 10, 30, 0))
+        cycle_tracker.on_heating_session_ended(datetime(2025, 1, 14, 10, 30, 0))
 
         # Add 10 unstable temperature samples (high variance)
         base_time = datetime(2025, 1, 14, 10, 30, 0)
@@ -267,7 +267,7 @@ class TestCycleTrackerSettling:
 
         # Start heating and stop
         cycle_tracker.on_heating_started(datetime(2025, 1, 14, 10, 0, 0))
-        cycle_tracker.on_heating_stopped(datetime(2025, 1, 14, 10, 30, 0))
+        cycle_tracker.on_heating_session_ended(datetime(2025, 1, 14, 10, 30, 0))
 
         # Add only 9 stable samples (not enough)
         for i in range(9):
@@ -286,7 +286,7 @@ class TestCycleTrackerSettling:
 
         # Start heating and stop
         cycle_tracker.on_heating_started(datetime(2025, 1, 14, 10, 0, 0))
-        cycle_tracker.on_heating_stopped(datetime(2025, 1, 14, 10, 30, 0))
+        cycle_tracker.on_heating_session_ended(datetime(2025, 1, 14, 10, 30, 0))
 
         # Add 10 stable samples but far from target (> 0.5°C away)
         for i in range(10):
@@ -308,7 +308,7 @@ class TestCycleTrackerSettling:
 
         # Start heating and stop
         cycle_tracker.on_heating_started(datetime.now())
-        cycle_tracker.on_heating_stopped(datetime.now())
+        cycle_tracker.on_heating_session_ended(datetime.now())
 
         # Verify timeout was scheduled
         mock_async_call_later.assert_called_once()
@@ -439,7 +439,7 @@ class TestCycleTrackerMetrics:
             await cycle_tracker.update_temperature(timestamp, temp)
 
         # Stop heating and transition to SETTLING
-        cycle_tracker.on_heating_stopped(datetime(2025, 1, 14, 10, 10, 0))
+        cycle_tracker.on_heating_session_ended(datetime(2025, 1, 14, 10, 10, 0))
 
         # Call finalize (simulating settling complete or timeout)
         await cycle_tracker._finalize_cycle()
@@ -492,9 +492,9 @@ class TestCycleTrackerValveMode:
         assert cycle_tracker.state == CycleState.HEATING
         assert cycle_tracker.cycle_start_time == start_time
 
-        # Simulate HeaterController calling on_heating_stopped
+        # Simulate HeaterController calling on_heating_session_ended
         stop_time = datetime(2025, 1, 14, 10, 15, 0)
-        cycle_tracker.on_heating_stopped(stop_time)
+        cycle_tracker.on_heating_session_ended(stop_time)
 
         # Verify state transition
         assert cycle_tracker.state == CycleState.SETTLING
@@ -508,7 +508,7 @@ class TestCycleTrackerValveMode:
 
         # Test heating stopped (valve >0 -> 0)
         stop_time = datetime(2025, 1, 14, 10, 15, 0)
-        cycle_tracker.on_heating_stopped(stop_time)
+        cycle_tracker.on_heating_session_ended(stop_time)
         assert cycle_tracker.state == CycleState.SETTLING
 
 
@@ -569,7 +569,7 @@ class TestCycleTrackerEdgeCases:
         # Start and stop heating to enter settling state
         start_time = datetime(2025, 1, 14, 10, 0, 0)
         cycle_tracker.on_heating_started(start_time)
-        cycle_tracker.on_heating_stopped(datetime(2025, 1, 14, 10, 15, 0))
+        cycle_tracker.on_heating_session_ended(datetime(2025, 1, 14, 10, 15, 0))
         assert cycle_tracker.state == CycleState.SETTLING
 
         # Add temperature history
@@ -911,7 +911,7 @@ class TestCycleTrackerMADSettling:
         """Test settling detection is robust to sensor noise using MAD."""
         # Start heating, then stop
         cycle_tracker.on_heating_started(datetime(2025, 1, 14, 10, 0, 0))
-        cycle_tracker.on_heating_stopped(datetime(2025, 1, 14, 10, 15, 0))
+        cycle_tracker.on_heating_session_ended(datetime(2025, 1, 14, 10, 15, 0))
 
         # Add 10 temperature samples with ±0.2°C noise (simulating sensor jitter)
         # Centered around 20.0°C target
@@ -950,7 +950,7 @@ class TestCycleTrackerMADSettling:
         """Test MAD is more robust than variance to outliers."""
         # Start heating, then stop
         cycle_tracker.on_heating_started(datetime(2025, 1, 14, 10, 0, 0))
-        cycle_tracker.on_heating_stopped(datetime(2025, 1, 14, 10, 15, 0))
+        cycle_tracker.on_heating_session_ended(datetime(2025, 1, 14, 10, 15, 0))
 
         # Add 9 stable samples + 1 outlier
         # Stable temps around 20.0°C, one reading at 21.0°C (outlier)
@@ -980,7 +980,7 @@ class TestCycleTrackerMADSettling:
         """Test settling detection handles single outlier correctly."""
         # Start heating, then stop
         cycle_tracker.on_heating_started(datetime(2025, 1, 14, 10, 0, 0))
-        cycle_tracker.on_heating_stopped(datetime(2025, 1, 14, 10, 15, 0))
+        cycle_tracker.on_heating_session_ended(datetime(2025, 1, 14, 10, 15, 0))
 
         # Add 9 very stable samples + 1 moderate outlier
         temps = [20.0, 20.0, 20.0, 20.0, 20.15, 20.0, 20.0, 20.0, 20.0, 20.0]
@@ -1155,7 +1155,7 @@ class TestCycleTrackerStateAccess:
     def test_get_state_name_settling(self, cycle_tracker):
         """Test get_state_name returns 'settling' in SETTLING state."""
         cycle_tracker.on_heating_started(datetime.now())
-        cycle_tracker.on_heating_stopped(datetime.now())
+        cycle_tracker.on_heating_session_ended(datetime.now())
         assert cycle_tracker.state == CycleState.SETTLING
         assert cycle_tracker.get_state_name() == "settling"
 
@@ -1300,7 +1300,7 @@ class TestCycleTrackerSettlingTimeoutFinalization:
 
         # Stop heating
         stop_time = start_time + timedelta(minutes=5)
-        cycle_tracker.on_heating_stopped(stop_time)
+        cycle_tracker.on_heating_session_ended(stop_time)
 
         # Add settling samples with HIGH overshoot (far from target)
         # This simulates the GF bug: temperature stays high and doesn't settle
