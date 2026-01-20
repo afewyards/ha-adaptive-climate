@@ -74,6 +74,7 @@ CONF_DERIVATIVE_FILTER = "derivative_filter_alpha"
 CONF_DISTURBANCE_REJECTION_ENABLED = "disturbance_rejection_enabled"
 CONF_KE_LEARNING_FIRST = "ke_learning_first"
 CONF_AUTO_APPLY_PID = "auto_apply_pid"
+CONF_AREA = "area"
 
 # Heating system types
 HEATING_TYPE_FLOOR_HYDRONIC = "floor_hydronic"

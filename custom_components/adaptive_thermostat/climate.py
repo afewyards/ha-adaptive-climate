@@ -131,6 +131,7 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         ),
         # Adaptive learning options
         vol.Optional(const.CONF_HEATING_TYPE): vol.In(const.VALID_HEATING_TYPES),
+        vol.Optional(const.CONF_AREA): cv.string,  # Home Assistant area to assign entity to
         vol.Optional(const.CONF_DERIVATIVE_FILTER): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=1.0)),
         vol.Optional(const.CONF_AUTO_APPLY_PID, default=True): cv.boolean,
         vol.Optional(const.CONF_AREA_M2): vol.Coerce(float),
@@ -395,6 +396,7 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         'floor_construction': config.get(const.CONF_FLOOR_CONSTRUCTION),
         'max_power_w': config.get(const.CONF_MAX_POWER_W),
         'supply_temperature': hass.data.get(DOMAIN, {}).get("supply_temperature"),
+        'ha_area': config.get(const.CONF_AREA),  # Home Assistant area to assign entity to
     }
 
     thermostat = AdaptiveThermostat(**parameters)
@@ -582,6 +584,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         self._window_rating = kwargs.get('window_rating', 'hr++')
         self._window_orientation = kwargs.get('window_orientation')
         self._floor_construction = kwargs.get('floor_construction')
+        self._ha_area = kwargs.get('ha_area')  # Home Assistant area to assign entity to
 
         # Derivative filter alpha - get from config or use heating-type-specific default
         self._derivative_filter_alpha = kwargs.get('derivative_filter_alpha')
@@ -766,6 +769,10 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
     async def async_added_to_hass(self):
         """Run when entity about to be added."""
         await super().async_added_to_hass()
+
+        # Assign entity to Home Assistant area if configured
+        if self._ha_area:
+            await self._async_assign_area()
 
         # Initialize heater controller now that hass is available
         self._heater_controller = HeaterController(
@@ -1030,6 +1037,38 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         if not self._hvac_mode:
             self._hvac_mode = HVACMode.OFF
         await self._async_control_heating(calc_pid=True)
+
+    async def _async_assign_area(self) -> None:
+        """Assign this entity to a Home Assistant area.
+
+        Uses the area registry to get or create the area by name,
+        then updates the entity registry to assign this entity to that area.
+        """
+        from homeassistant.helpers import entity_registry as er, area_registry as ar
+
+        entity_registry = er.async_get(self.hass)
+        area_registry = ar.async_get(self.hass)
+
+        # Get or create the area by name
+        area = area_registry.async_get_area_by_name(self._ha_area)
+        if area is None:
+            area = area_registry.async_create(self._ha_area)
+            _LOGGER.info(
+                "%s: Created new area '%s'",
+                self.entity_id,
+                self._ha_area,
+            )
+
+        # Update entity to assign it to the area
+        entity_registry.async_update_entity(
+            self.entity_id,
+            area_id=area.id,
+        )
+        _LOGGER.info(
+            "%s: Assigned to area '%s'",
+            self.entity_id,
+            self._ha_area,
+        )
 
     async def async_will_remove_from_hass(self) -> None:
         """Run when entity is being removed from Home Assistant.
