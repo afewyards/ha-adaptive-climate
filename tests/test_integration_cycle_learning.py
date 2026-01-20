@@ -756,3 +756,372 @@ class TestPersistenceRoundtrip:
         assert restored_ke.current_ke == 0.55
         assert restored_ke.observation_count == 5
         assert restored_ke.enabled is True
+
+
+class TestEventDrivenCycleFlow:
+    """Integration tests for event-driven cycle tracking flow."""
+
+    @pytest.fixture
+    def dispatcher(self):
+        """Create a CycleEventDispatcher for testing."""
+        from custom_components.adaptive_thermostat.managers.events import CycleEventDispatcher
+        return CycleEventDispatcher()
+
+    @pytest.fixture
+    def event_tracker_with_dispatcher(self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher):
+        """Create a CycleTrackerManager with event dispatcher."""
+        tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="living_room",
+            adaptive_learner=mock_adaptive_learner,
+            get_target_temp=mock_callbacks["get_target_temp"],
+            get_current_temp=mock_callbacks["get_current_temp"],
+            get_hvac_mode=mock_callbacks["get_hvac_mode"],
+            get_in_grace_period=mock_callbacks["get_in_grace_period"],
+            dispatcher=dispatcher,
+        )
+        tracker.set_restoration_complete()
+        return tracker
+
+    @pytest.mark.asyncio
+    async def test_full_cycle_event_flow(
+        self, event_tracker_with_dispatcher, dispatcher, mock_adaptive_learner
+    ):
+        """Test complete heating cycle with event sequence.
+
+        Verifies: CYCLE_STARTED → HEATING_STARTED → HEATING_ENDED → SETTLING_STARTED → CYCLE_ENDED
+        """
+        from custom_components.adaptive_thermostat.managers.events import (
+            CycleEventType,
+            CycleStartedEvent,
+            HeatingStartedEvent,
+            HeatingEndedEvent,
+            SettlingStartedEvent,
+        )
+
+        tracker = event_tracker_with_dispatcher
+
+        # Track emitted events
+        emitted_events = []
+
+        def track_event(event):
+            emitted_events.append(event)
+
+        # Subscribe to CYCLE_ENDED to capture it
+        dispatcher.subscribe(CycleEventType.CYCLE_ENDED, track_event)
+
+        # Start heating cycle via event
+        start_time = datetime(2024, 1, 1, 10, 0, 0)
+        cycle_started = CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=start_time,
+            target_temp=21.0,
+            current_temp=19.0,
+        )
+        dispatcher.emit(cycle_started)
+
+        assert tracker.state == CycleState.HEATING
+
+        # Emit HEATING_STARTED (device turns on)
+        heating_started = HeatingStartedEvent(
+            hvac_mode="heat",
+            timestamp=start_time,
+        )
+        dispatcher.emit(heating_started)
+
+        # Simulate temperature rising over time
+        current_time = start_time
+        temperatures = [19.0 + i * 0.15 for i in range(20)]  # Rise to ~22°C
+        for temp in temperatures:
+            await tracker.update_temperature(current_time, temp)
+            current_time += timedelta(seconds=30)
+
+        # Emit HEATING_ENDED (device turns off)
+        heating_ended = HeatingEndedEvent(
+            hvac_mode="heat",
+            timestamp=current_time,
+        )
+        dispatcher.emit(heating_ended)
+
+        # Emit SETTLING_STARTED (demand dropped to 0)
+        settling_started = SettlingStartedEvent(
+            hvac_mode="heat",
+            timestamp=current_time,
+        )
+        dispatcher.emit(settling_started)
+
+        assert tracker.state == CycleState.SETTLING
+
+        # Add settling samples at stable temperature
+        for _ in range(10):
+            await tracker.update_temperature(current_time, 21.0)
+            current_time += timedelta(seconds=30)
+
+        # Cycle should complete and transition to IDLE
+        assert tracker.state == CycleState.IDLE
+
+        # Verify metrics were recorded
+        assert mock_adaptive_learner.add_cycle_metrics.call_count == 1
+
+        # Verify CYCLE_ENDED event was emitted
+        assert len(emitted_events) == 1
+        assert emitted_events[0].event_type == CycleEventType.CYCLE_ENDED
+        assert emitted_events[0].hvac_mode == "heat"
+        assert emitted_events[0].metrics is not None
+
+    @pytest.mark.asyncio
+    async def test_mode_change_aborts_cycle_via_event(
+        self, event_tracker_with_dispatcher, dispatcher, mock_adaptive_learner
+    ):
+        """Test that MODE_CHANGED event during heating aborts cycle."""
+        from custom_components.adaptive_thermostat.managers.events import (
+            CycleStartedEvent,
+            ModeChangedEvent,
+        )
+
+        tracker = event_tracker_with_dispatcher
+
+        # Start heating cycle via event
+        start_time = datetime(2024, 1, 1, 10, 0, 0)
+        cycle_started = CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=start_time,
+            target_temp=21.0,
+            current_temp=19.0,
+        )
+        dispatcher.emit(cycle_started)
+
+        assert tracker.state == CycleState.HEATING
+
+        # Collect some temperature samples
+        current_time = start_time
+        for i in range(10):
+            temp = 19.0 + i * 0.2
+            await tracker.update_temperature(current_time, temp)
+            current_time += timedelta(seconds=30)
+
+        # Emit MODE_CHANGED event (heat → off)
+        mode_changed = ModeChangedEvent(
+            timestamp=current_time,
+            old_mode="heat",
+            new_mode="off",
+        )
+        dispatcher.emit(mode_changed)
+
+        # Verify cycle was aborted
+        assert tracker.state == CycleState.IDLE
+        assert len(tracker.temperature_history) == 0
+
+        # No metrics should be recorded
+        assert mock_adaptive_learner.add_cycle_metrics.call_count == 0
+
+    @pytest.mark.asyncio
+    async def test_contact_pause_resume_flow_via_events(
+        self, event_tracker_with_dispatcher, dispatcher, mock_adaptive_learner
+    ):
+        """Test CONTACT_PAUSE and CONTACT_RESUME event handling."""
+        from custom_components.adaptive_thermostat.managers.events import (
+            CycleStartedEvent,
+            ContactPauseEvent,
+            ContactResumeEvent,
+        )
+
+        tracker = event_tracker_with_dispatcher
+
+        # Start heating cycle via event
+        start_time = datetime(2024, 1, 1, 10, 0, 0)
+        cycle_started = CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=start_time,
+            target_temp=21.0,
+            current_temp=19.0,
+        )
+        dispatcher.emit(cycle_started)
+
+        assert tracker.state == CycleState.HEATING
+
+        # Collect some temperature samples
+        current_time = start_time
+        for i in range(10):
+            temp = 19.0 + i * 0.2
+            await tracker.update_temperature(current_time, temp)
+            current_time += timedelta(seconds=30)
+
+        # Emit CONTACT_PAUSE event (window opened)
+        contact_pause = ContactPauseEvent(
+            hvac_mode="heat",
+            timestamp=current_time,
+            entity_id="binary_sensor.window_living_room",
+        )
+        dispatcher.emit(contact_pause)
+
+        # Verify cycle was aborted
+        assert tracker.state == CycleState.IDLE
+        assert len(tracker.temperature_history) == 0
+
+        # Emit CONTACT_RESUME event (window closed)
+        # This should be a no-op since cycle was already aborted
+        resume_time = current_time + timedelta(minutes=10)
+        contact_resume = ContactResumeEvent(
+            hvac_mode="heat",
+            timestamp=resume_time,
+            entity_id="binary_sensor.window_living_room",
+            pause_duration_seconds=600.0,
+        )
+        dispatcher.emit(contact_resume)
+
+        # State should still be IDLE
+        assert tracker.state == CycleState.IDLE
+
+        # No metrics should be recorded
+        assert mock_adaptive_learner.add_cycle_metrics.call_count == 0
+
+    @pytest.mark.asyncio
+    async def test_setpoint_change_during_cycle_via_event(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
+    ):
+        """Test SETPOINT_CHANGED event during cycle handled via event."""
+        from custom_components.adaptive_thermostat.managers.events import (
+            CycleStartedEvent,
+            SetpointChangedEvent,
+            SettlingStartedEvent,
+        )
+
+        # Create mock for get_is_device_active returning True (heater active)
+        mock_is_device_active = MagicMock(return_value=True)
+
+        # Create tracker with get_is_device_active callback and dispatcher
+        tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="bedroom",
+            adaptive_learner=mock_adaptive_learner,
+            get_target_temp=mock_callbacks["get_target_temp"],
+            get_current_temp=mock_callbacks["get_current_temp"],
+            get_hvac_mode=mock_callbacks["get_hvac_mode"],
+            get_in_grace_period=mock_callbacks["get_in_grace_period"],
+            get_is_device_active=mock_is_device_active,
+            dispatcher=dispatcher,
+        )
+        tracker.set_restoration_complete()
+
+        # Start heating cycle via event
+        start_time = datetime(2024, 1, 1, 10, 0, 0)
+        cycle_started = CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=start_time,
+            target_temp=21.0,
+            current_temp=19.0,
+        )
+        dispatcher.emit(cycle_started)
+
+        assert tracker.state == CycleState.HEATING
+
+        # Collect 5 temperature samples
+        current_time = start_time
+        for i in range(5):
+            temp = 19.0 + i * 0.2
+            await tracker.update_temperature(current_time, temp)
+            current_time += timedelta(seconds=30)
+
+        # Emit SETPOINT_CHANGED event (heater still active = minor change)
+        setpoint_changed = SetpointChangedEvent(
+            hvac_mode="heat",
+            timestamp=current_time,
+            old_target=21.0,
+            new_target=22.0,
+        )
+        dispatcher.emit(setpoint_changed)
+
+        # Cycle should continue (device is active, so minor change)
+        assert tracker.state == CycleState.HEATING
+        assert len(tracker._interruption_history) > 0  # Interruption recorded
+        assert tracker._cycle_target_temp == 22.0  # Target updated
+
+        # Collect 15 more temperature samples
+        for i in range(15):
+            temp = 20.0 + min(i * 0.1, 2.0)
+            await tracker.update_temperature(current_time, temp)
+            current_time += timedelta(seconds=30)
+
+        # Change mock to device inactive for settling
+        mock_is_device_active.return_value = False
+
+        # Emit SETTLING_STARTED
+        settling_started = SettlingStartedEvent(
+            hvac_mode="heat",
+            timestamp=current_time,
+        )
+        dispatcher.emit(settling_started)
+
+        assert tracker.state == CycleState.SETTLING
+
+        # Add 10 settling samples
+        for _ in range(10):
+            await tracker.update_temperature(current_time, 22.0)
+            current_time += timedelta(seconds=30)
+
+        # Cycle should complete
+        assert tracker.state == CycleState.IDLE
+        assert mock_adaptive_learner.add_cycle_metrics.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_setpoint_major_change_aborts_via_event(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
+    ):
+        """Test that major SETPOINT_CHANGED event (device inactive) aborts cycle."""
+        from custom_components.adaptive_thermostat.managers.events import (
+            CycleStartedEvent,
+            SetpointChangedEvent,
+        )
+
+        # Create mock for get_is_device_active returning False (heater inactive)
+        mock_is_device_active = MagicMock(return_value=False)
+
+        # Create tracker with get_is_device_active callback and dispatcher
+        tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="bedroom",
+            adaptive_learner=mock_adaptive_learner,
+            get_target_temp=mock_callbacks["get_target_temp"],
+            get_current_temp=mock_callbacks["get_current_temp"],
+            get_hvac_mode=mock_callbacks["get_hvac_mode"],
+            get_in_grace_period=mock_callbacks["get_in_grace_period"],
+            get_is_device_active=mock_is_device_active,
+            dispatcher=dispatcher,
+        )
+        tracker.set_restoration_complete()
+
+        # Start heating cycle via event
+        start_time = datetime(2024, 1, 1, 10, 0, 0)
+        cycle_started = CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=start_time,
+            target_temp=21.0,
+            current_temp=19.0,
+        )
+        dispatcher.emit(cycle_started)
+
+        assert tracker.state == CycleState.HEATING
+
+        # Collect some temperature samples
+        current_time = start_time
+        for i in range(10):
+            temp = 19.0 + i * 0.2
+            await tracker.update_temperature(current_time, temp)
+            current_time += timedelta(seconds=30)
+
+        # Emit SETPOINT_CHANGED event with >0.5°C change and device inactive
+        setpoint_changed = SetpointChangedEvent(
+            hvac_mode="heat",
+            timestamp=current_time,
+            old_target=21.0,
+            new_target=23.0,  # 2°C change = major
+        )
+        dispatcher.emit(setpoint_changed)
+
+        # Cycle should be aborted (device inactive + major setpoint change)
+        assert tracker.state == CycleState.IDLE
+        assert len(tracker.temperature_history) == 0
+
+        # No metrics should be recorded
+        assert mock_adaptive_learner.add_cycle_metrics.call_count == 0
