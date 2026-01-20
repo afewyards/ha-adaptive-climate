@@ -132,7 +132,7 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         ),
         # Adaptive learning options
         vol.Optional(const.CONF_HEATING_TYPE): vol.In(const.VALID_HEATING_TYPES),
-        vol.Optional(const.CONF_AREA): cv.string,  # Home Assistant area to assign entity to
+        vol.Optional(const.CONF_AREA): cv.string,  # Home Assistant area ID to assign entity to
         vol.Optional(const.CONF_DERIVATIVE_FILTER): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=1.0)),
         vol.Optional(const.CONF_AUTO_APPLY_PID, default=True): cv.boolean,
         vol.Optional(const.CONF_AREA_M2): vol.Coerce(float),
@@ -1027,7 +1027,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
     async def _async_assign_area(self) -> None:
         """Assign this entity to a Home Assistant area.
 
-        Uses the area registry to get or create the area by name,
+        Uses the area registry to look up the area by ID,
         then updates the entity registry to assign this entity to that area.
         """
         from homeassistant.helpers import entity_registry as er, area_registry as ar
@@ -1035,15 +1035,15 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         entity_registry = er.async_get(self.hass)
         area_registry = ar.async_get(self.hass)
 
-        # Get or create the area by name
-        area = area_registry.async_get_area_by_name(self._ha_area)
+        # Look up the area by ID
+        area = area_registry.async_get_area(self._ha_area)
         if area is None:
-            area = area_registry.async_create(self._ha_area)
-            _LOGGER.info(
-                "%s: Created new area '%s'",
+            _LOGGER.warning(
+                "%s: Area ID '%s' not found, skipping area assignment",
                 self.entity_id,
                 self._ha_area,
             )
+            return
 
         # Update entity to assign it to the area
         entity_registry.async_update_entity(
@@ -1051,8 +1051,9 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
             area_id=area.id,
         )
         _LOGGER.info(
-            "%s: Assigned to area '%s'",
+            "%s: Assigned to area '%s' (ID: %s)",
             self.entity_id,
+            area.name,
             self._ha_area,
         )
 
