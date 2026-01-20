@@ -9,11 +9,11 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 try:
-    from .const import DOMAIN
-    from .adaptive.thermal_coupling import ThermalCouplingLearner
+    from .const import DOMAIN, COUPLING_MASS_RECOVERY_THRESHOLD
+    from .adaptive.thermal_coupling import ThermalCouplingLearner, should_record_observation
 except ImportError:
-    from const import DOMAIN
-    from adaptive.thermal_coupling import ThermalCouplingLearner
+    from const import DOMAIN, COUPLING_MASS_RECOVERY_THRESHOLD
+    from adaptive.thermal_coupling import ThermalCouplingLearner, should_record_observation
 
 # Re-export CentralController and constants for backwards compatibility
 try:
@@ -141,6 +141,10 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
     def update_zone_demand(self, zone_id: str, has_demand: bool, hvac_mode: str | None = None) -> None:
         """Update the demand state for a zone.
 
+        Also triggers thermal coupling observations on demand transitions:
+        - demand False -> True: starts observation (if conditions met)
+        - demand True -> False: ends observation and records coupling data
+
         Args:
             zone_id: Unique identifier for the zone
             has_demand: Whether the zone currently has heating/cooling demand
@@ -151,16 +155,161 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
             new_state = {"demand": has_demand, "mode": hvac_mode}
             self._demand_states[zone_id] = new_state
 
-            # Only trigger central controller if demand or mode actually changed
+            # Only trigger updates if demand or mode actually changed
             if old_state != new_state:
                 _LOGGER.info(
                     "Demand changed for zone %s: %s/%s -> %s/%s",
                     zone_id, old_state.get("demand"), old_state.get("mode"),
                     has_demand, hvac_mode
                 )
+
+                # Trigger central controller
                 if self._central_controller:
                     _LOGGER.info("Triggering CentralController update")
                     self.hass.async_create_task(self._central_controller.update())
+
+                # Handle thermal coupling observation triggers (heating mode only)
+                old_demand = old_state.get("demand", False)
+                if hvac_mode == "heat":
+                    self._handle_coupling_observation_trigger(
+                        zone_id, old_demand, has_demand
+                    )
+
+    def _handle_coupling_observation_trigger(
+        self, zone_id: str, old_demand: bool, new_demand: bool
+    ) -> None:
+        """Handle thermal coupling observation triggers on demand transitions.
+
+        Starts or ends observations based on demand state changes.
+        Only processes heating mode transitions.
+
+        Args:
+            zone_id: Zone that changed demand state
+            old_demand: Previous demand state
+            new_demand: New demand state
+        """
+        # Demand transition: False -> True (zone started heating)
+        if not old_demand and new_demand:
+            self._start_coupling_observation(zone_id)
+
+        # Demand transition: True -> False (zone stopped heating)
+        elif old_demand and not new_demand:
+            self._end_coupling_observation(zone_id)
+
+    def _start_coupling_observation(self, zone_id: str) -> None:
+        """Start a thermal coupling observation for a zone that began heating.
+
+        Skips observation if:
+        - Outdoor temperature is unavailable
+        - Mass recovery detected (>50% of zones already demanding)
+
+        Args:
+            zone_id: Zone that started heating
+        """
+        # Skip if outdoor temp unavailable
+        outdoor_temp = self.outdoor_temp
+        if outdoor_temp is None:
+            _LOGGER.debug(
+                "Skipping coupling observation for %s: outdoor temp unavailable",
+                zone_id
+            )
+            return
+
+        # Check for mass recovery (too many zones demanding)
+        total_zones = len(self._zones)
+        if total_zones > 0:
+            # Count zones with active demand BEFORE this zone started
+            # (current state already has this zone as demanding)
+            demanding_count = sum(
+                1 for zid, state in self._demand_states.items()
+                if state.get("demand") and zid != zone_id
+            )
+            # Check if ratio exceeds threshold
+            if demanding_count / total_zones >= COUPLING_MASS_RECOVERY_THRESHOLD:
+                _LOGGER.debug(
+                    "Skipping coupling observation for %s: mass recovery detected "
+                    "(%d/%d zones already demanding)",
+                    zone_id, demanding_count, total_zones
+                )
+                return
+
+        # Get current zone temperatures
+        zone_temps = self.get_zone_temps()
+
+        # Start the observation
+        self._thermal_coupling_learner.start_observation(
+            source_zone=zone_id,
+            all_zone_temps=zone_temps,
+            outdoor_temp=outdoor_temp,
+        )
+        _LOGGER.debug("Started coupling observation for zone %s", zone_id)
+
+    def _end_coupling_observation(self, zone_id: str) -> None:
+        """End a thermal coupling observation for a zone that stopped heating.
+
+        Creates observation records for each idle zone that was monitored,
+        filters valid observations, and stores them in the learner.
+
+        Args:
+            zone_id: Zone that stopped heating
+        """
+        # Skip if no pending observation for this zone
+        if zone_id not in self._thermal_coupling_learner._pending:
+            return
+
+        # Get current state
+        outdoor_temp = self.outdoor_temp
+        if outdoor_temp is None:
+            # Use last known outdoor temp from context if available
+            context = self._thermal_coupling_learner._pending.get(zone_id)
+            if context:
+                outdoor_temp = context.outdoor_temp_start
+            else:
+                outdoor_temp = 0.0  # Fallback
+
+        zone_temps = self.get_zone_temps()
+
+        # Determine which zones were idle (not demanding) during observation
+        idle_zones = {
+            zid for zid, state in self._demand_states.items()
+            if not state.get("demand") and zid != zone_id
+        }
+
+        # End the observation and get records
+        observations = self._thermal_coupling_learner.end_observation(
+            source_zone=zone_id,
+            current_temps=zone_temps,
+            outdoor_temp=outdoor_temp,
+            idle_zones=idle_zones,
+        )
+
+        # Filter and store valid observations
+        for obs in observations:
+            if should_record_observation(obs):
+                pair = (obs.source_zone, obs.target_zone)
+                if pair not in self._thermal_coupling_learner.observations:
+                    self._thermal_coupling_learner.observations[pair] = []
+                self._thermal_coupling_learner.observations[pair].append(obs)
+
+                # Recalculate coefficient for this pair
+                new_coef = self._thermal_coupling_learner.calculate_coefficient(
+                    obs.source_zone, obs.target_zone
+                )
+                if new_coef:
+                    self._thermal_coupling_learner.coefficients[pair] = new_coef
+                    _LOGGER.info(
+                        "Updated coupling coefficient %s -> %s: %.3f (confidence: %.2f)",
+                        obs.source_zone, obs.target_zone,
+                        new_coef.coefficient, new_coef.confidence
+                    )
+
+        if observations:
+            _LOGGER.debug(
+                "Ended coupling observation for zone %s: %d observations created, "
+                "%d passed filters",
+                zone_id, len(observations),
+                sum(1 for obs in observations if should_record_observation(obs))
+            )
 
     def get_aggregate_demand(self) -> dict[str, bool]:
         """Get aggregated demand across all zones.

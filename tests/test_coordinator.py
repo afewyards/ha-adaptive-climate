@@ -469,5 +469,212 @@ def test_coordinator_update_zone_temp_unknown_zone(coord):
     assert "nonexistent_zone" not in temps
 
 
+# =============================================================================
+# Thermal Coupling Observation Trigger Tests (Story 5.3)
+# =============================================================================
+
+
+def test_demand_true_starts_observation(hass):
+    """Test that demand=True transition starts a thermal coupling observation."""
+    # Set up weather entity for outdoor temp
+    hass.data = {
+        const.DOMAIN: {
+            "weather_entity": "weather.home"
+        }
+    }
+    mock_state = MagicMock()
+    mock_state.attributes = {"temperature": 5.0}
+    hass.states.get.return_value = mock_state
+
+    coord = coordinator.AdaptiveThermostatCoordinator(hass)
+
+    # Register zones with temperatures
+    coord.register_zone("zone1", {"name": "Zone 1", "current_temp": 20.0})
+    coord.register_zone("zone2", {"name": "Zone 2", "current_temp": 19.0})
+    coord.register_zone("zone3", {"name": "Zone 3", "current_temp": 18.0})
+
+    # Initially no pending observations
+    learner = coord.thermal_coupling_learner
+    assert len(learner._pending) == 0
+
+    # Zone1 starts heating (demand False -> True)
+    coord.update_zone_demand("zone1", True, "heat")
+
+    # Observation should be started for zone1
+    assert "zone1" in learner._pending
+    context = learner._pending["zone1"]
+    assert context.source_zone == "zone1"
+    assert context.source_temp_start == 20.0
+    assert context.outdoor_temp_start == 5.0
+    # Target temps should include zone2 and zone3, not zone1
+    assert "zone2" in context.target_temps_start
+    assert "zone3" in context.target_temps_start
+    assert "zone1" not in context.target_temps_start
+
+
+def test_demand_false_ends_observation(hass):
+    """Test that demand=False transition ends observation and creates records."""
+    from datetime import datetime, timedelta
+
+    # Set up weather entity
+    hass.data = {
+        const.DOMAIN: {
+            "weather_entity": "weather.home"
+        }
+    }
+    mock_state = MagicMock()
+    mock_state.attributes = {"temperature": 5.0}
+    hass.states.get.return_value = mock_state
+
+    coord = coordinator.AdaptiveThermostatCoordinator(hass)
+
+    # Register zones with temperatures
+    coord.register_zone("zone1", {"name": "Zone 1", "current_temp": 20.0})
+    coord.register_zone("zone2", {"name": "Zone 2", "current_temp": 19.0})
+    coord.register_zone("zone3", {"name": "Zone 3", "current_temp": 18.0})
+
+    # Start heating zone1
+    coord.update_zone_demand("zone1", True, "heat")
+    learner = coord.thermal_coupling_learner
+    assert "zone1" in learner._pending
+
+    # Simulate temperature changes and time passing
+    coord.update_zone_temp("zone1", 22.0)  # Source warmed up
+    coord.update_zone_temp("zone2", 19.5)  # Target warmed a bit
+    coord.update_zone_temp("zone3", 18.2)  # Target warmed a bit
+
+    # Manually adjust start time to simulate 20 minutes passing
+    learner._pending["zone1"] = learner._pending["zone1"].__class__(
+        source_zone=learner._pending["zone1"].source_zone,
+        start_time=datetime.now() - timedelta(minutes=20),
+        source_temp_start=learner._pending["zone1"].source_temp_start,
+        target_temps_start=learner._pending["zone1"].target_temps_start,
+        outdoor_temp_start=learner._pending["zone1"].outdoor_temp_start,
+    )
+
+    # Zone1 stops heating (demand True -> False)
+    coord.update_zone_demand("zone1", False, "heat")
+
+    # Pending observation should be cleared
+    assert "zone1" not in learner._pending
+
+
+def test_mass_recovery_skips_observation(hass):
+    """Test that observation is skipped when >50% zones are demanding (mass recovery)."""
+    # Set up weather entity
+    hass.data = {
+        const.DOMAIN: {
+            "weather_entity": "weather.home"
+        }
+    }
+    mock_state = MagicMock()
+    mock_state.attributes = {"temperature": 5.0}
+    hass.states.get.return_value = mock_state
+
+    coord = coordinator.AdaptiveThermostatCoordinator(hass)
+
+    # Register 4 zones with temperatures
+    coord.register_zone("zone1", {"name": "Zone 1", "current_temp": 20.0})
+    coord.register_zone("zone2", {"name": "Zone 2", "current_temp": 19.0})
+    coord.register_zone("zone3", {"name": "Zone 3", "current_temp": 18.0})
+    coord.register_zone("zone4", {"name": "Zone 4", "current_temp": 17.0})
+
+    # First, start zone1, zone2, and zone3 heating (75% of zones)
+    coord.update_zone_demand("zone1", True, "heat")
+    coord.update_zone_demand("zone2", True, "heat")
+    coord.update_zone_demand("zone3", True, "heat")
+
+    learner = coord.thermal_coupling_learner
+
+    # zone1 started when it was the only one, so it should have an observation
+    # zone2 was started when 2/4 = 50%, at threshold - should start
+    # zone3 was started when 3/4 = 75%, above threshold - should NOT start
+    # (depends on implementation - let's verify the last one)
+
+    # Now try to start zone4 when 3/4 already demanding (75%)
+    # Clear any existing pending to test fresh
+    learner._pending.clear()
+
+    # With 3 zones already demanding out of 4, starting zone4 would be 100%
+    # But we check BEFORE adding the new demand
+    # So zone4 starting when 3/4 (75%) already demanding should skip
+    coord.update_zone_demand("zone4", True, "heat")
+
+    # zone4 should NOT have a pending observation (mass recovery)
+    assert "zone4" not in learner._pending
+
+
+def test_observation_only_for_heat_mode(hass):
+    """Test that observations are only started for heating mode, not cooling."""
+    # Set up weather entity
+    hass.data = {
+        const.DOMAIN: {
+            "weather_entity": "weather.home"
+        }
+    }
+    mock_state = MagicMock()
+    mock_state.attributes = {"temperature": 25.0}
+    hass.states.get.return_value = mock_state
+
+    coord = coordinator.AdaptiveThermostatCoordinator(hass)
+
+    # Register zones
+    coord.register_zone("zone1", {"name": "Zone 1", "current_temp": 26.0})
+    coord.register_zone("zone2", {"name": "Zone 2", "current_temp": 27.0})
+
+    learner = coord.thermal_coupling_learner
+
+    # Zone1 starts cooling (not heating)
+    coord.update_zone_demand("zone1", True, "cool")
+
+    # No observation should be started for cooling
+    assert "zone1" not in learner._pending
+
+
+def test_observation_not_started_without_outdoor_temp(hass):
+    """Test that observation is not started when outdoor temp unavailable."""
+    # No weather entity configured
+    hass.data = {}
+
+    coord = coordinator.AdaptiveThermostatCoordinator(hass)
+
+    # Register zones
+    coord.register_zone("zone1", {"name": "Zone 1", "current_temp": 20.0})
+    coord.register_zone("zone2", {"name": "Zone 2", "current_temp": 19.0})
+
+    learner = coord.thermal_coupling_learner
+
+    # Zone1 starts heating
+    coord.update_zone_demand("zone1", True, "heat")
+
+    # No observation should be started (outdoor temp unavailable)
+    assert "zone1" not in learner._pending
+
+
+def test_demand_transition_no_change_no_observation(coord):
+    """Test that no observation starts when demand doesn't actually change."""
+    # Register zones
+    coord.register_zone("zone1", {"name": "Zone 1", "current_temp": 20.0})
+
+    learner = coord.thermal_coupling_learner
+
+    # Set demand to False (same as initial)
+    coord.update_zone_demand("zone1", False, "heat")
+
+    # No observation should be started
+    assert "zone1" not in learner._pending
+
+    # Set demand to True, then True again
+    coord.update_zone_demand("zone1", True, "heat")
+    # Clear pending to test
+    learner._pending.clear()
+
+    # Call again with same state
+    coord.update_zone_demand("zone1", True, "heat")
+
+    # Should not start new observation (no transition)
+    assert "zone1" not in learner._pending
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
