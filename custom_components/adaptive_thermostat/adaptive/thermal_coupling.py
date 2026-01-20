@@ -279,6 +279,85 @@ def _calculate_transfer_rate(observation: CouplingObservation) -> float:
     return target_delta / (source_delta * hours)
 
 
+def build_seeds_from_discovered_floors(
+    zone_floors: Dict[str, Optional[int]],
+    open_zones: List[str],
+    stairwell_zones: List[str],
+    seed_coefficients: Optional[Dict[str, float]] = None
+) -> Dict[Tuple[str, str], float]:
+    """Build seed coefficients from auto-discovered zone floor assignments.
+
+    Args:
+        zone_floors: Dict mapping zone entity IDs to floor levels (int) or None.
+            Zones with None floor are excluded from coupling pairs.
+        open_zones: List of zone entity IDs that are in open floor plans.
+            Open coefficient applies only to zones on the same floor.
+        stairwell_zones: List of zone entity IDs connected by stairwells.
+            Stairwell coefficients apply to vertical relationships.
+        seed_coefficients: Optional dict to override default seed values.
+
+    Returns:
+        Dict mapping (source_zone, target_zone) tuples to seed coefficient values.
+        Coefficients represent expected heat transfer rate (°C/hour per °C source rise).
+    """
+    # Merge custom seed coefficients with defaults
+    seed_values = {**DEFAULT_SEED_COEFFICIENTS}
+    if seed_coefficients:
+        seed_values.update(seed_coefficients)
+
+    open_zones_set = set(open_zones)
+    stairwell_zones_set = set(stairwell_zones)
+
+    # Build floor index: floor -> zones list (exclude zones with None floor)
+    floor_to_zones: Dict[int, List[str]] = {}
+    for zone, floor_level in zone_floors.items():
+        if floor_level is None:
+            continue
+        if floor_level not in floor_to_zones:
+            floor_to_zones[floor_level] = []
+        floor_to_zones[floor_level].append(zone)
+
+    seeds: Dict[Tuple[str, str], float] = {}
+
+    # Generate same-floor pairs
+    for floor_num, zones in floor_to_zones.items():
+        for zone_a, zone_b in combinations(zones, 2):
+            # Check if both zones are in open floor plan AND on same floor
+            if zone_a in open_zones_set and zone_b in open_zones_set:
+                seed_type = "open"
+            else:
+                seed_type = "same_floor"
+
+            # Bidirectional: A->B and B->A
+            seeds[(zone_a, zone_b)] = seed_values[seed_type]
+            seeds[(zone_b, zone_a)] = seed_values[seed_type]
+
+    # Generate vertical (cross-floor) pairs for adjacent floors
+    sorted_floors = sorted(floor_to_zones.keys())
+
+    for i in range(len(sorted_floors) - 1):
+        lower_floor = sorted_floors[i]
+        upper_floor = sorted_floors[i + 1]
+
+        lower_zones = floor_to_zones[lower_floor]
+        upper_zones = floor_to_zones[upper_floor]
+
+        for lower_zone in lower_zones:
+            for upper_zone in upper_zones:
+                # Determine if this is a stairwell connection
+                is_stairwell = lower_zone in stairwell_zones_set and upper_zone in stairwell_zones_set
+
+                # Lower -> Upper: heat rises (up or stairwell_up)
+                if is_stairwell:
+                    seeds[(lower_zone, upper_zone)] = seed_values["stairwell_up"]
+                    seeds[(upper_zone, lower_zone)] = seed_values["stairwell_down"]
+                else:
+                    seeds[(lower_zone, upper_zone)] = seed_values["up"]
+                    seeds[(upper_zone, lower_zone)] = seed_values["down"]
+
+    return seeds
+
+
 def parse_floorplan(config: Dict[str, Any]) -> Dict[Tuple[str, str], float]:
     """Parse floorplan configuration and generate seed coefficients for zone pairs.
 

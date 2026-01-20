@@ -8,6 +8,7 @@ from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
     CouplingCoefficient,
     ObservationContext,
     parse_floorplan,
+    build_seeds_from_discovered_floors,
 )
 from custom_components.adaptive_thermostat.const import DEFAULT_SEED_COEFFICIENTS
 
@@ -507,6 +508,141 @@ class TestParseFloorplan:
         # Non-stairwell vertical: bedroom to hallway
         assert seeds[("climate.hallway", "climate.bedroom")] == DEFAULT_SEED_COEFFICIENTS["up"]
         assert seeds[("climate.bedroom", "climate.hallway")] == DEFAULT_SEED_COEFFICIENTS["down"]
+
+
+# ============================================================================
+# Build Seeds From Discovered Floors Tests
+# ============================================================================
+
+
+class TestBuildSeedsFromDiscoveredFloors:
+    """Tests for the build_seeds_from_discovered_floors function."""
+
+    def test_build_seeds_same_floor(self):
+        """Zones on same floor get same_floor coefficient (0.15)."""
+        zone_floors = {
+            "climate.living_room": 1,
+            "climate.kitchen": 1,
+            "climate.dining": 1,
+        }
+        open_zones = []
+        stairwell_zones = []
+
+        seeds = build_seeds_from_discovered_floors(zone_floors, open_zones, stairwell_zones)
+
+        # Each zone pair should have same_floor seed (bidirectional)
+        assert seeds[("climate.living_room", "climate.kitchen")] == DEFAULT_SEED_COEFFICIENTS["same_floor"]
+        assert seeds[("climate.kitchen", "climate.living_room")] == DEFAULT_SEED_COEFFICIENTS["same_floor"]
+        assert seeds[("climate.living_room", "climate.dining")] == DEFAULT_SEED_COEFFICIENTS["same_floor"]
+        assert seeds[("climate.dining", "climate.living_room")] == DEFAULT_SEED_COEFFICIENTS["same_floor"]
+        assert seeds[("climate.kitchen", "climate.dining")] == DEFAULT_SEED_COEFFICIENTS["same_floor"]
+        assert seeds[("climate.dining", "climate.kitchen")] == DEFAULT_SEED_COEFFICIENTS["same_floor"]
+
+    def test_build_seeds_adjacent_floors(self):
+        """Zones on adjacent floors get up/down coefficients."""
+        zone_floors = {
+            "climate.garage": 0,
+            "climate.living_room": 1,
+            "climate.bedroom": 2,
+        }
+        open_zones = []
+        stairwell_zones = []
+
+        seeds = build_seeds_from_discovered_floors(zone_floors, open_zones, stairwell_zones)
+
+        # Floor 0 -> Floor 1: up (heat rises)
+        assert seeds[("climate.garage", "climate.living_room")] == DEFAULT_SEED_COEFFICIENTS["up"]
+        # Floor 1 -> Floor 0: down
+        assert seeds[("climate.living_room", "climate.garage")] == DEFAULT_SEED_COEFFICIENTS["down"]
+
+        # Floor 1 -> Floor 2: up
+        assert seeds[("climate.living_room", "climate.bedroom")] == DEFAULT_SEED_COEFFICIENTS["up"]
+        # Floor 2 -> Floor 1: down
+        assert seeds[("climate.bedroom", "climate.living_room")] == DEFAULT_SEED_COEFFICIENTS["down"]
+
+        # Non-adjacent floors should not have entries
+        assert ("climate.garage", "climate.bedroom") not in seeds
+        assert ("climate.bedroom", "climate.garage") not in seeds
+
+    def test_build_seeds_open_same_floor(self):
+        """Open zones on same floor get open coefficient (0.60)."""
+        zone_floors = {
+            "climate.living_room": 1,
+            "climate.kitchen": 1,
+            "climate.hallway": 1,
+        }
+        open_zones = ["climate.living_room", "climate.kitchen"]
+        stairwell_zones = []
+
+        seeds = build_seeds_from_discovered_floors(zone_floors, open_zones, stairwell_zones)
+
+        # Open zones get open seed (bidirectional)
+        assert seeds[("climate.living_room", "climate.kitchen")] == DEFAULT_SEED_COEFFICIENTS["open"]
+        assert seeds[("climate.kitchen", "climate.living_room")] == DEFAULT_SEED_COEFFICIENTS["open"]
+
+        # Non-open zone pairs on same floor get same_floor seed
+        assert seeds[("climate.living_room", "climate.hallway")] == DEFAULT_SEED_COEFFICIENTS["same_floor"]
+        assert seeds[("climate.hallway", "climate.living_room")] == DEFAULT_SEED_COEFFICIENTS["same_floor"]
+        assert seeds[("climate.kitchen", "climate.hallway")] == DEFAULT_SEED_COEFFICIENTS["same_floor"]
+        assert seeds[("climate.hallway", "climate.kitchen")] == DEFAULT_SEED_COEFFICIENTS["same_floor"]
+
+    def test_build_seeds_open_different_floors(self):
+        """Open zones on different floors get normal up/down."""
+        zone_floors = {
+            "climate.living_room": 1,
+            "climate.kitchen": 2,
+        }
+        open_zones = ["climate.living_room", "climate.kitchen"]
+        stairwell_zones = []
+
+        seeds = build_seeds_from_discovered_floors(zone_floors, open_zones, stairwell_zones)
+
+        # Different floors: should get up/down, NOT open coefficient
+        assert seeds[("climate.living_room", "climate.kitchen")] == DEFAULT_SEED_COEFFICIENTS["up"]
+        assert seeds[("climate.kitchen", "climate.living_room")] == DEFAULT_SEED_COEFFICIENTS["down"]
+
+    def test_build_seeds_stairwell(self):
+        """Stairwell zones get stairwell_up/stairwell_down coefficients."""
+        zone_floors = {
+            "climate.hallway_ground": 0,
+            "climate.hallway_first": 1,
+            "climate.hallway_second": 2,
+        }
+        open_zones = []
+        stairwell_zones = [
+            "climate.hallway_ground",
+            "climate.hallway_first",
+            "climate.hallway_second",
+        ]
+
+        seeds = build_seeds_from_discovered_floors(zone_floors, open_zones, stairwell_zones)
+
+        # Stairwell vertical: upward gets stairwell_up
+        assert seeds[("climate.hallway_ground", "climate.hallway_first")] == DEFAULT_SEED_COEFFICIENTS["stairwell_up"]
+        assert seeds[("climate.hallway_first", "climate.hallway_second")] == DEFAULT_SEED_COEFFICIENTS["stairwell_up"]
+
+        # Stairwell vertical: downward gets stairwell_down
+        assert seeds[("climate.hallway_first", "climate.hallway_ground")] == DEFAULT_SEED_COEFFICIENTS["stairwell_down"]
+        assert seeds[("climate.hallway_second", "climate.hallway_first")] == DEFAULT_SEED_COEFFICIENTS["stairwell_down"]
+
+    def test_build_seeds_excludes_none_floors(self):
+        """Zones with None floor are excluded from pairs."""
+        zone_floors = {
+            "climate.living_room": 1,
+            "climate.kitchen": 1,
+            "climate.unassigned": None,
+        }
+        open_zones = []
+        stairwell_zones = []
+
+        seeds = build_seeds_from_discovered_floors(zone_floors, open_zones, stairwell_zones)
+
+        # Only living_room and kitchen should have a pairing
+        assert seeds[("climate.living_room", "climate.kitchen")] == DEFAULT_SEED_COEFFICIENTS["same_floor"]
+        assert seeds[("climate.kitchen", "climate.living_room")] == DEFAULT_SEED_COEFFICIENTS["same_floor"]
+
+        # Unassigned zone should not be in any pairs
+        assert all("climate.unassigned" not in pair for pair in seeds.keys())
 
 
 # ============================================================================
