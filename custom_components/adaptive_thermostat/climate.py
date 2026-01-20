@@ -353,6 +353,7 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
             "adaptive_learner": adaptive_learner,
             "linked_zones": config.get(const.CONF_LINKED_ZONES, []),
             "pwm_seconds": config.get(const.CONF_PWM).seconds if config.get(const.CONF_PWM) else 0,
+            "window_orientation": config.get(const.CONF_WINDOW_ORIENTATION),
         }
 
         # Store ke_learner data for async_added_to_hass to use

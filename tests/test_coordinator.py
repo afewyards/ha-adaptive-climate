@@ -676,5 +676,175 @@ def test_demand_transition_no_change_no_observation(coord):
     assert "zone1" not in learner._pending
 
 
+# =============================================================================
+# Solar Gain Detection Tests (Story 5.4)
+# =============================================================================
+
+
+def test_solar_gain_detection(hass):
+    """Test that high solar gain is detected based on sun elevation and window orientation."""
+    from datetime import datetime
+
+    # Set up weather entity
+    hass.data = {
+        const.DOMAIN: {
+            "weather_entity": "weather.home"
+        }
+    }
+    mock_state = MagicMock()
+    mock_state.attributes = {"temperature": 5.0}
+    hass.states.get.return_value = mock_state
+
+    # Mock hass.config for SunPositionCalculator
+    hass.config.latitude = 52.0
+    hass.config.longitude = 5.0
+    hass.config.elevation = 0
+
+    coord = coordinator.AdaptiveThermostatCoordinator(hass)
+
+    # Register zones with window orientations
+    coord.register_zone("zone1", {
+        "name": "Zone 1",
+        "current_temp": 20.0,
+        "window_orientation": "south"
+    })
+    coord.register_zone("zone2", {
+        "name": "Zone 2",
+        "current_temp": 19.0,
+        "window_orientation": "north"
+    })
+
+    # Test high solar gain (sun elevation > 15 degrees with south-facing window)
+    # Mock a sunny midday time
+    high_sun_time = datetime(2024, 6, 21, 12, 0, 0)  # Summer solstice noon
+    is_high_solar = coord._is_high_solar_gain(high_sun_time)
+    # Should detect high solar with south-facing window at noon in summer
+    assert is_high_solar is True
+
+    # Test low solar gain (sun below 15 degrees)
+    # Mock early morning
+    low_sun_time = datetime(2024, 6, 21, 5, 0, 0)  # Early morning
+    is_low_solar = coord._is_high_solar_gain(low_sun_time)
+    # Should NOT detect high solar early in the morning
+    assert is_low_solar is False
+
+
+def test_solar_gain_detection_no_windows(hass):
+    """Test that solar gain detection returns False when no zones have windows."""
+    from datetime import datetime
+
+    hass.data = {
+        const.DOMAIN: {
+            "weather_entity": "weather.home"
+        }
+    }
+    mock_state = MagicMock()
+    mock_state.attributes = {"temperature": 5.0}
+    hass.states.get.return_value = mock_state
+
+    hass.config.latitude = 52.0
+    hass.config.longitude = 5.0
+    hass.config.elevation = 0
+
+    coord = coordinator.AdaptiveThermostatCoordinator(hass)
+
+    # Register zones without window_orientation
+    coord.register_zone("zone1", {"name": "Zone 1", "current_temp": 20.0})
+    coord.register_zone("zone2", {"name": "Zone 2", "current_temp": 19.0})
+
+    # Even at noon in summer, should return False (no windows configured)
+    high_sun_time = datetime(2024, 6, 21, 12, 0, 0)
+    is_high_solar = coord._is_high_solar_gain(high_sun_time)
+    assert is_high_solar is False
+
+
+def test_observation_skipped_during_solar(hass):
+    """Test that observation is skipped when high solar gain is detected."""
+    from datetime import datetime
+    from unittest.mock import patch
+
+    # Set up weather entity
+    hass.data = {
+        const.DOMAIN: {
+            "weather_entity": "weather.home"
+        }
+    }
+    mock_state = MagicMock()
+    mock_state.attributes = {"temperature": 5.0}
+    hass.states.get.return_value = mock_state
+
+    hass.config.latitude = 52.0
+    hass.config.longitude = 5.0
+    hass.config.elevation = 0
+
+    coord = coordinator.AdaptiveThermostatCoordinator(hass)
+
+    # Register zones with south-facing windows
+    coord.register_zone("zone1", {
+        "name": "Zone 1",
+        "current_temp": 20.0,
+        "window_orientation": "south"
+    })
+    coord.register_zone("zone2", {
+        "name": "Zone 2",
+        "current_temp": 19.0,
+        "window_orientation": "south"
+    })
+
+    learner = coord.thermal_coupling_learner
+
+    # Mock _is_high_solar_gain to return True
+    with patch.object(coord, '_is_high_solar_gain', return_value=True):
+        # Zone1 starts heating
+        coord.update_zone_demand("zone1", True, "heat")
+
+        # Observation should NOT be started (high solar gain)
+        assert "zone1" not in learner._pending
+
+
+def test_observation_starts_during_low_solar(hass):
+    """Test that observation starts normally when solar gain is low."""
+    from datetime import datetime
+    from unittest.mock import patch
+
+    # Set up weather entity
+    hass.data = {
+        const.DOMAIN: {
+            "weather_entity": "weather.home"
+        }
+    }
+    mock_state = MagicMock()
+    mock_state.attributes = {"temperature": 5.0}
+    hass.states.get.return_value = mock_state
+
+    hass.config.latitude = 52.0
+    hass.config.longitude = 5.0
+    hass.config.elevation = 0
+
+    coord = coordinator.AdaptiveThermostatCoordinator(hass)
+
+    # Register zones with south-facing windows
+    coord.register_zone("zone1", {
+        "name": "Zone 1",
+        "current_temp": 20.0,
+        "window_orientation": "south"
+    })
+    coord.register_zone("zone2", {
+        "name": "Zone 2",
+        "current_temp": 19.0,
+        "window_orientation": "south"
+    })
+
+    learner = coord.thermal_coupling_learner
+
+    # Mock _is_high_solar_gain to return False (low solar)
+    with patch.object(coord, '_is_high_solar_gain', return_value=False):
+        # Zone1 starts heating
+        coord.update_zone_demand("zone1", True, "heat")
+
+        # Observation SHOULD be started (low solar gain)
+        assert "zone1" in learner._pending
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

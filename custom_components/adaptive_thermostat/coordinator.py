@@ -11,9 +11,11 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 try:
     from .const import DOMAIN, COUPLING_MASS_RECOVERY_THRESHOLD
     from .adaptive.thermal_coupling import ThermalCouplingLearner, should_record_observation
+    from .adaptive.sun_position import SunPositionCalculator, ORIENTATION_AZIMUTH
 except ImportError:
     from const import DOMAIN, COUPLING_MASS_RECOVERY_THRESHOLD
     from adaptive.thermal_coupling import ThermalCouplingLearner, should_record_observation
+    from adaptive.sun_position import SunPositionCalculator, ORIENTATION_AZIMUTH
 
 # Re-export CentralController and constants for backwards compatibility
 try:
@@ -54,6 +56,7 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
         self._demand_states: dict[str, bool] = {}
         self._central_controller: "CentralController | None" = None
         self._thermal_coupling_learner = ThermalCouplingLearner()
+        self._sun_position_calculator = SunPositionCalculator.from_hass(hass)
 
     def set_central_controller(self, controller: "CentralController") -> None:
         """Set the central controller reference for push-based updates."""
@@ -196,12 +199,70 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
         elif old_demand and not new_demand:
             self._end_coupling_observation(zone_id)
 
+    def _is_high_solar_gain(self, check_time: datetime | None = None) -> bool:
+        """Check if high solar gain is currently detected.
+
+        High solar gain is defined as:
+        - Sun elevation > 15 degrees AND
+        - At least one zone has a window with effective sun exposure
+
+        Args:
+            check_time: Time to check (defaults to now)
+
+        Returns:
+            True if high solar gain detected, False otherwise
+        """
+        # Return False if sun position calculator unavailable
+        if self._sun_position_calculator is None:
+            return False
+
+        # Use current time if not specified
+        if check_time is None:
+            check_time = datetime.now()
+
+        # Get sun position at check time
+        sun_pos = self._sun_position_calculator.get_position_at_time(check_time)
+
+        # If sun is below 15 degrees, no high solar gain
+        if sun_pos.elevation < 15.0:
+            return False
+
+        # Check if any zone has a window with effective sun exposure
+        for zone_id, zone_data in self._zones.items():
+            window_orientation = zone_data.get("window_orientation")
+            if not window_orientation or window_orientation.lower() == "none":
+                continue
+
+            # Check if sun is effective for this window
+            # Use same logic as SunPositionCalculator._is_sun_effective
+            if window_orientation.lower() == "roof":
+                # Skylights are effective when sun is high enough
+                return True
+
+            # Get window azimuth
+            window_azimuth = ORIENTATION_AZIMUTH.get(window_orientation.lower())
+            if window_azimuth is None:
+                continue
+
+            # Calculate angular difference
+            diff = abs(sun_pos.azimuth - window_azimuth)
+            if diff > 180:
+                diff = 360 - diff
+
+            # Sun is effective if within 45 degrees of window normal
+            if diff <= 45:
+                return True
+
+        # No zones with effective sun exposure
+        return False
+
     def _start_coupling_observation(self, zone_id: str) -> None:
         """Start a thermal coupling observation for a zone that began heating.
 
         Skips observation if:
         - Outdoor temperature is unavailable
         - Mass recovery detected (>50% of zones already demanding)
+        - High solar gain detected (sun elevation > 15° with south-facing windows)
 
         Args:
             zone_id: Zone that started heating
@@ -211,6 +272,14 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
         if outdoor_temp is None:
             _LOGGER.debug(
                 "Skipping coupling observation for %s: outdoor temp unavailable",
+                zone_id
+            )
+            return
+
+        # Skip if high solar gain detected
+        if self._is_high_solar_gain():
+            _LOGGER.debug(
+                "Skipping coupling observation for %s: high solar gain detected",
                 zone_id
             )
             return
