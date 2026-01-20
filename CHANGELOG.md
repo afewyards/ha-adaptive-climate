@@ -1,6 +1,20 @@
 # CHANGELOG
 
 
+## v0.19.0 (2026-01-20)
+
+### Features
+
+- **config**: Move climate settings to domain-level with per-entity overrides
+  ([`8db6905`](https://github.com/afewyards/ha-adaptive-thermostat/commit/8db6905bf525aa046e9ad9b2842eb28e4907728b))
+
+Add domain-level defaults for min_temp, max_temp, target_temp, target_temp_step, hot_tolerance,
+  cold_tolerance, precision, pwm, min_cycle_duration, and min_off_cycle_duration. Per-entity config
+  overrides domain defaults.
+
+Cascade pattern: entity config → domain config → default value
+
+
 ## v0.18.0 (2026-01-20)
 
 ### Chores
