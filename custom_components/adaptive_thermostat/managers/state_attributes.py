@@ -80,9 +80,6 @@ def build_state_attributes(thermostat: SmartThermostat) -> dict[str, Any]:
     # Learning grace period
     _add_learning_grace_attributes(thermostat, attrs)
 
-    # Zone linking status (deprecated)
-    _add_zone_linking_attributes(thermostat, attrs)
-
     # Thermal coupling attributes
     _add_thermal_coupling_attributes(thermostat, attrs)
 
@@ -123,13 +120,6 @@ def _add_learning_grace_attributes(
         )
         if grace_until:
             attrs["learning_resumes"] = grace_until.strftime("%H:%M")
-
-
-def _add_zone_linking_attributes(
-    thermostat: SmartThermostat, attrs: dict[str, Any]
-) -> None:
-    """Add zone linking status attributes (deprecated - removed in thermal coupling migration)."""
-    pass
 
 
 def _add_thermal_coupling_attributes(

@@ -46,10 +46,7 @@ class MockAdaptiveThermostat:
         self._min_off_cycle_duration.seconds = 0
         self._min_on_cycle_duration = Mock()
         self._min_on_cycle_duration.seconds = 0
-        self._zone_linker = None
-        self._linked_zones = []
         self._is_heating = False
-        self._link_delay_minutes = 10
 
     @property
     def entity_id(self):
