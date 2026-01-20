@@ -151,12 +151,12 @@ def _add_thermal_coupling_attributes(
     attrs["coupling_coefficients"] = coefficients
 
     # Get current compensation values from control output manager
-    if thermostat._control_output:
+    if thermostat._control_output_manager:
         attrs["coupling_compensation"] = round(
-            thermostat._control_output.coupling_compensation_degc, 3
+            thermostat._control_output_manager.coupling_compensation_degc, 3
         )
         attrs["coupling_compensation_power"] = round(
-            thermostat._control_output.coupling_compensation_power, 1
+            thermostat._control_output_manager.coupling_compensation_power, 1
         )
     else:
         attrs["coupling_compensation"] = 0.0

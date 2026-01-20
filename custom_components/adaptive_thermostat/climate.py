@@ -55,6 +55,7 @@ from .adaptive.solar_recovery import SolarRecovery
 from .adaptive.sun_position import SunPositionCalculator
 from .adaptive.contact_sensors import ContactSensorHandler, ContactAction
 from .adaptive.ke_learning import KeLearner
+from .adaptive.thermal_coupling import CONF_FLOORPLAN
 
 from homeassistant.components.climate import PLATFORM_SCHEMA, ClimateEntity, ClimateEntityFeature
 from homeassistant.components.climate import (
@@ -267,11 +268,11 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         # Check if thermal coupling is enabled (default: true)
         enabled = thermal_coupling_config.get("enabled", True)
         if enabled and not hass.data[DOMAIN].get("coupling_seeds_initialized"):
-            floorplan = thermal_coupling_config.get(_CONF_FLOORPLAN)
+            floorplan = thermal_coupling_config.get(CONF_FLOORPLAN)
 
             # Build floorplan config dict for seed generation
             floorplan_config = {
-                _CONF_FLOORPLAN: floorplan,  # None if not provided (triggers auto-discovery)
+                CONF_FLOORPLAN: floorplan,  # None if not provided (triggers auto-discovery)
                 const.CONF_OPEN_ZONES: thermal_coupling_config.get(const.CONF_OPEN_ZONES, []),
                 const.CONF_STAIRWELL_ZONES: thermal_coupling_config.get(const.CONF_STAIRWELL_ZONES, []),
                 const.CONF_SEED_COEFFICIENTS: thermal_coupling_config.get(const.CONF_SEED_COEFFICIENTS, {}),
