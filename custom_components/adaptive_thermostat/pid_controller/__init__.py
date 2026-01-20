@@ -17,7 +17,7 @@ class PID:
 
     def __init__(self, kp, ki, kd, ke=0, ke_wind=0.02, out_min=float('-inf'), out_max=float('+inf'),
                  sampling_period=0, cold_tolerance=0.3, hot_tolerance=0.3, derivative_filter_alpha=0.15,
-                 outdoor_temp_lag_tau=4.0):
+                 outdoor_temp_lag_tau=4.0, integral_decay_multiplier=1.5):
         """A proportional-integral-derivative controller using P-on-M (proportional-on-measurement).
             :param kp: Proportional coefficient.
             :type kp: float
@@ -45,6 +45,9 @@ class PID:
             :param outdoor_temp_lag_tau: Time constant in hours for outdoor temperature EMA filter.
                                         Larger values = slower response to outdoor temp changes.
             :type outdoor_temp_lag_tau: float
+            :param integral_decay_multiplier: Multiplier for integral decay when error opposes integral sign.
+                                              Higher values = faster decay during overhang. Minimum 1.0.
+            :type integral_decay_multiplier: float
         """
         if kp is None:
             raise ValueError('kp must be specified')
@@ -91,6 +94,7 @@ class PID:
         self._outdoor_temp_lagged = None  # Will be initialized on first outdoor temp reading
         self._last_output_before_off = None  # Stores output before switching to OFF mode for bumpless transfer
         self._wind_speed = 0.0  # Current wind speed in m/s (defaults to 0 if unavailable)
+        self._integral_decay_multiplier = max(1.0, integral_decay_multiplier)
 
     @property
     def mode(self):
@@ -187,6 +191,16 @@ class PID:
     def outdoor_temp_lag_tau(self):
         """Get the outdoor temperature lag time constant in hours."""
         return self._outdoor_temp_lag_tau
+
+    @property
+    def integral_decay_multiplier(self):
+        """Get the integral decay multiplier for overhang situations."""
+        return self._integral_decay_multiplier
+
+    @integral_decay_multiplier.setter
+    def integral_decay_multiplier(self, value):
+        """Set the integral decay multiplier (minimum 1.0)."""
+        self._integral_decay_multiplier = max(1.0, value)
 
     @property
     def has_transfer_state(self):

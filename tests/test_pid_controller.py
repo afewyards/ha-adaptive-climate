@@ -1736,5 +1736,40 @@ class TestIntegralDecayConstants:
         assert DEFAULT_INTEGRAL_DECAY == 1.5
 
 
+class TestIntegralDecayMultiplier:
+    """Test integral_decay_multiplier parameter in PID controller."""
+
+    def test_pid_init_accepts_integral_decay_multiplier(self):
+        """PID(integral_decay_multiplier=3.0) stores value."""
+        pid = PID(kp=10, ki=5, kd=2, out_min=0, out_max=100, integral_decay_multiplier=3.0)
+        assert pid._integral_decay_multiplier == 3.0
+
+    def test_pid_integral_decay_default_value(self):
+        """PID without integral_decay_multiplier uses default 1.5."""
+        pid = PID(kp=10, ki=5, kd=2, out_min=0, out_max=100)
+        assert pid._integral_decay_multiplier == 1.5
+
+    def test_pid_integral_decay_property_getter(self):
+        """pid.integral_decay_multiplier returns stored value."""
+        pid = PID(kp=10, ki=5, kd=2, out_min=0, out_max=100, integral_decay_multiplier=2.5)
+        assert pid.integral_decay_multiplier == 2.5
+
+    def test_pid_integral_decay_property_setter(self):
+        """Setter enforces minimum 1.0."""
+        pid = PID(kp=10, ki=5, kd=2, out_min=0, out_max=100)
+
+        # Setting valid value works
+        pid.integral_decay_multiplier = 4.0
+        assert pid.integral_decay_multiplier == 4.0
+
+        # Setting value below 1.0 clamps to 1.0
+        pid.integral_decay_multiplier = 0.5
+        assert pid.integral_decay_multiplier == 1.0
+
+        # Setting exactly 1.0 works
+        pid.integral_decay_multiplier = 1.0
+        assert pid.integral_decay_multiplier == 1.0
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
