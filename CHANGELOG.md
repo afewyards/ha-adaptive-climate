@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v0.19.1 (2026-01-20)
+
+### Bug Fixes
+
+- **cycle-tracker**: Pass async callback directly to async_call_later
+  ([`cb39d69`](https://github.com/afewyards/ha-adaptive-thermostat/commit/cb39d6978ee8e4bc47c21f7c862afc04cdd04db0))
+
+The settling timeout was crashing with RuntimeError because hass.async_create_task was called from a
+  timer thread via lambda. Pass the async function directly instead - HA handles it properly.
+
+
 ## v0.19.0 (2026-01-20)
 
 ### Features
