@@ -338,16 +338,19 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         'ext_sensor_entity_id': hass.data.get(DOMAIN, {}).get("outdoor_sensor"),
         'weather_entity_id': hass.data.get(DOMAIN, {}).get("weather_entity"),
         'wind_speed_sensor_entity_id': hass.data.get(DOMAIN, {}).get("wind_speed_sensor"),
-        'min_temp': config.get(const.CONF_MIN_TEMP),
-        'max_temp': config.get(const.CONF_MAX_TEMP),
-        'target_temp': config.get(const.CONF_TARGET_TEMP),
-        'hot_tolerance': config.get(const.CONF_HOT_TOLERANCE),
-        'cold_tolerance': config.get(const.CONF_COLD_TOLERANCE),
+        # Temperature range: entity → domain → default
+        'min_temp': config.get(const.CONF_MIN_TEMP) or hass.data.get(DOMAIN, {}).get("min_temp", const.DEFAULT_MIN_TEMP),
+        'max_temp': config.get(const.CONF_MAX_TEMP) or hass.data.get(DOMAIN, {}).get("max_temp", const.DEFAULT_MAX_TEMP),
+        'target_temp': config.get(const.CONF_TARGET_TEMP) or hass.data.get(DOMAIN, {}).get("target_temp"),
+        # Tolerances: entity → domain → default
+        'hot_tolerance': config.get(const.CONF_HOT_TOLERANCE) or hass.data.get(DOMAIN, {}).get("hot_tolerance", const.DEFAULT_TOLERANCE),
+        'cold_tolerance': config.get(const.CONF_COLD_TOLERANCE) or hass.data.get(DOMAIN, {}).get("cold_tolerance", const.DEFAULT_TOLERANCE),
         # Derive ac_mode from cooler presence (zone or controller level)
         'ac_mode': bool(cooler) or bool(hass.data.get(DOMAIN, {}).get("main_cooler_switch")),
         'force_off_state': config.get(const.CONF_FORCE_OFF_STATE),
-        'min_cycle_duration': config.get(const.CONF_MIN_CYCLE_DURATION),
-        'min_off_cycle_duration': config.get(const.CONF_MIN_OFF_CYCLE_DURATION),
+        # Cycle durations: entity → domain → None (handled in thermostat init)
+        'min_cycle_duration': config.get(const.CONF_MIN_CYCLE_DURATION) or hass.data.get(DOMAIN, {}).get("min_cycle_duration"),
+        'min_off_cycle_duration': config.get(const.CONF_MIN_OFF_CYCLE_DURATION) or hass.data.get(DOMAIN, {}).get("min_off_cycle_duration"),
         'min_cycle_duration_pid_off': config.get(const.CONF_MIN_CYCLE_DURATION_PID_OFF),
         'min_off_cycle_duration_pid_off': config.get(const.CONF_MIN_OFF_CYCLE_DURATION_PID_OFF),
         'control_interval': config.get(const.CONF_CONTROL_INTERVAL),
@@ -362,15 +365,17 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         'comfort_temp': hass.data.get(DOMAIN, {}).get("comfort_temp"),
         'home_temp': hass.data.get(DOMAIN, {}).get("home_temp"),
         'activity_temp': hass.data.get(DOMAIN, {}).get("activity_temp"),
-        'precision': config.get(const.CONF_PRECISION),
-        'target_temp_step': config.get(const.CONF_TARGET_TEMP_STEP),
+        # Precision and step: entity → domain → default
+        'precision': config.get(const.CONF_PRECISION) or hass.data.get(DOMAIN, {}).get("precision", const.DEFAULT_PRECISION),
+        'target_temp_step': config.get(const.CONF_TARGET_TEMP_STEP) or hass.data.get(DOMAIN, {}).get("target_temp_step", const.DEFAULT_TARGET_TEMP_STEP),
         'unit': hass.config.units.temperature_unit,
         'output_precision': config.get(const.CONF_OUTPUT_PRECISION),
         'output_min': config.get(const.CONF_OUTPUT_MIN),
         'output_max': config.get(const.CONF_OUTPUT_MAX),
         'output_clamp_low': config.get(const.CONF_OUT_CLAMP_LOW),
         'output_clamp_high': config.get(const.CONF_OUT_CLAMP_HIGH),
-        'pwm': config.get(const.CONF_PWM),
+        # PWM: entity → domain → None (handled in thermostat init)
+        'pwm': config.get(const.CONF_PWM) or hass.data.get(DOMAIN, {}).get("pwm"),
         'boost_pid_off': hass.data.get(DOMAIN, {}).get("boost_pid_off"),
         # New adaptive learning parameters
         'zone_id': zone_id,

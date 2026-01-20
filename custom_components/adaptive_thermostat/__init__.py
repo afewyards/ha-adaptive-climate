@@ -60,6 +60,17 @@ from .const import (
     CONF_ACTIVITY_TEMP,
     CONF_PRESET_SYNC_MODE,
     CONF_BOOST_PID_OFF,
+    # Climate settings (domain-level defaults with per-entity override)
+    CONF_MIN_TEMP,
+    CONF_MAX_TEMP,
+    CONF_TARGET_TEMP,
+    CONF_TARGET_TEMP_STEP,
+    CONF_HOT_TOLERANCE,
+    CONF_COLD_TOLERANCE,
+    CONF_PRECISION,
+    CONF_PWM,
+    CONF_MIN_CYCLE_DURATION,
+    CONF_MIN_OFF_CYCLE_DURATION,
     DEFAULT_DEBUG,
     DEFAULT_SOURCE_STARTUP_DELAY,
     DEFAULT_SYNC_MODES,
@@ -69,6 +80,12 @@ from .const import (
     DEFAULT_PERSISTENT_NOTIFICATION,
     DEFAULT_VACATION_TARGET_TEMP,
     DEFAULT_PRESET_SYNC_MODE,
+    DEFAULT_MIN_TEMP,
+    DEFAULT_MAX_TEMP,
+    DEFAULT_TARGET_TEMP,
+    DEFAULT_TARGET_TEMP_STEP,
+    DEFAULT_TOLERANCE,
+    DEFAULT_PRECISION,
     VALID_ENERGY_RATINGS,
 )
 from .services import (
@@ -236,6 +253,18 @@ if HAS_HOMEASSISTANT:
                     default=DEFAULT_PRESET_SYNC_MODE
                 ): vol.In(['sync', 'none']),
                 vol.Optional(CONF_BOOST_PID_OFF, default=False): cv.boolean,
+
+                # Climate settings (domain-level defaults, can be overridden per-entity)
+                vol.Optional(CONF_MIN_TEMP): vol.Coerce(float),
+                vol.Optional(CONF_MAX_TEMP): vol.Coerce(float),
+                vol.Optional(CONF_TARGET_TEMP): vol.Coerce(float),
+                vol.Optional(CONF_TARGET_TEMP_STEP): vol.In([0.1, 0.5, 1.0]),
+                vol.Optional(CONF_HOT_TOLERANCE): vol.Coerce(float),
+                vol.Optional(CONF_COLD_TOLERANCE): vol.Coerce(float),
+                vol.Optional(CONF_PRECISION): vol.In([0.1, 0.5, 1.0]),
+                vol.Optional(CONF_PWM): vol.All(cv.time_period, cv.positive_timedelta),
+                vol.Optional(CONF_MIN_CYCLE_DURATION): vol.All(cv.time_period, cv.positive_timedelta),
+                vol.Optional(CONF_MIN_OFF_CYCLE_DURATION): vol.All(cv.time_period, cv.positive_timedelta),
             })
         },
         extra=vol.ALLOW_EXTRA,  # Allow other domains in config
@@ -504,6 +533,18 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         CONF_PRESET_SYNC_MODE, DEFAULT_PRESET_SYNC_MODE
     )
     hass.data[DOMAIN]["boost_pid_off"] = domain_config.get(CONF_BOOST_PID_OFF, False)
+
+    # Climate settings (domain-level defaults, can be overridden per-entity)
+    hass.data[DOMAIN]["min_temp"] = domain_config.get(CONF_MIN_TEMP)
+    hass.data[DOMAIN]["max_temp"] = domain_config.get(CONF_MAX_TEMP)
+    hass.data[DOMAIN]["target_temp"] = domain_config.get(CONF_TARGET_TEMP)
+    hass.data[DOMAIN]["target_temp_step"] = domain_config.get(CONF_TARGET_TEMP_STEP)
+    hass.data[DOMAIN]["hot_tolerance"] = domain_config.get(CONF_HOT_TOLERANCE)
+    hass.data[DOMAIN]["cold_tolerance"] = domain_config.get(CONF_COLD_TOLERANCE)
+    hass.data[DOMAIN]["precision"] = domain_config.get(CONF_PRECISION)
+    hass.data[DOMAIN]["pwm"] = domain_config.get(CONF_PWM)
+    hass.data[DOMAIN]["min_cycle_duration"] = domain_config.get(CONF_MIN_CYCLE_DURATION)
+    hass.data[DOMAIN]["min_off_cycle_duration"] = domain_config.get(CONF_MIN_OFF_CYCLE_DURATION)
 
     if supply_temp_sensor and return_temp_sensor:
         _LOGGER.info(
