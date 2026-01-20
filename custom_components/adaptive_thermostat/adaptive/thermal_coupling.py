@@ -13,7 +13,7 @@ from typing import Dict, Any, List, Optional, Tuple
 
 try:
     from ..const import (
-        CONF_FLOORPLAN,
+        CONF_OPEN_ZONES,
         CONF_SEED_COEFFICIENTS,
         CONF_STAIRWELL_ZONES,
         COUPLING_CONFIDENCE_MAX,
@@ -30,7 +30,7 @@ try:
     )
 except ImportError:
     from const import (
-        CONF_FLOORPLAN,
+        CONF_OPEN_ZONES,
         CONF_SEED_COEFFICIENTS,
         CONF_STAIRWELL_ZONES,
         COUPLING_CONFIDENCE_MAX,
@@ -45,6 +45,9 @@ except ImportError:
         COUPLING_VALIDATION_DEGRADATION,
         DEFAULT_SEED_COEFFICIENTS,
     )
+
+# Legacy constant for backward compatibility during migration
+CONF_FLOORPLAN = "floorplan"
 
 
 @dataclass

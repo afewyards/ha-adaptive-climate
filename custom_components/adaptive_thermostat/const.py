@@ -361,7 +361,7 @@ CONF_DEMAND_SWITCH = "demand_switch"
 
 # Thermal coupling configuration
 CONF_THERMAL_COUPLING = "thermal_coupling"
-CONF_FLOORPLAN = "floorplan"
+CONF_OPEN_ZONES = "open"
 CONF_STAIRWELL_ZONES = "stairwell_zones"
 CONF_SEED_COEFFICIENTS = "seed_coefficients"
 CONF_MIN_LEARNING_EVENTS = "min_learning_events"

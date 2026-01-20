@@ -49,6 +49,7 @@ from adaptive.thermal_coupling import (
     CouplingCoefficient,
     ObservationContext,
     should_record_observation,
+    CONF_FLOORPLAN,  # Legacy constant for backward compatibility
 )
 
 # Now we can import the coordinator
@@ -111,7 +112,7 @@ def multi_zone_coordinator(mock_hass):
 
     # Initialize seeds from a floorplan config
     floorplan_config = {
-        const.CONF_FLOORPLAN: [
+        CONF_FLOORPLAN: [
             {"floor": 0, "zones": ["climate.living_room", "climate.kitchen"]},
             {"floor": 1, "zones": ["climate.bedroom"]},
         ],
@@ -257,7 +258,7 @@ class TestIntegrationCoefficientCalculated:
 
         # Initialize seeds
         learner.initialize_seeds({
-            const.CONF_FLOORPLAN: [
+            CONF_FLOORPLAN: [
                 {"floor": 0, "zones": ["climate.living_room", "climate.kitchen"]},
             ],
         })
@@ -310,7 +311,7 @@ class TestIntegrationCoefficientCalculated:
 
         # Initialize seeds
         learner.initialize_seeds({
-            const.CONF_FLOORPLAN: [
+            CONF_FLOORPLAN: [
                 {"floor": 0, "zones": ["climate.living_room", "climate.kitchen"]},
             ],
         })
@@ -329,7 +330,7 @@ class TestIntegrationCoefficientCalculated:
 
         # Initialize seeds with known value
         learner.initialize_seeds({
-            const.CONF_FLOORPLAN: [
+            CONF_FLOORPLAN: [
                 {"floor": 0, "zones": ["climate.living_room", "climate.kitchen"]},
             ],
         })
@@ -456,7 +457,7 @@ class TestIntegrationPersistenceRoundtrip:
 
         # Initialize seeds
         learner.initialize_seeds({
-            const.CONF_FLOORPLAN: [
+            CONF_FLOORPLAN: [
                 {"floor": 0, "zones": ["climate.living_room", "climate.kitchen"]},
                 {"floor": 1, "zones": ["climate.bedroom"]},
             ],
@@ -551,7 +552,7 @@ class TestIntegrationPersistenceRoundtrip:
         # Create learner with data
         learner = ThermalCouplingLearner()
         learner.initialize_seeds({
-            const.CONF_FLOORPLAN: [
+            CONF_FLOORPLAN: [
                 {"floor": 0, "zones": ["climate.living_room", "climate.kitchen"]},
             ],
         })

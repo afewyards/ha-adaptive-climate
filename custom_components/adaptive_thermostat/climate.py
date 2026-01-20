@@ -81,6 +81,8 @@ from .managers.state_attributes import build_state_attributes
 
 _LOGGER = logging.getLogger(__name__)
 
+# Legacy constant for backward compatibility during migration to auto-discovery
+_CONF_FLOORPLAN = "floorplan"
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
     {
@@ -171,7 +173,7 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         # Thermal coupling configuration
         vol.Optional(const.CONF_THERMAL_COUPLING): vol.Schema({
             vol.Optional('enabled', default=True): cv.boolean,
-            vol.Optional(const.CONF_FLOORPLAN): vol.All(
+            vol.Optional(_CONF_FLOORPLAN): vol.All(
                 cv.ensure_list,
                 [vol.Schema({
                     vol.Required('floor'): vol.Coerce(int),
@@ -288,11 +290,11 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         # Check if thermal coupling is enabled (default: true)
         enabled = thermal_coupling_config.get("enabled", True)
         if enabled:
-            floorplan = thermal_coupling_config.get(const.CONF_FLOORPLAN)
+            floorplan = thermal_coupling_config.get(_CONF_FLOORPLAN)
             if floorplan and not hass.data[DOMAIN].get("coupling_seeds_initialized"):
                 # Build floorplan config dict for seed generation
                 floorplan_config = {
-                    const.CONF_FLOORPLAN: floorplan,
+                    _CONF_FLOORPLAN: floorplan,
                     const.CONF_STAIRWELL_ZONES: thermal_coupling_config.get(const.CONF_STAIRWELL_ZONES, []),
                     const.CONF_SEED_COEFFICIENTS: thermal_coupling_config.get(const.CONF_SEED_COEFFICIENTS, {}),
                 }

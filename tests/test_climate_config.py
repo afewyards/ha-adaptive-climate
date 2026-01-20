@@ -14,11 +14,13 @@ pytestmark = pytest.mark.skipif(not HAS_VOLUPTUOUS, reason="voluptuous not insta
 # Import constants directly (doesn't require homeassistant)
 from custom_components.adaptive_thermostat.const import (
     CONF_THERMAL_COUPLING,
-    CONF_FLOORPLAN,
     CONF_STAIRWELL_ZONES,
     CONF_SEED_COEFFICIENTS,
     DEFAULT_SEED_COEFFICIENTS,
 )
+
+# Legacy constant for backward compatibility during migration to auto-discovery
+CONF_FLOORPLAN = "floorplan"
 
 
 # =============================================================================
@@ -377,9 +379,9 @@ def test_climate_seeds_from_floorplan():
     from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
         ThermalCouplingLearner,
         parse_floorplan,
+        CONF_FLOORPLAN,  # Legacy constant from thermal_coupling module
     )
     from custom_components.adaptive_thermostat.const import (
-        CONF_FLOORPLAN,
         CONF_STAIRWELL_ZONES,
         CONF_SEED_COEFFICIENTS,
         DEFAULT_SEED_COEFFICIENTS,
