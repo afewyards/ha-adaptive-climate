@@ -670,3 +670,357 @@ class TestFullLearningFlow:
         restored = ThermalCouplingLearner.from_dict(state_dict)
         assert pair in restored.coefficients
         assert restored.coefficients[pair].coefficient == coef.coefficient
+
+
+class TestAutoDiscoveryIntegration:
+    """Integration tests for thermal coupling auto-discovery flow."""
+
+    def test_coupling_integration_autodiscovery(self, mock_hass):
+        """TEST: End-to-end auto-discovery with mocked registries.
+
+        Verifies that zones with proper floor assignments get coupling seeds,
+        and the coordinator properly initializes the thermal coupling learner.
+        """
+        from unittest.mock import MagicMock
+
+        # Mock entity registry
+        entity_registry = MagicMock()
+
+        # Mock entity entries with area assignments
+        living_room_entity = MagicMock()
+        living_room_entity.area_id = "area_living_room"
+
+        kitchen_entity = MagicMock()
+        kitchen_entity.area_id = "area_kitchen"
+
+        bedroom_entity = MagicMock()
+        bedroom_entity.area_id = "area_bedroom"
+
+        entity_registry.async_get = MagicMock(side_effect=lambda entity_id: {
+            "climate.living_room": living_room_entity,
+            "climate.kitchen": kitchen_entity,
+            "climate.bedroom": bedroom_entity,
+        }.get(entity_id))
+
+        # Mock area registry
+        area_registry = MagicMock()
+
+        area_living_room = MagicMock()
+        area_living_room.floor_id = "floor_ground"
+
+        area_kitchen = MagicMock()
+        area_kitchen.floor_id = "floor_ground"
+
+        area_bedroom = MagicMock()
+        area_bedroom.floor_id = "floor_first"
+
+        area_registry.async_get = MagicMock(side_effect=lambda area_id: {
+            "area_living_room": area_living_room,
+            "area_kitchen": area_kitchen,
+            "area_bedroom": area_bedroom,
+        }.get(area_id))
+
+        # Mock floor registry
+        floor_registry = MagicMock()
+
+        floor_ground = MagicMock()
+        floor_ground.level = 0
+
+        floor_first = MagicMock()
+        floor_first.level = 1
+
+        floor_registry.async_get = MagicMock(side_effect=lambda floor_id: {
+            "floor_ground": floor_ground,
+            "floor_first": floor_first,
+        }.get(floor_id))
+
+        # Patch registry helpers
+        with patch("helpers.registry.er.async_get", return_value=entity_registry), \
+             patch("helpers.registry.ar.async_get", return_value=area_registry), \
+             patch("helpers.registry.fr.async_get", return_value=floor_registry):
+
+            # Create learner with hass instance
+            learner = ThermalCouplingLearner(hass=mock_hass)
+
+            zone_entity_ids = ["climate.living_room", "climate.kitchen", "climate.bedroom"]
+
+            # Initialize seeds (should trigger auto-discovery)
+            learner.initialize_seeds(
+                floorplan_config={},  # No legacy floorplan
+                zone_entity_ids=zone_entity_ids
+            )
+
+            # Verify seeds were created
+            assert len(learner._seeds) > 0
+
+            # Check same-floor coupling (living room <-> kitchen)
+            assert ("climate.living_room", "climate.kitchen") in learner._seeds
+            assert ("climate.kitchen", "climate.living_room") in learner._seeds
+            assert learner._seeds[("climate.living_room", "climate.kitchen")] == const.DEFAULT_SEED_COEFFICIENTS["same_floor"]
+
+            # Check vertical coupling (living room -> bedroom, heat rising)
+            assert ("climate.living_room", "climate.bedroom") in learner._seeds
+            assert learner._seeds[("climate.living_room", "climate.bedroom")] == const.DEFAULT_SEED_COEFFICIENTS["up"]
+
+            # Check vertical coupling (bedroom -> living room, heat descending)
+            assert ("climate.bedroom", "climate.living_room") in learner._seeds
+            assert learner._seeds[("climate.bedroom", "climate.living_room")] == const.DEFAULT_SEED_COEFFICIENTS["down"]
+
+            # Verify coefficients can be retrieved (should return seed-based coefficients)
+            coef_lr_to_k = learner.get_coefficient("climate.living_room", "climate.kitchen")
+            assert coef_lr_to_k is not None
+            assert coef_lr_to_k.coefficient == const.DEFAULT_SEED_COEFFICIENTS["same_floor"]
+            assert coef_lr_to_k.confidence == const.COUPLING_CONFIDENCE_THRESHOLD
+            assert coef_lr_to_k.observation_count == 0
+
+    def test_coupling_integration_partial_discovery(self, mock_hass):
+        """TEST: Partial auto-discovery - some zones without floors still work.
+
+        Verifies that zones without floor assignments are excluded from coupling,
+        but zones with floors still get proper seeds.
+        """
+        from unittest.mock import MagicMock
+        import logging
+
+        # Mock entity registry
+        entity_registry = MagicMock()
+
+        # Living room has area with floor
+        living_room_entity = MagicMock()
+        living_room_entity.area_id = "area_living_room"
+
+        # Kitchen has area with floor
+        kitchen_entity = MagicMock()
+        kitchen_entity.area_id = "area_kitchen"
+
+        # Bedroom has no area (entity.area_id = None)
+        bedroom_entity = MagicMock()
+        bedroom_entity.area_id = None
+
+        entity_registry.async_get = MagicMock(side_effect=lambda entity_id: {
+            "climate.living_room": living_room_entity,
+            "climate.kitchen": kitchen_entity,
+            "climate.bedroom": bedroom_entity,
+        }.get(entity_id))
+
+        # Mock area registry
+        area_registry = MagicMock()
+
+        area_living_room = MagicMock()
+        area_living_room.floor_id = "floor_ground"
+
+        area_kitchen = MagicMock()
+        area_kitchen.floor_id = "floor_ground"
+
+        area_registry.async_get = MagicMock(side_effect=lambda area_id: {
+            "area_living_room": area_living_room,
+            "area_kitchen": area_kitchen,
+        }.get(area_id))
+
+        # Mock floor registry
+        floor_registry = MagicMock()
+
+        floor_ground = MagicMock()
+        floor_ground.level = 0
+
+        floor_registry.async_get = MagicMock(side_effect=lambda floor_id: {
+            "floor_ground": floor_ground,
+        }.get(floor_id))
+
+        # Patch registry helpers
+        with patch("helpers.registry.er.async_get", return_value=entity_registry), \
+             patch("helpers.registry.ar.async_get", return_value=area_registry), \
+             patch("helpers.registry.fr.async_get", return_value=floor_registry):
+
+            # Create learner with hass instance
+            learner = ThermalCouplingLearner(hass=mock_hass)
+
+            zone_entity_ids = ["climate.living_room", "climate.kitchen", "climate.bedroom"]
+
+            # Capture log warnings - patch logging.getLogger within initialize_seeds
+            import logging
+            with patch.object(logging, 'getLogger') as mock_get_logger:
+                mock_logger = MagicMock()
+                mock_get_logger.return_value = mock_logger
+
+                # Initialize seeds (should trigger auto-discovery)
+                learner.initialize_seeds(
+                    floorplan_config={},  # No legacy floorplan
+                    zone_entity_ids=zone_entity_ids
+                )
+
+                # Verify warning was logged for bedroom (no floor assignment)
+                warning_calls = [
+                    call for call in mock_logger.warning.call_args_list
+                    if "climate.bedroom" in str(call)
+                ]
+                assert len(warning_calls) == 1
+                assert "has no floor assignment" in str(warning_calls[0])
+
+            # Verify seeds were created for zones WITH floors
+            assert len(learner._seeds) > 0
+
+            # Check same-floor coupling (living room <-> kitchen) - should exist
+            assert ("climate.living_room", "climate.kitchen") in learner._seeds
+            assert ("climate.kitchen", "climate.living_room") in learner._seeds
+
+            # Verify bedroom has NO coupling seeds (no floor assignment)
+            bedroom_pairs = [
+                pair for pair in learner._seeds.keys()
+                if "climate.bedroom" in pair
+            ]
+            assert len(bedroom_pairs) == 0
+
+            # Verify get_coefficient returns None for bedroom pairs
+            coef_lr_to_bed = learner.get_coefficient("climate.living_room", "climate.bedroom")
+            assert coef_lr_to_bed is None
+
+            # Verify coefficients still work for zones with floors
+            coef_lr_to_k = learner.get_coefficient("climate.living_room", "climate.kitchen")
+            assert coef_lr_to_k is not None
+            assert coef_lr_to_k.coefficient == const.DEFAULT_SEED_COEFFICIENTS["same_floor"]
+
+    def test_autodiscovery_with_open_zones(self, mock_hass):
+        """TEST: Auto-discovery with open zones configuration.
+
+        Verifies that zones marked as open floor plan get higher coupling coefficients
+        even when using auto-discovery.
+        """
+        from unittest.mock import MagicMock
+
+        # Mock registries (same setup as test_coupling_integration_autodiscovery)
+        entity_registry = MagicMock()
+
+        living_room_entity = MagicMock()
+        living_room_entity.area_id = "area_living_room"
+
+        kitchen_entity = MagicMock()
+        kitchen_entity.area_id = "area_kitchen"
+
+        entity_registry.async_get = MagicMock(side_effect=lambda entity_id: {
+            "climate.living_room": living_room_entity,
+            "climate.kitchen": kitchen_entity,
+        }.get(entity_id))
+
+        area_registry = MagicMock()
+
+        area_living_room = MagicMock()
+        area_living_room.floor_id = "floor_ground"
+
+        area_kitchen = MagicMock()
+        area_kitchen.floor_id = "floor_ground"
+
+        area_registry.async_get = MagicMock(side_effect=lambda area_id: {
+            "area_living_room": area_living_room,
+            "area_kitchen": area_kitchen,
+        }.get(area_id))
+
+        floor_registry = MagicMock()
+
+        floor_ground = MagicMock()
+        floor_ground.level = 0
+
+        floor_registry.async_get = MagicMock(side_effect=lambda floor_id: {
+            "floor_ground": floor_ground,
+        }.get(floor_id))
+
+        # Patch registry helpers
+        with patch("helpers.registry.er.async_get", return_value=entity_registry), \
+             patch("helpers.registry.ar.async_get", return_value=area_registry), \
+             patch("helpers.registry.fr.async_get", return_value=floor_registry):
+
+            # Create learner with hass instance
+            learner = ThermalCouplingLearner(hass=mock_hass)
+
+            zone_entity_ids = ["climate.living_room", "climate.kitchen"]
+
+            # Initialize seeds with open zones configuration
+            learner.initialize_seeds(
+                floorplan_config={
+                    const.CONF_OPEN_ZONES: ["climate.living_room", "climate.kitchen"],
+                },
+                zone_entity_ids=zone_entity_ids
+            )
+
+            # Verify open coefficient is used (not same_floor)
+            assert ("climate.living_room", "climate.kitchen") in learner._seeds
+            assert learner._seeds[("climate.living_room", "climate.kitchen")] == const.DEFAULT_SEED_COEFFICIENTS["open"]
+
+            # Verify it's higher than same_floor
+            assert const.DEFAULT_SEED_COEFFICIENTS["open"] > const.DEFAULT_SEED_COEFFICIENTS["same_floor"]
+
+    def test_autodiscovery_with_stairwell_zones(self, mock_hass):
+        """TEST: Auto-discovery with stairwell zones configuration.
+
+        Verifies that zones connected by stairwells get higher vertical coupling.
+        """
+        from unittest.mock import MagicMock
+
+        # Mock registries
+        entity_registry = MagicMock()
+
+        hallway_entity = MagicMock()
+        hallway_entity.area_id = "area_hallway"
+
+        landing_entity = MagicMock()
+        landing_entity.area_id = "area_landing"
+
+        entity_registry.async_get = MagicMock(side_effect=lambda entity_id: {
+            "climate.hallway": hallway_entity,
+            "climate.landing": landing_entity,
+        }.get(entity_id))
+
+        area_registry = MagicMock()
+
+        area_hallway = MagicMock()
+        area_hallway.floor_id = "floor_ground"
+
+        area_landing = MagicMock()
+        area_landing.floor_id = "floor_first"
+
+        area_registry.async_get = MagicMock(side_effect=lambda area_id: {
+            "area_hallway": area_hallway,
+            "area_landing": area_landing,
+        }.get(area_id))
+
+        floor_registry = MagicMock()
+
+        floor_ground = MagicMock()
+        floor_ground.level = 0
+
+        floor_first = MagicMock()
+        floor_first.level = 1
+
+        floor_registry.async_get = MagicMock(side_effect=lambda floor_id: {
+            "floor_ground": floor_ground,
+            "floor_first": floor_first,
+        }.get(floor_id))
+
+        # Patch registry helpers
+        with patch("helpers.registry.er.async_get", return_value=entity_registry), \
+             patch("helpers.registry.ar.async_get", return_value=area_registry), \
+             patch("helpers.registry.fr.async_get", return_value=floor_registry):
+
+            # Create learner with hass instance
+            learner = ThermalCouplingLearner(hass=mock_hass)
+
+            zone_entity_ids = ["climate.hallway", "climate.landing"]
+
+            # Initialize seeds with stairwell zones configuration
+            learner.initialize_seeds(
+                floorplan_config={
+                    const.CONF_STAIRWELL_ZONES: ["climate.hallway", "climate.landing"],
+                },
+                zone_entity_ids=zone_entity_ids
+            )
+
+            # Verify stairwell_up coefficient is used (not regular up)
+            assert ("climate.hallway", "climate.landing") in learner._seeds
+            assert learner._seeds[("climate.hallway", "climate.landing")] == const.DEFAULT_SEED_COEFFICIENTS["stairwell_up"]
+
+            # Verify stairwell_down for reverse direction
+            assert ("climate.landing", "climate.hallway") in learner._seeds
+            assert learner._seeds[("climate.landing", "climate.hallway")] == const.DEFAULT_SEED_COEFFICIENTS["stairwell_down"]
+
+            # Verify stairwell coefficients differ from regular vertical
+            assert const.DEFAULT_SEED_COEFFICIENTS["stairwell_up"] > const.DEFAULT_SEED_COEFFICIENTS["up"]
