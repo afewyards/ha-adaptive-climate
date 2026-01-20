@@ -95,11 +95,10 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Optional(CONF_NAME, default=const.DEFAULT_NAME): cv.string,
         vol.Optional(CONF_UNIQUE_ID, default='none'): cv.string,
         vol.Optional(const.CONF_TARGET_TEMP): vol.Coerce(float),
-        vol.Optional(const.CONF_HOT_TOLERANCE, default=const.DEFAULT_TOLERANCE): vol.Coerce(float),
-        vol.Optional(const.CONF_COLD_TOLERANCE, default=const.DEFAULT_TOLERANCE): vol.Coerce(
-            float),
-        vol.Optional(const.CONF_MIN_CYCLE_DURATION, default=const.DEFAULT_MIN_CYCLE_DURATION):
-            vol.All(cv.time_period, cv.positive_timedelta),
+        vol.Optional(const.CONF_HOT_TOLERANCE): vol.Coerce(float),
+        vol.Optional(const.CONF_COLD_TOLERANCE): vol.Coerce(float),
+        vol.Optional(const.CONF_MIN_CYCLE_DURATION): vol.All(
+            cv.time_period, cv.positive_timedelta),
         vol.Optional(const.CONF_MIN_OFF_CYCLE_DURATION): vol.All(
             cv.time_period, cv.positive_timedelta),
         vol.Optional(const.CONF_MIN_CYCLE_DURATION_PID_OFF): vol.All(
@@ -127,9 +126,7 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Optional(const.CONF_OUTPUT_MAX, default=const.DEFAULT_OUTPUT_MAX): vol.Coerce(float),
         vol.Optional(const.CONF_OUT_CLAMP_LOW, default=const.DEFAULT_OUT_CLAMP_LOW): vol.Coerce(float),
         vol.Optional(const.CONF_OUT_CLAMP_HIGH, default=const.DEFAULT_OUT_CLAMP_HIGH): vol.Coerce(float),
-        vol.Optional(const.CONF_PWM, default=const.DEFAULT_PWM): vol.All(
-            cv.time_period, cv.positive_timedelta
-        ),
+        vol.Optional(const.CONF_PWM): vol.All(cv.time_period, cv.positive_timedelta),
         # Adaptive learning options
         vol.Optional(const.CONF_HEATING_TYPE): vol.In(const.VALID_HEATING_TYPES),
         vol.Optional(const.CONF_AREA): cv.string,  # Home Assistant area ID to assign entity to
@@ -335,8 +332,8 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         # Derive ac_mode from cooler presence (zone or controller level)
         'ac_mode': bool(cooler) or bool(hass.data.get(DOMAIN, {}).get("main_cooler_switch")),
         'force_off_state': config.get(const.CONF_FORCE_OFF_STATE),
-        # Cycle durations: entity → domain → None (handled in thermostat init)
-        'min_cycle_duration': config.get(const.CONF_MIN_CYCLE_DURATION) or hass.data.get(DOMAIN, {}).get("min_cycle_duration"),
+        # Cycle durations: entity → domain → default
+        'min_cycle_duration': config.get(const.CONF_MIN_CYCLE_DURATION) or hass.data.get(DOMAIN, {}).get("min_cycle_duration") or timedelta(0),
         'min_off_cycle_duration': config.get(const.CONF_MIN_OFF_CYCLE_DURATION) or hass.data.get(DOMAIN, {}).get("min_off_cycle_duration"),
         'min_cycle_duration_pid_off': config.get(const.CONF_MIN_CYCLE_DURATION_PID_OFF),
         'min_off_cycle_duration_pid_off': config.get(const.CONF_MIN_OFF_CYCLE_DURATION_PID_OFF),
@@ -361,8 +358,8 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         'output_max': config.get(const.CONF_OUTPUT_MAX),
         'output_clamp_low': config.get(const.CONF_OUT_CLAMP_LOW),
         'output_clamp_high': config.get(const.CONF_OUT_CLAMP_HIGH),
-        # PWM: entity → domain → None (handled in thermostat init)
-        'pwm': config.get(const.CONF_PWM) or hass.data.get(DOMAIN, {}).get("pwm"),
+        # PWM: entity → domain → default
+        'pwm': config.get(const.CONF_PWM) or hass.data.get(DOMAIN, {}).get("pwm") or cv.time_period(const.DEFAULT_PWM),
         'boost_pid_off': hass.data.get(DOMAIN, {}).get("boost_pid_off"),
         # New adaptive learning parameters
         'zone_id': zone_id,
