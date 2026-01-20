@@ -143,9 +143,6 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Optional(const.CONF_WINDOW_AREA_M2): vol.Coerce(float),
         vol.Optional(const.CONF_WINDOW_ORIENTATION): vol.In(const.VALID_WINDOW_ORIENTATIONS),
         vol.Optional(const.CONF_WINDOW_RATING): cv.string,
-        # Zone linking
-        vol.Optional(const.CONF_LINKED_ZONES): cv.entity_ids,
-        vol.Optional(const.CONF_LINK_DELAY_MINUTES, default=const.DEFAULT_LINK_DELAY_MINUTES): vol.Coerce(int),
         # Contact sensors
         vol.Optional(const.CONF_CONTACT_SENSORS): cv.entity_ids,
         vol.Optional(const.CONF_CONTACT_ACTION, default=const.CONTACT_ACTION_PAUSE): vol.In(const.VALID_CONTACT_ACTIONS),
@@ -170,6 +167,27 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
                     vol.Required('thickness_mm'): vol.All(vol.Coerce(int), vol.Range(min=5, max=100)),
                 })]
             ),
+        }),
+        # Thermal coupling configuration
+        vol.Optional(const.CONF_THERMAL_COUPLING): vol.Schema({
+            vol.Optional('enabled', default=True): cv.boolean,
+            vol.Optional(const.CONF_FLOORPLAN): vol.All(
+                cv.ensure_list,
+                [vol.Schema({
+                    vol.Required('floor'): vol.Coerce(int),
+                    vol.Required('zones'): cv.entity_ids,
+                    vol.Optional('open'): cv.entity_ids,
+                })]
+            ),
+            vol.Optional(const.CONF_STAIRWELL_ZONES): cv.entity_ids,
+            vol.Optional(const.CONF_SEED_COEFFICIENTS): vol.Schema({
+                vol.Optional('same_floor'): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=1.0)),
+                vol.Optional('up'): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=1.0)),
+                vol.Optional('down'): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=1.0)),
+                vol.Optional('open'): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=1.0)),
+                vol.Optional('stairwell_up'): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=1.0)),
+                vol.Optional('stairwell_down'): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=1.0)),
+            }),
         }),
     }
 )
@@ -316,8 +334,6 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         'window_orientation': config.get(const.CONF_WINDOW_ORIENTATION),
         # Window rating: use zone-level config, fall back to controller default
         'window_rating': config.get(const.CONF_WINDOW_RATING) or hass.data.get(DOMAIN, {}).get("window_rating", const.DEFAULT_WINDOW_RATING),
-        'linked_zones': config.get(const.CONF_LINKED_ZONES),
-        'link_delay_minutes': config.get(const.CONF_LINK_DELAY_MINUTES),
         'contact_sensors': config.get(const.CONF_CONTACT_SENSORS),
         'contact_action': config.get(const.CONF_CONTACT_ACTION),
         'contact_delay': config.get(const.CONF_CONTACT_DELAY),
@@ -351,7 +367,6 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
             "heating_type": config.get(const.CONF_HEATING_TYPE),
             "learning_enabled": True,  # Always enabled, vacation mode can toggle
             "adaptive_learner": adaptive_learner,
-            "linked_zones": config.get(const.CONF_LINKED_ZONES, []),
             "pwm_seconds": config.get(const.CONF_PWM).seconds if config.get(const.CONF_PWM) else 0,
             "window_orientation": config.get(const.CONF_WINDOW_ORIENTATION),
         }
