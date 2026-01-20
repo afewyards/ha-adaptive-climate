@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v0.20.1 (2026-01-20)
+
+### Bug Fixes
+
+- **config**: Move thermal_coupling to domain-level config
+  ([`b5d7c1f`](https://github.com/afewyards/ha-adaptive-thermostat/commit/b5d7c1fee2d750c8b8326751758922a3f1440390))
+
+Thermal coupling was defined in entity-level PLATFORM_SCHEMA but should be domain-level per
+  documentation. Now configured under adaptive_thermostat: key and stored in hass.data[DOMAIN].
+
+
 ## v0.20.0 (2026-01-20)
 
 ### Features
