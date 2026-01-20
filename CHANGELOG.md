@@ -1,6 +1,25 @@
 # CHANGELOG
 
 
+## v0.21.0 (2026-01-20)
+
+### Features
+
+- **climate**: Auto-assign "Adaptive Thermostat" label to entities
+  ([`40035e7`](https://github.com/afewyards/ha-adaptive-thermostat/commit/40035e7fa70253c4b967eb5b7013498926fc1b5c))
+
+Automatically creates and assigns an integration label to each climate entity on startup. Label uses
+  indigo color and mdi:thermostat-box icon.
+
+### Testing
+
+- **coupling**: Fix flaky tests by mocking solar gain check
+  ([`c8ee99b`](https://github.com/afewyards/ha-adaptive-thermostat/commit/c8ee99b30940f46ce3a32f5c602266c4a48cf684))
+
+The thermal coupling integration tests were failing because _is_high_solar_gain() uses real-time sun
+  position calculations, causing tests to pass or fail depending on time of day.
+
+
 ## v0.20.3 (2026-01-20)
 
 ### Bug Fixes
