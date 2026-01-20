@@ -1,6 +1,18 @@
 # CHANGELOG
 
 
+## v0.21.1 (2026-01-20)
+
+### Bug Fixes
+
+- **climate**: Allow domain config to override entity defaults
+  ([`0c14f26`](https://github.com/afewyards/ha-adaptive-thermostat/commit/0c14f2648ade6aa849d7404f9808076db297fb03))
+
+Remove schema defaults for pwm, min_cycle_duration, hot_tolerance, and cold_tolerance so
+  domain-level config can be inherited. Schema defaults were always returned by config.get(),
+  blocking the fallback chain from reaching domain values.
+
+
 ## v0.21.0 (2026-01-20)
 
 ### Features
