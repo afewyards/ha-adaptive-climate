@@ -71,6 +71,12 @@ def mock_hass():
     mock_state.attributes = {"temperature": 5.0}
     hass.states.get.return_value = mock_state
 
+    # Mock hass.config for SunPositionCalculator
+    # Set to a northern European location (winter with low sun)
+    hass.config.latitude = 52.0
+    hass.config.longitude = 5.0
+    hass.config.elevation = 0
+
     return hass
 
 

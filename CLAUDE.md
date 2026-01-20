@@ -45,8 +45,8 @@ python -m pytest tests/ -v --tb=short
 | Module | Purpose |
 |--------|---------|
 | `climate.py` | Main `SmartThermostat` entity - orchestrates managers, preset modes, state persistence |
-| `coordinator.py` | `AdaptiveThermostatCoordinator` (zone registry), `CentralController` (main heat source), `ModeSync`, `ZoneLinker` |
-| `pid_controller/__init__.py` | Pure PID with P, I, D, E (outdoor compensation) terms |
+| `coordinator.py` | `AdaptiveThermostatCoordinator` (zone registry), `CentralController` (main heat source), `ModeSync`, thermal coupling observation triggers |
+| `pid_controller/__init__.py` | Pure PID with P, I, D, E (outdoor compensation), F (feedforward) terms |
 | `adaptive/learning.py` | `AdaptiveLearner` - cycle analysis, overshoot/settling detection, rule-based PID adjustments |
 | `adaptive/cycle_analysis.py` | `PhaseAwareOvershootTracker`, `CycleMetrics` - cycle metrics calculation and overshoot detection |
 | `adaptive/physics.py` | `calculate_thermal_time_constant()`, `calculate_initial_pid()` - Ziegler-Nichols tuning |
@@ -69,6 +69,7 @@ The control loop is refactored into specialized manager classes for separation o
 
 | Module | Purpose |
 |--------|---------|
+| `thermal_coupling.py` | `ThermalCouplingLearner` - learns heat transfer between zones for feedforward compensation |
 | `night_setback.py` | Scheduled temperature reduction with dynamic sunrise-based end time |
 | `solar_recovery.py` | Delays morning heating when sun will warm the zone |
 | `sun_position.py` | Astral-based sun position for window illumination timing |
@@ -131,7 +132,7 @@ flowchart TD
 
 1. **Domain level** (`adaptive_thermostat:`): house_energy_rating, main_heater_switch, main_cooler_switch, source_startup_delay, sync_modes, preset temperatures, energy/weather entities
 
-2. **Climate entity level** (`climate:` - `platform: adaptive_thermostat`): heater, cooler, demand_switch, target_sensor, heating_type, area_m2, window_orientation, night_setback block, contact_sensors, linked_zones
+2. **Climate entity level** (`climate:` - `platform: adaptive_thermostat`): heater, cooler, demand_switch, target_sensor, heating_type, area_m2, window_orientation, night_setback block, contact_sensors
 
 **Constants** (`const.py`):
 - `HEATING_TYPE_CHARACTERISTICS`: Lookup table with base PID values per heating type
@@ -423,7 +424,7 @@ stateDiagram-v2
 
 - **Mode sync**: HEAT/COOL propagates to all zones; OFF stays independent
 - **Central controller**: Aggregates zone demand, startup delay (default 30s) before main heater fires
-- **Zone linking**: Delays heating in linked zones when neighbors are heating (default 20 min)
+- **Thermal coupling**: Learns heat transfer between zones, applies feedforward compensation to reduce overshoot
 
 ```mermaid
 sequenceDiagram
@@ -461,15 +462,146 @@ sequenceDiagram
     CC->>MH: Turn off main heater
 ```
 
+### Thermal Coupling
+
+The thermal coupling system automatically learns how heat transfers between adjacent zones and applies feedforward compensation to reduce overshoot when neighboring zones are heating.
+
+**Key Modules:**
+
+| Module | Purpose |
+|--------|---------|
+| `adaptive/thermal_coupling.py` | `ThermalCouplingLearner`, `CouplingObservation`, `CouplingCoefficient` - observation tracking and Bayesian coefficient calculation |
+| `coordinator.py` | Observation triggers on demand transitions, solar gain detection |
+| `managers/control_output.py` | Coupling compensation calculation, feedforward to PID |
+
+**How It Works:**
+
+1. **Observation**: When Zone A starts heating (5+ min after demand), record start temps for all idle zones
+2. **Recording**: When Zone A stops heating, calculate temperature deltas for each idle zone
+3. **Filtering**: Discard observations with short duration (<15 min), low source rise (<0.3°C), unstable outdoor temp (>3°C change), or target cooler than source
+4. **Learning**: Bayesian blend of seed coefficients with observed transfer rates
+5. **Compensation**: Predict temperature rise from neighbors, inject as feedforward to PID
+
+**Floorplan Configuration:**
+
+```yaml
+adaptive_thermostat:
+  thermal_coupling:
+    enabled: true  # default
+    floorplan:
+      - floor: 0
+        zones:
+          - climate.basement
+      - floor: 1
+        zones:
+          - climate.living_room
+          - climate.kitchen
+          - climate.hallway
+        open:
+          - climate.living_room
+          - climate.kitchen
+      - floor: 2
+        zones:
+          - climate.master_bedroom
+          - climate.office
+    stairwell_zones:
+      - climate.hallway
+      - climate.landing
+    seed_coefficients:  # optional overrides
+      same_floor: 0.15
+      up: 0.40
+      down: 0.10
+      open: 0.60
+      stairwell_up: 0.45
+      stairwell_down: 0.10
+```
+
+**Seed Coefficients (default values):**
+
+| Type | Value | Description |
+|------|-------|-------------|
+| `same_floor` | 0.15 | Adjacent zones on same floor |
+| `up` | 0.40 | Heat rising to floor above |
+| `down` | 0.10 | Heat transfer to floor below |
+| `open` | 0.60 | Open floor plan (high coupling) |
+| `stairwell_up` | 0.45 | Stairwell acting as heat chimney |
+| `stairwell_down` | 0.10 | Stairwell downward (minimal) |
+
+**Maximum Coupling Compensation by Heating Type:**
+
+| Type | Max Compensation | Rationale |
+|------|------------------|-----------|
+| `floor_hydronic` | 1.0°C | Conservative - slow response, can't recover quickly |
+| `radiator` | 1.2°C | Moderate |
+| `convector` | 1.5°C | Standard |
+| `forced_air` | 2.0°C | Aggressive - fast recovery if over-compensated |
+
+**Learner Constants:**
+
+| Constant | Value | Purpose |
+|----------|-------|---------|
+| `COUPLING_MIN_OBSERVATIONS` | 3 | Min observations before using learned coefficient |
+| `COUPLING_SEED_WEIGHT` | 6 | Weight of seed in Bayesian blend (pseudo-observations) |
+| `COUPLING_MAX_COEFFICIENT` | 0.5 | Maximum allowed coupling coefficient |
+| `COUPLING_MIN_DURATION_MINUTES` | 15 | Minimum heating duration for valid observation |
+| `COUPLING_MIN_SOURCE_RISE` | 0.3°C | Minimum source temp rise for valid observation |
+| `COUPLING_MAX_OUTDOOR_CHANGE` | 3.0°C | Max outdoor temp change during observation |
+| `COUPLING_CONFIDENCE_THRESHOLD` | 0.3 | Min confidence to apply compensation |
+| `COUPLING_CONFIDENCE_MAX` | 0.5 | Confidence level for full effect |
+| `COUPLING_VALIDATION_CYCLES` | 5 | Cycles to validate coefficient after change |
+| `COUPLING_VALIDATION_DEGRADATION` | 30% | Overshoot increase threshold for rollback |
+
+**Coupling Compensation Data Flow:**
+
+```mermaid
+flowchart TD
+    A[Zone A starts heating] --> B{Mass recovery?<br/>>50% zones demanding}
+    B -->|Yes| C[Skip observation]
+    B -->|No| D{High solar gain?}
+    D -->|Yes| C
+    D -->|No| E[Start observation<br/>Record start temps]
+    E --> F[Zone A stops heating]
+    F --> G[End observation<br/>Calculate deltas]
+    G --> H{Valid observation?<br/>Duration, rise, outdoor}
+    H -->|No| I[Discard]
+    H -->|Yes| J[Record CouplingObservation]
+    J --> K[Update coefficient<br/>Bayesian blend with seed]
+
+    L[Zone B control loop] --> M[Get active neighbors]
+    M --> N{Zone A heating?}
+    N -->|No| O[No compensation]
+    N -->|Yes| P[Get coefficient A→B]
+    P --> Q[Apply graduated confidence]
+    Q --> R[Calculate compensation<br/>coef × conf × temp_rise]
+    R --> S[Cap at MAX_COMPENSATION]
+    S --> T[Convert to power<br/>degC × Kp]
+    T --> U[Set as PID feedforward]
+    U --> V[PID output = P+I+D+E-F]
+```
+
+**Entity Attributes Exposed:**
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `coupling_coefficients` | dict | Source zone → coefficient value for this zone |
+| `coupling_compensation` | float | Current °C compensation being applied |
+| `coupling_compensation_power` | float | Current power % reduction from feedforward |
+| `coupling_observations_pending` | int | Count of active observation contexts |
+| `coupling_learner_state` | str | "learning" / "validating" / "stable" |
+
+**Validation and Rollback:**
+
+When a coefficient is updated, the system enters validation mode for 5 cycles. If overshoot increases by more than 30% compared to baseline, the coefficient is automatically halved (rolled back). This prevents over-aggressive compensation from causing undershoot.
+
 ### Persistence
 
-Learning data (AdaptiveLearner cycle history, KeLearner observations) persists across Home Assistant restarts using the `LearningDataStore` class in `adaptive/persistence.py`.
+Learning data (AdaptiveLearner cycle history, KeLearner observations, thermal coupling) persists across Home Assistant restarts using the `LearningDataStore` class in `adaptive/persistence.py`.
 
-**Storage Format (v3 - zone-keyed):**
+**Storage Format (v4 - zone-keyed with thermal coupling):**
 
 ```json
 {
-  "version": 3,
+  "version": 4,
   "zones": {
     "climate.living_room": {
       "adaptive_learner": {
@@ -486,6 +618,21 @@ Learning data (AdaptiveLearner cycle history, KeLearner observations) persists a
         "enabled": true
       },
       "last_updated": "2025-01-14T10:30:00"
+    }
+  },
+  "thermal_coupling": {
+    "observations": {
+      "climate.zone_a|climate.zone_b": [
+        {"timestamp": "2025-01-14T10:00:00", "source_temp_start": 20.0, ...}
+      ]
+    },
+    "coefficients": {
+      "climate.zone_a|climate.zone_b": {
+        "coefficient": 0.25, "confidence": 0.45, "observation_count": 5, ...
+      }
+    },
+    "seeds": {
+      "climate.zone_a|climate.zone_b": 0.15
     }
   }
 }
@@ -535,7 +682,7 @@ flowchart TD
 - Zone-keyed storage allows independent save/restore per thermostat entity
 - `schedule_zone_save()` uses 30-second debounce to batch frequent cycle completions
 - `async_save_zone()` with `asyncio.Lock` prevents race conditions
-- Migration support: v2 (flat format) automatically converts to v3 (zone-keyed)
+- Migration support: v2 (flat) → v3 (zone-keyed) → v4 (thermal coupling) automatic conversion
 - Restoration gating: `CycleTrackerManager` ignores temperature updates until `set_restoration_complete()` is called to prevent false cycles during startup
 
 ## Important Caveats
@@ -566,7 +713,10 @@ Tests are organized by component - run the relevant file when modifying:
 | `test_coordinator.py` | Multi-zone coordination |
 | `test_central_controller.py` | Main heat source control |
 | `test_mode_sync.py` | Mode synchronization |
-| `test_zone_linking.py` | Thermal coupling |
+| `test_thermal_coupling.py` | Thermal coupling dataclasses and learner |
+| `test_coupling_integration.py` | End-to-end thermal coupling flow |
+| `test_control_output.py` | Control output manager and coupling compensation |
+| `test_climate_config.py` | Climate config parsing and coupling initialization |
 | `test_night_setback.py` | Schedule & dynamic end time |
 | `test_solar_recovery.py` | Solar delay logic |
 | `test_sun_position.py` | Astral calculations |
