@@ -122,6 +122,9 @@ class HeaterController:
         self._last_heater_state: bool = False
         self._last_cooler_state: bool = False
 
+        # Session tracking for PWM cycle tracker coordination
+        self._heating_session_active: bool = False
+
     def update_cycle_durations(
         self,
         min_on_cycle_duration: float,
@@ -414,10 +417,6 @@ class HeaterController:
             )
             set_last_heat_cycle_time(time.time())
 
-            # Notify cycle tracker that heating started
-            if hasattr(self._thermostat, '_cycle_tracker') and self._thermostat._cycle_tracker:
-                self._thermostat._cycle_tracker.on_heating_started(datetime.now())
-
             # Update state tracking for cycle counting (off→on transition)
             if hvac_mode == HVACMode.COOL:
                 self._last_cooler_state = True
@@ -478,10 +477,6 @@ class HeaterController:
                 ", ".join(entities)
             )
             set_last_heat_cycle_time(time.time())
-
-            # Notify cycle tracker that heating stopped
-            if hasattr(self._thermostat, '_cycle_tracker') and self._thermostat._cycle_tracker:
-                self._thermostat._cycle_tracker.on_heating_stopped(datetime.now())
 
             # Increment cycle counter for wear tracking (on→off transition)
             self._increment_cycle_count(hvac_mode, is_now_off=True)
@@ -556,22 +551,19 @@ class HeaterController:
                     data,
                 )
 
-        # Track new active state after valve change and notify cycle tracker
+        # Track new active state after valve change for cycle counting
         new_active = value > 0
-        if hasattr(self._thermostat, '_cycle_tracker') and self._thermostat._cycle_tracker:
-            # Detect heating started transition (was off, now on)
-            if not old_active and new_active:
-                self._thermostat._cycle_tracker.on_heating_started(datetime.now())
-                # Update state tracking for cycle counting
-                if hvac_mode == HVACMode.COOL:
-                    self._last_cooler_state = True
-                else:
-                    self._last_heater_state = True
-            # Detect heating stopped transition (was on, now off)
-            elif old_active and not new_active:
-                self._thermostat._cycle_tracker.on_heating_stopped(datetime.now())
-                # Increment cycle counter for wear tracking (on→off transition)
-                self._increment_cycle_count(hvac_mode, is_now_off=True)
+        # Detect heating started transition (was off, now on)
+        if not old_active and new_active:
+            # Update state tracking for cycle counting
+            if hvac_mode == HVACMode.COOL:
+                self._last_cooler_state = True
+            else:
+                self._last_heater_state = True
+        # Detect heating stopped transition (was on, now off)
+        elif old_active and not new_active:
+            # Increment cycle counter for wear tracking (on→off transition)
+            self._increment_cycle_count(hvac_mode, is_now_off=True)
 
     async def async_set_control_value(
         self,
@@ -604,6 +596,23 @@ class HeaterController:
         """
         entities = self.get_entities(hvac_mode)
         thermostat_entity_id = self._thermostat.entity_id
+
+        # Session boundary detection: notify cycle tracker on transitions
+        # This tracks TRUE heating sessions (0→>0 starts, >0→0 ends)
+        # NOT individual PWM on/off pulses (which keep control_output >0)
+        old_session = self._heating_session_active
+        new_session = abs(control_output) > 0
+
+        if hasattr(self._thermostat, '_cycle_tracker') and self._thermostat._cycle_tracker:
+            # Session started: 0 → >0
+            if not old_session and new_session:
+                self._thermostat._cycle_tracker.on_heating_started(datetime.now())
+            # Session ended: >0 → 0
+            elif old_session and not new_session:
+                self._thermostat._cycle_tracker.on_heating_stopped(datetime.now())
+
+        # Update session state
+        self._heating_session_active = new_session
 
         if self._pwm:
             if abs(control_output) == self._difference:
