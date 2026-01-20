@@ -265,3 +265,85 @@ class TestHeaterControllerSessionTracking:
         # Verify on_heating_stopped was NOT called
         # Session tracking happens in async_set_control_value, not here
         mock_cycle_tracker.on_heating_stopped.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_100_percent_duty_starts_session(self, heater_controller, mock_thermostat):
+        """Test that 100% duty cycle triggers session start when output goes 0→100."""
+        # Setup mock cycle tracker
+        mock_cycle_tracker = MagicMock()
+        mock_thermostat._cycle_tracker = mock_cycle_tracker
+
+        # Mock the service call
+        heater_controller._hass.services.async_call = MagicMock()
+
+        # Mock required callbacks
+        get_cycle_start_time = MagicMock(return_value=0.0)
+        set_is_heating = MagicMock()
+        set_last_heat_cycle_time = MagicMock()
+        set_time_changed = MagicMock()
+        set_force_on = MagicMock()
+        set_force_off = MagicMock()
+
+        # Initial state: session not active, control_output = 0
+        assert heater_controller._heating_session_active is False
+
+        # Transition: 0 → 100 (max duty, should start session)
+        await heater_controller.async_set_control_value(
+            control_output=100.0,
+            hvac_mode=MockHVACMode.HEAT,
+            get_cycle_start_time=get_cycle_start_time,
+            set_is_heating=set_is_heating,
+            set_last_heat_cycle_time=set_last_heat_cycle_time,
+            time_changed=0.0,
+            set_time_changed=set_time_changed,
+            force_on=False,
+            force_off=False,
+            set_force_on=set_force_on,
+            set_force_off=set_force_off,
+        )
+
+        # Verify on_heating_started was called
+        mock_cycle_tracker.on_heating_started.assert_called_once()
+        # Verify session is now active
+        assert heater_controller._heating_session_active is True
+
+    @pytest.mark.asyncio
+    async def test_0_percent_duty_ends_session(self, heater_controller, mock_thermostat):
+        """Test that 0% duty cycle triggers session end when output goes >0→0."""
+        # Setup mock cycle tracker
+        mock_cycle_tracker = MagicMock()
+        mock_thermostat._cycle_tracker = mock_cycle_tracker
+
+        # Mock the service call
+        heater_controller._hass.services.async_call = MagicMock()
+
+        # Mock required callbacks
+        get_cycle_start_time = MagicMock(return_value=0.0)
+        set_is_heating = MagicMock()
+        set_last_heat_cycle_time = MagicMock()
+        set_time_changed = MagicMock()
+        set_force_on = MagicMock()
+        set_force_off = MagicMock()
+
+        # Start with session active (simulate previous heating)
+        heater_controller._heating_session_active = True
+
+        # Transition: >0 → 0 (0% duty, should end session)
+        await heater_controller.async_set_control_value(
+            control_output=0.0,
+            hvac_mode=MockHVACMode.HEAT,
+            get_cycle_start_time=get_cycle_start_time,
+            set_is_heating=set_is_heating,
+            set_last_heat_cycle_time=set_last_heat_cycle_time,
+            time_changed=0.0,
+            set_time_changed=set_time_changed,
+            force_on=False,
+            force_off=False,
+            set_force_on=set_force_on,
+            set_force_off=set_force_off,
+        )
+
+        # Verify on_heating_stopped was called
+        mock_cycle_tracker.on_heating_stopped.assert_called_once()
+        # Verify session is now inactive
+        assert heater_controller._heating_session_active is False
