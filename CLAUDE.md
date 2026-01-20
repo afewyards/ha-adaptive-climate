@@ -482,28 +482,24 @@ The thermal coupling system automatically learns how heat transfers between adja
 4. **Learning**: Bayesian blend of seed coefficients with observed transfer rates
 5. **Compensation**: Predict temperature rise from neighbors, inject as feedforward to PID
 
-**Floorplan Configuration:**
+**Prerequisites:**
+
+Thermal coupling requires proper floor and area configuration in Home Assistant:
+1. **Configure floors**: Settings → Areas, rooms & devices → Floors (create floors like "Ground Floor", "First Floor", etc.)
+2. **Create areas**: Settings → Areas, rooms & devices → Areas (create areas and assign to floors)
+3. **Assign entities**: Assign your climate entities to areas
+
+The system will automatically discover which floor each zone is on by following the entity→area→floor registry chain.
+
+**Configuration:**
 
 ```yaml
 adaptive_thermostat:
   thermal_coupling:
     enabled: true  # default
-    floorplan:
-      - floor: 0
-        zones:
-          - climate.basement
-      - floor: 1
-        zones:
-          - climate.living_room
-          - climate.kitchen
-          - climate.hallway
-        open:
-          - climate.living_room
-          - climate.kitchen
-      - floor: 2
-        zones:
-          - climate.master_bedroom
-          - climate.office
+    open:
+      - climate.living_room
+      - climate.kitchen
     stairwell_zones:
       - climate.hallway
       - climate.landing
@@ -515,6 +511,22 @@ adaptive_thermostat:
       stairwell_up: 0.45
       stairwell_down: 0.10
 ```
+
+**Configuration Options:**
+
+- `enabled` (default: true) - Enable/disable thermal coupling feature
+- `open` - List of entity IDs for open floor plan zones (high coupling within same floor)
+- `stairwell_zones` - List of entity IDs that connect multiple floors vertically
+- `seed_coefficients` - Optional overrides for default coupling seed values
+
+**Floor Auto-Discovery:**
+
+The system automatically determines floor assignments using Home Assistant's registry:
+- Queries entity registry for each climate entity
+- Follows entity → area → floor relationship
+- Zones without area assignment or floor assignment are excluded from thermal coupling
+- Generates seed coefficients based on discovered floor relationships (same floor, up, down)
+- Applies `open` modifier to zones in the open list that are on the same floor
 
 **Seed Coefficients (default values):**
 

@@ -89,15 +89,11 @@ adaptive_thermostat:
   sync_modes: true
 
   # Thermal coupling learns heat transfer between zones
+  # Requires floor and area configuration in Home Assistant UI
   thermal_coupling:
-    floorplan:
-      - floor: 0
-        zones:
-          - climate.ground_floor
-          - climate.kitchen
-        open:
-          - climate.ground_floor
-          - climate.kitchen
+    open:
+      - climate.ground_floor
+      - climate.kitchen
 
 climate:
   - platform: adaptive_thermostat
@@ -124,6 +120,8 @@ climate:
     heating_type: radiator
     area_m2: 15
 ```
+
+**Note:** Thermal coupling automatically discovers which floor each zone is on from Home Assistant's floor/area/entity registry. Simply assign your climate entities to areas, and assign areas to floors in Settings → Areas, rooms & devices.
 
 ### Night Setback with Solar Recovery
 ```yaml
