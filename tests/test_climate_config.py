@@ -433,3 +433,315 @@ def test_climate_seeds_from_floorplan():
     assert coef.coefficient == DEFAULT_SEED_COEFFICIENTS["open"]
     assert coef.confidence == 0.3  # COUPLING_CONFIDENCE_THRESHOLD for seed-only
     assert coef.observation_count == 0
+
+
+# =============================================================================
+# Coupling Attribute Tests (Story 7.3)
+# =============================================================================
+
+
+def test_attr_coupling_coefficients():
+    """Test coupling_coefficients attribute returns dict of zone coefficients."""
+    from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+        ThermalCouplingLearner,
+        CouplingCoefficient,
+    )
+    from datetime import datetime
+
+    learner = ThermalCouplingLearner()
+
+    # Initialize seeds
+    learner._seeds[("climate.zone_a", "climate.zone_b")] = 0.15
+    learner._seeds[("climate.zone_c", "climate.zone_b")] = 0.20
+
+    # Add a learned coefficient (should override seed)
+    learner.coefficients[("climate.zone_a", "climate.zone_b")] = CouplingCoefficient(
+        source_zone="climate.zone_a",
+        target_zone="climate.zone_b",
+        coefficient=0.18,
+        confidence=0.45,
+        observation_count=5,
+        baseline_overshoot=None,
+        last_updated=datetime.now(),
+    )
+
+    # Get coefficients for zone_b
+    coefficients = learner.get_coefficients_for_zone("climate.zone_b")
+
+    # Should have both sources, with learned coefficient overriding seed
+    assert "climate.zone_a" in coefficients
+    assert coefficients["climate.zone_a"] == 0.18  # Learned value
+    assert "climate.zone_c" in coefficients
+    assert coefficients["climate.zone_c"] == 0.20  # Seed value
+
+
+def test_attr_coupling_compensation():
+    """Test coupling_compensation attribute returns current degC compensation."""
+    from unittest.mock import Mock, MagicMock
+    from custom_components.adaptive_thermostat.managers.control_output import ControlOutputManager
+
+    # Create a mock thermostat
+    thermostat = Mock()
+    thermostat.entity_id = "climate.test"
+    thermostat._hvac_mode = "heat"
+    thermostat.hass = Mock()
+    thermostat.hass.data = {}
+
+    # Create mock callbacks
+    mock_callbacks = {
+        'get_current_temp': Mock(return_value=20.0),
+        'get_ext_temp': Mock(return_value=5.0),
+        'get_wind_speed': Mock(return_value=0.0),
+        'get_previous_temp_time': Mock(return_value=None),
+        'set_previous_temp_time': Mock(),
+        'get_cur_temp_time': Mock(return_value=None),
+        'set_cur_temp_time': Mock(),
+        'get_output_precision': Mock(return_value=1),
+        'calculate_night_setback_adjustment': Mock(return_value=(20.0, None, None)),
+        'set_control_output': Mock(),
+        'set_p': Mock(),
+        'set_i': Mock(),
+        'set_d': Mock(),
+        'set_e': Mock(),
+        'set_dt': Mock(),
+        'get_kp': Mock(return_value=100.0),
+        'get_ki': Mock(return_value=0.1),
+        'get_kd': Mock(return_value=10.0),
+        'get_ke': Mock(return_value=0.5),
+    }
+
+    manager = ControlOutputManager(
+        thermostat=thermostat,
+        pid_controller=Mock(),
+        heater_controller=None,
+        **mock_callbacks,
+    )
+
+    # Initially compensation should be 0
+    assert manager.coupling_compensation_degc == 0.0
+
+    # Manually set the values (simulating what happens in _calculate_coupling_compensation)
+    manager._last_coupling_compensation_degc = 0.5
+    manager._last_coupling_compensation_power = 50.0
+
+    # Verify properties return correct values
+    assert manager.coupling_compensation_degc == 0.5
+    assert manager.coupling_compensation_power == 50.0
+
+
+def test_attr_coupling_compensation_power():
+    """Test coupling_compensation_power attribute returns current power% reduction."""
+    from unittest.mock import Mock
+    from custom_components.adaptive_thermostat.managers.control_output import ControlOutputManager
+
+    thermostat = Mock()
+    thermostat.entity_id = "climate.test"
+    thermostat._hvac_mode = "heat"
+    thermostat.hass = Mock()
+    thermostat.hass.data = {}
+
+    mock_callbacks = {
+        'get_current_temp': Mock(return_value=20.0),
+        'get_ext_temp': Mock(return_value=5.0),
+        'get_wind_speed': Mock(return_value=0.0),
+        'get_previous_temp_time': Mock(return_value=None),
+        'set_previous_temp_time': Mock(),
+        'get_cur_temp_time': Mock(return_value=None),
+        'set_cur_temp_time': Mock(),
+        'get_output_precision': Mock(return_value=1),
+        'calculate_night_setback_adjustment': Mock(return_value=(20.0, None, None)),
+        'set_control_output': Mock(),
+        'set_p': Mock(),
+        'set_i': Mock(),
+        'set_d': Mock(),
+        'set_e': Mock(),
+        'set_dt': Mock(),
+        'get_kp': Mock(return_value=100.0),
+        'get_ki': Mock(return_value=0.1),
+        'get_kd': Mock(return_value=10.0),
+        'get_ke': Mock(return_value=0.5),
+    }
+
+    manager = ControlOutputManager(
+        thermostat=thermostat,
+        pid_controller=Mock(),
+        heater_controller=None,
+        **mock_callbacks,
+    )
+
+    # Set compensation values
+    manager._last_coupling_compensation_degc = 0.8  # 0.8°C
+    manager._last_coupling_compensation_power = 80.0  # 80% with Kp=100
+
+    # Verify power property
+    assert manager.coupling_compensation_power == 80.0
+
+
+def test_attr_coupling_observations_pending():
+    """Test coupling_observations_pending returns count of active observations."""
+    from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+        ThermalCouplingLearner,
+        ObservationContext,
+    )
+    from datetime import datetime
+
+    learner = ThermalCouplingLearner()
+
+    # Initially no pending observations
+    assert learner.get_pending_observation_count() == 0
+
+    # Start an observation
+    learner.start_observation(
+        source_zone="climate.zone_a",
+        all_zone_temps={"climate.zone_a": 18.0, "climate.zone_b": 17.0},
+        outdoor_temp=5.0,
+    )
+
+    # Should have 1 pending
+    assert learner.get_pending_observation_count() == 1
+
+    # Start another observation
+    learner.start_observation(
+        source_zone="climate.zone_c",
+        all_zone_temps={"climate.zone_a": 18.0, "climate.zone_b": 17.0, "climate.zone_c": 19.0},
+        outdoor_temp=5.0,
+    )
+
+    # Should have 2 pending
+    assert learner.get_pending_observation_count() == 2
+
+    # End one observation
+    learner.end_observation(
+        source_zone="climate.zone_a",
+        current_temps={"climate.zone_a": 21.0, "climate.zone_b": 17.5},
+        outdoor_temp=6.0,
+        idle_zones={"climate.zone_b"},
+    )
+
+    # Should have 1 pending
+    assert learner.get_pending_observation_count() == 1
+
+
+def test_attr_coupling_learner_state():
+    """Test coupling_learner_state returns learning/validating/stable."""
+    from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+        ThermalCouplingLearner,
+        CouplingCoefficient,
+    )
+    from datetime import datetime
+    from custom_components.adaptive_thermostat.const import (
+        COUPLING_CONFIDENCE_THRESHOLD,
+        COUPLING_CONFIDENCE_MAX,
+    )
+
+    learner = ThermalCouplingLearner()
+
+    # Initially should be "learning" (no coefficients)
+    assert learner.get_learner_state() == "learning"
+
+    # Add a low-confidence coefficient - still "learning"
+    learner.coefficients[("climate.zone_a", "climate.zone_b")] = CouplingCoefficient(
+        source_zone="climate.zone_a",
+        target_zone="climate.zone_b",
+        coefficient=0.15,
+        confidence=0.2,  # Below COUPLING_CONFIDENCE_THRESHOLD (0.3)
+        observation_count=1,
+        baseline_overshoot=None,
+        last_updated=datetime.now(),
+    )
+    assert learner.get_learner_state() == "learning"
+
+    # Replace with medium confidence - should be "validating"
+    learner.coefficients[("climate.zone_a", "climate.zone_b")] = CouplingCoefficient(
+        source_zone="climate.zone_a",
+        target_zone="climate.zone_b",
+        coefficient=0.15,
+        confidence=0.4,  # Between threshold (0.3) and max (0.5)
+        observation_count=5,
+        baseline_overshoot=None,
+        last_updated=datetime.now(),
+    )
+    assert learner.get_learner_state() == "validating"
+
+    # Add high confidence coefficient - should be "stable" (majority > 0.5)
+    learner.coefficients[("climate.zone_a", "climate.zone_b")] = CouplingCoefficient(
+        source_zone="climate.zone_a",
+        target_zone="climate.zone_b",
+        coefficient=0.15,
+        confidence=0.55,  # Above COUPLING_CONFIDENCE_MAX (0.5)
+        observation_count=10,
+        baseline_overshoot=None,
+        last_updated=datetime.now(),
+    )
+    assert learner.get_learner_state() == "stable"
+
+
+def test_attr_coupling_learner_state_multiple_coefficients():
+    """Test learner state with multiple coefficients at different confidence levels."""
+    from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+        ThermalCouplingLearner,
+        CouplingCoefficient,
+    )
+    from datetime import datetime
+
+    learner = ThermalCouplingLearner()
+
+    # Add one low confidence - should be "learning"
+    learner.coefficients[("climate.a", "climate.b")] = CouplingCoefficient(
+        source_zone="climate.a",
+        target_zone="climate.b",
+        coefficient=0.15,
+        confidence=0.25,
+        observation_count=2,
+        baseline_overshoot=None,
+        last_updated=datetime.now(),
+    )
+    assert learner.get_learner_state() == "learning"
+
+    # Replace with high confidence
+    learner.coefficients[("climate.a", "climate.b")] = CouplingCoefficient(
+        source_zone="climate.a",
+        target_zone="climate.b",
+        coefficient=0.15,
+        confidence=0.55,
+        observation_count=10,
+        baseline_overshoot=None,
+        last_updated=datetime.now(),
+    )
+
+    # Add another at medium confidence
+    learner.coefficients[("climate.c", "climate.d")] = CouplingCoefficient(
+        source_zone="climate.c",
+        target_zone="climate.d",
+        coefficient=0.20,
+        confidence=0.40,
+        observation_count=5,
+        baseline_overshoot=None,
+        last_updated=datetime.now(),
+    )
+
+    # 1 high (0.55), 1 medium (0.40) - majority NOT high, so "validating"
+    assert learner.get_learner_state() == "validating"
+
+    # Add two more high confidence
+    learner.coefficients[("climate.e", "climate.f")] = CouplingCoefficient(
+        source_zone="climate.e",
+        target_zone="climate.f",
+        coefficient=0.18,
+        confidence=0.60,
+        observation_count=15,
+        baseline_overshoot=None,
+        last_updated=datetime.now(),
+    )
+    learner.coefficients[("climate.g", "climate.h")] = CouplingCoefficient(
+        source_zone="climate.g",
+        target_zone="climate.h",
+        coefficient=0.22,
+        confidence=0.55,
+        observation_count=12,
+        baseline_overshoot=None,
+        last_updated=datetime.now(),
+    )
+
+    # Now 3 high, 1 medium - majority high, so "stable"
+    assert learner.get_learner_state() == "stable"

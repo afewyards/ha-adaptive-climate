@@ -101,6 +101,20 @@ class ControlOutputManager:
         # Store last calculated output for access
         self._last_control_output: float = 0
 
+        # Store coupling compensation values for attribute exposure
+        self._last_coupling_compensation_degc: float = 0.0
+        self._last_coupling_compensation_power: float = 0.0
+
+    @property
+    def coupling_compensation_degc(self) -> float:
+        """Get the last calculated coupling compensation in degrees C."""
+        return self._last_coupling_compensation_degc
+
+    @property
+    def coupling_compensation_power(self) -> float:
+        """Get the last calculated coupling compensation in power %."""
+        return self._last_coupling_compensation_power
+
     def update_heater_controller(self, heater_controller: HeaterController) -> None:
         """Update the heater controller reference.
 
@@ -361,6 +375,8 @@ class ControlOutputManager:
         Sums the predicted temperature rise from all actively heating zones
         based on learned coupling coefficients, then converts to power reduction.
 
+        Also stores the compensation values (degC and power) for attribute exposure.
+
         Returns:
             Compensation in power % (0-100). Positive values reduce output.
         """
@@ -369,21 +385,29 @@ class ControlOutputManager:
 
         # Disable in cooling mode (v1 - heating only)
         if self._thermostat._hvac_mode == "cool":
+            self._last_coupling_compensation_degc = 0.0
+            self._last_coupling_compensation_power = 0.0
             return 0.0
 
         # Get coordinator
         coordinator = self._thermostat.hass.data.get(DOMAIN, {}).get("coordinator")
         if not coordinator:
+            self._last_coupling_compensation_degc = 0.0
+            self._last_coupling_compensation_power = 0.0
             return 0.0
 
         # Get active zones (neighbors currently heating)
         active_zones = coordinator.get_active_zones(hvac_mode="heat")
         if not active_zones:
+            self._last_coupling_compensation_degc = 0.0
+            self._last_coupling_compensation_power = 0.0
             return 0.0
 
         # Get coupling learner
         coupling_learner = coordinator.thermal_coupling_learner
         if not coupling_learner:
+            self._last_coupling_compensation_degc = 0.0
+            self._last_coupling_compensation_power = 0.0
             return 0.0
 
         # Get current zone temps
@@ -435,5 +459,9 @@ class ControlOutputManager:
         # Convert to power using Kp
         kp = self._get_kp() or 100.0
         compensation_power = total_compensation_degc * kp
+
+        # Store values for attribute exposure
+        self._last_coupling_compensation_degc = total_compensation_degc
+        self._last_coupling_compensation_power = compensation_power
 
         return compensation_power

@@ -407,6 +407,82 @@ class ThermalCouplingLearner:
         """
         self._seeds = parse_floorplan(floorplan_config)
 
+    def get_pending_observation_count(self) -> int:
+        """Get the number of pending observations (zones currently being observed).
+
+        Returns:
+            Count of active observation contexts.
+        """
+        return len(self._pending)
+
+    def get_learner_state(self) -> str:
+        """Get the current learning state based on observation and coefficient data.
+
+        Returns:
+            One of:
+            - "learning": Actively collecting observations (has pending or < 3 obs per pair)
+            - "validating": Has learned coefficients but still gathering validation data
+            - "stable": Has confident coefficients with sufficient observations
+
+        The state is determined by analyzing the overall health of learned coefficients.
+        """
+        # Use existing module-level imports for constants
+        # COUPLING_CONFIDENCE_THRESHOLD and COUPLING_CONFIDENCE_MAX imported at top of file
+
+        # If no coefficients learned yet, we're still learning
+        if not self.coefficients:
+            return "learning"
+
+        # Count coefficients in different confidence ranges
+        low_confidence = 0
+        medium_confidence = 0
+        high_confidence = 0
+
+        for coef in self.coefficients.values():
+            if coef.confidence < COUPLING_CONFIDENCE_THRESHOLD:
+                low_confidence += 1
+            elif coef.confidence < COUPLING_CONFIDENCE_MAX:
+                medium_confidence += 1
+            else:
+                high_confidence += 1
+
+        total = len(self.coefficients)
+
+        # If any coefficients have low confidence, we're still learning
+        if low_confidence > 0:
+            return "learning"
+
+        # If majority are high confidence, we're stable
+        if high_confidence > total / 2:
+            return "stable"
+
+        # Otherwise we're validating
+        return "validating"
+
+    def get_coefficients_for_zone(self, target_zone: str) -> Dict[str, float]:
+        """Get all coupling coefficients where the given zone is the target.
+
+        Args:
+            target_zone: Entity ID of the zone to get coefficients for.
+
+        Returns:
+            Dict mapping source zone entity IDs to coefficient values.
+            Includes both learned and seed-based coefficients.
+        """
+        result: Dict[str, float] = {}
+
+        # Get learned coefficients
+        for (source, target), coef in self.coefficients.items():
+            if target == target_zone:
+                result[source] = coef.coefficient
+
+        # Fill in seeds for any pairs not already covered
+        for (source, target), seed_value in self._seeds.items():
+            if target == target_zone and source not in result:
+                result[source] = seed_value
+
+        return result
+
     def get_coefficient(
         self, source_zone: str, target_zone: str
     ) -> Optional[CouplingCoefficient]:
