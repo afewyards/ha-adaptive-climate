@@ -1,6 +1,268 @@
 # CHANGELOG
 
 
+## v0.17.0 (2026-01-20)
+
+### Documentation
+
+- **CLAUDE.md**: Add thermal coupling documentation
+  ([`64d8f12`](https://github.com/afewyards/ha-adaptive-thermostat/commit/64d8f12eef0a38e9a48a575de8d85d3d00c8bd72))
+
+- Add Thermal Coupling section with config format, seed coefficients, max compensation values,
+  learner constants, data flow diagram - Update Core Modules table: coordinator.py now mentions
+  thermal coupling observation triggers, PID now includes feedforward term - Add thermal_coupling.py
+  to Adaptive Features table - Update Test Organization table with new test files - Update
+  Persistence section for v4 format with thermal_coupling data - Fix migration documentation: v2 ->
+  v3 -> v4
+
+Also fix test_coupling_integration.py mock_hass fixture to properly configure
+  hass.config.latitude/longitude/elevation for SunPositionCalculator.
+
+- **readme**: Update multi-zone section for thermal coupling
+  ([`71f041d`](https://github.com/afewyards/ha-adaptive-thermostat/commit/71f041d5f2f93ecb58dd7a8ad60c70079ceef086))
+
+- Replace zone linking with thermal coupling in features - Update multi-zone example with floorplan
+  config - Remove deprecated linked_zones parameter
+
+### Features
+
+- **thermal-coupling**: Add coupling compensation to ControlOutputManager
+  ([`035f532`](https://github.com/afewyards/ha-adaptive-thermostat/commit/035f5326c5b1e2d8d0cf2c4e0803e84196399d6a))
+
+- **thermal-coupling**: Add coupling data storage methods to persistence.py
+  ([`32fd765`](https://github.com/afewyards/ha-adaptive-thermostat/commit/32fd765ee7eb486df153b6b43da2360c3a698ac8))
+
+- Add get_coupling_data() method to retrieve thermal coupling data - Add update_coupling_data()
+  method for in-memory updates - Add async_save_coupling() method to persist coupling data to HA
+  Store - Add 8 tests covering all new methods including roundtrip verification
+
+- **thermal-coupling**: Add CouplingCoefficient dataclass with serialization
+  ([`b15b744`](https://github.com/afewyards/ha-adaptive-thermostat/commit/b15b7447b16625b53a6fa79ee3ce81b64f85a1ed))
+
+Add CouplingCoefficient dataclass to track learned thermal coupling coefficients between zone pairs.
+  Includes: - source_zone and target_zone identifiers - coefficient value and confidence level -
+  observation_count for tracking data quality - baseline_overshoot for validation tracking -
+  to_dict() and from_dict() for persistence
+
+- **thermal-coupling**: Add CouplingObservation dataclass with serialization
+  ([`3b9eb43`](https://github.com/afewyards/ha-adaptive-thermostat/commit/3b9eb434217e670c61b1d71a9c8831eb9a93685d))
+
+Add CouplingObservation dataclass to track heat transfer observations between zones. Includes
+  to_dict() and from_dict() methods for persistence.
+
+- **thermal-coupling**: Add feedforward term to PID controller
+  ([`559d7c4`](https://github.com/afewyards/ha-adaptive-thermostat/commit/559d7c4d0188fbee82be65086381aa0c1a2820fe))
+
+- Add _feedforward property initialized to 0.0 - Add set_feedforward(ff) method for thermal coupling
+  compensation - Update output calculation: output = P + I + D + E - F - Update integral clamping:
+  I_max = out_max - E - F - Update bumpless transfer to account for feedforward - Integral clamping
+  now runs always (not just when accumulating) to handle feedforward changes during saturation
+
+- **thermal-coupling**: Add floorplan parser for seed generation
+  ([`74e4fc3`](https://github.com/afewyards/ha-adaptive-thermostat/commit/74e4fc3eefdf506577a1d4dfda33fff54fe54574))
+
+- Add parse_floorplan() function to extract zone pairs and coupling types - Generate same_floor
+  seeds for zones on the same floor - Generate up/down seeds for vertical relationships between
+  adjacent floors - Generate open seeds for open floor plan zones (overrides same_floor) - Generate
+  stairwell_up/stairwell_down seeds for stairwell zone connections - Support custom
+  seed_coefficients to override default values - Add 8 comprehensive tests covering all scenarios
+
+- **thermal-coupling**: Add observation filtering logic
+  ([`22bb994`](https://github.com/afewyards/ha-adaptive-thermostat/commit/22bb9940fca24a3fea40f6c381c7dcbeef334fcd))
+
+Add should_record_observation() function that filters observations before recording them for
+  learning. Filters applied:
+
+- Duration < 15 min: Skip (not enough data) - Source temp rise < 0.3°C: Skip (not meaningful
+  heating) - Target warmer than source at start: Skip (no coupling expected) - Outdoor temp change >
+  3°C: Skip (external factors) - Target temp dropped: Skip (can't learn from negative delta)
+
+Includes 10 tests covering all filter criteria and boundary conditions.
+
+- **thermal-coupling**: Add observation start/end lifecycle methods
+  ([`25ddbc0`](https://github.com/afewyards/ha-adaptive-thermostat/commit/25ddbc0eb5aa06ca149c28f9f52a07aee033f779))
+
+- Add start_observation() to create ObservationContext when zone starts heating - Add
+  end_observation() to create CouplingObservation for idle target zones - start_observation guards
+  against duplicate pending observations - end_observation calculates duration and temperature
+  deltas automatically - Only creates observations for target zones that were idle during the period
+
+- **thermal-coupling**: Add observation triggers to coordinator demand updates
+  ([`1428e87`](https://github.com/afewyards/ha-adaptive-thermostat/commit/1428e8730b0c04fd01811fb61bc4e6d01bb84b68))
+
+Add thermal coupling observation lifecycle hooks to update_zone_demand(): - Start observation when
+  zone demand transitions False -> True (heating) - End observation when zone demand transitions
+  True -> False - Skip observation during mass recovery (>50% zones demanding) - Skip observation
+  when outdoor temp unavailable - Filter and store valid observations, update coefficients
+
+Add 6 new tests for observation trigger behavior.
+
+- **thermal-coupling**: Add ObservationContext dataclass
+  ([`a81ddcb`](https://github.com/afewyards/ha-adaptive-thermostat/commit/a81ddcbe82e0168f88804a425f7d01af3542767e))
+
+Add ObservationContext dataclass to capture initial state when a zone starts heating. This enables
+  tracking of temperature deltas across multiple target zones during thermal coupling observation.
+
+Fields: source_zone, start_time, source_temp_start, target_temps_start, outdoor_temp_start
+
+- **thermal-coupling**: Add solar gain detection for observation filtering
+  ([`7629918`](https://github.com/afewyards/ha-adaptive-thermostat/commit/76299187947f75d959dd3452eab0fac6c51c2542))
+
+Implements story 5.4 from thermal coupling PRD: - Add _is_high_solar_gain() method to coordinator
+  using SunPositionCalculator - Integrate solar check into _start_coupling_observation() logic - Add
+  window_orientation to zone_data in climate.py - Skip observations when sun elevation >15° AND zone
+  has effective sun exposure - Add comprehensive tests for solar gain detection scenarios
+
+Tests: - test_solar_gain_detection: validates detection at noon vs early morning -
+  test_solar_gain_detection_no_windows: handles zones without windows -
+  test_observation_skipped_during_solar: verifies skip during high solar -
+  test_observation_starts_during_low_solar: confirms normal operation in low solar
+
+All tests passing: pytest tests/test_coordinator.py -k solar -v
+
+- **thermal-coupling**: Add thermal coupling config parsing to climate.py
+  ([`c396047`](https://github.com/afewyards/ha-adaptive-thermostat/commit/c396047f1e3b9a5a036d1e6bcd3326fa3ed68db1))
+
+- Add thermal_coupling config schema to PLATFORM_SCHEMA - Schema includes: enabled (default true),
+  floorplan, stairwell_zones, seed_coefficients - Floorplan supports floor number, zones list, and
+  optional open floor plan zones - Seed coefficients validated to be in range 0.0-1.0 - Remove
+  obsolete CONF_LINKED_ZONES and CONF_LINK_DELAY_MINUTES references - Add
+  tests/test_climate_config.py with 7 comprehensive schema tests
+
+- **thermal-coupling**: Add thermal coupling constants to const.py
+  ([`23576c3`](https://github.com/afewyards/ha-adaptive-thermostat/commit/23576c382782e9ccdb27eba1aef4b997527a541d))
+
+- Add CONF_THERMAL_COUPLING, CONF_FLOORPLAN, CONF_STAIRWELL_ZONES, CONF_SEED_COEFFICIENTS - Add
+  DEFAULT_SEED_COEFFICIENTS with values for same_floor, up, down, open, stairwell - Add
+  MAX_COUPLING_COMPENSATION per heating type (floor_hydronic: 1.0, radiator: 1.2, convector: 1.5,
+  forced_air: 2.0) - Add coupling learner constants: MIN_OBSERVATIONS=3,
+  MAX_OBSERVATIONS_PER_PAIR=50, SEED_WEIGHT=6, etc. - Remove CONF_LINKED_ZONES and
+  DEFAULT_LINK_DELAY_MINUTES (replaced by thermal coupling)
+
+- **thermal-coupling**: Add ThermalCouplingLearner core structure
+  ([`32d390b`](https://github.com/afewyards/ha-adaptive-thermostat/commit/32d390ba4d3a9104d3ef3bcc65d66135128fe698))
+
+- Add ThermalCouplingLearner class with initialization - Add asyncio.Lock with lazy initialization
+  for Python 3.9 compatibility - Add initialize_seeds() method to load seeds from floorplan config -
+  Add get_coefficient() method returning learned or seed coefficient - Seed-only coefficients return
+  with confidence=0.3 - Add 4 new tests for learner initialization, seeds, and coefficient retrieval
+
+- **thermal-coupling**: Add v3 to v4 migration in persistence.py
+  ([`f8f5985`](https://github.com/afewyards/ha-adaptive-thermostat/commit/f8f5985fa2d0be617f919a987956420a1e4d8f80))
+
+- Bump STORAGE_VERSION from 3 to 4 - Add _migrate_v3_to_v4() method that adds thermal_coupling key -
+  Update async_load() to chain v2->v3->v4 migrations - thermal_coupling stores observations,
+  coefficients, and seeds dicts - Add tests: migrate_v3_to_v4, load_v3_auto_migrates,
+  load_v4_no_migration, load_v2_migrates_through_v3_to_v4 - Update existing tests to expect v4
+  format
+
+- **thermal-coupling**: Add validation and rollback for coefficients
+  ([`e7747ee`](https://github.com/afewyards/ha-adaptive-thermostat/commit/e7747eea1b10c93d5e308dacb0af30c3d6a2f556))
+
+Add validation tracking for thermal coupling coefficients: - Added validation_cycles field to
+  CouplingCoefficient dataclass - Added COUPLING_VALIDATION_CYCLES (5) and
+  COUPLING_VALIDATION_DEGRADATION (0.30) - Added record_baseline_overshoot() to record baseline
+  before validation - Added add_validation_cycle() to increment validation cycle count - Added
+  check_validation() to trigger rollback if overshoot increased >30% - Rollback halves the
+  coefficient and logs a warning - Serialization updated to persist validation_cycles
+
+- **thermal-coupling**: Expose coupling attributes on climate entity
+  ([`12bdc91`](https://github.com/afewyards/ha-adaptive-thermostat/commit/12bdc91e6813d3cfc3098f97fc6452a1c27a3148))
+
+- Add coupling_compensation_degc and coupling_compensation_power properties to ControlOutputManager
+  - Add get_pending_observation_count() method to ThermalCouplingLearner - Add get_learner_state()
+  method returning learning/validating/stable - Add get_coefficients_for_zone() method to get all
+  coefficients for a zone - Add _add_thermal_coupling_attributes() to state_attributes.py - Expose 5
+  new entity attributes: - coupling_coefficients: Dict of source zone -> coefficient value -
+  coupling_compensation: Current °C compensation being applied - coupling_compensation_power:
+  Current power % reduction - coupling_observations_pending: Count of active observations -
+  coupling_learner_state: learning | validating | stable - Add 6 new tests for coupling attributes
+
+- **thermal-coupling**: Implement Bayesian coefficient calculation
+  ([`162225a`](https://github.com/afewyards/ha-adaptive-thermostat/commit/162225a183bd7afb6d9c27cf971520689b3d6b56))
+
+- Add _calculate_transfer_rate() to compute heat transfer rate from observations - Add
+  calculate_coefficient() with Bayesian blending of seed and observed rates - Implement confidence
+  calculation with variance penalty - Cap coefficients at COUPLING_MAX_COEFFICIENT (0.5) - Add 11
+  tests for transfer rate and coefficient calculation
+
+- **thermal-coupling**: Implement graduated confidence function
+  ([`5b28423`](https://github.com/afewyards/ha-adaptive-thermostat/commit/5b284235dd39fb80c86177f7c9b21378f07a13f1))
+
+- **thermal-coupling**: Implement learner serialization for persistence
+  ([`6a58864`](https://github.com/afewyards/ha-adaptive-thermostat/commit/6a58864a84b246ea1ce0d6a2af6ab9ad860ef457))
+
+Add to_dict() and from_dict() methods to ThermalCouplingLearner for state persistence across Home
+  Assistant restarts.
+
+- to_dict() serializes observations, coefficients, and seeds using pipe-separated zone pair keys for
+  JSON compatibility - from_dict() restores state with error recovery per item, logging warnings for
+  invalid entries while continuing restoration - Add 10 tests covering empty state, observations,
+  coefficients, seeds, error recovery, and full roundtrip serialization
+
+- **thermal-coupling**: Initialize coupling learner in climate entity setup
+  ([`da0998c`](https://github.com/afewyards/ha-adaptive-thermostat/commit/da0998cc9f88a830df85f2a4adf5d0f6e720915b))
+
+- Restore coupling data from persistence on first zone setup - Initialize seeds from floorplan
+  config when thermal_coupling is configured - Added tests: test_climate_init_coupling_learner,
+  test_climate_restore_coupling_data, test_climate_seeds_from_floorplan - Uses flags to ensure
+  initialization happens only once across multiple zones
+
+- **thermal-coupling**: Integrate ThermalCouplingLearner into coordinator
+  ([`7569cab`](https://github.com/afewyards/ha-adaptive-thermostat/commit/7569cab9bf62b4a2bf26c620aa4534a260b78df4))
+
+- Add _thermal_coupling_learner instance to AdaptiveThermostatCoordinator - Add
+  thermal_coupling_learner property for learner access - Add outdoor_temp property to get
+  temperature from weather entity - Add get_active_zones() method to get zones with active demand -
+  Add get_zone_temps() method to get current temperatures per zone - Add update_zone_temp() method
+  to update zone temperature - Fix thermal_coupling.py imports to support both relative and direct
+  imports - Add 10 new tests for coupling-related coordinator features
+
+- **thermal-coupling**: Pass feedforward to PID in control loop
+  ([`aa05bd9`](https://github.com/afewyards/ha-adaptive-thermostat/commit/aa05bd9d12aac2f81bcdafa0270a5ddba5082a7b))
+
+- Add thermal coupling compensation as feedforward before PID calc - Feedforward is calculated via
+  _calculate_coupling_compensation() - PID.set_feedforward() called before calc() so output =
+  P+I+D+E-F - Add 5 tests for feedforward integration in control loop
+
+### Refactoring
+
+- **thermal-coupling**: Remove deprecated zone linking attributes
+  ([`bd3a1b1`](https://github.com/afewyards/ha-adaptive-thermostat/commit/bd3a1b1cb867a19032a7a922113e5c0d595a646d))
+
+- Remove _add_zone_linking_attributes function and its call from state_attributes.py (was already a
+  no-op pass statement) - Remove obsolete _zone_linker, _linked_zones, _link_delay_minutes
+  properties from MockAdaptiveThermostat in test_climate.py
+
+This completes the zone linking removal started in story 5.1.
+
+- **thermal-coupling**: Remove ZoneLinker in preparation for thermal coupling
+  ([`ba8d92c`](https://github.com/afewyards/ha-adaptive-thermostat/commit/ba8d92cebb263b3a70a01398e21795f88ea1c130))
+
+- Delete ZoneLinker class from coordinator.py - Remove zone_linker references from
+  AdaptiveThermostatCoordinator - Remove zone_linker from __init__.py setup/cleanup - Remove
+  linked_zones handling from climate.py - Remove zone_linker params from heater_controller.py
+  methods - Remove zone_linker params from control_output.py methods - Convert
+  _add_zone_linking_attributes to no-op in state_attributes.py - Delete tests/test_zone_linking.py -
+  Clean up test_integration_control_loop.py zone_linker references
+
+### Testing
+
+- **thermal-coupling**: Add integration tests for coupling learning flow
+  ([`fe1ae37`](https://github.com/afewyards/ha-adaptive-thermostat/commit/fe1ae37a87decab7fb13a94104b10aee4f7956ba))
+
+Create tests/test_coupling_integration.py with: - Multi-zone fixture with coordinator and 3 zones
+  across 2 floors - test_zone_a_heating_starts_observation: verifies observation context created -
+  test_observation_recorded_after_zone_stops_heating: verifies observation lifecycle -
+  test_coefficient_calculated_after_three_cycles: verifies MIN_OBSERVATIONS threshold -
+  test_bayesian_blending_with_seed: verifies seed + observation blending -
+  test_zone_b_can_get_coefficient_when_zone_a_heating: verifies compensation data flow -
+  test_learner_state_survives_restart: verifies persistence roundtrip - test_complete_learning_flow:
+  end-to-end test of full learning cycle
+
+13 new integration tests covering observation → coefficient → compensation flow.
+
+
 ## v0.16.0 (2026-01-19)
 
 ### Chores
