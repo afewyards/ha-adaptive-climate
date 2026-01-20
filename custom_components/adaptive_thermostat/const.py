@@ -506,6 +506,18 @@ MAX_COUPLING_COMPENSATION = {
     HEATING_TYPE_FORCED_AIR: 2.0,      # Aggressive - fast recovery
 }
 
+# Integral decay multiplier by heating type
+# Applied during overhang (temp above setpoint but integral still positive)
+# Slower systems need faster integral decay to prevent prolonged overshoot
+DEFAULT_INTEGRAL_DECAY = 1.5
+
+HEATING_TYPE_INTEGRAL_DECAY = {
+    HEATING_TYPE_FLOOR_HYDRONIC: 3.0,  # High decay - very slow thermal response
+    HEATING_TYPE_RADIATOR: 2.0,        # Moderate decay
+    HEATING_TYPE_CONVECTOR: 1.5,       # Standard decay
+    HEATING_TYPE_FORCED_AIR: 1.2,      # Low decay - fast response can self-correct
+}
+
 # Coupling learner constants
 COUPLING_MIN_OBSERVATIONS = 3           # Min observations before using learned coefficient
 COUPLING_MAX_OBSERVATIONS_PER_PAIR = 50  # Max observations to retain per zone pair (FIFO)

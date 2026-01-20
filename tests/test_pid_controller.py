@@ -1702,5 +1702,39 @@ class TestPIDFeedforward:
         assert pid.feedforward == 12.5
 
 
+class TestIntegralDecayConstants:
+    """Test integral decay constants for heating types."""
+
+    def test_integral_decay_constants_exist(self):
+        """Verify HEATING_TYPE_INTEGRAL_DECAY dict exists with all heating types."""
+        from const import (
+            HEATING_TYPE_INTEGRAL_DECAY,
+            HEATING_TYPE_FLOOR_HYDRONIC,
+            HEATING_TYPE_RADIATOR,
+            HEATING_TYPE_CONVECTOR,
+            HEATING_TYPE_FORCED_AIR,
+        )
+
+        # Dict must exist and have all heating types
+        assert isinstance(HEATING_TYPE_INTEGRAL_DECAY, dict)
+        assert HEATING_TYPE_FLOOR_HYDRONIC in HEATING_TYPE_INTEGRAL_DECAY
+        assert HEATING_TYPE_RADIATOR in HEATING_TYPE_INTEGRAL_DECAY
+        assert HEATING_TYPE_CONVECTOR in HEATING_TYPE_INTEGRAL_DECAY
+        assert HEATING_TYPE_FORCED_AIR in HEATING_TYPE_INTEGRAL_DECAY
+
+        # All values should be >= 1.0 (multiplier)
+        for heating_type, multiplier in HEATING_TYPE_INTEGRAL_DECAY.items():
+            assert multiplier >= 1.0, f"{heating_type} should have multiplier >= 1.0"
+
+        # Floor hydronic should have highest decay (slowest system)
+        assert HEATING_TYPE_INTEGRAL_DECAY[HEATING_TYPE_FLOOR_HYDRONIC] >= 3.0
+
+    def test_default_integral_decay_exists(self):
+        """Verify DEFAULT_INTEGRAL_DECAY = 1.5 exists."""
+        from const import DEFAULT_INTEGRAL_DECAY
+
+        assert DEFAULT_INTEGRAL_DECAY == 1.5
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
