@@ -72,6 +72,13 @@ from . import pid_controller
 from .adaptive.learning import AdaptiveLearner, ThermalRateLearner
 from .adaptive.persistence import LearningDataStore
 from .managers import ControlOutputManager, HeaterController, KeController, NightSetbackController, PIDTuningManager, StateRestorer, TemperatureManager, CycleTrackerManager
+from .managers.events import (
+    CycleEventDispatcher,
+    SetpointChangedEvent,
+    ModeChangedEvent,
+    ContactPauseEvent,
+    ContactResumeEvent,
+)
 from .managers.state_attributes import build_state_attributes
 
 _LOGGER = logging.getLogger(__name__)
@@ -668,6 +675,12 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         # Cycle tracker for adaptive learning (initialized in async_added_to_hass when hass is available)
         self._cycle_tracker: CycleTrackerManager | None = None
 
+        # Cycle event dispatcher (initialized in async_added_to_hass when hass is available)
+        self._cycle_dispatcher: CycleEventDispatcher | None = None
+
+        # Contact sensor pause tracking (for calculating pause duration in ContactResumeEvent)
+        self._contact_pause_times: dict[str, datetime] = {}
+
         # Control output manager (initialized in async_added_to_hass when hass is available)
         self._control_output_manager: ControlOutputManager | None = None
 
@@ -754,6 +767,9 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         # Assign integration label to this entity
         await self._async_assign_label()
 
+        # Create cycle event dispatcher for decoupled event communication
+        self._cycle_dispatcher = CycleEventDispatcher()
+
         # Initialize heater controller now that hass is available
         self._heater_controller = HeaterController(
             hass=self.hass,
@@ -766,6 +782,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
             difference=self._difference,
             min_on_cycle_duration=self._min_on_cycle_duration.seconds,
             min_off_cycle_duration=self._min_off_cycle_duration.seconds,
+            dispatcher=self._cycle_dispatcher,
         )
 
         # Initialize night setback controller now that hass is available
@@ -984,6 +1001,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                         get_outdoor_temp=lambda: self._ext_temp,
                         on_validation_failed=self._handle_validation_failure,
                         on_auto_apply_check=self._check_auto_apply_pid,
+                        dispatcher=self._cycle_dispatcher,
                     )
                     # Add cycle_tracker to zone_data for state_attributes access
                     zone_data["cycle_tracker"] = self._cycle_tracker
@@ -1552,11 +1570,24 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                     climate_entity_id=self.entity_id,
                 )
 
-        # Notify cycle tracker of mode change
-        if self._cycle_tracker and old_mode != self._hvac_mode:
+        # Emit mode changed event and notify cycle tracker
+        if old_mode != self._hvac_mode:
             old_mode_str = old_mode.value if old_mode else "off"
             new_mode_str = self._hvac_mode.value if self._hvac_mode else "off"
-            self._cycle_tracker.on_mode_changed(old_mode_str, new_mode_str)
+
+            # Emit event
+            if hasattr(self, "_cycle_dispatcher") and self._cycle_dispatcher:
+                self._cycle_dispatcher.emit(
+                    ModeChangedEvent(
+                        timestamp=datetime.now(),
+                        old_mode=old_mode_str,
+                        new_mode=new_mode_str,
+                    )
+                )
+
+            # Notify cycle tracker of mode change (deprecated path)
+            if self._cycle_tracker:
+                self._cycle_tracker.on_mode_changed(old_mode_str, new_mode_str)
 
     async def async_set_temperature(self, **kwargs):
         """Set new target temperature."""
@@ -1859,6 +1890,32 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
             "%s: Contact sensor %s changed to %s",
             self.entity_id, entity_id, "open" if is_open else "closed"
         )
+
+        # Emit contact pause/resume events
+        if self._cycle_dispatcher:
+            now = datetime.now()
+            if is_open:
+                # Track pause start time for this sensor
+                self._contact_pause_times[entity_id] = now
+                self._cycle_dispatcher.emit(
+                    ContactPauseEvent(
+                        hvac_mode=str(self._hvac_mode.value) if self._hvac_mode else "off",
+                        timestamp=now,
+                        entity_id=entity_id,
+                    )
+                )
+            else:
+                # Calculate pause duration and emit resume event
+                pause_start = self._contact_pause_times.pop(entity_id, None)
+                pause_duration = (now - pause_start).total_seconds() if pause_start else 0.0
+                self._cycle_dispatcher.emit(
+                    ContactResumeEvent(
+                        hvac_mode=str(self._hvac_mode.value) if self._hvac_mode else "off",
+                        timestamp=now,
+                        entity_id=entity_id,
+                        pause_duration_seconds=pause_duration,
+                    )
+                )
 
         # Trigger control heating to potentially pause/resume
         await self._async_control_heating(calc_pid=False, is_temp_sensor_update=False)
@@ -2167,9 +2224,21 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         # Update target temperature
         self._target_temp = value
 
-        # Notify cycle tracker of setpoint change
-        if self._cycle_tracker is not None and old_temp is not None and old_temp != value:
-            self._cycle_tracker.on_setpoint_changed(old_temp, value)
+        # Emit setpoint changed event
+        if old_temp is not None and old_temp != value:
+            if hasattr(self, "_cycle_dispatcher") and self._cycle_dispatcher:
+                self._cycle_dispatcher.emit(
+                    SetpointChangedEvent(
+                        hvac_mode=str(self._hvac_mode.value) if self._hvac_mode else "off",
+                        timestamp=datetime.now(),
+                        old_target=old_temp,
+                        new_target=value,
+                    )
+                )
+
+            # Notify cycle tracker of setpoint change (deprecated path)
+            if self._cycle_tracker is not None:
+                self._cycle_tracker.on_setpoint_changed(old_temp, value)
 
     async def _async_set_pid_mode_internal(self, mode: str) -> None:
         """Internal callback to set PID mode from TemperatureManager."""
