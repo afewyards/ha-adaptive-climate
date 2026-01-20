@@ -161,6 +161,10 @@ class ControlOutputManager:
         wind_speed = self._get_wind_speed()
         output_precision = self._get_output_precision()
 
+        # Calculate thermal coupling feedforward compensation
+        feedforward = self._calculate_coupling_compensation()
+        self._pid_controller.set_feedforward(feedforward)
+
         # Calculate PID output
         if self._pid_controller.sampling_period == 0:
             control_output, update = self._pid_controller.calc(

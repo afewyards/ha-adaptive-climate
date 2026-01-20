@@ -501,3 +501,260 @@ class TestCouplingCompensation:
             expected_power = max_temp * 100.0  # Convert to power with Kp=100
             assert compensation == pytest.approx(expected_power, abs=0.1), \
                 f"Failed for {heating_type}: expected {expected_power}, got {compensation}"
+
+
+# ============================================================================
+# Feedforward Integration Tests (Story 6.2)
+# ============================================================================
+
+
+class TestControlLoopFeedforward:
+    """Tests for feedforward integration in the control loop."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        # Create mock thermostat
+        self.thermostat = Mock()
+        self.thermostat.entity_id = "climate.living_room"
+        self.thermostat.hass = Mock()
+        self.thermostat._heating_type = HEATING_TYPE_CONVECTOR
+        self.thermostat._hvac_mode = HVACMode.HEAT
+
+        # Create mock PID controller with real tracking
+        self.pid_controller = Mock()
+        self.pid_controller.sampling_period = 0
+        self.pid_controller.calc = Mock(return_value=(80.0, True))
+        self.pid_controller.proportional = 50.0
+        self.pid_controller.integral = 25.0
+        self.pid_controller.derivative = 5.0
+        self.pid_controller.external = 0.0
+        self.pid_controller.feedforward = 0.0
+        self.pid_controller.error = 1.0
+        self.pid_controller.dt = 60.0
+
+        # Track set_feedforward calls
+        self._feedforward_calls = []
+
+        def track_feedforward(value):
+            self._feedforward_calls.append(value)
+
+        self.pid_controller.set_feedforward = Mock(side_effect=track_feedforward)
+
+        # Create mock heater controller
+        self.heater_controller = Mock()
+
+        # Create mock coordinator
+        self.coordinator = Mock()
+        self.thermostat.hass.data = {
+            "adaptive_thermostat": {
+                "coordinator": self.coordinator
+            }
+        }
+
+        # Setup thermal coupling learner
+        self.coupling_learner = Mock()
+        self.coordinator.thermal_coupling_learner = self.coupling_learner
+
+        # Create callbacks
+        self.callbacks = {
+            "get_current_temp": Mock(return_value=20.0),
+            "get_ext_temp": Mock(return_value=5.0),
+            "get_wind_speed": Mock(return_value=0.0),
+            "get_previous_temp_time": Mock(return_value=1000.0),
+            "set_previous_temp_time": Mock(),
+            "get_cur_temp_time": Mock(return_value=1060.0),
+            "set_cur_temp_time": Mock(),
+            "get_output_precision": Mock(return_value=1),
+            "calculate_night_setback_adjustment": Mock(return_value=(21.0, None, None)),
+            "set_control_output": Mock(),
+            "set_p": Mock(),
+            "set_i": Mock(),
+            "set_d": Mock(),
+            "set_e": Mock(),
+            "set_dt": Mock(),
+            "get_kp": Mock(return_value=100.0),
+            "get_ki": Mock(return_value=0.1),
+            "get_kd": Mock(return_value=50.0),
+            "get_ke": Mock(return_value=0.3),
+        }
+
+        # Create control output manager
+        self.manager = ControlOutputManager(
+            thermostat=self.thermostat,
+            pid_controller=self.pid_controller,
+            heater_controller=self.heater_controller,
+            **self.callbacks
+        )
+
+    @pytest.mark.asyncio
+    async def test_control_loop_sets_feedforward(self):
+        """TEST: PID receives coupling compensation as feedforward before calc."""
+        # Setup: One neighbor heating with learned coefficient
+        neighbor_id = "climate.kitchen"
+        coefficient = CouplingCoefficient(
+            source_zone=neighbor_id,
+            target_zone="climate.living_room",
+            coefficient=0.25,
+            confidence=0.6,
+            observation_count=10,
+            baseline_overshoot=None,
+            last_updated=datetime.now()
+        )
+
+        self.coupling_learner.get_coefficient = Mock(return_value=coefficient)
+
+        active_zones = {
+            neighbor_id: {
+                "entity_id": neighbor_id,
+                "heating_start_temp": 18.0,
+            }
+        }
+        self.coordinator.get_active_zones = Mock(return_value=active_zones)
+
+        zone_temps = {
+            "climate.living_room": 20.0,
+            neighbor_id: 20.0,  # 2°C rise
+        }
+        self.coordinator.get_zone_temps = Mock(return_value=zone_temps)
+
+        # Calculate output (this should set feedforward before calling PID.calc)
+        await self.manager.calc_output()
+
+        # Verify set_feedforward was called before calc
+        assert len(self._feedforward_calls) == 1
+
+        # Expected compensation: 0.25 * 1.0 * 2.0 * 100.0 = 50.0
+        assert self._feedforward_calls[0] == pytest.approx(50.0, abs=0.1)
+
+        # Verify calc was called after set_feedforward
+        self.pid_controller.calc.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_control_loop_reduces_output(self):
+        """TEST: Output reduced when neighbors heating (integration test)."""
+        # Setup: Neighbor heating with significant coupling
+        neighbor_id = "climate.kitchen"
+        coefficient = CouplingCoefficient(
+            source_zone=neighbor_id,
+            target_zone="climate.living_room",
+            coefficient=0.3,
+            confidence=0.6,
+            observation_count=15,
+            baseline_overshoot=None,
+            last_updated=datetime.now()
+        )
+
+        self.coupling_learner.get_coefficient = Mock(return_value=coefficient)
+
+        active_zones = {
+            neighbor_id: {
+                "entity_id": neighbor_id,
+                "heating_start_temp": 17.0,
+            }
+        }
+        self.coordinator.get_active_zones = Mock(return_value=active_zones)
+
+        zone_temps = {
+            "climate.living_room": 20.0,
+            neighbor_id: 21.0,  # 4°C rise
+        }
+        self.coordinator.get_zone_temps = Mock(return_value=zone_temps)
+
+        # Expected feedforward: 0.3 * 1.0 * 4.0 * 100.0 = 120.0%
+        # Capped at max for convector: 1.5°C * 100 Kp = 150.0%
+
+        await self.manager.calc_output()
+
+        # Verify feedforward was set with the correct value
+        # compensation = 0.3 * 1.0 * 4.0 = 1.2°C < 1.5°C cap
+        # power = 1.2 * 100 = 120.0%
+        assert self._feedforward_calls[0] == pytest.approx(120.0, abs=0.1)
+
+    @pytest.mark.asyncio
+    async def test_control_loop_zero_feedforward_no_neighbors(self):
+        """TEST: Feedforward is 0 when no neighbors heating."""
+        # No active zones
+        self.coordinator.get_active_zones = Mock(return_value={})
+
+        await self.manager.calc_output()
+
+        # Should still call set_feedforward (with 0)
+        assert len(self._feedforward_calls) == 1
+        assert self._feedforward_calls[0] == 0.0
+
+    @pytest.mark.asyncio
+    async def test_control_loop_feedforward_cooling_mode(self):
+        """TEST: Feedforward is 0 in cooling mode."""
+        self.thermostat._hvac_mode = HVACMode.COOL
+
+        neighbor_id = "climate.kitchen"
+        coefficient = CouplingCoefficient(
+            source_zone=neighbor_id,
+            target_zone="climate.living_room",
+            coefficient=0.5,
+            confidence=0.6,
+            observation_count=10,
+            baseline_overshoot=None,
+            last_updated=datetime.now()
+        )
+
+        self.coupling_learner.get_coefficient = Mock(return_value=coefficient)
+
+        active_zones = {
+            neighbor_id: {
+                "entity_id": neighbor_id,
+                "heating_start_temp": 18.0,
+            }
+        }
+        self.coordinator.get_active_zones = Mock(return_value=active_zones)
+
+        zone_temps = {
+            "climate.living_room": 20.0,
+            neighbor_id: 20.0,
+        }
+        self.coordinator.get_zone_temps = Mock(return_value=zone_temps)
+
+        await self.manager.calc_output()
+
+        # Feedforward disabled in cooling mode
+        assert len(self._feedforward_calls) == 1
+        assert self._feedforward_calls[0] == 0.0
+
+    @pytest.mark.asyncio
+    async def test_control_loop_feedforward_sampling_mode(self):
+        """TEST: Feedforward works in sampling mode (non-zero sampling_period)."""
+        # Switch to sampling mode
+        self.pid_controller.sampling_period = 60
+
+        neighbor_id = "climate.kitchen"
+        coefficient = CouplingCoefficient(
+            source_zone=neighbor_id,
+            target_zone="climate.living_room",
+            coefficient=0.2,
+            confidence=0.6,
+            observation_count=10,
+            baseline_overshoot=None,
+            last_updated=datetime.now()
+        )
+
+        self.coupling_learner.get_coefficient = Mock(return_value=coefficient)
+
+        active_zones = {
+            neighbor_id: {
+                "entity_id": neighbor_id,
+                "heating_start_temp": 19.0,
+            }
+        }
+        self.coordinator.get_active_zones = Mock(return_value=active_zones)
+
+        zone_temps = {
+            "climate.living_room": 20.0,
+            neighbor_id: 21.0,  # 2°C rise
+        }
+        self.coordinator.get_zone_temps = Mock(return_value=zone_temps)
+
+        await self.manager.calc_output()
+
+        # Feedforward should be set: 0.2 * 1.0 * 2.0 * 100.0 = 40.0
+        assert len(self._feedforward_calls) == 1
+        assert self._feedforward_calls[0] == pytest.approx(40.0, abs=0.1)
