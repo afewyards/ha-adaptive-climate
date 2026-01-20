@@ -1,6 +1,112 @@
 # CHANGELOG
 
 
+## v0.18.0 (2026-01-20)
+
+### Chores
+
+- Remove planning docs and temp data files
+  ([`e130215`](https://github.com/afewyards/ha-adaptive-thermostat/commit/e130215065c5e661944fdf89d12f9b9c07d242d6))
+
+Cleanup after thermal coupling implementation complete.
+
+- Update .gitignore
+  ([`2ccb4d2`](https://github.com/afewyards/ha-adaptive-thermostat/commit/2ccb4d22c6a5dddcf96e867609948a45a606c95f))
+
+### Documentation
+
+- Update thermal coupling docs for floor auto-discovery
+  ([`6bf22c6`](https://github.com/afewyards/ha-adaptive-thermostat/commit/6bf22c6ccbe5e45079d8eaf6bcc56b48553ff894))
+
+- Remove old floorplan YAML structure (floor numbers, zones per floor) - Document new simplified
+  'open' list configuration - Add prerequisites for Home Assistant floor/area setup - Explain
+  auto-discovery using entity→area→floor registry chain - Update README multi-zone example with
+  simplified config
+
+Related to thermal coupling auto-discovery feature (stories 1.1-3.2).
+
+### Features
+
+- **const**: Add CONF_OPEN_ZONES and deprecate CONF_FLOORPLAN
+  ([`439208c`](https://github.com/afewyards/ha-adaptive-thermostat/commit/439208c76b7be7a4c499e6f673c954ba231907bd))
+
+Replace CONF_FLOORPLAN constant with CONF_OPEN_ZONES in const.py for the new auto-discovery-based
+  thermal coupling configuration.
+
+- Add CONF_OPEN_ZONES = 'open' to const.py - Remove CONF_FLOORPLAN from const.py - Define legacy
+  CONF_FLOORPLAN locally in modules that still need it for backward compatibility during migration -
+  Update thermal_coupling.py imports to use CONF_OPEN_ZONES - Update climate.py to use local
+  _CONF_FLOORPLAN constant - Update tests to import CONF_FLOORPLAN from thermal_coupling module
+
+- **coordinator**: Integrate floor auto-discovery for thermal coupling seeds
+  ([`2204073`](https://github.com/afewyards/ha-adaptive-thermostat/commit/2204073f03b94303b6395974eed8639cb9c833a2))
+
+- Update ThermalCouplingLearner to accept hass reference for registry access - Modify
+  initialize_seeds() to support auto-discovery via zone_entity_ids - Add discover_zone_floors()
+  integration with warning logs for unassigned zones - Update climate.py to pass zone_entity_ids and
+  support auto-discovery flow - Add coordinator initialization tests for auto-discovery integration
+
+Story 3.1: Integrate auto-discovery in coordinator initialization
+
+- **registry**: Create discover_zone_floors() helper for zone floor discovery
+  ([`a4d0291`](https://github.com/afewyards/ha-adaptive-thermostat/commit/a4d0291e93467dd2d3b9d7b3d5af9d7ed5c003cf))
+
+Implement story 1.1 from thermal-coupling-autodiscovery PRD:
+
+- Create helpers/registry.py with discover_zone_floors() function - Uses entity, area, and floor
+  registries to discover floor levels - Returns dict mapping entity_id -> floor level (int) or None
+  - Gracefully handles missing area_id, floor_id, or registry entries - Comprehensive test coverage
+  in tests/test_registry.py
+
+Test coverage includes: - All zones with complete registry chain - Missing area_id on entity -
+  Missing floor_id on area - Mixed results (some None, some int) - Entity not in registry - Empty
+  zone list
+
+All 6 tests passing.
+
+- **thermal-coupling**: Add build_seeds_from_discovered_floors() function
+  ([`4f3c6f6`](https://github.com/afewyards/ha-adaptive-thermostat/commit/4f3c6f69e999d7a67dd0b7dc80bcb63abf46cedf))
+
+Implement story 2.1 from thermal-coupling-autodiscovery PRD.
+
+This function generates seed coefficients from auto-discovered zone floor assignments, replacing the
+  manual floorplan configuration approach. It works with a zone_floors dict mapping entity IDs to
+  floor levels (int or None).
+
+Key features: - Same floor zones get same_floor coefficient (0.15) - Adjacent floor zones get
+  up/down coefficients (0.40/0.10) - Open zones on same floor get open coefficient (0.60) -
+  Stairwell zones get stairwell_up/stairwell_down coefficients (0.45/0.10) - Zones with None floor
+  are excluded from coupling pairs - Supports optional seed_coefficients override
+
+All 80 tests pass, including 6 new TDD tests for this function.
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+### Refactoring
+
+- **climate**: Replace floorplan schema with CONF_OPEN_ZONES list
+  ([`a1d2ba9`](https://github.com/afewyards/ha-adaptive-thermostat/commit/a1d2ba96f1f889c3da760fc470243bd892e1948b))
+
+Update thermal_coupling config schema to use auto-discovery: - Remove complex floorplan structure
+  (floor, zones, open per-floor) - Add CONF_OPEN_ZONES as simple list of entity IDs for open floor
+  plans - Add cv.ensure_list to stairwell_zones for consistency - Keep seed_coefficients schema
+  unchanged
+
+Tests: - Add test_config_thermal_coupling_open_list - Add test_config_thermal_coupling_minimal -
+  Create legacy schema helper for backward compat tests - All 21 config tests passing
+
+### Testing
+
+- **thermal-coupling**: Add integration tests for floor auto-discovery
+  ([`f8a4460`](https://github.com/afewyards/ha-adaptive-thermostat/commit/f8a4460afaec9508c6318c7388fcb3e37c2883a1))
+
+Add TestAutoDiscoveryIntegration class with 4 end-to-end tests: -
+  test_coupling_integration_autodiscovery: full flow with mocked HA registries -
+  test_coupling_integration_partial_discovery: zones without floors get warnings -
+  test_autodiscovery_with_open_zones: open floor plan coefficient handling -
+  test_autodiscovery_with_stairwell_zones: stairwell zone coefficient handling
+
+
 ## v0.17.0 (2026-01-20)
 
 ### Documentation
