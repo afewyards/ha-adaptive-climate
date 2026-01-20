@@ -1,6 +1,43 @@
 # CHANGELOG
 
 
+## v0.20.3 (2026-01-20)
+
+### Bug Fixes
+
+- **heater**: Implement session boundary detection in async_set_control_value
+  ([`add29d1`](https://github.com/afewyards/ha-adaptive-thermostat/commit/add29d19fd49280b447eb20e4d2b2dbac3a9a2f3))
+
+Move cycle tracker notifications from _turn_on/_turn_off/_set_valve to async_set_control_value. This
+  ensures cycle tracker only sees TRUE heating sessions (0→>0 starts, >0→0 ends) not individual PWM
+  pulses.
+
+### Testing
+
+- **heater**: Add edge case tests for 100% and 0% duty cycles
+  ([`5d9083c`](https://github.com/afewyards/ha-adaptive-thermostat/commit/5d9083c59149bdb13f9152683f01d1963e9fc48d))
+
+- **heater**: Verify no cycle tracker calls in PWM turn_on/turn_off
+  ([`4b6d398`](https://github.com/afewyards/ha-adaptive-thermostat/commit/4b6d3988ed70d9c50299ec6b29cb57aa2396f71c))
+
+Add tests confirming that async_turn_on and async_turn_off do not call cycle tracker methods.
+  Session tracking happens in async_set_control_value (0→>0 and >0→0 transitions), not in individual
+  PWM on/off pulses.
+
+This validates the implementation from story 1.2 where redundant calls were removed from
+  async_turn_on/async_turn_off.
+
+- **integration**: Add PWM session tracking end-to-end test
+  ([`e244e3b`](https://github.com/afewyards/ha-adaptive-thermostat/commit/e244e3ba140106e888da511090e3b20fd6e7c700))
+
+Adds test_pwm_cycle_completes_without_settling_interruption to verify that multiple PWM pulses
+  produce only a single HEATING→SETTLING transition when the control output finally goes to 0.
+
+Simulates 30 minutes of PWM cycling where control_output stays >0 while the heater turns on/off
+  internally. Verifies that the session tracking mechanism correctly identifies session boundaries
+  (0→>0 and >0→0) rather than individual PWM pulses, resulting in exactly one cycle being recorded.
+
+
 ## v0.20.2 (2026-01-20)
 
 ### Bug Fixes
