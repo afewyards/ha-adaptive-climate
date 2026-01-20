@@ -1,6 +1,52 @@
 # CHANGELOG
 
 
+## v0.22.0 (2026-01-20)
+
+### Chores
+
+- Remove unused heating_curves module and clean imports
+  ([`d10470c`](https://github.com/afewyards/ha-adaptive-thermostat/commit/d10470c67b64e56d51182269d6d942dcdd1c688c))
+
+### Documentation
+
+- **claude**: Condense CLAUDE.md from 736 to 154 lines
+  ([`12457bb`](https://github.com/afewyards/ha-adaptive-thermostat/commit/12457bb5e24bd46cd896ef6cfeeb4266ab7c655f))
+
+Remove verbose Mermaid diagrams, material property tables, and redundant config examples. Keep
+  architecture tables, key technical details, and test organization.
+
+### Features
+
+- **pid**: Add HEATING_TYPE_INTEGRAL_DECAY constants
+  ([`38b702e`](https://github.com/afewyards/ha-adaptive-thermostat/commit/38b702e602f1ea2858d8d0de581b994a107fc9b3))
+
+Add decay multipliers for asymmetric integral decay during overhang: - floor_hydronic: 3.0 (slowest
+  system needs fastest decay) - radiator: 2.0 - convector: 1.5 - forced_air: 1.2 (fast response can
+  self-correct)
+
+Also add DEFAULT_INTEGRAL_DECAY = 1.5 for unknown heating types.
+
+- **pid**: Add integral_decay_multiplier parameter
+  ([`1febbde`](https://github.com/afewyards/ha-adaptive-thermostat/commit/1febbdea341c3f396601be79f46c7a889bc3b9de))
+
+Add integral_decay_multiplier parameter to PID controller for asymmetric integral decay during
+  overhang situations.
+
+- Add integral_decay_multiplier param to __init__ with default 1.5 - Add property getter and setter
+  with min 1.0 guard - Add 4 tests for init, default, getter, setter
+
+- **pid**: Implement asymmetric integral decay in calc()
+  ([`1a27910`](https://github.com/afewyards/ha-adaptive-thermostat/commit/1a2791086319279228b364271722c65f52df7ad9))
+
+Add overhang detection that applies integral_decay_multiplier when error opposes integral sign. This
+  accelerates wind-down during thermal overhang (e.g., floor heating overshooting setpoint due to
+  thermal mass).
+
+- Positive integral + negative error → apply decay multiplier - Negative integral + positive error →
+  apply decay multiplier - Same sign → normal integration (multiplier=1.0)
+
+
 ## v0.21.1 (2026-01-20)
 
 ### Bug Fixes
