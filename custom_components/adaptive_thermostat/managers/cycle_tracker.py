@@ -14,6 +14,18 @@ from typing import TYPE_CHECKING, Awaitable, Callable
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
     from ..adaptive.learning import AdaptiveLearner
+    from .events import (
+        CycleEventDispatcher,
+        CycleStartedEvent,
+        CycleEndedEvent,
+        HeatingStartedEvent,
+        HeatingEndedEvent,
+        SettlingStartedEvent,
+        SetpointChangedEvent,
+        ModeChangedEvent,
+        ContactPauseEvent,
+        ContactResumeEvent,
+    )
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -54,6 +66,7 @@ class CycleTrackerManager:
         get_outdoor_temp: Callable[[], float | None] | None = None,
         on_validation_failed: Callable[[], Awaitable[None]] | None = None,
         on_auto_apply_check: Callable[[], Awaitable[None]] | None = None,
+        dispatcher: "CycleEventDispatcher | None" = None,
     ) -> None:
         """Initialize the cycle tracker manager.
 
@@ -71,6 +84,7 @@ class CycleTrackerManager:
             get_outdoor_temp: Callback to get outdoor temperature (optional)
             on_validation_failed: Async callback for validation failure (triggers rollback)
             on_auto_apply_check: Async callback for auto-apply check after cycle completion
+            dispatcher: Optional CycleEventDispatcher for event-driven operation
         """
         from ..const import (
             SETTLING_TIMEOUT_MULTIPLIER,
@@ -89,6 +103,7 @@ class CycleTrackerManager:
         self._get_outdoor_temp = get_outdoor_temp
         self._on_validation_failed = on_validation_failed
         self._on_auto_apply_check = on_auto_apply_check
+        self._dispatcher = dispatcher
 
         # State tracking
         self._state: CycleState = CycleState.IDLE
@@ -129,6 +144,40 @@ class CycleTrackerManager:
             self._max_settling_time_minutes,
             self._settling_timeout_source,
         )
+
+        # Event subscriptions
+        self._unsubscribe_handles: list[Callable[[], None]] = []
+        self._device_on_time: datetime | None = None
+        self._device_off_time: datetime | None = None
+
+        # Subscribe to events if dispatcher provided
+        if self._dispatcher is not None:
+            from .events import CycleEventType
+
+            self._unsubscribe_handles.append(
+                self._dispatcher.subscribe(CycleEventType.CYCLE_STARTED, self._on_cycle_started)
+            )
+            self._unsubscribe_handles.append(
+                self._dispatcher.subscribe(CycleEventType.HEATING_STARTED, self._on_heating_started)
+            )
+            self._unsubscribe_handles.append(
+                self._dispatcher.subscribe(CycleEventType.HEATING_ENDED, self._on_heating_ended)
+            )
+            self._unsubscribe_handles.append(
+                self._dispatcher.subscribe(CycleEventType.SETTLING_STARTED, self._on_settling_started)
+            )
+            self._unsubscribe_handles.append(
+                self._dispatcher.subscribe(CycleEventType.CONTACT_PAUSE, self._on_contact_pause)
+            )
+            self._unsubscribe_handles.append(
+                self._dispatcher.subscribe(CycleEventType.CONTACT_RESUME, self._on_contact_resume)
+            )
+            self._unsubscribe_handles.append(
+                self._dispatcher.subscribe(CycleEventType.SETPOINT_CHANGED, self._on_setpoint_changed_event)
+            )
+            self._unsubscribe_handles.append(
+                self._dispatcher.subscribe(CycleEventType.MODE_CHANGED, self._on_mode_changed_event)
+            )
 
     @property
     def state(self) -> CycleState:
@@ -289,6 +338,85 @@ class CycleTrackerManager:
             "Cooling session ended, monitoring settling (timeout in %d minutes)",
             self._max_settling_time_minutes,
         )
+
+    def _on_cycle_started(self, event: "CycleStartedEvent") -> None:
+        """Handle CYCLE_STARTED event.
+
+        Args:
+            event: CycleStartedEvent with hvac_mode, timestamp, target_temp, current_temp
+        """
+        # Delegate to existing on_heating_started or on_cooling_started logic
+        if event.hvac_mode == "heat":
+            self.on_heating_started(event.timestamp)
+        elif event.hvac_mode == "cool":
+            self.on_cooling_started(event.timestamp)
+
+    def _on_settling_started(self, event: "SettlingStartedEvent") -> None:
+        """Handle SETTLING_STARTED event.
+
+        Args:
+            event: SettlingStartedEvent with hvac_mode, timestamp
+        """
+        # Delegate to existing on_heating_session_ended or on_cooling_session_ended
+        if event.hvac_mode == "heat":
+            self.on_heating_session_ended(event.timestamp)
+        elif event.hvac_mode == "cool":
+            self.on_cooling_session_ended(event.timestamp)
+
+    def _on_heating_started(self, event: "HeatingStartedEvent") -> None:
+        """Handle HEATING_STARTED event for duty cycle tracking.
+
+        Args:
+            event: HeatingStartedEvent with hvac_mode, timestamp
+        """
+        # Track device on time for duty cycle calculation
+        self._device_on_time = event.timestamp
+
+    def _on_heating_ended(self, event: "HeatingEndedEvent") -> None:
+        """Handle HEATING_ENDED event for duty cycle tracking.
+
+        Args:
+            event: HeatingEndedEvent with hvac_mode, timestamp
+        """
+        # Track device off time for duty cycle calculation
+        self._device_off_time = event.timestamp
+
+    def _on_contact_pause(self, event: "ContactPauseEvent") -> None:
+        """Handle CONTACT_PAUSE event.
+
+        Args:
+            event: ContactPauseEvent with hvac_mode, timestamp, entity_id
+        """
+        # Delegate to existing on_contact_sensor_pause logic
+        self.on_contact_sensor_pause()
+
+    def _on_contact_resume(self, event: "ContactResumeEvent") -> None:
+        """Handle CONTACT_RESUME event.
+
+        Args:
+            event: ContactResumeEvent with hvac_mode, timestamp, entity_id, pause_duration_seconds
+        """
+        # Currently a no-op since CONTACT_PAUSE already aborts the cycle
+        # Future enhancement: could resume cycle if pause was brief
+        pass
+
+    def _on_setpoint_changed_event(self, event: "SetpointChangedEvent") -> None:
+        """Handle SETPOINT_CHANGED event.
+
+        Args:
+            event: SetpointChangedEvent with hvac_mode, timestamp, old_target, new_target
+        """
+        # Delegate to existing on_setpoint_changed logic
+        self.on_setpoint_changed(event.old_target, event.new_target)
+
+    def _on_mode_changed_event(self, event: "ModeChangedEvent") -> None:
+        """Handle MODE_CHANGED event.
+
+        Args:
+            event: ModeChangedEvent with timestamp, old_mode, new_mode
+        """
+        # Delegate to existing on_mode_changed logic
+        self.on_mode_changed(event.old_mode, event.new_mode)
 
     def _cancel_settling_timeout(self) -> None:
         """Cancel any active settling timeout."""
@@ -796,6 +924,31 @@ class CycleTrackerManager:
 
         # Schedule debounced save of learning data
         self._schedule_learning_save()
+
+        # Emit CYCLE_ENDED event if dispatcher is configured
+        if self._dispatcher is not None:
+            from .events import CycleEndedEvent
+
+            # Get HVAC mode from callback
+            hvac_mode = self._get_hvac_mode()
+
+            # Create metrics dict from the CycleMetrics object
+            metrics_dict = {
+                "overshoot": metrics.overshoot,
+                "undershoot": metrics.undershoot,
+                "settling_time": metrics.settling_time,
+                "oscillations": metrics.oscillations,
+                "rise_time": metrics.rise_time,
+                "disturbances": metrics.disturbances,
+                "outdoor_temp_avg": metrics.outdoor_temp_avg,
+            }
+
+            cycle_ended_event = CycleEndedEvent(
+                hvac_mode=hvac_mode,
+                timestamp=datetime.now(),
+                metrics=metrics_dict,
+            )
+            self._dispatcher.emit(cycle_ended_event)
 
         # Reset cycle state (clears interruption flags and transitions to IDLE)
         self._reset_cycle_state()
