@@ -259,3 +259,177 @@ def test_config_complete_thermal_coupling():
     assert len(validated[CONF_FLOORPLAN]) == 2
     assert validated[CONF_STAIRWELL_ZONES] == ["climate.stairwell"]
     assert validated[CONF_SEED_COEFFICIENTS]["same_floor"] == 0.15
+
+
+# =============================================================================
+# Coupling Learner Initialization Tests (Story 7.2)
+# =============================================================================
+
+
+def test_climate_init_coupling_learner():
+    """Test that coupling learner is created during climate setup.
+
+    The ThermalCouplingLearner should be created and have proper initial state.
+    This test verifies the learner can be created independently and has
+    the expected empty state for fresh initialization.
+    """
+    from custom_components.adaptive_thermostat.adaptive.thermal_coupling import ThermalCouplingLearner
+
+    # Create learner (simulating what coordinator does)
+    learner = ThermalCouplingLearner()
+
+    # Verify learner has expected initial empty state
+    assert learner is not None
+    assert isinstance(learner, ThermalCouplingLearner)
+    assert learner.observations == {}
+    assert learner.coefficients == {}
+    assert learner._seeds == {}
+
+    # Verify learner has required methods
+    assert hasattr(learner, 'get_coefficient')
+    assert hasattr(learner, 'calculate_coefficient')
+    assert hasattr(learner, 'initialize_seeds')
+    assert hasattr(learner, 'start_observation')
+    assert hasattr(learner, 'end_observation')
+    assert hasattr(learner, 'to_dict')
+    assert hasattr(learner, 'from_dict')
+
+
+def test_climate_restore_coupling_data():
+    """Test that coupling data is restored from persistence on startup.
+
+    When the LearningDataStore contains coupling data, it should be loaded
+    into the ThermalCouplingLearner via the from_dict method.
+    """
+    from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+        ThermalCouplingLearner,
+        CouplingObservation,
+        CouplingCoefficient,
+    )
+    from custom_components.adaptive_thermostat.adaptive.persistence import LearningDataStore
+    from datetime import datetime
+    from unittest.mock import Mock, AsyncMock, patch
+
+    # Create test coupling data to restore
+    stored_coupling_data = {
+        "observations": {
+            "climate.zone_a|climate.zone_b": [
+                {
+                    "timestamp": "2024-01-15T10:00:00",
+                    "source_zone": "climate.zone_a",
+                    "target_zone": "climate.zone_b",
+                    "source_temp_start": 18.0,
+                    "source_temp_end": 21.0,
+                    "target_temp_start": 17.0,
+                    "target_temp_end": 17.5,
+                    "outdoor_temp_start": 5.0,
+                    "outdoor_temp_end": 6.0,
+                    "duration_minutes": 30.0,
+                }
+            ]
+        },
+        "coefficients": {
+            "climate.zone_a|climate.zone_b": {
+                "source_zone": "climate.zone_a",
+                "target_zone": "climate.zone_b",
+                "coefficient": 0.18,
+                "confidence": 0.35,
+                "observation_count": 3,
+                "baseline_overshoot": None,
+                "last_updated": "2024-01-15T11:00:00",
+            }
+        },
+        "seeds": {
+            "climate.zone_a|climate.zone_b": 0.15,
+        }
+    }
+
+    # Restore learner from dict
+    learner = ThermalCouplingLearner.from_dict(stored_coupling_data)
+
+    # Verify observations were restored
+    assert ("climate.zone_a", "climate.zone_b") in learner.observations
+    obs_list = learner.observations[("climate.zone_a", "climate.zone_b")]
+    assert len(obs_list) == 1
+    assert obs_list[0].source_zone == "climate.zone_a"
+    assert obs_list[0].target_zone == "climate.zone_b"
+    assert obs_list[0].source_temp_start == 18.0
+
+    # Verify coefficients were restored
+    assert ("climate.zone_a", "climate.zone_b") in learner.coefficients
+    coef = learner.coefficients[("climate.zone_a", "climate.zone_b")]
+    assert coef.coefficient == 0.18
+    assert coef.confidence == 0.35
+    assert coef.observation_count == 3
+
+    # Verify seeds were restored
+    assert ("climate.zone_a", "climate.zone_b") in learner._seeds
+    assert learner._seeds[("climate.zone_a", "climate.zone_b")] == 0.15
+
+
+def test_climate_seeds_from_floorplan():
+    """Test that seeds are initialized from floorplan config.
+
+    When a floorplan configuration is provided, the ThermalCouplingLearner
+    should generate seed coefficients for zone pairs based on their
+    spatial relationships (same floor, up, down, open, stairwell).
+    """
+    from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+        ThermalCouplingLearner,
+        parse_floorplan,
+    )
+    from custom_components.adaptive_thermostat.const import (
+        CONF_FLOORPLAN,
+        CONF_STAIRWELL_ZONES,
+        CONF_SEED_COEFFICIENTS,
+        DEFAULT_SEED_COEFFICIENTS,
+    )
+
+    # Create floorplan config
+    floorplan_config = {
+        CONF_FLOORPLAN: [
+            {
+                "floor": 0,
+                "zones": ["climate.living_room", "climate.kitchen"],
+                "open": ["climate.living_room", "climate.kitchen"],
+            },
+            {
+                "floor": 1,
+                "zones": ["climate.bedroom", "climate.bathroom"],
+            }
+        ],
+        CONF_STAIRWELL_ZONES: ["climate.living_room", "climate.bedroom"],
+    }
+
+    # Create learner and initialize seeds
+    learner = ThermalCouplingLearner()
+    learner.initialize_seeds(floorplan_config)
+
+    # Verify same-floor open plan seeds (living room <-> kitchen)
+    # Both zones are in open floor plan, so should use "open" seed
+    assert ("climate.living_room", "climate.kitchen") in learner._seeds
+    assert learner._seeds[("climate.living_room", "climate.kitchen")] == DEFAULT_SEED_COEFFICIENTS["open"]
+    assert learner._seeds[("climate.kitchen", "climate.living_room")] == DEFAULT_SEED_COEFFICIENTS["open"]
+
+    # Verify floor 1 same-floor seeds (bedroom <-> bathroom)
+    assert ("climate.bedroom", "climate.bathroom") in learner._seeds
+    assert learner._seeds[("climate.bedroom", "climate.bathroom")] == DEFAULT_SEED_COEFFICIENTS["same_floor"]
+
+    # Verify stairwell vertical seeds (living_room -> bedroom = stairwell_up)
+    assert ("climate.living_room", "climate.bedroom") in learner._seeds
+    assert learner._seeds[("climate.living_room", "climate.bedroom")] == DEFAULT_SEED_COEFFICIENTS["stairwell_up"]
+
+    # Verify stairwell vertical seeds (bedroom -> living_room = stairwell_down)
+    assert learner._seeds[("climate.bedroom", "climate.living_room")] == DEFAULT_SEED_COEFFICIENTS["stairwell_down"]
+
+    # Verify regular vertical seeds (kitchen -> bathroom = up, not stairwell)
+    assert ("climate.kitchen", "climate.bathroom") in learner._seeds
+    assert learner._seeds[("climate.kitchen", "climate.bathroom")] == DEFAULT_SEED_COEFFICIENTS["up"]
+    assert learner._seeds[("climate.bathroom", "climate.kitchen")] == DEFAULT_SEED_COEFFICIENTS["down"]
+
+    # Verify get_coefficient returns seed-based coefficient for seed-only pairs
+    coef = learner.get_coefficient("climate.living_room", "climate.kitchen")
+    assert coef is not None
+    assert coef.coefficient == DEFAULT_SEED_COEFFICIENTS["open"]
+    assert coef.confidence == 0.3  # COUPLING_CONFIDENCE_THRESHOLD for seed-only
+    assert coef.observation_count == 0

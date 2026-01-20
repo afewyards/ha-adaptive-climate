@@ -260,6 +260,50 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     else:
         learning_store = hass.data[DOMAIN]["learning_store"]
 
+    # Initialize thermal coupling learner (restore from persistence once)
+    coordinator = hass.data.get(DOMAIN, {}).get("coordinator")
+    if coordinator and not hass.data[DOMAIN].get("coupling_learner_initialized"):
+        # Restore coupling data from persistence
+        stored_coupling_data = learning_store.get_coupling_data()
+        if stored_coupling_data:
+            from .adaptive.thermal_coupling import ThermalCouplingLearner
+            restored_learner = ThermalCouplingLearner.from_dict(stored_coupling_data)
+            # Copy restored data to coordinator's learner
+            learner = coordinator.thermal_coupling_learner
+            learner.observations = restored_learner.observations
+            learner.coefficients = restored_learner.coefficients
+            learner._seeds = restored_learner._seeds
+            _LOGGER.info(
+                "Restored ThermalCouplingLearner from persistence: "
+                "%d observation pairs, %d coefficients, %d seeds",
+                len(learner.observations),
+                len(learner.coefficients),
+                len(learner._seeds),
+            )
+        hass.data[DOMAIN]["coupling_learner_initialized"] = True
+
+    # Initialize seeds from floorplan config (if thermal_coupling is configured)
+    thermal_coupling_config = config.get(const.CONF_THERMAL_COUPLING)
+    if thermal_coupling_config and coordinator:
+        # Check if thermal coupling is enabled (default: true)
+        enabled = thermal_coupling_config.get("enabled", True)
+        if enabled:
+            floorplan = thermal_coupling_config.get(const.CONF_FLOORPLAN)
+            if floorplan and not hass.data[DOMAIN].get("coupling_seeds_initialized"):
+                # Build floorplan config dict for seed generation
+                floorplan_config = {
+                    const.CONF_FLOORPLAN: floorplan,
+                    const.CONF_STAIRWELL_ZONES: thermal_coupling_config.get(const.CONF_STAIRWELL_ZONES, []),
+                    const.CONF_SEED_COEFFICIENTS: thermal_coupling_config.get(const.CONF_SEED_COEFFICIENTS, {}),
+                }
+                learner = coordinator.thermal_coupling_learner
+                learner.initialize_seeds(floorplan_config)
+                hass.data[DOMAIN]["coupling_seeds_initialized"] = True
+                _LOGGER.info(
+                    "Initialized ThermalCouplingLearner seeds from floorplan: %d zone pairs",
+                    len(learner._seeds),
+                )
+
     # Validate that at least one output entity is configured
     heater = config.get(const.CONF_HEATER)
     cooler = config.get(const.CONF_COOLER)
