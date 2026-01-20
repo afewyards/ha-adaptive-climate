@@ -24,6 +24,8 @@ try:
         COUPLING_MIN_OBSERVATIONS,
         COUPLING_MIN_SOURCE_RISE,
         COUPLING_SEED_WEIGHT,
+        COUPLING_VALIDATION_CYCLES,
+        COUPLING_VALIDATION_DEGRADATION,
         DEFAULT_SEED_COEFFICIENTS,
     )
 except ImportError:
@@ -39,6 +41,8 @@ except ImportError:
         COUPLING_MIN_OBSERVATIONS,
         COUPLING_MIN_SOURCE_RISE,
         COUPLING_SEED_WEIGHT,
+        COUPLING_VALIDATION_CYCLES,
+        COUPLING_VALIDATION_DEGRADATION,
         DEFAULT_SEED_COEFFICIENTS,
     )
 
@@ -109,6 +113,7 @@ class CouplingCoefficient:
     observation_count: int        # Number of observations used to calculate
     baseline_overshoot: Optional[float]  # Baseline overshoot before compensation (for validation)
     last_updated: datetime        # When the coefficient was last updated
+    validation_cycles: int = 0    # Number of cycles in validation window after coefficient change
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert coefficient to dictionary for persistence."""
@@ -120,6 +125,7 @@ class CouplingCoefficient:
             "observation_count": self.observation_count,
             "baseline_overshoot": self.baseline_overshoot,
             "last_updated": self.last_updated.isoformat(),
+            "validation_cycles": self.validation_cycles,
         }
 
     @classmethod
@@ -133,6 +139,7 @@ class CouplingCoefficient:
             observation_count=data["observation_count"],
             baseline_overshoot=data["baseline_overshoot"],
             last_updated=datetime.fromisoformat(data["last_updated"]),
+            validation_cycles=data.get("validation_cycles", 0),
         )
 
 
@@ -515,6 +522,7 @@ class ThermalCouplingLearner:
                 observation_count=0,
                 baseline_overshoot=None,
                 last_updated=datetime.now(),
+                validation_cycles=0,
             )
 
         # No data available for this pair
@@ -614,6 +622,7 @@ class ThermalCouplingLearner:
             observation_count=obs_count,
             baseline_overshoot=None,
             last_updated=datetime.now(),
+            validation_cycles=0,
         )
 
     def start_observation(
@@ -720,6 +729,161 @@ class ThermalCouplingLearner:
             observations.append(observation)
 
         return observations
+
+    def record_baseline_overshoot(
+        self, pair: Tuple[str, str], overshoot: float
+    ) -> None:
+        """Record the baseline overshoot for a coefficient before validation.
+
+        This is called when coupling compensation is first applied to a zone pair,
+        recording the current overshoot to compare against during validation.
+
+        Args:
+            pair: (source_zone, target_zone) tuple
+            overshoot: The baseline overshoot value (°C)
+        """
+        if pair not in self.coefficients:
+            return
+
+        coef = self.coefficients[pair]
+        # Create a new CouplingCoefficient with updated baseline
+        self.coefficients[pair] = CouplingCoefficient(
+            source_zone=coef.source_zone,
+            target_zone=coef.target_zone,
+            coefficient=coef.coefficient,
+            confidence=coef.confidence,
+            observation_count=coef.observation_count,
+            baseline_overshoot=overshoot,
+            last_updated=coef.last_updated,
+            validation_cycles=0,  # Reset validation cycles when baseline is set
+        )
+
+    def add_validation_cycle(
+        self, pair: Tuple[str, str], overshoot: float
+    ) -> None:
+        """Add a validation cycle for a coefficient.
+
+        Increments the validation cycle count for tracking coefficient performance
+        after it was changed. Call this after each heating cycle when validation
+        is in progress.
+
+        Args:
+            pair: (source_zone, target_zone) tuple
+            overshoot: The overshoot observed in this cycle (°C)
+        """
+        if pair not in self.coefficients:
+            return
+
+        coef = self.coefficients[pair]
+        # Increment validation cycles
+        self.coefficients[pair] = CouplingCoefficient(
+            source_zone=coef.source_zone,
+            target_zone=coef.target_zone,
+            coefficient=coef.coefficient,
+            confidence=coef.confidence,
+            observation_count=coef.observation_count,
+            baseline_overshoot=coef.baseline_overshoot,
+            last_updated=coef.last_updated,
+            validation_cycles=coef.validation_cycles + 1,
+        )
+
+    def check_validation(
+        self, pair: Tuple[str, str], current_overshoot: float
+    ) -> Optional[str]:
+        """Check validation status and potentially trigger rollback.
+
+        Compares current overshoot to baseline overshoot. If overshoot has
+        increased by more than COUPLING_VALIDATION_DEGRADATION (30%), the
+        coefficient is halved (rolled back).
+
+        Args:
+            pair: (source_zone, target_zone) tuple
+            current_overshoot: The current overshoot value (°C)
+
+        Returns:
+            - "rollback" if coefficient was rolled back due to degradation
+            - "success" if validation completed successfully
+            - None if still collecting cycles or no validation needed
+        """
+        import logging
+        _LOGGER = logging.getLogger(__name__)
+
+        if pair not in self.coefficients:
+            return None
+
+        coef = self.coefficients[pair]
+
+        # Skip if no baseline recorded (not in validation mode)
+        if coef.baseline_overshoot is None:
+            return None
+
+        # Check if overshoot has degraded beyond threshold
+        threshold = coef.baseline_overshoot * (1 + COUPLING_VALIDATION_DEGRADATION)
+
+        if current_overshoot > threshold:
+            # Rollback: halve the coefficient
+            old_coefficient = coef.coefficient
+            new_coefficient = coef.coefficient / 2
+
+            _LOGGER.warning(
+                "Coupling coefficient rollback triggered for %s -> %s: "
+                "overshoot %.3f°C exceeds threshold %.3f°C (baseline %.3f°C). "
+                "Coefficient reduced from %.3f to %.3f",
+                pair[0], pair[1],
+                current_overshoot, threshold, coef.baseline_overshoot,
+                old_coefficient, new_coefficient,
+            )
+
+            # Create new coefficient with halved value and reset validation
+            self.coefficients[pair] = CouplingCoefficient(
+                source_zone=coef.source_zone,
+                target_zone=coef.target_zone,
+                coefficient=new_coefficient,
+                confidence=coef.confidence,
+                observation_count=coef.observation_count,
+                baseline_overshoot=None,  # Clear baseline
+                last_updated=datetime.now(),
+                validation_cycles=0,  # Reset cycles
+            )
+            return "rollback"
+
+        # Increment validation cycles
+        new_cycles = coef.validation_cycles + 1
+
+        # Check if validation window complete
+        if new_cycles >= COUPLING_VALIDATION_CYCLES:
+            # Validation successful
+            _LOGGER.info(
+                "Coupling coefficient validation successful for %s -> %s: "
+                "average overshoot %.3f°C within threshold (baseline %.3f°C)",
+                pair[0], pair[1], current_overshoot, coef.baseline_overshoot,
+            )
+
+            # Clear validation state
+            self.coefficients[pair] = CouplingCoefficient(
+                source_zone=coef.source_zone,
+                target_zone=coef.target_zone,
+                coefficient=coef.coefficient,
+                confidence=coef.confidence,
+                observation_count=coef.observation_count,
+                baseline_overshoot=None,  # Clear baseline
+                last_updated=coef.last_updated,
+                validation_cycles=0,  # Reset cycles
+            )
+            return "success"
+
+        # Still collecting cycles
+        self.coefficients[pair] = CouplingCoefficient(
+            source_zone=coef.source_zone,
+            target_zone=coef.target_zone,
+            coefficient=coef.coefficient,
+            confidence=coef.confidence,
+            observation_count=coef.observation_count,
+            baseline_overshoot=coef.baseline_overshoot,
+            last_updated=coef.last_updated,
+            validation_cycles=new_cycles,
+        )
+        return None
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize the learner state to a dictionary for persistence.

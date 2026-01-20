@@ -1829,3 +1829,290 @@ class TestLearnerSerialization:
         assert rest_coef.observation_count == orig_coef.observation_count
         assert rest_coef.baseline_overshoot == orig_coef.baseline_overshoot
         assert rest_coef.last_updated == orig_coef.last_updated
+
+
+# ============================================================================
+# Validation and Rollback Tests
+# ============================================================================
+
+
+class TestCoefficientValidation:
+    """Tests for coefficient validation and rollback logic."""
+
+    def test_validation_tracks_baseline(self):
+        """Test baseline_overshoot is stored when compensation first applied."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            ThermalCouplingLearner,
+            CouplingCoefficient,
+        )
+
+        learner = ThermalCouplingLearner()
+        pair = ("climate.living_room", "climate.kitchen")
+
+        # Add a coefficient with no baseline yet
+        coef = CouplingCoefficient(
+            source_zone="climate.living_room",
+            target_zone="climate.kitchen",
+            coefficient=0.25,
+            confidence=0.5,
+            observation_count=5,
+            baseline_overshoot=None,
+            validation_cycles=0,
+            last_updated=datetime.now(),
+        )
+        learner.coefficients[pair] = coef
+
+        # Record baseline overshoot
+        learner.record_baseline_overshoot(pair, overshoot=0.3)
+
+        # Baseline should now be stored
+        assert learner.coefficients[pair].baseline_overshoot == 0.3
+        assert learner.coefficients[pair].validation_cycles == 0
+
+    def test_validation_counts_cycles(self):
+        """Test validation_cycles increments after coefficient change."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            ThermalCouplingLearner,
+            CouplingCoefficient,
+        )
+
+        learner = ThermalCouplingLearner()
+        pair = ("climate.living_room", "climate.kitchen")
+
+        # Set up coefficient with baseline recorded
+        coef = CouplingCoefficient(
+            source_zone="climate.living_room",
+            target_zone="climate.kitchen",
+            coefficient=0.25,
+            confidence=0.5,
+            observation_count=5,
+            baseline_overshoot=0.3,
+            validation_cycles=0,
+            last_updated=datetime.now(),
+        )
+        learner.coefficients[pair] = coef
+
+        # Add validation cycle
+        learner.add_validation_cycle(pair, overshoot=0.28)
+
+        # Validation cycles should increment
+        assert learner.coefficients[pair].validation_cycles == 1
+
+        # Add more cycles
+        learner.add_validation_cycle(pair, overshoot=0.31)
+        learner.add_validation_cycle(pair, overshoot=0.29)
+
+        assert learner.coefficients[pair].validation_cycles == 3
+
+    def test_validation_rollback_triggered(self):
+        """Test coefficient is halved if overshoot increased >30%."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            ThermalCouplingLearner,
+            CouplingCoefficient,
+        )
+
+        learner = ThermalCouplingLearner()
+        pair = ("climate.living_room", "climate.kitchen")
+
+        # Set up coefficient with baseline
+        original_coefficient = 0.30
+        coef = CouplingCoefficient(
+            source_zone="climate.living_room",
+            target_zone="climate.kitchen",
+            coefficient=original_coefficient,
+            confidence=0.5,
+            observation_count=5,
+            baseline_overshoot=0.3,  # Baseline overshoot
+            validation_cycles=0,
+            last_updated=datetime.now(),
+        )
+        learner.coefficients[pair] = coef
+
+        # Check validation with much higher overshoot (> 30% increase)
+        # Baseline = 0.3, threshold = 0.3 * 1.3 = 0.39
+        # Overshoot = 0.45 > 0.39, should trigger rollback
+        result = learner.check_validation(pair, current_overshoot=0.45)
+
+        assert result == "rollback"
+        # Coefficient should be halved
+        assert learner.coefficients[pair].coefficient == original_coefficient / 2
+        # Baseline should be cleared
+        assert learner.coefficients[pair].baseline_overshoot is None
+        # Validation cycles should be reset
+        assert learner.coefficients[pair].validation_cycles == 0
+
+    def test_validation_rollback_logs_warning(self, caplog):
+        """Test warning is logged when rollback occurs."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            ThermalCouplingLearner,
+            CouplingCoefficient,
+        )
+        import logging
+
+        learner = ThermalCouplingLearner()
+        pair = ("climate.living_room", "climate.kitchen")
+
+        # Set up coefficient with baseline
+        coef = CouplingCoefficient(
+            source_zone="climate.living_room",
+            target_zone="climate.kitchen",
+            coefficient=0.30,
+            confidence=0.5,
+            observation_count=5,
+            baseline_overshoot=0.3,
+            validation_cycles=0,
+            last_updated=datetime.now(),
+        )
+        learner.coefficients[pair] = coef
+
+        # Check validation with high overshoot (triggers rollback)
+        with caplog.at_level(logging.WARNING):
+            result = learner.check_validation(pair, current_overshoot=0.50)
+
+        assert result == "rollback"
+        # Verify warning was logged
+        assert "rollback" in caplog.text.lower()
+        assert "climate.living_room" in caplog.text
+        assert "climate.kitchen" in caplog.text
+
+    def test_validation_success_no_rollback(self):
+        """Test validation succeeds when overshoot stays within threshold."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            ThermalCouplingLearner,
+            CouplingCoefficient,
+        )
+
+        learner = ThermalCouplingLearner()
+        pair = ("climate.living_room", "climate.kitchen")
+
+        # Set up coefficient with baseline
+        original_coefficient = 0.30
+        coef = CouplingCoefficient(
+            source_zone="climate.living_room",
+            target_zone="climate.kitchen",
+            coefficient=original_coefficient,
+            confidence=0.5,
+            observation_count=5,
+            baseline_overshoot=0.3,
+            validation_cycles=4,  # Already at 4 cycles
+            last_updated=datetime.now(),
+        )
+        learner.coefficients[pair] = coef
+
+        # Check validation with similar overshoot (< 30% increase)
+        # Baseline = 0.3, threshold = 0.3 * 1.3 = 0.39
+        # Overshoot = 0.35 < 0.39, should succeed
+        result = learner.check_validation(pair, current_overshoot=0.35)
+
+        assert result == "success"
+        # Coefficient should remain unchanged
+        assert learner.coefficients[pair].coefficient == original_coefficient
+        # Baseline should be cleared (validation complete)
+        assert learner.coefficients[pair].baseline_overshoot is None
+        # Validation cycles should be reset
+        assert learner.coefficients[pair].validation_cycles == 0
+
+    def test_validation_continues_below_cycle_count(self):
+        """Test validation continues when not enough cycles collected."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            ThermalCouplingLearner,
+            CouplingCoefficient,
+        )
+
+        learner = ThermalCouplingLearner()
+        pair = ("climate.living_room", "climate.kitchen")
+
+        # Set up coefficient with baseline
+        original_coefficient = 0.30
+        coef = CouplingCoefficient(
+            source_zone="climate.living_room",
+            target_zone="climate.kitchen",
+            coefficient=original_coefficient,
+            confidence=0.5,
+            observation_count=5,
+            baseline_overshoot=0.3,
+            validation_cycles=2,  # Only 2 cycles
+            last_updated=datetime.now(),
+        )
+        learner.coefficients[pair] = coef
+
+        # Check validation - should continue collecting
+        result = learner.check_validation(pair, current_overshoot=0.32)
+
+        assert result is None  # Still collecting
+        # Coefficient unchanged
+        assert learner.coefficients[pair].coefficient == original_coefficient
+        # Baseline remains
+        assert learner.coefficients[pair].baseline_overshoot == 0.3
+        # Validation cycles incremented
+        assert learner.coefficients[pair].validation_cycles == 3
+
+    def test_validation_no_baseline_skips(self):
+        """Test validation is skipped when no baseline is recorded."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            ThermalCouplingLearner,
+            CouplingCoefficient,
+        )
+
+        learner = ThermalCouplingLearner()
+        pair = ("climate.living_room", "climate.kitchen")
+
+        # Set up coefficient without baseline
+        coef = CouplingCoefficient(
+            source_zone="climate.living_room",
+            target_zone="climate.kitchen",
+            coefficient=0.30,
+            confidence=0.5,
+            observation_count=5,
+            baseline_overshoot=None,  # No baseline
+            validation_cycles=0,
+            last_updated=datetime.now(),
+        )
+        learner.coefficients[pair] = coef
+
+        # Check validation - should skip
+        result = learner.check_validation(pair, current_overshoot=0.50)
+
+        assert result is None  # No validation needed
+
+    def test_validation_no_coefficient_returns_none(self):
+        """Test check_validation returns None for unknown pair."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            ThermalCouplingLearner,
+        )
+
+        learner = ThermalCouplingLearner()
+
+        # Check validation for unknown pair
+        result = learner.check_validation(
+            ("climate.unknown", "climate.other"),
+            current_overshoot=0.5
+        )
+
+        assert result is None
+
+    def test_coefficient_validation_cycles_serialization(self):
+        """Test validation_cycles is serialized and deserialized correctly."""
+        from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
+            CouplingCoefficient,
+        )
+
+        # Create coefficient with validation_cycles
+        coef = CouplingCoefficient(
+            source_zone="climate.living_room",
+            target_zone="climate.kitchen",
+            coefficient=0.25,
+            confidence=0.7,
+            observation_count=5,
+            baseline_overshoot=0.3,
+            validation_cycles=3,
+            last_updated=datetime(2024, 1, 15, 12, 30, 0),
+        )
+
+        # Serialize
+        data = coef.to_dict()
+        assert data["validation_cycles"] == 3
+
+        # Deserialize
+        restored = CouplingCoefficient.from_dict(data)
+        assert restored.validation_cycles == 3

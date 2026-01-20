@@ -510,6 +510,8 @@ COUPLING_MAX_OUTDOOR_CHANGE = 3.0       # Max outdoor temp change (°C) during o
 COUPLING_CONFIDENCE_THRESHOLD = 0.3     # Min confidence to use coefficient
 COUPLING_CONFIDENCE_MAX = 0.5           # Confidence level for full effect
 COUPLING_MASS_RECOVERY_THRESHOLD = 0.5  # Skip observation if >50% zones demanding
+COUPLING_VALIDATION_CYCLES = 5          # Cycles to validate coefficient after change
+COUPLING_VALIDATION_DEGRADATION = 0.30  # Overshoot increase threshold for rollback (30%)
 
 # Auto-apply PID constants
 # Maximum auto-applies per season (90 days) to prevent runaway tuning
