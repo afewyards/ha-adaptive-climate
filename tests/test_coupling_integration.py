@@ -86,6 +86,10 @@ def multi_zone_coordinator(mock_hass):
     """Create a coordinator with multiple zones pre-registered."""
     coord = coordinator.AdaptiveThermostatCoordinator(mock_hass)
 
+    # Disable high solar gain check for testing purposes
+    # (sun position varies with real time, making tests flaky)
+    coord._is_high_solar_gain = lambda check_time=None: False
+
     # Register Zone A (living room)
     coord.register_zone("climate.living_room", {
         "name": "Living Room",
