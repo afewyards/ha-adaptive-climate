@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v0.20.0 (2026-01-20)
+
+### Features
+
+- **config**: Add area option to assign entity to HA area via YAML
+  ([`e95b577`](https://github.com/afewyards/ha-adaptive-thermostat/commit/e95b577db7964053357e07ba76e57046e0d27042))
+
+Adds optional `area` config option to climate platform that automatically assigns the entity to a
+  Home Assistant area on startup. Creates the area if it doesn't exist.
+
+
 ## v0.19.1 (2026-01-20)
 
 ### Bug Fixes
