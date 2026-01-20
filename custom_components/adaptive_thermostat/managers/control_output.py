@@ -350,3 +350,86 @@ class ControlOutputManager:
             set_force_on=set_force_on,
             set_force_off=set_force_off,
         )
+
+    def _calculate_coupling_compensation(self) -> float:
+        """Calculate thermal coupling compensation from active heating neighbors.
+
+        Sums the predicted temperature rise from all actively heating zones
+        based on learned coupling coefficients, then converts to power reduction.
+
+        Returns:
+            Compensation in power % (0-100). Positive values reduce output.
+        """
+        from ..adaptive.thermal_coupling import graduated_confidence
+        from ..const import MAX_COUPLING_COMPENSATION, DOMAIN
+
+        # Disable in cooling mode (v1 - heating only)
+        if self._thermostat._hvac_mode == "cool":
+            return 0.0
+
+        # Get coordinator
+        coordinator = self._thermostat.hass.data.get(DOMAIN, {}).get("coordinator")
+        if not coordinator:
+            return 0.0
+
+        # Get active zones (neighbors currently heating)
+        active_zones = coordinator.get_active_zones(hvac_mode="heat")
+        if not active_zones:
+            return 0.0
+
+        # Get coupling learner
+        coupling_learner = coordinator.thermal_coupling_learner
+        if not coupling_learner:
+            return 0.0
+
+        # Get current zone temps
+        zone_temps = coordinator.get_zone_temps()
+        this_zone = self._thermostat.entity_id
+
+        # Sum compensation from all active neighbors
+        total_compensation_degc = 0.0
+
+        for neighbor_id, neighbor_data in active_zones.items():
+            # Skip self
+            if neighbor_id == this_zone:
+                continue
+
+            # Get learned coefficient for this neighbor -> us
+            coef = coupling_learner.get_coefficient(neighbor_id, this_zone)
+            if not coef:
+                continue
+
+            # Apply graduated confidence scaling
+            confidence_scale = graduated_confidence(coef.confidence)
+            if confidence_scale == 0.0:
+                continue
+
+            # Calculate neighbor's temperature rise since heating started
+            heating_start_temp = neighbor_data.get("heating_start_temp")
+            if heating_start_temp is None:
+                continue
+
+            current_temp = zone_temps.get(neighbor_id)
+            if current_temp is None:
+                continue
+
+            temp_rise = current_temp - heating_start_temp
+
+            # Negative rise = neighbor cooling, no heating effect
+            if temp_rise <= 0:
+                continue
+
+            # Calculate predicted rise in this zone: coefficient * confidence * neighbor_rise
+            predicted_rise = coef.coefficient * confidence_scale * temp_rise
+            total_compensation_degc += predicted_rise
+
+        # Cap at max compensation for this heating type
+        heating_type = getattr(self._thermostat, "_heating_type", "convector")
+        max_compensation = MAX_COUPLING_COMPENSATION.get(heating_type, 1.5)
+        total_compensation_degc = min(total_compensation_degc, max_compensation)
+
+        # Convert to power using Kp
+        kp = self._get_kp() or 100.0
+        compensation_power = total_compensation_degc * kp
+
+        return compensation_power
