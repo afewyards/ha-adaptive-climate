@@ -295,7 +295,7 @@ class CycleTrackerManager:
             self._settling_timeout_handle = None
 
         # Schedule new timeout
-        async def _settling_timeout() -> None:
+        async def _settling_timeout(_: datetime) -> None:
             """Handle settling timeout."""
             self._logger.warning(
                 "Settling timeout reached (%d minutes), finalizing cycle",
@@ -305,9 +305,9 @@ class CycleTrackerManager:
             self._settling_timeout_handle = None
             await self._finalize_cycle()
 
-        # Store the cancel handle
+        # Store the cancel handle - pass async function directly, async_call_later handles it
         self._settling_timeout_handle = async_call_later(
-            self._hass, self._max_settling_time_minutes * 60, lambda _: self._hass.async_create_task(_settling_timeout())
+            self._hass, self._max_settling_time_minutes * 60, _settling_timeout
         )
 
     async def update_temperature(self, timestamp: datetime, temperature: float) -> None:

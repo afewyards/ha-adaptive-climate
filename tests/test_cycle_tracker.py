@@ -315,16 +315,10 @@ class TestCycleTrackerSettling:
         call_args = mock_async_call_later.call_args
         assert call_args[0][1] == 120 * 60  # 120 minutes in seconds (2nd arg after hass)
 
-        # Get the timeout callback (3rd arg) and execute the inner task
+        # Get the timeout callback (3rd arg) - it's now an async function passed directly
         timeout_callback = call_args[0][2]
-        timeout_callback(None)  # This calls lambda which calls async_create_task
-
-        # Verify that async_create_task was called with a coroutine
-        mock_hass.async_create_task.assert_called_once()
-
-        # Get the coroutine and await it
-        task_arg = mock_hass.async_create_task.call_args[0][0]
-        await task_arg
+        # Await the async callback directly (it expects a datetime arg)
+        await timeout_callback(datetime.now())
 
         # State should transition to IDLE
         assert cycle_tracker.state == CycleState.IDLE
@@ -1321,13 +1315,9 @@ class TestCycleTrackerSettlingTimeoutFinalization:
         # Verify timeout was scheduled
         mock_async_call_later.assert_called_once()
 
-        # Get the timeout callback and execute it
+        # Get the timeout callback and await it directly (async function)
         timeout_callback = mock_async_call_later.call_args[0][2]
-        timeout_callback(None)
-
-        # Await the async task that was created
-        task_arg = mock_hass.async_create_task.call_args[0][0]
-        await task_arg
+        await timeout_callback(datetime.now())
 
         # State should transition to IDLE
         assert cycle_tracker.state == CycleState.IDLE
