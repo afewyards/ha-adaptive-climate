@@ -7,6 +7,7 @@ collects temperature data, and calculates metrics for adaptive PID tuning.
 from __future__ import annotations
 
 import logging
+import warnings
 from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Awaitable, Callable
@@ -228,12 +229,22 @@ class CycleTrackerManager:
     def on_heating_started(self, timestamp: datetime) -> None:
         """Handle heating start - device actually turned ON.
 
+        .. deprecated::
+            Use event-driven architecture with CycleEventDispatcher instead.
+            This method will be removed in a future release.
+
         Idempotent: ignores call if already in HEATING state (e.g., PWM re-activation).
         Transitions IDLE -> HEATING, records cycle start time and target temperature.
 
         Args:
             timestamp: Time when heating started
         """
+        warnings.warn(
+            "on_heating_started() is deprecated. Use CycleEventDispatcher with "
+            "CYCLE_STARTED event instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         if self._state == CycleState.HEATING:
             return  # Already heating, ignore (PWM re-activation)
 
@@ -260,11 +271,21 @@ class CycleTrackerManager:
     def on_heating_session_ended(self, timestamp: datetime) -> None:
         """Handle heating session end - demand dropped to 0.
 
+        .. deprecated::
+            Use event-driven architecture with CycleEventDispatcher instead.
+            This method will be removed in a future release.
+
         Transitions from HEATING -> SETTLING and schedules settling timeout.
 
         Args:
             timestamp: Time when heating session ended
         """
+        warnings.warn(
+            "on_heating_session_ended() is deprecated. Use CycleEventDispatcher with "
+            "SETTLING_STARTED event instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         if self._state != CycleState.HEATING:
             self._logger.debug(
                 "Session ended while in state %s, ignoring", self._state
@@ -285,12 +306,22 @@ class CycleTrackerManager:
     def on_cooling_started(self, timestamp: datetime) -> None:
         """Handle cooling start - device actually turned ON.
 
+        .. deprecated::
+            Use event-driven architecture with CycleEventDispatcher instead.
+            This method will be removed in a future release.
+
         Idempotent: ignores call if already in COOLING state (e.g., PWM re-activation).
         Transitions IDLE -> COOLING, records cycle start time and target temperature.
 
         Args:
             timestamp: Time when cooling started
         """
+        warnings.warn(
+            "on_cooling_started() is deprecated. Use CycleEventDispatcher with "
+            "CYCLE_STARTED event instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         if self._state == CycleState.COOLING:
             return  # Already cooling, ignore (PWM re-activation)
 
@@ -317,11 +348,21 @@ class CycleTrackerManager:
     def on_cooling_session_ended(self, timestamp: datetime) -> None:
         """Handle cooling session end - demand dropped to 0.
 
+        .. deprecated::
+            Use event-driven architecture with CycleEventDispatcher instead.
+            This method will be removed in a future release.
+
         Transitions from COOLING -> SETTLING and schedules settling timeout.
 
         Args:
             timestamp: Time when cooling session ended
         """
+        warnings.warn(
+            "on_cooling_session_ended() is deprecated. Use CycleEventDispatcher with "
+            "SETTLING_STARTED event instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         if self._state != CycleState.COOLING:
             self._logger.debug(
                 "Session ended while in state %s, ignoring", self._state
@@ -695,6 +736,10 @@ class CycleTrackerManager:
     def on_setpoint_changed(self, old_temp: float, new_temp: float) -> None:
         """Handle setpoint change event.
 
+        .. deprecated::
+            Use event-driven architecture with CycleEventDispatcher instead.
+            This method will be removed in a future release.
+
         Uses InterruptionClassifier to determine if change is major or minor.
         Major changes (>0.5°C with device inactive) abort the cycle.
         Minor changes (≤0.5°C or device active) continue tracking.
@@ -703,6 +748,12 @@ class CycleTrackerManager:
             old_temp: Previous target temperature
             new_temp: New target temperature
         """
+        warnings.warn(
+            "on_setpoint_changed() is deprecated. Use CycleEventDispatcher with "
+            "SETPOINT_CHANGED event instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         from ..adaptive.cycle_analysis import InterruptionClassifier, InterruptionType
 
         # Only process if we're in an active cycle
@@ -741,9 +792,19 @@ class CycleTrackerManager:
     def on_contact_sensor_pause(self) -> None:
         """Handle contact sensor pause event.
 
+        .. deprecated::
+            Use event-driven architecture with CycleEventDispatcher instead.
+            This method will be removed in a future release.
+
         Aborts the current cycle if in HEATING, COOLING, or SETTLING state, as
         climate control has been paused due to window/door opening.
         """
+        warnings.warn(
+            "on_contact_sensor_pause() is deprecated. Use CycleEventDispatcher with "
+            "CONTACT_PAUSE event instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         from ..adaptive.cycle_analysis import InterruptionType
 
         # Use centralized interruption handler
@@ -756,6 +817,10 @@ class CycleTrackerManager:
     def on_mode_changed(self, old_mode: str, new_mode: str) -> None:
         """Handle HVAC mode change event.
 
+        .. deprecated::
+            Use event-driven architecture with CycleEventDispatcher instead.
+            This method will be removed in a future release.
+
         Uses InterruptionClassifier to determine if mode change is compatible
         with current cycle state. Incompatible changes abort the cycle.
 
@@ -763,6 +828,12 @@ class CycleTrackerManager:
             old_mode: Previous HVAC mode
             new_mode: New HVAC mode
         """
+        warnings.warn(
+            "on_mode_changed() is deprecated. Use CycleEventDispatcher with "
+            "MODE_CHANGED event instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         from ..adaptive.cycle_analysis import InterruptionClassifier, InterruptionType
 
         # Only process if we're in an active cycle

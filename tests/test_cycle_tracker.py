@@ -1893,3 +1893,247 @@ class TestCycleTrackerFinalizeSave:
 
         # Verify state is IDLE
         assert cycle_tracker.state == CycleState.IDLE
+
+
+class TestCycleTrackerDeprecatedMethods:
+    """Tests for deprecated CTM public methods (Feature 2.2)."""
+
+    def test_ctm_on_heating_started_deprecated(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks
+    ):
+        """Test on_heating_started logs deprecation warning but still works."""
+        import warnings
+
+        # Create cycle tracker
+        tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            **mock_callbacks,
+        )
+
+        # Verify initial state
+        assert tracker.state == CycleState.IDLE
+
+        # Call deprecated method and capture warning
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            tracker.on_heating_started(datetime(2025, 1, 14, 10, 0, 0))
+
+            # Verify warning was raised
+            assert len(w) == 1
+            assert issubclass(w[0].category, DeprecationWarning)
+            assert "on_heating_started()" in str(w[0].message)
+            assert "CYCLE_STARTED" in str(w[0].message)
+
+        # Verify method still works
+        assert tracker.state == CycleState.HEATING
+
+    def test_ctm_on_heating_session_ended_deprecated(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks
+    ):
+        """Test on_heating_session_ended logs deprecation warning but still works."""
+        import warnings
+
+        # Create cycle tracker
+        tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            **mock_callbacks,
+        )
+
+        # Start a cycle first (with warning suppressed for this test)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            tracker.on_heating_started(datetime(2025, 1, 14, 10, 0, 0))
+
+        assert tracker.state == CycleState.HEATING
+
+        # Call deprecated method and capture warning
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            tracker.on_heating_session_ended(datetime(2025, 1, 14, 10, 15, 0))
+
+            # Verify warning was raised
+            assert len(w) == 1
+            assert issubclass(w[0].category, DeprecationWarning)
+            assert "on_heating_session_ended()" in str(w[0].message)
+            assert "SETTLING_STARTED" in str(w[0].message)
+
+        # Verify method still works
+        assert tracker.state == CycleState.SETTLING
+
+    def test_ctm_on_cooling_started_deprecated(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks
+    ):
+        """Test on_cooling_started logs deprecation warning but still works."""
+        import warnings
+
+        # Create cycle tracker
+        tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            **mock_callbacks,
+        )
+
+        # Verify initial state
+        assert tracker.state == CycleState.IDLE
+
+        # Call deprecated method and capture warning
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            tracker.on_cooling_started(datetime(2025, 1, 14, 10, 0, 0))
+
+            # Verify warning was raised
+            assert len(w) == 1
+            assert issubclass(w[0].category, DeprecationWarning)
+            assert "on_cooling_started()" in str(w[0].message)
+            assert "CYCLE_STARTED" in str(w[0].message)
+
+        # Verify method still works
+        assert tracker.state == CycleState.COOLING
+
+    def test_ctm_on_cooling_session_ended_deprecated(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks
+    ):
+        """Test on_cooling_session_ended logs deprecation warning but still works."""
+        import warnings
+
+        # Create cycle tracker
+        tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            **mock_callbacks,
+        )
+
+        # Start a cooling cycle first (with warning suppressed for this test)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            tracker.on_cooling_started(datetime(2025, 1, 14, 10, 0, 0))
+
+        assert tracker.state == CycleState.COOLING
+
+        # Call deprecated method and capture warning
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            tracker.on_cooling_session_ended(datetime(2025, 1, 14, 10, 15, 0))
+
+            # Verify warning was raised
+            assert len(w) == 1
+            assert issubclass(w[0].category, DeprecationWarning)
+            assert "on_cooling_session_ended()" in str(w[0].message)
+            assert "SETTLING_STARTED" in str(w[0].message)
+
+        # Verify method still works
+        assert tracker.state == CycleState.SETTLING
+
+    def test_ctm_on_setpoint_changed_deprecated(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks
+    ):
+        """Test on_setpoint_changed logs deprecation warning but still works."""
+        import warnings
+
+        # Create cycle tracker
+        tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            **mock_callbacks,
+        )
+
+        # Start a cycle first (with warning suppressed for this test)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            tracker.on_heating_started(datetime(2025, 1, 14, 10, 0, 0))
+
+        assert tracker.state == CycleState.HEATING
+
+        # Call deprecated method and capture warning
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            tracker.on_setpoint_changed(20.0, 22.0)  # Major change
+
+            # Verify warning was raised
+            assert len(w) == 1
+            assert issubclass(w[0].category, DeprecationWarning)
+            assert "on_setpoint_changed()" in str(w[0].message)
+            assert "SETPOINT_CHANGED" in str(w[0].message)
+
+        # Verify method still works (cycle aborted due to major setpoint change)
+        assert tracker.state == CycleState.IDLE
+        assert tracker.get_last_interruption_reason() == "setpoint_change"
+
+    def test_ctm_on_mode_changed_deprecated(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks
+    ):
+        """Test on_mode_changed logs deprecation warning but still works."""
+        import warnings
+
+        # Create cycle tracker
+        tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            **mock_callbacks,
+        )
+
+        # Start a cycle first (with warning suppressed for this test)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            tracker.on_heating_started(datetime(2025, 1, 14, 10, 0, 0))
+
+        assert tracker.state == CycleState.HEATING
+
+        # Call deprecated method and capture warning
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            tracker.on_mode_changed("heat", "off")
+
+            # Verify warning was raised
+            assert len(w) == 1
+            assert issubclass(w[0].category, DeprecationWarning)
+            assert "on_mode_changed()" in str(w[0].message)
+            assert "MODE_CHANGED" in str(w[0].message)
+
+        # Verify method still works (cycle aborted due to incompatible mode)
+        assert tracker.state == CycleState.IDLE
+        assert tracker.get_last_interruption_reason() == "mode_change"
+
+    def test_ctm_on_contact_sensor_pause_deprecated(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks
+    ):
+        """Test on_contact_sensor_pause logs deprecation warning but still works."""
+        import warnings
+
+        # Create cycle tracker
+        tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            **mock_callbacks,
+        )
+
+        # Start a cycle first (with warning suppressed for this test)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            tracker.on_heating_started(datetime(2025, 1, 14, 10, 0, 0))
+
+        assert tracker.state == CycleState.HEATING
+
+        # Call deprecated method and capture warning
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            tracker.on_contact_sensor_pause()
+
+            # Verify warning was raised
+            assert len(w) == 1
+            assert issubclass(w[0].category, DeprecationWarning)
+            assert "on_contact_sensor_pause()" in str(w[0].message)
+            assert "CONTACT_PAUSE" in str(w[0].message)
+
+        # Verify method still works (cycle aborted)
+        assert tracker.state == CycleState.IDLE
+        assert tracker.get_last_interruption_reason() == "contact_sensor"
