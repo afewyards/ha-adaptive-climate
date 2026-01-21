@@ -1,6 +1,21 @@
 # CHANGELOG
 
 
+## v0.23.2 (2026-01-21)
+
+### Bug Fixes
+
+- **pid**: Wire heating-type integral decay and valve cycle tracking
+  ([`5161590`](https://github.com/afewyards/ha-adaptive-thermostat/commit/516159094f22bdc7b9a4715cb5c6cd360183c37c))
+
+- Wire HEATING_TYPE_INTEGRAL_DECAY to PID constructor so floor_hydronic uses 3.0x decay (was using
+  default 1.5x), fixing slow integral windup decay when overshooting target temperature - Set
+  _has_demand in async_set_valve_value() so valve-based systems emit CYCLE_STARTED events and cycle
+  tracker transitions from IDLE - Call set_restoration_complete() after state restoration to ungate
+  temperature updates for cycle tracker - Update test mock_thermostat fixture with
+  target_temperature and _cur_temp attributes
+
+
 ## v0.23.1 (2026-01-21)
 
 ### Bug Fixes
