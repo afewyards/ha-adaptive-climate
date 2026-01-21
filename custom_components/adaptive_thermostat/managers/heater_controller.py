@@ -556,6 +556,9 @@ class HeaterController:
         # Track old active state for cycle tracker
         old_active = self.is_active(hvac_mode)
 
+        # Track demand state for cycle tracking (valve mode)
+        self._has_demand = value > 0
+
         _LOGGER.info(
             "%s: Change state of %s to %s",
             thermostat_entity_id,

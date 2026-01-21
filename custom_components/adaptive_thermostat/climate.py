@@ -747,13 +747,17 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         self._last_ext_sensor_update = time.time()
         _LOGGER.info("%s: Active PID values - Kp=%.4f, Ki=%.5f, Kd=%.3f, Ke=%s, D_filter_alpha=%.2f, outdoor_lag_tau=%.2f",
                      self.unique_id, self._kp, self._ki, self._kd, self._ke or 0, self._derivative_filter_alpha, self._outdoor_temp_lag_tau)
+        decay_rate = const.HEATING_TYPE_INTEGRAL_DECAY.get(
+            self._heating_type, const.DEFAULT_INTEGRAL_DECAY
+        )
         self._pid_controller = pid_controller.PID(self._kp, self._ki, self._kd, self._ke,
                                                   out_min=self._min_out, out_max=self._max_out,
                                                   sampling_period=self._sampling_period,
                                                   cold_tolerance=self._cold_tolerance,
                                                   hot_tolerance=self._hot_tolerance,
                                                   derivative_filter_alpha=self._derivative_filter_alpha,
-                                                  outdoor_temp_lag_tau=self._outdoor_temp_lag_tau)
+                                                  outdoor_temp_lag_tau=self._outdoor_temp_lag_tau,
+                                                  integral_decay_multiplier=decay_rate)
         self._pid_controller.mode = "AUTO"
 
     async def async_added_to_hass(self):
@@ -1017,6 +1021,11 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         old_state = await self.async_get_last_state()
         state_restorer = StateRestorer(self)
         state_restorer.restore(old_state)
+
+        # Mark cycle tracker restoration complete so it can process temperature updates
+        if self._cycle_tracker:
+            self._cycle_tracker.set_restoration_complete()
+            _LOGGER.debug("%s: Cycle tracker restoration complete", self.entity_id)
 
         # Set physics baseline for adaptive learning after PID values are finalized
         # (either restored from previous state or calculated from physics in __init__)

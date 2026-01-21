@@ -45,6 +45,8 @@ def mock_thermostat():
     """Create a mock thermostat entity."""
     thermostat = MagicMock()
     thermostat.entity_id = "climate.test_thermostat"
+    thermostat.target_temperature = 20.0
+    thermostat._cur_temp = 19.0
     return thermostat
 
 
