@@ -1,6 +1,18 @@
 # CHANGELOG
 
 
+## v0.23.3 (2026-01-21)
+
+### Bug Fixes
+
+- **pid**: Add integral anti-windup with exponential decay and output clamping
+  ([`df0dc95`](https://github.com/afewyards/ha-adaptive-thermostat/commit/df0dc950872c3b68c7507a0c84d1871c16ed15bd))
+
+- Add HEATING_TYPE_EXP_DECAY_TAU constants for exponential integral decay - Apply exp(-dt/tau) decay
+  during overhang (temp on wrong side of setpoint) - Clamp output to 0 when integral opposes error
+  sign (no heating above setpoint) - Fix cycle tracking on HA restart when valve already open
+
+
 ## v0.23.2 (2026-01-21)
 
 ### Bug Fixes
