@@ -1,6 +1,142 @@
 # CHANGELOG
 
 
+## v0.23.0 (2026-01-21)
+
+### Bug Fixes
+
+- **tests**: Update tests to use event-driven cycle tracker API
+  ([`b442fda`](https://github.com/afewyards/ha-adaptive-thermostat/commit/b442fda256c76d967df94ca4b07e2018c992d1a3))
+
+- Add dispatcher fixture parameter to tests that emit events - Pass dispatcher to
+  CycleTrackerManager instances - Add missing imports for event classes (CycleEventDispatcher,
+  CycleStartedEvent, SettlingStartedEvent, etc.) - Fix CycleStartedEvent calls with malformed kwargs
+  - Call set_restoration_complete() on manually created trackers
+
+Tests were failing after the event-driven refactor removed deprecated methods (on_heating_started,
+  on_heating_session_ended). All 1453 tests now pass.
+
+### Features
+
+- **climate**: Wire dispatcher and emit user events
+  ([`611bce2`](https://github.com/afewyards/ha-adaptive-thermostat/commit/611bce2300547d372673dfddef4614d404fb6d98))
+
+- Create CycleEventDispatcher in async_added_to_hass - Pass dispatcher to HeaterController and
+  CycleTrackerManager - Emit SETPOINT_CHANGED in _set_target_temp - Emit MODE_CHANGED in
+  async_set_hvac_mode - Emit CONTACT_PAUSE/RESUME in _async_contact_sensor_changed - Track contact
+  pause times for duration calculation - Add 11 tests for dispatcher integration
+
+- **cycle-tracker**: Add event subscriptions to CycleTrackerManager
+  ([`ce8d161`](https://github.com/afewyards/ha-adaptive-thermostat/commit/ce8d161f516f040b1b3b6ccca31603683e6d4b9d))
+
+- Add dispatcher parameter to __init__, store as self._dispatcher - Subscribe to 8 event types:
+  CYCLE_STARTED, HEATING_*, SETTLING_STARTED, CONTACT_*, SETPOINT_CHANGED, MODE_CHANGED - Implement
+  event handlers that delegate to existing public methods - Add duty cycle tracking via
+  _device_on_time/_device_off_time - Emit CYCLE_ENDED event in _finalize_cycle when settling
+  completes - Add 8 comprehensive tests for event subscription behavior
+
+- **events**: Add CycleEventType enum, event dataclasses, and dispatcher
+  ([`1370fb6`](https://github.com/afewyards/ha-adaptive-thermostat/commit/1370fb674d9720ac4675d0ff336f4778e11dbd11))
+
+- Add CycleEventType enum with all cycle event types - Add event dataclasses: CycleStartedEvent,
+  CycleEndedEvent, HeatingStartedEvent, HeatingEndedEvent, SettlingStartedEvent,
+  SetpointChangedEvent, ModeChangedEvent, ContactPauseEvent, ContactResumeEvent - Add
+  CycleEventDispatcher with subscribe/emit pattern and error isolation - Export all event types from
+  managers/__init__.py
+
+- **heater-controller**: Add event emission for cycle and heating events
+  ([`ac2e8b7`](https://github.com/afewyards/ha-adaptive-thermostat/commit/ac2e8b7361e8b2d2bb1fb590001bd8aea0806f40))
+
+- Add optional dispatcher parameter to HeaterController.__init__ - Rename _heating_session_active to
+  _cycle_active for clarity - Emit CycleStartedEvent when demand transitions 0→>0 - Emit
+  SettlingStartedEvent when demand transitions >0→0 (PWM mode) - Emit SettlingStartedEvent for valve
+  mode when demand <5% and temp within 0.5°C - Emit HeatingStartedEvent in async_turn_on when device
+  activates - Emit HeatingEndedEvent in async_turn_off when device deactivates - Emit heating events
+  in async_pwm_switch on state transitions - Emit heating events in async_set_valve_value on 0→>0
+  and >0→0 transitions - Maintain backward compatibility with existing cycle tracker methods - All
+  tests passing (19 new event emission tests)
+
+### Refactoring
+
+- **climate**: Remove direct cycle_tracker calls
+  ([`32a8def`](https://github.com/afewyards/ha-adaptive-thermostat/commit/32a8def47b316c8459c9f6eefc907a0b719add9a))
+
+Remove all direct calls to cycle_tracker methods from climate.py, relying instead on event emission
+  via the CycleEventDispatcher.
+
+Changes: - Remove on_setpoint_changed direct call in _set_target_temp - Remove on_mode_changed
+  direct call in async_set_hvac_mode - Remove on_contact_sensor_pause direct call in
+  _async_contact_sensor_changed - Remove on_heating/cooling_session_ended direct calls in
+  async_set_hvac_mode - Add static code analysis tests to prevent future direct calls
+
+All communication between climate.py and CycleTrackerManager now flows through events, completing
+  the decoupling started in feature 4.1.
+
+- **cycle-tracker**: Deprecate CTM public methods as event wrappers
+  ([`7bcdf44`](https://github.com/afewyards/ha-adaptive-thermostat/commit/7bcdf4418f76581765a0bb756e7d071650b2beaf))
+
+Add deprecation warnings to all legacy CTM public methods: - on_heating_started() -> use
+  CYCLE_STARTED event - on_heating_session_ended() -> use SETTLING_STARTED event -
+  on_cooling_started() -> use CYCLE_STARTED event - on_cooling_session_ended() -> use
+  SETTLING_STARTED event - on_setpoint_changed() -> use SETPOINT_CHANGED event - on_mode_changed()
+  -> use MODE_CHANGED event - on_contact_sensor_pause() -> use CONTACT_PAUSE event
+
+Methods still work but emit DeprecationWarning with stacklevel=2. Added 7 tests verifying deprecated
+  methods still function correctly.
+
+- **cycle-tracker**: Remove deprecated methods and complete event-driven refactor
+  ([`5d1662b`](https://github.com/afewyards/ha-adaptive-thermostat/commit/5d1662b1d664776c51bd81effc46f033e144b696))
+
+Feature 6.1 completion: Remove all deprecated CTM methods and ensure pure event-driven architecture.
+
+Changes: - Removed deprecated public methods from CycleTrackerManager: - on_heating_started() /
+  on_cooling_started() - on_heating_session_ended() / on_cooling_session_ended() -
+  on_setpoint_changed() - on_mode_changed() - on_contact_sensor_pause() - Inlined deprecated method
+  logic directly into event handlers: - _on_cycle_started() now handles both heat and cool modes -
+  _on_settling_started() now handles both heat and cool modes - _on_setpoint_changed_event() handles
+  setpoint classification inline - _on_mode_changed_event() handles mode compatibility inline -
+  _on_contact_pause() handles interruption inline - Removed warnings import (no longer needed) -
+  Added comprehensive test_cycle_events_final.py to verify: - CTM works purely through events -
+  HeaterController has no direct _cycle_tracker references - climate.py uses only events for cycle
+  communication - All deprecated methods are removed - Updated existing tests to use event-driven
+  interface instead of deprecated methods
+
+Verification: - test_cycle_events_final.py: all 10 tests passing - 328+ cycle/heater/climate tests
+  passing - No legacy code remains in HeaterController or climate.py - CTM public API contains no
+  deprecated methods
+
+Implements PRD feature 6.1 (final cleanup of cycle events refactor).
+
+- **heater-controller**: Remove direct cycle_tracker calls
+  ([`28392e1`](https://github.com/afewyards/ha-adaptive-thermostat/commit/28392e1c82ee050314e426c0c8fe448cd1e4021a))
+
+Remove all hasattr/getattr checks for _cycle_tracker in HeaterController: - async_turn_on: removed
+  on_heating/cooling_started calls - async_set_valve_value: removed on_heating_started and
+  on_heating/cooling_session_ended calls - async_set_control_value: removed
+  on_heating/cooling_session_ended calls
+
+All cycle lifecycle events now flow exclusively through CycleEventDispatcher. All emit calls guarded
+  with 'if self._dispatcher:' for backwards compatibility.
+
+Tests: - Added test_hc_no_direct_ctm_calls: verifies HC doesn't access _cycle_tracker - Added
+  test_hc_works_without_dispatcher: HC functions when dispatcher is None - Updated existing tests to
+  expect new behavior (no direct cycle_tracker calls)
+
+### Testing
+
+- **integration**: Add event flow integration tests
+  ([`ec31278`](https://github.com/afewyards/ha-adaptive-thermostat/commit/ec31278998bc3b82667e74ec0441fe31b04433b8))
+
+Add TestEventDrivenCycleFlow test class with 5 comprehensive tests: - test_full_cycle_event_flow:
+  verifies CYCLE_STARTED → HEATING_* → SETTLING_STARTED → CYCLE_ENDED event sequence -
+  test_mode_change_aborts_cycle_via_event: MODE_CHANGED aborts cycle -
+  test_contact_pause_resume_flow_via_events: CONTACT_PAUSE/RESUME handling -
+  test_setpoint_change_during_cycle_via_event: minor setpoint changes -
+  test_setpoint_major_change_aborts_via_event: major changes abort cycle
+
+All 364 cycle/heater/climate tests passing.
+
+
 ## v0.22.1 (2026-01-20)
 
 ### Bug Fixes
