@@ -75,17 +75,19 @@ class TestHeaterControllerSessionTracking:
 
     @pytest.mark.asyncio
     async def test_session_starts_on_zero_to_positive(self, heater_controller, mock_thermostat):
-        """Test that session becomes active when demand goes 0→>0.
+        """Test that _has_demand becomes True when demand goes 0→>0.
 
-        Note: on_heating_started is NOT called here - it's called in async_turn_on
-        when the device actually activates. This test only verifies demand tracking.
+        Note: _cycle_active only becomes True when the heater actually turns on.
+        _has_demand tracks whether control_output > 0.
         """
         # Setup mock cycle tracker
         mock_cycle_tracker = MagicMock()
         mock_thermostat._cycle_tracker = mock_cycle_tracker
 
-        # Mock the service call
-        heater_controller._hass.services.async_call = MagicMock()
+        # Mock the service call to be async
+        async def mock_async_call(*args, **kwargs):
+            pass
+        heater_controller._hass.services.async_call = mock_async_call
 
         # Mock required callbacks
         get_cycle_start_time = MagicMock(return_value=0.0)
@@ -95,10 +97,11 @@ class TestHeaterControllerSessionTracking:
         set_force_on = MagicMock()
         set_force_off = MagicMock()
 
-        # Initial state: session not active, control_output = 0
+        # Initial state: no demand, cycle not active
         assert heater_controller._cycle_active is False
+        assert heater_controller._has_demand is False
 
-        # Transition: 0 → 50 (should set session active for demand tracking)
+        # Transition: 0 → 50 (should set _has_demand = True but not _cycle_active)
         await heater_controller.async_set_control_value(
             control_output=50.0,
             hvac_mode=MockHVACMode.HEAT,
@@ -115,8 +118,10 @@ class TestHeaterControllerSessionTracking:
 
         # on_heating_started NOT called here - it's called in async_turn_on when device activates
         mock_cycle_tracker.on_heating_started.assert_not_called()
-        # Verify session (demand) is now active
-        assert heater_controller._cycle_active is True
+        # Verify demand tracking is active
+        assert heater_controller._has_demand is True
+        # _cycle_active only becomes True when heater actually turns on
+        # (which requires proper mocking of the turn-on flow)
 
     @pytest.mark.asyncio
     async def test_session_ends_on_positive_to_zero(self, heater_controller, mock_thermostat):
@@ -125,8 +130,10 @@ class TestHeaterControllerSessionTracking:
         mock_cycle_tracker = MagicMock()
         mock_thermostat._cycle_tracker = mock_cycle_tracker
 
-        # Mock the service call
-        heater_controller._hass.services.async_call = MagicMock()
+        # Mock the service call to be async
+        async def mock_async_call(*args, **kwargs):
+            pass
+        heater_controller._hass.services.async_call = mock_async_call
 
         # Mock required callbacks
         get_cycle_start_time = MagicMock(return_value=0.0)
@@ -136,8 +143,9 @@ class TestHeaterControllerSessionTracking:
         set_force_on = MagicMock()
         set_force_off = MagicMock()
 
-        # Start with session active (simulate previous heating)
+        # Start with cycle active and demand active (simulate previous heating)
         heater_controller._cycle_active = True
+        heater_controller._has_demand = True
 
         # Transition: >0 → 0 (should end session)
         await heater_controller.async_set_control_value(
@@ -158,21 +166,24 @@ class TestHeaterControllerSessionTracking:
         mock_cycle_tracker.on_heating_session_ended.assert_not_called()
         # Verify session is now inactive (internal tracking still works)
         assert heater_controller._cycle_active is False
+        assert heater_controller._has_demand is False
 
     @pytest.mark.asyncio
     async def test_session_no_notify_during_pwm(self, heater_controller, mock_thermostat):
         """Test that no session end calls are made during PWM pulses (demand stays >0).
 
-        Note: on_heating_started is now called in async_turn_on when device activates,
-        not in async_set_control_value. This test verifies session end is not called
-        while demand remains active during PWM cycling.
+        Note: _has_demand tracks whether control_output > 0.
+        _cycle_active only becomes True when heater actually turns on.
+        This test verifies session end is not called while demand remains active during PWM cycling.
         """
         # Setup mock cycle tracker
         mock_cycle_tracker = MagicMock()
         mock_thermostat._cycle_tracker = mock_cycle_tracker
 
-        # Mock the service call and is_active to simulate PWM on/off cycling
-        heater_controller._hass.services.async_call = MagicMock()
+        # Mock the service call to be async
+        async def mock_async_call(*args, **kwargs):
+            pass
+        heater_controller._hass.services.async_call = mock_async_call
 
         # Mock required callbacks
         get_cycle_start_time = MagicMock(return_value=0.0)
@@ -184,6 +195,7 @@ class TestHeaterControllerSessionTracking:
 
         # Start session with first heating call (0 → 50)
         heater_controller._cycle_active = False
+        heater_controller._has_demand = False
         await heater_controller.async_set_control_value(
             control_output=50.0,
             hvac_mode=MockHVACMode.HEAT,
@@ -221,8 +233,8 @@ class TestHeaterControllerSessionTracking:
 
         # Verify no session end calls during PWM pulses (demand stays active)
         mock_cycle_tracker.on_heating_session_ended.assert_not_called()
-        # Session should still be active
-        assert heater_controller._cycle_active is True
+        # Demand should still be active
+        assert heater_controller._has_demand is True
 
     @pytest.mark.asyncio
     async def test_turn_on_no_direct_tracker_notify(self, heater_controller, mock_thermostat):
@@ -286,17 +298,19 @@ class TestHeaterControllerSessionTracking:
 
     @pytest.mark.asyncio
     async def test_100_percent_duty_starts_session(self, heater_controller, mock_thermostat):
-        """Test that 100% duty cycle sets session (demand) active when output goes 0→100.
+        """Test that 100% duty cycle sets _has_demand active when output goes 0→100.
 
-        Note: on_heating_started is NOT called here - it's called in async_turn_on
-        when the device actually activates. This test only verifies demand tracking.
+        Note: _cycle_active only becomes True when heater actually turns on.
+        _has_demand tracks whether control_output > 0.
         """
         # Setup mock cycle tracker
         mock_cycle_tracker = MagicMock()
         mock_thermostat._cycle_tracker = mock_cycle_tracker
 
-        # Mock the service call
-        heater_controller._hass.services.async_call = MagicMock()
+        # Mock the service call to be async
+        async def mock_async_call(*args, **kwargs):
+            pass
+        heater_controller._hass.services.async_call = mock_async_call
 
         # Mock required callbacks
         get_cycle_start_time = MagicMock(return_value=0.0)
@@ -308,8 +322,9 @@ class TestHeaterControllerSessionTracking:
 
         # Initial state: session not active, control_output = 0
         assert heater_controller._cycle_active is False
+        assert heater_controller._has_demand is False
 
-        # Transition: 0 → 100 (max duty, should set session active for demand tracking)
+        # Transition: 0 → 100 (max duty, should set _has_demand = True)
         await heater_controller.async_set_control_value(
             control_output=100.0,
             hvac_mode=MockHVACMode.HEAT,
@@ -326,8 +341,8 @@ class TestHeaterControllerSessionTracking:
 
         # on_heating_started NOT called here - demand tracking only
         mock_cycle_tracker.on_heating_started.assert_not_called()
-        # Verify session (demand) is now active
-        assert heater_controller._cycle_active is True
+        # Verify demand is now active
+        assert heater_controller._has_demand is True
 
     @pytest.mark.asyncio
     async def test_0_percent_duty_ends_session(self, heater_controller, mock_thermostat):
@@ -336,8 +351,10 @@ class TestHeaterControllerSessionTracking:
         mock_cycle_tracker = MagicMock()
         mock_thermostat._cycle_tracker = mock_cycle_tracker
 
-        # Mock the service call
-        heater_controller._hass.services.async_call = MagicMock()
+        # Mock the service call to be async
+        async def mock_async_call(*args, **kwargs):
+            pass
+        heater_controller._hass.services.async_call = mock_async_call
 
         # Mock required callbacks
         get_cycle_start_time = MagicMock(return_value=0.0)
@@ -347,8 +364,9 @@ class TestHeaterControllerSessionTracking:
         set_force_on = MagicMock()
         set_force_off = MagicMock()
 
-        # Start with session active (simulate previous heating)
+        # Start with cycle active and demand active (simulate previous heating)
         heater_controller._cycle_active = True
+        heater_controller._has_demand = True
 
         # Transition: >0 → 0 (0% duty, should end session)
         await heater_controller.async_set_control_value(
@@ -369,6 +387,7 @@ class TestHeaterControllerSessionTracking:
         mock_cycle_tracker.on_heating_session_ended.assert_not_called()
         # Verify session is now inactive (internal tracking still works)
         assert heater_controller._cycle_active is False
+        assert heater_controller._has_demand is False
 
 
 class TestHeaterControllerPWMThreshold:
@@ -540,6 +559,7 @@ class TestHeaterControllerBackwardCompatibility:
 
         # 5. async_set_control_value (demand positive->0)
         heater_controller._cycle_active = True
+        heater_controller._has_demand = True
         await heater_controller.async_set_control_value(
             control_output=0.0,
             hvac_mode=MockHVACMode.HEAT,
@@ -632,8 +652,8 @@ class TestHeaterControllerBackwardCompatibility:
             set_force_off=set_force_off,
         )
 
-        # Verify cycle tracking still works internally
-        assert controller._cycle_active is True
+        # Verify demand tracking still works internally
+        assert controller._has_demand is True
 
         # All operations completed without errors - success!
 
@@ -694,7 +714,7 @@ class TestHeaterControllerEventEmission:
 
     @pytest.mark.asyncio
     async def test_hc_emits_cycle_started(self, heater_controller_with_dispatcher, mock_thermostat):
-        """Test demand 0→>0 emits CYCLE_STARTED with temps."""
+        """Test that CYCLE_STARTED is emitted when heater actually turns on."""
         controller, dispatcher = heater_controller_with_dispatcher
 
         # Setup event listener
@@ -706,39 +726,39 @@ class TestHeaterControllerEventEmission:
         mock_thermostat.target_temperature = 21.0
         mock_thermostat._cur_temp = 19.5
 
-        # Mock service calls
-        controller._hass.services.async_call = MagicMock()
+        # Mock service calls to be async
+        async def mock_async_call(*args, **kwargs):
+            pass
+        controller._hass.services.async_call = mock_async_call
+
+        # Mock device state as OFF (so turn_on will actually turn it on)
+        controller._hass.states.is_state = MagicMock(return_value=False)
 
         # Mock callbacks
         get_cycle_start_time = MagicMock(return_value=0.0)
         set_is_heating = MagicMock()
         set_last_heat_cycle_time = MagicMock()
-        set_time_changed = MagicMock()
-        set_force_on = MagicMock()
-        set_force_off = MagicMock()
 
-        # Transition: 0 → 50 (should emit CYCLE_STARTED)
-        await controller.async_set_control_value(
-            control_output=50.0,
+        # Set demand active (simulates async_set_control_value having been called with output > 0)
+        controller._has_demand = True
+
+        # Turn on heater (should emit CYCLE_STARTED)
+        await controller.async_turn_on(
             hvac_mode=MockHVACMode.HEAT,
             get_cycle_start_time=get_cycle_start_time,
             set_is_heating=set_is_heating,
             set_last_heat_cycle_time=set_last_heat_cycle_time,
-            time_changed=0.0,
-            set_time_changed=set_time_changed,
-            force_on=False,
-            force_off=False,
-            set_force_on=set_force_on,
-            set_force_off=set_force_off,
         )
 
-        # Verify event was emitted
+        # Verify CYCLE_STARTED event was emitted
         assert len(events) == 1
         event = events[0]
         assert isinstance(event, CycleStartedEvent)
         assert event.hvac_mode == MockHVACMode.HEAT
         assert event.target_temp == 21.0
         assert event.current_temp == 19.5
+        # Verify _cycle_active is now True
+        assert controller._cycle_active is True
 
     @pytest.mark.asyncio
     async def test_hc_emits_settling_started_pwm(self, heater_controller_with_dispatcher):
@@ -749,8 +769,10 @@ class TestHeaterControllerEventEmission:
         events = []
         dispatcher.subscribe(CycleEventType.SETTLING_STARTED, lambda e: events.append(e))
 
-        # Mock service calls
-        controller._hass.services.async_call = MagicMock()
+        # Mock service calls to be async
+        async def mock_async_call(*args, **kwargs):
+            pass
+        controller._hass.services.async_call = mock_async_call
 
         # Mock callbacks
         get_cycle_start_time = MagicMock(return_value=0.0)
@@ -760,8 +782,9 @@ class TestHeaterControllerEventEmission:
         set_force_on = MagicMock()
         set_force_off = MagicMock()
 
-        # Start with cycle active
+        # Start with cycle active and demand active
         controller._cycle_active = True
+        controller._has_demand = True
 
         # Transition: >0 → 0 (should emit SETTLING_STARTED)
         await controller.async_set_control_value(

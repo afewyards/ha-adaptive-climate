@@ -133,7 +133,8 @@ class HeaterController:
         self._last_cooler_state: bool = False
 
         # Cycle tracking for event emission
-        self._cycle_active: bool = False
+        self._cycle_active: bool = False  # Heater has turned on in current demand period
+        self._has_demand: bool = False    # control_output > 0
 
     def update_cycle_durations(
         self,
@@ -435,6 +436,19 @@ class HeaterController:
 
             set_is_heating(True)
 
+            # Emit CYCLE_STARTED on first heater turn-on in this demand period
+            if not self._cycle_active and self._has_demand:
+                self._cycle_active = True
+                if self._dispatcher:
+                    target_temp = getattr(self._thermostat, 'target_temperature', 0.0)
+                    current_temp = getattr(self._thermostat, '_cur_temp', 0.0)
+                    self._dispatcher.emit(CycleStartedEvent(
+                        hvac_mode=hvac_mode,
+                        timestamp=datetime.now(),
+                        target_temp=target_temp,
+                        current_temp=current_temp,
+                    ))
+
             # Emit HEATING_STARTED event
             if self._dispatcher:
                 self._dispatcher.emit(HeatingStartedEvent(
@@ -589,6 +603,7 @@ class HeaterController:
                         hvac_mode=hvac_mode,
                         timestamp=datetime.now(),
                     ))
+                self._cycle_active = False  # Reset for next cycle
 
         # Detect heating started transition (was off, now on)
         if not old_active and new_active:
@@ -597,6 +612,19 @@ class HeaterController:
                 self._last_cooler_state = True
             else:
                 self._last_heater_state = True
+
+            # Emit CYCLE_STARTED on first valve open in this demand period
+            if not self._cycle_active and self._has_demand:
+                self._cycle_active = True
+                if self._dispatcher:
+                    target_temp = getattr(self._thermostat, 'target_temperature', 0.0)
+                    current_temp = getattr(self._thermostat, '_cur_temp', 0.0)
+                    self._dispatcher.emit(CycleStartedEvent(
+                        hvac_mode=hvac_mode,
+                        timestamp=datetime.now(),
+                        target_temp=target_temp,
+                        current_temp=current_temp,
+                    ))
 
             # Emit HEATING_STARTED event
             if self._dispatcher:
@@ -615,6 +643,9 @@ class HeaterController:
                     hvac_mode=hvac_mode,
                     timestamp=datetime.now(),
                 ))
+
+            # Reset cycle tracking for next cycle
+            self._cycle_active = False
 
     async def async_set_control_value(
         self,
@@ -649,29 +680,18 @@ class HeaterController:
         thermostat_entity_id = self._thermostat.entity_id
 
         # Track demand state for cycle tracking
-        old_cycle_active = self._cycle_active
-        new_cycle_active = abs(control_output) > 0
-        self._cycle_active = new_cycle_active
+        old_has_demand = self._has_demand
+        new_has_demand = abs(control_output) > 0
+        self._has_demand = new_has_demand
 
-        # Emit CYCLE_STARTED when demand goes 0 → >0
-        if not old_cycle_active and new_cycle_active:
-            if self._dispatcher:
-                target_temp = getattr(self._thermostat, 'target_temperature', 0.0)
-                current_temp = getattr(self._thermostat, '_cur_temp', 0.0)
-                self._dispatcher.emit(CycleStartedEvent(
-                    hvac_mode=hvac_mode,
-                    timestamp=datetime.now(),
-                    target_temp=target_temp,
-                    current_temp=current_temp,
-                ))
-
-        # Emit SETTLING_STARTED when demand drops to 0 (PWM mode)
-        if old_cycle_active and not new_cycle_active:
+        # Emit SETTLING_STARTED when demand drops to 0 AND we had an active cycle (PWM mode)
+        if old_has_demand and not new_has_demand and self._cycle_active:
             if self._dispatcher and self._pwm > 0:
                 self._dispatcher.emit(SettlingStartedEvent(
                     hvac_mode=hvac_mode,
                     timestamp=datetime.now(),
                 ))
+            self._cycle_active = False  # Reset for next cycle
 
         if self._pwm:
             if abs(control_output) == self._difference:
