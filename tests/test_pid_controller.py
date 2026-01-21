@@ -1882,5 +1882,165 @@ class TestIntegralDecayMultiplier:
         assert pid.integral_decay_multiplier == 1.0
 
 
+class TestExponentialIntegralDecay:
+    """Test exponential integral decay during overhang."""
+
+    def test_exponential_decay_during_overhang(self):
+        """Verify integral decays by exp(-dt/tau) during overhang."""
+        import math
+        tau = 0.18  # 7.5 min half-life (floor hydronic)
+        pid = PID(kp=0, ki=10, kd=0, out_min=-100, out_max=100,
+                  integral_decay_multiplier=1.0, integral_exp_decay_tau=tau)
+
+        # Build up positive integral
+        base_time = 1000.0
+        pid.calc(19.0, 20.0, input_time=base_time, last_input_time=base_time - 10)
+        pid.calc(19.0, 20.0, input_time=base_time + 100, last_input_time=base_time)
+        pid.calc(19.0, 20.0, input_time=base_time + 200, last_input_time=base_time + 100)
+
+        # Record integral before overhang
+        integral_before = pid.integral
+        assert integral_before > 0, "Need positive integral for overhang test"
+
+        # Create overhang: temp above setpoint (error < 0)
+        # dt = 300s = 300/3600 = 0.0833 hours
+        dt_hours = 300.0 / 3600.0
+        pid.calc(20.5, 20.0, input_time=base_time + 500, last_input_time=base_time + 200)
+
+        # First the linear decay is applied, then exponential decay
+        # Expected integral after linear decay: integral_before + Ki * error * dt * decay_mult
+        linear_delta = 10 * (-0.5) * dt_hours * 1.0
+        after_linear = integral_before + linear_delta
+        # Expected integral after exponential decay: after_linear * exp(-dt/tau)
+        expected_integral = after_linear * math.exp(-dt_hours / tau)
+
+        assert abs(pid.integral - expected_integral) < 0.1, \
+            f"Expected integral ~{expected_integral}, got {pid.integral}"
+
+    def test_no_exponential_decay_when_not_overhang(self):
+        """Integral unchanged by exp decay when error and integral same sign."""
+        import math
+        tau = 0.18
+        pid = PID(kp=0, ki=10, kd=0, out_min=0, out_max=100,
+                  integral_decay_multiplier=1.0, integral_exp_decay_tau=tau)
+
+        # Build up positive integral
+        base_time = 1000.0
+        pid.calc(19.5, 20.0, input_time=base_time, last_input_time=base_time - 10)
+        initial_integral = pid.integral
+
+        # Continue heating (error still positive) - no exponential decay
+        dt_hours = 10.0 / 3600.0
+        pid.calc(19.7, 20.0, input_time=base_time + 10, last_input_time=base_time)
+
+        # Only normal accumulation, no exponential decay
+        expected_delta = 10 * 0.3 * dt_hours  # error = 20.0 - 19.7 = 0.3
+        expected_integral = initial_integral + expected_delta
+
+        assert abs(pid.integral - expected_integral) < 0.001, \
+            f"Expected integral ~{expected_integral}, got {pid.integral}"
+
+    def test_exponential_decay_disabled_when_tau_none(self):
+        """With integral_exp_decay_tau=None, no exponential decay applied."""
+        pid = PID(kp=0, ki=10, kd=0, out_min=-100, out_max=100,
+                  integral_decay_multiplier=1.0, integral_exp_decay_tau=None)
+
+        # Build up positive integral
+        base_time = 1000.0
+        pid.calc(19.0, 20.0, input_time=base_time, last_input_time=base_time - 10)
+        pid.calc(19.0, 20.0, input_time=base_time + 100, last_input_time=base_time)
+        integral_before = pid.integral
+
+        # Create overhang
+        dt_hours = 10.0 / 3600.0
+        pid.calc(20.5, 20.0, input_time=base_time + 110, last_input_time=base_time + 100)
+
+        # Only linear decay (with multiplier=1.0, so just normal Ki*error*dt)
+        expected_delta = 10 * (-0.5) * dt_hours
+        expected_integral = integral_before + expected_delta
+
+        assert abs(pid.integral - expected_integral) < 0.01, \
+            f"Without exp decay tau, should only have linear: expected ~{expected_integral}, got {pid.integral}"
+
+
+class TestOutputClampingOnWrongSide:
+    """Test output clamping when temperature is on wrong side of setpoint."""
+
+    def test_output_clamped_when_above_setpoint(self):
+        """error < 0, integral > 0 → output ≤ 0."""
+        pid = PID(kp=0, ki=10, kd=0, out_min=-100, out_max=100)
+
+        # Build up positive integral (heating history)
+        base_time = 1000.0
+        for i in range(50):
+            t = base_time + i * 100
+            pid.calc(18.0, 20.0, input_time=t, last_input_time=t - 100 if i > 0 else None)
+
+        # Integral should be positive (Ki=10, error=2.0, dt=100s=0.0278h → ~0.56 per iter)
+        assert pid.integral > 20, f"Expected positive integral, got {pid.integral}"
+
+        # Now temperature is above setpoint (error < 0)
+        output, _ = pid.calc(20.5, 20.0, input_time=base_time + 5100, last_input_time=base_time + 5000)
+
+        # Output should be clamped to 0 (no heating when above setpoint)
+        assert output <= 0, f"Output should be ≤ 0 when above setpoint, got {output}"
+
+    def test_output_clamped_when_below_setpoint_cooling(self):
+        """error > 0, integral < 0 → output ≥ 0."""
+        pid = PID(kp=0, ki=10, kd=0, out_min=-100, out_max=100)
+
+        # Build up negative integral (cooling history)
+        base_time = 1000.0
+        for i in range(50):
+            t = base_time + i * 100
+            pid.calc(22.0, 20.0, input_time=t, last_input_time=t - 100 if i > 0 else None)
+
+        # Integral should be negative
+        assert pid.integral < -20, f"Expected negative integral, got {pid.integral}"
+
+        # Now temperature is below setpoint (error > 0)
+        output, _ = pid.calc(19.5, 20.0, input_time=base_time + 5100, last_input_time=base_time + 5000)
+
+        # Output should be clamped to 0 (no cooling when below setpoint)
+        assert output >= 0, f"Output should be ≥ 0 when below setpoint during cooling, got {output}"
+
+    def test_no_clamping_when_on_correct_side(self):
+        """Heating: error > 0, integral > 0 → normal output."""
+        pid = PID(kp=0, ki=10, kd=0, out_min=0, out_max=100)
+
+        # Build up positive integral
+        base_time = 1000.0
+        for i in range(10):
+            t = base_time + i * 100
+            pid.calc(19.0, 20.0, input_time=t, last_input_time=t - 100 if i > 0 else None)
+
+        # Still below setpoint (error > 0) - no clamping
+        output, _ = pid.calc(19.5, 20.0, input_time=base_time + 1100, last_input_time=base_time + 1000)
+
+        # Output should be positive (heating demand)
+        assert output > 0, f"Output should be > 0 when still below setpoint, got {output}"
+
+    def test_clamping_with_exp_decay_integration(self):
+        """Verify output clamping works together with exponential decay."""
+        tau = 0.18
+        pid = PID(kp=0, ki=10, kd=0, out_min=-100, out_max=100,
+                  integral_decay_multiplier=1.0, integral_exp_decay_tau=tau)
+
+        # Build up positive integral
+        base_time = 1000.0
+        for i in range(30):
+            t = base_time + i * 100
+            pid.calc(18.0, 20.0, input_time=t, last_input_time=t - 100 if i > 0 else None)
+
+        assert pid.integral > 10, f"Need positive integral, got {pid.integral}"
+
+        # Now above setpoint - should clamp output to 0 AND apply exponential decay
+        output, _ = pid.calc(20.3, 20.0, input_time=base_time + 3100, last_input_time=base_time + 3000)
+
+        assert output <= 0, f"Output should be clamped ≤ 0, got {output}"
+        # Integral should have decayed but still be positive
+        assert pid.integral > 0, "Integral should still be positive after decay"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

@@ -750,6 +750,9 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         decay_rate = const.HEATING_TYPE_INTEGRAL_DECAY.get(
             self._heating_type, const.DEFAULT_INTEGRAL_DECAY
         )
+        exp_decay_tau = const.HEATING_TYPE_EXP_DECAY_TAU.get(
+            self._heating_type, const.DEFAULT_EXP_DECAY_TAU
+        )
         self._pid_controller = pid_controller.PID(self._kp, self._ki, self._kd, self._ke,
                                                   out_min=self._min_out, out_max=self._max_out,
                                                   sampling_period=self._sampling_period,
@@ -757,7 +760,8 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                                                   hot_tolerance=self._hot_tolerance,
                                                   derivative_filter_alpha=self._derivative_filter_alpha,
                                                   outdoor_temp_lag_tau=self._outdoor_temp_lag_tau,
-                                                  integral_decay_multiplier=decay_rate)
+                                                  integral_decay_multiplier=decay_rate,
+                                                  integral_exp_decay_tau=exp_decay_tau)
         self._pid_controller.mode = "AUTO"
 
     async def async_added_to_hass(self):

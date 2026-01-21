@@ -518,6 +518,17 @@ HEATING_TYPE_INTEGRAL_DECAY = {
     HEATING_TYPE_FORCED_AIR: 1.2,      # Low decay - fast response can self-correct
 }
 
+# Exponential decay tau (hours) for integral during overhang
+# Half-life = 0.693 * tau, derived from min_cycle_duration / 2
+DEFAULT_EXP_DECAY_TAU = 0.12
+
+HEATING_TYPE_EXP_DECAY_TAU = {
+    HEATING_TYPE_FLOOR_HYDRONIC: 0.18,   # 7.5 min half-life (15 min cycle / 2)
+    HEATING_TYPE_RADIATOR: 0.12,         # 5 min half-life (10 min cycle / 2)
+    HEATING_TYPE_CONVECTOR: 0.06,        # 2.5 min half-life (5 min cycle / 2)
+    HEATING_TYPE_FORCED_AIR: 0.036,      # 1.5 min half-life (3 min cycle / 2)
+}
+
 # Coupling learner constants
 COUPLING_MIN_OBSERVATIONS = 3           # Min observations before using learned coefficient
 COUPLING_MAX_OBSERVATIONS_PER_PAIR = 50  # Max observations to retain per zone pair (FIFO)

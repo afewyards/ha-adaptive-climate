@@ -420,6 +420,18 @@ class HeaterController:
                 thermostat_entity_id,
                 ", ".join(entities)
             )
+            # Handle restart case: device already on but cycle not tracked
+            if not self._cycle_active and self._has_demand:
+                self._cycle_active = True
+                if self._dispatcher:
+                    target_temp = getattr(self._thermostat, 'target_temperature', 0.0)
+                    current_temp = getattr(self._thermostat, '_cur_temp', 0.0)
+                    self._dispatcher.emit(CycleStartedEvent(
+                        hvac_mode=hvac_mode,
+                        timestamp=datetime.now(),
+                        target_temp=target_temp,
+                        current_temp=current_temp,
+                    ))
         elif time.time() - get_cycle_start_time() >= self._min_off_cycle_duration:
             _LOGGER.info(
                 "%s: Turning ON %s",
@@ -616,18 +628,19 @@ class HeaterController:
             else:
                 self._last_heater_state = True
 
-            # Emit CYCLE_STARTED on first valve open in this demand period
-            if not self._cycle_active and self._has_demand:
-                self._cycle_active = True
-                if self._dispatcher:
-                    target_temp = getattr(self._thermostat, 'target_temperature', 0.0)
-                    current_temp = getattr(self._thermostat, '_cur_temp', 0.0)
-                    self._dispatcher.emit(CycleStartedEvent(
-                        hvac_mode=hvac_mode,
-                        timestamp=datetime.now(),
-                        target_temp=target_temp,
-                        current_temp=current_temp,
-                    ))
+        # Emit CYCLE_STARTED on first valve open in this demand period
+        # Also handles restart case where valve is already open but cycle not tracked
+        if new_active and not self._cycle_active and self._has_demand:
+            self._cycle_active = True
+            if self._dispatcher:
+                target_temp = getattr(self._thermostat, 'target_temperature', 0.0)
+                current_temp = getattr(self._thermostat, '_cur_temp', 0.0)
+                self._dispatcher.emit(CycleStartedEvent(
+                    hvac_mode=hvac_mode,
+                    timestamp=datetime.now(),
+                    target_temp=target_temp,
+                    current_temp=current_temp,
+                ))
 
             # Emit HEATING_STARTED event
             if self._dispatcher:

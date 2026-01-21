@@ -17,7 +17,7 @@ class PID:
 
     def __init__(self, kp, ki, kd, ke=0, ke_wind=0.02, out_min=float('-inf'), out_max=float('+inf'),
                  sampling_period=0, cold_tolerance=0.3, hot_tolerance=0.3, derivative_filter_alpha=0.15,
-                 outdoor_temp_lag_tau=4.0, integral_decay_multiplier=1.5):
+                 outdoor_temp_lag_tau=4.0, integral_decay_multiplier=1.5, integral_exp_decay_tau=None):
         """A proportional-integral-derivative controller using P-on-M (proportional-on-measurement).
             :param kp: Proportional coefficient.
             :type kp: float
@@ -48,6 +48,9 @@ class PID:
             :param integral_decay_multiplier: Multiplier for integral decay when error opposes integral sign.
                                               Higher values = faster decay during overhang. Minimum 1.0.
             :type integral_decay_multiplier: float
+            :param integral_exp_decay_tau: Time constant (hours) for exponential integral decay during overhang.
+                                           Half-life = 0.693 * tau. None disables exponential decay.
+            :type integral_exp_decay_tau: float
         """
         if kp is None:
             raise ValueError('kp must be specified')
@@ -95,6 +98,7 @@ class PID:
         self._last_output_before_off = None  # Stores output before switching to OFF mode for bumpless transfer
         self._wind_speed = 0.0  # Current wind speed in m/s (defaults to 0 if unavailable)
         self._integral_decay_multiplier = max(1.0, integral_decay_multiplier)
+        self._integral_exp_decay_tau = integral_exp_decay_tau
 
     @property
     def mode(self):
@@ -414,6 +418,11 @@ class PID:
 
                 self._integral += self._Ki * self._error * dt_hours * decay_multiplier
 
+                # Exponential integral decay during overhang
+                # Provides aggressive decay that naturally slows as integral approaches zero
+                if is_overhang and self._integral_exp_decay_tau:
+                    self._integral *= math.exp(-dt_hours / self._integral_exp_decay_tau)
+
             # Integral clamping accounts for external and feedforward terms to ensure total output respects bounds
             # Formula: I_max = out_max - E - F, I_min = out_min - E - F
             # This ensures P + I + D + E - F stays within [out_min, out_max]
@@ -459,5 +468,15 @@ class PID:
         # Formula: output = P + I + D + E - F
         # Feedforward (F) is subtracted to reduce output when thermal coupling provides heat
         output = self._proportional + self._integral + self._derivative + self._external - self._feedforward
+
+        # Clamp output to 0 when on wrong side of setpoint
+        # Uses integral sign to detect mode (positive = heating history, negative = cooling history)
+        # Heating: temp > setpoint (error < 0) → no heating
+        # Cooling: temp < setpoint (error > 0) → no cooling
+        if self._integral > 0 and self._error < 0:  # Was heating, now above setpoint
+            output = min(output, 0)
+        elif self._integral < 0 and self._error > 0:  # Was cooling, now below setpoint
+            output = max(output, 0)
+
         self._output = max(min(output, self._out_max), self._out_min)
         return self._output, True
