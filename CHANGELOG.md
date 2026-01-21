@@ -1,6 +1,23 @@
 # CHANGELOG
 
 
+## v0.23.1 (2026-01-21)
+
+### Bug Fixes
+
+- **cycle-tracker**: Emit CYCLE_STARTED on actual heater turn-on
+  ([`a7e2af6`](https://github.com/afewyards/ha-adaptive-thermostat/commit/a7e2af6b25684b7611377f30463ae915f4d3b95f))
+
+On restart, _cycle_active initialized to False but PID integral was restored (e.g., 57.3), causing
+  spurious CycleStartedEvent when control_output > 0 even though heater was OFF.
+
+Changes: - Add _has_demand to track control_output > 0 separately - _cycle_active now means "heater
+  has actually turned on" - Move CYCLE_STARTED emission from async_set_control_value to
+  async_turn_on - Add CYCLE_STARTED emission to async_set_valve_value for valve mode -
+  SETTLING_STARTED now requires both _has_demand and _cycle_active - Update tests to reflect new
+  semantics
+
+
 ## v0.23.0 (2026-01-21)
 
 ### Bug Fixes
