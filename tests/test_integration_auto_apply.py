@@ -19,6 +19,11 @@ from custom_components.adaptive_thermostat.managers.cycle_tracker import (
     CycleState,
     CycleTrackerManager,
 )
+from custom_components.adaptive_thermostat.managers.events import (
+    CycleEventDispatcher,
+    CycleStartedEvent,
+    SettlingStartedEvent,
+)
 from custom_components.adaptive_thermostat.adaptive.learning import AdaptiveLearner
 from custom_components.adaptive_thermostat.adaptive.cycle_analysis import CycleMetrics
 from custom_components.adaptive_thermostat.const import (
@@ -71,6 +76,12 @@ def mock_callbacks():
     }
 
 
+@pytest.fixture
+def dispatcher():
+    """Create a cycle event dispatcher."""
+    return CycleEventDispatcher()
+
+
 def create_good_cycle_metrics(overshoot: float = 0.15) -> CycleMetrics:
     """Create metrics representing a good heating cycle.
 
@@ -111,7 +122,7 @@ class TestFullAutoApplyFlow:
     """Test complete auto-apply flow from confidence building to validation."""
 
     @pytest.mark.asyncio
-    async def test_full_auto_apply_flow(self, mock_hass, adaptive_learner, mock_callbacks):
+    async def test_full_auto_apply_flow(self, mock_hass, adaptive_learner, mock_callbacks, dispatcher):
         """Test complete auto-apply flow triggered after reaching confidence threshold.
 
         This test simulates:
@@ -137,6 +148,7 @@ class TestFullAutoApplyFlow:
             get_hvac_mode=mock_callbacks["get_hvac_mode"],
             get_in_grace_period=mock_callbacks["get_in_grace_period"],
             on_auto_apply_check=mock_auto_apply_check,
+            dispatcher=dispatcher,
         )
         tracker.set_restoration_complete()
 
@@ -147,8 +159,8 @@ class TestFullAutoApplyFlow:
         for cycle_num in range(6):
             current_time = start_time + timedelta(hours=cycle_num * 2)
 
-            # Start heating
-            tracker.on_heating_started(current_time)
+            # Start heating via event
+            dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=current_time, target_temp=21.0, current_temp=19.0))
             assert tracker.state == CycleState.HEATING
 
             # Collect temperature samples during heating (20 samples = 10 min)
@@ -157,8 +169,8 @@ class TestFullAutoApplyFlow:
                 await tracker.update_temperature(current_time, temp)
                 current_time += timedelta(seconds=30)
 
-            # Stop heating
-            tracker.on_heating_session_ended(current_time)
+            # Stop heating via event
+            dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=current_time))
             assert tracker.state == CycleState.SETTLING
 
             # Settling samples (stable temperature = good cycle)
@@ -389,7 +401,7 @@ class TestValidationFailureAndRollback:
 
     @pytest.mark.asyncio
     async def test_validation_failure_triggers_rollback(
-        self, mock_hass, adaptive_learner, mock_callbacks
+        self, mock_hass, adaptive_learner, mock_callbacks, dispatcher
     ):
         """Test that validation failure triggers rollback callback."""
         rollback_called = []
@@ -407,6 +419,7 @@ class TestValidationFailureAndRollback:
             get_hvac_mode=mock_callbacks["get_hvac_mode"],
             get_in_grace_period=mock_callbacks["get_in_grace_period"],
             on_validation_failed=mock_validation_failed,
+            dispatcher=dispatcher,
         )
         tracker.set_restoration_complete()
 
@@ -419,7 +432,7 @@ class TestValidationFailureAndRollback:
         for i in range(VALIDATION_CYCLE_COUNT):
             # Complete a cycle that produces the degraded metrics
             start_time = datetime(2024, 1, 1, 10 + i, 0, 0)
-            tracker.on_heating_started(start_time)
+            dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=start_time, target_temp=21.0, current_temp=19.0))
 
             # Quick heating cycle
             current_time = start_time
@@ -428,7 +441,7 @@ class TestValidationFailureAndRollback:
                 await tracker.update_temperature(current_time, temp)
                 current_time += timedelta(seconds=30)
 
-            tracker.on_heating_session_ended(current_time)
+            dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=current_time))
 
             # Settling with overshoot
             for _ in range(10):
@@ -499,7 +512,7 @@ class TestValidationFailureAndRollback:
 
     @pytest.mark.asyncio
     async def test_validation_failure_automatic_rollback(
-        self, mock_hass, adaptive_learner, mock_callbacks
+        self, mock_hass, adaptive_learner, mock_callbacks, dispatcher
     ):
         """Test complete validation failure and automatic rollback flow.
 
@@ -530,6 +543,7 @@ class TestValidationFailureAndRollback:
             get_hvac_mode=mock_callbacks["get_hvac_mode"],
             get_in_grace_period=mock_callbacks["get_in_grace_period"],
             on_validation_failed=mock_validation_failed,
+            dispatcher=dispatcher,
         )
         tracker.set_restoration_complete()
 
@@ -573,8 +587,8 @@ class TestValidationFailureAndRollback:
         for i in range(VALIDATION_CYCLE_COUNT):
             current_time = start_time + timedelta(hours=i * 2)
 
-            # Start heating
-            tracker.on_heating_started(current_time)
+            # Start heating via event
+            dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=current_time, target_temp=21.0, current_temp=19.0))
             assert tracker.state == CycleState.HEATING
 
             # Collect temperature samples during heating
@@ -583,8 +597,8 @@ class TestValidationFailureAndRollback:
                 await tracker.update_temperature(current_time, temp)
                 current_time += timedelta(seconds=30)
 
-            # Stop heating
-            tracker.on_heating_session_ended(current_time)
+            # Stop heating via event
+            dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=current_time))
             assert tracker.state == CycleState.SETTLING
 
             # Settling with degraded overshoot
@@ -1105,7 +1119,7 @@ class TestAutoApplyDisabled:
     """Test behavior when auto_apply_pid is disabled."""
 
     @pytest.mark.asyncio
-    async def test_no_auto_apply_when_disabled(self, mock_hass, adaptive_learner, mock_callbacks):
+    async def test_no_auto_apply_when_disabled(self, mock_hass, adaptive_learner, mock_callbacks, dispatcher):
         """Test that auto-apply callback is not triggered when disabled.
 
         Note: The actual disabling is handled in climate.py by not setting the
@@ -1122,12 +1136,13 @@ class TestAutoApplyDisabled:
             get_hvac_mode=mock_callbacks["get_hvac_mode"],
             get_in_grace_period=mock_callbacks["get_in_grace_period"],
             # on_auto_apply_check NOT provided
+            dispatcher=dispatcher,
         )
         tracker.set_restoration_complete()
 
         # Complete a cycle
         start_time = datetime(2024, 1, 1, 10, 0, 0)
-        tracker.on_heating_started(start_time)
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=start_time, target_temp=21.0, current_temp=19.0))
 
         current_time = start_time
         for i in range(20):
@@ -1135,7 +1150,7 @@ class TestAutoApplyDisabled:
             await tracker.update_temperature(current_time, temp)
             current_time += timedelta(seconds=30)
 
-        tracker.on_heating_session_ended(current_time)
+        dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=current_time))
 
         for _ in range(10):
             await tracker.update_temperature(current_time, 21.0)
@@ -1196,6 +1211,10 @@ class TestMultiZoneAutoApply:
         zone2_learner = AdaptiveLearner(heating_type=HEATING_TYPE_RADIATOR)
         zone2_learner.set_physics_baseline(120.0, 0.012, 60.0)
 
+        # Create separate dispatchers for each zone
+        zone1_dispatcher = CycleEventDispatcher()
+        zone2_dispatcher = CycleEventDispatcher()
+
         # Create separate cycle trackers for each zone
         zone1_tracker = CycleTrackerManager(
             hass=mock_hass,
@@ -1206,6 +1225,7 @@ class TestMultiZoneAutoApply:
             get_hvac_mode=zone1_callbacks["get_hvac_mode"],
             get_in_grace_period=zone1_callbacks["get_in_grace_period"],
             on_auto_apply_check=zone1_auto_apply,
+            dispatcher=zone1_dispatcher,
         )
         zone1_tracker.set_restoration_complete()
 
@@ -1218,6 +1238,7 @@ class TestMultiZoneAutoApply:
             get_hvac_mode=zone2_callbacks["get_hvac_mode"],
             get_in_grace_period=zone2_callbacks["get_in_grace_period"],
             on_auto_apply_check=zone2_auto_apply,
+            dispatcher=zone2_dispatcher,
         )
         zone2_tracker.set_restoration_complete()
 
@@ -1225,14 +1246,14 @@ class TestMultiZoneAutoApply:
         start_time = datetime(2024, 1, 1, 10, 0, 0)
         for cycle_num in range(6):
             current_time = start_time + timedelta(hours=cycle_num * 2)
-            zone1_tracker.on_heating_started(current_time)
+            zone1_dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=current_time, target_temp=21.0, current_temp=19.0))
 
             for i in range(20):
                 temp = 19.0 + min(i * 0.15, 2.0)
                 await zone1_tracker.update_temperature(current_time, temp)
                 current_time += timedelta(seconds=30)
 
-            zone1_tracker.on_heating_session_ended(current_time)
+            zone1_dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=current_time))
 
             for _ in range(10):
                 await zone1_tracker.update_temperature(current_time, 21.0)
@@ -1245,14 +1266,14 @@ class TestMultiZoneAutoApply:
         start_time = datetime(2024, 1, 1, 10, 0, 0)
         for cycle_num in range(7):
             current_time = start_time + timedelta(hours=cycle_num * 2)
-            zone2_tracker.on_heating_started(current_time)
+            zone2_dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=current_time, target_temp=20.0, current_temp=18.0))
 
             for i in range(20):
                 temp = 18.0 + min(i * 0.15, 2.0)
                 await zone2_tracker.update_temperature(current_time, temp)
                 current_time += timedelta(seconds=30)
 
-            zone2_tracker.on_heating_session_ended(current_time)
+            zone2_dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=current_time))
 
             for _ in range(10):
                 await zone2_tracker.update_temperature(current_time, 20.0)
@@ -1267,23 +1288,23 @@ class TestMultiZoneAutoApply:
         zone2_time = datetime(2024, 1, 2, 10, 0, 0)
 
         # Zone1 cycle
-        zone1_tracker.on_heating_started(zone1_time)
+        zone1_dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=zone1_time, target_temp=21.0, current_temp=19.0))
         for i in range(20):
             temp = 19.0 + min(i * 0.15, 2.0)
             await zone1_tracker.update_temperature(zone1_time, temp)
             zone1_time += timedelta(seconds=30)
-        zone1_tracker.on_heating_session_ended(zone1_time)
+        zone1_dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=zone1_time))
         for _ in range(10):
             await zone1_tracker.update_temperature(zone1_time, 21.0)
             zone1_time += timedelta(seconds=30)
 
         # Zone2 cycle
-        zone2_tracker.on_heating_started(zone2_time)
+        zone2_dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=zone2_time, target_temp=20.0, current_temp=18.0))
         for i in range(20):
             temp = 18.0 + min(i * 0.15, 2.0)
             await zone2_tracker.update_temperature(zone2_time, temp)
             zone2_time += timedelta(seconds=30)
-        zone2_tracker.on_heating_session_ended(zone2_time)
+        zone2_dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=zone2_time))
         for _ in range(10):
             await zone2_tracker.update_temperature(zone2_time, 20.0)
             zone2_time += timedelta(seconds=30)
@@ -1320,7 +1341,7 @@ class TestValidationModeBlocking:
 
     @pytest.mark.asyncio
     async def test_auto_apply_blocked_during_validation(
-        self, mock_hass, adaptive_learner, mock_callbacks
+        self, mock_hass, adaptive_learner, mock_callbacks, dispatcher
     ):
         """Test that auto-apply callback is not triggered during validation."""
         auto_apply_calls = []
@@ -1337,6 +1358,7 @@ class TestValidationModeBlocking:
             get_hvac_mode=mock_callbacks["get_hvac_mode"],
             get_in_grace_period=mock_callbacks["get_in_grace_period"],
             on_auto_apply_check=mock_auto_apply,
+            dispatcher=dispatcher,
         )
         tracker.set_restoration_complete()
 
@@ -1346,7 +1368,7 @@ class TestValidationModeBlocking:
 
         # Complete a cycle while in validation mode
         start_time = datetime(2024, 1, 1, 10, 0, 0)
-        tracker.on_heating_started(start_time)
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=start_time, target_temp=21.0, current_temp=19.0))
 
         current_time = start_time
         for i in range(20):
@@ -1354,7 +1376,7 @@ class TestValidationModeBlocking:
             await tracker.update_temperature(current_time, temp)
             current_time += timedelta(seconds=30)
 
-        tracker.on_heating_session_ended(current_time)
+        dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=current_time))
 
         for _ in range(10):
             await tracker.update_temperature(current_time, 21.0)

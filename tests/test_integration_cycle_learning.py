@@ -14,6 +14,13 @@ from custom_components.adaptive_thermostat.managers.cycle_tracker import (
     CycleState,
     CycleTrackerManager,
 )
+from custom_components.adaptive_thermostat.managers.events import (
+    CycleEventDispatcher,
+    CycleStartedEvent,
+    SettlingStartedEvent,
+    SetpointChangedEvent,
+    ContactPauseEvent,
+)
 from custom_components.adaptive_thermostat.adaptive.cycle_analysis import CycleMetrics
 
 
@@ -82,7 +89,7 @@ class TestCompleteHeatingCycle:
 
     @pytest.mark.asyncio
     async def test_complete_heating_cycle(
-        self, cycle_tracker, mock_adaptive_learner
+        self, cycle_tracker, mock_adaptive_learner, dispatcher
     ):
         """Test complete heating cycle with realistic temperature progression."""
         # Start heating at 19.0°C, target 21.0°C
@@ -137,7 +144,7 @@ class TestMultipleCyclesInSequence:
 
     @pytest.mark.asyncio
     async def test_multiple_cycles_in_sequence(
-        self, cycle_tracker, mock_adaptive_learner
+        self, cycle_tracker, mock_adaptive_learner, dispatcher
     ):
         """Test that 3 complete cycles are all recorded."""
         for cycle_num in range(3):
@@ -174,7 +181,7 @@ class TestCycleAbortedBySetpointChange:
 
     @pytest.mark.asyncio
     async def test_cycle_aborted_by_setpoint_change(
-        self, cycle_tracker, mock_adaptive_learner
+        self, cycle_tracker, mock_adaptive_learner, dispatcher
     ):
         """Test that setpoint change mid-cycle aborts and doesn't record."""
         # Start heating
@@ -204,7 +211,7 @@ class TestCycleAbortedByContactSensor:
 
     @pytest.mark.asyncio
     async def test_cycle_aborted_by_contact_sensor(
-        self, cycle_tracker, mock_adaptive_learner
+        self, cycle_tracker, mock_adaptive_learner, dispatcher
     ):
         """Test that contact sensor pause aborts cycle and doesn't record."""
         # Start heating
@@ -234,7 +241,7 @@ class TestCycleDuringVacationMode:
 
     @pytest.mark.asyncio
     async def test_cycle_during_vacation_mode(
-        self, mock_hass, mock_adaptive_learner, mock_callbacks
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
     ):
         """Test that cycles during vacation mode are not recorded."""
         # Set grace period to True (simulates vacation mode blocking)
@@ -249,6 +256,7 @@ class TestCycleDuringVacationMode:
             get_current_temp=mock_callbacks["get_current_temp"],
             get_hvac_mode=mock_callbacks["get_hvac_mode"],
             get_in_grace_period=mock_callbacks["get_in_grace_period"],
+            dispatcher=dispatcher,
         )
         tracker.set_restoration_complete()
 
@@ -281,7 +289,7 @@ class TestPWMModeCycleTracking:
 
     @pytest.mark.asyncio
     async def test_pwm_mode_cycle_tracking(
-        self, cycle_tracker, mock_adaptive_learner
+        self, cycle_tracker, mock_adaptive_learner, dispatcher
     ):
         """Test that PWM on/off cycling is tracked correctly."""
         # Simulate PWM cycle: heater turns on and off multiple times
@@ -315,7 +323,7 @@ class TestValveModeCycleTracking:
 
     @pytest.mark.asyncio
     async def test_valve_mode_cycle_tracking(
-        self, cycle_tracker, mock_adaptive_learner
+        self, cycle_tracker, mock_adaptive_learner, dispatcher
     ):
         """Test that valve transitions (0 to >0) are tracked as cycles."""
         # Valve opens to 50% (tracked as heating started)
@@ -351,7 +359,7 @@ class TestCycleResumedAfterSetpointChange:
 
     @pytest.mark.asyncio
     async def test_cycle_tracked_despite_setpoint_change(
-        self, mock_hass, mock_adaptive_learner, mock_callbacks
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
     ):
         """Test that cycle completes when setpoint changes while heater is active."""
         # Create mock for get_is_device_active returning True
@@ -367,6 +375,7 @@ class TestCycleResumedAfterSetpointChange:
             get_hvac_mode=mock_callbacks["get_hvac_mode"],
             get_in_grace_period=mock_callbacks["get_in_grace_period"],
             get_is_device_active=mock_is_device_active,
+            dispatcher=dispatcher,
         )
         tracker.set_restoration_complete()
 
@@ -420,7 +429,7 @@ class TestSetpointChangeInCoolingMode:
 
     @pytest.mark.asyncio
     async def test_setpoint_change_in_cooling_mode(
-        self, mock_hass, mock_adaptive_learner, mock_callbacks
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
     ):
         """Test that setpoint change while cooler is active continues tracking."""
         # Set HVAC mode to 'cool'
@@ -441,6 +450,7 @@ class TestSetpointChangeInCoolingMode:
             get_hvac_mode=mock_callbacks["get_hvac_mode"],
             get_in_grace_period=mock_callbacks["get_in_grace_period"],
             get_is_device_active=mock_is_device_active,
+            dispatcher=dispatcher,
         )
         tracker.set_restoration_complete()
 
@@ -509,7 +519,7 @@ class TestPWMSessionTracking:
 
     @pytest.mark.asyncio
     async def test_pwm_cycle_completes_without_settling_interruption(
-        self, cycle_tracker, mock_adaptive_learner
+        self, cycle_tracker, mock_adaptive_learner, dispatcher
     ):
         """Test multiple PWM pulses produce single HEATING→SETTLING transition.
 

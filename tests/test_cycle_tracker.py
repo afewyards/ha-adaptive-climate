@@ -181,10 +181,10 @@ class TestCycleTrackerTemperatureCollection:
     """Tests for temperature collection functionality."""
 
     @pytest.mark.asyncio
-    async def test_temperature_collection_during_heating(self, cycle_tracker):
+    async def test_temperature_collection_during_heating(self, cycle_tracker, dispatcher):
         """Test temperature samples are collected during HEATING state."""
         # Start heating
-        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0, target_temp=20.0, current_temp=18.0)))
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0), target_temp=20.0, current_temp=18.0))
 
         # Add temperature samples
         await cycle_tracker.update_temperature(datetime(2025, 1, 14, 10, 0, 30), 18.5)
@@ -199,10 +199,10 @@ class TestCycleTrackerTemperatureCollection:
         assert history[2] == (datetime(2025, 1, 14, 10, 1, 30), 19.5)
 
     @pytest.mark.asyncio
-    async def test_temperature_collection_during_settling(self, cycle_tracker):
+    async def test_temperature_collection_during_settling(self, cycle_tracker, dispatcher):
         """Test temperature samples are collected during SETTLING state."""
         # Start and stop heating
-        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0, target_temp=20.0, current_temp=18.0)))
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0), target_temp=20.0, current_temp=18.0))
         dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 30, 0)))
 
         # Add temperature samples
@@ -233,13 +233,13 @@ class TestCycleTrackerSettling:
     """Tests for settling detection functionality."""
 
     @pytest.mark.asyncio
-    async def test_settling_detection_stable(self, cycle_tracker, mock_callbacks):
+    async def test_settling_detection_stable(self, cycle_tracker, mock_callbacks, dispatcher):
         """Test settling is detected when temperature is stable and near target."""
         # Set target temperature
         mock_callbacks["get_target_temp"].return_value = 20.0
 
         # Start heating and stop
-        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0, target_temp=20.0, current_temp=18.0)))
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0), target_temp=20.0, current_temp=18.0))
         dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 30, 0)))
 
         # Add 10 stable temperature samples near target (variance < 0.01, within 0.5°C)
@@ -254,13 +254,13 @@ class TestCycleTrackerSettling:
         assert cycle_tracker.state == CycleState.IDLE
 
     @pytest.mark.asyncio
-    async def test_settling_detection_unstable(self, cycle_tracker, mock_callbacks):
+    async def test_settling_detection_unstable(self, cycle_tracker, mock_callbacks, dispatcher):
         """Test settling continues when temperature is oscillating."""
         # Set target temperature
         mock_callbacks["get_target_temp"].return_value = 20.0
 
         # Start heating and stop
-        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0, target_temp=20.0, current_temp=18.0)))
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0), target_temp=20.0, current_temp=18.0))
         dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 30, 0)))
 
         # Add 10 unstable temperature samples (high variance)
@@ -275,13 +275,13 @@ class TestCycleTrackerSettling:
         assert cycle_tracker.state == CycleState.SETTLING
 
     @pytest.mark.asyncio
-    async def test_settling_detection_insufficient_samples(self, cycle_tracker, mock_callbacks):
+    async def test_settling_detection_insufficient_samples(self, cycle_tracker, mock_callbacks, dispatcher):
         """Test settling requires at least 10 samples."""
         # Set target temperature
         mock_callbacks["get_target_temp"].return_value = 20.0
 
         # Start heating and stop
-        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0, target_temp=20.0, current_temp=18.0)))
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0), target_temp=20.0, current_temp=18.0))
         dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 30, 0)))
 
         # Add only 9 stable samples (not enough)
@@ -294,13 +294,13 @@ class TestCycleTrackerSettling:
         assert cycle_tracker.state == CycleState.SETTLING
 
     @pytest.mark.asyncio
-    async def test_settling_detection_far_from_target(self, cycle_tracker, mock_callbacks):
+    async def test_settling_detection_far_from_target(self, cycle_tracker, mock_callbacks, dispatcher):
         """Test settling requires temperature within 0.5°C of target."""
         # Set target temperature
         mock_callbacks["get_target_temp"].return_value = 20.0
 
         # Start heating and stop
-        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0, target_temp=20.0, current_temp=18.0)))
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0), target_temp=20.0, current_temp=18.0))
         dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 30, 0)))
 
         # Add 10 stable samples but far from target (> 0.5°C away)
@@ -313,7 +313,7 @@ class TestCycleTrackerSettling:
         assert cycle_tracker.state == CycleState.SETTLING
 
     @pytest.mark.asyncio
-    async def test_settling_timeout(self, cycle_tracker, mock_hass):
+    async def test_settling_timeout(self, cycle_tracker, mock_hass, dispatcher):
         """Test settling timeout transitions to IDLE after 120 minutes."""
         import sys
 
@@ -356,7 +356,7 @@ class TestCycleTrackerValidation:
         monkeypatch.setattr(cycle_tracker_module, 'datetime', MockDateTime)
 
         # Start heating
-        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0, target_temp=20.0, current_temp=18.0)))
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0), target_temp=20.0, current_temp=18.0))
 
         # Add some temperature samples
         cycle_tracker._temperature_history.append((datetime(2025, 1, 14, 10, 1, 0), 18.5))
@@ -376,7 +376,7 @@ class TestCycleTrackerValidation:
         mock_callbacks["get_in_grace_period"].return_value = True
 
         # Start heating 10 minutes ago
-        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 9, 50, 0, target_temp=20.0, current_temp=18.0)))
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 9, 50, 0), target_temp=20.0, current_temp=18.0))
 
         # Add sufficient temperature samples
         for i in range(10):
@@ -392,7 +392,7 @@ class TestCycleTrackerValidation:
     def test_cycle_validation_insufficient_samples(self, cycle_tracker, dispatcher):
         """Test insufficient samples blocks recording."""
         # Start heating 10 minutes ago
-        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 9, 50, 0, target_temp=20.0, current_temp=18.0)))
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 9, 50, 0), target_temp=20.0, current_temp=18.0))
 
         # Add only 4 samples (not enough)
         for i in range(4):
@@ -408,7 +408,7 @@ class TestCycleTrackerValidation:
     def test_cycle_validation_success(self, cycle_tracker, dispatcher):
         """Test validation passes with all requirements met."""
         # Start heating 10 minutes ago
-        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 9, 50, 0, target_temp=20.0, current_temp=18.0)))
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 9, 50, 0), target_temp=20.0, current_temp=18.0))
 
         # Add sufficient temperature samples (>= 5)
         for i in range(10):
@@ -426,7 +426,7 @@ class TestCycleTrackerMetrics:
     """Tests for cycle metrics calculation."""
 
     @pytest.mark.asyncio
-    async def test_metrics_calculation(self, cycle_tracker, mock_callbacks, mock_adaptive_learner):
+    async def test_metrics_calculation(self, cycle_tracker, mock_callbacks, mock_adaptive_learner, dispatcher):
         """Test complete cycle calculates all 5 metrics."""
         # Set target temperature
         mock_callbacks["get_target_temp"].return_value = 20.0
@@ -474,10 +474,10 @@ class TestCycleTrackerMetrics:
         mock_adaptive_learner.update_convergence_tracking.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_invalid_cycle_not_recorded(self, cycle_tracker, mock_adaptive_learner):
+    async def test_invalid_cycle_not_recorded(self, cycle_tracker, mock_adaptive_learner, dispatcher):
         """Test invalid cycles are not recorded."""
         # Start heating
-        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0, target_temp=20.0, current_temp=18.0)))
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0), target_temp=20.0, current_temp=18.0))
 
         # Add only 2 samples (insufficient)
         await cycle_tracker.update_temperature(datetime(2025, 1, 14, 10, 0, 30), 18.5)
@@ -531,7 +531,7 @@ class TestCycleTrackerTemperatureUpdates:
     """Test temperature update integration with control loop."""
 
     @pytest.mark.asyncio
-    async def test_temperature_updates_during_heating(self, cycle_tracker):
+    async def test_temperature_updates_during_heating(self, cycle_tracker, dispatcher):
         """Test that temperature samples are collected during heating cycle."""
         # Start heating cycle
         start_time = datetime(2025, 1, 14, 10, 0, 0)
@@ -721,7 +721,7 @@ class TestSetpointChangeWithDeviceActive:
     """Tests for setpoint change behavior when heater is active."""
 
     def test_setpoint_change_while_heater_active_continues_tracking(
-        self, mock_hass, mock_adaptive_learner, mock_callbacks
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
     ):
         """Test that setpoint change while heater is active continues tracking."""
         # Create tracker with get_is_device_active returning True
@@ -734,7 +734,9 @@ class TestSetpointChangeWithDeviceActive:
             get_hvac_mode=mock_callbacks["get_hvac_mode"],
             get_in_grace_period=mock_callbacks["get_in_grace_period"],
             get_is_device_active=Mock(return_value=True),
+            dispatcher=dispatcher,
         )
+        tracker.set_restoration_complete()
 
         # Start heating cycle
         start_time = datetime(2025, 1, 14, 10, 0, 0)
@@ -762,7 +764,7 @@ class TestSetpointChangeWithDeviceActive:
         assert tracker.temperature_history[0] == (datetime(2025, 1, 14, 10, 0, 30), 18.5)
 
     def test_setpoint_change_while_heater_inactive_aborts_cycle(
-        self, mock_hass, mock_adaptive_learner, mock_callbacks
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
     ):
         """Test that setpoint change while heater is inactive aborts the cycle."""
         # Create tracker with get_is_device_active returning False
@@ -775,7 +777,9 @@ class TestSetpointChangeWithDeviceActive:
             get_hvac_mode=mock_callbacks["get_hvac_mode"],
             get_in_grace_period=mock_callbacks["get_in_grace_period"],
             get_is_device_active=Mock(return_value=False),
+            dispatcher=dispatcher,
         )
+        tracker.set_restoration_complete()
 
         # Start heating cycle
         start_time = datetime(2025, 1, 14, 10, 0, 0)
@@ -795,7 +799,7 @@ class TestSetpointChangeWithDeviceActive:
         assert len(tracker.temperature_history) == 0
 
     def test_setpoint_change_without_callback_aborts_cycle(
-        self, mock_hass, mock_adaptive_learner, mock_callbacks
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
     ):
         """Test backward compatibility: setpoint change aborts cycle when callback not provided."""
         # Create tracker WITHOUT get_is_device_active parameter (legacy behavior)
@@ -808,7 +812,9 @@ class TestSetpointChangeWithDeviceActive:
             get_hvac_mode=mock_callbacks["get_hvac_mode"],
             get_in_grace_period=mock_callbacks["get_in_grace_period"],
             # NOTE: get_is_device_active intentionally not provided
+            dispatcher=dispatcher,
         )
+        tracker.set_restoration_complete()
 
         # Start heating cycle
         start_time = datetime(2025, 1, 14, 10, 0, 0)
@@ -828,7 +834,7 @@ class TestSetpointChangeWithDeviceActive:
         assert len(tracker.temperature_history) == 0
 
     def test_multiple_setpoint_changes_while_heater_active(
-        self, mock_hass, mock_adaptive_learner, mock_callbacks
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
     ):
         """Test that multiple setpoint changes while heater is active are tracked."""
         # Create tracker with get_is_device_active returning True
@@ -841,7 +847,9 @@ class TestSetpointChangeWithDeviceActive:
             get_hvac_mode=mock_callbacks["get_hvac_mode"],
             get_in_grace_period=mock_callbacks["get_in_grace_period"],
             get_is_device_active=Mock(return_value=True),
+            dispatcher=dispatcher,
         )
+        tracker.set_restoration_complete()
 
         # Start heating cycle
         start_time = datetime(2025, 1, 14, 10, 0, 0)
@@ -871,7 +879,7 @@ class TestResetCycleState:
     """Tests for _reset_cycle_state helper method."""
 
     def test_reset_cycle_state_clears_all(
-        self, mock_hass, mock_adaptive_learner, mock_callbacks
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
     ):
         """Test that _reset_cycle_state clears all state variables."""
         # Create tracker
@@ -884,7 +892,9 @@ class TestResetCycleState:
             get_hvac_mode=mock_callbacks["get_hvac_mode"],
             get_in_grace_period=mock_callbacks["get_in_grace_period"],
             get_is_device_active=Mock(return_value=True),
+            dispatcher=dispatcher,
         )
+        tracker.set_restoration_complete()
 
         # Start heating cycle
         start_time = datetime(2025, 1, 14, 10, 0, 0)
@@ -925,7 +935,7 @@ class TestCycleTrackerMADSettling:
     def test_settling_detection_with_noise(self, cycle_tracker, dispatcher):
         """Test settling detection is robust to sensor noise using MAD."""
         # Start heating, then stop
-        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0, target_temp=20.0, current_temp=18.0)))
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0), target_temp=20.0, current_temp=18.0))
         dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 15, 0)))
 
         # Add 10 temperature samples with ±0.2°C noise (simulating sensor jitter)
@@ -964,7 +974,7 @@ class TestCycleTrackerMADSettling:
     def test_settling_mad_vs_variance(self, cycle_tracker, dispatcher):
         """Test MAD is more robust than variance to outliers."""
         # Start heating, then stop
-        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0, target_temp=20.0, current_temp=18.0)))
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0), target_temp=20.0, current_temp=18.0))
         dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 15, 0)))
 
         # Add 9 stable samples + 1 outlier
@@ -994,7 +1004,7 @@ class TestCycleTrackerMADSettling:
     def test_settling_detection_outlier_robust(self, cycle_tracker, dispatcher):
         """Test settling detection handles single outlier correctly."""
         # Start heating, then stop
-        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0, target_temp=20.0, current_temp=18.0)))
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0), target_temp=20.0, current_temp=18.0))
         dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 15, 0)))
 
         # Add 9 very stable samples + 1 moderate outlier
@@ -1600,7 +1610,7 @@ class TestCycleTrackerSettlingTimeoutFinalization:
 
     @pytest.mark.asyncio
     async def test_settling_timeout_records_metrics(
-        self, mock_hass, mock_adaptive_learner, mock_callbacks
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
     ):
         """Test settling timeout finalizes cycle and records metrics.
 
@@ -1616,6 +1626,7 @@ class TestCycleTrackerSettlingTimeoutFinalization:
             hass=mock_hass,
             zone_id="test_zone",
             adaptive_learner=mock_adaptive_learner,
+            dispatcher=dispatcher,
             **mock_callbacks,
         )
         # Mark restoration complete to allow temperature updates
@@ -1676,7 +1687,7 @@ class TestCycleTrackerRestoration:
 
     @pytest.mark.asyncio
     async def test_cycle_tracker_ignores_updates_before_restoration(
-        self, mock_hass, mock_adaptive_learner, mock_callbacks
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
     ):
         """Test temperature updates are ignored when restoration not complete."""
         # Create tracker without calling set_restoration_complete()
@@ -1688,6 +1699,7 @@ class TestCycleTrackerRestoration:
             get_current_temp=mock_callbacks["get_current_temp"],
             get_hvac_mode=mock_callbacks["get_hvac_mode"],
             get_in_grace_period=mock_callbacks["get_in_grace_period"],
+            dispatcher=dispatcher,
         )
 
         # Verify initial state
@@ -1695,7 +1707,7 @@ class TestCycleTrackerRestoration:
         assert cycle_tracker.state == CycleState.IDLE
 
         # Start heating cycle
-        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0, target_temp=20.0, current_temp=18.0)))
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0), target_temp=20.0, current_temp=18.0))
         assert cycle_tracker.state == CycleState.HEATING
 
         # Try to update temperature while restoration incomplete
@@ -1710,7 +1722,7 @@ class TestCycleTrackerRestoration:
 
     @pytest.mark.asyncio
     async def test_cycle_tracker_processes_after_restoration(
-        self, mock_hass, mock_adaptive_learner, mock_callbacks
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
     ):
         """Test normal behavior after restoration complete."""
         # Create tracker without calling set_restoration_complete()
@@ -1722,6 +1734,7 @@ class TestCycleTrackerRestoration:
             get_current_temp=mock_callbacks["get_current_temp"],
             get_hvac_mode=mock_callbacks["get_hvac_mode"],
             get_in_grace_period=mock_callbacks["get_in_grace_period"],
+            dispatcher=dispatcher,
         )
 
         # Mark restoration complete
@@ -1729,7 +1742,7 @@ class TestCycleTrackerRestoration:
         assert cycle_tracker._restoration_complete is True
 
         # Start heating cycle
-        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0, target_temp=20.0, current_temp=18.0)))
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0), target_temp=20.0, current_temp=18.0))
         assert cycle_tracker.state == CycleState.HEATING
 
         # Update temperature
@@ -1749,7 +1762,7 @@ class TestCycleTrackerFinalizeSave:
 
     @pytest.mark.asyncio
     async def test_finalize_cycle_schedules_save(
-        self, mock_hass, mock_adaptive_learner, mock_callbacks
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
     ):
         """Test that finalize_cycle calls schedule_zone_save after adding metrics."""
         # Create mock learning store
@@ -1780,6 +1793,7 @@ class TestCycleTrackerFinalizeSave:
             hass=mock_hass,
             zone_id="test_zone",
             adaptive_learner=mock_adaptive_learner,
+            dispatcher=dispatcher,
             **mock_callbacks,
         )
         cycle_tracker.set_restoration_complete()
@@ -1808,7 +1822,7 @@ class TestCycleTrackerFinalizeSave:
 
     @pytest.mark.asyncio
     async def test_finalize_cycle_passes_adaptive_data(
-        self, mock_hass, mock_adaptive_learner, mock_callbacks
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
     ):
         """Test that finalize_cycle passes adaptive_learner.to_dict() to save."""
         # Create mock learning store
@@ -1840,6 +1854,7 @@ class TestCycleTrackerFinalizeSave:
             hass=mock_hass,
             zone_id="test_zone",
             adaptive_learner=mock_adaptive_learner,
+            dispatcher=dispatcher,
             **mock_callbacks,
         )
         cycle_tracker.set_restoration_complete()
@@ -1868,7 +1883,7 @@ class TestCycleTrackerFinalizeSave:
 
     @pytest.mark.asyncio
     async def test_finalize_cycle_no_store_gracefully_skips(
-        self, mock_hass, mock_adaptive_learner, mock_callbacks
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
     ):
         """Test that finalize_cycle gracefully handles missing learning store."""
         # Setup hass.data WITHOUT learning_store
@@ -1883,6 +1898,7 @@ class TestCycleTrackerFinalizeSave:
             hass=mock_hass,
             zone_id="test_zone",
             adaptive_learner=mock_adaptive_learner,
+            dispatcher=dispatcher,
             **mock_callbacks,
         )
         cycle_tracker.set_restoration_complete()
