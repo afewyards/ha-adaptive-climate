@@ -1925,4 +1925,58 @@ class TestCycleTrackerFinalizeSave:
         # Verify state is IDLE
         assert cycle_tracker.state == CycleState.IDLE
 
+    @pytest.mark.asyncio
+    async def test_finalize_cycle_uses_device_off_time(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
+    ):
+        """Test that _finalize_cycle passes device_off_time as reference_time to calculate_settling_time."""
+        # Setup adaptive_learner
+        mock_adaptive_learner.is_in_validation_mode = MagicMock(return_value=False)
+        mock_adaptive_learner.update_convergence_confidence = MagicMock()
+        mock_adaptive_learner.to_dict = MagicMock(return_value={})
+
+        # Setup hass.data
+        mock_hass.data = {}
+
+        # Create cycle tracker
+        cycle_tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            dispatcher=dispatcher,
+            **mock_callbacks,
+        )
+        cycle_tracker.set_restoration_complete()
+
+        # Set target temperature
+        mock_callbacks["get_target_temp"].return_value = 20.0
+
+        # Start cycle
+        start_time = datetime(2025, 1, 14, 10, 0, 0)
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=start_time, target_temp=20.0, current_temp=18.0))
+
+        # Set device_off_time
+        device_off_time = datetime(2025, 1, 14, 10, 5, 0)
+        cycle_tracker._device_off_time = device_off_time
+
+        # Add temperature samples
+        for i in range(6):
+            await cycle_tracker.update_temperature(
+                datetime(2025, 1, 14, 10, i, 0), 18.0 + i * 0.4
+            )
+
+        # Mock calculate_settling_time to verify reference_time is passed
+        with patch(
+            "custom_components.adaptive_thermostat.adaptive.cycle_analysis.calculate_settling_time"
+        ) as mock_calc_settling:
+            mock_calc_settling.return_value = 5.0  # Return dummy value
+
+            # Finalize cycle
+            await cycle_tracker._finalize_cycle()
+
+            # Verify calculate_settling_time was called with reference_time=device_off_time
+            mock_calc_settling.assert_called_once()
+            call_args = mock_calc_settling.call_args
+            assert call_args[1]["reference_time"] == device_off_time
+
 

@@ -735,7 +735,7 @@ class CycleTrackerManager:
         # Calculate all 5 metrics
         overshoot = calculate_overshoot(self._temperature_history, target_temp)
         undershoot = calculate_undershoot(self._temperature_history, target_temp)
-        settling_time = calculate_settling_time(self._temperature_history, target_temp)
+        settling_time = calculate_settling_time(self._temperature_history, target_temp, reference_time=self._device_off_time)
         oscillations = count_oscillations(self._temperature_history, target_temp)
         rise_time = calculate_rise_time(self._temperature_history, start_temp, target_temp)
 
