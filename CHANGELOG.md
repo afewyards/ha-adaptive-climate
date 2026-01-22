@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v0.24.1 (2026-01-22)
+
+### Bug Fixes
+
+- Prevent memory leaks on entity reload and domain unload
+  ([`c2eaa3f`](https://github.com/afewyards/ha-adaptive-thermostat/commit/c2eaa3f2efc1fd9294eef1c858d805b00da6988d))
+
+- CycleTrackerManager: add cleanup() to unsubscribe 9 dispatcher handles - CentralController: add
+  async_cleanup() to cancel 4 pending async tasks - ThermalCouplingLearner: add clear_pending() to
+  remove orphaned observations - Coordinator: enforce FIFO eviction (max 50) for coupling
+  observations - Call cleanup methods from async_will_remove_from_hass and async_unload
+
+
 ## v0.24.0 (2026-01-22)
 
 ### Bug Fixes
