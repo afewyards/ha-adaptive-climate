@@ -1326,3 +1326,215 @@ class TestEventDrivenCycleFlow:
 
         # No metrics should be recorded
         assert mock_adaptive_learner.add_cycle_metrics.call_count == 0
+
+
+class TestDecayAwareKiAdjustment:
+    """Integration test for decay-aware Ki adjustment (Story 8.2)."""
+
+    def test_decay_aware_ki_adjustment(self):
+        """Test that decay-aware learning adjusts Ki correctly based on decay_ratio.
+
+        Tests the UNDERSHOOT rule's decay-aware Ki scaling:
+        - decay_ratio = 0.0 (no decay) -> full Ki increase
+        - decay_ratio = 1.0 (all decay) -> no Ki increase
+        - decay_ratio = 0.5 (partial decay) -> 50% Ki increase
+        """
+        from custom_components.adaptive_thermostat.adaptive.learning import AdaptiveLearner
+        from custom_components.adaptive_thermostat.adaptive.cycle_analysis import CycleMetrics
+
+        # Create learner with radiator heating type
+        # Radiator thresholds: undershoot=0.375°C, overshoot_max=0.25, min_cycles=6
+        learner = AdaptiveLearner(heating_type="radiator")
+
+        # Test case 1: decay_ratio = 0.0 (no decay contribution)
+        # Expected: Full Ki increase (up to 100% for avg_undershoot=0.5°C)
+        # Note: Must exceed convergence thresholds and have 6 cycles minimum
+        # Design metrics to ONLY trigger UNDERSHOOT rule:
+        # - overshoot < 0.25 (below moderate_overshoot threshold)
+        # - settling_time < 45 (below slow_settling threshold)
+        # - rise_time > 60 (above convergence threshold to prevent skip, but use 70 to avoid SLOW_RESPONSE at 80)
+        # - oscillations < 1 (below some_oscillations threshold)
+        # - undershoot > 0.375 (above undershoot threshold)
+        learner.clear_history()
+        for _ in range(6):
+            metrics = CycleMetrics(
+                overshoot=0.2,  # Below moderate_overshoot threshold (0.25)
+                undershoot=0.5,  # Triggers UNDERSHOOT rule (>0.375°C)
+                settling_time=40.0,  # Below slow_settling threshold (45 min)
+                oscillations=0,
+                rise_time=70.0,  # Above convergence (60) but below SLOW_RESPONSE (80)
+                integral_at_tolerance_entry=100.0,  # Entry integral
+                integral_at_setpoint_cross=100.0,   # Cross integral (no decay)
+                decay_contribution=0.0,  # decay_ratio = 0.0 / 100.0 = 0.0
+            )
+            learner.add_cycle_metrics(metrics)
+
+        # Calculate expected Ki adjustment for decay_ratio = 0.0
+        # increase = min(1.0, avg_undershoot * 2.0) = min(1.0, 0.5 * 2.0) = 1.0
+        # scaled_increase = increase * (1.0 - decay_ratio) = 1.0 * (1.0 - 0.0) = 1.0
+        # ki_factor = 1.0 + scaled_increase = 2.0 (base factor before learning rate)
+        # Learning rate multiplier = 2.0x (confidence=0.0)
+        # Scaled ki_factor = 1.0 + (2.0 - 1.0) * 2.0 = 3.0
+        # Final Ki = 0.001 * 3.0 = 0.003
+        adjustment = learner.calculate_pid_adjustment(
+            current_kp=5.0, current_ki=0.001, current_kd=300.0
+        )
+
+        assert adjustment is not None, "Expected adjustment for decay_ratio=0.0"
+        expected_ki = 0.001 * 3.0  # Full Ki increase with 2.0x learning rate
+        assert abs(adjustment["ki"] - expected_ki) < 0.0001, (
+            f"decay_ratio=0.0: Expected Ki={expected_ki:.4f}, got {adjustment['ki']:.4f}"
+        )
+
+        # Test case 2: decay_ratio = 1.0 (all integral from decay)
+        # Expected: No Ki increase (scaled_increase = 0)
+        learner.clear_history()
+        for _ in range(6):
+            metrics = CycleMetrics(
+                overshoot=0.2,  # Below moderate_overshoot threshold
+                undershoot=0.5,  # Triggers UNDERSHOOT rule
+                settling_time=40.0,  # Below slow_settling threshold
+                oscillations=0,
+                rise_time=70.0,  # Above convergence (60) but below SLOW_RESPONSE (80)
+                integral_at_tolerance_entry=100.0,  # Entry integral
+                integral_at_setpoint_cross=0.0,     # Cross integral (full decay)
+                decay_contribution=100.0,  # decay_ratio = 100.0 / 100.0 = 1.0
+            )
+            learner.add_cycle_metrics(metrics)
+
+        # Calculate expected Ki adjustment for decay_ratio = 1.0
+        # increase = min(1.0, avg_undershoot * 2.0) = 1.0
+        # scaled_increase = increase * (1.0 - decay_ratio) = 1.0 * (1.0 - 1.0) = 0.0
+        # ki_factor = 1.0 + scaled_increase = 1.0 (base factor, no increase)
+        # Learning rate multiplier applied: 1.0 + (1.0 - 1.0) * 2.0 = 1.0
+        # Final Ki = 0.001 * 1.0 = 0.001 (no change)
+        adjustment = learner.calculate_pid_adjustment(
+            current_kp=5.0, current_ki=0.001, current_kd=300.0
+        )
+
+        assert adjustment is not None, "Expected adjustment for decay_ratio=1.0"
+        expected_ki = 0.001 * 1.0  # No Ki increase
+        assert abs(adjustment["ki"] - expected_ki) < 0.0001, (
+            f"decay_ratio=1.0: Expected Ki={expected_ki:.4f}, got {adjustment['ki']:.4f}"
+        )
+
+        # Test case 3: decay_ratio = 0.5 (partial decay)
+        # Expected: 50% of full Ki increase
+        learner.clear_history()
+        for _ in range(6):
+            metrics = CycleMetrics(
+                overshoot=0.2,  # Below moderate_overshoot threshold
+                undershoot=0.5,  # Triggers UNDERSHOOT rule
+                settling_time=40.0,  # Below slow_settling threshold
+                oscillations=0,
+                rise_time=70.0,  # Above convergence (60) but below SLOW_RESPONSE (80)
+                integral_at_tolerance_entry=100.0,  # Entry integral
+                integral_at_setpoint_cross=50.0,    # Cross integral (partial decay)
+                decay_contribution=50.0,  # decay_ratio = 50.0 / 100.0 = 0.5
+            )
+            learner.add_cycle_metrics(metrics)
+
+        # Calculate expected Ki adjustment for decay_ratio = 0.5
+        # increase = min(1.0, avg_undershoot * 2.0) = 1.0
+        # scaled_increase = increase * (1.0 - decay_ratio) = 1.0 * (1.0 - 0.5) = 0.5
+        # ki_factor = 1.0 + scaled_increase = 1.5 (base factor, 50% increase)
+        # Learning rate multiplier applied: 1.0 + (1.5 - 1.0) * 2.0 = 2.0
+        # Final Ki = 0.001 * 2.0 = 0.002
+        adjustment = learner.calculate_pid_adjustment(
+            current_kp=5.0, current_ki=0.001, current_kd=300.0
+        )
+
+        assert adjustment is not None, "Expected adjustment for decay_ratio=0.5"
+        expected_ki = 0.001 * 2.0  # 50% base increase * 2.0x learning rate
+        assert abs(adjustment["ki"] - expected_ki) < 0.0001, (
+            f"decay_ratio=0.5: Expected Ki={expected_ki:.4f}, got {adjustment['ki']:.4f}"
+        )
+
+        # Test case 4: decay_ratio = 0.2 (low decay, 80% Ki increase expected)
+        learner.clear_history()
+        for _ in range(6):
+            metrics = CycleMetrics(
+                overshoot=0.2,  # Below moderate_overshoot threshold
+                undershoot=0.5,
+                settling_time=40.0,  # Below slow_settling threshold
+                oscillations=0,
+                rise_time=70.0,  # Above convergence (60) but below SLOW_RESPONSE (80)
+                integral_at_tolerance_entry=100.0,
+                integral_at_setpoint_cross=80.0,
+                decay_contribution=20.0,  # decay_ratio = 20.0 / 100.0 = 0.2
+            )
+            learner.add_cycle_metrics(metrics)
+
+        # Calculate expected Ki adjustment for decay_ratio = 0.2
+        # increase = min(1.0, avg_undershoot * 2.0) = 1.0
+        # scaled_increase = increase * (1.0 - decay_ratio) = 1.0 * (1.0 - 0.2) = 0.8
+        # ki_factor = 1.0 + scaled_increase = 1.8 (base factor, 80% increase)
+        # Learning rate multiplier applied: 1.0 + (1.8 - 1.0) * 2.0 = 2.6
+        # Final Ki = 0.001 * 2.6 = 0.0026
+        adjustment = learner.calculate_pid_adjustment(
+            current_kp=5.0, current_ki=0.001, current_kd=300.0
+        )
+
+        assert adjustment is not None, "Expected adjustment for decay_ratio=0.2"
+        expected_ki = 0.001 * 2.6  # 80% base increase * 2.0x learning rate
+        assert abs(adjustment["ki"] - expected_ki) < 0.0001, (
+            f"decay_ratio=0.2: Expected Ki={expected_ki:.4f}, got {adjustment['ki']:.4f}"
+        )
+
+        # Test case 5: decay_ratio = 0.8 (high decay, 20% Ki increase expected)
+        learner.clear_history()
+        for _ in range(6):
+            metrics = CycleMetrics(
+                overshoot=0.2,  # Below moderate_overshoot threshold
+                undershoot=0.5,
+                settling_time=40.0,  # Below slow_settling threshold
+                oscillations=0,
+                rise_time=70.0,  # Above convergence (60) but below SLOW_RESPONSE (80)
+                integral_at_tolerance_entry=100.0,
+                integral_at_setpoint_cross=20.0,
+                decay_contribution=80.0,  # decay_ratio = 80.0 / 100.0 = 0.8
+            )
+            learner.add_cycle_metrics(metrics)
+
+        # Calculate expected Ki adjustment for decay_ratio = 0.8
+        # increase = min(1.0, avg_undershoot * 2.0) = 1.0
+        # scaled_increase = increase * (1.0 - decay_ratio) = 1.0 * (1.0 - 0.8) = 0.2
+        # ki_factor = 1.0 + scaled_increase = 1.2 (base factor, 20% increase)
+        # Learning rate multiplier applied: 1.0 + (1.2 - 1.0) * 2.0 = 1.4
+        # Final Ki = 0.001 * 1.4 = 0.0014
+        adjustment = learner.calculate_pid_adjustment(
+            current_kp=5.0, current_ki=0.001, current_kd=300.0
+        )
+
+        assert adjustment is not None, "Expected adjustment for decay_ratio=0.8"
+        expected_ki = 0.001 * 1.4  # 20% base increase * 2.0x learning rate
+        assert abs(adjustment["ki"] - expected_ki) < 0.0001, (
+            f"decay_ratio=0.8: Expected Ki={expected_ki:.4f}, got {adjustment['ki']:.4f}"
+        )
+
+        # Test case 6: Verify no adjustment when decay metrics are missing (backward compatibility)
+        learner.clear_history()
+        for _ in range(6):
+            metrics = CycleMetrics(
+                overshoot=0.2,  # Below moderate_overshoot threshold
+                undershoot=0.5,  # Triggers UNDERSHOOT rule
+                settling_time=40.0,  # Below slow_settling threshold
+                oscillations=0,
+                rise_time=70.0,  # Above convergence (60) but below SLOW_RESPONSE (80)
+                integral_at_tolerance_entry=None,  # No decay data
+                integral_at_setpoint_cross=None,
+                decay_contribution=None,
+            )
+            learner.add_cycle_metrics(metrics)
+
+        # Without decay metrics, should get full Ki increase (decay_ratio=0.0 default)
+        # Same as test case 1: full increase with 2.0x learning rate = 3.0x
+        adjustment = learner.calculate_pid_adjustment(
+            current_kp=5.0, current_ki=0.001, current_kd=300.0
+        )
+
+        assert adjustment is not None, "Expected adjustment when decay metrics missing"
+        expected_ki = 0.001 * 3.0  # Full 100% base increase * 2.0x learning rate (backward compatible)
+        assert abs(adjustment["ki"] - expected_ki) < 0.0001, (
+            f"No decay metrics: Expected Ki={expected_ki:.4f}, got {adjustment['ki']:.4f}"
+        )
