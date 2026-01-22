@@ -571,13 +571,14 @@ class PID:
         # Feedforward (F) is subtracted to reduce output when thermal coupling provides heat
         output = self._proportional + self._integral + self._derivative + self._external - self._feedforward
 
-        # Clamp output to 0 when on wrong side of setpoint
+        # Clamp output to 0 when beyond tolerance threshold
         # Uses integral sign to detect mode (positive = heating history, negative = cooling history)
-        # Heating: temp > setpoint (error < 0) → no heating
-        # Cooling: temp < setpoint (error > 0) → no cooling
-        if self._integral > 0 and self._error < 0:  # Was heating, now above setpoint
+        # Heating: temp beyond cold_tolerance above setpoint (error < -cold_tolerance) → no heating
+        # Cooling: temp beyond hot_tolerance below setpoint (error > hot_tolerance) → no cooling
+        # This allows gentle coasting through the tolerance band without abrupt cutoff
+        if self._integral > 0 and self._error < -self._cold_tolerance:  # Was heating, now beyond tolerance above setpoint
             output = min(output, 0)
-        elif self._integral < 0 and self._error > 0:  # Was cooling, now below setpoint
+        elif self._integral < 0 and self._error > self._hot_tolerance:  # Was cooling, now beyond tolerance below setpoint
             output = max(output, 0)
 
         self._output = max(min(output, self._out_max), self._out_min)

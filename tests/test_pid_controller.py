@@ -2041,6 +2041,58 @@ class TestOutputClampingOnWrongSide:
         # Integral should have decayed but still be positive
         assert pid.integral > 0, "Integral should still be positive after decay"
 
+    def test_output_clamp_uses_tolerance(self):
+        """Test output NOT clamped when error is between -tolerance and 0.
+
+        When integral>0 (heating history) and error is between -cold_tolerance and 0
+        (temp slightly above setpoint but within tolerance), output should NOT be
+        clamped to 0. This allows gentle coasting through the tolerance band.
+        """
+        # Default cold_tolerance is 0.3°C
+        pid = PID(kp=0, ki=10, kd=0, out_min=-100, out_max=100, cold_tolerance=0.3)
+
+        # Build up positive integral (heating history)
+        base_time = 1000.0
+        for i in range(60):
+            t = base_time + i * 100
+            pid.calc(19.0, 20.0, input_time=t, last_input_time=t - 100 if i > 0 else None)
+
+        # Verify positive integral
+        assert pid.integral > 10, f"Expected positive integral, got {pid.integral}"
+
+        # Temperature slightly above setpoint but within cold_tolerance
+        # setpoint=20.0, temp=20.1 → error=-0.1 (within -0.3 tolerance)
+        output, _ = pid.calc(20.1, 20.0, input_time=base_time + 6100, last_input_time=base_time + 6000)
+
+        # Output should NOT be clamped to 0 (should remain positive from integral)
+        assert output > 0, f"Output should be > 0 when within tolerance, got {output}"
+
+    def test_output_clamp_beyond_tolerance(self):
+        """Test output clamped when error < -cold_tolerance.
+
+        When integral>0 (heating history) and error < -cold_tolerance
+        (temp significantly above setpoint beyond tolerance), output should be
+        clamped to 0 to prevent heating when clearly overheated.
+        """
+        # Default cold_tolerance is 0.3°C
+        pid = PID(kp=0, ki=10, kd=0, out_min=-100, out_max=100, cold_tolerance=0.3)
+
+        # Build up positive integral (heating history)
+        base_time = 1000.0
+        for i in range(60):
+            t = base_time + i * 100
+            pid.calc(19.0, 20.0, input_time=t, last_input_time=t - 100 if i > 0 else None)
+
+        # Verify positive integral
+        assert pid.integral > 10, f"Expected positive integral, got {pid.integral}"
+
+        # Temperature beyond cold_tolerance above setpoint
+        # setpoint=20.0, tolerance=0.3, temp=20.5 → error=-0.5 (beyond -0.3 tolerance)
+        output, _ = pid.calc(20.5, 20.0, input_time=base_time + 6100, last_input_time=base_time + 6000)
+
+        # Output should be clamped to 0 (no heating when beyond tolerance)
+        assert output <= 0, f"Output should be ≤ 0 when beyond tolerance, got {output}"
+
 
     def test_should_apply_decay_untuned_excessive_integral_in_tolerance(self):
         """Test should_apply_decay returns True when untuned + excessive integral + within tolerance."""
