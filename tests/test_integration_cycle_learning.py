@@ -994,6 +994,190 @@ class TestEventDrivenCycleFlow:
         assert mock_adaptive_learner.add_cycle_metrics.call_count == 0
 
     @pytest.mark.asyncio
+    async def test_full_cycle_decay_tracking(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
+    ):
+        """Test full heating cycle with decay tracking via TemperatureUpdateEvent.
+
+        Simulates a complete heating cycle with PID controller tracking and verifies:
+        - integral_at_tolerance_entry captured when pid_error < cold_tolerance
+        - integral_at_setpoint_cross captured when pid_error <= 0
+        - decay_contribution calculated correctly (entry - cross)
+        - CycleMetrics has all decay fields populated
+        """
+        from custom_components.adaptive_thermostat.managers.events import (
+            CycleStartedEvent,
+            SettlingStartedEvent,
+            TemperatureUpdateEvent,
+        )
+
+        # Create tracker with radiator heating type (cold_tolerance=0.3°C)
+        tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            get_target_temp=mock_callbacks["get_target_temp"],
+            get_current_temp=mock_callbacks["get_current_temp"],
+            get_hvac_mode=mock_callbacks["get_hvac_mode"],
+            get_in_grace_period=mock_callbacks["get_in_grace_period"],
+            dispatcher=dispatcher,
+            heating_type="radiator",  # cold_tolerance=0.3°C
+        )
+        tracker.set_restoration_complete()
+
+        # Start heating cycle at 19.0°C, target 21.0°C
+        start_time = datetime(2024, 1, 1, 10, 0, 0)
+        cycle_started = CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=start_time,
+            target_temp=21.0,
+            current_temp=19.0,
+        )
+        dispatcher.emit(cycle_started)
+
+        assert tracker.state == CycleState.HEATING
+
+        # Simulate temperature rising with PID integral building up
+        # For radiator heating type, cold_tolerance = 0.3°C
+        current_time = start_time
+        current_temp = 19.0
+        pid_integral = 0.0
+
+        # Phase 1: Temperature rises from 19.0 to 20.7 (just before tolerance entry)
+        # PID integral builds up as temperature chases setpoint
+        for i in range(10):
+            current_temp = 19.0 + i * 0.17  # 19.0, 19.17, 19.34, ..., 20.53
+            pid_error = 21.0 - current_temp  # Starts at 2.0, decreases
+            pid_integral += pid_error * 0.1  # Accumulate integral term
+
+            # Update temperature for cycle tracking
+            await tracker.update_temperature(current_time, current_temp)
+
+            # Emit TemperatureUpdateEvent for integral tracking
+            temp_event = TemperatureUpdateEvent(
+                timestamp=current_time,
+                temperature=current_temp,
+                setpoint=21.0,
+                pid_integral=pid_integral,
+                pid_error=pid_error,
+            )
+            dispatcher.emit(temp_event)
+
+            current_time += timedelta(seconds=30)
+
+        # Phase 2: Temperature enters cold tolerance zone (20.7 to 21.0)
+        # This is where integral_at_tolerance_entry should be captured
+        # cold_tolerance = 0.3, so tolerance entry occurs when pid_error < 0.3
+        integral_at_entry = None
+        for i in range(3):
+            current_temp = 20.7 + i * 0.1  # 20.7, 20.8, 20.9
+            pid_error = 21.0 - current_temp  # 0.3, 0.2, 0.1 (< 0.3 triggers capture)
+            pid_integral += pid_error * 0.1
+
+            # Capture integral at first entry into tolerance zone
+            if integral_at_entry is None and pid_error < 0.3:
+                integral_at_entry = pid_integral
+
+            await tracker.update_temperature(current_time, current_temp)
+
+            temp_event = TemperatureUpdateEvent(
+                timestamp=current_time,
+                temperature=current_temp,
+                setpoint=21.0,
+                pid_integral=pid_integral,
+                pid_error=pid_error,
+            )
+            dispatcher.emit(temp_event)
+
+            current_time += timedelta(seconds=30)
+
+        # Phase 3: Temperature crosses setpoint (21.0 to 21.2)
+        # This is where integral_at_setpoint_cross should be captured
+        integral_at_cross = None
+        for i in range(3):
+            current_temp = 21.0 + i * 0.1  # 21.0, 21.1, 21.2
+            pid_error = 21.0 - current_temp  # 0.0, -0.1, -0.2 (<= 0 triggers capture)
+            pid_integral += pid_error * 0.1
+
+            # Capture integral at setpoint crossing
+            if integral_at_cross is None and pid_error <= 0.0:
+                integral_at_cross = pid_integral
+
+            await tracker.update_temperature(current_time, current_temp)
+
+            temp_event = TemperatureUpdateEvent(
+                timestamp=current_time,
+                temperature=current_temp,
+                setpoint=21.0,
+                pid_integral=pid_integral,
+                pid_error=pid_error,
+            )
+            dispatcher.emit(temp_event)
+
+            current_time += timedelta(seconds=30)
+
+        # Phase 4: Temperature overshoots slightly and settles
+        for i in range(10):
+            current_temp = 21.2 - i * 0.02  # Gradually settle to 21.0
+            pid_error = 21.0 - current_temp
+            pid_integral += pid_error * 0.1
+
+            await tracker.update_temperature(current_time, current_temp)
+
+            temp_event = TemperatureUpdateEvent(
+                timestamp=current_time,
+                temperature=current_temp,
+                setpoint=21.0,
+                pid_integral=pid_integral,
+                pid_error=pid_error,
+            )
+            dispatcher.emit(temp_event)
+
+            current_time += timedelta(seconds=30)
+
+        # Stop heating and enter settling phase
+        settling_started = SettlingStartedEvent(
+            hvac_mode="heat",
+            timestamp=current_time,
+        )
+        dispatcher.emit(settling_started)
+
+        assert tracker.state == CycleState.SETTLING
+
+        # Add settling samples at stable temperature
+        for _ in range(10):
+            await tracker.update_temperature(current_time, 21.0)
+            current_time += timedelta(seconds=30)
+
+        # Cycle should complete and transition to IDLE
+        assert tracker.state == CycleState.IDLE
+
+        # Verify metrics were recorded
+        assert mock_adaptive_learner.add_cycle_metrics.call_count == 1
+
+        # Verify CycleMetrics has decay fields populated
+        recorded_metrics = mock_adaptive_learner.add_cycle_metrics.call_args[0][0]
+        assert isinstance(recorded_metrics, CycleMetrics)
+
+        # Verify integral values were captured
+        assert recorded_metrics.integral_at_tolerance_entry is not None
+        assert recorded_metrics.integral_at_setpoint_cross is not None
+        assert recorded_metrics.decay_contribution is not None
+
+        # Calculate expected decay contribution
+        expected_decay = integral_at_entry - integral_at_cross
+
+        # Verify integral values match what we captured
+        assert abs(recorded_metrics.integral_at_tolerance_entry - integral_at_entry) < 0.01
+        assert abs(recorded_metrics.integral_at_setpoint_cross - integral_at_cross) < 0.01
+
+        # Verify decay_contribution is calculated correctly (entry - cross)
+        # Note: decay_contribution may be negative if integral continues accumulating
+        # during the approach to setpoint (which happens with I-only control or
+        # when P term isn't strong enough to reduce error quickly)
+        assert abs(recorded_metrics.decay_contribution - expected_decay) < 0.01
+
+    @pytest.mark.asyncio
     async def test_setpoint_change_during_cycle_via_event(
         self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
     ):
