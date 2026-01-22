@@ -2079,3 +2079,135 @@ def test_adaptive_learner_restoration_exists():
     learner = AdaptiveLearner()
     assert hasattr(learner, 'restore_from_dict')
     assert callable(learner.restore_from_dict)
+
+
+# ============================================================================
+# Decay Metrics Passing Tests (Story 6.4)
+# ============================================================================
+
+
+class TestDecayMetricsPassing:
+    """Tests for AdaptiveLearner passing decay metrics to rule evaluation."""
+
+    def test_pid_adjustment_passes_decay_metrics(self):
+        """Test calculate_pid_adjustment extracts decay metrics and passes to evaluate_pid_rules."""
+        from unittest.mock import patch, MagicMock
+
+        learner = AdaptiveLearner()
+
+        # Add cycles with decay metrics
+        for i in range(6):
+            learner.add_cycle_metrics(CycleMetrics(
+                overshoot=0.3,
+                oscillations=0,
+                settling_time=40,
+                rise_time=25,
+                integral_at_tolerance_entry=50.0 + i,
+                integral_at_setpoint_cross=30.0 + i,
+                decay_contribution=10.0 + i,
+            ))
+
+        # Mock evaluate_pid_rules to inspect what it receives
+        with patch('custom_components.adaptive_thermostat.adaptive.learning.evaluate_pid_rules') as mock_evaluate:
+            # Configure mock to return empty list (no rules triggered)
+            mock_evaluate.return_value = []
+
+            # Call calculate_pid_adjustment
+            learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
+
+            # Verify evaluate_pid_rules was called
+            assert mock_evaluate.call_count == 1
+
+            # Extract the call arguments
+            call_args = mock_evaluate.call_args
+
+            # Verify decay_contribution parameter was passed
+            assert 'decay_contribution' in call_args.kwargs
+            # Should be the average of the last 6 cycles (10, 11, 12, 13, 14, 15)
+            assert call_args.kwargs['decay_contribution'] == pytest.approx(12.5, abs=0.01)
+
+            # Verify integral_at_tolerance_entry parameter was passed
+            assert 'integral_at_tolerance_entry' in call_args.kwargs
+            # Should be the average of the last 6 cycles (50, 51, 52, 53, 54, 55)
+            assert call_args.kwargs['integral_at_tolerance_entry'] == pytest.approx(52.5, abs=0.01)
+
+    def test_pid_adjustment_passes_none_when_no_decay_metrics(self):
+        """Test calculate_pid_adjustment passes None when cycles lack decay metrics."""
+        from unittest.mock import patch
+
+        learner = AdaptiveLearner()
+
+        # Add cycles WITHOUT decay metrics
+        for _ in range(6):
+            learner.add_cycle_metrics(CycleMetrics(
+                overshoot=0.3,
+                oscillations=0,
+                settling_time=40,
+                rise_time=25,
+                # No decay metrics
+            ))
+
+        # Mock evaluate_pid_rules to inspect what it receives
+        with patch('custom_components.adaptive_thermostat.adaptive.learning.evaluate_pid_rules') as mock_evaluate:
+            mock_evaluate.return_value = []
+
+            # Call calculate_pid_adjustment
+            learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
+
+            # Verify evaluate_pid_rules was called with None for decay metrics
+            call_args = mock_evaluate.call_args
+            assert call_args.kwargs['decay_contribution'] is None
+            assert call_args.kwargs['integral_at_tolerance_entry'] is None
+
+    def test_pid_adjustment_passes_partial_decay_metrics(self):
+        """Test calculate_pid_adjustment handles mix of cycles with/without decay metrics."""
+        from unittest.mock import patch
+
+        learner = AdaptiveLearner()
+
+        # Add cycles with partial decay metrics (some have, some don't)
+        for i in range(6):
+            if i < 3:
+                # First 3 cycles have decay metrics
+                learner.add_cycle_metrics(CycleMetrics(
+                    overshoot=0.3,
+                    oscillations=0,
+                    settling_time=40,
+                    rise_time=25,
+                    integral_at_tolerance_entry=50.0,
+                    decay_contribution=10.0,
+                ))
+            else:
+                # Last 3 cycles don't have decay metrics
+                learner.add_cycle_metrics(CycleMetrics(
+                    overshoot=0.3,
+                    oscillations=0,
+                    settling_time=40,
+                    rise_time=25,
+                ))
+
+        # Mock evaluate_pid_rules to inspect what it receives
+        with patch('custom_components.adaptive_thermostat.adaptive.learning.evaluate_pid_rules') as mock_evaluate:
+            mock_evaluate.return_value = []
+
+            # Call calculate_pid_adjustment
+            learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
+
+            # Verify evaluate_pid_rules was called with averages of only the cycles with metrics
+            call_args = mock_evaluate.call_args
+            # Should average only the 3 cycles with decay_contribution (all 10.0)
+            assert call_args.kwargs['decay_contribution'] == pytest.approx(10.0, abs=0.01)
+            # Should average only the 3 cycles with integral_at_tolerance_entry (all 50.0)
+            assert call_args.kwargs['integral_at_tolerance_entry'] == pytest.approx(50.0, abs=0.01)
+
+
+# Marker test for Story 6.4
+def test_decay_metrics_passing_exists():
+    """Marker test to ensure decay metrics are passed from AdaptiveLearner to evaluate_pid_rules."""
+    from custom_components.adaptive_thermostat.adaptive.pid_rules import evaluate_pid_rules
+    import inspect
+
+    # Verify evaluate_pid_rules has decay_contribution and integral_at_tolerance_entry parameters
+    sig = inspect.signature(evaluate_pid_rules)
+    assert 'decay_contribution' in sig.parameters
+    assert 'integral_at_tolerance_entry' in sig.parameters

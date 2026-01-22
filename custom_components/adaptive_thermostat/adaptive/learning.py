@@ -430,6 +430,21 @@ class AdaptiveLearner:
         # Extract outdoor temperature averages for correlation analysis
         outdoor_temp_values = [c.outdoor_temp_avg for c in recent_cycles if c.outdoor_temp_avg is not None]
 
+        # Extract decay metrics for rule evaluation
+        decay_contribution_values = [
+            c.decay_contribution for c in recent_cycles if c.decay_contribution is not None
+        ]
+        avg_decay_contribution = (
+            statistics.mean(decay_contribution_values) if decay_contribution_values else None
+        )
+
+        integral_at_tolerance_values = [
+            c.integral_at_tolerance_entry for c in recent_cycles if c.integral_at_tolerance_entry is not None
+        ]
+        avg_integral_at_tolerance = (
+            statistics.mean(integral_at_tolerance_values) if integral_at_tolerance_values else None
+        )
+
         # Check for convergence - skip adjustments if system is tuned
         if self._check_convergence(
             avg_overshoot, avg_oscillations, avg_settling_time, avg_rise_time
@@ -445,6 +460,8 @@ class AdaptiveLearner:
             recent_outdoor_temps=outdoor_temp_values,
             state_tracker=self._rule_state_tracker,
             rule_thresholds=self._rule_thresholds,
+            decay_contribution=avg_decay_contribution,
+            integral_at_tolerance_entry=avg_integral_at_tolerance,
         )
 
         if not rule_results:
