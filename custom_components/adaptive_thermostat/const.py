@@ -256,6 +256,9 @@ def get_rule_thresholds(heating_type: Optional[str] = None) -> Dict[str, float]:
     This coupling ensures that slow systems (high thermal mass) get proportionally
     relaxed rule thresholds to match their relaxed convergence criteria.
 
+    The slow_settling threshold is taken directly from HEATING_TYPE_CHARACTERISTICS
+    max_settling_time to provide heating-type-specific settling expectations.
+
     Args:
         heating_type: One of HEATING_TYPE_* constants, or None for default thresholds
 
@@ -267,6 +270,8 @@ def get_rule_thresholds(heating_type: Optional[str] = None) -> Dict[str, float]:
         >>> thresholds = get_rule_thresholds(HEATING_TYPE_FLOOR_HYDRONIC)
         >>> thresholds["slow_response"]
         120.0  # 90 min rise_time_max * 1.33 multiplier
+        >>> thresholds["slow_settling"]
+        90  # max_settling_time from HEATING_TYPE_CHARACTERISTICS
         >>> thresholds["moderate_overshoot"]
         0.3  # 0.3°C overshoot_max * 1.0 multiplier (no floor applied)
     """
@@ -277,10 +282,17 @@ def get_rule_thresholds(heating_type: Optional[str] = None) -> Dict[str, float]:
     moderate_overshoot = convergence["overshoot_max"] * RULE_THRESHOLD_MULTIPLIERS["moderate_overshoot"]
     high_overshoot = convergence["overshoot_max"] * RULE_THRESHOLD_MULTIPLIERS["high_overshoot"]
     slow_response = convergence["rise_time_max"] * RULE_THRESHOLD_MULTIPLIERS["slow_response"]
-    slow_settling = convergence["settling_time_max"] * RULE_THRESHOLD_MULTIPLIERS["slow_settling"]
     undershoot = convergence["overshoot_max"] * RULE_THRESHOLD_MULTIPLIERS["undershoot"]
     many_oscillations = convergence["oscillations_max"] * RULE_THRESHOLD_MULTIPLIERS["many_oscillations"]
     some_oscillations = convergence["oscillations_max"] * RULE_THRESHOLD_MULTIPLIERS["some_oscillations"]
+
+    # Use max_settling_time from HEATING_TYPE_CHARACTERISTICS directly for slow_settling
+    # This provides heating-type-specific settling expectations (e.g., 90 min for floor_hydronic)
+    if heating_type and heating_type in HEATING_TYPE_CHARACTERISTICS:
+        slow_settling = HEATING_TYPE_CHARACTERISTICS[heating_type]["max_settling_time"]
+    else:
+        # Default fallback: use convergence threshold with multiplier
+        slow_settling = convergence["settling_time_max"] * RULE_THRESHOLD_MULTIPLIERS["slow_settling"]
 
     # Apply floors to prevent excessive sensitivity
     moderate_overshoot = max(moderate_overshoot, RULE_THRESHOLD_FLOORS["moderate_overshoot"])

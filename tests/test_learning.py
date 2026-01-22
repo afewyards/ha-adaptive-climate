@@ -2211,3 +2211,104 @@ def test_decay_metrics_passing_exists():
     sig = inspect.signature(evaluate_pid_rules)
     assert 'decay_contribution' in sig.parameters
     assert 'integral_at_tolerance_entry' in sig.parameters
+
+
+# ============================================================================
+# Heating-Type Max Settling Time Tests (Story 6.5)
+# ============================================================================
+
+
+class TestHeatingTypeMaxSettling:
+    """Tests for AdaptiveLearner using heating-type max_settling_time from HEATING_TYPE_CHARACTERISTICS."""
+
+    def test_pid_adjustment_uses_heating_type_max_settling(self):
+        """Test floor_hydronic uses 90min max_settling from HEATING_TYPE_CHARACTERISTICS."""
+        from custom_components.adaptive_thermostat.const import (
+            HEATING_TYPE_FLOOR_HYDRONIC,
+            HEATING_TYPE_CHARACTERISTICS,
+            get_rule_thresholds,
+        )
+
+        # Create learner with floor_hydronic heating type
+        learner = AdaptiveLearner(heating_type=HEATING_TYPE_FLOOR_HYDRONIC)
+
+        # Verify the rule_thresholds use max_settling_time from HEATING_TYPE_CHARACTERISTICS
+        expected_max_settling = HEATING_TYPE_CHARACTERISTICS[HEATING_TYPE_FLOOR_HYDRONIC]["max_settling_time"]
+        assert expected_max_settling == 90  # Sanity check
+
+        # Get rule thresholds directly
+        rule_thresholds = get_rule_thresholds(HEATING_TYPE_FLOOR_HYDRONIC)
+
+        # slow_settling should be max_settling_time (90), not settling_time_max * 1.5 (120 * 1.5 = 180)
+        assert rule_thresholds["slow_settling"] == 90
+
+        # Verify learner has the correct thresholds
+        assert learner._rule_thresholds["slow_settling"] == 90
+
+    def test_pid_adjustment_uses_radiator_max_settling(self):
+        """Test radiator uses 45min max_settling from HEATING_TYPE_CHARACTERISTICS."""
+        from custom_components.adaptive_thermostat.const import (
+            HEATING_TYPE_RADIATOR,
+            HEATING_TYPE_CHARACTERISTICS,
+            get_rule_thresholds,
+        )
+
+        # Get expected value from HEATING_TYPE_CHARACTERISTICS
+        expected_max_settling = HEATING_TYPE_CHARACTERISTICS[HEATING_TYPE_RADIATOR]["max_settling_time"]
+        assert expected_max_settling == 45  # Sanity check
+
+        # Get rule thresholds
+        rule_thresholds = get_rule_thresholds(HEATING_TYPE_RADIATOR)
+
+        # slow_settling should be max_settling_time (45), not settling_time_max * 1.5 (90 * 1.5 = 135)
+        assert rule_thresholds["slow_settling"] == 45
+
+    def test_pid_adjustment_uses_forced_air_max_settling(self):
+        """Test forced_air uses 15min max_settling from HEATING_TYPE_CHARACTERISTICS."""
+        from custom_components.adaptive_thermostat.const import (
+            HEATING_TYPE_FORCED_AIR,
+            HEATING_TYPE_CHARACTERISTICS,
+            get_rule_thresholds,
+        )
+
+        # Get expected value from HEATING_TYPE_CHARACTERISTICS
+        expected_max_settling = HEATING_TYPE_CHARACTERISTICS[HEATING_TYPE_FORCED_AIR]["max_settling_time"]
+        assert expected_max_settling == 15  # Sanity check
+
+        # Get rule thresholds
+        rule_thresholds = get_rule_thresholds(HEATING_TYPE_FORCED_AIR)
+
+        # slow_settling should be max_settling_time (15)
+        assert rule_thresholds["slow_settling"] == 15
+
+    def test_pid_adjustment_default_settling_without_heating_type(self):
+        """Test default threshold uses fallback when no heating_type specified."""
+        from custom_components.adaptive_thermostat.const import (
+            get_rule_thresholds,
+            DEFAULT_CONVERGENCE_THRESHOLDS,
+            RULE_THRESHOLD_MULTIPLIERS,
+        )
+
+        # Get rule thresholds without heating type
+        rule_thresholds = get_rule_thresholds(None)
+
+        # Should fall back to convergence threshold * multiplier
+        expected = DEFAULT_CONVERGENCE_THRESHOLDS["settling_time_max"] * RULE_THRESHOLD_MULTIPLIERS["slow_settling"]
+        assert rule_thresholds["slow_settling"] == expected
+
+
+# Marker test for Story 6.5
+def test_heating_type_max_settling_exists():
+    """Marker test to ensure get_rule_thresholds uses max_settling_time from HEATING_TYPE_CHARACTERISTICS."""
+    from custom_components.adaptive_thermostat.const import (
+        HEATING_TYPE_FLOOR_HYDRONIC,
+        HEATING_TYPE_CHARACTERISTICS,
+        get_rule_thresholds,
+    )
+
+    # Verify max_settling_time exists in HEATING_TYPE_CHARACTERISTICS
+    assert "max_settling_time" in HEATING_TYPE_CHARACTERISTICS[HEATING_TYPE_FLOOR_HYDRONIC]
+
+    # Verify get_rule_thresholds returns max_settling_time for slow_settling
+    thresholds = get_rule_thresholds(HEATING_TYPE_FLOOR_HYDRONIC)
+    assert thresholds["slow_settling"] == HEATING_TYPE_CHARACTERISTICS[HEATING_TYPE_FLOOR_HYDRONIC]["max_settling_time"]

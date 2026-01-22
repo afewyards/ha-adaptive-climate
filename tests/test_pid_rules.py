@@ -777,6 +777,8 @@ class TestHeatingTypeSpecificThresholds:
         """Test 45min rise DOES trigger SLOW_RESPONSE for forced_air."""
         # Forced air threshold: 30 * 1.33 = 40 min
         # 45 min > 40 min -> slow response rule triggered
+        # Note: slow_settling threshold for forced_air is now 15 min (from max_settling_time)
+        # so we use avg_settling_time=10.0 to avoid triggering SLOW_SETTLING rule
         thresholds = get_rule_thresholds(HEATING_TYPE_FORCED_AIR)
 
         results = evaluate_pid_rules(
@@ -784,7 +786,7 @@ class TestHeatingTypeSpecificThresholds:
             avg_undershoot=0.0,
             avg_oscillations=0.0,
             avg_rise_time=45.0,  # Above threshold for forced_air
-            avg_settling_time=30.0,
+            avg_settling_time=10.0,  # Below slow_settling threshold (15 min for forced_air)
             rule_thresholds=thresholds,
         )
 
