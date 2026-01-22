@@ -174,6 +174,8 @@ def evaluate_pid_rules(
     recent_outdoor_temps: Optional[List[float]] = None,
     state_tracker: Optional[RuleStateTracker] = None,
     rule_thresholds: Optional[Dict[str, float]] = None,
+    decay_contribution: Optional[float] = None,
+    integral_at_tolerance_entry: Optional[float] = None,
 ) -> List[PIDRuleResult]:
     """
     Evaluate all PID tuning rules against current metrics.
@@ -190,6 +192,8 @@ def evaluate_pid_rules(
         rule_thresholds: Optional dict of rule thresholds (optional, uses defaults if not provided).
             Supported keys: moderate_overshoot, high_overshoot, slow_response, slow_settling,
             undershoot, many_oscillations, some_oscillations
+        decay_contribution: Integral contribution from settling/decay period (optional)
+        integral_at_tolerance_entry: PID integral value when temp enters tolerance band (optional)
 
     Returns:
         List of applicable rule results (rules that would fire)
@@ -285,11 +289,24 @@ def evaluate_pid_rules(
     # Rule 4: Undershoot (>0.3C)
     if should_fire(PIDRule.UNDERSHOOT, avg_undershoot, rule_thresholds['undershoot']):
         increase = min(1.0, avg_undershoot * 2.0)  # Up to 100% increase (doubling)
-        increase_pct = increase * 100.0
+
+        # Calculate decay_ratio to scale Ki increase inversely
+        decay_ratio = 0.0
+        if (decay_contribution is not None and
+            integral_at_tolerance_entry is not None and
+            integral_at_tolerance_entry != 0.0):
+            decay_ratio = min(1.0, max(0.0, decay_contribution / integral_at_tolerance_entry))
+
+        # Scale increase inversely by (1 - decay_ratio)
+        # If decay_ratio=0.0 (no decay), get full increase
+        # If decay_ratio=1.0 (all integral from decay), get no increase
+        scaled_increase = increase * (1.0 - decay_ratio)
+
+        increase_pct = scaled_increase * 100.0
         results.append(PIDRuleResult(
             rule=PIDRule.UNDERSHOOT,
             kp_factor=1.0,
-            ki_factor=1.0 + increase,
+            ki_factor=1.0 + scaled_increase,
             kd_factor=1.0,
             reason=f"Undershoot ({avg_undershoot:.2f}°C, +{increase_pct:.0f}% Ki)"
         ))

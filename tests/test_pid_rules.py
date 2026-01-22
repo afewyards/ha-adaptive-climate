@@ -18,6 +18,87 @@ from custom_components.adaptive_thermostat.const import (
 )
 
 
+class TestUndershootRuleDecayAware:
+    """Tests for decay-aware UNDERSHOOT rule that scales Ki increase inversely to decay_ratio."""
+
+    def test_undershoot_rule_no_decay_full_increase(self):
+        """Test UNDERSHOOT rule with no decay (decay_ratio=0) gives full Ki increase 20%."""
+        # With 0.4°C undershoot and decay_ratio=0.0, should give full increase
+        # increase = min(1.0, 0.4 * 2.0) = 0.8
+        # decay_ratio = 0 / 50 = 0.0
+        # scaled_increase = 0.8 * (1 - 0.0) = 0.8
+        # ki_factor = 1.0 + 0.8 = 1.8
+        results = evaluate_pid_rules(
+            avg_overshoot=0.0,
+            avg_undershoot=0.4,
+            avg_oscillations=0.0,
+            avg_rise_time=30.0,
+            avg_settling_time=30.0,
+            decay_contribution=0.0,
+            integral_at_tolerance_entry=50.0,
+        )
+
+        assert len(results) == 1
+        assert results[0].rule == PIDRule.UNDERSHOOT
+
+        # With decay_ratio=0.0, get full increase of 80%
+        expected_factor = 1.8
+        assert abs(results[0].ki_factor - expected_factor) < 0.001
+        assert results[0].kp_factor == 1.0
+        assert results[0].kd_factor == 1.0
+
+    def test_undershoot_rule_high_decay_no_increase(self):
+        """Test UNDERSHOOT rule with full decay (decay_ratio=1.0) gives no Ki increase."""
+        # With 0.4°C undershoot but decay_ratio=1.0, no increase
+        # increase = min(1.0, 0.4 * 2.0) = 0.8
+        # decay_ratio = 50 / 50 = 1.0
+        # scaled_increase = 0.8 * (1 - 1.0) = 0.0
+        # ki_factor = 1.0 + 0.0 = 1.0 (no change)
+        results = evaluate_pid_rules(
+            avg_overshoot=0.0,
+            avg_undershoot=0.4,
+            avg_oscillations=0.0,
+            avg_rise_time=30.0,
+            avg_settling_time=30.0,
+            decay_contribution=50.0,
+            integral_at_tolerance_entry=50.0,
+        )
+
+        assert len(results) == 1
+        assert results[0].rule == PIDRule.UNDERSHOOT
+
+        # With decay_ratio=1.0, get no increase
+        assert results[0].ki_factor == 1.0
+        assert results[0].kp_factor == 1.0
+        assert results[0].kd_factor == 1.0
+
+    def test_undershoot_rule_partial_decay_scaled_increase(self):
+        """Test UNDERSHOOT rule with partial decay (decay_ratio=0.5) gives scaled Ki increase."""
+        # With 0.4°C undershoot and decay_ratio=0.5, should give half increase
+        # increase = min(1.0, 0.4 * 2.0) = 0.8
+        # decay_ratio = 25 / 50 = 0.5
+        # scaled_increase = 0.8 * (1 - 0.5) = 0.4
+        # ki_factor = 1.0 + 0.4 = 1.4
+        results = evaluate_pid_rules(
+            avg_overshoot=0.0,
+            avg_undershoot=0.4,
+            avg_oscillations=0.0,
+            avg_rise_time=30.0,
+            avg_settling_time=30.0,
+            decay_contribution=25.0,
+            integral_at_tolerance_entry=50.0,
+        )
+
+        assert len(results) == 1
+        assert results[0].rule == PIDRule.UNDERSHOOT
+
+        # With decay_ratio=0.5, get half increase (40% instead of 80%)
+        expected_factor = 1.4
+        assert abs(results[0].ki_factor - expected_factor) < 0.001
+        assert results[0].kp_factor == 1.0
+        assert results[0].kd_factor == 1.0
+
+
 class TestUndershootRuleAggressive:
     """Tests for the aggressive undershoot rule (20% → 100% Ki increase)."""
 
