@@ -614,6 +614,109 @@ class TestGetRuleThresholds:
         assert thresholds["high_overshoot"] == 1.0
 
 
+class TestSlowSettlingDecayAware:
+    """Tests for slow settling rule with decay-aware Ki adjustment (Case 3 and Case 5)."""
+
+    def test_slow_settling_low_decay_increases_ki(self):
+        """Test slow settling with low decay (decay_ratio < 0.2) increases Ki by 10%."""
+        # Case 3: Sluggish system with low decay -> increase Ki
+        # settling_time > max_settling (100 > 90) AND decay_ratio < 0.2 (0.1)
+        # Should increase Ki by 10%
+        results = evaluate_pid_rules(
+            avg_overshoot=0.0,
+            avg_undershoot=0.0,
+            avg_oscillations=0.0,
+            avg_rise_time=30.0,
+            avg_settling_time=100.0,  # Above threshold (90 min default)
+            decay_contribution=5.0,
+            integral_at_tolerance_entry=50.0,  # decay_ratio = 5.0 / 50.0 = 0.1 < 0.2
+        )
+
+        # Should trigger slow settling rule with Ki increase
+        assert len(results) == 1
+        assert results[0].rule == PIDRule.SLOW_SETTLING
+
+        # With low decay_ratio (0.1), Ki should increase by 10%
+        assert results[0].ki_factor == 1.1
+        assert results[0].kp_factor == 1.0
+        assert results[0].kd_factor == 1.15  # Normal Kd increase for slow settling
+
+        # Reason should mention Ki increase
+        assert "+10% Ki" in results[0].reason or "10% Ki" in results[0].reason
+
+    def test_slow_settling_high_decay_no_ki_change(self):
+        """Test slow settling with high decay (decay_ratio > 0.5) does not increase Ki."""
+        # Case 5: High decay with good result -> no Ki change
+        # settling_time > max_settling (100 > 90) AND decay_ratio > 0.5 (0.6)
+        # Should NOT increase Ki (Case 5 suppresses Ki adjustment)
+        results = evaluate_pid_rules(
+            avg_overshoot=0.0,
+            avg_undershoot=0.0,
+            avg_oscillations=0.0,
+            avg_rise_time=30.0,
+            avg_settling_time=100.0,  # Above threshold (90 min default)
+            decay_contribution=30.0,
+            integral_at_tolerance_entry=50.0,  # decay_ratio = 30.0 / 50.0 = 0.6 > 0.5
+        )
+
+        # Should trigger slow settling rule but without Ki increase
+        assert len(results) == 1
+        assert results[0].rule == PIDRule.SLOW_SETTLING
+
+        # With high decay_ratio (0.6), Ki should NOT increase
+        assert results[0].ki_factor == 1.0
+        assert results[0].kp_factor == 1.0
+        assert results[0].kd_factor == 1.15  # Normal Kd increase for slow settling
+
+        # Reason should indicate no Ki change due to decay
+        reason_lower = results[0].reason.lower()
+        assert "decay" in reason_lower or "kd only" in reason_lower
+
+    def test_slow_settling_moderate_decay_no_ki_change(self):
+        """Test slow settling with moderate decay (0.2 <= decay_ratio <= 0.5) does not increase Ki."""
+        # Middle case: decay_ratio in [0.2, 0.5] -> no Ki adjustment (default behavior)
+        results = evaluate_pid_rules(
+            avg_overshoot=0.0,
+            avg_undershoot=0.0,
+            avg_oscillations=0.0,
+            avg_rise_time=30.0,
+            avg_settling_time=100.0,  # Above threshold (90 min default)
+            decay_contribution=15.0,
+            integral_at_tolerance_entry=50.0,  # decay_ratio = 15.0 / 50.0 = 0.3 (in [0.2, 0.5])
+        )
+
+        # Should trigger slow settling rule but without Ki increase
+        assert len(results) == 1
+        assert results[0].rule == PIDRule.SLOW_SETTLING
+
+        # With moderate decay_ratio, Ki should NOT increase (default behavior)
+        assert results[0].ki_factor == 1.0
+        assert results[0].kp_factor == 1.0
+        assert results[0].kd_factor == 1.15  # Normal Kd increase for slow settling
+
+    def test_slow_settling_no_decay_data_defaults_to_kd_only(self):
+        """Test slow settling without decay data uses default behavior (Kd only)."""
+        # When decay_contribution/integral_at_tolerance_entry not provided,
+        # should fall back to default behavior (Kd only)
+        results = evaluate_pid_rules(
+            avg_overshoot=0.0,
+            avg_undershoot=0.0,
+            avg_oscillations=0.0,
+            avg_rise_time=30.0,
+            avg_settling_time=100.0,  # Above threshold (90 min default)
+            # No decay_contribution or integral_at_tolerance_entry
+        )
+
+        # Should trigger slow settling rule with default behavior
+        assert len(results) == 1
+        assert results[0].rule == PIDRule.SLOW_SETTLING
+
+        # Without decay data, should use default behavior (Kd only)
+        assert results[0].ki_factor == 1.0
+        assert results[0].kp_factor == 1.0
+        assert results[0].kd_factor == 1.15
+
+
 class TestHeatingTypeSpecificThresholds:
     """Tests for heating-type-specific threshold behavior in evaluate_pid_rules()."""
 

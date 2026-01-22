@@ -331,13 +331,36 @@ def evaluate_pid_rules(
         ))
 
     # Rule 7: Slow settling (>90 min)
+    # Case 3: Sluggish system with low decay -> increase Ki by 10%
+    # Case 5: High decay with good result -> no Ki change (Kd only)
     if should_fire(PIDRule.SLOW_SETTLING, avg_settling_time, rule_thresholds['slow_settling']):
+        ki_factor = 1.0
+        reason = f"Slow settling ({avg_settling_time:.1f} min)"
+
+        # Calculate decay_ratio if decay data available
+        decay_ratio = None
+        if (decay_contribution is not None and
+            integral_at_tolerance_entry is not None and
+            integral_at_tolerance_entry != 0.0):
+            decay_ratio = min(1.0, max(0.0, decay_contribution / integral_at_tolerance_entry))
+
+        # Case 3: Low decay ratio (<0.2) indicates sluggish system -> increase Ki
+        if decay_ratio is not None and decay_ratio < 0.2:
+            ki_factor = 1.1
+            reason = f"Slow settling ({avg_settling_time:.1f} min, low decay, +10% Ki, +15% Kd)"
+        # Case 5: High decay ratio (>0.5) indicates decay is working well -> Kd only
+        elif decay_ratio is not None and decay_ratio > 0.5:
+            reason = f"Slow settling ({avg_settling_time:.1f} min, high decay, Kd only)"
+        # Default: No decay data or moderate decay -> Kd only (original behavior)
+        else:
+            reason = f"Slow settling ({avg_settling_time:.1f} min, +15% Kd)"
+
         results.append(PIDRuleResult(
             rule=PIDRule.SLOW_SETTLING,
             kp_factor=1.0,
-            ki_factor=1.0,
+            ki_factor=ki_factor,
             kd_factor=1.15,
-            reason=f"Slow settling ({avg_settling_time:.1f} min)"
+            reason=reason
         ))
 
     return results
