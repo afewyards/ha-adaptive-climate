@@ -2134,4 +2134,68 @@ class TestTemperatureUpdateIntegralTracking:
         # Integral should not be overwritten (only capture first crossing)
         assert cycle_tracker._integral_at_setpoint_cross == 100.0
 
+    def test_cycle_start_resets_integral_tracking(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
+    ):
+        """Test that starting a new cycle resets integral tracking values."""
+        from custom_components.adaptive_thermostat.const import HEATING_TYPE_RADIATOR
+
+        # Create cycle tracker with radiator heating type
+        cycle_tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            dispatcher=dispatcher,
+            heating_type=HEATING_TYPE_RADIATOR,
+            **mock_callbacks,
+        )
+        cycle_tracker.set_restoration_complete()
+
+        # Set target temperature
+        target_temp = 20.0
+        mock_callbacks["get_target_temp"].return_value = target_temp
+
+        # Start first cycle
+        start_time = datetime(2025, 1, 14, 10, 0, 0)
+        dispatcher.emit(CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=start_time,
+            target_temp=target_temp,
+            current_temp=18.0
+        ))
+
+        # Simulate temperature updates that set integral values
+        dispatcher.emit(TemperatureUpdateEvent(
+            timestamp=datetime(2025, 1, 14, 10, 1, 0),
+            temperature=19.75,
+            setpoint=target_temp,
+            pid_integral=100.0,
+            pid_error=0.25  # Within cold tolerance for radiator (0.3)
+        ))
+
+        dispatcher.emit(TemperatureUpdateEvent(
+            timestamp=datetime(2025, 1, 14, 10, 2, 0),
+            temperature=20.0,
+            setpoint=target_temp,
+            pid_integral=110.0,
+            pid_error=0.0  # At setpoint
+        ))
+
+        # Verify both integral values are captured
+        assert cycle_tracker._integral_at_tolerance_entry == 100.0
+        assert cycle_tracker._integral_at_setpoint_cross == 110.0
+
+        # Start a new cycle
+        new_start_time = datetime(2025, 1, 14, 11, 0, 0)
+        dispatcher.emit(CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=new_start_time,
+            target_temp=target_temp,
+            current_temp=18.5
+        ))
+
+        # Verify integral tracking values are reset to None
+        assert cycle_tracker._integral_at_tolerance_entry is None
+        assert cycle_tracker._integral_at_setpoint_cross is None
+
 

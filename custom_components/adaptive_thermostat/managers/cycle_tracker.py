@@ -255,6 +255,10 @@ class CycleTrackerManager:
         else:
             return
 
+        # Clear integral tracking for new cycle (must happen before idempotent check)
+        self._integral_at_tolerance_entry = None
+        self._integral_at_setpoint_cross = None
+
         # Idempotent: ignore if already in the target state
         if self._state == new_state:
             return
@@ -271,10 +275,6 @@ class CycleTrackerManager:
         self._outdoor_temp_history.clear()
         # Clear last interruption reason when starting a new cycle
         self._last_interruption_reason = None
-
-        # Clear integral tracking for new cycle
-        self._integral_at_tolerance_entry = None
-        self._integral_at_setpoint_cross = None
 
         current_temp = self._get_current_temp()
         self._logger.info(
