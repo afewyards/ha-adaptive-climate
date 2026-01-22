@@ -293,6 +293,9 @@ class CycleMetrics:
         interruption_history: Optional[List[Tuple[datetime, str]]] = None,
         heater_cycles: int = 0,
         outdoor_temp_avg: Optional[float] = None,
+        integral_at_tolerance_entry: Optional[float] = None,
+        integral_at_setpoint_cross: Optional[float] = None,
+        decay_contribution: Optional[float] = None,
     ):
         """
         Initialize cycle metrics.
@@ -307,6 +310,9 @@ class CycleMetrics:
             interruption_history: List of (timestamp, interruption_type) tuples for debugging
             heater_cycles: Number of heater on/off transitions (informational only)
             outdoor_temp_avg: Average outdoor temperature during cycle in °C
+            integral_at_tolerance_entry: PID integral value when temp enters tolerance band
+            integral_at_setpoint_cross: PID integral value when temp crosses setpoint
+            decay_contribution: Integral contribution from settling/decay period
         """
         self.overshoot = overshoot
         self.undershoot = undershoot
@@ -317,6 +323,9 @@ class CycleMetrics:
         self.interruption_history = interruption_history or []
         self.heater_cycles = heater_cycles
         self.outdoor_temp_avg = outdoor_temp_avg
+        self.integral_at_tolerance_entry = integral_at_tolerance_entry
+        self.integral_at_setpoint_cross = integral_at_setpoint_cross
+        self.decay_contribution = decay_contribution
 
     @property
     def is_disturbed(self) -> bool:

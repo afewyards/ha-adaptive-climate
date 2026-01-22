@@ -6,6 +6,7 @@ import pytest
 
 from custom_components.adaptive_thermostat.adaptive.cycle_analysis import (
     calculate_settling_time,
+    CycleMetrics,
 )
 
 
@@ -204,3 +205,75 @@ class TestCalculateSettlingTime:
         # Should measure from reference_time (15 min) to settling (30 min) = 15 min
         assert settling_time is not None
         assert settling_time == pytest.approx(15.0, abs=0.1)
+
+
+class TestCycleMetrics:
+    """Test CycleMetrics dataclass."""
+
+    def test_cycle_metrics_decay_fields(self):
+        """Test CycleMetrics stores decay-related fields correctly.
+
+        CycleMetrics should accept and store three new optional decay fields:
+        - integral_at_tolerance_entry: Integral value when temp enters tolerance band
+        - integral_at_setpoint_cross: Integral value when temp crosses setpoint
+        - decay_contribution: Calculated integral contribution from decay period
+        """
+        # Create CycleMetrics with decay fields
+        metrics = CycleMetrics(
+            overshoot=0.5,
+            undershoot=0.2,
+            settling_time=15.0,
+            oscillations=2,
+            rise_time=10.0,
+            integral_at_tolerance_entry=1.5,
+            integral_at_setpoint_cross=2.3,
+            decay_contribution=0.8,
+        )
+
+        # Verify all decay fields are stored correctly
+        assert metrics.integral_at_tolerance_entry == 1.5
+        assert metrics.integral_at_setpoint_cross == 2.3
+        assert metrics.decay_contribution == 0.8
+
+        # Verify other fields still work
+        assert metrics.overshoot == 0.5
+        assert metrics.undershoot == 0.2
+        assert metrics.settling_time == 15.0
+        assert metrics.oscillations == 2
+        assert metrics.rise_time == 10.0
+
+    def test_cycle_metrics_decay_fields_optional(self):
+        """Test that decay fields are optional and default to None."""
+        # Create CycleMetrics without decay fields
+        metrics = CycleMetrics(
+            overshoot=0.3,
+            settling_time=12.0,
+        )
+
+        # Verify decay fields default to None
+        assert metrics.integral_at_tolerance_entry is None
+        assert metrics.integral_at_setpoint_cross is None
+        assert metrics.decay_contribution is None
+
+        # Verify other fields still work
+        assert metrics.overshoot == 0.3
+        assert metrics.settling_time == 12.0
+
+    def test_cycle_metrics_decay_fields_partial(self):
+        """Test that decay fields can be set individually."""
+        # Set only some decay fields
+        metrics = CycleMetrics(
+            overshoot=0.4,
+            integral_at_tolerance_entry=1.2,
+            decay_contribution=0.5,
+        )
+
+        # Verify specified fields are set
+        assert metrics.integral_at_tolerance_entry == 1.2
+        assert metrics.decay_contribution == 0.5
+
+        # Verify unspecified decay field defaults to None
+        assert metrics.integral_at_setpoint_cross is None
+
+        # Verify other fields work
+        assert metrics.overshoot == 0.4
