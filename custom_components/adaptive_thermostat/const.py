@@ -99,6 +99,10 @@ HEATING_TYPE_CHARACTERISTICS = {
         "derivative_filter_alpha": 0.05,  # Heavy filtering - high thermal mass reduces noise sensitivity
         "baseline_power_w_m2": 20,  # Baseline power density for process gain scaling (W/m²)
         "reference_supply_temp": 45.0,  # Reference supply temp for PID scaling (°C) - typical floor heating
+        "cold_tolerance": 0.5,    # Temperature tolerance below setpoint (°C)
+        "hot_tolerance": 0.5,     # Temperature tolerance above setpoint (°C)
+        "decay_exponent": 2.0,    # Exponential decay rate for integral during settling
+        "max_settling_time": 90,  # Maximum settling time in minutes
         "description": "Floor heating with water - high thermal mass, slow response",
     },
     HEATING_TYPE_RADIATOR: {
@@ -107,6 +111,10 @@ HEATING_TYPE_CHARACTERISTICS = {
         "derivative_filter_alpha": 0.10,  # Moderate filtering
         "baseline_power_w_m2": 50,  # Baseline power density for process gain scaling (W/m²)
         "reference_supply_temp": 70.0,  # Reference supply temp for PID scaling (°C) - traditional radiator
+        "cold_tolerance": 0.3,    # Temperature tolerance below setpoint (°C)
+        "hot_tolerance": 0.3,     # Temperature tolerance above setpoint (°C)
+        "decay_exponent": 1.0,    # Exponential decay rate for integral during settling
+        "max_settling_time": 45,  # Maximum settling time in minutes
         "description": "Traditional radiators - moderate thermal mass",
     },
     HEATING_TYPE_CONVECTOR: {
@@ -115,6 +123,10 @@ HEATING_TYPE_CHARACTERISTICS = {
         "derivative_filter_alpha": 0.15,  # Light filtering - default balance
         "baseline_power_w_m2": 60,  # Baseline power density for process gain scaling (W/m²)
         "reference_supply_temp": 55.0,  # Reference supply temp for PID scaling (°C)
+        "cold_tolerance": 0.2,    # Temperature tolerance below setpoint (°C)
+        "hot_tolerance": 0.2,     # Temperature tolerance above setpoint (°C)
+        "decay_exponent": 1.0,    # Exponential decay rate for integral during settling
+        "max_settling_time": 30,  # Maximum settling time in minutes
         "description": "Convection heaters - low thermal mass, faster response",
     },
     HEATING_TYPE_FORCED_AIR: {
@@ -123,6 +135,10 @@ HEATING_TYPE_CHARACTERISTICS = {
         "derivative_filter_alpha": 0.25,  # Minimal filtering - fast response needed
         "baseline_power_w_m2": 80,  # Baseline power density for process gain scaling (W/m²)
         "reference_supply_temp": 45.0,  # Reference supply temp for PID scaling (°C) - heat pump typical
+        "cold_tolerance": 0.15,   # Temperature tolerance below setpoint (°C)
+        "hot_tolerance": 0.15,    # Temperature tolerance above setpoint (°C)
+        "decay_exponent": 0.5,    # Exponential decay rate for integral during settling
+        "max_settling_time": 15,  # Maximum settling time in minutes
         "description": "Forced air heating - very low thermal mass, fast response",
     },
 }
