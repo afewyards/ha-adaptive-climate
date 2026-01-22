@@ -704,6 +704,26 @@ class CycleTrackerManager:
         self._logger.debug("Temperature settled: MAD=%.3f°C", mad)
         return True
 
+    def _calculate_decay_metrics(self) -> tuple[float | None, float | None, float | None]:
+        """Calculate decay-related integral metrics.
+
+        Computes the decay contribution as the difference between integral values
+        at tolerance entry and setpoint crossing.
+
+        Returns:
+            Tuple of (integral_at_tolerance_entry, integral_at_setpoint_cross, decay_contribution)
+            decay_contribution is None if either integral value is missing
+        """
+        integral_at_tolerance = self._integral_at_tolerance_entry
+        integral_at_setpoint = self._integral_at_setpoint_cross
+
+        # Calculate decay contribution only if both values are captured
+        decay_contribution = None
+        if integral_at_tolerance is not None and integral_at_setpoint is not None:
+            decay_contribution = integral_at_tolerance - integral_at_setpoint
+
+        return integral_at_tolerance, integral_at_setpoint, decay_contribution
+
     def _is_cycle_valid(self) -> tuple[bool, str]:
         """Check if the current cycle is valid for recording.
 
@@ -823,6 +843,9 @@ class CycleTrackerManager:
         if len(self._outdoor_temp_history) > 0:
             outdoor_temp_avg = sum(temp for _, temp in self._outdoor_temp_history) / len(self._outdoor_temp_history)
 
+        # Calculate decay metrics
+        integral_at_tolerance, integral_at_setpoint, decay_contribution = self._calculate_decay_metrics()
+
         # Create CycleMetrics object with interruption history
         metrics = CycleMetrics(
             overshoot=overshoot,
@@ -833,6 +856,9 @@ class CycleTrackerManager:
             disturbances=disturbances,
             interruption_history=self._interruption_history.copy(),
             outdoor_temp_avg=outdoor_temp_avg,
+            integral_at_tolerance_entry=integral_at_tolerance,
+            integral_at_setpoint_cross=integral_at_setpoint,
+            decay_contribution=decay_contribution,
         )
 
         # Record metrics with adaptive learner

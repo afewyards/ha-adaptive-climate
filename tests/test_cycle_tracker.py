@@ -2198,4 +2198,110 @@ class TestTemperatureUpdateIntegralTracking:
         assert cycle_tracker._integral_at_tolerance_entry is None
         assert cycle_tracker._integral_at_setpoint_cross is None
 
+    @pytest.mark.asyncio
+    async def test_finalize_cycle_includes_decay_metrics(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
+    ):
+        """Test that finalized cycle includes decay-related integral metrics."""
+        from datetime import timedelta
+        from custom_components.adaptive_thermostat.const import HEATING_TYPE_RADIATOR
+
+        # Create cycle tracker with radiator heating type
+        cycle_tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            dispatcher=dispatcher,
+            heating_type=HEATING_TYPE_RADIATOR,
+            **mock_callbacks,
+        )
+        cycle_tracker.set_restoration_complete()
+
+        # Set target temperature
+        target_temp = 20.0
+        mock_callbacks["get_target_temp"].return_value = target_temp
+        mock_callbacks["get_current_temp"].return_value = 18.0
+
+        # Start cycle
+        start_time = datetime(2025, 1, 14, 10, 0, 0)
+        dispatcher.emit(CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=start_time,
+            target_temp=target_temp,
+            current_temp=18.0
+        ))
+
+        # Collect samples for valid cycle - stay below tolerance initially
+        for i in range(10):
+            temp = 18.0 + (i * 0.15)  # Gradual rise up to 19.35
+            pid_error = target_temp - temp
+            pid_integral = 50.0 + (i * 10.0)  # Integral increases
+
+            # Update via temperature manager (not via event, for legacy support)
+            await cycle_tracker.update_temperature(
+                timestamp=start_time + timedelta(minutes=i),
+                temperature=temp
+            )
+
+            # Emit TEMPERATURE_UPDATE event for integral tracking
+            dispatcher.emit(TemperatureUpdateEvent(
+                timestamp=start_time + timedelta(minutes=i),
+                temperature=temp,
+                setpoint=target_temp,
+                pid_integral=pid_integral,
+                pid_error=pid_error
+            ))
+
+        # Emit tolerance entry event (pid_error < 0.3 for radiator)
+        # At this point temp is 19.8°C, pid_error = 0.2, which is within tolerance
+        tolerance_time = start_time + timedelta(minutes=10)
+        dispatcher.emit(TemperatureUpdateEvent(
+            timestamp=tolerance_time,
+            temperature=19.8,
+            setpoint=target_temp,
+            pid_integral=200.0,
+            pid_error=0.2  # Within tolerance (< 0.3)
+        ))
+        await cycle_tracker.update_temperature(tolerance_time, 19.8)
+
+        # Emit setpoint crossing event (pid_error = 0)
+        cross_time = start_time + timedelta(minutes=11)
+        dispatcher.emit(TemperatureUpdateEvent(
+            timestamp=cross_time,
+            temperature=20.0,
+            setpoint=target_temp,
+            pid_integral=210.0,
+            pid_error=0.0  # At setpoint
+        ))
+        await cycle_tracker.update_temperature(cross_time, 20.0)
+
+        # Transition to settling
+        settling_time = start_time + timedelta(minutes=17)
+        dispatcher.emit(SettlingStartedEvent(
+            hvac_mode="heat",
+            timestamp=settling_time
+        ))
+
+        # Add settling samples to reach stability
+        for i in range(10):
+            await cycle_tracker.update_temperature(
+                timestamp=settling_time + timedelta(minutes=i),
+                temperature=20.0 + (0.01 * i)  # Very stable
+            )
+
+        # Finalize cycle
+        await cycle_tracker._finalize_cycle()
+
+        # Verify CycleMetrics was created with decay metrics
+        assert mock_adaptive_learner.add_cycle_metrics.called
+        metrics = mock_adaptive_learner.add_cycle_metrics.call_args[0][0]
+
+        # Check that integral values are captured
+        assert metrics.integral_at_tolerance_entry == 200.0
+        assert metrics.integral_at_setpoint_cross == 210.0
+
+        # Check that decay_contribution is calculated correctly
+        expected_decay = 200.0 - 210.0  # tolerance_entry - setpoint_cross
+        assert metrics.decay_contribution == expected_decay
+
 
