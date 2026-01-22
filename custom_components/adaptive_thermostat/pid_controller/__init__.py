@@ -480,6 +480,44 @@ class PID:
                               (self._integral < 0 and self._error > 0)
                 decay_multiplier = self._integral_decay_multiplier if is_overhang else 1.0
 
+                # Progressive tolerance-based integral decay (safety net for untuned systems)
+                # When should_apply_decay() returns True (untuned + excessive integral + within tolerance),
+                # apply progressive decay that ramps from 1.0 at tolerance edge to full decay_multiplier at setpoint
+                if self.should_apply_decay():
+                    # Import here to avoid circular dependency
+                    try:
+                        from ..const import HEATING_TYPE_CHARACTERISTICS
+                    except ImportError:
+                        # Fallback for test environment
+                        HEATING_TYPE_CHARACTERISTICS = {
+                            "floor_hydronic": {"decay_exponent": 2.0},
+                            "radiator": {"decay_exponent": 1.0},
+                            "convector": {"decay_exponent": 1.0},
+                            "forced_air": {"decay_exponent": 0.5},
+                        }
+
+                    # Calculate progress through tolerance zone (0 at edge, 1 at setpoint)
+                    # For heating (positive integral), use cold_tolerance
+                    # For cooling (negative integral), use hot_tolerance
+                    tolerance = self._cold_tolerance if self._integral > 0 else self._hot_tolerance
+                    error_abs = abs(self._error)
+
+                    # progress = (tolerance - error) / tolerance
+                    # At tolerance edge: error = tolerance, progress = 0
+                    # At setpoint: error = 0, progress = 1
+                    progress = (tolerance - error_abs) / tolerance
+                    progress = max(0.0, min(1.0, progress))  # Clamp to [0, 1]
+
+                    # Apply heating-type specific decay curve
+                    decay_exponent = HEATING_TYPE_CHARACTERISTICS.get(
+                        self._heating_type, {}
+                    ).get("decay_exponent", 1.0)
+                    shaped_progress = progress ** decay_exponent
+
+                    # Calculate effective decay: ramps from 1.0 to decay_multiplier
+                    # effective_decay = 1 + shaped_progress * (decay_multiplier - 1)
+                    decay_multiplier = 1.0 + shaped_progress * (self._integral_decay_multiplier - 1.0)
+
                 self._integral += self._Ki * self._error * dt_hours * decay_multiplier
 
                 # Exponential integral decay during overhang

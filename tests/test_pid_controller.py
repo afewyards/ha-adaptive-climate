@@ -2127,6 +2127,135 @@ class TestOutputClampingOnWrongSide:
         # Should NOT apply decay: outside tolerance zone
         assert pid.should_apply_decay() is False
 
+    def test_progressive_decay_floor_hydronic_quadratic(self):
+        """Test progressive decay with floor_hydronic (decay_exponent=2.0) produces quadratic curve.
+
+        Verifies that at 25% progress through tolerance zone, decay is only 6.25% (0.25^2).
+        """
+        pid = PID(kp=0, ki=100, kd=0, out_min=0, out_max=100,
+                  cold_tolerance=0.5, heating_type="floor_hydronic",
+                  integral_decay_multiplier=1.5)
+
+        # Build up excessive integral
+        base_time = 1000.0
+        for i in range(8):
+            t = base_time + i * 100
+            pid.calc(18.0, 20.0, input_time=t, last_input_time=t - 100 if i > 0 else None)
+
+        # Store initial integral for comparison
+        initial_integral = pid.integral
+        assert initial_integral > 35.0, f"Integral should be above 35%, got {initial_integral}"
+
+        # Move to 25% progress through tolerance zone
+        # cold_tolerance = 0.5, so tolerance edge is at error=0.5 (temp=19.5)
+        # 25% progress means error = 0.5 * (1 - 0.25) = 0.375 (temp=19.625)
+        t1 = base_time + 1000
+        pid.calc(19.625, 20.0, input_time=t1, last_input_time=base_time + 900)
+
+        # Calculate expected decay
+        # progress = (0.5 - 0.375) / 0.5 = 0.25
+        # shaped_progress = 0.25^2.0 = 0.0625
+        # effective_decay = 1 + 0.0625 * (1.5 - 1) = 1.03125
+        # Expected integral change: Ki * error * dt * effective_decay
+        # Ki=100, error=0.375, dt=100/3600=0.02778 hours
+        # delta_I = 100 * 0.375 * 0.02778 * 1.03125 ≈ 1.074
+        expected_delta = 100 * 0.375 * (100 / 3600) * 1.03125
+        expected_integral = initial_integral + expected_delta
+
+        assert pid.integral == pytest.approx(expected_integral, abs=0.01)
+
+    def test_progressive_decay_forced_air_sqrt(self):
+        """Test progressive decay with forced_air (decay_exponent=0.5) produces sqrt curve.
+
+        Verifies that at 25% progress through tolerance zone, decay is 50% (sqrt(0.25)=0.5).
+        """
+        pid = PID(kp=0, ki=100, kd=0, out_min=0, out_max=100,
+                  cold_tolerance=0.15, heating_type="forced_air",
+                  integral_decay_multiplier=1.5)
+
+        # Build up excessive integral
+        base_time = 1000.0
+        for i in range(12):
+            t = base_time + i * 100
+            pid.calc(18.0, 20.0, input_time=t, last_input_time=t - 100 if i > 0 else None)
+
+        # Store initial integral
+        initial_integral = pid.integral
+        assert initial_integral > 60.0, f"Integral should be above 60%, got {initial_integral}"
+
+        # Move to 25% progress through tolerance zone
+        # cold_tolerance = 0.15, so tolerance edge is at error=0.15 (temp=19.85)
+        # 25% progress means error = 0.15 * (1 - 0.25) = 0.1125 (temp=19.8875)
+        t1 = base_time + 1200
+        pid.calc(19.8875, 20.0, input_time=t1, last_input_time=base_time + 1100)
+
+        # Calculate expected decay
+        # progress = (0.15 - 0.1125) / 0.15 = 0.25
+        # shaped_progress = 0.25^0.5 = 0.5
+        # effective_decay = 1 + 0.5 * (1.5 - 1) = 1.25
+        # Expected integral change: Ki * error * dt * effective_decay
+        # Ki=100, error=0.1125, dt=100/3600=0.02778 hours
+        expected_delta = 100 * 0.1125 * (100 / 3600) * 1.25
+        expected_integral = initial_integral + expected_delta
+
+        assert pid.integral == pytest.approx(expected_integral, abs=0.01)
+
+    def test_progressive_decay_at_tolerance_edge(self):
+        """Test progressive decay at tolerance edge (progress=0) applies no additional decay."""
+        pid = PID(kp=0, ki=100, kd=0, out_min=0, out_max=100,
+                  cold_tolerance=0.3, heating_type="radiator",
+                  integral_decay_multiplier=1.5)
+
+        # Build up excessive integral
+        base_time = 1000.0
+        for i in range(9):
+            t = base_time + i * 100
+            pid.calc(18.0, 20.0, input_time=t, last_input_time=t - 100 if i > 0 else None)
+
+        initial_integral = pid.integral
+        assert initial_integral > 40.0, f"Integral should be above 40%, got {initial_integral}"
+
+        # Move exactly to tolerance edge (error = cold_tolerance)
+        # cold_tolerance = 0.3, so error=0.3 means temp=19.7
+        t1 = base_time + 900
+        pid.calc(19.7, 20.0, input_time=t1, last_input_time=base_time + 800)
+
+        # At tolerance edge: progress = 0, shaped_progress = 0, effective_decay = 1.0 (no additional decay)
+        # But should_apply_decay() returns False at tolerance edge, so regular decay (1.0) applies
+        # Expected: Ki * error * dt * 1.0
+        expected_delta = 100 * 0.3 * (100 / 3600) * 1.0
+        expected_integral = initial_integral + expected_delta
+
+        assert pid.integral == pytest.approx(expected_integral, abs=0.01)
+
+    def test_progressive_decay_at_setpoint(self):
+        """Test progressive decay at setpoint (progress=1) applies full decay multiplier."""
+        pid = PID(kp=0, ki=100, kd=0, out_min=0, out_max=100,
+                  cold_tolerance=0.3, heating_type="radiator",
+                  integral_decay_multiplier=1.5)
+
+        # Build up excessive integral
+        base_time = 1000.0
+        for i in range(9):
+            t = base_time + i * 100
+            pid.calc(18.0, 20.0, input_time=t, last_input_time=t - 100 if i > 0 else None)
+
+        initial_integral = pid.integral
+        assert initial_integral > 40.0, f"Integral should be above 40%, got {initial_integral}"
+
+        # Move exactly to setpoint (error = 0)
+        # This is just before crossing setpoint (error slightly positive)
+        t1 = base_time + 900
+        pid.calc(19.999, 20.0, input_time=t1, last_input_time=base_time + 800)
+
+        # At setpoint: progress ≈ 1, shaped_progress ≈ 1 (for decay_exponent=1.0), effective_decay = 1.5
+        # Expected: Ki * error * dt * 1.5
+        # error = 0.001
+        expected_delta = 100 * 0.001 * (100 / 3600) * 1.5
+        expected_integral = initial_integral + expected_delta
+
+        assert pid.integral == pytest.approx(expected_integral, abs=0.01)
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
