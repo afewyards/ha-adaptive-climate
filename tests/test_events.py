@@ -16,6 +16,7 @@ from custom_components.adaptive_thermostat.managers.events import (
     ModeChangedEvent,
     ContactPauseEvent,
     ContactResumeEvent,
+    TemperatureUpdateEvent,
     CycleEventDispatcher,
 )
 
@@ -34,6 +35,7 @@ class TestCycleEventTypeEnum:
         assert CycleEventType.MODE_CHANGED
         assert CycleEventType.CONTACT_PAUSE
         assert CycleEventType.CONTACT_RESUME
+        assert CycleEventType.TEMPERATURE_UPDATE
 
     def test_cycle_event_type_values_are_strings(self):
         """Verify event type values are descriptive strings."""
@@ -46,6 +48,7 @@ class TestCycleEventTypeEnum:
         assert CycleEventType.MODE_CHANGED.value == "mode_changed"
         assert CycleEventType.CONTACT_PAUSE.value == "contact_pause"
         assert CycleEventType.CONTACT_RESUME.value == "contact_resume"
+        assert CycleEventType.TEMPERATURE_UPDATE.value == "temperature_update"
 
 
 class TestCycleStartedEventDataclass:
@@ -232,6 +235,27 @@ class TestUserActionEventsDataclass:
             pause_duration_seconds=120.0,
         )
         assert event.event_type == CycleEventType.CONTACT_RESUME
+
+
+class TestTemperatureUpdateEventDataclass:
+    """Tests for TemperatureUpdateEvent dataclass."""
+
+    def test_temperature_update_event(self):
+        """Create TemperatureUpdateEvent with timestamp, temperature, setpoint, pid_integral, pid_error; verify event_type=CycleEventType.TEMPERATURE_UPDATE."""
+        now = datetime.now()
+        event = TemperatureUpdateEvent(
+            timestamp=now,
+            temperature=20.5,
+            setpoint=21.0,
+            pid_integral=0.8,
+            pid_error=-0.5,
+        )
+        assert event.timestamp == now
+        assert event.temperature == 20.5
+        assert event.setpoint == 21.0
+        assert event.pid_integral == 0.8
+        assert event.pid_error == -0.5
+        assert event.event_type == CycleEventType.TEMPERATURE_UPDATE
 
 
 class TestCycleEventDispatcher:

@@ -27,6 +27,7 @@ class CycleEventType(Enum):
     MODE_CHANGED = "mode_changed"
     CONTACT_PAUSE = "contact_pause"
     CONTACT_RESUME = "contact_resume"
+    TEMPERATURE_UPDATE = "temperature_update"
 
 
 @dataclass
@@ -155,6 +156,22 @@ class ContactResumeEvent:
         return CycleEventType.CONTACT_RESUME
 
 
+@dataclass
+class TemperatureUpdateEvent:
+    """Event emitted when temperature is updated."""
+
+    timestamp: datetime
+    temperature: float
+    setpoint: float
+    pid_integral: float
+    pid_error: float
+
+    @property
+    def event_type(self) -> CycleEventType:
+        """Return the event type."""
+        return CycleEventType.TEMPERATURE_UPDATE
+
+
 # Type alias for any cycle event
 CycleEvent = Union[
     CycleStartedEvent,
@@ -166,6 +183,7 @@ CycleEvent = Union[
     ModeChangedEvent,
     ContactPauseEvent,
     ContactResumeEvent,
+    TemperatureUpdateEvent,
 ]
 
 
