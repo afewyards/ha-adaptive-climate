@@ -447,6 +447,7 @@ def calculate_settling_time(
     temperature_history: List[Tuple[datetime, float]],
     target_temp: float,
     tolerance: float = 0.2,
+    reference_time: Optional[datetime] = None,
 ) -> Optional[float]:
     """
     Calculate time required for temperature to settle within tolerance band.
@@ -455,18 +456,33 @@ def calculate_settling_time(
         temperature_history: List of (timestamp, temperature) tuples
         target_temp: Target temperature in °C
         tolerance: Tolerance band in °C (±)
+        reference_time: Optional reference time to calculate settling from.
+                       If provided, settling time is measured from this time.
+                       If None, uses first sample timestamp (legacy behavior).
+                       If before first sample, uses first sample timestamp.
 
     Returns:
-        Settling time in minutes, or None if never settles
+        Settling time in minutes from reference_time (or first sample), or None if never settles
     """
     if len(temperature_history) < 2:
         return None
 
-    start_time = temperature_history[0][0]
+    # Determine start time for settling calculation
+    if reference_time is not None:
+        # Use reference_time, but clamp to first sample if reference is earlier
+        start_time = max(reference_time, temperature_history[0][0])
+    else:
+        # Legacy behavior: use first sample timestamp
+        start_time = temperature_history[0][0]
+
     settle_index = None
 
-    # Find first entry into tolerance band that persists
+    # Find first entry into tolerance band that persists, starting from start_time
     for i, (timestamp, temp) in enumerate(temperature_history):
+        # Skip samples before start_time
+        if timestamp < start_time:
+            continue
+
         within_tolerance = abs(temp - target_temp) <= tolerance
 
         if within_tolerance:
