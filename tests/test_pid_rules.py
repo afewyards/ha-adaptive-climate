@@ -649,8 +649,9 @@ class TestSlowSettlingDecayAware:
         # Case 5: High decay with good result -> no Ki change
         # settling_time > max_settling (100 > 90) AND decay_ratio > 0.5 (0.6)
         # Should NOT increase Ki (Case 5 suppresses Ki adjustment)
+        # Note: overshoot must be >= 0.1 to trigger Case 5 instead of Case 4
         results = evaluate_pid_rules(
-            avg_overshoot=0.0,
+            avg_overshoot=0.15,  # Overshoot >= 0.1 to avoid Case 4
             avg_undershoot=0.0,
             avg_oscillations=0.0,
             avg_rise_time=30.0,
@@ -715,6 +716,40 @@ class TestSlowSettlingDecayAware:
         assert results[0].ki_factor == 1.0
         assert results[0].kp_factor == 1.0
         assert results[0].kd_factor == 1.15
+
+    def test_high_decay_slow_settling_reduces_ki(self):
+        """Test slow settling with high decay (decay_ratio>0.5) and good overshoot reduces Ki by 3%."""
+        # Case 4: High decay (integral decayed significantly) + good overshoot + slow settling
+        # Rationale: If integral decayed significantly but settling is still slow AND overshoot
+        # is good, then the integral might be slightly too aggressive during settling.
+        # A gentle 3% Ki reduction helps without overcorrecting.
+        #
+        # Requires:
+        # - avg_overshoot < 0.1 (good overshoot control)
+        # - avg_settling_time > max_settling (slow settling)
+        # - decay_ratio > 0.5 (high decay during settling)
+        results = evaluate_pid_rules(
+            avg_overshoot=0.05,  # Good overshoot control (<0.1)
+            avg_undershoot=0.0,
+            avg_oscillations=0.0,
+            avg_rise_time=30.0,
+            avg_settling_time=100.0,  # Above threshold (90 min default)
+            decay_contribution=30.0,
+            integral_at_tolerance_entry=50.0,  # decay_ratio = 30.0 / 50.0 = 0.6 > 0.5
+        )
+
+        # Should trigger slow settling rule with gentle Ki reduction
+        assert len(results) == 1
+        assert results[0].rule == PIDRule.SLOW_SETTLING
+
+        # With high decay_ratio (0.6) and good overshoot (<0.1), Ki should gently reduce by 3%
+        assert results[0].ki_factor == 0.97
+        assert results[0].kp_factor == 1.0
+        assert results[0].kd_factor == 1.15  # Normal Kd increase for slow settling
+
+        # Reason should mention gentle Ki reduction
+        reason_lower = results[0].reason.lower()
+        assert "ki" in reason_lower or "3%" in reason_lower or "gentle" in reason_lower
 
 
 class TestHeatingTypeSpecificThresholds:

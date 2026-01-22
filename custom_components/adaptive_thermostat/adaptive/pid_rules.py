@@ -332,6 +332,7 @@ def evaluate_pid_rules(
 
     # Rule 7: Slow settling (>90 min)
     # Case 3: Sluggish system with low decay -> increase Ki by 10%
+    # Case 4: High decay + good overshoot + slow settling -> gentle Ki reduction (3%)
     # Case 5: High decay with good result -> no Ki change (Kd only)
     if should_fire(PIDRule.SLOW_SETTLING, avg_settling_time, rule_thresholds['slow_settling']):
         ki_factor = 1.0
@@ -348,6 +349,12 @@ def evaluate_pid_rules(
         if decay_ratio is not None and decay_ratio < 0.2:
             ki_factor = 1.1
             reason = f"Slow settling ({avg_settling_time:.1f} min, low decay, +10% Ki, +15% Kd)"
+        # Case 4: High decay + good overshoot (<0.1) -> gentle Ki reduction (3%)
+        # If integral decayed significantly but settling is still slow AND overshoot is good,
+        # the integral might be slightly too aggressive during settling
+        elif decay_ratio is not None and decay_ratio > 0.5 and avg_overshoot < 0.1:
+            ki_factor = 0.97
+            reason = f"Slow settling ({avg_settling_time:.1f} min, high decay + good overshoot, gentle -3% Ki, +15% Kd)"
         # Case 5: High decay ratio (>0.5) indicates decay is working well -> Kd only
         elif decay_ratio is not None and decay_ratio > 0.5:
             reason = f"Slow settling ({avg_settling_time:.1f} min, high decay, Kd only)"
