@@ -741,8 +741,15 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         self._force_on = False
         self._force_off = False
         self._boost_pid_off = kwargs.get('boost_pid_off')
-        self._cold_tolerance = abs(kwargs.get('cold_tolerance'))
-        self._hot_tolerance = abs(kwargs.get('hot_tolerance'))
+
+        # Get tolerances from HEATING_TYPE_CHARACTERISTICS based on heating_type
+        # User-configured values are overridden by heating type defaults for consistency
+        heating_type_chars = const.HEATING_TYPE_CHARACTERISTICS.get(
+            self._heating_type, const.HEATING_TYPE_CHARACTERISTICS['radiator']
+        )
+        self._cold_tolerance = heating_type_chars['cold_tolerance']
+        self._hot_tolerance = heating_type_chars['hot_tolerance']
+
         self._time_changed = time.time()
         self._last_sensor_update = time.time()
         self._last_ext_sensor_update = time.time()
@@ -762,7 +769,8 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                                                   derivative_filter_alpha=self._derivative_filter_alpha,
                                                   outdoor_temp_lag_tau=self._outdoor_temp_lag_tau,
                                                   integral_decay_multiplier=decay_rate,
-                                                  integral_exp_decay_tau=exp_decay_tau)
+                                                  integral_exp_decay_tau=exp_decay_tau,
+                                                  heating_type=self._heating_type)
         self._pid_controller.mode = "AUTO"
 
     async def async_added_to_hass(self):
