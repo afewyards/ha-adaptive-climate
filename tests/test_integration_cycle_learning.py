@@ -1538,3 +1538,83 @@ class TestDecayAwareKiAdjustment:
         assert abs(adjustment["ki"] - expected_ki) < 0.0001, (
             f"No decay metrics: Expected Ki={expected_ki:.4f}, got {adjustment['ki']:.4f}"
         )
+
+
+class TestSafetyNetDisabledAfterAutoApply:
+    """Integration test for safety net disabling after auto-apply (Story 8.3)."""
+
+    @pytest.mark.asyncio
+    async def test_safety_net_disabled_after_autoapply(self):
+        """Test that PID.should_apply_decay() returns False after first auto-apply.
+
+        Verifies:
+        1. Safety net is active (returns True) before any auto-apply (when untuned)
+        2. After auto-apply, safety net is disabled (returns False)
+        3. This prevents interference with learned PID parameters
+        """
+        from custom_components.adaptive_thermostat.pid_controller import PID
+        from custom_components.adaptive_thermostat.adaptive.learning import AdaptiveLearner
+
+        # Create PID controller for radiator (INTEGRAL_DECAY_THRESHOLDS: radiator=40.0)
+        pid = PID(
+            kp=5.0,
+            ki=0.001,
+            kd=300.0,
+            ke=0.5,
+            out_min=0.0,
+            out_max=100.0,
+            cold_tolerance=0.3,
+            hot_tolerance=0.3,
+            heating_type="radiator",
+        )
+
+        # Create adaptive learner to track auto_apply_count
+        learner = AdaptiveLearner(heating_type="radiator")
+
+        # Phase 1: Verify safety net is active when untuned (auto_apply_count=0)
+        # Set integral to excessive value (above threshold=40.0)
+        pid._integral = 50.0
+        pid._set_point = 21.0
+        pid._input = 20.5  # Within cold_tolerance (21.0 - 20.5 = 0.5 > 0.3, actually outside tolerance)
+        pid._error = 0.5
+
+        # Need error < cold_tolerance (0.3) to trigger safety net
+        pid._input = 20.8  # error = 21.0 - 20.8 = 0.2 < 0.3 (within tolerance)
+        pid._error = 0.2
+
+        # Verify should_apply_decay returns True (untuned, excessive integral, within tolerance)
+        assert pid.should_apply_decay() is True, (
+            "Safety net should be active when auto_apply_count=0 and conditions met"
+        )
+
+        # Phase 2: Simulate auto-apply by incrementing auto_apply_count
+        # Normally this happens in AdaptiveLearner.auto_apply_pid_adjustment()
+        learner._auto_apply_count = 1
+
+        # Sync auto_apply_count to PID controller (as done in climate.py)
+        pid.set_auto_apply_count(learner._auto_apply_count)
+
+        # Phase 3: Verify safety net is disabled after auto-apply
+        # Even with excessive integral and within tolerance, should return False
+        assert pid.should_apply_decay() is False, (
+            "Safety net should be disabled after first auto-apply (auto_apply_count > 0)"
+        )
+
+        # Phase 4: Verify it stays disabled even with extreme conditions
+        # Set integral to very high value (way above threshold)
+        pid._integral = 100.0
+        pid._input = 20.95  # Very close to setpoint (error = 0.05 < 0.3)
+        pid._error = 0.05
+
+        # Should still return False (auto_apply_count > 0 takes precedence)
+        assert pid.should_apply_decay() is False, (
+            "Safety net should remain disabled even with extreme integral and close to setpoint"
+        )
+
+        # Phase 5: Verify multiple auto-applies keep safety net disabled
+        learner._auto_apply_count = 3
+        pid.set_auto_apply_count(learner._auto_apply_count)
+
+        assert pid.should_apply_decay() is False, (
+            "Safety net should remain disabled with multiple auto-applies (auto_apply_count=3)"
+        )
