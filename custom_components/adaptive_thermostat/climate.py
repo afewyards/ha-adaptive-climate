@@ -1010,6 +1010,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                         on_validation_failed=self._handle_validation_failure,
                         on_auto_apply_check=self._check_auto_apply_pid,
                         dispatcher=self._cycle_dispatcher,
+                        heating_type=self._heating_type,
                     )
                     # Add cycle_tracker to zone_data for state_attributes access
                     zone_data["cycle_tracker"] = self._cycle_tracker

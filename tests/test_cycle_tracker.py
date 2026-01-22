@@ -16,6 +16,7 @@ from custom_components.adaptive_thermostat.managers.events import (
     SetpointChangedEvent,
     ModeChangedEvent,
     ContactPauseEvent,
+    TemperatureUpdateEvent,
 )
 
 
@@ -1978,5 +1979,159 @@ class TestCycleTrackerFinalizeSave:
             mock_calc_settling.assert_called_once()
             call_args = mock_calc_settling.call_args
             assert call_args[1]["reference_time"] == device_off_time
+
+
+class TestTemperatureUpdateIntegralTracking:
+    """Tests for TEMPERATURE_UPDATE event integration and integral tracking."""
+
+    def test_temperature_update_tracks_integral_at_tolerance_entry(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
+    ):
+        """Test that CycleTrackerManager captures integral value when entering cold tolerance zone."""
+        from custom_components.adaptive_thermostat.const import HEATING_TYPE_CHARACTERISTICS, HEATING_TYPE_RADIATOR
+
+        # Create cycle tracker with radiator heating type (cold_tolerance = 0.3)
+        cycle_tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            dispatcher=dispatcher,
+            heating_type=HEATING_TYPE_RADIATOR,
+            **mock_callbacks,
+        )
+        cycle_tracker.set_restoration_complete()
+
+        # Set target temperature to 20.0°C
+        target_temp = 20.0
+        mock_callbacks["get_target_temp"].return_value = target_temp
+
+        # Start a heating cycle
+        start_time = datetime(2025, 1, 14, 10, 0, 0)
+        dispatcher.emit(CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=start_time,
+            target_temp=target_temp,
+            current_temp=18.0
+        ))
+
+        # Get cold_tolerance for radiator (0.3)
+        cold_tolerance = HEATING_TYPE_CHARACTERISTICS[HEATING_TYPE_RADIATOR]["cold_tolerance"]
+
+        # Dispatch TEMPERATURE_UPDATE events
+        # First event: temperature = 19.0, pid_error = 1.0 (outside tolerance)
+        dispatcher.emit(TemperatureUpdateEvent(
+            timestamp=datetime(2025, 1, 14, 10, 1, 0),
+            temperature=19.0,
+            setpoint=target_temp,
+            pid_integral=50.0,
+            pid_error=1.0
+        ))
+        # Integral should not be captured yet
+        assert cycle_tracker._integral_at_tolerance_entry is None
+
+        # Second event: temperature = 19.5, pid_error = 0.5 (outside tolerance)
+        dispatcher.emit(TemperatureUpdateEvent(
+            timestamp=datetime(2025, 1, 14, 10, 2, 0),
+            temperature=19.5,
+            setpoint=target_temp,
+            pid_integral=75.0,
+            pid_error=0.5
+        ))
+        # Still outside tolerance
+        assert cycle_tracker._integral_at_tolerance_entry is None
+
+        # Third event: temperature = 19.75, pid_error = 0.25 (inside cold_tolerance of 0.3)
+        dispatcher.emit(TemperatureUpdateEvent(
+            timestamp=datetime(2025, 1, 14, 10, 3, 0),
+            temperature=19.75,
+            setpoint=target_temp,
+            pid_integral=100.0,
+            pid_error=0.25
+        ))
+        # Now integral should be captured
+        assert cycle_tracker._integral_at_tolerance_entry == 100.0
+
+        # Fourth event: temperature = 19.8, pid_error = 0.2 (still inside tolerance)
+        dispatcher.emit(TemperatureUpdateEvent(
+            timestamp=datetime(2025, 1, 14, 10, 4, 0),
+            temperature=19.8,
+            setpoint=target_temp,
+            pid_integral=110.0,
+            pid_error=0.2
+        ))
+        # Integral should not be overwritten (only capture first entry)
+        assert cycle_tracker._integral_at_tolerance_entry == 100.0
+
+    def test_temperature_update_tracks_integral_at_setpoint_cross(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
+    ):
+        """Test that CycleTrackerManager captures integral value when crossing setpoint."""
+        # Create cycle tracker
+        cycle_tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            dispatcher=dispatcher,
+            **mock_callbacks,
+        )
+        cycle_tracker.set_restoration_complete()
+
+        # Set target temperature to 20.0°C
+        target_temp = 20.0
+        mock_callbacks["get_target_temp"].return_value = target_temp
+
+        # Start a heating cycle
+        start_time = datetime(2025, 1, 14, 10, 0, 0)
+        dispatcher.emit(CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=start_time,
+            target_temp=target_temp,
+            current_temp=18.0
+        ))
+
+        # Dispatch TEMPERATURE_UPDATE events
+        # First event: pid_error = 0.5 (below setpoint)
+        dispatcher.emit(TemperatureUpdateEvent(
+            timestamp=datetime(2025, 1, 14, 10, 1, 0),
+            temperature=19.5,
+            setpoint=target_temp,
+            pid_integral=80.0,
+            pid_error=0.5
+        ))
+        # Integral should not be captured yet
+        assert cycle_tracker._integral_at_setpoint_cross is None
+
+        # Second event: pid_error = 0.1 (below setpoint)
+        dispatcher.emit(TemperatureUpdateEvent(
+            timestamp=datetime(2025, 1, 14, 10, 2, 0),
+            temperature=19.9,
+            setpoint=target_temp,
+            pid_integral=95.0,
+            pid_error=0.1
+        ))
+        # Still below setpoint
+        assert cycle_tracker._integral_at_setpoint_cross is None
+
+        # Third event: pid_error = 0.0 (at setpoint)
+        dispatcher.emit(TemperatureUpdateEvent(
+            timestamp=datetime(2025, 1, 14, 10, 3, 0),
+            temperature=20.0,
+            setpoint=target_temp,
+            pid_integral=100.0,
+            pid_error=0.0
+        ))
+        # Now integral should be captured
+        assert cycle_tracker._integral_at_setpoint_cross == 100.0
+
+        # Fourth event: pid_error = -0.1 (above setpoint, overshoot)
+        dispatcher.emit(TemperatureUpdateEvent(
+            timestamp=datetime(2025, 1, 14, 10, 4, 0),
+            temperature=20.1,
+            setpoint=target_temp,
+            pid_integral=105.0,
+            pid_error=-0.1
+        ))
+        # Integral should not be overwritten (only capture first crossing)
+        assert cycle_tracker._integral_at_setpoint_cross == 100.0
 
 

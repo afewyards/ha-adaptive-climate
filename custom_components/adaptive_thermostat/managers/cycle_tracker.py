@@ -25,6 +25,7 @@ if TYPE_CHECKING:
         ModeChangedEvent,
         ContactPauseEvent,
         ContactResumeEvent,
+        TemperatureUpdateEvent,
     )
 
 _LOGGER = logging.getLogger(__name__)
@@ -67,6 +68,7 @@ class CycleTrackerManager:
         on_validation_failed: Callable[[], Awaitable[None]] | None = None,
         on_auto_apply_check: Callable[[], Awaitable[None]] | None = None,
         dispatcher: "CycleEventDispatcher | None" = None,
+        heating_type: str | None = None,
     ) -> None:
         """Initialize the cycle tracker manager.
 
@@ -85,11 +87,13 @@ class CycleTrackerManager:
             on_validation_failed: Async callback for validation failure (triggers rollback)
             on_auto_apply_check: Async callback for auto-apply check after cycle completion
             dispatcher: Optional CycleEventDispatcher for event-driven operation
+            heating_type: Heating system type (for cold_tolerance lookup)
         """
         from ..const import (
             SETTLING_TIMEOUT_MULTIPLIER,
             SETTLING_TIMEOUT_MIN,
             SETTLING_TIMEOUT_MAX,
+            HEATING_TYPE_CHARACTERISTICS,
         )
 
         self._hass = hass
@@ -150,6 +154,15 @@ class CycleTrackerManager:
         self._device_on_time: datetime | None = None
         self._device_off_time: datetime | None = None
 
+        # Integral tracking for decay calculation
+        self._integral_at_tolerance_entry: float | None = None
+        self._integral_at_setpoint_cross: float | None = None
+        # Initialize cold_tolerance from heating type characteristics
+        if heating_type and heating_type in HEATING_TYPE_CHARACTERISTICS:
+            self._cold_tolerance: float | None = HEATING_TYPE_CHARACTERISTICS[heating_type].get("cold_tolerance")
+        else:
+            self._cold_tolerance: float | None = None
+
         # Subscribe to events if dispatcher provided
         if self._dispatcher is not None:
             from .events import CycleEventType
@@ -177,6 +190,9 @@ class CycleTrackerManager:
             )
             self._unsubscribe_handles.append(
                 self._dispatcher.subscribe(CycleEventType.MODE_CHANGED, self._on_mode_changed_event)
+            )
+            self._unsubscribe_handles.append(
+                self._dispatcher.subscribe(CycleEventType.TEMPERATURE_UPDATE, self._on_temperature_update)
             )
 
     @property
@@ -255,6 +271,10 @@ class CycleTrackerManager:
         self._outdoor_temp_history.clear()
         # Clear last interruption reason when starting a new cycle
         self._last_interruption_reason = None
+
+        # Clear integral tracking for new cycle
+        self._integral_at_tolerance_entry = None
+        self._integral_at_setpoint_cross = None
 
         current_temp = self._get_current_temp()
         self._logger.info(
@@ -407,6 +427,41 @@ class CycleTrackerManager:
                 reason=reason
             )
 
+    def _on_temperature_update(self, event: "TemperatureUpdateEvent") -> None:
+        """Handle TEMPERATURE_UPDATE event for integral tracking.
+
+        Tracks integral values at two key points during heating:
+        1. When temperature enters cold tolerance zone (pid_error < cold_tolerance)
+        2. When temperature crosses setpoint (pid_error <= 0)
+
+        Args:
+            event: TemperatureUpdateEvent with timestamp, temperature, setpoint, pid_integral, pid_error
+        """
+        # Only track during active cycle (HEATING or SETTLING)
+        if self._state not in (CycleState.HEATING, CycleState.SETTLING):
+            return
+
+        # Capture integral at tolerance entry (only once per cycle)
+        if self._integral_at_tolerance_entry is None and self._cold_tolerance is not None:
+            if event.pid_error < self._cold_tolerance:
+                self._integral_at_tolerance_entry = event.pid_integral
+                self._logger.debug(
+                    "Captured integral at tolerance entry: %.2f (pid_error=%.2f < cold_tolerance=%.2f)",
+                    event.pid_integral,
+                    event.pid_error,
+                    self._cold_tolerance,
+                )
+
+        # Capture integral at setpoint crossing (only once per cycle)
+        if self._integral_at_setpoint_cross is None:
+            if event.pid_error <= 0.0:
+                self._integral_at_setpoint_cross = event.pid_integral
+                self._logger.debug(
+                    "Captured integral at setpoint cross: %.2f (pid_error=%.2f)",
+                    event.pid_integral,
+                    event.pid_error,
+                )
+
     def _cancel_settling_timeout(self) -> None:
         """Cancel any active settling timeout."""
         if self._settling_timeout_handle is not None:
@@ -524,6 +579,10 @@ class CycleTrackerManager:
 
         # Clear interruption history
         self._interruption_history.clear()
+
+        # Clear integral tracking
+        self._integral_at_tolerance_entry = None
+        self._integral_at_setpoint_cross = None
 
         # Set state to IDLE
         self._state = CycleState.IDLE
