@@ -78,6 +78,7 @@ from .managers.events import (
     ModeChangedEvent,
     ContactPauseEvent,
     ContactResumeEvent,
+    TemperatureUpdateEvent,
 )
 from .managers.state_attributes import build_state_attributes
 
@@ -2077,6 +2078,18 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
             else:
                 # Always recalculate PID to ensure output reflects current conditions
                 await self.calc_output(is_temp_sensor_update)
+
+                # Dispatch TemperatureUpdateEvent after PID calculation
+                if self._cycle_dispatcher and self._current_temp is not None and self._target_temp is not None:
+                    self._cycle_dispatcher.emit(
+                        TemperatureUpdateEvent(
+                            timestamp=datetime.now(),
+                            temperature=self._current_temp,
+                            setpoint=self._target_temp,
+                            pid_integral=self._pid_controller.integral,
+                            pid_error=self._pid_controller.error,
+                        )
+                    )
 
                 # Record temperature for cycle tracking
                 if self._cycle_tracker and self._current_temp is not None:

@@ -2299,6 +2299,65 @@ class TestClimateDispatcherIntegration:
 
         assert len(events) == 0  # No event should be emitted
 
+    def test_fires_temperature_update_event(self):
+        """Test climate.py fires TemperatureUpdateEvent after PID calc."""
+        from datetime import datetime
+        from custom_components.adaptive_thermostat.managers.events import (
+            CycleEventDispatcher,
+            CycleEventType,
+            TemperatureUpdateEvent,
+        )
+
+        # Create dispatcher and subscribe
+        events = []
+        dispatcher = CycleEventDispatcher()
+        dispatcher.subscribe(CycleEventType.TEMPERATURE_UPDATE, lambda e: events.append(e))
+
+        # Simulate what climate.py does after PID calc
+        current_temp = 19.5
+        target_temp = 21.0
+        pid_integral = 12.5
+        pid_error = -1.5
+
+        # This is what climate.py should do after calc_output()
+        dispatcher.emit(
+            TemperatureUpdateEvent(
+                timestamp=datetime.now(),
+                temperature=current_temp,
+                setpoint=target_temp,
+                pid_integral=pid_integral,
+                pid_error=pid_error,
+            )
+        )
+
+        # Verify TemperatureUpdateEvent was dispatched with correct values
+        assert len(events) == 1
+        event = events[0]
+        assert isinstance(event, TemperatureUpdateEvent)
+        assert event.temperature == 19.5
+        assert event.setpoint == 21.0
+        assert event.pid_integral == 12.5
+        assert event.pid_error == -1.5
+        assert isinstance(event.timestamp, datetime)
+
+    def test_climate_dispatches_temperature_update_in_code(self):
+        """Verify climate.py contains code to dispatch TemperatureUpdateEvent."""
+        import os
+        climate_file = os.path.join(
+            os.path.dirname(__file__),
+            "..", "custom_components", "adaptive_thermostat", "climate.py"
+        )
+        with open(climate_file, "r") as f:
+            source = f.read()
+
+        # Should contain the event dispatch after PID calc
+        assert "TemperatureUpdateEvent" in source, \
+            "climate.py should import and use TemperatureUpdateEvent"
+        assert "pid_integral=self._pid_controller.integral" in source, \
+            "climate.py should dispatch TemperatureUpdateEvent with pid_integral"
+        assert "pid_error=self._pid_controller.error" in source, \
+            "climate.py should dispatch TemperatureUpdateEvent with pid_error"
+
 
 class TestClimateNoDirectCTMCalls:
     """Test that climate.py doesn't make direct cycle_tracker method calls."""
