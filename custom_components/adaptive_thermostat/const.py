@@ -534,6 +534,17 @@ HEATING_TYPE_INTEGRAL_DECAY = {
     HEATING_TYPE_FORCED_AIR: 1.2,      # Low decay - fast response can self-correct
 }
 
+# Integral decay safety net thresholds (% of integral value)
+# When settling time exceeds max_settling_time AND integral exceeds this threshold,
+# activate exponential decay to prevent prolonged overshoot.
+# Slower systems get lower thresholds to activate safety net earlier.
+INTEGRAL_DECAY_THRESHOLDS = {
+    HEATING_TYPE_FLOOR_HYDRONIC: 35.0,  # Low threshold - high thermal mass needs early intervention
+    HEATING_TYPE_RADIATOR: 40.0,        # Moderate threshold
+    HEATING_TYPE_CONVECTOR: 50.0,       # Standard threshold
+    HEATING_TYPE_FORCED_AIR: 60.0,      # High threshold - fast response can handle larger integral
+}
+
 # Exponential decay tau (hours) for integral during overhang
 # Half-life = 0.693 * tau, derived from min_cycle_duration / 2
 DEFAULT_EXP_DECAY_TAU = 0.12

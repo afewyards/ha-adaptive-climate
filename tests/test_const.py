@@ -7,6 +7,7 @@ from custom_components.adaptive_thermostat.const import (
     HEATING_TYPE_CONVECTOR,
     HEATING_TYPE_FORCED_AIR,
     VALID_HEATING_TYPES,
+    INTEGRAL_DECAY_THRESHOLDS,
 )
 
 
@@ -111,6 +112,55 @@ class TestHeatingTypeCharacteristics:
         assert floor > radiator
         assert radiator > convector
         assert convector > forced_air
+
+
+class TestIntegralDecayThresholds:
+    """Test INTEGRAL_DECAY_THRESHOLDS structure and values."""
+
+    def test_integral_decay_thresholds_exists(self):
+        """Verify INTEGRAL_DECAY_THRESHOLDS dict exists."""
+        assert INTEGRAL_DECAY_THRESHOLDS is not None
+        assert isinstance(INTEGRAL_DECAY_THRESHOLDS, dict)
+
+    def test_integral_decay_thresholds_has_all_heating_types(self):
+        """Verify all heating types have integral decay threshold entries."""
+        for heating_type in VALID_HEATING_TYPES:
+            assert heating_type in INTEGRAL_DECAY_THRESHOLDS, (
+                f"Heating type {heating_type} missing from INTEGRAL_DECAY_THRESHOLDS"
+            )
+
+    def test_integral_decay_thresholds_values_are_numeric(self):
+        """Verify all threshold values are numeric and positive."""
+        for heating_type, threshold in INTEGRAL_DECAY_THRESHOLDS.items():
+            assert isinstance(threshold, (int, float)), (
+                f"Threshold for {heating_type} must be numeric, got {type(threshold)}"
+            )
+            assert threshold > 0, (
+                f"Threshold for {heating_type} must be positive, got {threshold}"
+            )
+
+    def test_integral_decay_threshold_values(self):
+        """Verify specific threshold values match the specification."""
+        assert INTEGRAL_DECAY_THRESHOLDS[HEATING_TYPE_FLOOR_HYDRONIC] == 35.0
+        assert INTEGRAL_DECAY_THRESHOLDS[HEATING_TYPE_RADIATOR] == 40.0
+        assert INTEGRAL_DECAY_THRESHOLDS[HEATING_TYPE_CONVECTOR] == 50.0
+        assert INTEGRAL_DECAY_THRESHOLDS[HEATING_TYPE_FORCED_AIR] == 60.0
+
+    def test_integral_decay_threshold_ordering(self):
+        """Test that thresholds increase with faster heating systems.
+
+        Slower systems (high thermal mass) need lower thresholds to activate
+        safety net earlier, preventing prolonged overshoot.
+        """
+        floor = INTEGRAL_DECAY_THRESHOLDS[HEATING_TYPE_FLOOR_HYDRONIC]
+        radiator = INTEGRAL_DECAY_THRESHOLDS[HEATING_TYPE_RADIATOR]
+        convector = INTEGRAL_DECAY_THRESHOLDS[HEATING_TYPE_CONVECTOR]
+        forced_air = INTEGRAL_DECAY_THRESHOLDS[HEATING_TYPE_FORCED_AIR]
+
+        # Faster systems can tolerate higher thresholds before needing safety net
+        assert floor < radiator
+        assert radiator < convector
+        assert convector < forced_air
 
 
 # Marker test
