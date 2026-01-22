@@ -1211,6 +1211,9 @@ class AdaptiveLearner:
             "settling_time": cycle.settling_time,
             "oscillations": cycle.oscillations,
             "rise_time": cycle.rise_time,
+            "integral_at_tolerance_entry": cycle.integral_at_tolerance_entry,
+            "integral_at_setpoint_cross": cycle.integral_at_setpoint_cross,
+            "decay_contribution": cycle.decay_contribution,
         }
 
     def to_dict(self) -> Dict[str, Any]:
@@ -1261,6 +1264,9 @@ class AdaptiveLearner:
                 settling_time=cycle_dict.get("settling_time"),
                 oscillations=cycle_dict.get("oscillations", 0),
                 rise_time=cycle_dict.get("rise_time"),
+                integral_at_tolerance_entry=cycle_dict.get("integral_at_tolerance_entry"),
+                integral_at_setpoint_cross=cycle_dict.get("integral_at_setpoint_cross"),
+                decay_contribution=cycle_dict.get("decay_contribution"),
             )
             self._cycle_history.append(cycle)
 

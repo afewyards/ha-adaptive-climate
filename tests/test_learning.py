@@ -1867,6 +1867,53 @@ class TestAdaptiveLearnerSerialization:
         assert result["pid_converged_for_ke"] is True
         assert result["auto_apply_count"] == 3
 
+    def test_serialize_cycle_includes_decay_fields(self):
+        """Test to_dict serializes decay fields from CycleMetrics (Story 7.1)."""
+        learner = AdaptiveLearner()
+
+        # Add cycle with decay metrics
+        learner.add_cycle_metrics(CycleMetrics(
+            overshoot=0.3,
+            undershoot=0.1,
+            settling_time=35.0,
+            oscillations=0,
+            rise_time=25.0,
+            integral_at_tolerance_entry=120.0,
+            integral_at_setpoint_cross=85.0,
+            decay_contribution=35.0,
+        ))
+
+        result = learner.to_dict()
+
+        # Verify decay fields are serialized
+        assert len(result["cycle_history"]) == 1
+        cycle = result["cycle_history"][0]
+
+        assert cycle["integral_at_tolerance_entry"] == 120.0
+        assert cycle["integral_at_setpoint_cross"] == 85.0
+        assert cycle["decay_contribution"] == 35.0
+
+    def test_serialize_cycle_includes_decay_fields_with_none(self):
+        """Test to_dict handles None decay fields correctly (Story 7.1)."""
+        learner = AdaptiveLearner()
+
+        # Add cycle with None decay metrics
+        learner.add_cycle_metrics(CycleMetrics(
+            overshoot=0.2,
+            oscillations=1,
+            settling_time=30.0,
+            integral_at_tolerance_entry=None,
+            integral_at_setpoint_cross=None,
+            decay_contribution=None,
+        ))
+
+        result = learner.to_dict()
+
+        cycle = result["cycle_history"][0]
+        assert cycle["integral_at_tolerance_entry"] is None
+        assert cycle["integral_at_setpoint_cross"] is None
+        assert cycle["decay_contribution"] is None
+
 
 # Marker test for Story 1.1
 def test_adaptive_learner_serialization_exists():
