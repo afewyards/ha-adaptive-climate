@@ -2128,6 +2128,70 @@ def test_adaptive_learner_restoration_exists():
     assert callable(learner.restore_from_dict)
 
 
+def test_restore_cycle_parses_decay_fields():
+    """Test restore_from_dict() reconstructs CycleMetrics with decay fields."""
+    learner = AdaptiveLearner()
+
+    # Prepare data with decay fields
+    data = {
+        "cycle_history": [
+            {
+                "overshoot": 0.5,
+                "undershoot": 0.2,
+                "settling_time": 45.0,
+                "oscillations": 1,
+                "rise_time": 30.0,
+                "integral_at_tolerance_entry": 150.0,
+                "integral_at_setpoint_cross": 120.0,
+                "decay_contribution": 0.35,
+            },
+            {
+                "overshoot": 0.3,
+                "undershoot": 0.1,
+                "settling_time": 40.0,
+                "oscillations": 0,
+                "rise_time": 25.0,
+                "integral_at_tolerance_entry": None,
+                "integral_at_setpoint_cross": None,
+                "decay_contribution": None,
+            },
+        ],
+        "last_adjustment_time": None,
+        "consecutive_converged_cycles": 0,
+        "pid_converged_for_ke": False,
+        "auto_apply_count": 0,
+    }
+
+    learner.restore_from_dict(data)
+
+    # Verify cycles are restored
+    assert len(learner._cycle_history) == 2
+
+    # Verify first cycle with decay fields
+    cycle1 = learner._cycle_history[0]
+    assert isinstance(cycle1, CycleMetrics)
+    assert cycle1.overshoot == 0.5
+    assert cycle1.undershoot == 0.2
+    assert cycle1.settling_time == 45.0
+    assert cycle1.oscillations == 1
+    assert cycle1.rise_time == 30.0
+    assert cycle1.integral_at_tolerance_entry == 150.0
+    assert cycle1.integral_at_setpoint_cross == 120.0
+    assert cycle1.decay_contribution == 0.35
+
+    # Verify second cycle with None decay fields
+    cycle2 = learner._cycle_history[1]
+    assert isinstance(cycle2, CycleMetrics)
+    assert cycle2.overshoot == 0.3
+    assert cycle2.undershoot == 0.1
+    assert cycle2.settling_time == 40.0
+    assert cycle2.oscillations == 0
+    assert cycle2.rise_time == 25.0
+    assert cycle2.integral_at_tolerance_entry is None
+    assert cycle2.integral_at_setpoint_cross is None
+    assert cycle2.decay_contribution is None
+
+
 # ============================================================================
 # Decay Metrics Passing Tests (Story 6.4)
 # ============================================================================
