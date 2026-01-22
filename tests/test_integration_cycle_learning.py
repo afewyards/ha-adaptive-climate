@@ -1618,3 +1618,133 @@ class TestSafetyNetDisabledAfterAutoApply:
         assert pid.should_apply_decay() is False, (
             "Safety net should remain disabled with multiple auto-applies (auto_apply_count=3)"
         )
+
+
+class TestSettlingTimeFromDeviceOff:
+    """Integration test for settling_time measurement from device_off_time (Story 8.4)."""
+
+    @pytest.mark.asyncio
+    async def test_settling_time_from_device_off(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
+    ):
+        """Test that settling_time is measured from device_off_time, not first temp sample.
+
+        Verifies:
+        1. Temperature samples collected during heating phase
+        2. Device turns off (SettlingStartedEvent emitted with device_off_time)
+        3. More temperature samples collected during settling phase
+        4. settling_time is calculated from device_off_time, not from first settling sample
+        5. This ensures accurate settling time measurement that reflects actual device behavior
+        """
+        from custom_components.adaptive_thermostat.managers.events import (
+            CycleStartedEvent,
+            HeatingEndedEvent,
+            SettlingStartedEvent,
+        )
+
+        # Create tracker for radiator heating type
+        tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            get_target_temp=mock_callbacks["get_target_temp"],
+            get_current_temp=mock_callbacks["get_current_temp"],
+            get_hvac_mode=mock_callbacks["get_hvac_mode"],
+            get_in_grace_period=mock_callbacks["get_in_grace_period"],
+            dispatcher=dispatcher,
+            heating_type="radiator",
+        )
+        tracker.set_restoration_complete()
+
+        # Start heating cycle at 19.0°C, target 21.0°C
+        start_time = datetime(2024, 1, 1, 10, 0, 0)
+        cycle_started = CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=start_time,
+            target_temp=21.0,
+            current_temp=19.0,
+        )
+        dispatcher.emit(cycle_started)
+
+        assert tracker.state == CycleState.HEATING
+
+        # Simulate temperature rising during heating phase (20 minutes = 40 samples @ 30s interval)
+        # Keep temperature below 20.5 during heating to avoid entering tolerance early
+        current_time = start_time
+        for i in range(40):
+            # Temperature rises from 19.0 to 20.5 over 20 minutes (stays below tolerance band)
+            temp = 19.0 + (i / 40.0) * 1.5
+            await tracker.update_temperature(current_time, temp)
+            current_time += timedelta(seconds=30)
+
+        # Device turns off at T+20min (this is the reference time for settling_time)
+        # At this point temp is 20.5, which is still 0.5°C away from target (outside tolerance)
+        device_off_time = start_time + timedelta(minutes=20)
+
+        # Emit HeatingEndedEvent to set device_off_time
+        heating_ended = HeatingEndedEvent(
+            hvac_mode="heat",
+            timestamp=device_off_time,
+        )
+        dispatcher.emit(heating_ended)
+
+        # Emit SettlingStartedEvent to transition to SETTLING state
+        settling_started = SettlingStartedEvent(
+            hvac_mode="heat",
+            timestamp=device_off_time,
+        )
+        dispatcher.emit(settling_started)
+
+        assert tracker.state == CycleState.SETTLING
+
+        # Continue collecting temperature samples during settling phase
+        # After device turns off, temperature continues to rise (thermal inertia)
+        # First 2 minutes: overshoot from 20.5 to 21.4 (outside tolerance)
+        for i in range(4):
+            temp = 20.5 + (i + 1) / 4.0 * 0.9  # Rise from 20.5 to 21.4
+            await tracker.update_temperature(current_time, temp)
+            current_time += timedelta(seconds=30)
+
+        # Next 3 minutes: settling down, entering tolerance zone
+        # From 21.4 down to 21.0
+        for i in range(6):
+            temp = 21.4 - (i / 6.0) * 0.4  # Fall from 21.4 to 21.0
+            await tracker.update_temperature(current_time, temp)
+            current_time += timedelta(seconds=30)
+
+        # Continue at stable temperature (21.0) for 5 more minutes to ensure settling persists
+        for _ in range(10):
+            await tracker.update_temperature(current_time, 21.0)
+            current_time += timedelta(seconds=30)
+
+        # Cycle should complete and transition to IDLE
+        assert tracker.state == CycleState.IDLE
+
+        # Verify metrics were recorded
+        assert mock_adaptive_learner.add_cycle_metrics.call_count == 1
+
+        # Verify settling_time is measured from device_off_time
+        recorded_metrics = mock_adaptive_learner.add_cycle_metrics.call_args[0][0]
+        assert isinstance(recorded_metrics, CycleMetrics)
+        assert recorded_metrics.settling_time is not None
+
+        # Calculate expected settling_time:
+        # - Device turned off at T+20min (device_off_time)
+        # - Temperature overshoots for 2 min (T+20 to T+22), outside tolerance
+        # - Temperature falls back for 3 min (T+22 to T+25), entering tolerance
+        # - Temperature stable at 21.0 from ~T+23.5min onward
+        # - Expected settling_time ≈ 3.5 minutes from device_off_time
+        #
+        # If settling_time were measured from first temp sample (at T+0min),
+        # it would be ≈23.5 minutes (incorrect).
+        #
+        # The key test: settling_time should be much closer to 3.5 minutes than 23.5 minutes,
+        # proving it's measured from device_off_time, not from first sample.
+
+        # Verify settling_time is in the expected range (3-5 minutes)
+        # This proves it's measured from device_off_time, not from first sample
+        assert 3.0 <= recorded_metrics.settling_time <= 5.0, (
+            f"settling_time should be ~3.5 minutes from device_off_time, "
+            f"got {recorded_metrics.settling_time:.1f} minutes. "
+            f"If measured from first sample, would be ~23.5 minutes."
+        )
