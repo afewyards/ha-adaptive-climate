@@ -17,7 +17,8 @@ class PID:
 
     def __init__(self, kp, ki, kd, ke=0, ke_wind=0.02, out_min=float('-inf'), out_max=float('+inf'),
                  sampling_period=0, cold_tolerance=0.3, hot_tolerance=0.3, derivative_filter_alpha=0.15,
-                 outdoor_temp_lag_tau=4.0, integral_decay_multiplier=1.5, integral_exp_decay_tau=None):
+                 outdoor_temp_lag_tau=4.0, integral_decay_multiplier=1.5, integral_exp_decay_tau=None,
+                 heating_type="radiator"):
         """A proportional-integral-derivative controller using P-on-M (proportional-on-measurement).
             :param kp: Proportional coefficient.
             :type kp: float
@@ -51,6 +52,8 @@ class PID:
             :param integral_exp_decay_tau: Time constant (hours) for exponential integral decay during overhang.
                                            Half-life = 0.693 * tau. None disables exponential decay.
             :type integral_exp_decay_tau: float
+            :param heating_type: Heating system type (floor_hydronic, radiator, convector, forced_air).
+            :type heating_type: str
         """
         if kp is None:
             raise ValueError('kp must be specified')
@@ -99,6 +102,8 @@ class PID:
         self._wind_speed = 0.0  # Current wind speed in m/s (defaults to 0 if unavailable)
         self._integral_decay_multiplier = max(1.0, integral_decay_multiplier)
         self._integral_exp_decay_tau = integral_exp_decay_tau
+        self._heating_type = heating_type
+        self._auto_apply_count = 0
 
     @property
     def mode(self):
@@ -274,7 +279,66 @@ class PID:
         self._last_input_time = None
         self._derivative_filtered = 0.0
         self._outdoor_temp_lagged = None
-        
+
+    def set_auto_apply_count(self, count):
+        """Set the auto-apply count for tracking PID adjustments.
+
+        Args:
+            count: Number of auto-applies that have been performed.
+        """
+        self._auto_apply_count = count
+
+    def should_apply_decay(self):
+        """Check if integral decay safety net should be activated.
+
+        The safety net applies exponential decay when:
+        1. System is untuned (auto_apply_count == 0)
+        2. Integral is excessive (above heating-type threshold)
+        3. Temperature is within tolerance zone (approaching setpoint)
+
+        After first auto-apply, safety net is disabled to prevent interference
+        with learned PID parameters.
+
+        Returns:
+            True if decay should be applied, False otherwise.
+        """
+        # Import here to avoid circular dependency
+        try:
+            from ..const import INTEGRAL_DECAY_THRESHOLDS
+        except ImportError:
+            # Fallback for test environment
+            INTEGRAL_DECAY_THRESHOLDS = {
+                "floor_hydronic": 35.0,
+                "radiator": 40.0,
+                "convector": 50.0,
+                "forced_air": 60.0,
+            }
+
+        # Safety net disabled after first auto-apply
+        if self._auto_apply_count > 0:
+            return False
+
+        # Get threshold for this heating type
+        threshold = INTEGRAL_DECAY_THRESHOLDS.get(self._heating_type, 50.0)
+
+        # Check if integral is excessive
+        if abs(self._integral) <= threshold:
+            return False
+
+        # Check if temperature is within tolerance zone
+        # For heating (positive integral), check cold_tolerance
+        # For cooling (negative integral), check hot_tolerance
+        if self._integral > 0:
+            # Heating: error < cold_tolerance means approaching setpoint from below
+            if abs(self._error) >= self._cold_tolerance:
+                return False
+        else:
+            # Cooling: error > -hot_tolerance means approaching setpoint from above
+            if abs(self._error) >= self._hot_tolerance:
+                return False
+
+        return True
+
     def calc(self, input_val, set_point, input_time=None, last_input_time=None, ext_temp=None, wind_speed=None):
         """Adjusts and holds the given setpoint.
 

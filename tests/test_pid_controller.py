@@ -2042,5 +2042,91 @@ class TestOutputClampingOnWrongSide:
         assert pid.integral > 0, "Integral should still be positive after decay"
 
 
+    def test_should_apply_decay_untuned_excessive_integral_in_tolerance(self):
+        """Test should_apply_decay returns True when untuned + excessive integral + within tolerance."""
+        # Floor hydronic: threshold=35%, cold_tolerance=0.5°C
+        pid = PID(kp=0, ki=100, kd=0, out_min=0, out_max=100,
+                  cold_tolerance=0.5, heating_type="floor_hydronic")
+
+        # Build up integral to 40% (above 35% threshold)
+        # Ki=100, error=2.0, dt=100s = 2.0 * 100 * (100/3600) = 5.555% per iteration
+        # Need ~7 iterations to reach 40%
+        base_time = 1000.0
+        for i in range(8):
+            t = base_time + i * 100
+            pid.calc(18.0, 20.0, input_time=t, last_input_time=t - 100 if i > 0 else None)
+
+        # Verify integral is above threshold (35%)
+        assert pid.integral > 35.0, f"Integral should be above 35%, got {pid.integral}"
+
+        # Set temperature within cold_tolerance (0.5°C)
+        # Setpoint=20.0, tolerance=0.5, so anything >= 19.5 is within tolerance
+        pid.calc(19.6, 20.0, input_time=base_time + 2100, last_input_time=base_time + 2000)
+
+        # Should apply decay: untuned (auto_apply_count=0) + excessive integral + within tolerance
+        assert pid.should_apply_decay() is True
+
+    def test_should_apply_decay_disabled_after_first_autoapply(self):
+        """Test should_apply_decay returns False after first auto-apply (safety net disabled)."""
+        pid = PID(kp=0, ki=100, kd=0, out_min=0, out_max=100,
+                  cold_tolerance=0.5, heating_type="floor_hydronic")
+
+        # Build up excessive integral
+        base_time = 1000.0
+        for i in range(8):
+            t = base_time + i * 100
+            pid.calc(18.0, 20.0, input_time=t, last_input_time=t - 100 if i > 0 else None)
+
+        # Within tolerance
+        pid.calc(19.6, 20.0, input_time=base_time + 2100, last_input_time=base_time + 2000)
+
+        # Simulate first auto-apply
+        pid.set_auto_apply_count(1)
+
+        # Safety net should be disabled
+        assert pid.should_apply_decay() is False
+
+    def test_should_apply_decay_integral_below_threshold(self):
+        """Test should_apply_decay returns False when integral below threshold."""
+        pid = PID(kp=100, ki=10, kd=0, out_min=0, out_max=100,
+                  cold_tolerance=0.5, heating_type="floor_hydronic")
+
+        # Build up small integral (below 35% threshold)
+        base_time = 1000.0
+        for i in range(5):
+            t = base_time + i * 100
+            pid.calc(18.0, 20.0, input_time=t, last_input_time=t - 100 if i > 0 else None)
+
+        # Verify integral is below threshold
+        assert pid.integral < 35.0, f"Integral should be below 35%, got {pid.integral}"
+
+        # Within tolerance
+        pid.calc(19.6, 20.0, input_time=base_time + 600, last_input_time=base_time + 500)
+
+        # Should NOT apply decay: integral not excessive
+        assert pid.should_apply_decay() is False
+
+    def test_should_apply_decay_outside_tolerance(self):
+        """Test should_apply_decay returns False when error outside tolerance."""
+        pid = PID(kp=0, ki=100, kd=0, out_min=0, out_max=100,
+                  cold_tolerance=0.5, heating_type="floor_hydronic")
+
+        # Build up excessive integral
+        base_time = 1000.0
+        for i in range(8):
+            t = base_time + i * 100
+            pid.calc(18.0, 20.0, input_time=t, last_input_time=t - 100 if i > 0 else None)
+
+        # Verify integral is above threshold
+        assert pid.integral > 35.0, f"Integral should be above 35%, got {pid.integral}"
+
+        # Temperature outside cold_tolerance (0.5°C)
+        # Setpoint=20.0, tolerance=0.5, so 19.4 is outside (error=0.6 > 0.5)
+        pid.calc(19.4, 20.0, input_time=base_time + 2100, last_input_time=base_time + 2000)
+
+        # Should NOT apply decay: outside tolerance zone
+        assert pid.should_apply_decay() is False
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
