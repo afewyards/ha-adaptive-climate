@@ -1129,6 +1129,10 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         """
         await super().async_will_remove_from_hass()
 
+        # Clean up cycle tracker subscriptions and timers
+        if self._cycle_tracker:
+            self._cycle_tracker.cleanup()
+
         # Save learning data before removal
         if self._zone_id:
             learning_store = self.hass.data.get(DOMAIN, {}).get("learning_store")

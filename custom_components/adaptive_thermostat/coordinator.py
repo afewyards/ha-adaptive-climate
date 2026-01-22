@@ -9,11 +9,11 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 try:
-    from .const import DOMAIN, COUPLING_MASS_RECOVERY_THRESHOLD
+    from .const import DOMAIN, COUPLING_MASS_RECOVERY_THRESHOLD, COUPLING_MAX_OBSERVATIONS_PER_PAIR
     from .adaptive.thermal_coupling import ThermalCouplingLearner, should_record_observation
     from .adaptive.sun_position import SunPositionCalculator, ORIENTATION_AZIMUTH
 except ImportError:
-    from const import DOMAIN, COUPLING_MASS_RECOVERY_THRESHOLD
+    from const import DOMAIN, COUPLING_MASS_RECOVERY_THRESHOLD, COUPLING_MAX_OBSERVATIONS_PER_PAIR
     from adaptive.thermal_coupling import ThermalCouplingLearner, should_record_observation
     from adaptive.sun_position import SunPositionCalculator, ORIENTATION_AZIMUTH
 
@@ -138,6 +138,10 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
         # Remove from demand states dict
         if zone_id in self._demand_states:
             del self._demand_states[zone_id]
+
+        # Clean pending thermal coupling observations to prevent memory leaks
+        if self._thermal_coupling_learner:
+            self._thermal_coupling_learner.clear_pending(zone_id)
 
         _LOGGER.info("Unregistered zone: %s", zone_id)
 
@@ -359,6 +363,11 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
                 if pair not in self._thermal_coupling_learner.observations:
                     self._thermal_coupling_learner.observations[pair] = []
                 self._thermal_coupling_learner.observations[pair].append(obs)
+
+                # Enforce FIFO eviction to prevent unbounded growth
+                if len(self._thermal_coupling_learner.observations[pair]) > COUPLING_MAX_OBSERVATIONS_PER_PAIR:
+                    self._thermal_coupling_learner.observations[pair] = \
+                        self._thermal_coupling_learner.observations[pair][-COUPLING_MAX_OBSERVATIONS_PER_PAIR:]
 
                 # Recalculate coefficient for this pair
                 new_coef = self._thermal_coupling_learner.calculate_coefficient(

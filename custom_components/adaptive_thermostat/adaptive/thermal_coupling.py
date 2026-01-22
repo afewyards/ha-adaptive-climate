@@ -882,6 +882,18 @@ class ThermalCouplingLearner:
 
         return observations
 
+    def clear_pending(self, zone_id: str) -> None:
+        """Clear pending observation for a zone.
+
+        This method should be called when a zone is being unregistered to prevent
+        orphaned pending observations from leaking memory.
+
+        Args:
+            zone_id: Entity ID of the zone to clear pending observation for.
+        """
+        if zone_id in self._pending:
+            del self._pending[zone_id]
+
     def record_baseline_overshoot(
         self, pair: Tuple[str, str], overshoot: float
     ) -> None:

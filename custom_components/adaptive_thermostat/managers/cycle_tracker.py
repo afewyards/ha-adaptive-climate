@@ -462,6 +462,18 @@ class CycleTrackerManager:
                     event.pid_error,
                 )
 
+    def cleanup(self) -> None:
+        """Clean up event subscriptions and timers.
+
+        This method should be called when the entity is being removed from
+        Home Assistant to prevent memory leaks from orphaned subscriptions.
+        """
+        for unsub in self._unsubscribe_handles:
+            unsub()
+        self._unsubscribe_handles.clear()
+        self._cancel_settling_timeout()
+        self._logger.debug("Cleaned up %s subscriptions", self._zone_id)
+
     def _cancel_settling_timeout(self) -> None:
         """Cancel any active settling timeout."""
         if self._settling_timeout_handle is not None:

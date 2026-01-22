@@ -1,6 +1,6 @@
 """Tests for config schema validation in adaptive_thermostat __init__.py."""
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch, MagicMock, AsyncMock
 import sys
 
 # Store original modules
@@ -725,6 +725,8 @@ class TestAsyncUnload:
         # Create mock coordinator and central controller
         mock_coordinator = MagicMock()
         mock_central_controller = MagicMock()
+        # Make async_cleanup awaitable
+        mock_central_controller.async_cleanup = AsyncMock()
 
         # Create mock hass with domain data
         hass = MagicMock()
@@ -742,6 +744,7 @@ class TestAsyncUnload:
 
         # Coordinator should have central controller cleared
         assert result is True
+        mock_central_controller.async_cleanup.assert_called_once()
         mock_coordinator.set_central_controller.assert_called_once_with(None)
 
 
@@ -816,11 +819,13 @@ class TestReloadWithoutLeftoverState:
 
         # Simulate first setup by populating hass.data
         hass = MagicMock()
+        mock_central_controller = MagicMock()
+        mock_central_controller.async_cleanup = AsyncMock()
         hass.data = {
             DOMAIN: {
                 "coordinator": MagicMock(),
                 "vacation_mode": MagicMock(),
-                "central_controller": MagicMock(),
+                "central_controller": mock_central_controller,
                 "mode_sync": MagicMock(),
                 "zone_linker": MagicMock(),
                 "unsub_callbacks": [MagicMock(), MagicMock()],
@@ -879,7 +884,10 @@ class TestReloadWithoutLeftoverState:
 
         # Create mock hass with all keys populated
         hass = MagicMock()
-        hass.data = {DOMAIN: {key: MagicMock() for key in expected_keys}}
+        domain_data = {key: MagicMock() for key in expected_keys}
+        # Make central_controller.async_cleanup awaitable
+        domain_data["central_controller"].async_cleanup = AsyncMock()
+        hass.data = {DOMAIN: domain_data}
         hass.services.has_service.return_value = False
 
         # Run unload
@@ -896,7 +904,7 @@ class TestReloadWithoutLeftoverState:
         from custom_components.adaptive_thermostat.const import DOMAIN
         import asyncio
 
-        # Create mock hass with domain data
+        # Create mock hass with domain data (no central_controller)
         hass = MagicMock()
         hass.data = {
             DOMAIN: {

@@ -675,6 +675,8 @@ async def async_unload(hass: HomeAssistant) -> bool:
     # Clean up central controller if it exists
     central_controller = hass.data[DOMAIN].get("central_controller")
     if central_controller is not None:
+        # Cancel all pending async tasks
+        await central_controller.async_cleanup()
         # Clear reference to coordinator
         coordinator = hass.data[DOMAIN].get("coordinator")
         if coordinator is not None:

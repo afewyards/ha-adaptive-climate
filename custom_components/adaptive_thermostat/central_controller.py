@@ -624,3 +624,31 @@ class CentralController:
             True if cooler startup is pending
         """
         return self._cooler_waiting_for_startup
+
+    async def async_cleanup(self) -> None:
+        """Cancel all pending tasks on unload.
+
+        This method should be called when the integration is being unloaded
+        to prevent memory leaks from orphaned asyncio tasks.
+        """
+        tasks_to_cancel = []
+        async with self._startup_lock:
+            for task in [
+                self._heater_startup_task,
+                self._cooler_startup_task,
+                self._heater_turnoff_task,
+                self._cooler_turnoff_task,
+            ]:
+                if task and not task.done():
+                    task.cancel()
+                    tasks_to_cancel.append(task)
+
+        for task in tasks_to_cancel:
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+        _LOGGER.debug(
+            "CentralController cleanup: cancelled %d tasks", len(tasks_to_cancel)
+        )
