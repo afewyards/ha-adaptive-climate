@@ -2476,3 +2476,122 @@ class TestPIDControllerHeatingTypeTolerance:
                 f"PID hot_tolerance for {heating_type} should be {expected_hot_tolerance}, got {pid._hot_tolerance}"
             assert pid._heating_type == heating_type, \
                 f"PID heating_type should be {heating_type}, got {pid._heating_type}"
+
+    @pytest.mark.asyncio
+    async def test_pid_controller_receives_auto_apply_count(self):
+        """Verify climate.py syncs AdaptiveLearner._auto_apply_count to PID controller after auto-apply.
+
+        This test verifies that after auto-apply occurs:
+        1. AdaptiveLearner._auto_apply_count is incremented by PIDTuningManager
+        2. climate.py or PIDTuningManager calls PID.set_auto_apply_count() with the updated count
+        3. PID controller's _auto_apply_count matches AdaptiveLearner's count
+
+        This is critical for the integral decay safety net (story 4.1), which only activates
+        when auto_apply_count == 0 (untuned systems).
+        """
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+
+        from unittest.mock import Mock, AsyncMock, patch
+        from custom_components.adaptive_thermostat.managers.pid_tuning import PIDTuningManager
+        from custom_components.adaptive_thermostat.adaptive.learning import AdaptiveLearner
+        from custom_components.adaptive_thermostat.pid_controller import PID
+        from custom_components.adaptive_thermostat.adaptive.cycle_analysis import CycleMetrics
+
+        # Arrange - Create mock thermostat and PID controller
+        mock_thermostat = Mock()
+        mock_thermostat.entity_id = "climate.test_zone"
+        mock_thermostat._pwm = 0  # Direct valve mode
+
+        # Create real PID controller (not a mock, so we can test set_auto_apply_count())
+        pid_controller = PID(
+            kp=100.0,
+            ki=0.001,
+            kd=50.0,
+            ke=0.0,
+            out_min=0,
+            out_max=100,
+            heating_type="radiator"
+        )
+
+        # Create real AdaptiveLearner with some cycle history for a valid recommendation
+        adaptive_learner = AdaptiveLearner(heating_type="radiator")
+
+        # Add enough cycles to trigger a recommendation (need MIN_CYCLES_FOR_LEARNING)
+        # Add more cycles to ensure we pass auto-apply minimum (typically 5-10 cycles)
+        for i in range(12):
+            cycle = CycleMetrics(
+                overshoot=0.8,  # High overshoot to trigger Kp reduction
+                undershoot=0.0,
+                settling_time=30.0,
+                oscillations=0,
+                rise_time=15.0,
+            )
+            adaptive_learner.add_cycle_metrics(cycle)
+
+        # Set convergence confidence high enough for auto-apply (first apply needs 0.75+)
+        adaptive_learner._convergence_confidence = 0.85
+        adaptive_learner.set_physics_baseline(100.0, 0.001, 50.0)
+
+        # Reset cycles_since_last_adjustment to ensure rate limit passes
+        adaptive_learner._cycles_since_last_adjustment = 12
+
+        # Verify initial state: auto_apply_count should be 0
+        assert adaptive_learner._auto_apply_count == 0
+        assert pid_controller._auto_apply_count == 0
+
+        # Create mock coordinator that returns our adaptive_learner
+        mock_coordinator = Mock()
+        mock_coordinator.get_all_zones = Mock(return_value={
+            "test_zone": {
+                "climate_entity_id": "climate.test_zone",
+                "adaptive_learner": adaptive_learner,
+            }
+        })
+
+        # Create mock hass
+        mock_hass = Mock()
+        mock_hass.data = {
+            "adaptive_thermostat": {
+                "coordinator": mock_coordinator,
+            }
+        }
+
+        # Create PIDTuningManager with mocked callbacks
+        pid_tuning_manager = PIDTuningManager(
+            thermostat=mock_thermostat,
+            pid_controller=pid_controller,
+            get_kp=lambda: 100.0,
+            get_ki=lambda: 0.001,
+            get_kd=lambda: 50.0,
+            get_ke=lambda: 0.0,
+            set_kp=Mock(),
+            set_ki=Mock(),
+            set_kd=Mock(),
+            set_ke=Mock(),
+            get_area_m2=lambda: 20.0,
+            get_ceiling_height=lambda: 2.5,
+            get_window_area_m2=lambda: 2.0,
+            get_window_rating=lambda: "double",
+            get_heating_type=lambda: "radiator",
+            get_hass=lambda: mock_hass,
+            get_zone_id=lambda: "test_zone",
+            get_floor_construction=lambda: None,
+            get_supply_temperature=lambda: None,
+            get_max_power_w=lambda: None,
+            async_control_heating=AsyncMock(),
+            async_write_ha_state=AsyncMock(),
+        )
+
+        # Act - Trigger auto-apply
+        result = await pid_tuning_manager.async_auto_apply_adaptive_pid(outdoor_temp=10.0)
+
+        # Assert - Verify auto-apply was successful
+        assert result["applied"] == True, f"Auto-apply should succeed, got: {result.get('reason')}"
+
+        # Assert - Verify AdaptiveLearner._auto_apply_count was incremented
+        assert adaptive_learner._auto_apply_count == 1, \
+            f"AdaptiveLearner._auto_apply_count should be 1 after first auto-apply, got {adaptive_learner._auto_apply_count}"
+
+        # Assert - Verify PID controller's _auto_apply_count was synced
+        assert pid_controller._auto_apply_count == 1, \
+            f"PID._auto_apply_count should be 1 after auto-apply (synced from AdaptiveLearner), got {pid_controller._auto_apply_count}"

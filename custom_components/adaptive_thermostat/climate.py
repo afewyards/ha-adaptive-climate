@@ -1053,6 +1053,13 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                         "%s: Set physics baseline for adaptive learning (Kp=%.4f, Ki=%.5f, Kd=%.3f)",
                         self.entity_id, self._kp, self._ki, self._kd
                     )
+                    # Sync auto_apply_count from AdaptiveLearner to PID controller
+                    # This ensures PID controller knows if system has been auto-tuned (for safety net control)
+                    self._pid_controller.set_auto_apply_count(adaptive_learner._auto_apply_count)
+                    _LOGGER.debug(
+                        "%s: Synced auto_apply_count=%d to PID controller",
+                        self.entity_id, adaptive_learner._auto_apply_count
+                    )
 
         # Set default state to off
         if not self._hvac_mode:

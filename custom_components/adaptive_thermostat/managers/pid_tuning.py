@@ -467,6 +467,10 @@ class PIDTuningManager:
         # Increment auto-apply count
         adaptive_learner._auto_apply_count += 1
 
+        # Sync auto-apply count to PID controller for safety net control
+        # The PID controller uses this to disable integral decay safety net after first auto-apply
+        self._pid_controller.set_auto_apply_count(adaptive_learner._auto_apply_count)
+
         # Start validation mode
         adaptive_learner.start_validation_mode(baseline_overshoot)
 
