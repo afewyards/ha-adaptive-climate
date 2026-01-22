@@ -1,6 +1,225 @@
 # CHANGELOG
 
 
+## v0.24.0 (2026-01-22)
+
+### Bug Fixes
+
+- Add reference_time parameter to calculate_settling_time()
+  ([`a7b71a6`](https://github.com/afewyards/ha-adaptive-thermostat/commit/a7b71a6dabe649c4f0f5e8d3d93f9f67a9b27d78))
+
+- Output clamping uses tolerance threshold not exact setpoint
+  ([`2fd9ea3`](https://github.com/afewyards/ha-adaptive-thermostat/commit/2fd9ea3ca4a070e436e7f26bcb6f9731ef9176a3))
+
+Change output clamping logic to use cold_tolerance and hot_tolerance thresholds instead of exact
+  setpoint comparison. This allows gentle coasting through the tolerance band without abrupt cutoff.
+
+Heating mode: clamp output to 0 only when error < -cold_tolerance (temp significantly above setpoint
+  beyond tolerance), not just error < 0.
+
+Cooling mode: clamp output to 0 only when error > hot_tolerance (temp significantly below setpoint
+  beyond tolerance), not just error > 0.
+
+Tests added: - test_output_clamp_uses_tolerance: verifies no clamping within tolerance -
+  test_output_clamp_beyond_tolerance: verifies clamping beyond tolerance
+
+### Features
+
+- Adaptivelearner passes decay metrics to rule evaluation
+  ([`e97bfeb`](https://github.com/afewyards/ha-adaptive-thermostat/commit/e97bfeb6014e11fe6b11f6f79c50d78449887818))
+
+- Add decay-related fields to CycleMetrics
+  ([`9a90ca5`](https://github.com/afewyards/ha-adaptive-thermostat/commit/9a90ca589fb537cc913a4ef42d9af2fc158bbf49))
+
+Add three new optional fields to CycleMetrics to support PID integral decay tracking during settling
+  period: - integral_at_tolerance_entry: PID integral when temp enters tolerance -
+  integral_at_setpoint_cross: PID integral when temp crosses setpoint - decay_contribution: Integral
+  contribution from settling/decay period
+
+These fields will be populated by CycleTrackerManager and used for calculating PID decay factors to
+  improve settling behavior.
+
+Test coverage: - test_cycle_metrics_decay_fields: verify all fields stored correctly -
+  test_cycle_metrics_decay_fields_optional: verify backward compatibility -
+  test_cycle_metrics_decay_fields_partial: verify partial field setting
+
+- Add heating-type tolerance and decay characteristics
+  ([`2f2b43e`](https://github.com/afewyards/ha-adaptive-thermostat/commit/2f2b43e9c81291b4dec9705f214ec75c9ff3375b))
+
+Add cold_tolerance, hot_tolerance, decay_exponent, and max_settling_time to
+  HEATING_TYPE_CHARACTERISTICS for all heating types.
+
+Values per heating type: - floor_hydronic: 0.5/0.5 tolerance, 2.0 decay, 90min settling - radiator:
+  0.3/0.3 tolerance, 1.0 decay, 45min settling - convector: 0.2/0.2 tolerance, 1.0 decay, 30min
+  settling - forced_air: 0.15/0.15 tolerance, 0.5 decay, 15min settling
+
+These parameters support adaptive integral decay during settling phase, with slower systems (higher
+  thermal mass) getting wider tolerance bands and higher decay exponents to prevent prolonged
+  overshoot.
+
+- Add INTEGRAL_DECAY_THRESHOLDS constant for safety net activation
+  ([`cd81443`](https://github.com/afewyards/ha-adaptive-thermostat/commit/cd814439a01c0ae1f67a5cf1c88a5bc5013e9398))
+
+- Add TEMPERATURE_UPDATE event type and TemperatureUpdateEvent dataclass
+  ([`cad53d3`](https://github.com/afewyards/ha-adaptive-thermostat/commit/cad53d3e8b457bdcff1aa802af408daefc9de0bb))
+
+Add new event type for tracking temperature updates during PID cycles. The TemperatureUpdateEvent
+  captures timestamp, temperature, setpoint, pid_integral, and pid_error fields for PID integral
+  decay analysis.
+
+- Climate.py fires TemperatureUpdateEvent after PID calc
+  ([`19671cb`](https://github.com/afewyards/ha-adaptive-thermostat/commit/19671cb1142e2cdeaf09170d77b0c87285be2162))
+
+- Import TemperatureUpdateEvent in climate.py - Dispatch event after calc_output() with timestamp,
+  temperature, setpoint, pid_integral, pid_error - Add test_fires_temperature_update_event to verify
+  event dispatch behavior - Add test_climate_dispatches_temperature_update_in_code for static code
+  verification
+
+- Climate.py passes heating_type tolerances to PID controller
+  ([`7019b0c`](https://github.com/afewyards/ha-adaptive-thermostat/commit/7019b0ca088948faf579e6fef9dd64e8c88361fa))
+
+Read cold_tolerance and hot_tolerance from HEATING_TYPE_CHARACTERISTICS based on heating_type
+  configuration and pass to PID constructor.
+
+This ensures PID uses heating-type-specific tolerances for integral decay calculations, replacing
+  user-configured tolerance values with heating type defaults for consistency.
+
+- Add heating_type parameter to PID constructor call - Read tolerances from
+  HEATING_TYPE_CHARACTERISTICS in climate.py - Add test verifying HEATING_TYPE_CHARACTERISTICS
+  structure and PID acceptance
+
+- Cyclemetrics serialization includes decay fields
+  ([`dac1402`](https://github.com/afewyards/ha-adaptive-thermostat/commit/dac1402b1dcfd5d7fa5af7dfccb2f733d732a802))
+
+- Cycletrackermanager calculates decay_contribution and adds to CycleMetrics
+  ([`fd617d2`](https://github.com/afewyards/ha-adaptive-thermostat/commit/fd617d2bfaa08c71face1ff8711f8ddc08c0b3a1))
+
+- Cycletrackermanager subscribes to TEMPERATURE_UPDATE and tracks integral values
+  ([`1167eed`](https://github.com/afewyards/ha-adaptive-thermostat/commit/1167eede22a6c9cc21af6e52ea20ca823e005183))
+
+- Add _integral_at_tolerance_entry and _integral_at_setpoint_cross fields to track PID integral at
+  key points - Subscribe to TEMPERATURE_UPDATE event in CycleTrackerManager - Capture integral when
+  temperature enters cold tolerance zone (pid_error < cold_tolerance) - Capture integral when
+  temperature crosses setpoint (pid_error <= 0) - Add heating_type parameter to CycleTrackerManager
+  for cold_tolerance lookup - Clear integral tracking fields on cycle start and reset - Add tests:
+  test_temperature_update_tracks_integral_at_tolerance_entry and
+  test_temperature_update_tracks_integral_at_setpoint_cross
+
+- Decay-aware UNDERSHOOT rule scales Ki increase inversely to decay_ratio
+  ([`fe632e1`](https://github.com/afewyards/ha-adaptive-thermostat/commit/fe632e1b08dda91d63e3e23b0b32dcc1910381da))
+
+- Modified evaluate_pid_rules() to accept decay_contribution and integral_at_tolerance_entry params
+  - UNDERSHOOT rule now calculates decay_ratio = decay_contribution / integral_at_tolerance_entry -
+  Ki increase scaled by (1 - decay_ratio): full increase when decay_ratio=0, no increase when
+  decay_ratio=1 - Added 3 tests: test_undershoot_rule_no_decay_full_increase,
+  test_undershoot_rule_high_decay_no_increase, test_undershoot_rule_partial_decay_scaled_increase -
+  All 28 pid_rules tests passing - Backward compatible when decay metrics not provided (defaults to
+  decay_ratio=0)
+
+- High decay + slow settling rule reduces Ki gently
+  ([`0c05d65`](https://github.com/afewyards/ha-adaptive-thermostat/commit/0c05d655cfab7b6953a3fc4e48df1c8bc3f4a396))
+
+- Pass device_off_time as reference_time to calculate_settling_time()
+  ([`0ffeac9`](https://github.com/afewyards/ha-adaptive-thermostat/commit/0ffeac91fe6aaca4457d316f305f7840b6e266f1))
+
+- Add test_finalize_cycle_uses_device_off_time() to verify reference_time parameter - Update
+  _finalize_cycle() to pass reference_time=self._device_off_time to calculate_settling_time() - This
+  ensures settling time is measured from when the heater stopped, not from cycle start - Part of PID
+  decay stories PRD (story 2.2)
+
+- Pid controller should_apply_decay() method for safety net
+  ([`8f18d6a`](https://github.com/afewyards/ha-adaptive-thermostat/commit/8f18d6aeb7589a5a4ac2f07ba179b61ac8dc4410))
+
+- Progressive tolerance-based integral decay with heating-type curves
+  ([`d9fbf22`](https://github.com/afewyards/ha-adaptive-thermostat/commit/d9fbf221ad9256ff7d1a7afbb9112ebe8e56424c))
+
+- Reset integral tracking on cycle start
+  ([`5a01c53`](https://github.com/afewyards/ha-adaptive-thermostat/commit/5a01c53626e7ba21f4c4e6f197ceaa8e146167e6))
+
+- Slow settling rule with decay-aware Ki adjustment
+  ([`4ed4fc7`](https://github.com/afewyards/ha-adaptive-thermostat/commit/4ed4fc7485db125b2a3a65f2e94701b6d4773ae4))
+
+Implements Case 3 and Case 5 from PRD story 6.2: - Case 3: Sluggish system with low decay
+  (decay_ratio < 0.2) increases Ki by 10% - Case 5: High decay (decay_ratio > 0.5) maintains Kd-only
+  adjustment
+
+The slow settling rule now evaluates decay_ratio to determine if the system needs more integral
+  action (Case 3) or if the integral decay mechanism is already working well (Case 5). This prevents
+  unnecessary Ki increases when the integral is naturally decaying during settling.
+
+Tests added: - test_slow_settling_low_decay_increases_ki: Verifies Case 3 (Ki +10%) -
+  test_slow_settling_high_decay_no_ki_change: Verifies Case 5 (Kd only) -
+  test_slow_settling_moderate_decay_no_ki_change: Verifies default behavior -
+  test_slow_settling_no_decay_data_defaults_to_kd_only: Backward compatibility
+
+- Sync auto_apply_count from AdaptiveLearner to PID controller
+  ([`f106e4c`](https://github.com/afewyards/ha-adaptive-thermostat/commit/f106e4ccf4921cec35e71478e1a372e326002337))
+
+Wire AdaptiveLearner._auto_apply_count to PID controller after auto-apply occurs and on startup
+  restoration. This ensures PID controller's integral decay safety net (story 4.1) can correctly
+  disable after first auto-apply.
+
+Changes: - PIDTuningManager.async_auto_apply_adaptive_pid() now calls
+  pid_controller.set_auto_apply_count() after incrementing learner count - climate.py
+  async_added_to_hass() syncs count on startup restoration - Added test
+  test_pid_controller_receives_auto_apply_count to verify sync
+
+The safety net (progressive integral decay) only activates when auto_apply_count=0 (untuned
+  systems). After first auto-apply, the system is considered tuned and the safety net is disabled,
+  allowing normal PID integral behavior.
+
+Story 5.3 from PID decay feature implementation.
+
+- Test for CycleMetrics restoration with decay fields
+  ([`b3992b8`](https://github.com/afewyards/ha-adaptive-thermostat/commit/b3992b855e08f4faee19baf3ac268c8fffcc3fc8))
+
+Add test_restore_cycle_parses_decay_fields() to verify that restore_from_dict() correctly
+  reconstructs CycleMetrics with integral_at_tolerance_entry, integral_at_setpoint_cross, and
+  decay_contribution fields.
+
+Tests both populated and None values for all three decay fields.
+
+- Use max_settling_time from HEATING_TYPE_CHARACTERISTICS for rule thresholds
+  ([`2754d11`](https://github.com/afewyards/ha-adaptive-thermostat/commit/2754d111d25d42a472bc33a3dbb88da805282563))
+
+- Modified get_rule_thresholds() to use max_settling_time from HEATING_TYPE_CHARACTERISTICS directly
+  for slow_settling threshold - floor_hydronic: 90 min, radiator: 45 min, convector: 30 min,
+  forced_air: 15 min - Falls back to convergence threshold * multiplier when no heating_type
+  specified - Added tests verifying heating-type-specific max_settling thresholds - Updated
+  test_forced_air_45min_triggers_slow_response to use settling_time=10 to avoid triggering
+  SLOW_SETTLING rule with new 15min threshold
+
+### Testing
+
+- Integration test for decay-aware Ki adjustment
+  ([`3205975`](https://github.com/afewyards/ha-adaptive-thermostat/commit/3205975277360238972ad37c461c664b269e8f51))
+
+- Integration test for full cycle with decay tracking
+  ([`41e2159`](https://github.com/afewyards/ha-adaptive-thermostat/commit/41e2159be5aa99ccee0cdfd62a0763b00c61325b))
+
+Adds test_full_cycle_decay_tracking that simulates a complete heating cycle with PID integral
+  tracking and verifies: - integral_at_tolerance_entry captured when pid_error < cold_tolerance -
+  integral_at_setpoint_cross captured when pid_error <= 0 - decay_contribution calculated correctly
+  (entry - cross) - CycleMetrics has all decay fields populated
+
+- Integration test for safety net disabled after auto-apply
+  ([`747753d`](https://github.com/afewyards/ha-adaptive-thermostat/commit/747753ddff277b485413d1ae6adaa7df9b28c5a3))
+
+Add test_safety_net_disabled_after_autoapply to verify that PID.should_apply_decay() returns False
+  after first auto-apply.
+
+This test validates Story 8.3: - Safety net is active (returns True) when untuned
+  (auto_apply_count=0) - After auto-apply, safety net is disabled (returns False) - Prevents
+  interference with learned PID parameters - Remains disabled even with extreme integral values -
+  Stays disabled across multiple auto-applies
+
+The test directly manipulates PID controller state to verify the should_apply_decay() logic without
+  requiring a full thermostat setup.
+
+- Integration test for settling_time from device_off_time
+  ([`1960f42`](https://github.com/afewyards/ha-adaptive-thermostat/commit/1960f4201241b88a4912e4c54febfb70240975fa))
+
+
 ## v0.23.3 (2026-01-21)
 
 ### Bug Fixes
