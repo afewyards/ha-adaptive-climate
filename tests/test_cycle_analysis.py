@@ -277,3 +277,25 @@ class TestCycleMetrics:
 
         # Verify other fields work
         assert metrics.overshoot == 0.4
+
+    def test_cycle_metrics_has_was_clamped(self):
+        """Test CycleMetrics has was_clamped field with default False."""
+        # Create CycleMetrics with was_clamped set to True
+        metrics_clamped = CycleMetrics(
+            overshoot=0.5,
+            was_clamped=True,
+        )
+        assert metrics_clamped.was_clamped is True
+
+        # Create CycleMetrics without was_clamped (should default to False)
+        metrics_default = CycleMetrics(
+            overshoot=0.3,
+        )
+        assert metrics_default.was_clamped is False
+
+        # Verify explicit False works
+        metrics_not_clamped = CycleMetrics(
+            overshoot=0.4,
+            was_clamped=False,
+        )
+        assert metrics_not_clamped.was_clamped is False

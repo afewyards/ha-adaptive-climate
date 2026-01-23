@@ -296,6 +296,7 @@ class CycleMetrics:
         integral_at_tolerance_entry: Optional[float] = None,
         integral_at_setpoint_cross: Optional[float] = None,
         decay_contribution: Optional[float] = None,
+        was_clamped: bool = False,
     ):
         """
         Initialize cycle metrics.
@@ -313,6 +314,7 @@ class CycleMetrics:
             integral_at_tolerance_entry: PID integral value when temp enters tolerance band
             integral_at_setpoint_cross: PID integral value when temp crosses setpoint
             decay_contribution: Integral contribution from settling/decay period
+            was_clamped: Whether PID output was clamped during this cycle
         """
         self.overshoot = overshoot
         self.undershoot = undershoot
@@ -326,6 +328,7 @@ class CycleMetrics:
         self.integral_at_tolerance_entry = integral_at_tolerance_entry
         self.integral_at_setpoint_cross = integral_at_setpoint_cross
         self.decay_contribution = decay_contribution
+        self.was_clamped = was_clamped
 
     @property
     def is_disturbed(self) -> bool:
