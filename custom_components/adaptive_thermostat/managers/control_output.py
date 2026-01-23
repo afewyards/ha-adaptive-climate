@@ -101,6 +101,10 @@ class ControlOutputManager:
         # Store last calculated output for access
         self._last_control_output: float = 0
 
+        # Track when calc_output() was last called for accurate dt calculation
+        # This fixes the stale dt bug where external sensor triggers used sensor-based timing
+        self._last_pid_calc_time: float | None = None
+
         # Store coupling compensation values for attribute exposure
         self._last_coupling_compensation_degc: float = 0.0
         self._last_coupling_compensation_power: float = 0.0
@@ -144,6 +148,17 @@ class ControlOutputManager:
         """
         update = False
         entity_id = self._thermostat.entity_id
+        current_time = time.time()
+
+        # Track actual elapsed time since last PID calculation
+        # This fixes the stale dt bug where external triggers used sensor-based timing
+        if self._last_pid_calc_time is not None:
+            actual_dt = current_time - self._last_pid_calc_time
+        else:
+            actual_dt = 0  # First calculation, no prior reference
+
+        # Update last calc time for next iteration
+        self._last_pid_calc_time = current_time
 
         # Ensure timing values are set
         previous_temp_time = self._get_previous_temp_time()

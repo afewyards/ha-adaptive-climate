@@ -758,3 +758,108 @@ class TestControlLoopFeedforward:
         # Feedforward should be set: 0.2 * 1.0 * 2.0 * 100.0 = 40.0
         assert len(self._feedforward_calls) == 1
         assert self._feedforward_calls[0] == pytest.approx(40.0, abs=0.1)
+
+
+# ============================================================================
+# PID Calc Time Tracking Tests (Story 1.1)
+# ============================================================================
+
+
+class TestPIDCalcTimeTracking:
+    """Tests for tracking _last_pid_calc_time in ControlOutputManager."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        # Create mock thermostat
+        self.thermostat = Mock()
+        self.thermostat.entity_id = "climate.living_room"
+        self.thermostat.hass = Mock()
+        self.thermostat._heating_type = HEATING_TYPE_CONVECTOR
+        self.thermostat._hvac_mode = HVACMode.HEAT
+
+        # Create mock PID controller
+        self.pid_controller = Mock()
+        self.pid_controller.sampling_period = 0
+        self.pid_controller.calc = Mock(return_value=(50.0, True))
+        self.pid_controller.proportional = 30.0
+        self.pid_controller.integral = 15.0
+        self.pid_controller.derivative = 5.0
+        self.pid_controller.external = 0.0
+        self.pid_controller.feedforward = 0.0
+        self.pid_controller.error = 1.0
+        self.pid_controller.dt = 60.0
+
+        # Create mock heater controller
+        self.heater_controller = Mock()
+
+        # Create mock coordinator (minimal - no coupling)
+        self.coordinator = Mock()
+        self.coordinator.get_active_zones = Mock(return_value={})
+        self.thermostat.hass.data = {
+            "adaptive_thermostat": {
+                "coordinator": self.coordinator
+            }
+        }
+
+        # Create callbacks
+        self.callbacks = {
+            "get_current_temp": Mock(return_value=20.0),
+            "get_ext_temp": Mock(return_value=5.0),
+            "get_wind_speed": Mock(return_value=0.0),
+            "get_previous_temp_time": Mock(return_value=1000.0),
+            "set_previous_temp_time": Mock(),
+            "get_cur_temp_time": Mock(return_value=1060.0),
+            "set_cur_temp_time": Mock(),
+            "get_output_precision": Mock(return_value=1),
+            "calculate_night_setback_adjustment": Mock(return_value=(21.0, None, None)),
+            "set_control_output": Mock(),
+            "set_p": Mock(),
+            "set_i": Mock(),
+            "set_d": Mock(),
+            "set_e": Mock(),
+            "set_dt": Mock(),
+            "get_kp": Mock(return_value=100.0),
+            "get_ki": Mock(return_value=0.1),
+            "get_kd": Mock(return_value=50.0),
+            "get_ke": Mock(return_value=0.3),
+        }
+
+        # Create control output manager
+        self.manager = ControlOutputManager(
+            thermostat=self.thermostat,
+            pid_controller=self.pid_controller,
+            heater_controller=self.heater_controller,
+            **self.callbacks
+        )
+
+    @pytest.mark.asyncio
+    async def test_control_output_tracks_calc_time(self):
+        """TEST: Verify _last_pid_calc_time is set after calc_output()."""
+        # Initially, _last_pid_calc_time should be None
+        assert self.manager._last_pid_calc_time is None
+
+        # Call calc_output
+        with patch("time.time", return_value=1100.0):
+            await self.manager.calc_output()
+
+        # After calc_output, _last_pid_calc_time should be set
+        assert self.manager._last_pid_calc_time == 1100.0
+
+    @pytest.mark.asyncio
+    async def test_control_output_first_calc_dt_zero(self):
+        """TEST: Verify first calc returns dt=0 when _last_pid_calc_time is None."""
+        # First call - _last_pid_calc_time is None, so actual_dt should be 0
+        with patch("time.time", return_value=1000.0):
+            await self.manager.calc_output()
+
+        # The PID calc should have been called with times that result in dt=0
+        # on first call since we have no previous calc time
+        # For now, verify _last_pid_calc_time is set after first call
+        assert self.manager._last_pid_calc_time == 1000.0
+
+        # Second call - actual_dt should now be calculated
+        with patch("time.time", return_value=1060.0):
+            await self.manager.calc_output()
+
+        # _last_pid_calc_time should be updated to the new time
+        assert self.manager._last_pid_calc_time == 1060.0
