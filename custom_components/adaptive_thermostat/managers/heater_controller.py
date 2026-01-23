@@ -138,6 +138,7 @@ class HeaterController:
 
         # Duty accumulator for sub-threshold outputs
         self._duty_accumulator_seconds: float = 0.0
+        self._last_accumulator_calc_time: float | None = None
 
     def _get_pid_was_clamped(self) -> bool:
         """Get was_clamped state from PID controller with graceful fallback.
@@ -226,6 +227,7 @@ class HeaterController:
         - Contact sensor opens (window/door)
         """
         self._duty_accumulator_seconds = 0.0
+        self._last_accumulator_calc_time = None
 
     def set_heater_cycle_count(self, count: int) -> None:
         """Set the heater cycle count (used during state restoration).
@@ -852,6 +854,7 @@ class HeaterController:
         # Handle zero/negative output - reset accumulator and turn off
         if control_output <= 0:
             self._duty_accumulator_seconds = 0.0
+            self._last_accumulator_calc_time = None
             await self.async_turn_off(
                 hvac_mode=hvac_mode,
                 get_cycle_start_time=get_cycle_start_time,
@@ -875,6 +878,9 @@ class HeaterController:
                     "%s: Sub-threshold output but heater already ON - attempting turn off",
                     thermostat_entity_id,
                 )
+                # Reset accumulator to prevent immediate re-firing after turn-off
+                self._duty_accumulator_seconds = 0.0
+                self._last_accumulator_calc_time = None
                 await self.async_turn_off(
                     hvac_mode=hvac_mode,
                     get_cycle_start_time=get_cycle_start_time,
@@ -903,6 +909,7 @@ class HeaterController:
                             target_temp,
                         )
                         self._duty_accumulator_seconds = 0.0
+                        self._last_accumulator_calc_time = None
                         await self.async_turn_off(
                             hvac_mode=hvac_mode,
                             get_cycle_start_time=get_cycle_start_time,
@@ -921,6 +928,7 @@ class HeaterController:
                             target_temp,
                         )
                         self._duty_accumulator_seconds = 0.0
+                        self._last_accumulator_calc_time = None
                         await self.async_turn_off(
                             hvac_mode=hvac_mode,
                             get_cycle_start_time=get_cycle_start_time,
@@ -958,15 +966,26 @@ class HeaterController:
                 set_force_off(False)
                 return
 
-            # Below threshold - accumulate duty and keep heater off
+            # Below threshold - accumulate duty scaled by actual elapsed time
+            # time_on is for the full PWM period; scale by actual interval
+            current_time = time.time()
+            if self._last_accumulator_calc_time is not None:
+                actual_dt = current_time - self._last_accumulator_calc_time
+                # duty_to_add = actual_dt * (time_on / pwm) = actual_dt * duty_fraction
+                duty_to_add = actual_dt * time_on / self._pwm
+            else:
+                # First calculation - don't accumulate, just set baseline
+                duty_to_add = 0.0
+            self._last_accumulator_calc_time = current_time
+
             self._duty_accumulator_seconds = min(
-                self._duty_accumulator_seconds + time_on,
+                self._duty_accumulator_seconds + duty_to_add,
                 self._max_accumulator,
             )
             _LOGGER.debug(
-                "%s: Sub-threshold output - accumulated %.0fs (total: %.0fs / %.0fs)",
+                "%s: Sub-threshold output - accumulated %.1fs (total: %.0fs / %.0fs)",
                 thermostat_entity_id,
-                time_on,
+                duty_to_add,
                 self._duty_accumulator_seconds,
                 self._min_on_cycle_duration,
             )
@@ -982,6 +1001,7 @@ class HeaterController:
 
         # Normal duty threshold met - reset accumulator
         self._duty_accumulator_seconds = 0.0
+        self._last_accumulator_calc_time = None
 
         if 0 < time_off < self._min_off_cycle_duration:
             # time_off is too short, increase time_on and time_off

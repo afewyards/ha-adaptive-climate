@@ -127,7 +127,11 @@ class TestAccumulatorFiresAfterMultiplePeriods:
         # Initial state
         assert controller._duty_accumulator_seconds == 0.0
 
+        # Set baseline calc time (600s ago to simulate elapsed time)
+        controller._last_accumulator_calc_time = 0.0
+
         # Simulate PWM period 1: 10% output (time_on = 60s < 75s threshold)
+        # With 600s elapsed and 10% duty, accumulates: 600 * 0.1 = 60s
         with patch('time.time', return_value=600.0):  # Enough time passed for PWM
             await controller.async_pwm_switch(
                 control_output=10.0,  # 10% of 100 = 10, time_on = 600 * 10 / 100 = 60s
@@ -241,7 +245,10 @@ class TestAccumulatorRestartContinuity:
         set_force_on = MagicMock()
         set_force_off = MagicMock()
 
-        # Accumulate some duty (10% output = 60s per period)
+        # Set baseline calc time
+        controller1._last_accumulator_calc_time = 0.0
+
+        # Accumulate some duty (10% output for 600s = 60s)
         with patch('time.time', return_value=600.0):
             await controller1.async_pwm_switch(
                 control_output=10.0,
@@ -284,9 +291,12 @@ class TestAccumulatorRestartContinuity:
         controller2._hass.services.async_call = mock_async_call
         controller2._hass.states.is_state = MagicMock(return_value=False)
 
+        # Set baseline calc time for time-scaled accumulation (600s ago)
+        controller2._last_accumulator_calc_time = 600.0
+
         with patch('time.time', return_value=1200.0):
             await controller2.async_pwm_switch(
-                control_output=10.0,  # Another 60s
+                control_output=10.0,  # 10% for 600s = 60s more
                 hvac_mode=MockHVACMode.HEAT,
                 get_cycle_start_time=get_cycle_start_time,
                 set_is_heating=set_is_heating,
@@ -332,7 +342,10 @@ class TestAccumulatorWithChangingOutput:
         set_force_on = MagicMock()
         set_force_off = MagicMock()
 
-        # Period 1: 5% output (time_on = 30s < 75s)
+        # Set baseline calc time
+        controller._last_accumulator_calc_time = 0.0
+
+        # Period 1: 5% output for 600s = 30s accumulated
         with patch('time.time', return_value=600.0):
             await controller.async_pwm_switch(
                 control_output=5.0,

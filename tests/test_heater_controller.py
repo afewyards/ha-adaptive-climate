@@ -1412,11 +1412,11 @@ class TestDutyAccumulation:
 
     @pytest.mark.asyncio
     async def test_sub_threshold_accumulates_duty(self, heater_controller):
-        """Test output 10% with threshold ~50% accumulates time_on.
+        """Test output 10% with threshold ~50% accumulates scaled duty.
 
         Fixture: pwm=600, difference=100, min_on_cycle=300
-        10% output: time_on = 600 * 10 / 100 = 60s (< 300s threshold)
-        Should accumulate 60s to the duty accumulator.
+        10% output: duty_fraction = 10/100 = 0.1
+        With 60s elapsed, should accumulate: 60 * 0.1 = 6s
         """
         import time
 
@@ -1435,9 +1435,12 @@ class TestDutyAccumulation:
         # Start with zero accumulator
         assert controller._duty_accumulator_seconds == 0.0
 
-        # Call with 10% output - should accumulate 60s
+        # Set last calc time to 60 seconds ago to simulate elapsed time
+        controller._last_accumulator_calc_time = time.time() - 60
+
+        # Call with 10% output - should accumulate 60s * 0.1 = 6s
         await controller.async_pwm_switch(
-            control_output=10.0,  # 10% → time_on = 60s < 300s threshold
+            control_output=10.0,  # 10% duty fraction
             hvac_mode=MockHVACMode.HEAT,
             get_cycle_start_time=get_cycle_start_time,
             set_is_heating=set_is_heating,
@@ -1450,15 +1453,15 @@ class TestDutyAccumulation:
             set_force_off=set_force_off,
         )
 
-        # Should have accumulated 60 seconds
-        assert controller._duty_accumulator_seconds == 60.0
+        # Should have accumulated ~6 seconds (60s elapsed * 10% duty)
+        assert 5.9 < controller._duty_accumulator_seconds < 6.1
 
     @pytest.mark.asyncio
     async def test_accumulator_capped_at_max(self, heater_controller):
         """Test accumulator never exceeds _max_accumulator (2 * min_on_cycle).
 
         max_accumulator = 2 * 300 = 600s
-        Pre-set accumulator to 100s, add multiple small amounts to test capping.
+        Pre-set accumulator to 200s (below threshold), add enough to exceed max.
         """
         import time
 
@@ -1476,29 +1479,30 @@ class TestDutyAccumulation:
         set_force_on = MagicMock()
         set_force_off = MagicMock()
 
-        # Pre-set accumulator
-        controller._duty_accumulator_seconds = 100.0
+        # Pre-set accumulator below threshold (300s)
+        controller._duty_accumulator_seconds = 200.0
+        # Set last calc time to 2000s ago - with 40% duty = 800s would be added
+        # But max is 600, so should cap
+        controller._last_accumulator_calc_time = time.time() - 2000
 
-        # Add 40% (240s) multiple times to test capping
-        for _ in range(3):
-            await controller.async_pwm_switch(
-                control_output=40.0,  # time_on = 240s < 300s
-                hvac_mode=MockHVACMode.HEAT,
-                get_cycle_start_time=get_cycle_start_time,
-                set_is_heating=set_is_heating,
-                set_last_heat_cycle_time=set_last_heat_cycle_time,
-                time_changed=time.time(),
-                set_time_changed=set_time_changed,
-                force_on=False,
-                force_off=False,
-                set_force_on=set_force_on,
-                set_force_off=set_force_off,
-            )
+        # Call with 40% output - would add 2000 * 0.4 = 800s
+        # 200 + 800 = 1000, but capped at 600
+        await controller.async_pwm_switch(
+            control_output=40.0,  # 40% duty fraction
+            hvac_mode=MockHVACMode.HEAT,
+            get_cycle_start_time=get_cycle_start_time,
+            set_is_heating=set_is_heating,
+            set_last_heat_cycle_time=set_last_heat_cycle_time,
+            time_changed=time.time(),
+            set_time_changed=set_time_changed,
+            force_on=False,
+            force_off=False,
+            set_force_on=set_force_on,
+            set_force_off=set_force_off,
+        )
 
-        # After first call: check 100 >= 300? NO → 100 + 240 = 340
-        # After second call: check 340 >= 300? YES → fire pulse, 340 - 300 = 40
-        # After third call: check 40 >= 300? NO → 40 + 240 = 280
-        assert controller._duty_accumulator_seconds == 280.0
+        # Should be capped at max_accumulator (600s)
+        assert controller._duty_accumulator_seconds == 600.0
 
     @pytest.mark.asyncio
     async def test_normal_duty_resets_accumulator(self, heater_controller):
@@ -1731,8 +1735,10 @@ class TestDutyAccumulatorPulse:
 
         # Set accumulator below threshold
         controller._duty_accumulator_seconds = 200.0
+        # Set last calc time to 60s ago
+        controller._last_accumulator_calc_time = time.time() - 60
 
-        # Call with 10% output (60s) - accumulator = 200 + 60 = 260 < 300
+        # Call with 10% output - should add 60s * 0.1 = 6s
         await controller.async_pwm_switch(
             control_output=10.0,
             hvac_mode=MockHVACMode.HEAT,
@@ -1747,6 +1753,6 @@ class TestDutyAccumulatorPulse:
             set_force_off=set_force_off,
         )
 
-        # Accumulator should have increased by time_on (200 + 60 = 260)
-        # This verifies the heater stayed off (didn't fire a pulse)
-        assert controller._duty_accumulator_seconds == 260.0
+        # Accumulator should have increased by ~6s (60s * 10% duty)
+        # 200 + 6 = 206 < 300 threshold, so heater stays off
+        assert 205.9 < controller._duty_accumulator_seconds < 206.1
