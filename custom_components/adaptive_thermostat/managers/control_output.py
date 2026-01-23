@@ -210,6 +210,10 @@ class ControlOutputManager:
             previous_temp_time = cur_temp_time
             self._set_previous_temp_time(previous_temp_time)
 
+        # Calculate sensor_dt for comparison with actual_dt
+        # This is the time between sensor updates (may be stale for external triggers)
+        sensor_dt = cur_temp_time - previous_temp_time
+
         # Apply night setback adjustment if configured
         effective_target, _, _ = self._calculate_night_setback_adjustment()
 
@@ -274,18 +278,33 @@ class ControlOutputManager:
         error = self._pid_controller.error
         self._set_dt(actual_dt)
 
+        # Warn when actual_dt differs significantly from sensor_dt (ratio > 10x)
+        # This indicates the thermostat is being triggered by non-temperature events
+        if actual_dt > 0 and sensor_dt > 0:
+            dt_ratio = actual_dt / sensor_dt if actual_dt > sensor_dt else sensor_dt / actual_dt
+            if dt_ratio > 10:
+                _LOGGER.warning(
+                    "%s: Large dt discrepancy - actual_dt=%.2f, sensor_dt=%.2f (ratio %.1fx). "
+                    "External trigger timing differs significantly from sensor updates.",
+                    entity_id,
+                    actual_dt,
+                    sensor_dt,
+                    dt_ratio,
+                )
+
         if update:
             kp = self._get_kp() or 0
             ki = self._get_ki() or 0
             kd = self._get_kd() or 0
             ke = self._get_ke() or 0
             _LOGGER.debug(
-                "%s: New PID control output: %s (error = %.2f, dt = %.2f, "
+                "%s: New PID control output: %s (error = %.2f, actual_dt = %.2f, sensor_dt = %.2f, "
                 "p=%.2f, i=%.2f, d=%.2f, e=%.2f) [Kp=%.4f, Ki=%.4f, Kd=%.2f, Ke=%.2f]",
                 entity_id,
                 str(control_output),
                 error,
                 actual_dt,
+                sensor_dt,
                 p,
                 i,
                 d,
