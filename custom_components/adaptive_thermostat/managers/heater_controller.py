@@ -700,9 +700,9 @@ class HeaterController:
         new_has_demand = abs(control_output) > 0
         self._has_demand = new_has_demand
 
-        # Emit SETTLING_STARTED when demand drops to 0 AND we had an active cycle (PWM mode)
+        # Emit SETTLING_STARTED when demand drops to 0 AND we had an active cycle
         if old_has_demand and not new_has_demand and self._cycle_active:
-            if self._dispatcher and self._pwm > 0:
+            if self._dispatcher:
                 self._dispatcher.emit(SettlingStartedEvent(
                     hvac_mode=hvac_mode,
                     timestamp=datetime.now(),
