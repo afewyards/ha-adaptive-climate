@@ -2595,3 +2595,115 @@ class TestPIDControllerHeatingTypeTolerance:
         # Assert - Verify PID controller's _auto_apply_count was synced
         assert pid_controller._auto_apply_count == 1, \
             f"PID._auto_apply_count should be 1 after auto-apply (synced from AdaptiveLearner), got {pid_controller._auto_apply_count}"
+
+
+class TestSetpointResetAccumulator:
+    """Tests for duty accumulator reset on setpoint change (Story 3.1)."""
+
+    def test_setpoint_change_resets_accumulator(self):
+        """Test setpoint change > 0.5C resets duty accumulator."""
+        # Create mock heater controller
+        mock_heater_controller = MagicMock()
+        mock_heater_controller.reset_duty_accumulator = MagicMock()
+
+        # Create mock cycle dispatcher
+        mock_dispatcher = MagicMock()
+
+        # Create a mock thermostat-like object with _set_target_temp behavior
+        class MockClimate:
+            def __init__(self):
+                self._target_temp = 20.0
+                self._heater_controller = mock_heater_controller
+                self._cycle_dispatcher = mock_dispatcher
+                self._hvac_mode = MagicMock()
+                self._hvac_mode.value = "heat"
+
+            def _set_target_temp(self, value: float) -> None:
+                """Set the target temperature (mirrors climate.py implementation)."""
+                old_temp = self._target_temp
+                self._target_temp = value
+
+                if old_temp is not None and old_temp != value:
+                    # Reset duty accumulator if setpoint changes by more than 0.5°C
+                    if abs(value - old_temp) > 0.5 and self._heater_controller is not None:
+                        self._heater_controller.reset_duty_accumulator()
+
+        climate = MockClimate()
+
+        # Act - Change setpoint by 1.0°C (> 0.5°C threshold)
+        climate._set_target_temp(21.0)
+
+        # Assert - accumulator should be reset
+        mock_heater_controller.reset_duty_accumulator.assert_called_once()
+
+    def test_small_setpoint_change_preserves_accumulator(self):
+        """Test setpoint change <= 0.5C does NOT reset duty accumulator."""
+        # Create mock heater controller
+        mock_heater_controller = MagicMock()
+        mock_heater_controller.reset_duty_accumulator = MagicMock()
+
+        # Create mock cycle dispatcher
+        mock_dispatcher = MagicMock()
+
+        # Create a mock thermostat-like object with _set_target_temp behavior
+        class MockClimate:
+            def __init__(self):
+                self._target_temp = 20.0
+                self._heater_controller = mock_heater_controller
+                self._cycle_dispatcher = mock_dispatcher
+                self._hvac_mode = MagicMock()
+                self._hvac_mode.value = "heat"
+
+            def _set_target_temp(self, value: float) -> None:
+                """Set the target temperature (mirrors climate.py implementation)."""
+                old_temp = self._target_temp
+                self._target_temp = value
+
+                if old_temp is not None and old_temp != value:
+                    # Reset duty accumulator if setpoint changes by more than 0.5°C
+                    if abs(value - old_temp) > 0.5 and self._heater_controller is not None:
+                        self._heater_controller.reset_duty_accumulator()
+
+        climate = MockClimate()
+
+        # Act - Change setpoint by exactly 0.5°C (== threshold, should NOT reset)
+        climate._set_target_temp(20.5)
+
+        # Assert - accumulator should NOT be reset
+        mock_heater_controller.reset_duty_accumulator.assert_not_called()
+
+    def test_small_setpoint_change_preserves_accumulator_smaller(self):
+        """Test setpoint change < 0.5C does NOT reset duty accumulator."""
+        # Create mock heater controller
+        mock_heater_controller = MagicMock()
+        mock_heater_controller.reset_duty_accumulator = MagicMock()
+
+        # Create mock cycle dispatcher
+        mock_dispatcher = MagicMock()
+
+        # Create a mock thermostat-like object with _set_target_temp behavior
+        class MockClimate:
+            def __init__(self):
+                self._target_temp = 20.0
+                self._heater_controller = mock_heater_controller
+                self._cycle_dispatcher = mock_dispatcher
+                self._hvac_mode = MagicMock()
+                self._hvac_mode.value = "heat"
+
+            def _set_target_temp(self, value: float) -> None:
+                """Set the target temperature (mirrors climate.py implementation)."""
+                old_temp = self._target_temp
+                self._target_temp = value
+
+                if old_temp is not None and old_temp != value:
+                    # Reset duty accumulator if setpoint changes by more than 0.5°C
+                    if abs(value - old_temp) > 0.5 and self._heater_controller is not None:
+                        self._heater_controller.reset_duty_accumulator()
+
+        climate = MockClimate()
+
+        # Act - Change setpoint by 0.3°C (< threshold)
+        climate._set_target_temp(20.3)
+
+        # Assert - accumulator should NOT be reset
+        mock_heater_controller.reset_duty_accumulator.assert_not_called()

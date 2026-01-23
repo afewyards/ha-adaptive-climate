@@ -2260,6 +2260,10 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
 
         # Emit setpoint changed event
         if old_temp is not None and old_temp != value:
+            # Reset duty accumulator if setpoint changes by more than 0.5°C
+            if abs(value - old_temp) > 0.5 and self._heater_controller is not None:
+                self._heater_controller.reset_duty_accumulator()
+
             if hasattr(self, "_cycle_dispatcher") and self._cycle_dispatcher:
                 self._cycle_dispatcher.emit(
                     SetpointChangedEvent(
