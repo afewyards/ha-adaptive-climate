@@ -1079,3 +1079,119 @@ class TestPIDDtCorrection:
         call_4 = self.pid_controller.calc.call_args_list[3]
         dt_4 = call_4[0][2] - call_4[0][3]
         assert dt_4 == pytest.approx(35.0, abs=0.1)
+
+
+# ============================================================================
+# Reset Calc Timing Tests (Story 1.4)
+# ============================================================================
+
+
+class TestResetCalcTiming:
+    """Tests for reset_calc_timing() method in ControlOutputManager."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        # Create mock thermostat
+        self.thermostat = Mock()
+        self.thermostat.entity_id = "climate.living_room"
+        self.thermostat.hass = Mock()
+        self.thermostat._heating_type = HEATING_TYPE_CONVECTOR
+        self.thermostat._hvac_mode = HVACMode.HEAT
+
+        # Create mock PID controller
+        self.pid_controller = Mock()
+        self.pid_controller.sampling_period = 0
+        self.pid_controller.calc = Mock(return_value=(50.0, True))
+        self.pid_controller.proportional = 30.0
+        self.pid_controller.integral = 15.0
+        self.pid_controller.derivative = 5.0
+        self.pid_controller.external = 0.0
+        self.pid_controller.feedforward = 0.0
+        self.pid_controller.error = 1.0
+        self.pid_controller.dt = 60.0
+
+        # Create mock heater controller
+        self.heater_controller = Mock()
+
+        # Create mock coordinator (minimal - no coupling)
+        self.coordinator = Mock()
+        self.coordinator.get_active_zones = Mock(return_value={})
+        self.thermostat.hass.data = {
+            "adaptive_thermostat": {
+                "coordinator": self.coordinator
+            }
+        }
+
+        # Create callbacks
+        self.callbacks = {
+            "get_current_temp": Mock(return_value=20.0),
+            "get_ext_temp": Mock(return_value=5.0),
+            "get_wind_speed": Mock(return_value=0.0),
+            "get_previous_temp_time": Mock(return_value=1000.0),
+            "set_previous_temp_time": Mock(),
+            "get_cur_temp_time": Mock(return_value=1060.0),
+            "set_cur_temp_time": Mock(),
+            "get_output_precision": Mock(return_value=1),
+            "calculate_night_setback_adjustment": Mock(return_value=(21.0, None, None)),
+            "set_control_output": Mock(),
+            "set_p": Mock(),
+            "set_i": Mock(),
+            "set_d": Mock(),
+            "set_e": Mock(),
+            "set_dt": Mock(),
+            "get_kp": Mock(return_value=100.0),
+            "get_ki": Mock(return_value=0.1),
+            "get_kd": Mock(return_value=50.0),
+            "get_ke": Mock(return_value=0.3),
+        }
+
+        # Create control output manager
+        self.manager = ControlOutputManager(
+            thermostat=self.thermostat,
+            pid_controller=self.pid_controller,
+            heater_controller=self.heater_controller,
+            **self.callbacks
+        )
+
+    @pytest.mark.asyncio
+    async def test_reset_calc_timing_clears_last_pid_time(self):
+        """TEST: Verify reset_calc_timing() sets _last_pid_calc_time = None."""
+        # First, do a calc to set _last_pid_calc_time
+        with patch("time.time", return_value=1000.0):
+            await self.manager.calc_output()
+
+        # Verify _last_pid_calc_time is set
+        assert self.manager._last_pid_calc_time == 1000.0
+
+        # Call reset_calc_timing
+        self.manager.reset_calc_timing()
+
+        # Verify _last_pid_calc_time is cleared
+        assert self.manager._last_pid_calc_time is None
+
+    @pytest.mark.asyncio
+    async def test_reset_calc_timing_causes_next_calc_dt_zero(self):
+        """TEST: After reset, next calc_output should have dt=0."""
+        # First calc at t=1000
+        with patch("time.time", return_value=1000.0):
+            await self.manager.calc_output()
+
+        # Second calc at t=1060 - should have dt=60
+        with patch("time.time", return_value=1060.0):
+            await self.manager.calc_output()
+
+        second_call = self.pid_controller.calc.call_args_list[1]
+        dt_before_reset = second_call[0][2] - second_call[0][3]
+        assert dt_before_reset == pytest.approx(60.0, abs=0.1)
+
+        # Reset timing
+        self.manager.reset_calc_timing()
+
+        # Third calc at t=1120 - should have dt=0 (no prior reference after reset)
+        with patch("time.time", return_value=1120.0):
+            await self.manager.calc_output()
+
+        third_call = self.pid_controller.calc.call_args_list[2]
+        dt_after_reset = third_call[0][2] - third_call[0][3]
+        assert dt_after_reset == pytest.approx(0.0, abs=0.1), \
+            f"After reset, dt should be 0, got {dt_after_reset}"

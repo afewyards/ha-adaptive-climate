@@ -134,6 +134,16 @@ class ControlOutputManager:
         """
         self._heater_controller = heater_controller
 
+    def reset_calc_timing(self) -> None:
+        """Reset the PID calculation timing.
+
+        This clears the _last_pid_calc_time so the next calc_output() call
+        will treat itself as the first calculation (dt=0). This should be
+        called when HVAC mode is turned OFF to avoid accumulating stale
+        time deltas across off periods.
+        """
+        self._last_pid_calc_time = None
+
     async def calc_output(self, is_temp_sensor_update: bool = False) -> float:
         """Calculate PID control output.
 

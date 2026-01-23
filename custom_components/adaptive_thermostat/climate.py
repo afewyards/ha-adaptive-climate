@@ -1575,6 +1575,9 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
             self._previous_temp_time = None
             if self._pid_controller is not None:
                 self._pid_controller.clear_samples()
+            # Reset PID calc timing to avoid stale dt when turned back on
+            if self._control_output_manager is not None:
+                self._control_output_manager.reset_calc_timing()
         else:
             _LOGGER.error("%s: Unrecognized HVAC mode: %s", self.entity_id, hvac_mode)
             return
