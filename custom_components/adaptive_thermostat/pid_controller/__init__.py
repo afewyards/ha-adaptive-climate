@@ -104,6 +104,9 @@ class PID:
         self._integral_exp_decay_tau = integral_exp_decay_tau
         self._heating_type = heating_type
         self._auto_apply_count = 0
+        # Clamping state tracking for learning feedback
+        self._was_clamped = False
+        self._clamp_reason = None  # 'tolerance' or 'safety_net'
 
     @property
     def mode(self):
@@ -215,6 +218,33 @@ class PID:
     def has_transfer_state(self):
         """Check if bumpless transfer state is available."""
         return self._last_output_before_off is not None
+
+    @property
+    def was_clamped(self):
+        """Check if output was clamped during current cycle.
+
+        This flag is sticky - once set True, it remains True until
+        reset_clamp_state() is called (typically at cycle start).
+        """
+        return self._was_clamped
+
+    @property
+    def clamp_reason(self):
+        """Get the reason for clamping ('tolerance' or 'safety_net').
+
+        Returns None if not clamped. If multiple clamps occur,
+        this reflects the most recent reason.
+        """
+        return self._clamp_reason
+
+    def reset_clamp_state(self):
+        """Reset clamping state for a new cycle.
+
+        Call this at cycle start to ensure fresh clamping detection
+        for each heating/cooling cycle.
+        """
+        self._was_clamped = False
+        self._clamp_reason = None
 
     def prepare_bumpless_transfer(self):
         """Prepare for bumpless transfer by setting integral to maintain continuity.
@@ -484,6 +514,9 @@ class PID:
                 # When should_apply_decay() returns True (untuned + excessive integral + within tolerance),
                 # apply progressive decay that ramps from 1.0 at tolerance edge to full decay_multiplier at setpoint
                 if self.should_apply_decay():
+                    # Track safety net activation for learning feedback
+                    self._was_clamped = True
+                    self._clamp_reason = 'safety_net'
                     # Import here to avoid circular dependency
                     try:
                         from ..const import HEATING_TYPE_CHARACTERISTICS
@@ -578,8 +611,14 @@ class PID:
         # This allows gentle coasting through the tolerance band without abrupt cutoff
         if self._integral > 0 and self._error < -self._cold_tolerance:  # Was heating, now beyond tolerance above setpoint
             output = min(output, 0)
+            # Track tolerance clamping for learning feedback
+            self._was_clamped = True
+            self._clamp_reason = 'tolerance'
         elif self._integral < 0 and self._error > self._hot_tolerance:  # Was cooling, now beyond tolerance below setpoint
             output = max(output, 0)
+            # Track tolerance clamping for learning feedback
+            self._was_clamped = True
+            self._clamp_reason = 'tolerance'
 
         self._output = max(min(output, self._out_max), self._out_min)
         return self._output, True

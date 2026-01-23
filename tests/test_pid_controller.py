@@ -2309,5 +2309,141 @@ class TestOutputClampingOnWrongSide:
         assert pid.integral == pytest.approx(expected_integral, abs=0.01)
 
 
+class TestPIDClampingStateTracking:
+    """Test PID clamping state tracking for learning feedback."""
+
+    def test_pid_tracks_tolerance_clamp(self):
+        """Test was_clamped=True, clamp_reason='tolerance' when error < -cold_tolerance."""
+        pid = PID(kp=0, ki=10, kd=0, out_min=-100, out_max=100, cold_tolerance=0.3)
+
+        # Build up positive integral (heating history)
+        base_time = 1000.0
+        for i in range(60):
+            t = base_time + i * 100
+            pid.calc(19.0, 20.0, input_time=t, last_input_time=t - 100 if i > 0 else None)
+
+        assert pid.integral > 10, f"Expected positive integral, got {pid.integral}"
+
+        # Temperature beyond cold_tolerance above setpoint triggers clamping
+        # setpoint=20.0, tolerance=0.3, temp=20.5 → error=-0.5 (beyond -0.3 tolerance)
+        output, _ = pid.calc(20.5, 20.0, input_time=base_time + 6100, last_input_time=base_time + 6000)
+
+        assert output <= 0, f"Output should be clamped to ≤ 0, got {output}"
+        assert pid.was_clamped is True
+        assert pid.clamp_reason == 'tolerance'
+
+    def test_pid_tracks_cooling_tolerance_clamp(self):
+        """Test was_clamped=True when error > hot_tolerance (cooling mode)."""
+        pid = PID(kp=0, ki=10, kd=0, out_min=-100, out_max=100, hot_tolerance=0.3)
+
+        # Build up negative integral (cooling history)
+        base_time = 1000.0
+        for i in range(60):
+            t = base_time + i * 100
+            pid.calc(21.0, 20.0, input_time=t, last_input_time=t - 100 if i > 0 else None)
+
+        assert pid.integral < -10, f"Expected negative integral, got {pid.integral}"
+
+        # Temperature beyond hot_tolerance below setpoint triggers clamping
+        # setpoint=20.0, tolerance=0.3, temp=19.5 → error=0.5 (beyond 0.3 tolerance)
+        output, _ = pid.calc(19.5, 20.0, input_time=base_time + 6100, last_input_time=base_time + 6000)
+
+        assert output >= 0, f"Output should be clamped to ≥ 0, got {output}"
+        assert pid.was_clamped is True
+        assert pid.clamp_reason == 'tolerance'
+
+    def test_pid_tracks_safety_net_decay(self):
+        """Test was_clamped=True, clamp_reason='safety_net' when should_apply_decay() returns True."""
+        # Floor hydronic: threshold=35%, cold_tolerance=0.5°C
+        pid = PID(kp=0, ki=100, kd=0, out_min=0, out_max=100,
+                  cold_tolerance=0.5, heating_type="floor_hydronic")
+
+        # Build up integral to above 35% threshold
+        base_time = 1000.0
+        for i in range(8):
+            t = base_time + i * 100
+            pid.calc(18.0, 20.0, input_time=t, last_input_time=t - 100 if i > 0 else None)
+
+        assert pid.integral > 35.0, f"Integral should be above 35%, got {pid.integral}"
+
+        # Temperature within cold_tolerance triggers safety net decay
+        pid.calc(19.6, 20.0, input_time=base_time + 2100, last_input_time=base_time + 2000)
+
+        assert pid.should_apply_decay() is True
+        assert pid.was_clamped is True
+        assert pid.clamp_reason == 'safety_net'
+
+    def test_pid_clamp_sticky_within_cycle(self):
+        """Test was_clamped stays True even if later calc doesn't clamp."""
+        pid = PID(kp=0, ki=10, kd=0, out_min=-100, out_max=100, cold_tolerance=0.3)
+
+        # Build up positive integral
+        base_time = 1000.0
+        for i in range(60):
+            t = base_time + i * 100
+            pid.calc(19.0, 20.0, input_time=t, last_input_time=t - 100 if i > 0 else None)
+
+        # Trigger tolerance clamp
+        pid.calc(20.5, 20.0, input_time=base_time + 6100, last_input_time=base_time + 6000)
+        assert pid.was_clamped is True
+
+        # Now temp comes back within tolerance (no clamping condition)
+        pid.calc(20.1, 20.0, input_time=base_time + 6200, last_input_time=base_time + 6100)
+
+        # Flag should remain True (sticky)
+        assert pid.was_clamped is True
+        assert pid.clamp_reason == 'tolerance'
+
+    def test_pid_clamp_reset_on_cycle_start(self):
+        """Test reset_clamp_state() clears was_clamped and clamp_reason."""
+        pid = PID(kp=0, ki=10, kd=0, out_min=-100, out_max=100, cold_tolerance=0.3)
+
+        # Build up positive integral and trigger clamp
+        base_time = 1000.0
+        for i in range(60):
+            t = base_time + i * 100
+            pid.calc(19.0, 20.0, input_time=t, last_input_time=t - 100 if i > 0 else None)
+
+        pid.calc(20.5, 20.0, input_time=base_time + 6100, last_input_time=base_time + 6000)
+        assert pid.was_clamped is True
+
+        # Reset clamp state (simulating cycle start)
+        pid.reset_clamp_state()
+
+        assert pid.was_clamped is False
+        assert pid.clamp_reason is None
+
+    def test_pid_clamp_reason_updates_to_last(self):
+        """Test that clamp_reason reflects the most recent clamping event."""
+        # Floor hydronic: threshold=35%
+        pid = PID(kp=0, ki=100, kd=0, out_min=-100, out_max=100,
+                  cold_tolerance=0.5, heating_type="floor_hydronic")
+
+        # Build up integral to above threshold
+        base_time = 1000.0
+        for i in range(8):
+            t = base_time + i * 100
+            pid.calc(18.0, 20.0, input_time=t, last_input_time=t - 100 if i > 0 else None)
+
+        # First, trigger safety net
+        pid.calc(19.6, 20.0, input_time=base_time + 2100, last_input_time=base_time + 2000)
+        assert pid.clamp_reason == 'safety_net'
+
+        # Then trigger tolerance clamp (temp beyond tolerance)
+        pid.calc(20.7, 20.0, input_time=base_time + 2200, last_input_time=base_time + 2100)
+        assert pid.clamp_reason == 'tolerance'
+
+    def test_no_clamping_sets_no_state(self):
+        """Test that normal operation without clamping doesn't set was_clamped."""
+        pid = PID(kp=10, ki=0.5, kd=0, out_min=0, out_max=100)
+
+        # Normal operation within tolerance
+        pid.calc(19.5, 20.0, input_time=100.0, last_input_time=None)
+        pid.calc(19.7, 20.0, input_time=200.0, last_input_time=100.0)
+
+        assert pid.was_clamped is False
+        assert pid.clamp_reason is None
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
