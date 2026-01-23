@@ -557,6 +557,22 @@ INTEGRAL_DECAY_THRESHOLDS = {
     HEATING_TYPE_FORCED_AIR: 60.0,      # High threshold - fast response can handle larger integral
 }
 
+# Clamped cycle overshoot multipliers by heating type
+# When a cycle is clamped (output limited by tolerance or safety net), the observed
+# overshoot underestimates what would have occurred without clamping. These multipliers
+# amplify the overshoot to better reflect actual thermal behavior for learning.
+# Slower systems (high thermal mass) get higher multipliers since clamping hides more
+# of the true overshoot due to delayed thermal response.
+CLAMPED_OVERSHOOT_MULTIPLIER = {
+    HEATING_TYPE_FLOOR_HYDRONIC: 1.5,   # High multiplier - thermal mass delays overshoot expression
+    HEATING_TYPE_RADIATOR: 1.35,        # Moderate-high multiplier
+    HEATING_TYPE_CONVECTOR: 1.2,        # Moderate multiplier
+    HEATING_TYPE_FORCED_AIR: 1.1,       # Low multiplier - fast response shows true overshoot quickly
+}
+
+# Default clamped overshoot multiplier for unknown heating types
+DEFAULT_CLAMPED_OVERSHOOT_MULTIPLIER = 1.25
+
 # Exponential decay tau (hours) for integral during overhang
 # Half-life = 0.693 * tau, derived from min_cycle_duration / 2
 DEFAULT_EXP_DECAY_TAU = 0.12

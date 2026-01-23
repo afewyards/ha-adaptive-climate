@@ -23,6 +23,8 @@ from ..const import (
     MAX_AUTO_APPLIES_LIFETIME,
     MAX_CUMULATIVE_DRIFT_PCT,
     SEASONAL_SHIFT_BLOCK_DAYS,
+    CLAMPED_OVERSHOOT_MULTIPLIER,
+    DEFAULT_CLAMPED_OVERSHOOT_MULTIPLIER,
     get_convergence_thresholds,
     get_rule_thresholds,
     get_auto_apply_thresholds,
@@ -380,12 +382,31 @@ class AdaptiveLearner:
         # Use robust averaging with outlier detection (v0.7.0+)
         # MAD-based outlier rejection with max 30% removal, min 4 valid cycles
 
-        overshoot_values = [c.overshoot for c in recent_cycles if c.overshoot is not None]
+        # Apply clamped overshoot multiplier to cycles that were clamped
+        # Clamping hides true overshoot potential, so we amplify to compensate
+        clamped_multiplier = CLAMPED_OVERSHOOT_MULTIPLIER.get(
+            self._heating_type, DEFAULT_CLAMPED_OVERSHOOT_MULTIPLIER
+        )
+        clamped_cycle_count = 0
+        overshoot_values = []
+        for c in recent_cycles:
+            if c.overshoot is not None:
+                if getattr(c, 'was_clamped', False):
+                    overshoot_values.append(c.overshoot * clamped_multiplier)
+                    clamped_cycle_count += 1
+                else:
+                    overshoot_values.append(c.overshoot)
+
         if overshoot_values:
             avg_overshoot, overshoot_outliers = robust_average(overshoot_values)
             if overshoot_outliers:
                 _LOGGER.debug(
                     f"Removed {len(overshoot_outliers)} overshoot outliers from {len(overshoot_values)} cycles"
+                )
+            if clamped_cycle_count > 0:
+                _LOGGER.debug(
+                    f"{clamped_cycle_count} of {len(overshoot_values)} recent cycles clamped, "
+                    f"overshoot amplified by {clamped_multiplier}x ({self._heating_type})"
                 )
         else:
             avg_overshoot = 0.0
