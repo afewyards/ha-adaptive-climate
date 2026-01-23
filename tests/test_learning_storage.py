@@ -1197,3 +1197,66 @@ async def test_coupling_data_roundtrip(mock_hass):
 
         assert loaded_coupling["seeds"]["zone_a|zone_b"] == 0.15
         assert loaded_coupling["seeds"]["zone_b|zone_c"] == 0.40
+
+
+def test_was_clamped_not_persisted(temp_storage_dir):
+    """Test that was_clamped field is NOT saved to learning data store.
+
+    The was_clamped field is transient - used for learning decisions during runtime
+    but intentionally not persisted. Persisting it would be meaningless since clamping
+    status is specific to the conditions during that cycle's execution.
+    """
+    store = LearningDataStore(temp_storage_dir)
+
+    # Create AdaptiveLearner with cycles that have was_clamped=True
+    adaptive_learner = AdaptiveLearner()
+
+    # Add cycles with was_clamped=True
+    for _ in range(3):
+        metrics = CycleMetrics(
+            overshoot=0.3,
+            undershoot=0.2,
+            settling_time=45.0,
+            oscillations=1,
+            rise_time=30.0,
+            was_clamped=True,  # This should NOT be persisted
+        )
+        adaptive_learner.add_cycle_metrics(metrics)
+
+    # Verify cycles have was_clamped=True before saving
+    assert all(c.was_clamped for c in adaptive_learner.cycle_history)
+
+    # Save the data
+    result = store.save(adaptive_learner=adaptive_learner)
+    assert result is True
+
+    # Load the raw JSON file and verify was_clamped is NOT in cycle_history
+    with open(store.storage_file, "r") as f:
+        data = json.load(f)
+
+    assert "adaptive_learner" in data
+    assert "cycle_history" in data["adaptive_learner"]
+
+    # Verify was_clamped is NOT in any saved cycle
+    for cycle_data in data["adaptive_learner"]["cycle_history"]:
+        assert "was_clamped" not in cycle_data, (
+            "was_clamped should NOT be persisted to storage"
+        )
+
+    # Verify the cycle_history only contains expected fields
+    expected_fields = {"overshoot", "undershoot", "settling_time", "oscillations", "rise_time"}
+    for cycle_data in data["adaptive_learner"]["cycle_history"]:
+        assert set(cycle_data.keys()) == expected_fields, (
+            f"Unexpected fields in persisted cycle: {set(cycle_data.keys())}"
+        )
+
+    # Restore and verify restored cycles have was_clamped=False (default)
+    restored_learner = store.restore_adaptive_learner(data)
+    assert restored_learner is not None
+    assert restored_learner.get_cycle_count() == 3
+
+    # Restored cycles should have was_clamped=False (the default)
+    for cycle in restored_learner.cycle_history:
+        assert cycle.was_clamped is False, (
+            "Restored cycles should have was_clamped=False (default)"
+        )

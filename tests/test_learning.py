@@ -2665,3 +2665,61 @@ class TestClampedOvershootMultipliers:
         assert "4 of 6 recent cycles clamped" in log_msg
         assert "overshoot amplified by 1.5x" in log_msg
         assert "floor_hydronic" in log_msg
+
+    def test_disturbed_and_clamped_cycle(self):
+        """Test that disturbed cycles take precedence over clamped - excluded from learning."""
+        from custom_components.adaptive_thermostat.const import HEATING_TYPE_FLOOR_HYDRONIC
+
+        learner = AdaptiveLearner(heating_type=HEATING_TYPE_FLOOR_HYDRONIC)
+
+        # Add 3 normal cycles (undisturbed, not clamped)
+        for _ in range(3):
+            cycle = CycleMetrics(
+                overshoot=0.2,
+                undershoot=0.0,
+                settling_time=30.0,
+                oscillations=0,
+                rise_time=20.0,
+                was_clamped=False,
+                disturbances=[],  # No disturbances
+            )
+            learner.add_cycle_metrics(cycle)
+
+        # Add 3 disturbed cycles that are ALSO clamped
+        # These should be excluded from learning because disturbed takes precedence
+        for _ in range(3):
+            cycle = CycleMetrics(
+                overshoot=0.5,  # High overshoot that would trigger adjustment
+                undershoot=0.0,
+                settling_time=30.0,
+                oscillations=0,
+                rise_time=20.0,
+                was_clamped=True,  # Clamped, but...
+                disturbances=["solar_gain"],  # ...disturbed takes precedence
+            )
+            learner.add_cycle_metrics(cycle)
+
+        # Verify all 6 cycles added
+        assert learner.get_cycle_count() == 6
+
+        # Verify disturbed cycles are excluded (is_disturbed checks disturbances list)
+        disturbed_count = sum(1 for c in learner.cycle_history if c.is_disturbed)
+        assert disturbed_count == 3
+
+        # Calculate PID adjustment - should only use the 3 undisturbed cycles
+        # The 3 disturbed+clamped cycles should be excluded
+        adjustment = learner.calculate_pid_adjustment(
+            current_kp=100.0,
+            current_ki=1.0,
+            current_kd=2.0,
+        )
+
+        # With only 3 undisturbed cycles at 0.2 overshoot (below threshold),
+        # we should get no adjustment for excessive overshoot
+        # (the disturbed cycles with 0.5 overshoot are excluded)
+        if adjustment is not None:
+            # The adjustment should NOT reflect the high overshoot from disturbed cycles
+            # i.e., the kp_multiplier should not be reduced for high overshoot
+            assert adjustment.get("kp_multiplier", 1.0) >= 0.85, (
+                "Disturbed cycles should be excluded - kp should not be reduced for their overshoot"
+            )

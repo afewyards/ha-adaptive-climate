@@ -2482,6 +2482,47 @@ class TestPIDClampingStateTracking:
         assert pid.was_clamped is False
         assert pid.clamp_reason is None
 
+    def test_multi_clamp_same_cycle(self):
+        """Test that multiple clamp events in same cycle - clamp_reason reflects last event.
+
+        When multiple clamping events occur within the same cycle:
+        1. First safety_net triggers when integral > threshold and temp within tolerance
+        2. Then tolerance triggers when temp exceeds tolerance
+        3. If temp returns to within tolerance, safety_net triggers again
+        The clamp_reason always reflects the most recent clamping event.
+        """
+        # Floor hydronic: threshold=30%, cold_tolerance=0.5°C
+        pid = PID(kp=0, ki=100, kd=0, out_min=-100, out_max=100,
+                  cold_tolerance=0.5, heating_type="floor_hydronic")
+
+        # Build up integral to above 30% threshold
+        base_time = 1000.0
+        for i in range(8):
+            t = base_time + i * 100
+            pid.calc(18.0, 20.0, input_time=t, last_input_time=t - 100 if i > 0 else None)
+
+        assert pid.integral > 30.0, f"Integral should be above 30%, got {pid.integral}"
+
+        # Step 1: Temperature within tolerance triggers safety_net first
+        pid.calc(19.6, 20.0, input_time=base_time + 2100, last_input_time=base_time + 2000)
+
+        assert pid.was_clamped is True
+        assert pid.clamp_reason == 'safety_net', "First clamp should be safety_net"
+
+        # Step 2: Temperature beyond tolerance triggers tolerance clamp
+        # setpoint=20.0, cold_tolerance=0.5, so temp > 20.5 triggers tolerance clamp
+        pid.calc(20.7, 20.0, input_time=base_time + 2200, last_input_time=base_time + 2100)
+
+        assert pid.was_clamped is True, "was_clamped should remain True (sticky)"
+        assert pid.clamp_reason == 'tolerance', "clamp_reason should update to 'tolerance'"
+
+        # Step 3: Back to within tolerance - safety_net triggers again (if integral still > threshold)
+        # This demonstrates that clamp_reason tracks the MOST RECENT clamping event
+        pid.calc(19.8, 20.0, input_time=base_time + 2300, last_input_time=base_time + 2200)
+        assert pid.was_clamped is True, "was_clamped should remain True (sticky)"
+        # clamp_reason updates to safety_net since we're back within tolerance and conditions are met
+        assert pid.clamp_reason == 'safety_net', "clamp_reason updates to most recent clamp event"
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
