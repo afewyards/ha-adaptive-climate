@@ -1,6 +1,21 @@
 # CHANGELOG
 
 
+## v0.26.4 (2026-01-23)
+
+### Bug Fixes
+
+- Scale duty accumulator by actual elapsed time
+  ([`3be66e9`](https://github.com/afewyards/ha-adaptive-thermostat/commit/3be66e9261f491f0234ce55cc2b6078bd19aca77))
+
+With long PWM periods (e.g., 2 hours), the accumulator was incorrectly adding the full PWM period's
+  duty on every calculation (~60s intervals) instead of scaling by actual elapsed time. Changed
+  accumulation from `+= time_on` to `+= actual_dt * time_on / pwm`.
+
+Added _last_accumulator_calc_time tracking to measure actual elapsed time between calculations.
+  First calculation sets baseline only.
+
+
 ## v0.26.3 (2026-01-23)
 
 ### Bug Fixes
