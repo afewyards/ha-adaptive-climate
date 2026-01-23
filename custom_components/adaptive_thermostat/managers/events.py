@@ -91,6 +91,7 @@ class SettlingStartedEvent:
 
     hvac_mode: str
     timestamp: datetime
+    was_clamped: bool = False
 
     @property
     def event_type(self) -> CycleEventType:

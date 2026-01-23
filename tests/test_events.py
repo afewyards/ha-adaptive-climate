@@ -122,6 +122,17 @@ class TestSettlingStartedEventDataclass:
         event = SettlingStartedEvent(hvac_mode="heat", timestamp=datetime.now())
         assert event.event_type == CycleEventType.SETTLING_STARTED
 
+    def test_settling_started_event_has_was_clamped(self):
+        """Verify SettlingStartedEvent has was_clamped field with default False."""
+        now = datetime.now()
+        # Default value should be False
+        event = SettlingStartedEvent(hvac_mode="heat", timestamp=now)
+        assert event.was_clamped is False
+
+        # Can be set to True
+        event_clamped = SettlingStartedEvent(hvac_mode="heat", timestamp=now, was_clamped=True)
+        assert event_clamped.was_clamped is True
+
 
 class TestCycleEndedEventDataclass:
     """Tests for CycleEndedEvent dataclass."""
