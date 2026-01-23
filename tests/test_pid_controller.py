@@ -2096,11 +2096,11 @@ class TestOutputClampingOnWrongSide:
 
     def test_should_apply_decay_untuned_excessive_integral_in_tolerance(self):
         """Test should_apply_decay returns True when untuned + excessive integral + within tolerance."""
-        # Floor hydronic: threshold=35%, cold_tolerance=0.5°C
+        # Floor hydronic: threshold=30%, cold_tolerance=0.5°C
         pid = PID(kp=0, ki=100, kd=0, out_min=0, out_max=100,
                   cold_tolerance=0.5, heating_type="floor_hydronic")
 
-        # Build up integral to 40% (above 35% threshold)
+        # Build up integral to 40% (above 30% threshold)
         # Ki=100, error=2.0, dt=100s = 2.0 * 100 * (100/3600) = 5.555% per iteration
         # Need ~7 iterations to reach 40%
         base_time = 1000.0
@@ -2108,8 +2108,8 @@ class TestOutputClampingOnWrongSide:
             t = base_time + i * 100
             pid.calc(18.0, 20.0, input_time=t, last_input_time=t - 100 if i > 0 else None)
 
-        # Verify integral is above threshold (35%)
-        assert pid.integral > 35.0, f"Integral should be above 35%, got {pid.integral}"
+        # Verify integral is above threshold (30%)
+        assert pid.integral > 30.0, f"Integral should be above 30%, got {pid.integral}"
 
         # Set temperature within cold_tolerance (0.5°C)
         # Setpoint=20.0, tolerance=0.5, so anything >= 19.5 is within tolerance
@@ -2143,14 +2143,14 @@ class TestOutputClampingOnWrongSide:
         pid = PID(kp=100, ki=10, kd=0, out_min=0, out_max=100,
                   cold_tolerance=0.5, heating_type="floor_hydronic")
 
-        # Build up small integral (below 35% threshold)
+        # Build up small integral (below 30% threshold)
         base_time = 1000.0
         for i in range(5):
             t = base_time + i * 100
             pid.calc(18.0, 20.0, input_time=t, last_input_time=t - 100 if i > 0 else None)
 
         # Verify integral is below threshold
-        assert pid.integral < 35.0, f"Integral should be below 35%, got {pid.integral}"
+        assert pid.integral < 30.0, f"Integral should be below 30%, got {pid.integral}"
 
         # Within tolerance
         pid.calc(19.6, 20.0, input_time=base_time + 600, last_input_time=base_time + 500)
@@ -2169,8 +2169,8 @@ class TestOutputClampingOnWrongSide:
             t = base_time + i * 100
             pid.calc(18.0, 20.0, input_time=t, last_input_time=t - 100 if i > 0 else None)
 
-        # Verify integral is above threshold
-        assert pid.integral > 35.0, f"Integral should be above 35%, got {pid.integral}"
+        # Verify integral is above threshold (30% for floor_hydronic)
+        assert pid.integral > 30.0, f"Integral should be above 30%, got {pid.integral}"
 
         # Temperature outside cold_tolerance (0.5°C)
         # Setpoint=20.0, tolerance=0.5, so 19.4 is outside (error=0.6 > 0.5)
@@ -2178,6 +2178,44 @@ class TestOutputClampingOnWrongSide:
 
         # Should NOT apply decay: outside tolerance zone
         assert pid.should_apply_decay() is False
+
+    def test_floor_hydronic_safety_net_threshold_30(self):
+        """Verify floor_hydronic safety net threshold is 30%.
+
+        This test confirms that INTEGRAL_DECAY_THRESHOLDS['floor_hydronic'] == 30.0,
+        which enables earlier safety net activation for high thermal mass systems.
+        """
+        from custom_components.adaptive_thermostat.const import INTEGRAL_DECAY_THRESHOLDS
+
+        assert INTEGRAL_DECAY_THRESHOLDS["floor_hydronic"] == 30.0
+
+    def test_safety_net_fires_earlier_for_floor(self):
+        """Test floor heating with integral=32% triggers decay (above 30% threshold).
+
+        With the lowered threshold of 30% (from 35%), floor_hydronic systems
+        should trigger safety net decay earlier to prevent overshoot.
+        """
+        pid = PID(kp=0, ki=100, kd=0, out_min=0, out_max=100,
+                  cold_tolerance=0.5, heating_type="floor_hydronic")
+
+        # Build up integral to ~32% (above 30% threshold, below old 35%)
+        # Ki=100, error=2.0, dt=100s = 2.0 * 100 * (100/3600) = 5.555% per iteration
+        # Need 6 iterations to reach ~33% but first iteration has no dt, so need 7
+        base_time = 1000.0
+        for i in range(7):
+            t = base_time + i * 100
+            pid.calc(18.0, 20.0, input_time=t, last_input_time=t - 100 if i > 0 else None)
+
+        # Verify integral is above 30% but could be below old 35%
+        assert pid.integral > 30.0, f"Integral should be above 30%, got {pid.integral}"
+        assert pid.integral < 35.0, f"Integral should be below old 35% threshold, got {pid.integral}"
+
+        # Move within tolerance zone to trigger safety net check
+        pid.calc(19.6, 20.0, input_time=base_time + 1000, last_input_time=base_time + 900)
+
+        # Should apply decay: untuned + integral > 30% + within tolerance
+        assert pid.should_apply_decay() is True, \
+            f"Safety net should fire at integral={pid.integral}% (above 30% threshold)"
 
     def test_progressive_decay_floor_hydronic_quadratic(self):
         """Test progressive decay with floor_hydronic (decay_exponent=2.0) produces quadratic curve.
@@ -2196,7 +2234,7 @@ class TestOutputClampingOnWrongSide:
 
         # Store initial integral for comparison
         initial_integral = pid.integral
-        assert initial_integral > 35.0, f"Integral should be above 35%, got {initial_integral}"
+        assert initial_integral > 30.0, f"Integral should be above 30%, got {initial_integral}"
 
         # Move to 25% progress through tolerance zone
         # cold_tolerance = 0.5, so tolerance edge is at error=0.5 (temp=19.5)
@@ -2354,17 +2392,17 @@ class TestPIDClampingStateTracking:
 
     def test_pid_tracks_safety_net_decay(self):
         """Test was_clamped=True, clamp_reason='safety_net' when should_apply_decay() returns True."""
-        # Floor hydronic: threshold=35%, cold_tolerance=0.5°C
+        # Floor hydronic: threshold=30%, cold_tolerance=0.5°C
         pid = PID(kp=0, ki=100, kd=0, out_min=0, out_max=100,
                   cold_tolerance=0.5, heating_type="floor_hydronic")
 
-        # Build up integral to above 35% threshold
+        # Build up integral to above 30% threshold
         base_time = 1000.0
         for i in range(8):
             t = base_time + i * 100
             pid.calc(18.0, 20.0, input_time=t, last_input_time=t - 100 if i > 0 else None)
 
-        assert pid.integral > 35.0, f"Integral should be above 35%, got {pid.integral}"
+        assert pid.integral > 30.0, f"Integral should be above 30%, got {pid.integral}"
 
         # Temperature within cold_tolerance triggers safety net decay
         pid.calc(19.6, 20.0, input_time=base_time + 2100, last_input_time=base_time + 2000)
@@ -2415,7 +2453,7 @@ class TestPIDClampingStateTracking:
 
     def test_pid_clamp_reason_updates_to_last(self):
         """Test that clamp_reason reflects the most recent clamping event."""
-        # Floor hydronic: threshold=35%
+        # Floor hydronic: threshold=30%
         pid = PID(kp=0, ki=100, kd=0, out_min=-100, out_max=100,
                   cold_tolerance=0.5, heating_type="floor_hydronic")
 

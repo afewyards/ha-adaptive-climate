@@ -551,7 +551,7 @@ HEATING_TYPE_INTEGRAL_DECAY = {
 # activate exponential decay to prevent prolonged overshoot.
 # Slower systems get lower thresholds to activate safety net earlier.
 INTEGRAL_DECAY_THRESHOLDS = {
-    HEATING_TYPE_FLOOR_HYDRONIC: 35.0,  # Low threshold - high thermal mass needs early intervention
+    HEATING_TYPE_FLOOR_HYDRONIC: 30.0,  # Low threshold - high thermal mass needs early intervention
     HEATING_TYPE_RADIATOR: 40.0,        # Moderate threshold
     HEATING_TYPE_CONVECTOR: 50.0,       # Standard threshold
     HEATING_TYPE_FORCED_AIR: 60.0,      # High threshold - fast response can handle larger integral

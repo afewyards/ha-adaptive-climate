@@ -141,7 +141,7 @@ class TestIntegralDecayThresholds:
 
     def test_integral_decay_threshold_values(self):
         """Verify specific threshold values match the specification."""
-        assert INTEGRAL_DECAY_THRESHOLDS[HEATING_TYPE_FLOOR_HYDRONIC] == 35.0
+        assert INTEGRAL_DECAY_THRESHOLDS[HEATING_TYPE_FLOOR_HYDRONIC] == 30.0
         assert INTEGRAL_DECAY_THRESHOLDS[HEATING_TYPE_RADIATOR] == 40.0
         assert INTEGRAL_DECAY_THRESHOLDS[HEATING_TYPE_CONVECTOR] == 50.0
         assert INTEGRAL_DECAY_THRESHOLDS[HEATING_TYPE_FORCED_AIR] == 60.0

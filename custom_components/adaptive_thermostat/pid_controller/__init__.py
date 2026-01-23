@@ -338,7 +338,7 @@ class PID:
         except ImportError:
             # Fallback for test environment
             INTEGRAL_DECAY_THRESHOLDS = {
-                "floor_hydronic": 35.0,
+                "floor_hydronic": 30.0,
                 "radiator": 40.0,
                 "convector": 50.0,
                 "forced_air": 60.0,
