@@ -1,6 +1,66 @@
 # CHANGELOG
 
 
+## v0.26.0 (2026-01-23)
+
+### Features
+
+- Add duty accumulator field and properties to HeaterController
+  ([`b49bbd0`](https://github.com/afewyards/ha-adaptive-thermostat/commit/b49bbd085724e819e6f45209fc046b705452d8c8))
+
+Add infrastructure for duty accumulator that tracks sub-threshold output requests. Includes: -
+  _duty_accumulator_seconds field initialized to 0.0 - _max_accumulator property returning 2x
+  min_on_cycle_duration - duty_accumulator_seconds property for external access
+
+- Add reset_duty_accumulator() method to HeaterController
+  ([`23f3855`](https://github.com/afewyards/ha-adaptive-thermostat/commit/23f385563a73adc7a1dbfb2aefedd3a6c4a928d5))
+
+Add method to reset duty accumulator to zero. Called when setpoint changes significantly, HVAC mode
+  goes to OFF, or contact sensor opens.
+
+- Fire minimum pulse when accumulated duty reaches threshold
+  ([`1973640`](https://github.com/afewyards/ha-adaptive-thermostat/commit/19736400f3f039fcbcf7cd650b7150b9f148f75f))
+
+- Implement duty accumulation for sub-threshold outputs
+  ([`a2a08db`](https://github.com/afewyards/ha-adaptive-thermostat/commit/a2a08dbccecfb42c8997adb37854e277cfabc8db))
+
+In async_pwm_switch(), when control_output produces time_on < min_on_cycle: - Accumulate time_on to
+  _duty_accumulator_seconds (capped at 2x min_on) - Reset accumulator when normal duty threshold is
+  met - Reset accumulator when control_output <= 0
+
+This allows sub-threshold heat requests to build up over time rather than being completely ignored,
+  improving temperature regulation at low demand levels.
+
+- Persist duty accumulator across HA restarts
+  ([`95214df`](https://github.com/afewyards/ha-adaptive-thermostat/commit/95214df47cb929ff0469cc6b5f80108d90bc01c6))
+
+- Add duty_accumulator and duty_accumulator_pct to state attributes - Restore duty_accumulator in
+  StateRestorer._restore_pid_values() - Add min_on_cycle_duration property and
+  set_duty_accumulator() setter - Add tests for accumulator attribute building and restoration
+
+- Reset duty accumulator on contact sensor open
+  ([`de20e47`](https://github.com/afewyards/ha-adaptive-thermostat/commit/de20e47a41e32a26307dd423de0a73e79a6ef89e))
+
+When a contact sensor (window/door) opens, the duty accumulator is now reset to prevent accumulated
+  duty from firing a pulse after the contact closes and normal heating resumes.
+
+- Reset duty accumulator on HVAC mode change to OFF
+  ([`0ac3962`](https://github.com/afewyards/ha-adaptive-thermostat/commit/0ac3962b82c39b0905bea6488d1db73787b5d0f9))
+
+- Reset duty accumulator on significant setpoint change
+  ([`f2c91ee`](https://github.com/afewyards/ha-adaptive-thermostat/commit/f2c91ee6ee3d410b14f497c0aaa6d2796b48bb95))
+
+### Testing
+
+- Add integration tests for duty accumulator end-to-end behavior
+  ([`61b2579`](https://github.com/afewyards/ha-adaptive-thermostat/commit/61b25795add2c7ce644010a63c3a735593b5b0f2))
+
+Tests cover: - Accumulator fires after multiple PWM periods of sub-threshold output - Restart
+  continuity (accumulator resumes from saved state) - Varying output correctly accumulates duty -
+  Cycle tracking events (HeatingStarted/HeatingEnded) emitted correctly - Reset behavior and edge
+  cases
+
+
 ## v0.25.0 (2026-01-23)
 
 ### Features
