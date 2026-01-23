@@ -1933,6 +1933,9 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                         entity_id=entity_id,
                     )
                 )
+                # Reset duty accumulator when contact opens
+                if self._heater_controller is not None:
+                    self._heater_controller.reset_duty_accumulator()
             else:
                 # Calculate pause duration and emit resume event
                 pause_start = self._contact_pause_times.pop(entity_id, None)
