@@ -13,6 +13,11 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
+# Maximum reasonable time delta between PID calculations (1 hour)
+# Values larger than this indicate a system sleep/resume or clock jump
+# and should be clamped to avoid integral windup or erratic behavior
+MAX_REASONABLE_DT = 3600
+
 
 class ControlOutputManager:
     """Manager for PID control output calculation and heater control delegation.
@@ -154,6 +159,20 @@ class ControlOutputManager:
         # This fixes the stale dt bug where external triggers used sensor-based timing
         if self._last_pid_calc_time is not None:
             actual_dt = current_time - self._last_pid_calc_time
+
+            # Sanity clamp for unreasonable dt values
+            if actual_dt < 0:
+                # Clock jumped backward - clamp to 0 to avoid negative integral contribution
+                actual_dt = 0
+            elif actual_dt > MAX_REASONABLE_DT:
+                # Time jump too large (system sleep/resume, etc.) - clamp to 0
+                _LOGGER.warning(
+                    "%s: dt clamped from %.1fs to 0 (exceeds MAX_REASONABLE_DT=%ds)",
+                    entity_id,
+                    actual_dt,
+                    MAX_REASONABLE_DT,
+                )
+                actual_dt = 0
         else:
             actual_dt = 0  # First calculation, no prior reference
 

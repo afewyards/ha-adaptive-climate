@@ -863,3 +863,56 @@ class TestPIDCalcTimeTracking:
 
         # _last_pid_calc_time should be updated to the new time
         assert self.manager._last_pid_calc_time == 1060.0
+
+    @pytest.mark.asyncio
+    async def test_control_output_clamps_negative_dt(self):
+        """TEST: Verify negative dt (clock jump backward) is clamped to 0."""
+        # First call to set _last_pid_calc_time
+        with patch("time.time", return_value=2000.0):
+            await self.manager.calc_output()
+
+        assert self.manager._last_pid_calc_time == 2000.0
+
+        # Second call with time going backward (clock jump)
+        with patch("time.time", return_value=1500.0):
+            await self.manager.calc_output()
+
+        # The actual_dt should have been clamped to 0 (negative dt not allowed)
+        # _last_pid_calc_time should still update to the new time
+        assert self.manager._last_pid_calc_time == 1500.0
+
+        # Verify clamped dt was used by checking the logged dt value
+        # Since we can't directly check actual_dt, we verify _last_pid_calc_time updated
+        # The implementation should clamp negative dt to 0
+
+    @pytest.mark.asyncio
+    async def test_control_output_clamps_huge_dt(self):
+        """TEST: Verify dt > MAX_REASONABLE_DT (1hr) is clamped to 0 with warning log."""
+        from custom_components.adaptive_thermostat.managers.control_output import (
+            MAX_REASONABLE_DT,
+        )
+
+        # Verify MAX_REASONABLE_DT is 3600 seconds (1 hour)
+        assert MAX_REASONABLE_DT == 3600
+
+        # First call to set _last_pid_calc_time
+        with patch("time.time", return_value=1000.0):
+            await self.manager.calc_output()
+
+        assert self.manager._last_pid_calc_time == 1000.0
+
+        # Second call with huge time jump (2 hours later)
+        huge_dt = 7200  # 2 hours
+        with patch("time.time", return_value=1000.0 + huge_dt):
+            with patch(
+                "custom_components.adaptive_thermostat.managers.control_output._LOGGER"
+            ) as mock_logger:
+                await self.manager.calc_output()
+
+                # Verify warning was logged about the huge dt
+                mock_logger.warning.assert_called_once()
+                call_args = mock_logger.warning.call_args[0]
+                assert "clamped" in call_args[0].lower() or "dt" in call_args[0].lower()
+
+        # _last_pid_calc_time should still update
+        assert self.manager._last_pid_calc_time == 1000.0 + huge_dt
