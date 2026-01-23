@@ -46,7 +46,7 @@ def mock_thermostat():
     thermostat = MagicMock()
     thermostat.entity_id = "climate.test_thermostat"
     thermostat.target_temperature = 20.0
-    thermostat._cur_temp = 19.0
+    thermostat._current_temp = 19.0
     return thermostat
 
 
@@ -726,7 +726,7 @@ class TestHeaterControllerEventEmission:
         # Setup thermostat state
         mock_thermostat.hvac_mode = MockHVACMode.HEAT
         mock_thermostat.target_temperature = 21.0
-        mock_thermostat._cur_temp = 19.5
+        mock_thermostat._current_temp = 19.5
 
         # Mock service calls to be async
         async def mock_async_call(*args, **kwargs):
@@ -820,7 +820,7 @@ class TestHeaterControllerEventEmission:
 
         # Setup thermostat state - within tolerance
         mock_thermostat.target_temperature = 21.0
-        mock_thermostat._cur_temp = 20.7  # Within 0.5°C
+        mock_thermostat._current_temp = 20.7  # Within 0.5°C
 
         # Mock service calls and state
         controller._hass.services.async_call = MagicMock()
@@ -1112,7 +1112,7 @@ class TestHeaterControllerClampingState:
 
         # Setup thermostat state - within tolerance
         mock_thermostat.target_temperature = 21.0
-        mock_thermostat._cur_temp = 20.7  # Within 0.5°C
+        mock_thermostat._current_temp = 20.7  # Within 0.5°C
 
         # Mock service calls and state
         controller._hass.services.async_call = MagicMock()
@@ -1203,7 +1203,7 @@ class TestHeaterControllerClampingState:
         # Setup thermostat state
         mock_thermostat.hvac_mode = MockHVACMode.HEAT
         mock_thermostat.target_temperature = 21.0
-        mock_thermostat._cur_temp = 19.5
+        mock_thermostat._current_temp = 19.5
 
         # Mock service calls to be async
         async def mock_async_call(*args, **kwargs):
@@ -1273,7 +1273,7 @@ class TestHeaterControllerClampingState:
         # Setup thermostat state
         mock_thermostat.hvac_mode = MockHVACMode.HEAT
         mock_thermostat.target_temperature = 21.0
-        mock_thermostat._cur_temp = 19.5
+        mock_thermostat._current_temp = 19.5
 
         # Mock service calls to be async
         async def mock_async_call(*args, **kwargs):

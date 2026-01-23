@@ -482,7 +482,7 @@ class HeaterController:
                 self._reset_pid_clamp_state()
                 if self._dispatcher:
                     target_temp = getattr(self._thermostat, 'target_temperature', 0.0)
-                    current_temp = getattr(self._thermostat, '_cur_temp', 0.0)
+                    current_temp = getattr(self._thermostat, '_current_temp', 0.0)
                     self._dispatcher.emit(CycleStartedEvent(
                         hvac_mode=hvac_mode,
                         timestamp=datetime.now(),
@@ -511,7 +511,7 @@ class HeaterController:
                 self._reset_pid_clamp_state()
                 if self._dispatcher:
                     target_temp = getattr(self._thermostat, 'target_temperature', 0.0)
-                    current_temp = getattr(self._thermostat, '_cur_temp', 0.0)
+                    current_temp = getattr(self._thermostat, '_current_temp', 0.0)
                     self._dispatcher.emit(CycleStartedEvent(
                         hvac_mode=hvac_mode,
                         timestamp=datetime.now(),
@@ -669,7 +669,7 @@ class HeaterController:
         # Criteria: demand < 5% AND temp within 0.5°C of target
         if self._cycle_active and value < 5.0:
             target_temp = getattr(self._thermostat, 'target_temperature', 0.0)
-            current_temp = getattr(self._thermostat, '_cur_temp', 0.0)
+            current_temp = getattr(self._thermostat, '_current_temp', 0.0)
             if abs(current_temp - target_temp) <= 0.5:
                 if self._dispatcher:
                     self._dispatcher.emit(SettlingStartedEvent(
@@ -694,7 +694,7 @@ class HeaterController:
             self._reset_pid_clamp_state()
             if self._dispatcher:
                 target_temp = getattr(self._thermostat, 'target_temperature', 0.0)
-                current_temp = getattr(self._thermostat, '_cur_temp', 0.0)
+                current_temp = getattr(self._thermostat, '_current_temp', 0.0)
                 self._dispatcher.emit(CycleStartedEvent(
                     hvac_mode=hvac_mode,
                     timestamp=datetime.now(),
