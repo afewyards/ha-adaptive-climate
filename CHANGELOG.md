@@ -1,6 +1,21 @@
 # CHANGELOG
 
 
+## v0.26.1 (2026-01-23)
+
+### Bug Fixes
+
+- Prevent duty accumulator from firing when heating not needed
+  ([`d0d454f`](https://github.com/afewyards/ha-adaptive-thermostat/commit/d0d454fde64200d0ee440593d7c41bed76dd9d97))
+
+After restart, the restored PID integral could keep control_output positive even when temperature
+  was above setpoint. Combined with restored duty_accumulator, this caused spurious heating pulses.
+
+Fixes: - Don't restore duty_accumulator across restarts (accumulator is for session-level duty
+  tracking, not cross-restart persistence) - Add safety check before firing minimum pulse: skip if
+  temp >= setpoint (heating) or temp <= setpoint (cooling)
+
+
 ## v0.26.0 (2026-01-23)
 
 ### Features
