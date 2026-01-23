@@ -868,12 +868,18 @@ class HeaterController:
 
         # If calculated on-time < min_on_cycle_duration, accumulate duty
         if 0 < time_on < self._min_on_cycle_duration:
-            # Don't accumulate if heater is already ON (e.g., during minimum pulse)
-            # Otherwise accumulator grows while heating and immediately fires again
+            # If heater is already ON (e.g., during minimum pulse), don't accumulate
+            # but DO try to turn off (respects min_cycle protection internally)
             if self.is_active(hvac_mode):
                 _LOGGER.debug(
-                    "%s: Sub-threshold output but heater already ON - skipping accumulation",
+                    "%s: Sub-threshold output but heater already ON - attempting turn off",
                     thermostat_entity_id,
+                )
+                await self.async_turn_off(
+                    hvac_mode=hvac_mode,
+                    get_cycle_start_time=get_cycle_start_time,
+                    set_is_heating=set_is_heating,
+                    set_last_heat_cycle_time=set_last_heat_cycle_time,
                 )
                 set_force_on(False)
                 set_force_off(False)
