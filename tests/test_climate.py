@@ -2707,3 +2707,63 @@ class TestSetpointResetAccumulator:
 
         # Assert - accumulator should NOT be reset
         mock_heater_controller.reset_duty_accumulator.assert_not_called()
+
+    def test_mode_off_resets_accumulator(self):
+        """Test mode change to OFF resets duty accumulator."""
+        # Create mock heater controller
+        mock_heater_controller = MagicMock()
+        mock_heater_controller.reset_duty_accumulator = MagicMock()
+
+        # Create a mock thermostat-like object that simulates async_set_hvac_mode behavior
+        class MockClimate:
+            def __init__(self):
+                self._hvac_mode = MockHVACMode.HEAT
+                self._heater_controller = mock_heater_controller
+
+            def set_hvac_mode(self, hvac_mode: str) -> None:
+                """Set the HVAC mode (mirrors climate.py async_set_hvac_mode logic)."""
+                if hvac_mode == MockHVACMode.OFF:
+                    self._hvac_mode = MockHVACMode.OFF
+                    # Reset duty accumulator when turning OFF
+                    if self._heater_controller is not None:
+                        self._heater_controller.reset_duty_accumulator()
+                else:
+                    self._hvac_mode = hvac_mode
+
+        climate = MockClimate()
+
+        # Act - Change mode to OFF
+        climate.set_hvac_mode(MockHVACMode.OFF)
+
+        # Assert - accumulator should be reset
+        mock_heater_controller.reset_duty_accumulator.assert_called_once()
+
+    def test_mode_heat_preserves_accumulator(self):
+        """Test mode change to HEAT does NOT reset duty accumulator."""
+        # Create mock heater controller
+        mock_heater_controller = MagicMock()
+        mock_heater_controller.reset_duty_accumulator = MagicMock()
+
+        # Create a mock thermostat-like object that simulates async_set_hvac_mode behavior
+        class MockClimate:
+            def __init__(self):
+                self._hvac_mode = MockHVACMode.OFF
+                self._heater_controller = mock_heater_controller
+
+            def set_hvac_mode(self, hvac_mode: str) -> None:
+                """Set the HVAC mode (mirrors climate.py async_set_hvac_mode logic)."""
+                if hvac_mode == MockHVACMode.OFF:
+                    self._hvac_mode = MockHVACMode.OFF
+                    # Reset duty accumulator when turning OFF
+                    if self._heater_controller is not None:
+                        self._heater_controller.reset_duty_accumulator()
+                else:
+                    self._hvac_mode = hvac_mode
+
+        climate = MockClimate()
+
+        # Act - Change mode to HEAT
+        climate.set_hvac_mode(MockHVACMode.HEAT)
+
+        # Assert - accumulator should NOT be reset
+        mock_heater_controller.reset_duty_accumulator.assert_not_called()

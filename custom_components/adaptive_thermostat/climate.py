@@ -1559,6 +1559,9 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         elif hvac_mode == HVACMode.OFF:
             self._hvac_mode = HVACMode.OFF
             self._control_output = self._output_min
+            # Reset duty accumulator when turning OFF
+            if self._heater_controller is not None:
+                self._heater_controller.reset_duty_accumulator()
             if self._pwm:
                 _LOGGER.debug("%s: Turn OFF heater from async_set_hvac_mode(%s)",
                               self.entity_id,
