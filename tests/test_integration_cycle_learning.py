@@ -1748,3 +1748,182 @@ class TestSettlingTimeFromDeviceOff:
             f"got {recorded_metrics.settling_time:.1f} minutes. "
             f"If measured from first sample, would be ~23.5 minutes."
         )
+
+
+class TestClampedCycleEndToEnd:
+    """Integration test for clamped cycle end-to-end flow (Story 4.1)."""
+
+    @pytest.mark.asyncio
+    async def test_integration_clamped_cycle_flow(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
+    ):
+        """Test clamped cycle end-to-end: PID → SettlingStartedEvent → CycleTracker → CycleMetrics.
+
+        Simulates a complete heating cycle where tolerance clamping occurs, and verifies
+        that the was_clamped flag propagates correctly through the entire chain:
+        - PID controller detects clamping and sets was_clamped=True
+        - SettlingStartedEvent carries was_clamped flag
+        - CycleTracker captures was_clamped from event
+        - CycleMetrics includes was_clamped in final metrics
+
+        This test verifies Story 4.1: integration of clamping awareness across the system.
+        """
+        from custom_components.adaptive_thermostat.managers.events import (
+            CycleStartedEvent,
+            SettlingStartedEvent,
+        )
+
+        # Create tracker for radiator heating type
+        tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            get_target_temp=mock_callbacks["get_target_temp"],
+            get_current_temp=mock_callbacks["get_current_temp"],
+            get_hvac_mode=mock_callbacks["get_hvac_mode"],
+            get_in_grace_period=mock_callbacks["get_in_grace_period"],
+            dispatcher=dispatcher,
+            heating_type="radiator",
+        )
+        tracker.set_restoration_complete()
+
+        # Start heating cycle at 19.0°C, target 21.0°C
+        start_time = datetime(2024, 1, 1, 10, 0, 0)
+        cycle_started = CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=start_time,
+            target_temp=21.0,
+            current_temp=19.0,
+        )
+        dispatcher.emit(cycle_started)
+
+        assert tracker.state == CycleState.HEATING
+
+        # Simulate temperature rising during heating phase (10 minutes = 20 samples @ 30s)
+        # Temperature rises from 19.0°C to 21.3°C (overshoot that would trigger clamping)
+        current_time = start_time
+        temperatures = [
+            19.0, 19.2, 19.5, 19.8, 20.1, 20.4, 20.7, 20.9, 21.0, 21.1,
+            21.15, 21.2, 21.25, 21.3, 21.3, 21.3, 21.25, 21.2, 21.15, 21.1,
+        ]
+
+        for temp in temperatures:
+            await tracker.update_temperature(current_time, temp)
+            current_time += timedelta(seconds=30)
+
+        # In a real scenario, PID controller would detect the overshoot approaching
+        # hot_tolerance and set was_clamped=True. We simulate this by emitting
+        # SettlingStartedEvent with was_clamped=True
+        # Device turns off due to tolerance clamping
+        device_off_time = start_time + timedelta(minutes=10)
+
+        # Emit SettlingStartedEvent with was_clamped=True (simulates PID clamping)
+        settling_started = SettlingStartedEvent(
+            hvac_mode="heat",
+            timestamp=device_off_time,
+            was_clamped=True,  # KEY: Clamping occurred
+        )
+        dispatcher.emit(settling_started)
+
+        # Verify transition to SETTLING state
+        assert tracker.state == CycleState.SETTLING
+
+        # Verify CycleTracker captured was_clamped from event
+        assert tracker._was_clamped is True, "CycleTracker should capture was_clamped from event"
+
+        # Continue collecting temperature samples during settling phase
+        # Temperature gradually settles back to target
+        settling_temps = [21.1, 21.05, 21.0, 21.0, 21.0, 21.0, 21.0, 21.0, 21.0, 21.0]
+        for temp in settling_temps:
+            await tracker.update_temperature(current_time, temp)
+            current_time += timedelta(seconds=30)
+
+        # Cycle should complete and transition to IDLE
+        assert tracker.state == CycleState.IDLE
+
+        # Verify metrics were recorded
+        assert mock_adaptive_learner.add_cycle_metrics.call_count == 1
+
+        # Verify CycleMetrics has was_clamped=True
+        recorded_metrics = mock_adaptive_learner.add_cycle_metrics.call_args[0][0]
+        assert isinstance(recorded_metrics, CycleMetrics)
+        assert recorded_metrics.was_clamped is True, (
+            "CycleMetrics should have was_clamped=True after clamped cycle"
+        )
+
+        # Verify other metrics are still valid (cycle wasn't aborted)
+        assert recorded_metrics.overshoot is not None, "Overshoot should be recorded"
+        assert recorded_metrics.rise_time is not None, "Rise time should be recorded"
+        assert recorded_metrics.settling_time is not None, "Settling time should be recorded"
+
+    @pytest.mark.asyncio
+    async def test_unclamped_cycle_has_was_clamped_false(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
+    ):
+        """Test that unclamped cycles have was_clamped=False in metrics.
+
+        Verifies that when a cycle completes normally without clamping,
+        the was_clamped flag is correctly set to False throughout the chain.
+        """
+        from custom_components.adaptive_thermostat.managers.events import (
+            CycleStartedEvent,
+            SettlingStartedEvent,
+        )
+
+        # Create tracker
+        tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            get_target_temp=mock_callbacks["get_target_temp"],
+            get_current_temp=mock_callbacks["get_current_temp"],
+            get_hvac_mode=mock_callbacks["get_hvac_mode"],
+            get_in_grace_period=mock_callbacks["get_in_grace_period"],
+            dispatcher=dispatcher,
+            heating_type="radiator",
+        )
+        tracker.set_restoration_complete()
+
+        # Start heating cycle
+        start_time = datetime(2024, 1, 1, 10, 0, 0)
+        cycle_started = CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=start_time,
+            target_temp=21.0,
+            current_temp=19.0,
+        )
+        dispatcher.emit(cycle_started)
+
+        # Simulate normal temperature rise (no overshoot, no clamping)
+        current_time = start_time
+        for i in range(20):
+            temp = 19.0 + min(i * 0.1, 2.0)  # Rise to 21.0°C smoothly
+            await tracker.update_temperature(current_time, temp)
+            current_time += timedelta(seconds=30)
+
+        # Emit SettlingStartedEvent WITHOUT clamping (default was_clamped=False)
+        settling_started = SettlingStartedEvent(
+            hvac_mode="heat",
+            timestamp=current_time,
+            was_clamped=False,  # No clamping
+        )
+        dispatcher.emit(settling_started)
+
+        # Verify CycleTracker has was_clamped=False
+        assert tracker._was_clamped is False, "CycleTracker should have was_clamped=False"
+
+        # Add settling samples
+        for _ in range(10):
+            await tracker.update_temperature(current_time, 21.0)
+            current_time += timedelta(seconds=30)
+
+        # Verify cycle completes
+        assert tracker.state == CycleState.IDLE
+        assert mock_adaptive_learner.add_cycle_metrics.call_count == 1
+
+        # Verify CycleMetrics has was_clamped=False
+        recorded_metrics = mock_adaptive_learner.add_cycle_metrics.call_args[0][0]
+        assert isinstance(recorded_metrics, CycleMetrics)
+        assert recorded_metrics.was_clamped is False, (
+            "CycleMetrics should have was_clamped=False for unclamped cycle"
+        )
