@@ -870,6 +870,50 @@ class HeaterController:
         if 0 < time_on < self._min_on_cycle_duration:
             # Check if accumulator has already reached threshold to fire minimum pulse
             if self._duty_accumulator_seconds >= self._min_on_cycle_duration:
+                # Safety check: don't fire if heating would be counterproductive
+                # (This can happen after restart when PID integral keeps output positive
+                # even though temperature is already above setpoint)
+                current_temp = getattr(self._thermostat, '_current_temp', None)
+                target_temp = getattr(self._thermostat, '_target_temp', None)
+                if (isinstance(current_temp, (int, float)) and
+                    isinstance(target_temp, (int, float))):
+                    if hvac_mode == HVACMode.HEAT and current_temp >= target_temp:
+                        _LOGGER.info(
+                            "%s: Accumulator threshold reached but skipping pulse - "
+                            "temp %.2f°C already at/above target %.2f°C. Resetting accumulator.",
+                            thermostat_entity_id,
+                            current_temp,
+                            target_temp,
+                        )
+                        self._duty_accumulator_seconds = 0.0
+                        await self.async_turn_off(
+                            hvac_mode=hvac_mode,
+                            get_cycle_start_time=get_cycle_start_time,
+                            set_is_heating=set_is_heating,
+                            set_last_heat_cycle_time=set_last_heat_cycle_time,
+                        )
+                        set_force_on(False)
+                        set_force_off(False)
+                        return
+                    elif hvac_mode == HVACMode.COOL and current_temp <= target_temp:
+                        _LOGGER.info(
+                            "%s: Accumulator threshold reached but skipping pulse - "
+                            "temp %.2f°C already at/below target %.2f°C. Resetting accumulator.",
+                            thermostat_entity_id,
+                            current_temp,
+                            target_temp,
+                        )
+                        self._duty_accumulator_seconds = 0.0
+                        await self.async_turn_off(
+                            hvac_mode=hvac_mode,
+                            get_cycle_start_time=get_cycle_start_time,
+                            set_is_heating=set_is_heating,
+                            set_last_heat_cycle_time=set_last_heat_cycle_time,
+                        )
+                        set_force_on(False)
+                        set_force_off(False)
+                        return
+
                 _LOGGER.info(
                     "%s: Accumulator threshold reached (%.0fs >= %.0fs). Firing minimum pulse.",
                     thermostat_entity_id,

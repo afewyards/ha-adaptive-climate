@@ -47,11 +47,16 @@ def state_restorer(mock_thermostat):
     return StateRestorer(mock_thermostat)
 
 
-class TestDutyAccumulatorRestoration:
-    """Tests for duty accumulator state restoration."""
+class TestDutyAccumulatorNotRestored:
+    """Tests verifying duty accumulator is NOT restored across restarts.
 
-    def test_accumulator_restored_on_startup(self, state_restorer, mock_thermostat):
-        """Test duty_accumulator value restored from previous state."""
+    The accumulator is intentionally not restored because it can cause spurious
+    heating when combined with a restored PID integral that keeps control_output
+    positive even when temperature is above setpoint.
+    """
+
+    def test_accumulator_not_restored_even_when_present(self, state_restorer, mock_thermostat):
+        """Test duty_accumulator is NOT restored even if present in old state."""
         old_state = MagicMock()
         old_state.state = "heat"
         old_state.attributes = {
@@ -63,55 +68,11 @@ class TestDutyAccumulatorRestoration:
 
         state_restorer.restore(old_state)
 
-        mock_thermostat._heater_controller.set_duty_accumulator.assert_called_once_with(120.5)
-
-    def test_accumulator_not_restored_when_missing(self, state_restorer, mock_thermostat):
-        """Test duty_accumulator not set when not in old state."""
-        old_state = MagicMock()
-        old_state.state = "heat"
-        old_state.attributes = {
-            "temperature": 21.0,
-            "pid_i": 0.0,
-            "pid_integral_migrated": True,
-        }
-
-        state_restorer.restore(old_state)
-
+        # Accumulator should NOT be restored
         mock_thermostat._heater_controller.set_duty_accumulator.assert_not_called()
 
-    def test_accumulator_restored_with_zero_value(self, state_restorer, mock_thermostat):
-        """Test duty_accumulator=0 is correctly restored (not skipped)."""
-        old_state = MagicMock()
-        old_state.state = "heat"
-        old_state.attributes = {
-            "temperature": 21.0,
-            "pid_i": 0.0,
-            "pid_integral_migrated": True,
-            "duty_accumulator": 0.0,
-        }
-
-        state_restorer.restore(old_state)
-
-        mock_thermostat._heater_controller.set_duty_accumulator.assert_called_once_with(0.0)
-
-    def test_accumulator_not_restored_without_heater_controller(self, state_restorer, mock_thermostat):
-        """Test restoration is skipped if heater_controller is None."""
-        mock_thermostat._heater_controller = None
-
-        old_state = MagicMock()
-        old_state.state = "heat"
-        old_state.attributes = {
-            "temperature": 21.0,
-            "pid_i": 0.0,
-            "pid_integral_migrated": True,
-            "duty_accumulator": 120.5,
-        }
-
-        # Should not raise
-        state_restorer.restore(old_state)
-
-    def test_accumulator_restored_with_cycle_counts(self, state_restorer, mock_thermostat):
-        """Test duty_accumulator restored alongside cycle counts."""
+    def test_cycle_counts_restored_but_not_accumulator(self, state_restorer, mock_thermostat):
+        """Test cycle counts are restored but duty_accumulator is not."""
         old_state = MagicMock()
         old_state.state = "heat"
         old_state.attributes = {
@@ -125,9 +86,11 @@ class TestDutyAccumulatorRestoration:
 
         state_restorer.restore(old_state)
 
+        # Cycle counts should be restored
         mock_thermostat._heater_controller.set_heater_cycle_count.assert_called_once_with(150)
         mock_thermostat._heater_controller.set_cooler_cycle_count.assert_called_once_with(50)
-        mock_thermostat._heater_controller.set_duty_accumulator.assert_called_once_with(200.0)
+        # But accumulator should NOT be restored
+        mock_thermostat._heater_controller.set_duty_accumulator.assert_not_called()
 
 
 class TestStateRestorerNoOldState:
