@@ -2612,3 +2612,56 @@ class TestClampedOvershootMultipliers:
         # Verify we have mix of clamped states
         clamped_count = sum(1 for c in learner.cycle_history if c.was_clamped)
         assert clamped_count == 3
+
+    def test_learner_logs_clamped_cycle_count(self, caplog):
+        """Test that learner logs clamped cycle count and multiplier."""
+        import logging
+        from custom_components.adaptive_thermostat.const import HEATING_TYPE_FLOOR_HYDRONIC
+
+        caplog.set_level(logging.DEBUG)
+
+        learner = AdaptiveLearner(heating_type=HEATING_TYPE_FLOOR_HYDRONIC)
+
+        # Add 2 non-clamped cycles
+        for _ in range(2):
+            cycle = CycleMetrics(
+                overshoot=0.2,
+                undershoot=0.0,
+                settling_time=30.0,
+                oscillations=0,
+                rise_time=20.0,
+                was_clamped=False,
+            )
+            learner.add_cycle_metrics(cycle)
+
+        # Add 4 clamped cycles
+        for _ in range(4):
+            cycle = CycleMetrics(
+                overshoot=0.2,
+                undershoot=0.0,
+                settling_time=30.0,
+                oscillations=0,
+                rise_time=20.0,
+                was_clamped=True,
+            )
+            learner.add_cycle_metrics(cycle)
+
+        # Call calculate_pid_adjustment to trigger logging
+        learner.calculate_pid_adjustment(
+            current_kp=100.0,
+            current_ki=1.0,
+            current_kd=2.0,
+        )
+
+        # Verify the log message contains the expected information
+        # Message format: "X of Y recent cycles clamped, overshoot amplified by {multiplier}x ({heating_type})"
+        log_messages = [record.message for record in caplog.records]
+        clamped_log = [msg for msg in log_messages if "recent cycles clamped" in msg]
+
+        assert len(clamped_log) == 1, "Expected exactly one clamped cycles log message"
+
+        # Verify the log contains all required elements
+        log_msg = clamped_log[0]
+        assert "4 of 6 recent cycles clamped" in log_msg
+        assert "overshoot amplified by 1.5x" in log_msg
+        assert "floor_hydronic" in log_msg
