@@ -136,6 +136,14 @@ class HeaterController:
         self._cycle_active: bool = False  # Heater has turned on in current demand period
         self._has_demand: bool = False    # control_output > 0
 
+    def _get_pid_was_clamped(self) -> bool:
+        """Get was_clamped state from PID controller with graceful fallback.
+
+        Returns:
+            True if PID reports clamping occurred, False otherwise or if unavailable.
+        """
+        return getattr(getattr(self._thermostat, '_pid', None), 'was_clamped', False)
+
     def update_cycle_durations(
         self,
         min_on_cycle_duration: float,
@@ -617,6 +625,7 @@ class HeaterController:
                     self._dispatcher.emit(SettlingStartedEvent(
                         hvac_mode=hvac_mode,
                         timestamp=datetime.now(),
+                        was_clamped=self._get_pid_was_clamped(),
                     ))
                 self._cycle_active = False  # Reset for next cycle
 
@@ -706,6 +715,7 @@ class HeaterController:
                 self._dispatcher.emit(SettlingStartedEvent(
                     hvac_mode=hvac_mode,
                     timestamp=datetime.now(),
+                    was_clamped=self._get_pid_was_clamped(),
                 ))
             self._cycle_active = False  # Reset for next cycle
 
