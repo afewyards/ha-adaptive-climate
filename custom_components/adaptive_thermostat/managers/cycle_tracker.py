@@ -119,6 +119,7 @@ class CycleTrackerManager:
         self._interruption_history: list[tuple[datetime, str]] = []
         self._last_interruption_reason: str | None = None  # Persists across cycle resets
         self._restoration_complete: bool = False  # Gate temperature updates until restoration done
+        self._was_clamped: bool = False  # Tracks if PID was clamped during current cycle
 
         # Calculate dynamic settling timeout based on thermal mass
         self._settling_timeout_source = "default"
@@ -275,6 +276,8 @@ class CycleTrackerManager:
         self._outdoor_temp_history.clear()
         # Clear last interruption reason when starting a new cycle
         self._last_interruption_reason = None
+        # Clear clamping state for new cycle
+        self._was_clamped = False
 
         current_temp = self._get_current_temp()
         self._logger.info(
@@ -287,7 +290,7 @@ class CycleTrackerManager:
         """Handle SETTLING_STARTED event.
 
         Args:
-            event: SettlingStartedEvent with hvac_mode, timestamp
+            event: SettlingStartedEvent with hvac_mode, timestamp, was_clamped
         """
         # Verify we're in the correct state for settling
         if event.hvac_mode == "heat" and self._state != CycleState.HEATING:
@@ -300,6 +303,9 @@ class CycleTrackerManager:
                 "Session ended while in state %s, ignoring", self._state
             )
             return
+
+        # Capture clamping state from event
+        self._was_clamped = event.was_clamped
 
         # Transition to SETTLING state
         self._state = CycleState.SETTLING
@@ -596,6 +602,9 @@ class CycleTrackerManager:
         self._integral_at_tolerance_entry = None
         self._integral_at_setpoint_cross = None
 
+        # Clear clamping state
+        self._was_clamped = False
+
         # Set state to IDLE
         self._state = CycleState.IDLE
 
@@ -871,6 +880,7 @@ class CycleTrackerManager:
             integral_at_tolerance_entry=integral_at_tolerance,
             integral_at_setpoint_cross=integral_at_setpoint,
             decay_contribution=decay_contribution,
+            was_clamped=self._was_clamped,
         )
 
         # Record metrics with adaptive learner
@@ -899,15 +909,17 @@ class CycleTrackerManager:
 
         # Log cycle completion with all metrics
         disturbance_str = f", disturbances={disturbances}" if disturbances else ""
+        clamped_str = f", was_clamped={self._was_clamped}"
         self._logger.info(
             "Cycle completed - overshoot=%.2f°C, undershoot=%.2f°C, "
-            "settling_time=%.1f min, oscillations=%d, rise_time=%.1f min%s",
+            "settling_time=%.1f min, oscillations=%d, rise_time=%.1f min%s%s",
             overshoot or 0.0,
             undershoot or 0.0,
             settling_time or 0.0,
             oscillations,
             rise_time or 0.0,
             disturbance_str,
+            clamped_str,
         )
 
         # Trigger auto-apply check if callback configured (and not in validation mode)

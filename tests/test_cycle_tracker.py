@@ -2305,3 +2305,180 @@ class TestTemperatureUpdateIntegralTracking:
         assert metrics.decay_contribution == expected_decay
 
 
+class TestClampingAwareness:
+    """Tests for clamping awareness in cycle tracking (Story 2.2)."""
+
+    def test_cycle_tracker_captures_clamped_from_event(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
+    ):
+        """Test that event.was_clamped is stored in tracker instance variable."""
+        # Create tracker
+        tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            get_target_temp=mock_callbacks["get_target_temp"],
+            get_current_temp=mock_callbacks["get_current_temp"],
+            get_hvac_mode=mock_callbacks["get_hvac_mode"],
+            get_in_grace_period=mock_callbacks["get_in_grace_period"],
+            dispatcher=dispatcher,
+        )
+        tracker.set_restoration_complete()
+
+        # Start a cycle
+        dispatcher.emit(CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=datetime.now(),
+            target_temp=20.0,
+            current_temp=18.0
+        ))
+        assert tracker.state == CycleState.HEATING
+
+        # Emit settling event with was_clamped=True
+        dispatcher.emit(SettlingStartedEvent(
+            hvac_mode="heat",
+            timestamp=datetime.now(),
+            was_clamped=True
+        ))
+
+        # Verify the tracker captured the clamping state
+        assert tracker._was_clamped is True
+
+        # Test with was_clamped=False
+        dispatcher.emit(CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=datetime.now(),
+            target_temp=20.0,
+            current_temp=18.0
+        ))
+        dispatcher.emit(SettlingStartedEvent(
+            hvac_mode="heat",
+            timestamp=datetime.now(),
+            was_clamped=False
+        ))
+        assert tracker._was_clamped is False
+
+    @pytest.mark.asyncio
+    async def test_cycle_tracker_includes_clamped_in_metrics(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
+    ):
+        """Test that finalized CycleMetrics includes was_clamped field."""
+        from datetime import timedelta
+
+        # Create tracker
+        tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            get_target_temp=mock_callbacks["get_target_temp"],
+            get_current_temp=mock_callbacks["get_current_temp"],
+            get_hvac_mode=mock_callbacks["get_hvac_mode"],
+            get_in_grace_period=mock_callbacks["get_in_grace_period"],
+            dispatcher=dispatcher,
+        )
+        tracker.set_restoration_complete()
+
+        # Start a cycle
+        start_time = datetime(2025, 1, 14, 10, 0, 0)
+        dispatcher.emit(CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=start_time,
+            target_temp=20.0,
+            current_temp=18.0
+        ))
+
+        # Add temperature samples (enough for valid cycle)
+        for i in range(15):
+            await tracker.update_temperature(
+                timestamp=start_time + timedelta(minutes=i),
+                temperature=18.0 + (i * 0.2)
+            )
+
+        # Emit settling event with was_clamped=True
+        settling_time = start_time + timedelta(minutes=15)
+        dispatcher.emit(SettlingStartedEvent(
+            hvac_mode="heat",
+            timestamp=settling_time,
+            was_clamped=True
+        ))
+
+        # Add settling samples to reach stability
+        for i in range(10):
+            await tracker.update_temperature(
+                timestamp=settling_time + timedelta(minutes=i),
+                temperature=20.0 + (0.01 * i)  # Very stable
+            )
+
+        # Finalize cycle
+        await tracker._finalize_cycle()
+
+        # Verify CycleMetrics was created with was_clamped=True
+        assert mock_adaptive_learner.add_cycle_metrics.called
+        metrics = mock_adaptive_learner.add_cycle_metrics.call_args[0][0]
+        assert metrics.was_clamped is True
+
+    @pytest.mark.asyncio
+    async def test_cycle_tracker_logs_clamping_status(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher, caplog
+    ):
+        """Test that cycle completion log includes clamping information."""
+        from datetime import timedelta
+        import logging
+
+        # Set log level to capture INFO logs
+        caplog.set_level(logging.INFO)
+
+        # Create tracker
+        tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            get_target_temp=mock_callbacks["get_target_temp"],
+            get_current_temp=mock_callbacks["get_current_temp"],
+            get_hvac_mode=mock_callbacks["get_hvac_mode"],
+            get_in_grace_period=mock_callbacks["get_in_grace_period"],
+            dispatcher=dispatcher,
+        )
+        tracker.set_restoration_complete()
+
+        # Start a cycle
+        start_time = datetime(2025, 1, 14, 10, 0, 0)
+        dispatcher.emit(CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=start_time,
+            target_temp=20.0,
+            current_temp=18.0
+        ))
+
+        # Add temperature samples
+        for i in range(15):
+            await tracker.update_temperature(
+                timestamp=start_time + timedelta(minutes=i),
+                temperature=18.0 + (i * 0.2)
+            )
+
+        # Emit settling event with was_clamped=True
+        settling_time = start_time + timedelta(minutes=15)
+        dispatcher.emit(SettlingStartedEvent(
+            hvac_mode="heat",
+            timestamp=settling_time,
+            was_clamped=True
+        ))
+
+        # Add settling samples
+        for i in range(10):
+            await tracker.update_temperature(
+                timestamp=settling_time + timedelta(minutes=i),
+                temperature=20.0 + (0.01 * i)
+            )
+
+        # Finalize cycle
+        await tracker._finalize_cycle()
+
+        # Verify log message includes clamping status
+        log_messages = [record.message for record in caplog.records if record.levelname == "INFO"]
+        completion_logs = [msg for msg in log_messages if "Cycle completed" in msg]
+        assert len(completion_logs) > 0
+        assert "was_clamped=True" in completion_logs[0] or "clamped" in completion_logs[0].lower()
+
+
