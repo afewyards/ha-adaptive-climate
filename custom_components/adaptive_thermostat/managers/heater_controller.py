@@ -144,6 +144,16 @@ class HeaterController:
         """
         return getattr(getattr(self._thermostat, '_pid', None), 'was_clamped', False)
 
+    def _reset_pid_clamp_state(self) -> None:
+        """Reset PID clamp state at cycle start.
+
+        Calls reset_clamp_state() on PID controller if available.
+        Silently ignores if PID or method not available.
+        """
+        pid = getattr(self._thermostat, '_pid', None)
+        if pid is not None and hasattr(pid, 'reset_clamp_state'):
+            pid.reset_clamp_state()
+
     def update_cycle_durations(
         self,
         min_on_cycle_duration: float,
@@ -431,6 +441,7 @@ class HeaterController:
             # Handle restart case: device already on but cycle not tracked
             if not self._cycle_active and self._has_demand:
                 self._cycle_active = True
+                self._reset_pid_clamp_state()
                 if self._dispatcher:
                     target_temp = getattr(self._thermostat, 'target_temperature', 0.0)
                     current_temp = getattr(self._thermostat, '_cur_temp', 0.0)
@@ -459,6 +470,7 @@ class HeaterController:
             # Emit CYCLE_STARTED on first heater turn-on in this demand period
             if not self._cycle_active and self._has_demand:
                 self._cycle_active = True
+                self._reset_pid_clamp_state()
                 if self._dispatcher:
                     target_temp = getattr(self._thermostat, 'target_temperature', 0.0)
                     current_temp = getattr(self._thermostat, '_cur_temp', 0.0)
@@ -641,6 +653,7 @@ class HeaterController:
         # Also handles restart case where valve is already open but cycle not tracked
         if new_active and not self._cycle_active and self._has_demand:
             self._cycle_active = True
+            self._reset_pid_clamp_state()
             if self._dispatcher:
                 target_temp = getattr(self._thermostat, 'target_temperature', 0.0)
                 current_temp = getattr(self._thermostat, '_cur_temp', 0.0)
