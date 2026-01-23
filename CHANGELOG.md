@@ -1,6 +1,21 @@
 # CHANGELOG
 
 
+## v0.26.2 (2026-01-23)
+
+### Bug Fixes
+
+- Don't accumulate duty while heater is already active
+  ([`244aee9`](https://github.com/afewyards/ha-adaptive-thermostat/commit/244aee9db575437d44ce02e28aac9894d3e314ab))
+
+When a minimum pulse fires, the heater stays ON for min_on_cycle_duration. Previously, subsequent
+  PID calculations would continue accumulating duty even though the heater was already heating. This
+  caused the accumulator to grow unbounded and fire repeated pulses.
+
+Now skips accumulation if heater is already active, letting the minimum pulse complete naturally
+  before accumulating new duty.
+
+
 ## v0.26.1 (2026-01-23)
 
 ### Bug Fixes
