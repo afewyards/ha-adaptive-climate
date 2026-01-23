@@ -1,6 +1,20 @@
 # CHANGELOG
 
 
+## v0.26.3 (2026-01-23)
+
+### Bug Fixes
+
+- Attempt turn-off when heater active with sub-threshold output
+  ([`910c969`](https://github.com/afewyards/ha-adaptive-thermostat/commit/910c96980fc7f6da7e6a255bd6451b6fb62d41d5))
+
+Previous fix skipped accumulation when heater was active but also skipped the turn-off attempt,
+  causing heater to stay on indefinitely.
+
+Now attempts async_turn_off() which respects min_cycle protection internally - rejected if min cycle
+  not elapsed, allowed once it has.
+
+
 ## v0.26.2 (2026-01-23)
 
 ### Bug Fixes
