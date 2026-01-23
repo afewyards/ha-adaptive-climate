@@ -1387,3 +1387,21 @@ class TestDutyAccumulator:
         heater_controller._duty_accumulator_seconds = 123.45
         # Property should return same value
         assert heater_controller.duty_accumulator_seconds == 123.45
+
+    def test_reset_duty_accumulator(self, heater_controller):
+        """Test reset_duty_accumulator sets accumulator to 0."""
+        # Set accumulator to non-zero value
+        heater_controller._duty_accumulator_seconds = 0.0
+        # Reset should set to 0
+        heater_controller.reset_duty_accumulator()
+        assert heater_controller._duty_accumulator_seconds == 0.0
+        assert heater_controller.duty_accumulator_seconds == 0.0
+
+    def test_reset_duty_accumulator_when_partial(self, heater_controller):
+        """Test reset clears partial accumulation."""
+        # Set accumulator to a partial value (less than threshold)
+        heater_controller._duty_accumulator_seconds = 150.0  # Half of min_on_cycle
+        # Reset should clear it
+        heater_controller.reset_duty_accumulator()
+        assert heater_controller._duty_accumulator_seconds == 0.0
+        assert heater_controller.duty_accumulator_seconds == 0.0

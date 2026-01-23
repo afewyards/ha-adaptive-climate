@@ -204,6 +204,16 @@ class HeaterController:
         """Return the current duty accumulator value in seconds."""
         return self._duty_accumulator_seconds
 
+    def reset_duty_accumulator(self) -> None:
+        """Reset duty accumulator to zero.
+
+        Called when:
+        - Setpoint changes significantly (>0.5°C)
+        - HVAC mode changes to OFF
+        - Contact sensor opens (window/door)
+        """
+        self._duty_accumulator_seconds = 0.0
+
     def set_heater_cycle_count(self, count: int) -> None:
         """Set the heater cycle count (used during state restoration).
 
