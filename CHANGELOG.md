@@ -1,6 +1,88 @@
 # CHANGELOG
 
 
+## v0.24.2 (2026-01-23)
+
+### Bug Fixes
+
+- Add _last_pid_calc_time tracking to ControlOutputManager
+  ([`61d85e9`](https://github.com/afewyards/ha-adaptive-thermostat/commit/61d85e9690acd88b2cc611a37b067fdab39caa95))
+
+Add tracking for when calc_output() was actually called, fixing the stale dt bug where external
+  sensor triggers used sensor-based timing instead of actual elapsed time since last PID
+  calculation.
+
+- Add _last_pid_calc_time instance variable - Calculate actual_dt based on real elapsed time - Add
+  tests verifying time tracking behavior
+
+- Add sanity clamp for unreasonable dt values (time jumps)
+  ([`fe4bd8b`](https://github.com/afewyards/ha-adaptive-thermostat/commit/fe4bd8b279dc27367cd8f583c18d0dae9685f408))
+
+- Add MAX_REASONABLE_DT=3600 constant (1 hour) - Clamp negative dt (clock jump backward) to 0 -
+  Clamp dt > MAX_REASONABLE_DT to 0 with warning log - Add tests:
+  test_control_output_clamps_negative_dt, test_control_output_clamps_huge_dt
+
+- Emit SETTLING_STARTED for valve mode when demand drops to 0
+  ([`b7b6acf`](https://github.com/afewyards/ha-adaptive-thermostat/commit/b7b6acf07a09f3357c3d6b1ac3d572c7a33eb3ba))
+
+The SETTLING_STARTED event was only emitted in PWM mode (self._pwm > 0), leaving valve mode entities
+  (using demand_switch) stuck in "heating" cycle state even after the heater turned off.
+
+Removed the PWM-only check so both PWM and valve modes emit SETTLING_STARTED when demand drops to
+  zero, allowing the cycle tracker to properly transition from HEATING to SETTLING state.
+
+- Pass corrected timestamps to PID for event-driven mode
+  ([`ebe721b`](https://github.com/afewyards/ha-adaptive-thermostat/commit/ebe721b24d51a1f0bc04b0bd4401fd15c9b2f93f))
+
+In event-driven mode (sampling_period=0), calculate effective timestamps based on actual elapsed
+  time between PID calculations, not sensor-based timing. This ensures external sensor triggers and
+  other non-temperature events use correct dt values.
+
+Changes: - Calculate effective_input_time and effective_previous_time from actual_dt - Pass
+  corrected timestamps to PID.calc() in event-driven mode - Add tests for dt correctness with
+  various trigger patterns
+
+- Reset PID calc timing when HVAC mode is set to OFF
+  ([`8c150bc`](https://github.com/afewyards/ha-adaptive-thermostat/commit/8c150bcbfdc1e3595e5f062ecabbc124d660af89))
+
+Add reset_calc_timing() method to ControlOutputManager that clears _last_pid_calc_time. Call this
+  when HVAC mode is turned OFF to avoid accumulating stale time deltas across off periods.
+
+When thermostat is turned back on, the first PID calculation will correctly use dt=0 instead of a
+  large stale dt from before the off period.
+
+### Refactoring
+
+- Add debug logging showing both actual_dt and sensor_dt
+  ([`9374155`](https://github.com/afewyards/ha-adaptive-thermostat/commit/937415576a9c24a3a65c5ddc669eb7820661a568))
+
+- Calculate sensor_dt (cur_temp_time - previous_temp_time) before PID calc - Update debug log to
+  include both actual_dt and sensor_dt for comparison - Add warning log when actual_dt differs
+  significantly from sensor_dt (ratio > 10x)
+
+- Update pid_dt state attribute to show actual calc dt
+  ([`c5061da`](https://github.com/afewyards/ha-adaptive-thermostat/commit/c5061da264885d6631357061783b70c55fe34173))
+
+Updates set_dt callback to pass actual_dt (real elapsed time between PID calculations) instead of
+  PID controller's internal dt (which was based on sensor timestamps). This ensures the pid_dt state
+  attribute correctly reflects the actual calculation interval.
+
+Also updates debug logging to use actual_dt for consistency.
+
+### Testing
+
+- Add integration tests for integral accumulation rate
+  ([`2968981`](https://github.com/afewyards/ha-adaptive-thermostat/commit/296898155c89b63aa38e12f94866f906b144dfc1))
+
+Adds test_integration_stale_dt.py with 4 tests verifying the stale dt bugfix works correctly: -
+  test_integral_accumulation_rate_with_non_sensor_triggers: verifies integral grows at ~0.01%/min
+  not 3%/min when triggered externally - test_integral_stable_when_at_setpoint: verifies integral
+  doesn't drift when error=0 across mixed trigger types -
+  test_integral_rate_independent_of_trigger_frequency: verifies same integral accumulation over 10
+  minutes regardless of trigger frequency - test_external_trigger_uses_correct_dt: verifies dt uses
+  actual elapsed time (30s) not sensor interval (60s)
+
+
 ## v0.24.1 (2026-01-22)
 
 ### Bug Fixes
