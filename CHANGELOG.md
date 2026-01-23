@@ -1,6 +1,18 @@
 # CHANGELOG
 
 
+## v0.26.5 (2026-01-23)
+
+### Bug Fixes
+
+- Use correct attribute name _current_temp in heater controller
+  ([`d8f5581`](https://github.com/afewyards/ha-adaptive-thermostat/commit/d8f5581e946ff4616448e6759e0a4d2f4d20fc0b))
+
+Changed getattr calls from _cur_temp to _current_temp to match the actual attribute name defined in
+  climate.py. This fixes event emission and settling detection to use real temperature values
+  instead of 0.0.
+
+
 ## v0.26.4 (2026-01-23)
 
 ### Bug Fixes
