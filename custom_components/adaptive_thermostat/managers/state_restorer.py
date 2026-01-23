@@ -218,6 +218,13 @@ class StateRestorer:
                 _LOGGER.info("%s: Restored cooler_cycle_count=%d",
                             thermostat.entity_id, int(cooler_cycles))
 
+            # Restore duty accumulator for sub-threshold PWM outputs
+            duty_accumulator = old_state.attributes.get('duty_accumulator')
+            if duty_accumulator is not None:
+                thermostat._heater_controller.set_duty_accumulator(float(duty_accumulator))
+                _LOGGER.info("%s: Restored duty_accumulator=%.1fs",
+                            thermostat.entity_id, float(duty_accumulator))
+
         # Restore PID history for rollback support
         self._restore_pid_history(old_state)
 

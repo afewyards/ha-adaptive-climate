@@ -63,6 +63,13 @@ def build_state_attributes(thermostat: SmartThermostat) -> dict[str, Any]:
             if thermostat._heater_controller
             else 0
         ),
+        # Duty accumulator for sub-threshold PWM outputs
+        "duty_accumulator": (
+            thermostat._heater_controller.duty_accumulator_seconds
+            if thermostat._heater_controller
+            else 0.0
+        ),
+        "duty_accumulator_pct": _compute_duty_accumulator_pct(thermostat),
     }
 
     # Debug-only attributes
@@ -96,6 +103,26 @@ def build_state_attributes(thermostat: SmartThermostat) -> dict[str, Any]:
     _add_learning_status_attributes(thermostat, attrs)
 
     return attrs
+
+
+def _compute_duty_accumulator_pct(thermostat: SmartThermostat) -> float:
+    """Compute duty accumulator as percentage of threshold.
+
+    Args:
+        thermostat: The SmartThermostat instance.
+
+    Returns:
+        Percentage of min_on_cycle_duration (0.0-200.0, since max is 2x threshold).
+    """
+    if not thermostat._heater_controller:
+        return 0.0
+
+    min_on = thermostat._heater_controller.min_on_cycle_duration
+    if min_on <= 0:
+        return 0.0
+
+    accumulator = thermostat._heater_controller.duty_accumulator_seconds
+    return round(100.0 * accumulator / min_on, 1)
 
 
 def _add_night_setback_attributes(

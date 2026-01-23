@@ -204,6 +204,19 @@ class HeaterController:
         """Return the current duty accumulator value in seconds."""
         return self._duty_accumulator_seconds
 
+    @property
+    def min_on_cycle_duration(self) -> float:
+        """Return the minimum on cycle duration in seconds."""
+        return self._min_on_cycle_duration
+
+    def set_duty_accumulator(self, seconds: float) -> None:
+        """Set the duty accumulator value (used during state restoration).
+
+        Args:
+            seconds: Accumulator value in seconds
+        """
+        self._duty_accumulator_seconds = min(seconds, self._max_accumulator)
+
     def reset_duty_accumulator(self) -> None:
         """Reset duty accumulator to zero.
 

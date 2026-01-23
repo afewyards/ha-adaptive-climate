@@ -440,3 +440,196 @@ class TestAddLearningStatusAttributes:
         assert attrs[ATTR_LAST_PID_ADJUSTMENT] == test_time.isoformat()
         assert "2024-03-15" in attrs[ATTR_LAST_PID_ADJUSTMENT]
         assert "10:30:45" in attrs[ATTR_LAST_PID_ADJUSTMENT]
+
+
+class TestDutyAccumulatorAttributes:
+    """Tests for duty accumulator state attributes."""
+
+    def test_accumulator_in_state_attributes(self):
+        """Test duty_accumulator exposed in extra_state_attributes."""
+        from custom_components.adaptive_thermostat.managers.state_attributes import (
+            build_state_attributes,
+        )
+
+        thermostat = MagicMock()
+        thermostat._away_temp = 18.0
+        thermostat._eco_temp = 19.0
+        thermostat._boost_temp = 24.0
+        thermostat._comfort_temp = 21.0
+        thermostat._home_temp = 20.0
+        thermostat._sleep_temp = 18.0
+        thermostat._activity_temp = 20.0
+        thermostat._control_output = 50.0
+        thermostat._kp = 20.0
+        thermostat._ki = 0.01
+        thermostat._kd = 100.0
+        thermostat._ke = 0.5
+        thermostat.pid_mode = "auto"
+        thermostat.pid_control_i = 5.0
+        thermostat._pid_controller = MagicMock()
+        thermostat._pid_controller.outdoor_temp_lagged = 5.0
+        thermostat._pid_controller.outdoor_temp_lag_tau = 3600.0
+        thermostat._heater_controller = MagicMock()
+        thermostat._heater_controller.heater_cycle_count = 100
+        thermostat._heater_controller.cooler_cycle_count = 50
+        thermostat._heater_controller.duty_accumulator_seconds = 120.5
+        thermostat._heater_controller.min_on_cycle_duration = 300.0
+        thermostat._night_setback = None
+        thermostat._night_setback_config = None
+        thermostat._night_setback_controller = None
+        thermostat._control_output_manager = None
+        thermostat._ke_learner = None
+        thermostat._heater_control_failed = False
+        thermostat._contact_sensor_handler = None
+        thermostat.in_learning_grace_period = False
+        thermostat.hass = MagicMock()
+        thermostat.hass.data = {}
+
+        attrs = build_state_attributes(thermostat)
+
+        assert "duty_accumulator" in attrs
+        assert attrs["duty_accumulator"] == 120.5
+
+    def test_accumulator_zero_without_heater_controller(self):
+        """Test duty_accumulator is 0 when heater_controller is None."""
+        from custom_components.adaptive_thermostat.managers.state_attributes import (
+            build_state_attributes,
+        )
+
+        thermostat = MagicMock()
+        thermostat._away_temp = 18.0
+        thermostat._eco_temp = 19.0
+        thermostat._boost_temp = 24.0
+        thermostat._comfort_temp = 21.0
+        thermostat._home_temp = 20.0
+        thermostat._sleep_temp = 18.0
+        thermostat._activity_temp = 20.0
+        thermostat._control_output = 50.0
+        thermostat._kp = 20.0
+        thermostat._ki = 0.01
+        thermostat._kd = 100.0
+        thermostat._ke = 0.5
+        thermostat.pid_mode = "auto"
+        thermostat.pid_control_i = 5.0
+        thermostat._pid_controller = MagicMock()
+        thermostat._pid_controller.outdoor_temp_lagged = 5.0
+        thermostat._pid_controller.outdoor_temp_lag_tau = 3600.0
+        thermostat._heater_controller = None
+        thermostat._night_setback = None
+        thermostat._night_setback_config = None
+        thermostat._night_setback_controller = None
+        thermostat._control_output_manager = None
+        thermostat._ke_learner = None
+        thermostat._heater_control_failed = False
+        thermostat._contact_sensor_handler = None
+        thermostat.in_learning_grace_period = False
+        thermostat.hass = MagicMock()
+        thermostat.hass.data = {}
+
+        attrs = build_state_attributes(thermostat)
+
+        assert "duty_accumulator" in attrs
+        assert attrs["duty_accumulator"] == 0.0
+
+    def test_accumulator_pct_attribute(self):
+        """Test duty_accumulator_pct shows percentage of threshold."""
+        from custom_components.adaptive_thermostat.managers.state_attributes import (
+            build_state_attributes,
+        )
+
+        thermostat = MagicMock()
+        thermostat._away_temp = 18.0
+        thermostat._eco_temp = 19.0
+        thermostat._boost_temp = 24.0
+        thermostat._comfort_temp = 21.0
+        thermostat._home_temp = 20.0
+        thermostat._sleep_temp = 18.0
+        thermostat._activity_temp = 20.0
+        thermostat._control_output = 50.0
+        thermostat._kp = 20.0
+        thermostat._ki = 0.01
+        thermostat._kd = 100.0
+        thermostat._ke = 0.5
+        thermostat.pid_mode = "auto"
+        thermostat.pid_control_i = 5.0
+        thermostat._pid_controller = MagicMock()
+        thermostat._pid_controller.outdoor_temp_lagged = 5.0
+        thermostat._pid_controller.outdoor_temp_lag_tau = 3600.0
+        thermostat._heater_controller = MagicMock()
+        thermostat._heater_controller.heater_cycle_count = 100
+        thermostat._heater_controller.cooler_cycle_count = 50
+        thermostat._heater_controller.duty_accumulator_seconds = 150.0  # 50% of 300s
+        thermostat._heater_controller.min_on_cycle_duration = 300.0
+        thermostat._night_setback = None
+        thermostat._night_setback_config = None
+        thermostat._night_setback_controller = None
+        thermostat._control_output_manager = None
+        thermostat._ke_learner = None
+        thermostat._heater_control_failed = False
+        thermostat._contact_sensor_handler = None
+        thermostat.in_learning_grace_period = False
+        thermostat.hass = MagicMock()
+        thermostat.hass.data = {}
+
+        attrs = build_state_attributes(thermostat)
+
+        assert "duty_accumulator_pct" in attrs
+        assert attrs["duty_accumulator_pct"] == 50.0
+
+    def test_accumulator_pct_at_threshold(self):
+        """Test duty_accumulator_pct shows 100% when at threshold."""
+        from custom_components.adaptive_thermostat.managers.state_attributes import (
+            _compute_duty_accumulator_pct,
+        )
+
+        thermostat = MagicMock()
+        thermostat._heater_controller = MagicMock()
+        thermostat._heater_controller.duty_accumulator_seconds = 300.0
+        thermostat._heater_controller.min_on_cycle_duration = 300.0
+
+        pct = _compute_duty_accumulator_pct(thermostat)
+
+        assert pct == 100.0
+
+    def test_accumulator_pct_above_threshold(self):
+        """Test duty_accumulator_pct can exceed 100% (max is 200%)."""
+        from custom_components.adaptive_thermostat.managers.state_attributes import (
+            _compute_duty_accumulator_pct,
+        )
+
+        thermostat = MagicMock()
+        thermostat._heater_controller = MagicMock()
+        thermostat._heater_controller.duty_accumulator_seconds = 500.0
+        thermostat._heater_controller.min_on_cycle_duration = 300.0
+
+        pct = _compute_duty_accumulator_pct(thermostat)
+
+        assert pct == pytest.approx(166.7, rel=0.01)
+
+    def test_accumulator_pct_zero_without_controller(self):
+        """Test duty_accumulator_pct is 0 when heater_controller is None."""
+        from custom_components.adaptive_thermostat.managers.state_attributes import (
+            _compute_duty_accumulator_pct,
+        )
+
+        thermostat = MagicMock()
+        thermostat._heater_controller = None
+
+        pct = _compute_duty_accumulator_pct(thermostat)
+
+        assert pct == 0.0
+
+    def test_accumulator_pct_zero_with_zero_min_on(self):
+        """Test duty_accumulator_pct handles zero min_on_cycle_duration."""
+        from custom_components.adaptive_thermostat.managers.state_attributes import (
+            _compute_duty_accumulator_pct,
+        )
+
+        thermostat = MagicMock()
+        thermostat._heater_controller = MagicMock()
+        thermostat._heater_controller.duty_accumulator_seconds = 100.0
+        thermostat._heater_controller.min_on_cycle_duration = 0.0
+
+        pct = _compute_duty_accumulator_pct(thermostat)
+
+        assert pct == 0.0
