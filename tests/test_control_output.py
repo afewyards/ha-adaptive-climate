@@ -1195,3 +1195,155 @@ class TestResetCalcTiming:
         dt_after_reset = third_call[0][2] - third_call[0][3]
         assert dt_after_reset == pytest.approx(0.0, abs=0.1), \
             f"After reset, dt should be 0, got {dt_after_reset}"
+
+
+# ============================================================================
+# pid_dt State Attribute Tests (Story 3.1)
+# ============================================================================
+
+
+class TestPidDtStateAttribute:
+    """Tests for pid_dt state attribute showing actual calc dt."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        # Create mock thermostat
+        self.thermostat = Mock()
+        self.thermostat.entity_id = "climate.living_room"
+        self.thermostat.hass = Mock()
+        self.thermostat._heating_type = HEATING_TYPE_CONVECTOR
+        self.thermostat._hvac_mode = HVACMode.HEAT
+
+        # Create mock PID controller with a DIFFERENT dt value
+        # This tests that we use actual_dt, not PID's internal dt
+        self.pid_controller = Mock()
+        self.pid_controller.sampling_period = 0
+        self.pid_controller.calc = Mock(return_value=(50.0, True))
+        self.pid_controller.proportional = 30.0
+        self.pid_controller.integral = 15.0
+        self.pid_controller.derivative = 5.0
+        self.pid_controller.external = 0.0
+        self.pid_controller.feedforward = 0.0
+        self.pid_controller.error = 1.0
+        # PID controller returns a DIFFERENT dt value (stale sensor-based)
+        # This should NOT be what gets passed to set_dt
+        self.pid_controller.dt = 21600.0  # 6 hours - stale value!
+
+        # Create mock heater controller
+        self.heater_controller = Mock()
+
+        # Create mock coordinator (minimal - no coupling)
+        self.coordinator = Mock()
+        self.coordinator.get_active_zones = Mock(return_value={})
+        self.thermostat.hass.data = {
+            "adaptive_thermostat": {
+                "coordinator": self.coordinator
+            }
+        }
+
+        # Track set_dt calls to verify actual_dt is passed
+        self._set_dt_calls = []
+
+        def track_set_dt(value):
+            self._set_dt_calls.append(value)
+
+        # Create callbacks
+        self.callbacks = {
+            "get_current_temp": Mock(return_value=20.0),
+            "get_ext_temp": Mock(return_value=5.0),
+            "get_wind_speed": Mock(return_value=0.0),
+            "get_previous_temp_time": Mock(return_value=1000.0),
+            "set_previous_temp_time": Mock(),
+            "get_cur_temp_time": Mock(return_value=1060.0),
+            "set_cur_temp_time": Mock(),
+            "get_output_precision": Mock(return_value=1),
+            "calculate_night_setback_adjustment": Mock(return_value=(21.0, None, None)),
+            "set_control_output": Mock(),
+            "set_p": Mock(),
+            "set_i": Mock(),
+            "set_d": Mock(),
+            "set_e": Mock(),
+            "set_dt": Mock(side_effect=track_set_dt),
+            "get_kp": Mock(return_value=100.0),
+            "get_ki": Mock(return_value=0.1),
+            "get_kd": Mock(return_value=50.0),
+            "get_ke": Mock(return_value=0.3),
+        }
+
+        # Create control output manager
+        self.manager = ControlOutputManager(
+            thermostat=self.thermostat,
+            pid_controller=self.pid_controller,
+            heater_controller=self.heater_controller,
+            **self.callbacks
+        )
+
+    @pytest.mark.asyncio
+    async def test_pid_dt_attribute_shows_actual_calc_dt(self):
+        """TEST: Verify state attribute reflects actual elapsed time not sensor interval.
+
+        This is the key test for story 3.1 - the pid_dt value exposed to state
+        attributes should show the actual time between PID calculations, NOT the
+        stale value from the PID controller (which was based on sensor timestamps).
+        """
+        # First calc at t=1000 - should report dt=0 (no prior calc)
+        with patch("time.time", return_value=1000.0):
+            await self.manager.calc_output()
+
+        assert len(self._set_dt_calls) == 1
+        assert self._set_dt_calls[0] == pytest.approx(0.0, abs=0.1), \
+            "First calc should report dt=0"
+
+        # Second calc at t=1060 - should report dt=60 (actual elapsed time)
+        # The PID controller's dt is 21600 (6 hours), but set_dt should get 60
+        with patch("time.time", return_value=1060.0):
+            await self.manager.calc_output()
+
+        assert len(self._set_dt_calls) == 2
+        # CRITICAL: This should be 60 (actual elapsed), NOT 21600 (PID's stale dt)
+        assert self._set_dt_calls[1] == pytest.approx(60.0, abs=0.1), \
+            f"Second calc should report actual_dt=60, not PID's stale dt={self.pid_controller.dt}"
+
+    @pytest.mark.asyncio
+    async def test_pid_dt_attribute_after_reset(self):
+        """TEST: pid_dt shows 0 after reset_calc_timing()."""
+        # First calc at t=1000
+        with patch("time.time", return_value=1000.0):
+            await self.manager.calc_output()
+
+        # Second calc at t=1060 - dt=60
+        with patch("time.time", return_value=1060.0):
+            await self.manager.calc_output()
+
+        # Reset timing
+        self.manager.reset_calc_timing()
+
+        # Third calc at t=1120 - should report dt=0 after reset
+        with patch("time.time", return_value=1120.0):
+            await self.manager.calc_output()
+
+        assert len(self._set_dt_calls) == 3
+        assert self._set_dt_calls[2] == pytest.approx(0.0, abs=0.1), \
+            "After reset, dt should be 0"
+
+    @pytest.mark.asyncio
+    async def test_pid_dt_attribute_with_external_triggers(self):
+        """TEST: pid_dt correctly shows time between calcs regardless of trigger type."""
+        # First calc (sensor update) at t=1000
+        with patch("time.time", return_value=1000.0):
+            await self.manager.calc_output(is_temp_sensor_update=True)
+
+        # External trigger at t=1030 (30s later)
+        with patch("time.time", return_value=1030.0):
+            await self.manager.calc_output(is_temp_sensor_update=False)
+
+        # Should show 30s elapsed, not sensor interval
+        assert self._set_dt_calls[1] == pytest.approx(30.0, abs=0.1), \
+            "External trigger should show actual elapsed time"
+
+        # Another external trigger at t=1045 (15s later)
+        with patch("time.time", return_value=1045.0):
+            await self.manager.calc_output(is_temp_sensor_update=False)
+
+        assert self._set_dt_calls[2] == pytest.approx(15.0, abs=0.1), \
+            "Subsequent trigger should show correct dt"

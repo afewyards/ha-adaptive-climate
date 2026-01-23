@@ -269,10 +269,10 @@ class ControlOutputManager:
         self._set_control_output(control_output)
         self._last_control_output = control_output
 
-        # Get error and dt for logging
+        # Get error for logging; use actual_dt (not PID's dt) for state attribute
+        # This ensures the pid_dt attribute reflects actual calc interval, not sensor interval
         error = self._pid_controller.error
-        dt = self._pid_controller.dt
-        self._set_dt(dt)
+        self._set_dt(actual_dt)
 
         if update:
             kp = self._get_kp() or 0
@@ -285,7 +285,7 @@ class ControlOutputManager:
                 entity_id,
                 str(control_output),
                 error,
-                dt,
+                actual_dt,
                 p,
                 i,
                 d,
