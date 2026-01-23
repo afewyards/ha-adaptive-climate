@@ -835,17 +835,36 @@ class HeaterController:
         thermostat_entity_id = self._thermostat.entity_id
 
         time_passed = time.time() - time_changed
+
+        # Handle zero/negative output - reset accumulator and turn off
+        if control_output <= 0:
+            self._duty_accumulator_seconds = 0.0
+            await self.async_turn_off(
+                hvac_mode=hvac_mode,
+                get_cycle_start_time=get_cycle_start_time,
+                set_is_heating=set_is_heating,
+                set_last_heat_cycle_time=set_last_heat_cycle_time,
+            )
+            set_force_on(False)
+            set_force_off(False)
+            return
+
         # Compute time_on based on PWM duration and PID output
         time_on = self._pwm * abs(control_output) / self._difference
         time_off = self._pwm - time_on
 
-        # If calculated on-time < min_on_cycle_duration, don't turn on at all
-        # (turning on would force staying on for min_on, overshooting demand)
+        # If calculated on-time < min_on_cycle_duration, accumulate duty
         if 0 < time_on < self._min_on_cycle_duration:
+            # Accumulate duty, capped at max
+            self._duty_accumulator_seconds = min(
+                self._duty_accumulator_seconds + time_on,
+                self._max_accumulator,
+            )
             _LOGGER.debug(
-                "%s: Skipping PWM activation - calculated on-time %.0fs < min %.0fs",
+                "%s: Sub-threshold output - accumulated %.0fs (total: %.0fs / %.0fs)",
                 thermostat_entity_id,
                 time_on,
+                self._duty_accumulator_seconds,
                 self._min_on_cycle_duration,
             )
             await self.async_turn_off(
@@ -854,7 +873,12 @@ class HeaterController:
                 set_is_heating=set_is_heating,
                 set_last_heat_cycle_time=set_last_heat_cycle_time,
             )
+            set_force_on(False)
+            set_force_off(False)
             return
+
+        # Normal duty threshold met - reset accumulator
+        self._duty_accumulator_seconds = 0.0
 
         if 0 < time_off < self._min_off_cycle_duration:
             # time_off is too short, increase time_on and time_off

@@ -1405,3 +1405,170 @@ class TestDutyAccumulator:
         heater_controller.reset_duty_accumulator()
         assert heater_controller._duty_accumulator_seconds == 0.0
         assert heater_controller.duty_accumulator_seconds == 0.0
+
+
+class TestDutyAccumulation:
+    """Tests for duty accumulation in async_pwm_switch (story 2.1)."""
+
+    @pytest.mark.asyncio
+    async def test_sub_threshold_accumulates_duty(self, heater_controller):
+        """Test output 10% with threshold ~50% accumulates time_on.
+
+        Fixture: pwm=600, difference=100, min_on_cycle=300
+        10% output: time_on = 600 * 10 / 100 = 60s (< 300s threshold)
+        Should accumulate 60s to the duty accumulator.
+        """
+        import time
+
+        controller = heater_controller
+        controller._hass.services.async_call = MagicMock()
+        controller._hass.states.is_state = MagicMock(return_value=False)
+
+        # Callbacks
+        get_cycle_start_time = MagicMock(return_value=0.0)
+        set_is_heating = MagicMock()
+        set_last_heat_cycle_time = MagicMock()
+        set_time_changed = MagicMock()
+        set_force_on = MagicMock()
+        set_force_off = MagicMock()
+
+        # Start with zero accumulator
+        assert controller._duty_accumulator_seconds == 0.0
+
+        # Call with 10% output - should accumulate 60s
+        await controller.async_pwm_switch(
+            control_output=10.0,  # 10% → time_on = 60s < 300s threshold
+            hvac_mode=MockHVACMode.HEAT,
+            get_cycle_start_time=get_cycle_start_time,
+            set_is_heating=set_is_heating,
+            set_last_heat_cycle_time=set_last_heat_cycle_time,
+            time_changed=time.time(),
+            set_time_changed=set_time_changed,
+            force_on=False,
+            force_off=False,
+            set_force_on=set_force_on,
+            set_force_off=set_force_off,
+        )
+
+        # Should have accumulated 60 seconds
+        assert controller._duty_accumulator_seconds == 60.0
+
+    @pytest.mark.asyncio
+    async def test_accumulator_capped_at_max(self, heater_controller):
+        """Test accumulator never exceeds _max_accumulator (2 * min_on_cycle).
+
+        max_accumulator = 2 * 300 = 600s
+        Pre-set accumulator to 550s, add 60s → should cap at 600s
+        """
+        import time
+
+        controller = heater_controller
+        controller._hass.services.async_call = MagicMock()
+        controller._hass.states.is_state = MagicMock(return_value=False)
+
+        get_cycle_start_time = MagicMock(return_value=0.0)
+        set_is_heating = MagicMock()
+        set_last_heat_cycle_time = MagicMock()
+        set_time_changed = MagicMock()
+        set_force_on = MagicMock()
+        set_force_off = MagicMock()
+
+        # Pre-set accumulator near max
+        controller._duty_accumulator_seconds = 550.0
+
+        # Call with 10% output (60s) - would exceed 600s max
+        await controller.async_pwm_switch(
+            control_output=10.0,
+            hvac_mode=MockHVACMode.HEAT,
+            get_cycle_start_time=get_cycle_start_time,
+            set_is_heating=set_is_heating,
+            set_last_heat_cycle_time=set_last_heat_cycle_time,
+            time_changed=time.time(),
+            set_time_changed=set_time_changed,
+            force_on=False,
+            force_off=False,
+            set_force_on=set_force_on,
+            set_force_off=set_force_off,
+        )
+
+        # Should be capped at max (600s)
+        assert controller._duty_accumulator_seconds == 600.0
+
+    @pytest.mark.asyncio
+    async def test_normal_duty_resets_accumulator(self, heater_controller):
+        """Test output >= threshold resets accumulator to 0.
+
+        50% output: time_on = 600 * 50 / 100 = 300s (= threshold)
+        Should reset accumulator to 0 when firing a normal pulse.
+        """
+        import time
+
+        controller = heater_controller
+        controller._hass.services.async_call = MagicMock()
+        controller._hass.states.is_state = MagicMock(return_value=False)
+
+        get_cycle_start_time = MagicMock(return_value=0.0)
+        set_is_heating = MagicMock()
+        set_last_heat_cycle_time = MagicMock()
+        set_time_changed = MagicMock()
+        set_force_on = MagicMock()
+        set_force_off = MagicMock()
+
+        # Pre-set accumulator
+        controller._duty_accumulator_seconds = 150.0
+
+        # Call with 50% output - time_on = 300s >= threshold
+        # Device is OFF, time_passed > time_off, so it should turn on
+        await controller.async_pwm_switch(
+            control_output=50.0,
+            hvac_mode=MockHVACMode.HEAT,
+            get_cycle_start_time=get_cycle_start_time,
+            set_is_heating=set_is_heating,
+            set_last_heat_cycle_time=set_last_heat_cycle_time,
+            time_changed=time.time() - 600,  # Force time_off elapsed
+            set_time_changed=set_time_changed,
+            force_on=False,
+            force_off=False,
+            set_force_on=set_force_on,
+            set_force_off=set_force_off,
+        )
+
+        # Accumulator should be reset
+        assert controller._duty_accumulator_seconds == 0.0
+
+    @pytest.mark.asyncio
+    async def test_zero_output_resets_accumulator(self, heater_controller):
+        """Test control_output=0 resets accumulator."""
+        import time
+
+        controller = heater_controller
+        controller._hass.services.async_call = MagicMock()
+        controller._hass.states.is_state = MagicMock(return_value=False)
+
+        get_cycle_start_time = MagicMock(return_value=0.0)
+        set_is_heating = MagicMock()
+        set_last_heat_cycle_time = MagicMock()
+        set_time_changed = MagicMock()
+        set_force_on = MagicMock()
+        set_force_off = MagicMock()
+
+        # Pre-set accumulator
+        controller._duty_accumulator_seconds = 200.0
+
+        # Call with 0% output
+        await controller.async_pwm_switch(
+            control_output=0.0,
+            hvac_mode=MockHVACMode.HEAT,
+            get_cycle_start_time=get_cycle_start_time,
+            set_is_heating=set_is_heating,
+            set_last_heat_cycle_time=set_last_heat_cycle_time,
+            time_changed=time.time(),
+            set_time_changed=set_time_changed,
+            force_on=False,
+            force_off=False,
+            set_force_on=set_force_on,
+            set_force_off=set_force_off,
+        )
+
+        # Accumulator should be reset
+        assert controller._duty_accumulator_seconds == 0.0
