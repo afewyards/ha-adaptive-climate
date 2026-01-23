@@ -855,7 +855,36 @@ class HeaterController:
 
         # If calculated on-time < min_on_cycle_duration, accumulate duty
         if 0 < time_on < self._min_on_cycle_duration:
-            # Accumulate duty, capped at max
+            # Check if accumulator has already reached threshold to fire minimum pulse
+            if self._duty_accumulator_seconds >= self._min_on_cycle_duration:
+                _LOGGER.info(
+                    "%s: Accumulator threshold reached (%.0fs >= %.0fs). Firing minimum pulse.",
+                    thermostat_entity_id,
+                    self._duty_accumulator_seconds,
+                    self._min_on_cycle_duration,
+                )
+                # Set demand state before turning on
+                self._has_demand = True
+
+                # Fire minimum pulse
+                await self.async_turn_on(
+                    hvac_mode=hvac_mode,
+                    get_cycle_start_time=get_cycle_start_time,
+                    set_is_heating=set_is_heating,
+                    set_last_heat_cycle_time=set_last_heat_cycle_time,
+                )
+
+                # Update time tracking
+                set_time_changed(time.time())
+
+                # Subtract minimum pulse duration from accumulator
+                self._duty_accumulator_seconds -= self._min_on_cycle_duration
+
+                set_force_on(False)
+                set_force_off(False)
+                return
+
+            # Below threshold - accumulate duty and keep heater off
             self._duty_accumulator_seconds = min(
                 self._duty_accumulator_seconds + time_on,
                 self._max_accumulator,
