@@ -214,12 +214,21 @@ class ControlOutputManager:
         self._pid_controller.set_feedforward(feedforward)
 
         # Calculate PID output
+        # For event-driven mode (sampling_period == 0), pass corrected timestamps
+        # to ensure PID receives the actual elapsed time between calculations,
+        # not the sensor-based interval which may be stale for external triggers
         if self._pid_controller.sampling_period == 0:
+            # Calculate effective timestamps based on actual_dt
+            # effective_input_time = current_time (when we're calculating now)
+            # effective_previous_time = current_time - actual_dt (when last calc happened)
+            effective_input_time = current_time
+            effective_previous_time = current_time - actual_dt
+
             control_output, update = self._pid_controller.calc(
                 current_temp,
                 effective_target,
-                cur_temp_time,
-                previous_temp_time,
+                effective_input_time,
+                effective_previous_time,
                 ext_temp,
                 wind_speed,
             )

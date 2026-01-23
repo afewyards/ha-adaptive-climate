@@ -916,3 +916,166 @@ class TestPIDCalcTimeTracking:
 
         # _last_pid_calc_time should still update
         assert self.manager._last_pid_calc_time == 1000.0 + huge_dt
+
+
+# ============================================================================
+# PID dt Correction Tests (Story 1.3)
+# ============================================================================
+
+
+class TestPIDDtCorrection:
+    """Tests for passing corrected timestamps to PID controller."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        # Create mock thermostat
+        self.thermostat = Mock()
+        self.thermostat.entity_id = "climate.living_room"
+        self.thermostat.hass = Mock()
+        self.thermostat._heating_type = HEATING_TYPE_CONVECTOR
+        self.thermostat._hvac_mode = HVACMode.HEAT
+
+        # Create mock PID controller that tracks call arguments
+        self.pid_controller = Mock()
+        self.pid_controller.sampling_period = 0  # Event-driven mode
+        self.pid_controller.calc = Mock(return_value=(50.0, True))
+        self.pid_controller.proportional = 30.0
+        self.pid_controller.integral = 15.0
+        self.pid_controller.derivative = 5.0
+        self.pid_controller.external = 0.0
+        self.pid_controller.feedforward = 0.0
+        self.pid_controller.error = 1.0
+        self.pid_controller.dt = 60.0
+
+        # Create mock heater controller
+        self.heater_controller = Mock()
+
+        # Create mock coordinator (minimal - no coupling)
+        self.coordinator = Mock()
+        self.coordinator.get_active_zones = Mock(return_value={})
+        self.thermostat.hass.data = {
+            "adaptive_thermostat": {
+                "coordinator": self.coordinator
+            }
+        }
+
+        # Store sensor timestamps separately from actual calc time
+        self.sensor_previous_time = 1000.0
+        self.sensor_cur_time = 1060.0  # 60s sensor interval
+
+        # Create callbacks
+        self.callbacks = {
+            "get_current_temp": Mock(return_value=20.0),
+            "get_ext_temp": Mock(return_value=5.0),
+            "get_wind_speed": Mock(return_value=0.0),
+            "get_previous_temp_time": Mock(return_value=self.sensor_previous_time),
+            "set_previous_temp_time": Mock(),
+            "get_cur_temp_time": Mock(return_value=self.sensor_cur_time),
+            "set_cur_temp_time": Mock(),
+            "get_output_precision": Mock(return_value=1),
+            "calculate_night_setback_adjustment": Mock(return_value=(21.0, None, None)),
+            "set_control_output": Mock(),
+            "set_p": Mock(),
+            "set_i": Mock(),
+            "set_d": Mock(),
+            "set_e": Mock(),
+            "set_dt": Mock(),
+            "get_kp": Mock(return_value=100.0),
+            "get_ki": Mock(return_value=0.1),
+            "get_kd": Mock(return_value=50.0),
+            "get_ke": Mock(return_value=0.3),
+        }
+
+        # Create control output manager
+        self.manager = ControlOutputManager(
+            thermostat=self.thermostat,
+            pid_controller=self.pid_controller,
+            heater_controller=self.heater_controller,
+            **self.callbacks
+        )
+
+    @pytest.mark.asyncio
+    async def test_dt_correct_between_sensor_updates(self):
+        """TEST: Trigger calc_output twice 60s apart without sensor update, verify PID receives dt=60."""
+        # First calc at t=1000
+        with patch("time.time", return_value=1000.0):
+            await self.manager.calc_output(is_temp_sensor_update=False)
+
+        # First call should have dt=0 (no prior reference)
+        first_call = self.pid_controller.calc.call_args_list[0]
+        first_input_time = first_call[0][2]  # input_time is 3rd positional arg
+        first_last_input_time = first_call[0][3]  # last_input_time is 4th positional arg
+        # dt = input_time - last_input_time
+        first_dt = first_input_time - first_last_input_time
+        assert first_dt == pytest.approx(0.0, abs=0.1), f"First call dt should be 0, got {first_dt}"
+
+        # Second calc at t=1060 (60s later), still no sensor update
+        # Sensor timestamps remain the same (no new temp reading)
+        with patch("time.time", return_value=1060.0):
+            await self.manager.calc_output(is_temp_sensor_update=False)
+
+        # Second call should have dt=60 (based on actual elapsed calc time)
+        second_call = self.pid_controller.calc.call_args_list[1]
+        second_input_time = second_call[0][2]  # input_time
+        second_last_input_time = second_call[0][3]  # last_input_time
+        second_dt = second_input_time - second_last_input_time
+        assert second_dt == pytest.approx(60.0, abs=0.1), f"Second call dt should be 60, got {second_dt}"
+
+    @pytest.mark.asyncio
+    async def test_non_sensor_trigger_uses_actual_elapsed_time(self):
+        """TEST: External sensor trigger uses actual elapsed time, not sensor interval."""
+        # Simulate: sensor updated at t=1000, then external trigger at t=1030 (30s later)
+        # The sensor interval is 60s (1060-1000), but actual time since last calc is 30s
+
+        # First calc at t=1000 (triggered by sensor update)
+        with patch("time.time", return_value=1000.0):
+            await self.manager.calc_output(is_temp_sensor_update=True)
+
+        # External trigger at t=1030 (30s after last calc)
+        # Sensor timestamps haven't changed (no new temp reading)
+        with patch("time.time", return_value=1030.0):
+            await self.manager.calc_output(is_temp_sensor_update=False)
+
+        # The PID should receive dt=30 (actual elapsed time), not dt=60 (sensor interval)
+        second_call = self.pid_controller.calc.call_args_list[1]
+        second_input_time = second_call[0][2]  # input_time
+        second_last_input_time = second_call[0][3]  # last_input_time
+        actual_dt = second_input_time - second_last_input_time
+
+        # The dt should be 30s (actual time between calc calls)
+        assert actual_dt == pytest.approx(30.0, abs=0.1), \
+            f"External trigger should use actual elapsed time (30s), got {actual_dt}"
+
+    @pytest.mark.asyncio
+    async def test_multiple_external_triggers_accumulate_correctly(self):
+        """TEST: Multiple external triggers in sequence use correct dt each time."""
+        # First calc at t=1000
+        with patch("time.time", return_value=1000.0):
+            await self.manager.calc_output(is_temp_sensor_update=True)
+
+        # External trigger at t=1010 (10s later)
+        with patch("time.time", return_value=1010.0):
+            await self.manager.calc_output(is_temp_sensor_update=False)
+
+        # Verify dt=10
+        call_2 = self.pid_controller.calc.call_args_list[1]
+        dt_2 = call_2[0][2] - call_2[0][3]
+        assert dt_2 == pytest.approx(10.0, abs=0.1)
+
+        # Another external trigger at t=1025 (15s later)
+        with patch("time.time", return_value=1025.0):
+            await self.manager.calc_output(is_temp_sensor_update=False)
+
+        # Verify dt=15
+        call_3 = self.pid_controller.calc.call_args_list[2]
+        dt_3 = call_3[0][2] - call_3[0][3]
+        assert dt_3 == pytest.approx(15.0, abs=0.1)
+
+        # Sensor update at t=1060 (35s later)
+        with patch("time.time", return_value=1060.0):
+            await self.manager.calc_output(is_temp_sensor_update=True)
+
+        # Verify dt=35
+        call_4 = self.pid_controller.calc.call_args_list[3]
+        dt_4 = call_4[0][2] - call_4[0][3]
+        assert dt_4 == pytest.approx(35.0, abs=0.1)
