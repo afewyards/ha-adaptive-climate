@@ -1,6 +1,105 @@
 # CHANGELOG
 
 
+## v0.25.0 (2026-01-23)
+
+### Features
+
+- Add sticky clamping state tracking to PID controller
+  ([`9e17ea5`](https://github.com/afewyards/ha-adaptive-thermostat/commit/9e17ea5338d700cd223ccfa6dedf0102db567245))
+
+Add was_clamped and clamp_reason tracking to PID controller for learning feedback. Tracks tolerance
+  clamping (when temp beyond tolerance threshold) and safety_net clamping (when progressive decay
+  activates). Flag is sticky within cycle, reset via reset_clamp_state() at cycle start.
+
+- Add was_clamped field to CycleMetrics
+  ([`3c8c823`](https://github.com/afewyards/ha-adaptive-thermostat/commit/3c8c8238c0ca84adf906e66d25040fc00ac6374c))
+
+Add was_clamped boolean field to CycleMetrics class to track whether PID output was clamped during a
+  heating cycle. Defaults to False for backward compatibility.
+
+- Add was_clamped field to SettlingStartedEvent
+  ([`eccc5f3`](https://github.com/afewyards/ha-adaptive-thermostat/commit/eccc5f3acef63fe6ee8f5cd3a186983684a502d2))
+
+Add optional was_clamped boolean field (default False) to SettlingStartedEvent to track whether PID
+  output was clamped during the heating phase.
+
+- Amplify clamped cycle overshoot with heating-type-specific multipliers
+  ([`e5e83bd`](https://github.com/afewyards/ha-adaptive-thermostat/commit/e5e83bdf2aab6ae1ad57c4da409967dbb1475602))
+
+Add CLAMPED_OVERSHOOT_MULTIPLIER constants for each heating type: - floor_hydronic: 1.5x (high
+  thermal mass hides true overshoot) - radiator: 1.35x - convector: 1.2x - forced_air: 1.1x (fast
+  response shows true overshoot) - default: 1.25x (for unknown types)
+
+In calculate_pid_adjustment(), apply multiplier to clamped cycles before averaging. This compensates
+  for tolerance/safety_net clamping hiding true overshoot potential during learning.
+
+- Capture and propagate was_clamped in CycleTracker
+  ([`e8baf1b`](https://github.com/afewyards/ha-adaptive-thermostat/commit/e8baf1b3f60457dd463083ab1bafe68d3b609992))
+
+Implement story 2.2 from clamping-awareness PRD: - Add _was_clamped instance variable to
+  CycleTrackerManager - Capture event.was_clamped in _on_settling_started() - Pass was_clamped to
+  CycleMetrics in _finalize_cycle() - Add was_clamped to cycle completion log message - Reset
+  _was_clamped on cycle start and reset
+
+Tests: - test_cycle_tracker_captures_clamped_from_event -
+  test_cycle_tracker_includes_clamped_in_metrics - test_cycle_tracker_logs_clamping_status
+
+- Log clamping impact on learning
+  ([`c5ff28f`](https://github.com/afewyards/ha-adaptive-thermostat/commit/c5ff28fcd6a5d953a6f359c6ae48e5bfa8496b44))
+
+Adds test to verify that when PID learning encounters clamped cycles, it logs how many cycles were
+  clamped and the multiplier applied.
+
+The implementation was already in place from story 3.1, this commit adds the verification test as
+  specified in story 3.2 of the clamping-awareness PRD.
+
+- Lower floor_hydronic safety net threshold from 35% to 30%
+  ([`2f7620a`](https://github.com/afewyards/ha-adaptive-thermostat/commit/2f7620ac6a2b9ee3ad7bc2da704ebe205b4fc544))
+
+High thermal mass floor heating systems benefit from earlier safety net activation to prevent
+  overshoot. This change:
+
+- Update INTEGRAL_DECAY_THRESHOLDS floor_hydronic: 35.0 -> 30.0 - Update fallback threshold in PID
+  controller - Add test_floor_hydronic_safety_net_threshold_30 to verify threshold value - Add
+  test_safety_net_fires_earlier_for_floor for integral=32% triggering decay
+
+- Pass PID clamping state to SettlingStartedEvent in HeaterController
+  ([`ba3ffdc`](https://github.com/afewyards/ha-adaptive-thermostat/commit/ba3ffdcf7c9197a99f561b7a2108045eb6fda757))
+
+- Add _get_pid_was_clamped() helper with graceful fallback - Pass was_clamped to
+  SettlingStartedEvent in PWM mode (demand→0) - Pass was_clamped to SettlingStartedEvent in valve
+  mode (<5% + tolerance) - Add tests for clamping state propagation and fallback behavior
+
+- Reset PID clamp state on cycle start in HeaterController
+  ([`6ae6cde`](https://github.com/afewyards/ha-adaptive-thermostat/commit/6ae6cde4c944142020901221031599b288d1b2e4))
+
+- Add _reset_pid_clamp_state() helper method with graceful fallback - Call reset on
+  CycleStartedEvent emission (PWM turn-on, restart, valve mode) - Ensures each heating cycle starts
+  with fresh clamping state
+
+### Testing
+
+- Add edge case tests for clamping
+  ([`0302308`](https://github.com/afewyards/ha-adaptive-thermostat/commit/0302308025d70d93a8f71c13fb4db313acf512d7))
+
+- test_multi_clamp_same_cycle: verify clamp_reason tracks most recent clamping event when multiple
+  events occur in same cycle - test_disturbed_and_clamped_cycle: verify disturbed cycles excluded
+  from learning even when also clamped - test_was_clamped_not_persisted: verify was_clamped field is
+  transient and not saved to learning data store
+
+- Add integration test for clamped cycle end-to-end
+  ([`afe8b6f`](https://github.com/afewyards/ha-adaptive-thermostat/commit/afe8b6f06ca58e805fd52f0e68b5967124188c2e))
+
+Implements Story 4.1 from clamping-awareness PRD: - test_integration_clamped_cycle_flow: simulates
+  temp overshoot triggering tolerance clamp, verifies was_clamped propagates PID →
+  SettlingStartedEvent → CycleTracker → CycleMetrics - test_unclamped_cycle_has_was_clamped_false:
+  verifies normal cycles have was_clamped=False
+
+Tests verify complete integration of clamping awareness through the cycle tracking system. Both
+  tests pass.
+
+
 ## v0.24.2 (2026-01-23)
 
 ### Bug Fixes
