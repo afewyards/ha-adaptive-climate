@@ -1362,3 +1362,28 @@ class TestHeaterControllerClampingState:
         # Second settling event should have was_clamped=False
         assert len(settling_events) == 2
         assert settling_events[1].was_clamped is False
+
+
+class TestDutyAccumulator:
+    """Tests for duty accumulator infrastructure (story 1.1)."""
+
+    def test_duty_accumulator_initial_zero(self, heater_controller):
+        """Test that duty accumulator starts at 0."""
+        assert hasattr(heater_controller, '_duty_accumulator_seconds')
+        assert heater_controller._duty_accumulator_seconds == 0.0
+
+    def test_max_accumulator_is_2x_min_cycle(self, heater_controller):
+        """Test that max_accumulator = 2 * min_on_cycle_duration.
+
+        With fixture min_on_cycle_duration=300s, max_accumulator should be 600s.
+        """
+        assert hasattr(heater_controller, '_max_accumulator')
+        expected = 2.0 * 300.0  # 2 * min_on_cycle_duration from fixture
+        assert heater_controller._max_accumulator == expected
+
+    def test_duty_accumulator_property_exposed(self, heater_controller):
+        """Test duty_accumulator_seconds property returns field value."""
+        # Set internal field to a specific value
+        heater_controller._duty_accumulator_seconds = 123.45
+        # Property should return same value
+        assert heater_controller.duty_accumulator_seconds == 123.45

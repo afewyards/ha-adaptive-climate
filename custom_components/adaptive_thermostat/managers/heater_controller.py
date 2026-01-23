@@ -136,6 +136,9 @@ class HeaterController:
         self._cycle_active: bool = False  # Heater has turned on in current demand period
         self._has_demand: bool = False    # control_output > 0
 
+        # Duty accumulator for sub-threshold outputs
+        self._duty_accumulator_seconds: float = 0.0
+
     def _get_pid_was_clamped(self) -> bool:
         """Get was_clamped state from PID controller with graceful fallback.
 
@@ -190,6 +193,16 @@ class HeaterController:
     def cooler_cycle_count(self) -> int:
         """Return the total number of cooler on→off cycles."""
         return self._cooler_cycle_count
+
+    @property
+    def _max_accumulator(self) -> float:
+        """Return maximum accumulator value (2x min_on_cycle_duration)."""
+        return 2.0 * self._min_on_cycle_duration
+
+    @property
+    def duty_accumulator_seconds(self) -> float:
+        """Return the current duty accumulator value in seconds."""
+        return self._duty_accumulator_seconds
 
     def set_heater_cycle_count(self, count: int) -> None:
         """Set the heater cycle count (used during state restoration).
