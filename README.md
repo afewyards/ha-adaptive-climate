@@ -31,7 +31,7 @@ An advanced thermostat integration featuring PID control with automatic tuning, 
 - **PID Control** - Four-term PID controller (P+I+D+E) with proportional-on-measurement for smooth operation
 - **Adaptive Learning** - Automatically learns thermal characteristics and optimizes PID parameters from real heating cycles, with automatic application and validation
 - **Physics-Based Initialization** - Initial PID values calculated from zone properties using empirical HVAC data
-- **Multi-Zone Coordination** - Central heat source control, mode synchronization, and thermal coupling for connected spaces
+- **Multi-Zone Coordination** - Central heat source control, mode synchronization, and thermal group coordination for connected spaces
 - **Energy Optimization** - Night setback with dynamic sunrise timing, solar gain prediction, contact sensors, outdoor compensation
 - **Actuator Wear Tracking** - Cycle counting with predictive maintenance alerts
 - **Comprehensive Monitoring** - Performance sensors, health warnings, energy tracking, and automated reports
@@ -45,7 +45,7 @@ An advanced thermostat integration featuring PID control with automatic tuning, 
 - [PID Control](https://github.com/afewyards/ha-adaptive-thermostat/wiki/PID-Control) - How PID works, PWM vs valve control
 - [Adaptive Learning](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Adaptive-Learning) - Cycle tracking, learning rules, Ke-First process
 - [Multi-Zone Coordination](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Multi-Zone-Coordination) - Architecture and configuration
-- [Energy Optimization](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Energy-Optimization) - Night setback, solar recovery, outdoor compensation
+- [Energy Optimization](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Energy-Optimization) - Night setback, outdoor compensation
 - [Troubleshooting](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Troubleshooting) - Diagnostic checklist and common issues
 
 ## Installation
@@ -88,12 +88,18 @@ adaptive_thermostat:
   outdoor_sensor: sensor.outdoor_temp
   sync_modes: true
 
-  # Thermal coupling learns heat transfer between zones
-  # Requires floor and area configuration in Home Assistant UI
-  thermal_coupling:
-    open:
-      - climate.ground_floor
-      - climate.kitchen
+  # Thermal groups define how heat transfers between zones
+  thermal_groups:
+    - name: "Open Plan Ground Floor"
+      zones: [climate.ground_floor, climate.kitchen]
+      type: open_plan
+      leader: climate.ground_floor
+
+    - name: "Upstairs from Stairwell"
+      zones: [climate.upstairs_landing, climate.master_bedroom]
+      receives_from: "Open Plan Ground Floor"
+      transfer_factor: 0.2
+      delay_minutes: 15
 
 climate:
   - platform: adaptive_thermostat
@@ -121,9 +127,7 @@ climate:
     area_m2: 15
 ```
 
-**Note:** Thermal coupling automatically discovers which floor each zone is on from Home Assistant's floor/area/entity registry. Simply assign your climate entities to areas, and assign areas to floors in Settings → Areas, rooms & devices.
-
-### Night Setback with Solar Recovery
+### Night Setback
 ```yaml
 climate:
   - platform: adaptive_thermostat
@@ -138,10 +142,9 @@ climate:
       start: "22:00"
       delta: 2.0
       recovery_deadline: "08:00"
-      solar_recovery: true
 ```
 
-When `end` is omitted, wake time is calculated from sunrise, window orientation, and weather forecast. [Learn more →](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Energy-Optimization#night-setback)
+When `end` is omitted, wake time is calculated from sunrise and window orientation. [Learn more →](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Energy-Optimization#night-setback)
 
 ### Cooling/AC Configuration
 ```yaml

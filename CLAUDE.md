@@ -4,7 +4,7 @@
 
 Home Assistant custom component: PID thermostat with adaptive learning, multi-zone coordination, physics-based initialization. Fork of Smart Thermostat PID.
 
-**Capabilities:** PID control (PWM on/off or 0-100% valve), adaptive PID tuning, physics-based initialization, multi-zone coordination, energy optimization (night setback, solar gain, contact sensors).
+**Capabilities:** PID control (PWM on/off or 0-100% valve), adaptive PID tuning, physics-based initialization, multi-zone coordination, energy optimization (night setback, contact sensors).
 
 ## Development Commands
 
@@ -27,7 +27,7 @@ pytest --cov=custom_components/adaptive_thermostat  # with coverage
 | Module | Purpose |
 |--------|---------|
 | `climate.py` | Main entity - orchestrates managers, presets, state |
-| `coordinator.py` | Zone registry, CentralController, ModeSync, coupling triggers |
+| `coordinator.py` | Zone registry, CentralController, ModeSync, thermal group triggers |
 | `pid_controller/__init__.py` | PID with P, I, D, E (outdoor), F (feedforward) terms |
 | `adaptive/learning.py` | Cycle analysis, rule-based PID adjustments |
 | `adaptive/cycle_analysis.py` | Overshoot tracking, cycle metrics |
@@ -49,9 +49,8 @@ pytest --cov=custom_components/adaptive_thermostat  # with coverage
 
 | Module | Purpose |
 |--------|---------|
-| `thermal_coupling.py` | Inter-zone heat transfer learning |
+| `thermal_groups.py` | Inter-zone heat transfer coordination |
 | `night_setback.py` | Scheduled temp reduction |
-| `solar_recovery.py` | Delays heating when sun will warm zone |
 | `contact_sensors.py` | Pauses on window/door open |
 | `heating_curves.py` | Outdoor temp compensation |
 
@@ -118,11 +117,29 @@ State machine: IDLE → HEATING → SETTLING → IDLE
 
 - **Mode sync:** HEAT/COOL propagates; OFF independent
 - **Central controller:** Aggregates demand, 30s startup delay
-- **Thermal coupling:** Learns inter-zone heat transfer, applies feedforward
+- **Thermal groups:** Coordinates heat transfer between zones via leader zones and feedforward
 
-### Thermal Coupling
+### Thermal Groups
 
-Learns heat transfer between zones via observation. Requires HA floor/area config. Config options: `enabled`, `open` (open floor plan zones), `stairwell_zones`, `seed_coefficients`. Coefficients validated over 5 cycles, rollback if overshoot +30%.
+Defines explicit relationships between zones for heat transfer coordination. Config:
+- **Groups:** `name`, `zones`, `type` (open_plan/stairwell)
+- **Leader zones:** Designated zone in open_plan groups that others follow
+- **Inter-group transfer:** `receives_from`, `transfer_factor` (0-1), `delay_minutes`
+
+Example:
+```yaml
+thermal_groups:
+  - name: "Open Plan Ground Floor"
+    zones: [climate.living_room, climate.kitchen, climate.dining]
+    type: open_plan
+    leader: climate.living_room
+
+  - name: "Upstairs from Stairwell"
+    zones: [climate.upstairs_landing, climate.master_bedroom]
+    receives_from: "Open Plan Ground Floor"
+    transfer_factor: 0.2
+    delay_minutes: 15
+```
 
 ### Persistence
 
@@ -146,8 +163,6 @@ Learns heat transfer between zones via observation. Requires HA floor/area confi
 | `test_integration_cycle_learning.py` | E2E cycle/learning |
 | `test_coordinator.py` | Multi-zone |
 | `test_central_controller.py` | Main heat source |
-| `test_thermal_coupling.py` | Coupling learner |
-| `test_coupling_integration.py` | E2E coupling |
+| `test_thermal_groups.py` | Thermal group coordination |
 | `test_night_setback.py` | Schedule/sunrise |
-| `test_solar_recovery.py` | Solar delay |
 | `test_contact_sensors.py` | Window/door |
