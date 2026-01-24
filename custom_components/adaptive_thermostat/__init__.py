@@ -299,6 +299,7 @@ async def async_send_notification(
     notify_service: str | None,
     title: str,
     message: str,
+    data: dict[str, Any] | None = None,
 ) -> bool:
     """Send a notification via the configured notification service.
 
@@ -307,6 +308,7 @@ async def async_send_notification(
         notify_service: The notification service name (e.g., "mobile_app_phone" or "notify.mobile_app_phone")
         title: Notification title
         message: Notification message
+        data: Optional additional data (e.g., image attachments)
 
     Returns:
         True if notification was sent successfully, False otherwise
@@ -337,13 +339,17 @@ async def async_send_notification(
         return False
 
     try:
+        service_data = {
+            "title": title,
+            "message": message,
+        }
+        if data:
+            service_data["data"] = data
+
         await hass.services.async_call(
             "notify",
             service_name,
-            {
-                "title": title,
-                "message": message,
-            },
+            service_data,
             blocking=True,
         )
         _LOGGER.debug("Notification sent successfully via notify.%s", service_name)
