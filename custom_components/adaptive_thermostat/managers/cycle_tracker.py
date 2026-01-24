@@ -265,8 +265,9 @@ class CycleTrackerManager:
             return
 
         if self._state == CycleState.SETTLING:
-            self._logger.warning("Cycle started while settling, resetting cycle")
-            self._cancel_settling_timeout()
+            self._logger.info("Finalizing previous cycle before starting new one")
+            # Record metrics synchronously before starting new cycle
+            self._record_cycle_metrics()
 
         # Transition to new state
         self._state = new_state
@@ -781,22 +782,16 @@ class CycleTrackerManager:
 
         return True, "Valid"
 
-    async def _finalize_cycle(self) -> None:
-        """Finalize cycle and record metrics.
+    def _record_cycle_metrics(self) -> None:
+        """Record metrics for the current cycle without resetting state.
 
-        Validates the cycle, calculates metrics if valid, and records them
-        with the adaptive learner. Transitions to IDLE state.
+        This is a synchronous helper that validates the cycle and records metrics
+        without transitioning state. Used when a new cycle interrupts the settling phase.
         """
-        # Cancel settling timeout if active
-        if self._settling_timeout_handle is not None:
-            self._settling_timeout_handle()
-            self._settling_timeout_handle = None
-
         # Validate cycle
         is_valid, reason = self._is_cycle_valid()
         if not is_valid:
             self._logger.info("Cycle not recorded: %s", reason)
-            self._reset_cycle_state()
             return
 
         # Log interruption status if cycle was interrupted
@@ -821,13 +816,11 @@ class CycleTrackerManager:
         target_temp = self._cycle_target_temp
         if target_temp is None:
             self._logger.warning("No target temperature recorded, cannot calculate metrics")
-            self._reset_cycle_state()
             return
 
         # Get start temperature (first reading in history)
         if len(self._temperature_history) < 1:
             self._logger.warning("No temperature history, cannot calculate metrics")
-            self._reset_cycle_state()
             return
 
         start_temp = self._temperature_history[0][1]
@@ -953,6 +946,20 @@ class CycleTrackerManager:
                 metrics=metrics_dict,
             )
             self._dispatcher.emit(cycle_ended_event)
+
+    async def _finalize_cycle(self) -> None:
+        """Finalize cycle and record metrics.
+
+        Validates the cycle, calculates metrics if valid, and records them
+        with the adaptive learner. Transitions to IDLE state.
+        """
+        # Cancel settling timeout if active
+        if self._settling_timeout_handle is not None:
+            self._settling_timeout_handle()
+            self._settling_timeout_handle = None
+
+        # Record metrics using the synchronous helper
+        self._record_cycle_metrics()
 
         # Reset cycle state (clears interruption flags and transitions to IDLE)
         self._reset_cycle_state()

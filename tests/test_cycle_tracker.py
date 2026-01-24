@@ -2132,7 +2132,8 @@ class TestCycleTrackerFinalizeSave:
         # Verify metrics from the completed cycle were recorded
         recorded_metrics = mock_adaptive_learner.add_cycle_metrics.call_args[0][0]
         assert recorded_metrics is not None
-        assert recorded_metrics.cycle_duration is not None
+        # Verify we have valid metrics (overshoot is a key metric)
+        assert recorded_metrics.overshoot is not None
 
         # New cycle should now be active
         assert cycle_tracker.state == CycleState.HEATING
