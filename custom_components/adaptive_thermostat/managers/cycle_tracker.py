@@ -330,13 +330,37 @@ class CycleTrackerManager:
         self._device_on_time = event.timestamp
 
     def _on_heating_ended(self, event: "HeatingEndedEvent") -> None:
-        """Handle HEATING_ENDED event for duty cycle tracking.
+        """Handle HEATING_ENDED event for duty cycle tracking and settling transition.
 
         Args:
             event: HeatingEndedEvent with hvac_mode, timestamp
         """
         # Track device off time for duty cycle calculation
         self._device_off_time = event.timestamp
+
+        # Check if we should transition to SETTLING state
+        if event.hvac_mode == "heat" and self._state == CycleState.HEATING:
+            # Transition to SETTLING state
+            self._state = CycleState.SETTLING
+
+            # Schedule settling timeout
+            self._schedule_settling_timeout()
+
+            self._logger.info(
+                "Heating ended, transitioning to SETTLING (timeout in %d minutes)",
+                self._max_settling_time_minutes,
+            )
+        elif event.hvac_mode == "cool" and self._state == CycleState.COOLING:
+            # Transition to SETTLING state
+            self._state = CycleState.SETTLING
+
+            # Schedule settling timeout
+            self._schedule_settling_timeout()
+
+            self._logger.info(
+                "Cooling ended, transitioning to SETTLING (timeout in %d minutes)",
+                self._max_settling_time_minutes,
+            )
 
     def _on_contact_pause(self, event: "ContactPauseEvent") -> None:
         """Handle CONTACT_PAUSE event.
