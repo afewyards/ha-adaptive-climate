@@ -2051,6 +2051,92 @@ class TestCycleTrackerFinalizeSave:
             call_args = mock_calc_settling.call_args
             assert call_args[1]["reference_time"] == device_off_time
 
+    @pytest.mark.asyncio
+    async def test_cycle_finalized_when_cycle_started_during_settling(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
+    ):
+        """Test that when CYCLE_STARTED arrives during SETTLING, previous cycle is finalized.
+
+        This ensures we don't discard cycles when a new heating cycle starts
+        before the settling phase completes naturally.
+        """
+        from datetime import timedelta
+
+        # Setup adaptive_learner
+        mock_adaptive_learner.to_dict = MagicMock(return_value={
+            "cycle_history": [],
+            "last_adjustment_time": None,
+            "consecutive_converged_cycles": 0,
+            "pid_converged_for_ke": False,
+            "auto_apply_count": 0,
+        })
+        mock_adaptive_learner.is_in_validation_mode = MagicMock(return_value=False)
+        mock_adaptive_learner.update_convergence_confidence = MagicMock()
+
+        # Create cycle tracker
+        cycle_tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            dispatcher=dispatcher,
+            **mock_callbacks,
+        )
+        cycle_tracker.set_restoration_complete()
+
+        # Set target temperature
+        mock_callbacks["get_target_temp"].return_value = 20.0
+
+        # Start first cycle
+        start_time = datetime(2025, 1, 14, 10, 0, 0)
+        dispatcher.emit(CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=start_time,
+            target_temp=20.0,
+            current_temp=18.0
+        ))
+        assert cycle_tracker.state == CycleState.HEATING
+
+        # Add temperature samples during heating
+        for i in range(5):
+            await cycle_tracker.update_temperature(
+                start_time + timedelta(minutes=i), 18.0 + i * 0.4
+            )
+
+        # Stop heating and enter SETTLING
+        stop_time = start_time + timedelta(minutes=5)
+        dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=stop_time))
+        assert cycle_tracker.state == CycleState.SETTLING
+
+        # Add settling samples
+        for i in range(3):
+            await cycle_tracker.update_temperature(
+                stop_time + timedelta(minutes=i), 20.0 + i * 0.1
+            )
+
+        # Reset mock to verify new call
+        mock_adaptive_learner.add_cycle_metrics.reset_mock()
+
+        # Start NEW cycle while still in SETTLING (this is the key scenario)
+        new_cycle_time = stop_time + timedelta(minutes=3)
+        dispatcher.emit(CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=new_cycle_time,
+            target_temp=20.0,
+            current_temp=19.0
+        ))
+
+        # CRITICAL: Verify previous cycle was FINALIZED before new cycle started
+        # The cycle should NOT be discarded - metrics should be recorded
+        mock_adaptive_learner.add_cycle_metrics.assert_called_once()
+
+        # Verify metrics from the completed cycle were recorded
+        recorded_metrics = mock_adaptive_learner.add_cycle_metrics.call_args[0][0]
+        assert recorded_metrics is not None
+        assert recorded_metrics.cycle_duration is not None
+
+        # New cycle should now be active
+        assert cycle_tracker.state == CycleState.HEATING
+
 
 class TestTemperatureUpdateIntegralTracking:
     """Tests for TEMPERATURE_UPDATE event integration and integral tracking."""
