@@ -977,6 +977,53 @@ class TestHeaterControllerEventEmission:
         assert isinstance(settling_event, SettlingStartedEvent)
         assert settling_event.hvac_mode == MockHVACMode.HEAT
 
+    @pytest.mark.asyncio
+    async def test_non_pwm_turn_off_no_settling_started(self, heater_controller_valve, mock_thermostat):
+        """Test that async_turn_off in NON-PWM mode does NOT emit SETTLING_STARTED.
+
+        This is a regression test to ensure the PWM fix doesn't affect valve mode.
+        In valve mode (self._pwm == 0), async_turn_off should only emit HEATING_ENDED,
+        not SETTLING_STARTED.
+        """
+        controller, dispatcher = heater_controller_valve
+
+        # Setup event listeners
+        heating_ended_events = []
+        settling_started_events = []
+        dispatcher.subscribe(CycleEventType.HEATING_ENDED, lambda e: heating_ended_events.append(e))
+        dispatcher.subscribe(CycleEventType.SETTLING_STARTED, lambda e: settling_started_events.append(e))
+
+        # Mock service calls and state
+        controller._hass.services.async_call = MagicMock()
+        controller._hass.states.is_state = MagicMock(return_value=True)
+
+        # Mock callbacks
+        get_cycle_start_time = MagicMock(return_value=0.0)
+        set_is_heating = MagicMock()
+        set_last_heat_cycle_time = MagicMock()
+
+        # Set up state: cycle active, heater was on
+        controller._cycle_active = True
+        controller._last_heater_state = True
+
+        # Verify we're in non-PWM mode (valve mode)
+        assert controller._pwm == 0
+
+        # Call async_turn_off
+        await controller.async_turn_off(
+            hvac_mode=MockHVACMode.HEAT,
+            get_cycle_start_time=get_cycle_start_time,
+            set_is_heating=set_is_heating,
+            set_last_heat_cycle_time=set_last_heat_cycle_time,
+        )
+
+        # Verify HEATING_ENDED was emitted
+        assert len(heating_ended_events) == 1
+
+        # Verify SETTLING_STARTED was NOT emitted from async_turn_off
+        # (In valve mode, SETTLING_STARTED comes from async_set_valve_value, not async_turn_off)
+        assert len(settling_started_events) == 0
+
 
 class TestDutyAccumulator:
     """Tests for duty accumulator infrastructure (story 1.1)."""
