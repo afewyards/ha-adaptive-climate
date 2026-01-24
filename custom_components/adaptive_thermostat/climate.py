@@ -48,6 +48,7 @@ from .adaptive.night_setback import NightSetback
 from .adaptive.sun_position import SunPositionCalculator
 from .adaptive.contact_sensors import ContactSensorHandler, ContactAction
 from .adaptive.ke_learning import KeLearner
+from .adaptive.preheat import PreheatLearner
 
 from homeassistant.components.climate import PLATFORM_SCHEMA, ClimateEntity, ClimateEntityFeature
 from homeassistant.components.climate import (
@@ -72,6 +73,8 @@ from .adaptive.persistence import LearningDataStore
 from .managers import ControlOutputManager, HeaterController, KeController, NightSetbackController, PIDTuningManager, StateRestorer, TemperatureManager, CycleTrackerManager
 from .managers.events import (
     CycleEventDispatcher,
+    CycleEventType,
+    CycleEndedEvent,
     SetpointChangedEvent,
     ModeChangedEvent,
     ContactPauseEvent,
@@ -363,6 +366,11 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         if stored_zone_data and "ke_learner" in stored_zone_data:
             zone_data["stored_ke_data"] = stored_zone_data["ke_learner"]
             _LOGGER.info("Stored ke_learner data for zone %s for later restoration", zone_id)
+
+        # Store preheat_learner data for async_added_to_hass to use
+        if stored_zone_data and "preheat_learner" in stored_zone_data:
+            zone_data["stored_preheat_data"] = stored_zone_data["preheat_learner"]
+            _LOGGER.info("Stored preheat_learner data for zone %s for later restoration", zone_id)
 
         coordinator.register_zone(zone_id, zone_data)
         _LOGGER.info("Registered zone %s with coordinator", zone_id)
@@ -671,6 +679,9 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
         self._heating_gains: Optional[const.PIDGains] = None
         self._cooling_gains: Optional[const.PIDGains] = None
 
+        # Initialize PreheatLearner (will be configured properly in async_added_to_hass)
+        self._preheat_learner: Optional[PreheatLearner] = None
+
         self._pwm = kwargs.get('pwm').seconds
         self._p = self._i = self._d = self._e = self._dt = 0
         self._control_output = self._output_min
@@ -738,8 +749,43 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
             dispatcher=self._cycle_dispatcher,
         )
 
+        # Initialize PreheatLearner if preheat is enabled
+        # Check if we have stored preheat_learner data from persistence
+        coordinator = self.hass.data.get(DOMAIN, {}).get("coordinator")
+        stored_preheat_data = None
+        if coordinator and self._zone_id:
+            zone_data = coordinator.get_zone_data(self._zone_id)
+            if zone_data:
+                stored_preheat_data = zone_data.get("stored_preheat_data")
+
+        # Initialize or restore PreheatLearner
+        if self._night_setback_config and self._night_setback_config.get("preheat_enabled"):
+            if stored_preheat_data:
+                # Restore from persistence
+                self._preheat_learner = PreheatLearner.from_dict(stored_preheat_data)
+                _LOGGER.info(
+                    "%s: PreheatLearner restored from storage (heating_type=%s, observations=%d)",
+                    self.entity_id, self._preheat_learner.heating_type, self._preheat_learner.get_observation_count()
+                )
+            else:
+                # Create new learner
+                max_hours = self._night_setback_config.get("max_preheat_hours")
+                self._preheat_learner = PreheatLearner(
+                    heating_type=self._heating_type,
+                    max_hours=max_hours,
+                )
+                _LOGGER.info(
+                    "%s: PreheatLearner initialized (heating_type=%s, max_hours=%.1f)",
+                    self.entity_id, self._heating_type, self._preheat_learner.max_hours
+                )
+
         # Initialize night setback controller now that hass is available
         if self._night_setback or self._night_setback_config:
+            preheat_enabled = (
+                self._night_setback_config.get("preheat_enabled", False)
+                if self._night_setback_config
+                else False
+            )
             self._night_setback_controller = NightSetbackController(
                 hass=self.hass,
                 entity_id=self.entity_id,
@@ -749,10 +795,12 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
                 window_orientation=self._window_orientation,
                 get_target_temp=lambda: self._target_temp,
                 get_current_temp=lambda: self._current_temp,
+                preheat_learner=self._preheat_learner,
+                preheat_enabled=preheat_enabled,
             )
             _LOGGER.info(
-                "%s: Night setback controller initialized",
-                self.entity_id
+                "%s: Night setback controller initialized (preheat=%s)",
+                self.entity_id, preheat_enabled
             )
 
         # Initialize temperature manager
@@ -945,6 +993,17 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
                         "%s: Initialized CycleTrackerManager",
                         self.entity_id
                     )
+
+        # Subscribe to CYCLE_ENDED events for preheat learning
+        if self._preheat_learner and self._cycle_dispatcher:
+            self._cycle_dispatcher.subscribe(
+                CycleEventType.CYCLE_ENDED,
+                self._handle_cycle_ended_for_preheat,
+            )
+            _LOGGER.debug(
+                "%s: Subscribed to CYCLE_ENDED events for preheat learning",
+                self.entity_id
+            )
 
         # Set up state change listeners
         self._setup_state_listeners()
@@ -1709,6 +1768,60 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
                 old_values.get("kd", 0),
                 new_values.get("kd", 0),
             )
+
+    def _handle_cycle_ended_for_preheat(self, event: CycleEndedEvent) -> None:
+        """Handle CYCLE_ENDED event to record preheat observations.
+
+        Called when a heating cycle completes. Records heating rate observation
+        if cycle was successful (not interrupted) and outdoor temperature is available.
+
+        Args:
+            event: The CycleEndedEvent containing cycle metrics
+        """
+        if not self._preheat_learner:
+            return
+
+        # Only record if cycle completed successfully (not interrupted)
+        if not event.metrics or event.metrics.get("interrupted"):
+            return
+
+        # Extract cycle data
+        start_temp = event.metrics.get("start_temp")
+        end_temp = event.metrics.get("end_temp")
+        duration_minutes = event.metrics.get("duration_minutes")
+        outdoor_temp = self._ext_temp
+
+        # Record observation if we have all required data
+        if start_temp and end_temp and duration_minutes and outdoor_temp is not None:
+            self._preheat_learner.add_observation(
+                start_temp=start_temp,
+                end_temp=end_temp,
+                outdoor_temp=outdoor_temp,
+                duration_minutes=duration_minutes,
+                timestamp=event.timestamp,
+            )
+            _LOGGER.debug(
+                "%s: Recorded preheat observation (delta=%.1f°C, outdoor=%.1f°C, duration=%.0fmin)",
+                self.entity_id,
+                end_temp - start_temp,
+                outdoor_temp,
+                duration_minutes,
+            )
+
+            # Schedule persistence save
+            coordinator = self.hass.data.get(DOMAIN, {}).get("coordinator")
+            if coordinator and self._zone_id:
+                zone_data = coordinator.get_zone_data(self._zone_id)
+                if zone_data:
+                    # Update preheat data in zone_data for persistence
+                    from .adaptive.persistence import LearningDataStore
+                    learning_store = self.hass.data.get(DOMAIN, {}).get("learning_store")
+                    if learning_store:
+                        learning_store.update_zone_data(
+                            self._zone_id,
+                            preheat_data=self._preheat_learner.to_dict(),
+                        )
+                        learning_store.schedule_zone_save()
 
     async def _handle_validation_failure(self) -> None:
         """Handle validation failure by rolling back PID values.

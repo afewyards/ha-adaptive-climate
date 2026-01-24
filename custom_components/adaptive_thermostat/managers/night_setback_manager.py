@@ -42,6 +42,8 @@ class NightSetbackController:
         window_orientation: Optional[str],
         get_target_temp: Callable[[], Optional[float]],
         get_current_temp: Callable[[], Optional[float]],
+        preheat_learner: Optional[Any] = None,
+        preheat_enabled: bool = False,
     ):
         """Initialize the NightSetbackController.
 
@@ -54,6 +56,8 @@ class NightSetbackController:
             window_orientation: Window orientation for solar calculations
             get_target_temp: Callback to get current target temperature
             get_current_temp: Callback to get current temperature
+            preheat_learner: Optional PreheatLearner instance for time estimation
+            preheat_enabled: Whether preheat functionality is enabled
         """
         self._entity_id = entity_id
 
@@ -66,6 +70,8 @@ class NightSetbackController:
             window_orientation=window_orientation,
             get_target_temp=get_target_temp,
             get_current_temp=get_current_temp,
+            preheat_learner=preheat_learner,
+            preheat_enabled=preheat_enabled,
         )
 
         # Grace period tracking state variables (state management, not calculation)
