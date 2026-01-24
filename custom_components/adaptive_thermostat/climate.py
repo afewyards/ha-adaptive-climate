@@ -1170,6 +1170,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
             self._update_contact_sensor_states()
 
         # Thermal groups leader tracking (follower zones track leader setpoint)
+        coordinator = self.hass.data.get(DOMAIN, {}).get("coordinator")
         if self._zone_id and coordinator:
             thermal_group_manager = coordinator.thermal_group_manager
             if thermal_group_manager:

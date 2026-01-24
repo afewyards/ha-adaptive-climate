@@ -63,6 +63,7 @@ from ..const import DOMAIN
 from .events import (
     CycleEventDispatcher,
     CycleStartedEvent,
+    SettlingStartedEvent,
     HeatingStartedEvent,
     HeatingEndedEvent,
 )
@@ -664,6 +665,20 @@ class HeaterController:
         # Track new active state after valve change for cycle counting
         new_active = value > 0
 
+        # Check if we should emit SETTLING_STARTED for valve mode
+        # Criteria: demand < 5% AND temp within 0.5°C of target
+        if self._cycle_active and value < 5.0:
+            target_temp = getattr(self._thermostat, 'target_temperature', 0.0)
+            current_temp = getattr(self._thermostat, '_current_temp', 0.0)
+            if abs(current_temp - target_temp) <= 0.5:
+                if self._dispatcher:
+                    self._dispatcher.emit(SettlingStartedEvent(
+                        hvac_mode=hvac_mode,
+                        timestamp=datetime.now(),
+                        was_clamped=self._get_pid_was_clamped(),
+                    ))
+                self._cycle_active = False  # Reset for next cycle
+
         # Detect heating started transition (was off, now on)
         if not old_active and new_active:
             # Update state tracking for cycle counting
@@ -745,8 +760,14 @@ class HeaterController:
         new_has_demand = abs(control_output) > 0
         self._has_demand = new_has_demand
 
-        # Reset cycle tracking when demand drops to zero
+        # Emit SETTLING_STARTED when demand drops to 0 AND we had an active cycle
         if old_has_demand and not new_has_demand and self._cycle_active:
+            if self._dispatcher:
+                self._dispatcher.emit(SettlingStartedEvent(
+                    hvac_mode=hvac_mode,
+                    timestamp=datetime.now(),
+                    was_clamped=self._get_pid_was_clamped(),
+                ))
             self._cycle_active = False  # Reset for next cycle
 
         if self._pwm:

@@ -87,9 +87,6 @@ def build_state_attributes(thermostat: SmartThermostat) -> dict[str, Any]:
     # Learning grace period
     _add_learning_grace_attributes(thermostat, attrs)
 
-    # Thermal coupling attributes
-    _add_thermal_coupling_attributes(thermostat, attrs)
-
     # Heater control failure status
     _add_heater_failure_attributes(thermostat, attrs)
 
@@ -147,53 +144,6 @@ def _add_learning_grace_attributes(
         )
         if grace_until:
             attrs["learning_resumes"] = grace_until.strftime("%H:%M")
-
-
-def _add_thermal_coupling_attributes(
-    thermostat: SmartThermostat, attrs: dict[str, Any]
-) -> None:
-    """Add thermal coupling attributes to expose coupling state.
-
-    Attributes added:
-        - coupling_coefficients: Dict of source zone -> coefficient value
-        - coupling_compensation: Current °C compensation being applied
-        - coupling_compensation_power: Current power % reduction
-        - coupling_observations_pending: Count of active observations
-        - coupling_learner_state: "learning" | "validating" | "stable"
-    """
-    from ..const import DOMAIN
-
-    # Get coordinator
-    coordinator = thermostat.hass.data.get(DOMAIN, {}).get("coordinator")
-    if not coordinator:
-        return
-
-    # Get coupling learner
-    coupling_learner = coordinator.thermal_coupling_learner
-    if not coupling_learner:
-        return
-
-    # Get coefficients where this zone is the target
-    coefficients = coupling_learner.get_coefficients_for_zone(thermostat.entity_id)
-    attrs["coupling_coefficients"] = coefficients
-
-    # Get current compensation values from control output manager
-    if thermostat._control_output_manager:
-        attrs["coupling_compensation"] = round(
-            thermostat._control_output_manager.coupling_compensation_degc, 3
-        )
-        attrs["coupling_compensation_power"] = round(
-            thermostat._control_output_manager.coupling_compensation_power, 1
-        )
-    else:
-        attrs["coupling_compensation"] = 0.0
-        attrs["coupling_compensation_power"] = 0.0
-
-    # Get pending observation count
-    attrs["coupling_observations_pending"] = coupling_learner.get_pending_observation_count()
-
-    # Get learner state
-    attrs["coupling_learner_state"] = coupling_learner.get_learner_state()
 
 
 def _add_heater_failure_attributes(

@@ -149,8 +149,8 @@ class TestCycleTrackerBasic:
         # Should remain in IDLE
         assert cycle_tracker.state == CycleState.IDLE
 
-    def test_heating_ended_transitions_to_settling(self, cycle_tracker, dispatcher):
-        """Test HEATING_ENDED event transitions from HEATING to SETTLING state."""
+    def test_settling_started_transitions_to_settling(self, cycle_tracker, dispatcher):
+        """Test SETTLING_STARTED event transitions from HEATING to SETTLING state."""
         # Start heating cycle
         dispatcher.emit(CycleStartedEvent(
             hvac_mode="heat",
@@ -160,17 +160,18 @@ class TestCycleTrackerBasic:
         ))
         assert cycle_tracker.state == CycleState.HEATING
 
-        # Emit HEATING_ENDED event
-        dispatcher.emit(HeatingEndedEvent(
+        # Emit SETTLING_STARTED event
+        dispatcher.emit(SettlingStartedEvent(
             hvac_mode="heat",
-            timestamp=datetime(2025, 1, 14, 10, 5, 0)
+            timestamp=datetime(2025, 1, 14, 10, 5, 0),
+            was_clamped=False
         ))
 
         # Should transition to SETTLING
         assert cycle_tracker.state == CycleState.SETTLING
 
-    def test_cooling_ended_transitions_to_settling(self, cycle_tracker, dispatcher):
-        """Test HEATING_ENDED event transitions from COOLING to SETTLING state."""
+    def test_cooling_settling_started_transitions_to_settling(self, cycle_tracker, dispatcher):
+        """Test SETTLING_STARTED event transitions from COOLING to SETTLING state."""
         # Start cooling cycle
         dispatcher.emit(CycleStartedEvent(
             hvac_mode="cool",
@@ -180,17 +181,18 @@ class TestCycleTrackerBasic:
         ))
         assert cycle_tracker.state == CycleState.COOLING
 
-        # Emit HEATING_ENDED event (same event used for cooling)
-        dispatcher.emit(HeatingEndedEvent(
+        # Emit SETTLING_STARTED event
+        dispatcher.emit(SettlingStartedEvent(
             hvac_mode="cool",
-            timestamp=datetime(2025, 1, 14, 10, 5, 0)
+            timestamp=datetime(2025, 1, 14, 10, 5, 0),
+            was_clamped=False
         ))
 
         # Should transition to SETTLING
         assert cycle_tracker.state == CycleState.SETTLING
 
-    def test_heating_ended_schedules_settling_timeout(self, cycle_tracker, mock_hass, dispatcher):
-        """Test HEATING_ENDED event schedules settling timeout."""
+    def test_settling_started_schedules_settling_timeout(self, cycle_tracker, mock_hass, dispatcher):
+        """Test SETTLING_STARTED event schedules settling timeout."""
         import sys
 
         # Get the mocked async_call_later from conftest
@@ -205,10 +207,11 @@ class TestCycleTrackerBasic:
             current_temp=18.0
         ))
 
-        # Emit HEATING_ENDED event
-        dispatcher.emit(HeatingEndedEvent(
+        # Emit SETTLING_STARTED event
+        dispatcher.emit(SettlingStartedEvent(
             hvac_mode="heat",
-            timestamp=datetime(2025, 1, 14, 10, 5, 0)
+            timestamp=datetime(2025, 1, 14, 10, 5, 0),
+            was_clamped=False
         ))
 
         # Verify timeout was scheduled
