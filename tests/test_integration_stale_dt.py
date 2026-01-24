@@ -61,6 +61,7 @@ class TestIntegralAccumulationRate:
         # Create mock coordinator (no coupling)
         self.coordinator = Mock()
         self.coordinator.get_active_zones = Mock(return_value={})
+        self.coordinator.thermal_group_manager = None
         self.thermostat.hass.data = {
             "adaptive_thermostat": {
                 "coordinator": self.coordinator
