@@ -1,6 +1,140 @@
 # CHANGELOG
 
 
+## v0.27.0 (2026-01-24)
+
+### Bug Fixes
+
+- Transition to SETTLING on HEATING_ENDED event
+  ([`167a3f1`](https://github.com/afewyards/ha-adaptive-thermostat/commit/167a3f1ce8f12591232e1c946050dca69f5ee47d))
+
+### Documentation
+
+- Update documentation for thermal groups
+  ([`be78a85`](https://github.com/afewyards/ha-adaptive-thermostat/commit/be78a85f6f16f2b3b29f50393c8ced6fc0fa2f33))
+
+Replace thermal coupling with thermal groups throughout documentation. Remove solar recovery
+  references. Add thermal groups config examples.
+
+README.md: - Update feature list: thermal coupling → thermal groups - Replace thermal coupling
+  example with thermal groups config - Remove solar_recovery from night setback example - Update
+  Energy Optimization wiki link
+
+CLAUDE.md: - Update adaptive features table: thermal_coupling.py → thermal_groups.py - Add thermal
+  groups section with configuration examples - Remove thermal coupling section - Update test
+  organization table
+
+### Features
+
+- Implement static thermal groups
+  ([`6ed3f89`](https://github.com/afewyards/ha-adaptive-thermostat/commit/6ed3f895eb95a77023bd8b48decfbcfa569362ea))
+
+Create `custom_components/adaptive_thermostat/adaptive/thermal_groups.py` with:
+
+**Config schema support:** ```yaml adaptive_thermostat: thermal_groups: - name: "Open Plan Ground
+  Floor" zones: [living_room, kitchen, dining] type: open_plan leader: climate.living_room
+
+- name: "Upstairs from Stairwell" zones: [upstairs_landing, master_bedroom] receives_from: "Open
+  Plan Ground Floor" transfer_factor: 0.2 delay_minutes: 15 ```
+
+**Features:** 1. Leader/follower model for `open_plan` type - followers track leader's setpoint 2.
+  Cross-group feedforward via `receives_from` with transfer_factor and delay_minutes 3. Config
+  schema validation 4. No learning, no Bayesian, no auto-rollback - pure static config
+
+**Integration:** 1. Add config schema to `__init__.py` 2. Integrate into `coordinator.py` -
+  ThermalGroupManager 3. Integrate into `climate.py` - apply feedforward compensation, leader
+  tracking 4. Replace thermal coupling in `control_output.py` - use static groups instead
+
+### Refactoring
+
+- Emit SETTLING_STARTED from heater_controller, remove thermal coupling attrs
+  ([`038b71f`](https://github.com/afewyards/ha-adaptive-thermostat/commit/038b71feb0529473b5ff4edf3a4f10026eab85f1))
+
+- Move SETTLING transition trigger from HeatingEndedEvent to SettlingStartedEvent - HeaterController
+  now emits SettlingStartedEvent when demand drops to 0 - Remove unused
+  _add_thermal_coupling_attributes function (thermal_coupling_learner removed) - Fix missing
+  coordinator variable in climate.py _setup_state_listeners - Update tests to use
+  SettlingStartedEvent for SETTLING transitions
+
+- Remove redundant SETTLING_STARTED emission from heater_controller
+  ([`afdb17e`](https://github.com/afewyards/ha-adaptive-thermostat/commit/afdb17ebf815814160f48ba772d08a187855a750))
+
+Now that cycle_tracker handles settling transition via HEATING_ENDED, the heater_controller's
+  SETTLING_STARTED emission is redundant.
+
+Removed: - SettlingStartedEvent import and emission in PWM mode (demand->0) - SettlingStartedEvent
+  emission in valve mode (<5% + temp tolerance) - TestHeaterControllerClampingState test class (5
+  tests) - test_hc_emits_settling_started_pwm - test_hc_emits_settling_started_valve
+
+Kept: - _cycle_active reset for cycle counting still needed
+
+- Remove solar recovery feature
+  ([`875342c`](https://github.com/afewyards/ha-adaptive-thermostat/commit/875342c16f3bbaae8f4e19ffcc854256a9d21302))
+
+Remove solar recovery module and all associated integration points from the codebase. The night
+  setback system now operates without solar delay logic.
+
+Changes: - Delete adaptive/solar_recovery.py module - Delete test_solar_recovery.py test file -
+  Remove solar_recovery imports and initialization from climate.py - Remove
+  CONF_NIGHT_SETBACK_SOLAR_RECOVERY constant from const.py - Update night_setback_calculator.py to
+  remove solar recovery logic - Update night_setback_manager.py to accept solar_recovery parameter
+  as deprecated (for backward compatibility) - Remove solar recovery tests from test_climate.py -
+  Keep adaptive/sun_position.py (used by night setback for sunrise calculations)
+
+- Remove thermal coupling learning system
+  ([`de141c0`](https://github.com/afewyards/ha-adaptive-thermostat/commit/de141c0d9a46be5d1f7af9355e991d5d0910f8ab))
+
+Delete thermal coupling feature to simplify codebase before implementing static thermal groups.
+
+Changes: - Delete thermal_coupling.py module - Remove coupling learner from coordinator - Remove
+  coupling config from __init__.py - Remove coupling constants from const.py - Clean up
+  persistence.py (remove coupling methods, simplify v3->v4 migration) - Delete
+  test_thermal_coupling.py, test_coupling_integration.py, test_climate_config.py - Remove coupling
+  tests from test_coordinator.py - Remove coupling imports from test_control_output.py
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+### Testing
+
+- Add HEATING_ENDED → SETTLING transition tests
+  ([`4be4f89`](https://github.com/afewyards/ha-adaptive-thermostat/commit/4be4f8925c647e74e890f519e6a073dd3ba63ce5))
+
+- Add thermal groups tests
+  ([`25d0418`](https://github.com/afewyards/ha-adaptive-thermostat/commit/25d041836d640250249d6eb1ab4be114c9baafa3))
+
+Add comprehensive test suite for thermal groups feature covering:
+
+Config validation: - Valid open_plan config with leader - Valid receives_from config with
+  transfer_factor and delay - Invalid configs: missing leader, leader not in zones, empty zones -
+  Invalid: duplicate zones, bad transfer_factor, negative delay - Invalid group type
+
+Manager validation: - Duplicate zone in multiple groups - receives_from non-existent group -
+  Self-reference validation - Missing required fields
+
+Leader/follower tracking: - Follower zones track leader correctly - get_follower_zones returns
+  correct zones - Non-follower zones unaffected - should_sync_setpoint logic - Leader not affected
+  by own changes
+
+Cross-group feedforward: - Transfer factor calculation - Delay respected - No history returns 0 -
+  Zone not receiving returns 0 - record_heat_output updates history - History limited to 2 hours -
+  Time tolerance (5 minute window)
+
+Integration tests: - Manager creation and zone lookup - get_group_status diagnostic output - Complex
+  multi-group setup with chained receives_from
+
+Validation function tests: - validate_thermal_groups_config for all error cases
+
+All 40 tests passing.
+
+- Remove dead thermal coupling tests
+  ([`5500dbe`](https://github.com/afewyards/ha-adaptive-thermostat/commit/5500dbe81e895fb0701ce4ec9cd088452b9f4b75))
+
+- Remove TestCouplingCompensation and TestControlLoopFeedforward from test_control_output.py -
+  Remove thermal coupling observation tests from test_coordinator.py - Remove coupling data storage
+  tests from test_learning_storage.py - Update migration tests to not expect thermal_coupling key -
+  Fix test_integration_stale_dt.py mock coordinator
+
+
 ## v0.26.6 (2026-01-24)
 
 ### Bug Fixes
