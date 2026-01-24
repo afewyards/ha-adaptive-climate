@@ -304,6 +304,7 @@ class LearningDataStore:
         zone_id: str,
         adaptive_data: Optional[Dict[str, Any]] = None,
         ke_data: Optional[Dict[str, Any]] = None,
+        preheat_data: Optional[Dict[str, Any]] = None,
     ) -> None:
         """
         Save learning data for a specific zone.
@@ -312,6 +313,7 @@ class LearningDataStore:
             zone_id: Zone identifier
             adaptive_data: AdaptiveLearner data dictionary
             ke_data: KeLearner data dictionary
+            preheat_data: PreheatLearner data dictionary
         """
         if self.hass is None:
             raise RuntimeError("async_save_zone requires HomeAssistant instance")
@@ -338,6 +340,10 @@ class LearningDataStore:
             if ke_data is not None:
                 zone_data["ke_learner"] = ke_data
 
+            # Update preheat learner data
+            if preheat_data is not None:
+                zone_data["preheat_learner"] = preheat_data
+
             # Update timestamp
             zone_data["last_updated"] = datetime.now().isoformat()
 
@@ -346,7 +352,8 @@ class LearningDataStore:
 
             _LOGGER.debug(
                 f"Saved learning data for zone '{zone_id}': "
-                f"adaptive={adaptive_data is not None}, ke={ke_data is not None}"
+                f"adaptive={adaptive_data is not None}, ke={ke_data is not None}, "
+                f"preheat={preheat_data is not None}"
             )
 
     def schedule_zone_save(self) -> None:
@@ -375,6 +382,7 @@ class LearningDataStore:
         zone_id: str,
         adaptive_data: Optional[Dict[str, Any]] = None,
         ke_data: Optional[Dict[str, Any]] = None,
+        preheat_data: Optional[Dict[str, Any]] = None,
     ) -> None:
         """
         Update zone data in memory without triggering immediate save.
@@ -386,6 +394,7 @@ class LearningDataStore:
             zone_id: Zone identifier
             adaptive_data: AdaptiveLearner data dictionary (optional)
             ke_data: KeLearner data dictionary (optional)
+            preheat_data: PreheatLearner data dictionary (optional)
         """
         # Ensure zone exists in data structure
         if zone_id not in self._data["zones"]:
@@ -401,12 +410,17 @@ class LearningDataStore:
         if ke_data is not None:
             zone_data["ke_learner"] = ke_data
 
+        # Update preheat learner data
+        if preheat_data is not None:
+            zone_data["preheat_learner"] = preheat_data
+
         # Update timestamp
         zone_data["last_updated"] = datetime.now().isoformat()
 
         _LOGGER.debug(
             f"Updated zone data for '{zone_id}' in memory: "
-            f"adaptive={adaptive_data is not None}, ke={ke_data is not None}"
+            f"adaptive={adaptive_data is not None}, ke={ke_data is not None}, "
+            f"preheat={preheat_data is not None}"
         )
 
     def save(
@@ -696,4 +710,34 @@ class LearningDataStore:
 
         except Exception as e:
             _LOGGER.error(f"Failed to restore KeLearner: {e}")
+            return None
+
+    def restore_preheat_learner(self, data: Dict[str, Any]) -> Optional[Any]:
+        """
+        Restore PreheatLearner from saved data.
+
+        Args:
+            data: Loaded data dictionary from get_zone_data()
+
+        Returns:
+            Restored PreheatLearner instance, or None if data missing
+        """
+        if "preheat_learner" not in data:
+            return None
+
+        try:
+            # Import PreheatLearner here to avoid circular import
+            from .preheat import PreheatLearner
+
+            preheat_data = data["preheat_learner"]
+            learner = PreheatLearner.from_dict(preheat_data)
+
+            _LOGGER.info(
+                f"Restored PreheatLearner: heating_type={learner.heating_type}, "
+                f"max_hours={learner.max_hours}, observations={learner.get_observation_count()}"
+            )
+            return learner
+
+        except Exception as e:
+            _LOGGER.error(f"Failed to restore PreheatLearner: {e}")
             return None
