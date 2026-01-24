@@ -83,7 +83,7 @@ class LearningDataStore:
             data = self._migrate_v2_to_v3(data)
 
         if data.get("version") == 3:
-            _LOGGER.info("Migrating learning data from v3 to v4 (thermal coupling support)")
+            _LOGGER.info("Migrating learning data from v3 to v4")
             data = self._migrate_v3_to_v4(data)
 
         self._data = data
@@ -120,27 +120,20 @@ class LearningDataStore:
 
     def _migrate_v3_to_v4(self, v3_data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Migrate v3 format to v4 format (thermal coupling support).
+        Migrate v3 format to v4 format.
 
         Args:
-            v3_data: v3 format with zones but no thermal_coupling key
+            v3_data: v3 format with zones
 
         Returns:
-            v4 format with thermal_coupling key containing empty dicts
+            v4 format (currently identical to v3)
         """
         v4_data = {
             "version": 4,
             "zones": v3_data.get("zones", {}),
-            "thermal_coupling": {
-                "observations": {},
-                "coefficients": {},
-                "seeds": {},
-            },
         }
 
-        _LOGGER.info(
-            "Migrated v3 data to v4: added thermal_coupling with empty dicts"
-        )
+        _LOGGER.info("Migrated v3 data to v4")
 
         return v4_data
 
@@ -155,36 +148,6 @@ class LearningDataStore:
             Zone data dictionary or None if zone doesn't exist
         """
         return self._data["zones"].get(zone_id)
-
-    def get_coupling_data(self) -> Optional[Dict[str, Any]]:
-        """
-        Get thermal coupling data.
-
-        Returns:
-            Coupling data dictionary with observations, coefficients, and seeds,
-            or None if no coupling data exists
-        """
-        return self._data.get("thermal_coupling")
-
-    def update_coupling_data(self, data: Dict[str, Any]) -> None:
-        """
-        Update thermal coupling data in memory without triggering immediate save.
-
-        This method updates the internal data structure but does not persist
-        to disk. Call schedule_zone_save() or async_save_coupling() after to
-        trigger a save.
-
-        Args:
-            data: Coupling learner data dictionary with observations, coefficients, seeds
-        """
-        self._data["thermal_coupling"] = data
-
-        _LOGGER.debug(
-            f"Updated coupling data in memory: "
-            f"{len(data.get('observations', {}))} observation pairs, "
-            f"{len(data.get('coefficients', {}))} coefficients, "
-            f"{len(data.get('seeds', {}))} seeds"
-        )
 
     async def async_save_zone(
         self,
@@ -234,37 +197,6 @@ class LearningDataStore:
             _LOGGER.debug(
                 f"Saved learning data for zone '{zone_id}': "
                 f"adaptive={adaptive_data is not None}, ke={ke_data is not None}"
-            )
-
-    async def async_save_coupling(self, data: Dict[str, Any]) -> None:
-        """
-        Save thermal coupling data to HA Store.
-
-        Args:
-            data: Coupling learner data dictionary with observations, coefficients, seeds
-        """
-        if self.hass is None:
-            raise RuntimeError("async_save_coupling requires HomeAssistant instance")
-
-        if self._store is None:
-            raise RuntimeError("Store not initialized - call async_load() first")
-
-        # Lazily initialize lock if needed
-        if self._save_lock is None:
-            self._save_lock = asyncio.Lock()
-
-        async with self._save_lock:
-            # Update coupling data in memory
-            self._data["thermal_coupling"] = data
-
-            # Save to disk
-            await self._store.async_save(self._data)
-
-            _LOGGER.debug(
-                f"Saved coupling data: "
-                f"{len(data.get('observations', {}))} observation pairs, "
-                f"{len(data.get('coefficients', {}))} coefficients, "
-                f"{len(data.get('seeds', {}))} seeds"
             )
 
     def schedule_zone_save(self) -> None:

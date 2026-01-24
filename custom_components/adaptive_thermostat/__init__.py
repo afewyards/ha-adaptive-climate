@@ -71,11 +71,6 @@ from .const import (
     CONF_PWM,
     CONF_MIN_CYCLE_DURATION,
     CONF_MIN_OFF_CYCLE_DURATION,
-    # Thermal coupling
-    CONF_THERMAL_COUPLING,
-    CONF_OPEN_ZONES,
-    CONF_STAIRWELL_ZONES,
-    CONF_SEED_COEFFICIENTS,
     DEFAULT_DEBUG,
     DEFAULT_SOURCE_STARTUP_DELAY,
     DEFAULT_SYNC_MODES,
@@ -270,21 +265,6 @@ if HAS_HOMEASSISTANT:
                 vol.Optional(CONF_PWM): vol.All(cv.time_period, cv.positive_timedelta),
                 vol.Optional(CONF_MIN_CYCLE_DURATION): vol.All(cv.time_period, cv.positive_timedelta),
                 vol.Optional(CONF_MIN_OFF_CYCLE_DURATION): vol.All(cv.time_period, cv.positive_timedelta),
-
-                # Thermal coupling configuration
-                vol.Optional(CONF_THERMAL_COUPLING): vol.Schema({
-                    vol.Optional('enabled', default=True): cv.boolean,
-                    vol.Optional(CONF_OPEN_ZONES): vol.All(cv.ensure_list, [cv.entity_id]),
-                    vol.Optional(CONF_STAIRWELL_ZONES): vol.All(cv.ensure_list, [cv.entity_id]),
-                    vol.Optional(CONF_SEED_COEFFICIENTS): vol.Schema({
-                        vol.Optional('same_floor'): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=1.0)),
-                        vol.Optional('up'): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=1.0)),
-                        vol.Optional('down'): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=1.0)),
-                        vol.Optional('open'): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=1.0)),
-                        vol.Optional('stairwell_up'): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=1.0)),
-                        vol.Optional('stairwell_down'): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=1.0)),
-                    }),
-                }),
             })
         },
         extra=vol.ALLOW_EXTRA,  # Allow other domains in config
@@ -571,9 +551,6 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     hass.data[DOMAIN]["pwm"] = domain_config.get(CONF_PWM)
     hass.data[DOMAIN]["min_cycle_duration"] = domain_config.get(CONF_MIN_CYCLE_DURATION)
     hass.data[DOMAIN]["min_off_cycle_duration"] = domain_config.get(CONF_MIN_OFF_CYCLE_DURATION)
-
-    # Thermal coupling configuration
-    hass.data[DOMAIN]["thermal_coupling"] = domain_config.get(CONF_THERMAL_COUPLING)
 
     if supply_temp_sensor and return_temp_sensor:
         _LOGGER.info(

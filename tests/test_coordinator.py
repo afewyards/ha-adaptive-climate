@@ -28,9 +28,6 @@ sys.modules['homeassistant.helpers.update_coordinator'].DataUpdateCoordinator = 
 # Import const to get DOMAIN
 import const
 
-# Import thermal_coupling BEFORE coordinator (to ensure it's in sys.modules)
-from adaptive.thermal_coupling import ThermalCouplingLearner
-
 # Now we can import the coordinator
 import coordinator
 
@@ -307,17 +304,6 @@ def test_unregister_all_zones(coord):
 # =============================================================================
 
 
-def test_coordinator_has_coupling_learner(coord):
-    """Test that coordinator has a thermal coupling learner accessible."""
-    # Learner should be accessible via property
-    assert hasattr(coord, "thermal_coupling_learner")
-    learner = coord.thermal_coupling_learner
-    assert learner is not None
-
-    # Verify it's a ThermalCouplingLearner instance
-    assert isinstance(learner, ThermalCouplingLearner)
-
-
 def test_coordinator_outdoor_temp_access(hass):
     """Test that coordinator provides outdoor temperature."""
     # Set up weather entity in hass.data
@@ -469,8 +455,8 @@ def test_coordinator_update_zone_temp_unknown_zone(coord):
     assert "nonexistent_zone" not in temps
 
 
-# =============================================================================
-# Thermal Coupling Observation Trigger Tests (Story 5.3)
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])
 # =============================================================================
 
 

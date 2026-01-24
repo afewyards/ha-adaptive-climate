@@ -7,16 +7,11 @@ from datetime import datetime
 from custom_components.adaptive_thermostat.managers.control_output import (
     ControlOutputManager,
 )
-from custom_components.adaptive_thermostat.adaptive.thermal_coupling import (
-    CouplingCoefficient,
-    graduated_confidence,
-)
 from custom_components.adaptive_thermostat.const import (
     HEATING_TYPE_FLOOR_HYDRONIC,
     HEATING_TYPE_RADIATOR,
     HEATING_TYPE_CONVECTOR,
     HEATING_TYPE_FORCED_AIR,
-    MAX_COUPLING_COMPENSATION,
 )
 
 
