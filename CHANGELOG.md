@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v0.26.6 (2026-01-24)
+
+### Bug Fixes
+
+- Add data parameter to async_send_notification for chart attachments
+  ([`04f8dc7`](https://github.com/afewyards/ha-adaptive-thermostat/commit/04f8dc72427ed49e6de2630332f956b7c0b6efc9))
+
+Weekly report was failing because async_send_notification didn't accept the data parameter needed to
+  attach chart images to mobile notifications.
+
+
 ## v0.26.5 (2026-01-23)
 
 ### Bug Fixes
