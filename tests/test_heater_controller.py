@@ -922,6 +922,61 @@ class TestHeaterControllerEventEmission:
         await controller.async_set_valve_value(0.0, MockHVACMode.HEAT)
         assert len(ended_events) == 1
 
+    @pytest.mark.asyncio
+    async def test_hc_pwm_heater_off_emits_settling_started(self, heater_controller_with_dispatcher):
+        """Test that async_turn_off in PWM mode emits SETTLING_STARTED when cycle is active.
+
+        Context: In PWM mode, demand stays at 5-10% during maintenance cycles, so
+        SETTLING_STARTED won't be emitted from demand dropping to 0. Instead, it
+        must be emitted when the heater is explicitly turned off while _cycle_active
+        is True, to ensure proper learning cycle completion.
+        """
+        controller, dispatcher = heater_controller_with_dispatcher
+
+        # Setup event listeners
+        heating_ended_events = []
+        settling_started_events = []
+        dispatcher.subscribe(CycleEventType.HEATING_ENDED, lambda e: heating_ended_events.append(e))
+        dispatcher.subscribe(CycleEventType.SETTLING_STARTED, lambda e: settling_started_events.append(e))
+
+        # Mock service calls to be async
+        async def mock_async_call(*args, **kwargs):
+            pass
+        controller._hass.services.async_call = mock_async_call
+        controller._hass.states.is_state = MagicMock(return_value=True)
+
+        # Mock callbacks
+        get_cycle_start_time = MagicMock(return_value=0.0)
+        set_is_heating = MagicMock()
+        set_last_heat_cycle_time = MagicMock()
+
+        # Set previous state for cycle count test and mark cycle as active
+        controller._last_heater_state = True
+        controller._cycle_active = True
+
+        # Verify we're in PWM mode
+        assert controller._pwm > 0
+
+        # Turn off heater (should emit both HEATING_ENDED and SETTLING_STARTED)
+        await controller.async_turn_off(
+            hvac_mode=MockHVACMode.HEAT,
+            get_cycle_start_time=get_cycle_start_time,
+            set_is_heating=set_is_heating,
+            set_last_heat_cycle_time=set_last_heat_cycle_time,
+        )
+
+        # Verify HEATING_ENDED event was emitted
+        assert len(heating_ended_events) == 1
+        event = heating_ended_events[0]
+        assert isinstance(event, HeatingEndedEvent)
+        assert event.hvac_mode == MockHVACMode.HEAT
+
+        # Verify SETTLING_STARTED event was emitted
+        assert len(settling_started_events) == 1
+        settling_event = settling_started_events[0]
+        assert isinstance(settling_event, SettlingStartedEvent)
+        assert settling_event.hvac_mode == MockHVACMode.HEAT
+
 
 class TestDutyAccumulator:
     """Tests for duty accumulator infrastructure (story 1.1)."""
