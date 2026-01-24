@@ -499,6 +499,18 @@ CONF_NIGHT_SETBACK_RECOVERY_DEADLINE = "recovery_deadline"
 CONF_MIN_EFFECTIVE_ELEVATION = "min_effective_elevation"
 DEFAULT_MIN_EFFECTIVE_ELEVATION = 10.0
 
+# Preheat configuration
+CONF_PREHEAT_ENABLED = "preheat_enabled"
+CONF_MAX_PREHEAT_HOURS = "max_preheat_hours"
+
+# Preheat configuration by heating type
+HEATING_TYPE_PREHEAT_CONFIG = {
+    "floor_hydronic": {"max_hours": 8.0, "cold_soak_margin": 1.5, "fallback_rate": 0.5},
+    "radiator":       {"max_hours": 4.0, "cold_soak_margin": 1.3, "fallback_rate": 1.2},
+    "convector":      {"max_hours": 2.0, "cold_soak_margin": 1.2, "fallback_rate": 2.0},
+    "forced_air":     {"max_hours": 1.5, "cold_soak_margin": 1.1, "fallback_rate": 4.0},
+}
+
 # Contact action types
 CONTACT_ACTION_PAUSE = "pause"
 CONTACT_ACTION_FROST = "frost_protection"
