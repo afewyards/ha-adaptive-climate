@@ -17,6 +17,7 @@ from custom_components.adaptive_thermostat.managers.events import (
     ModeChangedEvent,
     ContactPauseEvent,
     TemperatureUpdateEvent,
+    HeatingEndedEvent,
 )
 
 
@@ -147,6 +148,73 @@ class TestCycleTrackerBasic:
 
         # Should remain in IDLE
         assert cycle_tracker.state == CycleState.IDLE
+
+    def test_heating_ended_transitions_to_settling(self, cycle_tracker, dispatcher):
+        """Test HEATING_ENDED event transitions from HEATING to SETTLING state."""
+        # Start heating cycle
+        dispatcher.emit(CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=datetime(2025, 1, 14, 10, 0, 0),
+            target_temp=20.0,
+            current_temp=18.0
+        ))
+        assert cycle_tracker.state == CycleState.HEATING
+
+        # Emit HEATING_ENDED event
+        dispatcher.emit(HeatingEndedEvent(
+            hvac_mode="heat",
+            timestamp=datetime(2025, 1, 14, 10, 5, 0)
+        ))
+
+        # Should transition to SETTLING
+        assert cycle_tracker.state == CycleState.SETTLING
+
+    def test_cooling_ended_transitions_to_settling(self, cycle_tracker, dispatcher):
+        """Test HEATING_ENDED event transitions from COOLING to SETTLING state."""
+        # Start cooling cycle
+        dispatcher.emit(CycleStartedEvent(
+            hvac_mode="cool",
+            timestamp=datetime(2025, 1, 14, 10, 0, 0),
+            target_temp=20.0,
+            current_temp=22.0
+        ))
+        assert cycle_tracker.state == CycleState.COOLING
+
+        # Emit HEATING_ENDED event (same event used for cooling)
+        dispatcher.emit(HeatingEndedEvent(
+            hvac_mode="cool",
+            timestamp=datetime(2025, 1, 14, 10, 5, 0)
+        ))
+
+        # Should transition to SETTLING
+        assert cycle_tracker.state == CycleState.SETTLING
+
+    def test_heating_ended_schedules_settling_timeout(self, cycle_tracker, mock_hass, dispatcher):
+        """Test HEATING_ENDED event schedules settling timeout."""
+        import sys
+
+        # Get the mocked async_call_later from conftest
+        mock_async_call_later = sys.modules["homeassistant.helpers.event"].async_call_later
+        mock_async_call_later.reset_mock()
+
+        # Start heating cycle
+        dispatcher.emit(CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=datetime(2025, 1, 14, 10, 0, 0),
+            target_temp=20.0,
+            current_temp=18.0
+        ))
+
+        # Emit HEATING_ENDED event
+        dispatcher.emit(HeatingEndedEvent(
+            hvac_mode="heat",
+            timestamp=datetime(2025, 1, 14, 10, 5, 0)
+        ))
+
+        # Verify timeout was scheduled
+        mock_async_call_later.assert_called_once()
+        call_args = mock_async_call_later.call_args
+        assert call_args[0][1] == 120 * 60  # 120 minutes in seconds (2nd arg after hass)
 
     def test_on_heating_started_resets_cycle_from_non_idle(self, cycle_tracker, dispatcher):
         """Test on_heating_started() resets cycle when called from non-IDLE state."""
