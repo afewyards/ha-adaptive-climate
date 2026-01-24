@@ -589,6 +589,15 @@ class HeaterController:
                     timestamp=datetime.now(),
                 ))
 
+            # Emit SETTLING_STARTED for PWM mode to complete cycle tracking
+            if self._pwm and self._cycle_active and self._dispatcher:
+                self._dispatcher.emit(SettlingStartedEvent(
+                    hvac_mode=hvac_mode,
+                    timestamp=datetime.now(),
+                    was_clamped=self._get_pid_was_clamped(),
+                ))
+                self._cycle_active = False
+
             # Reset heating state for zone linking
             set_is_heating(False)
         else:
