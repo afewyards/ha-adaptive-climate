@@ -1,6 +1,63 @@
 # CHANGELOG
 
 
+## v0.27.1 (2026-01-24)
+
+### Bug Fixes
+
+- Emit SETTLING_STARTED on PWM heater-off for cycle learning
+  ([`525d6bf`](https://github.com/afewyards/ha-adaptive-thermostat/commit/525d6bf4ca0f2c865591d0d1c4a5e4c2eb0e0926))
+
+- Finalize cycle on CYCLE_STARTED during SETTLING
+  ([`60880fb`](https://github.com/afewyards/ha-adaptive-thermostat/commit/60880fbd6f6c32853c25cc1d6a156ab8880da060))
+
+When a new heating cycle starts while the previous cycle is still in the SETTLING phase, we now
+  properly finalize and record the previous cycle's metrics before starting the new cycle.
+
+Previously, the previous cycle was discarded when a new CYCLE_STARTED event arrived during SETTLING.
+  This meant losing valuable learning data.
+
+Changes: - Extract cycle metrics recording logic into _record_cycle_metrics() helper - Call
+  _record_cycle_metrics() when CYCLE_STARTED arrives during SETTLING - Update _finalize_cycle() to
+  use the new helper method - Fix test assertion to check for valid metric (overshoot instead of
+  cycle_duration)
+
+The _record_cycle_metrics() helper is synchronous and records metrics without resetting state,
+  allowing the event handler to proceed with the new cycle transition immediately after.
+
+### Documentation
+
+- Add PWM cycle learning behavior to auto-apply docs
+  ([`5baedad`](https://github.com/afewyards/ha-adaptive-thermostat/commit/5baedad1e1745bbd39b927c33fb2b11db0cd0c7d))
+
+### Testing
+
+- Add cycle finalization on CYCLE_STARTED during SETTLING
+  ([`ac20865`](https://github.com/afewyards/ha-adaptive-thermostat/commit/ac20865d86cc167437975e8d5c1d192a264e102b))
+
+Add test verifying that when CYCLE_STARTED event arrives during SETTLING state, the previous cycle
+  is finalized (metrics recorded) rather than discarded. Test currently fails as expected -
+  implementation to follow.
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+- Add PWM heater-off emits SETTLING_STARTED
+  ([`95fb6fb`](https://github.com/afewyards/ha-adaptive-thermostat/commit/95fb6fbc4a4f7cdf3b10b5297b6035a814d79460))
+
+Add test verifying that when HeaterController is in PWM mode and _cycle_active is True, calling
+  async_turn_off() emits SETTLING_STARTED event alongside HEATING_ENDED.
+
+This is necessary for PWM maintenance cycles to complete learning, as demand stays at 5-10% during
+  these cycles (so SETTLING_STARTED won't be emitted from demand dropping to 0).
+
+Test currently fails - implementation needed in async_turn_off.
+
+- Verify non-PWM mode no extra SETTLING_STARTED
+  ([`7397cb9`](https://github.com/afewyards/ha-adaptive-thermostat/commit/7397cb9b87203be9398fca09634fdbe03afd40f8))
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+
 ## v0.27.0 (2026-01-24)
 
 ### Bug Fixes
