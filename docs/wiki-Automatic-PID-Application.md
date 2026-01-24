@@ -9,6 +9,8 @@ By default (`auto_apply_pid: true`), PID parameters are automatically applied wh
 2. `AdaptiveLearner` calculates convergence confidence based on metric stability
 3. Confidence increases as patterns become consistent across cycles
 
+**PWM Mode:** Maintenance pulses (short on-periods near setpoint) complete cycle tracking automatically. When the heater turns off, settling begins immediately—no need for demand to reach zero. Interrupted settling phases finalize their metrics before the next cycle starts.
+
 ### Auto-Apply Trigger
 When confidence reaches heating-type-specific thresholds:
 1. Safety limits are checked (seasonal, lifetime, drift)
