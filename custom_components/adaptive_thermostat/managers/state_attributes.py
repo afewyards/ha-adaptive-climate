@@ -101,6 +101,9 @@ def build_state_attributes(thermostat: SmartThermostat) -> dict[str, Any]:
     # Per-mode convergence confidence
     _add_per_mode_convergence_attributes(thermostat, attrs)
 
+    # Preheat status
+    _add_preheat_attributes(thermostat, attrs)
+
     return attrs
 
 
@@ -344,3 +347,96 @@ def _add_per_mode_convergence_attributes(
             attrs["cooling_convergence_confidence"] = round(cooling_confidence * 100)
 
             break
+
+
+def _add_preheat_attributes(
+    thermostat: SmartThermostat, attrs: dict[str, Any]
+) -> None:
+    """Add preheat-related state attributes.
+
+    Args:
+        thermostat: The SmartThermostat instance
+        attrs: Dictionary to update with preheat attributes
+    """
+    # Check if preheat is enabled
+    preheat_enabled = thermostat._preheat_learner is not None
+
+    # Default values (when preheat is disabled)
+    attrs["preheat_enabled"] = preheat_enabled
+    attrs["preheat_active"] = False
+    attrs["preheat_scheduled_start"] = None
+    attrs["preheat_estimated_duration_min"] = 0
+    attrs["preheat_learning_confidence"] = 0.0
+    attrs["preheat_heating_rate_learned"] = None
+    attrs["preheat_observation_count"] = 0
+
+    if not preheat_enabled:
+        return
+
+    # Get learner data
+    learner = thermostat._preheat_learner
+    attrs["preheat_learning_confidence"] = learner.get_confidence()
+    attrs["preheat_observation_count"] = learner.get_observation_count()
+
+    # Get learned rate for current conditions (if available)
+    # We need current temp, target temp, and outdoor temp
+    try:
+        current_temp = thermostat._get_current_temp() if hasattr(thermostat, '_get_current_temp') else None
+        target_temp = thermostat._get_target_temp() if hasattr(thermostat, '_get_target_temp') else None
+        outdoor_temp = getattr(thermostat, '_outdoor_sensor_temp', None)
+
+        # Ensure we have valid numeric values (not MagicMock)
+        if (isinstance(current_temp, (int, float)) and
+            isinstance(target_temp, (int, float)) and
+            isinstance(outdoor_temp, (int, float))):
+            delta = target_temp - current_temp
+            if delta > 0:
+                learned_rate = learner.get_learned_rate(delta, outdoor_temp)
+                attrs["preheat_heating_rate_learned"] = learned_rate
+    except (TypeError, AttributeError):
+        # If anything goes wrong, just skip setting the learned rate
+        pass
+
+    # Get preheat schedule info from night setback calculator
+    if thermostat._night_setback_calculator:
+        try:
+            # We need to call get_preheat_info with appropriate parameters
+            # Need: now, current_temp, target_temp, outdoor_temp, deadline
+            from datetime import datetime
+            now = datetime.now()
+
+            # Get deadline from night setback config
+            if (thermostat._night_setback_config and
+                "recovery_deadline" in thermostat._night_setback_config):
+                deadline_str = thermostat._night_setback_config["recovery_deadline"]
+                hour, minute = map(int, deadline_str.split(":"))
+                deadline = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                # If deadline is in the past today, it's for tomorrow
+                if deadline < now:
+                    from datetime import timedelta
+                    deadline = deadline + timedelta(days=1)
+
+                # Re-get temps in case they weren't set above
+                current_temp = thermostat._get_current_temp() if hasattr(thermostat, '_get_current_temp') else None
+                target_temp = thermostat._get_target_temp() if hasattr(thermostat, '_get_target_temp') else None
+                outdoor_temp = getattr(thermostat, '_outdoor_sensor_temp', None)
+
+                if (isinstance(current_temp, (int, float)) and
+                    isinstance(target_temp, (int, float)) and
+                    isinstance(outdoor_temp, (int, float))):
+                    preheat_info = thermostat._night_setback_calculator.get_preheat_info(
+                        now=now,
+                        current_temp=current_temp,
+                        target_temp=target_temp,
+                        outdoor_temp=outdoor_temp,
+                        deadline=deadline,
+                    )
+
+                    attrs["preheat_active"] = preheat_info["active"]
+                    attrs["preheat_estimated_duration_min"] = int(preheat_info["estimated_duration"])
+
+                    if preheat_info["scheduled_start"] is not None:
+                        attrs["preheat_scheduled_start"] = preheat_info["scheduled_start"].isoformat()
+        except (TypeError, AttributeError, ValueError):
+            # If anything goes wrong, just skip setting schedule info
+            pass
