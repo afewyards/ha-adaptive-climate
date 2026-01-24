@@ -26,6 +26,7 @@ class NightSetback:
         sunset_offset_minutes: int = 0,
         thermal_rate_learner: Optional['ThermalRateLearner'] = None,
         heating_type: Optional[str] = None,
+        preheat_learner: Optional['PreheatLearner'] = None,
     ):
         """Initialize night setback.
 
@@ -37,6 +38,7 @@ class NightSetback:
             sunset_offset_minutes: Minutes to add/subtract from sunset (e.g., +30, -15)
             thermal_rate_learner: Optional ThermalRateLearner for learned heating rate
             heating_type: Heating type for fallback estimates (floor_hydronic, radiator, convector, forced_air)
+            preheat_learner: Optional PreheatLearner for predictive preheat scheduling
         """
         self.start_time_str = start_time
         self.end_time = self._parse_time(end_time)
@@ -45,6 +47,7 @@ class NightSetback:
         self.sunset_offset_minutes = sunset_offset_minutes
         self.thermal_rate_learner = thermal_rate_learner
         self.heating_type = heating_type
+        self.preheat_learner = preheat_learner
 
         # Parse start time (may be "sunset" or "HH:MM")
         if start_time.lower().startswith("sunset"):
@@ -230,17 +233,19 @@ class NightSetback:
         self,
         current_time: datetime,
         current_temp: float,
-        base_setpoint: float
+        base_setpoint: float,
+        outdoor_temp: Optional[float] = None
     ) -> bool:
         """Check if recovery heating should start.
 
         Recovery starts early if needed to reach setpoint by deadline.
-        Uses learned heating rate with fallback to heating type estimates.
+        Uses PreheatLearner when available, with fallback to heating type estimates.
 
         Args:
             current_time: Current datetime
             current_temp: Current temperature
             base_setpoint: Normal temperature setpoint
+            outdoor_temp: Optional outdoor temperature for PreheatLearner
 
         Returns:
             True if recovery should start
@@ -262,17 +267,34 @@ class NightSetback:
         # Calculate temperature deficit
         temp_deficit = base_setpoint - current_temp
 
-        # Get heating rate with fallback hierarchy
+        # Try using PreheatLearner first if available and outdoor_temp provided
+        if self.preheat_learner and outdoor_temp is not None:
+            # Use PreheatLearner to estimate time needed
+            estimated_minutes = self.preheat_learner.estimate_time_to_target(
+                current_temp=current_temp,
+                target_temp=base_setpoint,
+                outdoor_temp=outdoor_temp
+            )
+            estimated_recovery_hours = estimated_minutes / 60.0
+
+            _LOGGER.debug(
+                f"Night setback recovery calculation (PreheatLearner): "
+                f"temp_deficit={temp_deficit:.2f}°C, "
+                f"outdoor_temp={outdoor_temp:.2f}°C, "
+                f"estimated_recovery={estimated_recovery_hours:.2f}h, "
+                f"time_until_deadline={time_until_deadline:.2f}h"
+            )
+
+            # Start recovery if we don't have enough time
+            return estimated_recovery_hours >= time_until_deadline
+
+        # Fallback: Use old method with heating rate and cold-soak margin
         heating_rate = self._get_heating_rate()
-
-        # Get cold-soak margin
         cold_soak_margin = self._get_cold_soak_margin()
-
-        # Estimate recovery time needed with cold-soak margin
         estimated_recovery_hours = (temp_deficit / heating_rate) * cold_soak_margin
 
         _LOGGER.debug(
-            f"Night setback recovery calculation: "
+            f"Night setback recovery calculation (fallback): "
             f"temp_deficit={temp_deficit:.2f}°C, "
             f"heating_rate={heating_rate:.2f}°C/h, "
             f"cold_soak_margin={cold_soak_margin:.2f}x, "
