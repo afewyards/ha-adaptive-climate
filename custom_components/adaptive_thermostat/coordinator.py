@@ -54,10 +54,28 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
         self._demand_states: dict[str, bool] = {}
         self._central_controller: "CentralController | None" = None
         self._sun_position_calculator = SunPositionCalculator.from_hass(hass)
+        self._thermal_group_manager: Any = None  # ThermalGroupManager or None
 
     def set_central_controller(self, controller: "CentralController") -> None:
         """Set the central controller reference for push-based updates."""
         self._central_controller = controller
+
+    def set_thermal_group_manager(self, manager: Any) -> None:
+        """Set the thermal group manager reference.
+
+        Args:
+            manager: ThermalGroupManager instance or None
+        """
+        self._thermal_group_manager = manager
+
+    @property
+    def thermal_group_manager(self) -> Any:
+        """Get the thermal group manager.
+
+        Returns:
+            ThermalGroupManager instance or None
+        """
+        return self._thermal_group_manager
 
     @property
     def outdoor_temp(self) -> float | None:

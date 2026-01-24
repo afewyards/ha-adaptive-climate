@@ -1169,6 +1169,24 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
             # Initialize contact sensor states on startup
             self._update_contact_sensor_states()
 
+        # Thermal groups leader tracking (follower zones track leader setpoint)
+        if self._zone_id and coordinator:
+            thermal_group_manager = coordinator.thermal_group_manager
+            if thermal_group_manager:
+                leader_zone_id = thermal_group_manager.get_leader_zone(self._zone_id)
+                if leader_zone_id:
+                    # This is a follower zone - track leader's state
+                    leader_entity_id = f"climate.{leader_zone_id}"
+                    _LOGGER.info(
+                        "%s: Follower zone tracking leader %s",
+                        self.entity_id, leader_entity_id
+                    )
+                    self.async_on_remove(
+                        async_track_state_change_event(
+                            self.hass,
+                            leader_entity_id,
+                            self._async_leader_changed))
+
         # Control loop interval timer
         # Derive interval: explicit control_interval > sampling_period > default 60s
         if self._control_interval:
@@ -1870,6 +1888,42 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                     self.entity_id, sensor_id
                 )
         self._contact_sensor_handler.update_contact_states(contact_states)
+
+    async def _async_leader_changed(self, event: Event[EventStateChangedData]):
+        """Handle leader zone setpoint changes for follower zones.
+
+        Follower zones in open_plan thermal groups automatically track
+        their leader's target temperature.
+        """
+        new_state = event.data["new_state"]
+        if new_state is None:
+            return
+
+        # Get coordinator and thermal group manager
+        coordinator = self.hass.data.get(const.DOMAIN, {}).get("coordinator")
+        if not coordinator:
+            return
+
+        thermal_group_manager = coordinator.thermal_group_manager
+        if not thermal_group_manager:
+            return
+
+        # Check if leader's temperature attribute changed
+        leader_temp = new_state.attributes.get("temperature")
+        if leader_temp is None:
+            return
+
+        # Only sync if different from current target
+        if self._target_temp == leader_temp:
+            return
+
+        _LOGGER.info(
+            "%s: Syncing follower setpoint to leader: %.1f°C",
+            self.entity_id, leader_temp
+        )
+
+        # Update target temperature
+        await self._temperature_manager.async_set_temperature(leader_temp)
 
     @callback
     def _async_update_temp(self, state):

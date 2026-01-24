@@ -227,6 +227,9 @@ class ControlOutputManager:
         feedforward = self._calculate_coupling_compensation()
         self._pid_controller.set_feedforward(feedforward)
 
+        # Record heat output for thermal groups transfer history
+        self._record_heat_output_for_thermal_groups()
+
         # Calculate PID output
         # For event-driven mode (sampling_period == 0), pass corrected timestamps
         # to ensure PID receives the actual elapsed time between calculations,
@@ -441,21 +444,49 @@ class ControlOutputManager:
             set_force_off=set_force_off,
         )
 
-    def _calculate_coupling_compensation(self) -> float:
-        """Calculate thermal coupling compensation from active heating neighbors.
+    def _record_heat_output_for_thermal_groups(self) -> None:
+        """Record current heat output for thermal groups transfer history."""
+        from ..const import DOMAIN
 
-        Sums the predicted temperature rise from all actively heating zones
-        based on learned coupling coefficients, then converts to power reduction.
+        # Get coordinator
+        coordinator = self._thermostat.hass.data.get(DOMAIN, {}).get("coordinator")
+        if not coordinator:
+            return
+
+        # Get thermal group manager
+        thermal_group_manager = coordinator.thermal_group_manager
+        if not thermal_group_manager:
+            return
+
+        # Get zone ID
+        zone_id = getattr(self._thermostat, "_zone_id", None)
+        if not zone_id:
+            return
+
+        # Only record when actively heating
+        if self._thermostat._hvac_mode != "heat":
+            return
+
+        # Get current control output (heat output percentage)
+        control_output = getattr(self._thermostat, "_control_output", 0.0)
+
+        # Record heat output
+        thermal_group_manager.record_heat_output(zone_id, control_output)
+
+    def _calculate_coupling_compensation(self) -> float:
+        """Calculate thermal coupling compensation using thermal groups.
+
+        Uses static thermal group configuration for cross-group heat transfer
+        feedforward based on delayed history and transfer factors.
 
         Also stores the compensation values (degC and power) for attribute exposure.
 
         Returns:
             Compensation in power % (0-100). Positive values reduce output.
         """
-        from ..adaptive.thermal_coupling import graduated_confidence
-        from ..const import MAX_COUPLING_COMPENSATION, DOMAIN
+        from ..const import DOMAIN
 
-        # Disable in cooling mode (v1 - heating only)
+        # Disable in cooling mode
         if self._thermostat._hvac_mode == "cool":
             self._last_coupling_compensation_degc = 0.0
             self._last_coupling_compensation_power = 0.0
@@ -468,72 +499,25 @@ class ControlOutputManager:
             self._last_coupling_compensation_power = 0.0
             return 0.0
 
-        # Get active zones (neighbors currently heating)
-        active_zones = coordinator.get_active_zones(hvac_mode="heat")
-        if not active_zones:
+        # Get thermal group manager
+        thermal_group_manager = coordinator.thermal_group_manager
+        if not thermal_group_manager:
             self._last_coupling_compensation_degc = 0.0
             self._last_coupling_compensation_power = 0.0
             return 0.0
 
-        # Get coupling learner
-        coupling_learner = coordinator.thermal_coupling_learner
-        if not coupling_learner:
+        # Get zone ID
+        zone_id = getattr(self._thermostat, "_zone_id", None)
+        if not zone_id:
             self._last_coupling_compensation_degc = 0.0
             self._last_coupling_compensation_power = 0.0
             return 0.0
 
-        # Get current zone temps
-        zone_temps = coordinator.get_zone_temps()
-        this_zone = self._thermostat.entity_id
+        # Calculate feedforward from thermal groups
+        feedforward_power = thermal_group_manager.calculate_feedforward(zone_id)
 
-        # Sum compensation from all active neighbors
-        total_compensation_degc = 0.0
+        # Store values for attribute exposure (no degC conversion for static config)
+        self._last_coupling_compensation_degc = 0.0
+        self._last_coupling_compensation_power = feedforward_power
 
-        for neighbor_id, neighbor_data in active_zones.items():
-            # Skip self
-            if neighbor_id == this_zone:
-                continue
-
-            # Get learned coefficient for this neighbor -> us
-            coef = coupling_learner.get_coefficient(neighbor_id, this_zone)
-            if not coef:
-                continue
-
-            # Apply graduated confidence scaling
-            confidence_scale = graduated_confidence(coef.confidence)
-            if confidence_scale == 0.0:
-                continue
-
-            # Calculate neighbor's temperature rise since heating started
-            heating_start_temp = neighbor_data.get("heating_start_temp")
-            if heating_start_temp is None:
-                continue
-
-            current_temp = zone_temps.get(neighbor_id)
-            if current_temp is None:
-                continue
-
-            temp_rise = current_temp - heating_start_temp
-
-            # Negative rise = neighbor cooling, no heating effect
-            if temp_rise <= 0:
-                continue
-
-            # Calculate predicted rise in this zone: coefficient * confidence * neighbor_rise
-            predicted_rise = coef.coefficient * confidence_scale * temp_rise
-            total_compensation_degc += predicted_rise
-
-        # Cap at max compensation for this heating type
-        heating_type = getattr(self._thermostat, "_heating_type", "convector")
-        max_compensation = MAX_COUPLING_COMPENSATION.get(heating_type, 1.5)
-        total_compensation_degc = min(total_compensation_degc, max_compensation)
-
-        # Convert to power using Kp
-        kp = self._get_kp() or 100.0
-        compensation_power = total_compensation_degc * kp
-
-        # Store values for attribute exposure
-        self._last_coupling_compensation_degc = total_compensation_degc
-        self._last_coupling_compensation_power = compensation_power
-
-        return compensation_power
+        return feedforward_power

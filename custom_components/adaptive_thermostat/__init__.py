@@ -60,6 +60,7 @@ from .const import (
     CONF_ACTIVITY_TEMP,
     CONF_PRESET_SYNC_MODE,
     CONF_BOOST_PID_OFF,
+    CONF_THERMAL_GROUPS,
     # Climate settings (domain-level defaults with per-entity override)
     CONF_MIN_TEMP,
     CONF_MAX_TEMP,
@@ -150,6 +151,22 @@ def valid_notify_service(value: Any) -> str:
 # Domain configuration schema
 # This validates the configuration under the adaptive_thermostat: key
 if HAS_HOMEASSISTANT:
+    # Thermal group schema
+    THERMAL_GROUP_SCHEMA = vol.Schema({
+        vol.Required("name"): cv.string,
+        vol.Required("zones"): vol.All(cv.ensure_list, [cv.string]),
+        vol.Optional("type", default="open_plan"): vol.In(["open_plan"]),
+        vol.Optional("leader"): cv.string,
+        vol.Optional("receives_from"): cv.string,
+        vol.Optional("transfer_factor", default=0.0): vol.All(
+            vol.Coerce(float),
+            vol.Range(min=0.0, max=1.0)
+        ),
+        vol.Optional("delay_minutes", default=0): vol.All(
+            vol.Coerce(int),
+            vol.Range(min=0)
+        ),
+    })
     CONFIG_SCHEMA = vol.Schema(
         {
             DOMAIN: vol.Schema({
@@ -265,6 +282,12 @@ if HAS_HOMEASSISTANT:
                 vol.Optional(CONF_PWM): vol.All(cv.time_period, cv.positive_timedelta),
                 vol.Optional(CONF_MIN_CYCLE_DURATION): vol.All(cv.time_period, cv.positive_timedelta),
                 vol.Optional(CONF_MIN_OFF_CYCLE_DURATION): vol.All(cv.time_period, cv.positive_timedelta),
+
+                # Thermal groups for static multi-zone coordination
+                vol.Optional(CONF_THERMAL_GROUPS): vol.All(
+                    cv.ensure_list,
+                    [THERMAL_GROUP_SCHEMA]
+                ),
             })
         },
         extra=vol.ALLOW_EXTRA,  # Allow other domains in config
@@ -272,6 +295,7 @@ if HAS_HOMEASSISTANT:
 else:
     # Provide stub for testing without Home Assistant
     CONFIG_SCHEMA = None
+    THERMAL_GROUP_SCHEMA = None
 
 
 async def async_send_notification(
@@ -483,6 +507,24 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         mode_sync = ModeSync(hass=hass, coordinator=coordinator)
         hass.data[DOMAIN]["mode_sync"] = mode_sync
         _LOGGER.info("Mode synchronization enabled")
+
+    # Thermal groups for static multi-zone coordination
+    thermal_groups_config = domain_config.get(CONF_THERMAL_GROUPS)
+    thermal_group_manager = None
+    if thermal_groups_config:
+        try:
+            from .adaptive.thermal_groups import ThermalGroupManager, validate_thermal_groups_config
+            # Validate config
+            validate_thermal_groups_config(thermal_groups_config)
+            # Create manager
+            thermal_group_manager = ThermalGroupManager(hass, thermal_groups_config)
+            hass.data[DOMAIN]["thermal_group_manager"] = thermal_group_manager
+            coordinator.set_thermal_group_manager(thermal_group_manager)
+            _LOGGER.info("Thermal groups enabled with %d groups", len(thermal_groups_config))
+        except (ValueError, ImportError) as e:
+            _LOGGER.error("Failed to initialize thermal groups: %s", e)
+            # Don't fail setup, just disable thermal groups
+            hass.data[DOMAIN]["thermal_group_manager"] = None
 
     # Learning configuration
     learning_window_days = domain_config.get(
