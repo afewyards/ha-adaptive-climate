@@ -32,7 +32,7 @@ pytest --cov=custom_components/adaptive_thermostat  # coverage
 
 ### Managers (`managers/`)
 
-`HeaterController` (PWM/valve), `CycleTrackerManager` (IDLE→HEATING→SETTLING), `TemperatureManager`, `KeManager` (outdoor comp), `NightSetbackManager`
+`HeaterController` (PWM/valve), `CycleTrackerManager` (IDLE→HEATING→SETTLING), `TemperatureManager`, `KeManager` (outdoor comp), `NightSetbackManager`, `NightSetbackCalculator` (preheat timing)
 
 ### Data Flow
 
@@ -71,6 +71,43 @@ Rules adjust Kp/Ki/Kd based on overshoot, undershoot, drift, oscillations. `auto
 - **Thermal groups:** Leader zones + feedforward for heat transfer
 - **Manifolds:** Transport delay = `pipe_volume / (active_loops × flow_per_loop)`
 
+### Open Window Detection
+
+Algorithmic detection of open windows based on rapid temperature drops (Danfoss Ally algorithm). Module: `adaptive/open_window_detection.py` (`OpenWindowDetector`).
+
+**Configuration:**
+- **Domain:** `open_window_detection:` block with `temp_drop` (°C), `detection_window` (min), `pause_duration` (min), `cooldown` (min), `action` (pause/notify)
+- **Entity:** Can disable with `open_window_detection: false`
+- **Precedence:** Contact sensors > entity config > domain config > defaults
+
+**Detection algorithm:** Ring buffer tracks temps over `detection_window`. Triggers when `oldest - current >= temp_drop`.
+
+**Integration:**
+- `_async_update_temp` feeds detector
+- `_async_control_heating` checks pause state
+- Suppression on setpoint decrease and night setback transitions
+
+**State attributes:** `open_window_detection_active`, `open_window_cooldown_remaining`
+
+### Predictive Pre-Heating
+
+Learns heating rate to start early and reach target AT scheduled time. Based on Netatmo Auto-Adapt / Tado Early Start. Module: `adaptive/preheat.py` (`PreheatLearner`).
+
+**Configuration:**
+```yaml
+night_setback:
+  recovery_deadline: "07:00"
+  preheat_enabled: true       # Enable predictive pre-heating
+  max_preheat_hours: 3.0      # Optional, defaults per heating_type
+```
+
+**Learning:**
+- Bins observations by delta (0-2, 2-4, 4-6, 6+°C) and outdoor temp (cold/mild/moderate)
+- Requires 3+ observations for learned rate
+- Fallback: Uses `HEATING_TYPE_PREHEAT_CONFIG` rates until sufficient data
+
+**State attributes:** `preheat_enabled`, `preheat_active`, `preheat_scheduled_start`, `preheat_estimated_duration_min`, `preheat_learning_confidence`, `preheat_heating_rate_learned`, `preheat_observation_count`
+
 ### Persistence
 
 `LearningDataStore` - zone-keyed JSON (v4), 30s debounce, auto-migrations.
@@ -84,4 +121,4 @@ Rules adjust Kp/Ki/Kd based on overshoot, undershoot, drift, oscillations. `auto
 
 ## Tests
 
-`test_pid_controller.py`, `test_physics.py`, `test_learning.py`, `test_cycle_tracker.py`, `test_integration_cycle_learning.py`, `test_coordinator.py`, `test_central_controller.py`, `test_thermal_groups.py`, `test_night_setback.py`, `test_contact_sensors.py`
+`test_pid_controller.py`, `test_physics.py`, `test_learning.py`, `test_cycle_tracker.py`, `test_integration_cycle_learning.py`, `test_coordinator.py`, `test_central_controller.py`, `test_thermal_groups.py`, `test_night_setback.py`, `test_contact_sensors.py`, `test_preheat_learner.py`

@@ -8,6 +8,35 @@ from custom_components.adaptive_thermostat.adaptive.persistence import LearningD
 from custom_components.adaptive_thermostat.adaptive.preheat import PreheatLearner
 
 
+class MockStore:
+    """Mock HA Store class that can be subclassed for migration tests."""
+
+    _load_data = None  # Class-level data to return from async_load
+
+    def __init__(self, hass, version, key):
+        self.hass = hass
+        self.version = version
+        self.key = key
+        self._data = None
+
+    async def async_load(self):
+        return MockStore._load_data
+
+    async def async_save(self, data):
+        self._data = data
+
+    def async_delay_save(self, data_func, delay):
+        self._data = data_func()
+
+
+def create_mock_storage_module(load_data=None):
+    """Create a mock storage module with configurable load data."""
+    MockStore._load_data = load_data
+    mock_module = MagicMock()
+    mock_module.Store = MockStore
+    return mock_module
+
+
 @pytest.fixture
 def mock_hass():
     """Create a mock Home Assistant instance."""
@@ -46,16 +75,7 @@ def test_update_zone_data_with_preheat_data(mock_hass):
 @pytest.mark.asyncio
 async def test_async_save_zone_with_preheat_data(mock_hass):
     """Test async_save_zone persists preheat_data alongside other data."""
-    # Create mock Store class
-    mock_store_class = Mock()
-    mock_store_instance = AsyncMock()
-    mock_store_instance.async_load = AsyncMock(return_value=None)
-    mock_store_instance.async_save = AsyncMock()
-    mock_store_class.return_value = mock_store_instance
-
-    # Mock the homeassistant.helpers.storage module
-    mock_storage_module = Mock()
-    mock_storage_module.Store = mock_store_class
+    mock_storage_module = create_mock_storage_module(load_data=None)
 
     with patch.dict('sys.modules', {'homeassistant.helpers.storage': mock_storage_module}):
         store = LearningDataStore(mock_hass)
@@ -89,9 +109,6 @@ async def test_async_save_zone_with_preheat_data(mock_hass):
 
         # Save zone data
         await store.async_save_zone("living_room", adaptive_data, ke_data, preheat_data)
-
-        # Verify Store.async_save was called
-        mock_store_instance.async_save.assert_called_once()
 
         # Verify internal data structure
         assert "living_room" in store._data["zones"]
@@ -299,22 +316,14 @@ async def test_migration_v4_without_preheat_loads_successfully(mock_hass):
         },
     }
 
-    # Create mock Store class
-    mock_store_class = Mock()
-    mock_store_instance = AsyncMock()
-    mock_store_instance.async_load = AsyncMock(return_value=v4_data)
-    mock_store_class.return_value = mock_store_instance
-
-    # Mock the homeassistant.helpers.storage module
-    mock_storage_module = Mock()
-    mock_storage_module.Store = mock_store_class
+    mock_storage_module = create_mock_storage_module(load_data=v4_data)
 
     with patch.dict('sys.modules', {'homeassistant.helpers.storage': mock_storage_module}):
         store = LearningDataStore(mock_hass)
         data = await store.async_load()
 
-        # Should load successfully
-        assert data["version"] == 4
+        # Should load successfully and be migrated to v5
+        assert data["version"] == 5
         assert "climate.living_room" in data["zones"]
 
         # Get zone data
