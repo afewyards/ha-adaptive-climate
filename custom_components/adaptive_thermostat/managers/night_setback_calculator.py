@@ -45,6 +45,8 @@ class NightSetbackCalculator:
         window_orientation: Optional[str],
         get_target_temp: Callable[[], Optional[float]],
         get_current_temp: Callable[[], Optional[float]],
+        preheat_learner: Optional[Any] = None,
+        preheat_enabled: bool = False,
     ):
         """Initialize the NightSetbackCalculator.
 
@@ -56,6 +58,8 @@ class NightSetbackCalculator:
             window_orientation: Window orientation for solar calculations
             get_target_temp: Callback to get current target temperature
             get_current_temp: Callback to get current temperature
+            preheat_learner: Optional PreheatLearner instance for time estimation
+            preheat_enabled: Whether preheat functionality is enabled
         """
         self._hass = hass
         self._entity_id = entity_id
@@ -64,6 +68,8 @@ class NightSetbackCalculator:
         self._window_orientation = window_orientation
         self._get_target_temp = get_target_temp
         self._get_current_temp = get_current_temp
+        self._preheat_learner = preheat_learner
+        self._preheat_enabled = preheat_enabled
 
     @property
     def is_configured(self) -> bool:
@@ -329,3 +335,101 @@ class NightSetbackCalculator:
         info["night_setback_active"] = in_night_period
 
         return effective_target, in_night_period, info
+
+    def calculate_preheat_start(
+        self,
+        deadline: datetime,
+        current_temp: float,
+        target_temp: float,
+        outdoor_temp: float,
+    ) -> Optional[datetime]:
+        """Calculate when to start preheating before recovery deadline.
+
+        Args:
+            deadline: Recovery deadline datetime
+            current_temp: Current temperature in C
+            target_temp: Target temperature in C
+            outdoor_temp: Outdoor temperature in C
+
+        Returns:
+            Datetime when preheat should start, or None if preheat is disabled/not configured
+        """
+        # Check if preheat is enabled and configured
+        if not self._preheat_enabled:
+            return None
+
+        if not self._night_setback_config or "recovery_deadline" not in self._night_setback_config:
+            return None
+
+        if not self._preheat_learner:
+            return None
+
+        # If already at or above target, no preheat needed
+        if current_temp >= target_temp:
+            return deadline
+
+        # Get estimated time from PreheatLearner
+        estimated_minutes = self._preheat_learner.estimate_time_to_target(
+            current_temp, target_temp, outdoor_temp
+        )
+
+        # Add 10% buffer (minimum 15 minutes)
+        buffer_minutes = max(estimated_minutes * 0.1, 15.0)
+        total_minutes = estimated_minutes + buffer_minutes
+
+        # Clamp to max_preheat_hours
+        max_minutes = self._preheat_learner.max_hours * 60.0
+        total_minutes = min(total_minutes, max_minutes)
+
+        # Calculate start time
+        preheat_start = deadline - timedelta(minutes=total_minutes)
+
+        return preheat_start
+
+    def get_preheat_info(
+        self,
+        now: datetime,
+        current_temp: float,
+        target_temp: float,
+        outdoor_temp: float,
+        deadline: datetime,
+    ) -> Dict[str, Any]:
+        """Get preheat information for state attributes.
+
+        Args:
+            now: Current datetime
+            current_temp: Current temperature in C
+            target_temp: Target temperature in C
+            outdoor_temp: Outdoor temperature in C
+            deadline: Recovery deadline datetime
+
+        Returns:
+            Dict with scheduled_start, estimated_duration, and active status
+        """
+        info = {
+            "scheduled_start": None,
+            "estimated_duration": 0,
+            "active": False,
+        }
+
+        if not self._preheat_enabled or not self._preheat_learner:
+            return info
+
+        # Calculate scheduled start
+        scheduled_start = self.calculate_preheat_start(
+            deadline, current_temp, target_temp, outdoor_temp
+        )
+
+        if scheduled_start is None:
+            return info
+
+        # Get estimated duration
+        estimated_minutes = self._preheat_learner.estimate_time_to_target(
+            current_temp, target_temp, outdoor_temp
+        )
+
+        info["scheduled_start"] = scheduled_start
+        info["estimated_duration"] = estimated_minutes
+        info["active"] = now >= scheduled_start
+
+        return info
