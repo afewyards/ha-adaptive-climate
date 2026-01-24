@@ -851,3 +851,8 @@ CONF_LOOPS = "loops"
 MANIFOLD_COOLDOWN_MINUTES = 5
 DEFAULT_LOOPS = 1
 DEFAULT_FLOW_PER_LOOP = 2.0
+
+# Preheat learning constants
+PREHEAT_OBSERVATION_WINDOW_DAYS = 90  # Rolling window for observations
+PREHEAT_MAX_OBSERVATIONS_PER_BIN = 100  # Limit observations per bin to prevent unbounded growth
+PREHEAT_MIN_OBSERVATIONS_FOR_LEARNING = 3  # Minimum observations before using learned rates
