@@ -394,11 +394,6 @@ CONF_WINDOW_ORIENTATION = "window_orientation"
 CONF_WINDOW_RATING = "window_rating"
 CONF_DEMAND_SWITCH = "demand_switch"
 
-# Thermal coupling configuration
-CONF_THERMAL_COUPLING = "thermal_coupling"
-CONF_OPEN_ZONES = "open"
-CONF_STAIRWELL_ZONES = "stairwell_zones"
-CONF_SEED_COEFFICIENTS = "seed_coefficients"
 CONF_MIN_LEARNING_EVENTS = "min_learning_events"
 CONF_MIN_CYCLE_TIME_WARNING = "min_cycle_time_warning"
 CONF_MIN_CYCLE_TIME_CRITICAL = "min_cycle_time_critical"
@@ -432,7 +427,6 @@ CONF_NIGHT_SETBACK_ENABLED = "enabled"
 CONF_NIGHT_SETBACK_DELTA = "delta"
 CONF_NIGHT_SETBACK_START = "start"
 CONF_NIGHT_SETBACK_END = "end"
-CONF_NIGHT_SETBACK_SOLAR_RECOVERY = "solar_recovery"
 CONF_NIGHT_SETBACK_RECOVERY_DEADLINE = "recovery_deadline"
 CONF_MIN_EFFECTIVE_ELEVATION = "min_effective_elevation"
 DEFAULT_MIN_EFFECTIVE_ELEVATION = 10.0
@@ -513,27 +507,6 @@ KE_MAX_OBSERVATIONS = 100
 # Duration in minutes at target temperature to consider steady state
 KE_STEADY_STATE_DURATION = 15
 
-# Thermal coupling constants
-# Default seed coefficients for thermal coupling between zones
-# Values represent expected heat transfer rate (°C/hour per °C source rise)
-DEFAULT_SEED_COEFFICIENTS = {
-    "same_floor": 0.15,      # Adjacent zones on same floor
-    "up": 0.40,              # Heat rises - zone above gets more heat
-    "down": 0.10,            # Zone below gets less heat (heat rises)
-    "open": 0.60,            # Open floor plan - high coupling
-    "stairwell_up": 0.45,    # Stairwell acts as heat chimney
-    "stairwell_down": 0.10,  # Stairwell downward (minimal)
-}
-
-# Maximum coupling compensation by heating type (°C reduction)
-# Faster systems can compensate more aggressively
-MAX_COUPLING_COMPENSATION = {
-    HEATING_TYPE_FLOOR_HYDRONIC: 1.0,  # Conservative - slow response
-    HEATING_TYPE_RADIATOR: 1.2,        # Moderate
-    HEATING_TYPE_CONVECTOR: 1.5,       # Standard
-    HEATING_TYPE_FORCED_AIR: 2.0,      # Aggressive - fast recovery
-}
-
 # Integral decay multiplier by heating type
 # Applied during overhang (temp above setpoint but integral still positive)
 # Slower systems need faster integral decay to prevent prolonged overshoot
@@ -583,20 +556,6 @@ HEATING_TYPE_EXP_DECAY_TAU = {
     HEATING_TYPE_CONVECTOR: 0.06,        # 2.5 min half-life (5 min cycle / 2)
     HEATING_TYPE_FORCED_AIR: 0.036,      # 1.5 min half-life (3 min cycle / 2)
 }
-
-# Coupling learner constants
-COUPLING_MIN_OBSERVATIONS = 3           # Min observations before using learned coefficient
-COUPLING_MAX_OBSERVATIONS_PER_PAIR = 50  # Max observations to retain per zone pair (FIFO)
-COUPLING_SEED_WEIGHT = 6                # Weight of seed in Bayesian blend (pseudo-observations)
-COUPLING_MAX_COEFFICIENT = 0.5          # Maximum allowed coupling coefficient
-COUPLING_MIN_DURATION_MINUTES = 15      # Minimum heating duration for valid observation
-COUPLING_MIN_SOURCE_RISE = 0.3          # Minimum source temp rise (°C) for valid observation
-COUPLING_MAX_OUTDOOR_CHANGE = 3.0       # Max outdoor temp change (°C) during observation
-COUPLING_CONFIDENCE_THRESHOLD = 0.3     # Min confidence to use coefficient
-COUPLING_CONFIDENCE_MAX = 0.5           # Confidence level for full effect
-COUPLING_MASS_RECOVERY_THRESHOLD = 0.5  # Skip observation if >50% zones demanding
-COUPLING_VALIDATION_CYCLES = 5          # Cycles to validate coefficient after change
-COUPLING_VALIDATION_DEGRADATION = 0.30  # Overshoot increase threshold for rollback (30%)
 
 # Auto-apply PID constants
 # Maximum auto-applies per season (90 days) to prevent runaway tuning

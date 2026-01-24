@@ -45,11 +45,9 @@ from homeassistant.exceptions import HomeAssistantError, ServiceNotFound
 
 from .adaptive.physics import calculate_thermal_time_constant, calculate_initial_pid, calculate_initial_ke
 from .adaptive.night_setback import NightSetback
-from .adaptive.solar_recovery import SolarRecovery
 from .adaptive.sun_position import SunPositionCalculator
 from .adaptive.contact_sensors import ContactSensorHandler, ContactAction
 from .adaptive.ke_learning import KeLearner
-from .adaptive.thermal_coupling import CONF_FLOORPLAN
 
 from homeassistant.components.climate import PLATFORM_SCHEMA, ClimateEntity, ClimateEntityFeature
 from homeassistant.components.climate import (
@@ -153,7 +151,6 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
             vol.Optional(const.CONF_NIGHT_SETBACK_END): cv.string,
             vol.Optional(const.CONF_NIGHT_SETBACK_DELTA, default=const.DEFAULT_NIGHT_SETBACK_DELTA): vol.Coerce(float),
             vol.Optional(const.CONF_NIGHT_SETBACK_RECOVERY_DEADLINE): cv.string,
-            vol.Optional(const.CONF_NIGHT_SETBACK_SOLAR_RECOVERY): cv.boolean,
             vol.Optional(const.CONF_MIN_EFFECTIVE_ELEVATION, default=const.DEFAULT_MIN_EFFECTIVE_ELEVATION): vol.Coerce(float),
         }),
         # Floor construction (for floor_hydronic heating type)
@@ -238,62 +235,6 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         _LOGGER.info("Created LearningDataStore singleton")
     else:
         learning_store = hass.data[DOMAIN]["learning_store"]
-
-    # Initialize thermal coupling learner (restore from persistence once)
-    coordinator = hass.data.get(DOMAIN, {}).get("coordinator")
-    if coordinator and not hass.data[DOMAIN].get("coupling_learner_initialized"):
-        # Restore coupling data from persistence
-        stored_coupling_data = learning_store.get_coupling_data()
-        if stored_coupling_data:
-            from .adaptive.thermal_coupling import ThermalCouplingLearner
-            restored_learner = ThermalCouplingLearner.from_dict(stored_coupling_data)
-            # Copy restored data to coordinator's learner
-            learner = coordinator.thermal_coupling_learner
-            learner.observations = restored_learner.observations
-            learner.coefficients = restored_learner.coefficients
-            learner._seeds = restored_learner._seeds
-            _LOGGER.info(
-                "Restored ThermalCouplingLearner from persistence: "
-                "%d observation pairs, %d coefficients, %d seeds",
-                len(learner.observations),
-                len(learner.coefficients),
-                len(learner._seeds),
-            )
-        hass.data[DOMAIN]["coupling_learner_initialized"] = True
-
-    # Initialize seeds from floorplan config or auto-discovery (if thermal_coupling is configured)
-    thermal_coupling_config = hass.data[DOMAIN].get("thermal_coupling")
-    if thermal_coupling_config and coordinator:
-        # Check if thermal coupling is enabled (default: true)
-        enabled = thermal_coupling_config.get("enabled", True)
-        if enabled and not hass.data[DOMAIN].get("coupling_seeds_initialized"):
-            floorplan = thermal_coupling_config.get(CONF_FLOORPLAN)
-
-            # Build floorplan config dict for seed generation
-            floorplan_config = {
-                CONF_FLOORPLAN: floorplan,  # None if not provided (triggers auto-discovery)
-                const.CONF_OPEN_ZONES: thermal_coupling_config.get(const.CONF_OPEN_ZONES, []),
-                const.CONF_STAIRWELL_ZONES: thermal_coupling_config.get(const.CONF_STAIRWELL_ZONES, []),
-                const.CONF_SEED_COEFFICIENTS: thermal_coupling_config.get(const.CONF_SEED_COEFFICIENTS, {}),
-            }
-
-            # Get all registered zone entity IDs for auto-discovery
-            zone_entity_ids = list(coordinator.get_all_zones().keys())
-
-            learner = coordinator.thermal_coupling_learner
-            learner.initialize_seeds(floorplan_config, zone_entity_ids=zone_entity_ids)
-            hass.data[DOMAIN]["coupling_seeds_initialized"] = True
-
-            if floorplan:
-                _LOGGER.info(
-                    "Initialized ThermalCouplingLearner seeds from legacy floorplan: %d zone pairs",
-                    len(learner._seeds),
-                )
-            else:
-                _LOGGER.info(
-                    "Initialized ThermalCouplingLearner seeds via auto-discovery: %d zone pairs",
-                    len(learner._seeds),
-                )
 
     # Validate that at least one output entity is configured
     heater = config.get(const.CONF_HEATER)
@@ -584,7 +525,6 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         # Night setback
         self._night_setback = None
         self._night_setback_config = None
-        self._solar_recovery = None
         self._night_setback_was_active = None  # Track previous state for transition detection
         self._learning_grace_until = None  # Pause learning until this time after transitions
         night_setback_config = kwargs.get('night_setback_config')
@@ -595,11 +535,6 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
             _LOGGER.info("%s: Night setback configured: start=%s, end=%s", self._name, start, end)
             if start:
                 # Store config for dynamic end time calculation
-                # Auto-enable solar_recovery if window_orientation is set (can be explicitly disabled)
-                solar_recovery_enabled = night_setback_config.get(
-                    const.CONF_NIGHT_SETBACK_SOLAR_RECOVERY,
-                    bool(self._window_orientation)  # Auto-enable if orientation set
-                )
                 self._night_setback_config = {
                     'start': start,
                     'end': end,  # May be None - will use dynamic calculation
@@ -608,7 +543,6 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                         const.DEFAULT_NIGHT_SETBACK_DELTA
                     ),
                     'recovery_deadline': night_setback_config.get(const.CONF_NIGHT_SETBACK_RECOVERY_DEADLINE),
-                    'solar_recovery': solar_recovery_enabled,
                     'min_effective_elevation': night_setback_config.get(
                         const.CONF_MIN_EFFECTIVE_ELEVATION,
                         const.DEFAULT_MIN_EFFECTIVE_ELEVATION
@@ -621,21 +555,6 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                         end_time=end,
                         setback_delta=self._night_setback_config['delta'],
                         recovery_deadline=self._night_setback_config['recovery_deadline'],
-                    )
-
-                # Solar recovery (uses window_orientation from zone config)
-                # Works with both explicit and dynamic end times
-                # Sun position calculator is set in async_added_to_hass
-                # Automatically enabled if window_orientation is set
-                if solar_recovery_enabled and self._window_orientation:
-                    # Use explicit end time or default to 07:00 for static fallback
-                    # (dynamic sun position calculator will override this)
-                    base_recovery = end if end else "07:00"
-                    self._solar_recovery = SolarRecovery(
-                        window_orientation=self._window_orientation,
-                        base_recovery_time=base_recovery,
-                        recovery_deadline=self._night_setback_config['recovery_deadline'],
-                        min_effective_elevation=self._night_setback_config['min_effective_elevation'],
                     )
 
         # Contact sensors (window/door open detection)
@@ -809,7 +728,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                 entity_id=self.entity_id,
                 night_setback=self._night_setback,
                 night_setback_config=self._night_setback_config,
-                solar_recovery=self._solar_recovery,
+                solar_recovery=None,
                 window_orientation=self._window_orientation,
                 get_target_temp=lambda: self._target_temp,
                 get_current_temp=lambda: self._current_temp,
@@ -850,24 +769,6 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
             "%s: Temperature manager initialized",
             self.entity_id
         )
-
-        # Initialize sun position calculator for dynamic solar recovery
-        if self._solar_recovery:
-            sun_calculator = SunPositionCalculator.from_hass(self.hass)
-            if sun_calculator:
-                self._solar_recovery.set_sun_calculator(sun_calculator)
-                _LOGGER.info(
-                    "%s: Dynamic solar recovery enabled using location (%.2f, %.2f)",
-                    self.entity_id,
-                    self.hass.config.latitude,
-                    self.hass.config.longitude,
-                )
-            else:
-                _LOGGER.warning(
-                    "%s: Could not initialize sun position calculator, "
-                    "using static orientation offsets for solar recovery",
-                    self.entity_id,
-                )
 
         # Initialize Ke learning
         # Check if we have stored ke_learner data from persistence

@@ -16,7 +16,6 @@ except ImportError:
     dt_util = None
 
 from ..adaptive.night_setback import NightSetback
-from ..adaptive.solar_recovery import SolarRecovery
 from .night_setback_calculator import NightSetbackCalculator
 
 if TYPE_CHECKING:
@@ -39,7 +38,7 @@ class NightSetbackController:
         entity_id: str,
         night_setback: Optional[NightSetback],
         night_setback_config: Optional[Dict[str, Any]],
-        solar_recovery: Optional[SolarRecovery],
+        solar_recovery: Optional[Any],
         window_orientation: Optional[str],
         get_target_temp: Callable[[], Optional[float]],
         get_current_temp: Callable[[], Optional[float]],
@@ -51,7 +50,7 @@ class NightSetbackController:
             entity_id: Entity ID of the thermostat (for logging)
             night_setback: NightSetback instance (for static end time mode)
             night_setback_config: Night setback configuration dict (for dynamic mode)
-            solar_recovery: SolarRecovery instance (for solar recovery calculations)
+            solar_recovery: Deprecated parameter (ignored, will be removed)
             window_orientation: Window orientation for solar calculations
             get_target_temp: Callback to get current target temperature
             get_current_temp: Callback to get current temperature
@@ -64,7 +63,6 @@ class NightSetbackController:
             entity_id=entity_id,
             night_setback=night_setback,
             night_setback_config=night_setback_config,
-            solar_recovery=solar_recovery,
             window_orientation=window_orientation,
             get_target_temp=get_target_temp,
             get_current_temp=get_current_temp,

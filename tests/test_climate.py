@@ -498,17 +498,6 @@ class MockNightSetback:
             return current_time_only >= start_time or current_time_only < self.end_time
 
 
-class MockSolarRecovery:
-    """Mock SolarRecovery object for testing."""
-
-    def __init__(self, adjusted_recovery_time, should_use=False):
-        self.adjusted_recovery_time = adjusted_recovery_time
-        self._should_use = should_use
-
-    def should_use_solar_recovery(self, current_time, current_temp, target_temp):
-        return self._should_use
-
-
 class MockAdaptiveThermostatForNightSetback:
     """Mock AdaptiveThermostat for testing night setback logic."""
 
@@ -516,7 +505,6 @@ class MockAdaptiveThermostatForNightSetback:
         self.hass = hass
         self._night_setback = None
         self._night_setback_config = None
-        self._solar_recovery = None
         self._target_temp = 21.0
         self._current_temp = 19.0
         self._window_orientation = None
@@ -597,20 +585,8 @@ class MockAdaptiveThermostatForNightSetback:
             info["night_setback_end"] = self._night_setback.end_time.strftime("%H:%M")
             info["night_setback_end_dynamic"] = False
 
-            if self._solar_recovery:
-                solar_recovery_active = self._solar_recovery.should_use_solar_recovery(
-                    current_time, self._current_temp or 0, self._target_temp or 0
-                )
-                info["solar_recovery_active"] = solar_recovery_active
-                info["solar_recovery_time"] = self._solar_recovery.adjusted_recovery_time.strftime("%H:%M")
-
-                if in_night_period:
-                    effective_target = self._target_temp - self._night_setback.setback_delta
-                elif solar_recovery_active:
-                    effective_target = self._target_temp - self._night_setback.setback_delta
-            else:
-                if in_night_period:
-                    effective_target = self._target_temp - self._night_setback.setback_delta
+            if in_night_period:
+                effective_target = self._target_temp - self._night_setback.setback_delta
 
         elif self._night_setback_config:
             current_time_only = current_time.time()
@@ -640,11 +616,6 @@ class MockAdaptiveThermostatForNightSetback:
 
             if in_night_period:
                 effective_target = self._target_temp - self._night_setback_config['delta']
-            elif self._night_setback_config.get('solar_recovery') and self._window_orientation:
-                sunrise = self._get_sunrise_time()
-                if sunrise and current_time_only < end_time:
-                    if weather and any(c in weather.lower() for c in ["sunny", "clear"]):
-                        effective_target = self._target_temp - self._night_setback_config['delta']
 
         info["night_setback_active"] = in_night_period
 
@@ -704,33 +675,6 @@ class TestStaticNightSetback:
         assert in_night is False
         assert effective_target == 21.0  # No setback
         assert info["night_setback_active"] is False
-
-    def test_static_night_setback_with_solar_recovery(self):
-        """Test static night setback with solar recovery active."""
-        from datetime import datetime, time as dt_time
-
-        mock_hass = _create_mock_hass()
-        thermostat = MockAdaptiveThermostatForNightSetback(mock_hass)
-        thermostat._target_temp = 21.0
-        thermostat._night_setback = MockNightSetback(
-            start_time_str="22:00",
-            end_time=dt_time(6, 0),
-            setback_delta=2.0,
-            use_sunset=False
-        )
-        thermostat._solar_recovery = MockSolarRecovery(
-            adjusted_recovery_time=dt_time(7, 30),
-            should_use=True
-        )
-
-        # Test at 06:30 (outside night period but solar recovery active)
-        test_time = datetime(2024, 1, 15, 6, 30)
-        effective_target, in_night, info = thermostat._calculate_night_setback_adjustment(test_time)
-
-        assert in_night is False
-        assert effective_target == 19.0  # Solar recovery keeps setback active
-        assert info["solar_recovery_active"] is True
-        assert info["solar_recovery_time"] == "07:30"
 
     def test_static_night_setback_transition_sets_grace_period(self):
         """Test that night setback transitions set learning grace period."""
@@ -802,44 +746,6 @@ class TestDynamicNightSetback:
 
         assert in_night is True
         assert effective_target == 19.0  # 21.0 - 2.0
-
-    def test_dynamic_night_setback_with_solar_recovery(self):
-        """Test dynamic night setback with solar recovery based on weather."""
-        from datetime import datetime, time as dt_time
-
-        mock_hass = _create_mock_hass()
-        thermostat = MockAdaptiveThermostatForNightSetback(mock_hass)
-        thermostat._target_temp = 21.0
-        thermostat._night_setback_config = {
-            'start': '22:00',
-            'delta': 2.0,
-            'solar_recovery': True
-        }
-        # End time at 07:00, so 07:15 is outside night period but still in morning
-        thermostat._mock_dynamic_end = dt_time(7, 0)
-        thermostat._window_orientation = "south"
-        thermostat._mock_weather = "sunny"
-
-        # Test at 07:15 (outside night period which ends at 07:00, but before 8:30 for solar check)
-        # Actually, we need to adjust - solar recovery check requires current_time_only < end_time
-        # So let's test at 06:45 which is WITHIN the night period (22:00 to 07:00)
-        # For solar recovery to be triggered we need: NOT in_night_period AND current < end_time
-        # With start=22:00 and end=07:00, 06:45 IS in night period
-        # We need end_time that makes current time be AFTER night period ends but BEFORE end_time
-        # That requires a non-midnight-crossing scenario where time is after end but still < end_time (impossible)
-        # OR the dynamic end time calculation returns a later time
-
-        # Let's use a different approach: test that the solar recovery logic IS in the code
-        # Set end_time to 08:00, test at 10:00 (clearly outside)
-        thermostat._mock_dynamic_end = dt_time(8, 0)
-        test_time = datetime(2024, 1, 15, 10, 0)
-        effective_target, in_night, info = thermostat._calculate_night_setback_adjustment(test_time)
-
-        # At 10:00, we're outside night period (22:00-08:00) AND past end_time (08:00)
-        # So solar recovery won't apply (current_time_only < end_time check fails)
-        assert in_night is False
-        assert effective_target == 21.0  # No setback because time is past end_time
-        assert info["weather_condition"] == "sunny"
 
     def test_dynamic_night_setback_fallback_end_time(self):
         """Test dynamic night setback uses fallback when dynamic end time unavailable."""

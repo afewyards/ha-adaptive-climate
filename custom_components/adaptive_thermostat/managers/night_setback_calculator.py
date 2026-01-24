@@ -21,7 +21,6 @@ except ImportError:
 
 from ..const import DOMAIN
 from ..adaptive.night_setback import NightSetback
-from ..adaptive.solar_recovery import SolarRecovery
 
 if TYPE_CHECKING:
     pass
@@ -43,7 +42,6 @@ class NightSetbackCalculator:
         entity_id: str,
         night_setback: Optional[NightSetback],
         night_setback_config: Optional[Dict[str, Any]],
-        solar_recovery: Optional[SolarRecovery],
         window_orientation: Optional[str],
         get_target_temp: Callable[[], Optional[float]],
         get_current_temp: Callable[[], Optional[float]],
@@ -55,7 +53,6 @@ class NightSetbackCalculator:
             entity_id: Entity ID of the thermostat (for logging)
             night_setback: NightSetback instance (for static end time mode)
             night_setback_config: Night setback configuration dict (for dynamic mode)
-            solar_recovery: SolarRecovery instance (for solar recovery calculations)
             window_orientation: Window orientation for solar calculations
             get_target_temp: Callback to get current target temperature
             get_current_temp: Callback to get current temperature
@@ -64,7 +61,6 @@ class NightSetbackCalculator:
         self._entity_id = entity_id
         self._night_setback = night_setback
         self._night_setback_config = night_setback_config
-        self._solar_recovery = solar_recovery
         self._window_orientation = window_orientation
         self._get_target_temp = get_target_temp
         self._get_current_temp = get_current_temp
@@ -271,21 +267,8 @@ class NightSetbackCalculator:
             info["night_setback_end"] = self._night_setback.end_time.strftime("%H:%M")
             info["night_setback_end_dynamic"] = False
 
-            if self._solar_recovery:
-                solar_recovery_active = self._solar_recovery.should_use_solar_recovery(
-                    current_time, current_temp or 0, target_temp or 0
-                )
-                info["solar_recovery_active"] = solar_recovery_active
-                info["solar_recovery_time"] = self._solar_recovery.adjusted_recovery_time.strftime("%H:%M")
-
-                if in_night_period:
-                    effective_target = target_temp - self._night_setback.setback_delta
-                elif solar_recovery_active:
-                    # Continue setback during solar recovery
-                    effective_target = target_temp - self._night_setback.setback_delta
-            else:
-                if in_night_period:
-                    effective_target = target_temp - self._night_setback.setback_delta
+            if in_night_period:
+                effective_target = target_temp - self._night_setback.setback_delta
 
         elif self._night_setback_config:
             # Dynamic end time mode - calculate based on sunrise, orientation, weather
@@ -342,14 +325,6 @@ class NightSetbackCalculator:
             if in_night_period:
                 effective_target = target_temp - self._night_setback_config['delta']
                 _LOGGER.info("%s: Night setback active, effective_target=%s", self._entity_id, effective_target)
-            elif self._night_setback_config.get('solar_recovery') and self._window_orientation:
-                # Check solar recovery even without NightSetback object
-                sunrise = self.get_sunrise_time()
-                if sunrise and current_time_only < end_time:
-                    # We're in morning recovery window - check weather
-                    if weather and any(c in weather.lower() for c in ["sunny", "clear"]):
-                        # Clear sky: delay heating to let sun warm zone
-                        effective_target = target_temp - self._night_setback_config['delta']
 
         info["night_setback_active"] = in_night_period
 
