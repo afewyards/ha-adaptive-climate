@@ -723,6 +723,87 @@ class TestConvergenceDetection:
         # At boundary values should be considered converged (<=)
         assert result is None
 
+    def test_convergence_passes_with_new_metrics_within_bounds(self):
+        """Test that convergence passes when all metrics including new ones are within bounds."""
+        learner = AdaptiveLearner()
+
+        # All metrics within bounds (including new metrics)
+        result = learner._check_convergence(
+            avg_overshoot=0.15,           # < 0.2 threshold
+            avg_oscillations=0.5,         # < 1 threshold
+            avg_settling_time=50,         # < 60 threshold
+            avg_rise_time=40,             # < 45 threshold
+            avg_inter_cycle_drift=0.1,    # < 0.25 threshold
+            avg_settling_mae=0.15,        # < 0.25 threshold
+        )
+
+        # Should be converged
+        assert result is True
+
+    def test_convergence_fails_when_inter_cycle_drift_exceeds_threshold(self):
+        """Test that convergence fails when avg_inter_cycle_drift exceeds threshold."""
+        learner = AdaptiveLearner()
+
+        # All metrics good except inter_cycle_drift
+        result = learner._check_convergence(
+            avg_overshoot=0.15,           # < 0.2 threshold
+            avg_oscillations=0.5,         # < 1 threshold
+            avg_settling_time=50,         # < 60 threshold
+            avg_rise_time=40,             # < 45 threshold
+            avg_inter_cycle_drift=0.3,    # > 0.25 threshold - EXCEEDS
+            avg_settling_mae=0.15,        # < 0.25 threshold
+        )
+
+        # Should NOT be converged
+        assert result is False
+
+    def test_convergence_fails_when_settling_mae_exceeds_threshold(self):
+        """Test that convergence fails when avg_settling_mae exceeds threshold."""
+        learner = AdaptiveLearner()
+
+        # All metrics good except settling_mae
+        result = learner._check_convergence(
+            avg_overshoot=0.15,           # < 0.2 threshold
+            avg_oscillations=0.5,         # < 1 threshold
+            avg_settling_time=50,         # < 60 threshold
+            avg_rise_time=40,             # < 45 threshold
+            avg_inter_cycle_drift=0.1,    # < 0.25 threshold
+            avg_settling_mae=0.3,         # > 0.25 threshold - EXCEEDS
+        )
+
+        # Should NOT be converged
+        assert result is False
+
+    def test_convergence_checks_abs_drift(self):
+        """Test that convergence checks abs(drift) - negative drift is the problem case."""
+        learner = AdaptiveLearner()
+
+        # Test negative drift that exceeds threshold in absolute value
+        result = learner._check_convergence(
+            avg_overshoot=0.15,           # < 0.2 threshold
+            avg_oscillations=0.5,         # < 1 threshold
+            avg_settling_time=50,         # < 60 threshold
+            avg_rise_time=40,             # < 45 threshold
+            avg_inter_cycle_drift=-0.3,   # abs(-0.3) > 0.25 threshold - EXCEEDS
+            avg_settling_mae=0.15,        # < 0.25 threshold
+        )
+
+        # Should NOT be converged (negative drift indicates Ki too low)
+        assert result is False
+
+        # Test negative drift within threshold
+        result = learner._check_convergence(
+            avg_overshoot=0.15,
+            avg_oscillations=0.5,
+            avg_settling_time=50,
+            avg_rise_time=40,
+            avg_inter_cycle_drift=-0.2,   # abs(-0.2) < 0.25 threshold - OK
+            avg_settling_mae=0.15,
+        )
+
+        # Should be converged
+        assert result is True
+
 
 # Test marker for rule conflict module
 def test_rule_conflicts_module_exists():
