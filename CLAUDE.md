@@ -91,14 +91,15 @@ For `floor_hydronic`: optional `floor_construction` config with layers (top_floo
 
 ### Steady-State Tracking Metrics
 
-Two metrics detect false convergence (system appears stable but has persistent offset):
+Three metrics detect false convergence (system appears stable but has persistent offset):
 
 | Metric | Purpose | Threshold |
 |--------|---------|-----------|
 | `inter_cycle_drift` | `start_temp[n] - end_temp[n-1]` - detects room cooling between cycles | 0.25-0.3°C |
 | `settling_mae` | Mean absolute error during settling phase | 0.25-0.3°C |
+| `undershoot` | Temp below setpoint at cycle end - detects insufficient heating | 0.15-0.3°C |
 
-Both metrics must pass thresholds for convergence. Thresholds scale by heating type (floor=0.3, radiator=0.25, convector=0.2, forced_air=0.15).
+All metrics must pass thresholds for convergence. Thresholds scale by heating type (floor=0.3, radiator=0.25, convector=0.2, forced_air=0.15).
 
 ### PID Adjustment Rules
 
