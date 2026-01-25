@@ -297,6 +297,9 @@ class CycleMetrics:
         integral_at_setpoint_cross: Optional[float] = None,
         decay_contribution: Optional[float] = None,
         was_clamped: bool = False,
+        end_temp: Optional[float] = None,
+        settling_mae: Optional[float] = None,
+        inter_cycle_drift: Optional[float] = None,
     ):
         """
         Initialize cycle metrics.
@@ -315,6 +318,9 @@ class CycleMetrics:
             integral_at_setpoint_cross: PID integral value when temp crosses setpoint
             decay_contribution: Integral contribution from settling/decay period
             was_clamped: Whether PID output was clamped during this cycle
+            end_temp: Final temperature at cycle end in °C
+            settling_mae: Mean absolute error during settling phase in °C
+            inter_cycle_drift: Temperature drift between cycles in °C
         """
         self.overshoot = overshoot
         self.undershoot = undershoot
@@ -329,6 +335,9 @@ class CycleMetrics:
         self.integral_at_setpoint_cross = integral_at_setpoint_cross
         self.decay_contribution = decay_contribution
         self.was_clamped = was_clamped
+        self.end_temp = end_temp
+        self.settling_mae = settling_mae
+        self.inter_cycle_drift = inter_cycle_drift
 
     @property
     def is_disturbed(self) -> bool:
@@ -579,3 +588,35 @@ def calculate_rise_time(
 
     # Target never reached
     return None
+
+
+def calculate_settling_mae(
+    temperature_history: List[Tuple[datetime, float]],
+    target_temp: float,
+    settling_start_time: Optional[datetime] = None,
+) -> Optional[float]:
+    """Calculate Mean Absolute Error during settling phase.
+
+    Args:
+        temperature_history: List of (timestamp, temperature) tuples
+        target_temp: The target temperature
+        settling_start_time: When settling phase started (heater turned off)
+
+    Returns:
+        MAE during settling phase, or None if no settling data
+    """
+    if not temperature_history or settling_start_time is None:
+        return None
+
+    # Filter to temps after settling_start_time
+    settling_temps = [
+        temp for timestamp, temp in temperature_history
+        if timestamp >= settling_start_time
+    ]
+
+    if not settling_temps:
+        return None
+
+    # Calculate mean absolute error from target
+    errors = [abs(temp - target_temp) for temp in settling_temps]
+    return sum(errors) / len(errors)
