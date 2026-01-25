@@ -3079,3 +3079,261 @@ class TestInterCycleDrift:
         assert third_metrics.inter_cycle_drift == pytest.approx(-0.5, abs=0.01)
 
 
+class TestCycleTrackerSettlingMAE:
+    """Tests for settling_mae calculation during cycle metrics recording."""
+
+    @pytest.mark.asyncio
+    async def test_settling_mae_calculated_during_record_cycle_metrics(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
+    ):
+        """Test that settling_mae is calculated during _record_cycle_metrics."""
+        from datetime import timedelta
+
+        # Setup adaptive_learner
+        mock_adaptive_learner.is_in_validation_mode = MagicMock(return_value=False)
+        mock_adaptive_learner.update_convergence_confidence = MagicMock()
+        mock_adaptive_learner.to_dict = MagicMock(return_value={})
+
+        # Setup hass.data
+        mock_hass.data = {}
+
+        # Create cycle tracker
+        cycle_tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            dispatcher=dispatcher,
+            **mock_callbacks,
+        )
+        cycle_tracker.set_restoration_complete()
+
+        # Set target temperature
+        mock_callbacks["get_target_temp"].return_value = 20.0
+
+        # Start cycle
+        start_time = datetime(2025, 1, 14, 10, 0, 0)
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=start_time, target_temp=20.0, current_temp=18.0))
+
+        # Set device_off_time (heater turned off after 5 minutes)
+        device_off_time = datetime(2025, 1, 14, 10, 5, 0)
+        cycle_tracker._device_off_time = device_off_time
+
+        # Add temperature samples (before and after device off)
+        for i in range(6):
+            await cycle_tracker.update_temperature(
+                datetime(2025, 1, 14, 10, i, 0), 18.0 + i * 0.4
+            )
+
+        # Mock calculate_settling_mae to verify it's called
+        with patch(
+            "custom_components.adaptive_thermostat.adaptive.cycle_analysis.calculate_settling_mae"
+        ) as mock_calc_settling_mae:
+            mock_calc_settling_mae.return_value = 0.15  # Return dummy value
+
+            # Finalize cycle (which calls _record_cycle_metrics)
+            await cycle_tracker._finalize_cycle()
+
+            # Verify calculate_settling_mae was called
+            mock_calc_settling_mae.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_settling_mae_uses_device_off_time_as_settling_start(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
+    ):
+        """Test that settling_mae uses _device_off_time as the settling_start_time parameter."""
+        from datetime import timedelta
+
+        # Setup adaptive_learner
+        mock_adaptive_learner.is_in_validation_mode = MagicMock(return_value=False)
+        mock_adaptive_learner.update_convergence_confidence = MagicMock()
+        mock_adaptive_learner.to_dict = MagicMock(return_value={})
+
+        # Setup hass.data
+        mock_hass.data = {}
+
+        # Create cycle tracker
+        cycle_tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            dispatcher=dispatcher,
+            **mock_callbacks,
+        )
+        cycle_tracker.set_restoration_complete()
+
+        # Set target temperature
+        mock_callbacks["get_target_temp"].return_value = 20.0
+
+        # Start cycle
+        start_time = datetime(2025, 1, 14, 10, 0, 0)
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=start_time, target_temp=20.0, current_temp=18.0))
+
+        # Set device_off_time
+        device_off_time = datetime(2025, 1, 14, 10, 5, 0)
+        cycle_tracker._device_off_time = device_off_time
+
+        # Add temperature samples
+        for i in range(6):
+            await cycle_tracker.update_temperature(
+                datetime(2025, 1, 14, 10, i, 0), 18.0 + i * 0.4
+            )
+
+        # Mock calculate_settling_mae to verify settling_start_time is passed
+        with patch(
+            "custom_components.adaptive_thermostat.adaptive.cycle_analysis.calculate_settling_mae"
+        ) as mock_calc_settling_mae:
+            mock_calc_settling_mae.return_value = 0.15  # Return dummy value
+
+            # Finalize cycle
+            await cycle_tracker._finalize_cycle()
+
+            # Verify calculate_settling_mae was called with settling_start_time=device_off_time
+            mock_calc_settling_mae.assert_called_once()
+            call_args = mock_calc_settling_mae.call_args
+            assert call_args[1]["settling_start_time"] == device_off_time
+
+    @pytest.mark.asyncio
+    async def test_settling_mae_with_various_settling_patterns(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
+    ):
+        """Test settling_mae calculation with various settling patterns."""
+        from datetime import timedelta
+
+        # Setup adaptive_learner
+        mock_adaptive_learner.is_in_validation_mode = MagicMock(return_value=False)
+        mock_adaptive_learner.update_convergence_confidence = MagicMock()
+        mock_adaptive_learner.to_dict = MagicMock(return_value={})
+
+        # Setup hass.data
+        mock_hass.data = {}
+
+        # Test Case 1: Stable settling (low MAE)
+        cycle_tracker_stable = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone_stable",
+            adaptive_learner=mock_adaptive_learner,
+            dispatcher=dispatcher,
+            **mock_callbacks,
+        )
+        cycle_tracker_stable.set_restoration_complete()
+        mock_callbacks["get_target_temp"].return_value = 20.0
+
+        start_time = datetime(2025, 1, 14, 10, 0, 0)
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=start_time, target_temp=20.0, current_temp=18.0))
+
+        device_off_time = datetime(2025, 1, 14, 10, 5, 0)
+        cycle_tracker_stable._device_off_time = device_off_time
+
+        # Add heating phase temps (before device off)
+        await cycle_tracker_stable.update_temperature(datetime(2025, 1, 14, 10, 0, 0), 18.0)
+        await cycle_tracker_stable.update_temperature(datetime(2025, 1, 14, 10, 1, 0), 18.5)
+        await cycle_tracker_stable.update_temperature(datetime(2025, 1, 14, 10, 2, 0), 19.0)
+        await cycle_tracker_stable.update_temperature(datetime(2025, 1, 14, 10, 3, 0), 19.5)
+        await cycle_tracker_stable.update_temperature(datetime(2025, 1, 14, 10, 4, 0), 19.8)
+
+        # Add settling phase temps (after device off) - very stable around target
+        await cycle_tracker_stable.update_temperature(datetime(2025, 1, 14, 10, 5, 0), 20.0)
+        await cycle_tracker_stable.update_temperature(datetime(2025, 1, 14, 10, 6, 0), 20.02)
+        await cycle_tracker_stable.update_temperature(datetime(2025, 1, 14, 10, 7, 0), 20.01)
+        await cycle_tracker_stable.update_temperature(datetime(2025, 1, 14, 10, 8, 0), 20.03)
+
+        with patch(
+            "custom_components.adaptive_thermostat.adaptive.cycle_analysis.calculate_settling_mae"
+        ) as mock_calc:
+            mock_calc.return_value = 0.05  # Low MAE for stable settling
+            await cycle_tracker_stable._finalize_cycle()
+            mock_calc.assert_called_once()
+
+        # Test Case 2: Oscillating settling (high MAE)
+        cycle_tracker_oscillating = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone_oscillating",
+            adaptive_learner=mock_adaptive_learner,
+            dispatcher=dispatcher,
+            **mock_callbacks,
+        )
+        cycle_tracker_oscillating.set_restoration_complete()
+
+        start_time = datetime(2025, 1, 14, 11, 0, 0)
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=start_time, target_temp=20.0, current_temp=18.0))
+
+        device_off_time = datetime(2025, 1, 14, 11, 5, 0)
+        cycle_tracker_oscillating._device_off_time = device_off_time
+
+        # Add heating phase temps
+        await cycle_tracker_oscillating.update_temperature(datetime(2025, 1, 14, 11, 0, 0), 18.0)
+        await cycle_tracker_oscillating.update_temperature(datetime(2025, 1, 14, 11, 1, 0), 18.5)
+        await cycle_tracker_oscillating.update_temperature(datetime(2025, 1, 14, 11, 2, 0), 19.0)
+        await cycle_tracker_oscillating.update_temperature(datetime(2025, 1, 14, 11, 3, 0), 19.5)
+        await cycle_tracker_oscillating.update_temperature(datetime(2025, 1, 14, 11, 4, 0), 19.8)
+
+        # Add settling phase temps - oscillating around target
+        await cycle_tracker_oscillating.update_temperature(datetime(2025, 1, 14, 11, 5, 0), 20.0)
+        await cycle_tracker_oscillating.update_temperature(datetime(2025, 1, 14, 11, 6, 0), 20.3)
+        await cycle_tracker_oscillating.update_temperature(datetime(2025, 1, 14, 11, 7, 0), 19.7)
+        await cycle_tracker_oscillating.update_temperature(datetime(2025, 1, 14, 11, 8, 0), 20.4)
+        await cycle_tracker_oscillating.update_temperature(datetime(2025, 1, 14, 11, 9, 0), 19.6)
+
+        with patch(
+            "custom_components.adaptive_thermostat.adaptive.cycle_analysis.calculate_settling_mae"
+        ) as mock_calc:
+            mock_calc.return_value = 0.25  # High MAE for oscillating settling
+            await cycle_tracker_oscillating._finalize_cycle()
+            mock_calc.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_settling_mae_none_when_no_device_off_time(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
+    ):
+        """Test that settling_mae is None when device_off_time is not set."""
+        from datetime import timedelta
+
+        # Setup adaptive_learner
+        mock_adaptive_learner.is_in_validation_mode = MagicMock(return_value=False)
+        mock_adaptive_learner.update_convergence_confidence = MagicMock()
+        mock_adaptive_learner.to_dict = MagicMock(return_value={})
+
+        # Setup hass.data
+        mock_hass.data = {}
+
+        # Create cycle tracker
+        cycle_tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            dispatcher=dispatcher,
+            **mock_callbacks,
+        )
+        cycle_tracker.set_restoration_complete()
+
+        # Set target temperature
+        mock_callbacks["get_target_temp"].return_value = 20.0
+
+        # Start cycle
+        start_time = datetime(2025, 1, 14, 10, 0, 0)
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=start_time, target_temp=20.0, current_temp=18.0))
+
+        # DO NOT set device_off_time (simulating non-PWM mode or missing event)
+        # cycle_tracker._device_off_time remains None
+
+        # Add temperature samples
+        for i in range(6):
+            await cycle_tracker.update_temperature(
+                datetime(2025, 1, 14, 10, i, 0), 18.0 + i * 0.4
+            )
+
+        # Mock calculate_settling_mae to verify it returns None
+        with patch(
+            "custom_components.adaptive_thermostat.adaptive.cycle_analysis.calculate_settling_mae"
+        ) as mock_calc_settling_mae:
+            mock_calc_settling_mae.return_value = None  # None when no settling_start_time
+
+            # Finalize cycle
+            await cycle_tracker._finalize_cycle()
+
+            # Verify calculate_settling_mae was called with settling_start_time=None
+            mock_calc_settling_mae.assert_called_once()
+            call_args = mock_calc_settling_mae.call_args
+            assert call_args[1]["settling_start_time"] is None
+
+
