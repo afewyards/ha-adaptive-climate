@@ -1,6 +1,121 @@
 # CHANGELOG
 
 
+## v0.28.0 (2026-01-25)
+
+### Documentation
+
+- Add steady-state tracking metrics to CLAUDE.md
+  ([`fe428ec`](https://github.com/afewyards/ha-adaptive-thermostat/commit/fe428eca109e23d8bdf907c00368624a4e84c02a))
+
+### Features
+
+- Add _prev_cycle_end_temp tracking to CycleTracker
+  ([`bbcbb52`](https://github.com/afewyards/ha-adaptive-thermostat/commit/bbcbb5256eacb36711862396efeb8c1a7d2b1f46))
+
+- Add end_temp, settling_mae, inter_cycle_drift to CycleMetrics
+  ([`6497af5`](https://github.com/afewyards/ha-adaptive-thermostat/commit/6497af5054c430f11035e812acd98bf54e82411a))
+
+- Add INTER_CYCLE_DRIFT rule logic to evaluate_pid_rules
+  ([`3686f90`](https://github.com/afewyards/ha-adaptive-thermostat/commit/3686f90e82ac7115a00b123642df20c3d0bf0b61))
+
+- Add INTER_CYCLE_DRIFT to PIDRule enum
+  ([`709e87c`](https://github.com/afewyards/ha-adaptive-thermostat/commit/709e87c934b23ce64ec3df9471cef9da44f3e5f5))
+
+- Add inter_cycle_drift_max, settling_mae_max thresholds
+  ([`42514b0`](https://github.com/afewyards/ha-adaptive-thermostat/commit/42514b02880c67e26e232798de4e624d0ce7cde1))
+
+Add steady-state convergence thresholds to HEATING_TYPE_CONVERGENCE_THRESHOLDS: -
+  inter_cycle_drift_max: Maximum cycle-to-cycle metric drift (0.15-0.3°C by type) -
+  settling_mae_max: Maximum mean absolute error during settling (0.15-0.3°C by type)
+
+Thresholds scale with thermal mass: - floor_hydronic: 0.3°C (relaxed due to high variability) -
+  radiator: 0.25°C (baseline) - convector: 0.2°C (tighter due to low thermal mass) - forced_air:
+  0.15°C (tightest due to fast response)
+
+These enable steady-state PID tuning detection in future tasks.
+
+- Extract new metrics averages in calculate_pid_adjustment
+  ([`d55fbbd`](https://github.com/afewyards/ha-adaptive-thermostat/commit/d55fbbd45f9a264fab3760c7347c2c95d001cb66))
+
+Extract and average inter_cycle_drift and settling_mae from recent cycles and pass them to
+  _check_convergence for more accurate convergence detection.
+
+- Wire avg_inter_cycle_drift to evaluate_pid_rules
+  ([`eda1740`](https://github.com/afewyards/ha-adaptive-thermostat/commit/eda1740b998f4a6e93ac00a49b230c80913c2609))
+
+### Testing
+
+- Add _check_convergence tests for new metrics
+  ([`e5a637d`](https://github.com/afewyards/ha-adaptive-thermostat/commit/e5a637dc075af702794bcb6c10ded4b0f09bd18a))
+
+Add tests to verify that _check_convergence fails when avg_inter_cycle_drift or avg_settling_mae
+  exceed thresholds.
+
+Tests: 1. Convergence passes when all metrics (including new ones) are within bounds 2. Convergence
+  fails when avg_inter_cycle_drift exceeds threshold 3. Convergence fails when avg_settling_mae
+  exceeds threshold 4. Test with abs(drift) - since negative drift is the problem case
+
+All tests currently fail (TDD) as _check_convergence does not yet have the new parameters.
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+- Add calculate_settling_mae tests
+  ([`815ac81`](https://github.com/afewyards/ha-adaptive-thermostat/commit/815ac8156bad19dad4fb56dd20cf5bef3443b1e7))
+
+Add TDD tests for new calculate_settling_mae() function in cycle_analysis. Tests cover: - Empty
+  temperature history returns None - No settling phase (None settling_start_time) returns None -
+  Normal settling phase calculates mean absolute error from target - Partial settling window uses
+  only temps after settling_start_time - All temps before settling_start_time returns None
+
+Tests currently fail (ImportError) as function not yet implemented.
+
+- Add convergence threshold tests for new metrics
+  ([`4e10be4`](https://github.com/afewyards/ha-adaptive-thermostat/commit/4e10be42d189895bad027e8f1c4e00114c05d181))
+
+- Add CycleMetrics new fields tests
+  ([`b51fd36`](https://github.com/afewyards/ha-adaptive-thermostat/commit/b51fd36cb2405d1862aa239615d94a977748f7aa))
+
+- Add CycleTracker end_temp tests
+  ([`b4f5f32`](https://github.com/afewyards/ha-adaptive-thermostat/commit/b4f5f32a621bd05a2c62f1ce1e67adaa17ec2587))
+
+Add tests verifying that _record_cycle_metrics populates end_temp from the last temperature sample
+  in _temperature_history.
+
+Tests: - test_end_temp_set_after_complete_cycle: Verifies end_temp is not None -
+  test_end_temp_equals_last_temperature_in_history: Verifies end_temp equals the last temperature in
+  history - test_end_temp_not_set_when_no_temperature_history: Verifies behavior when there's no
+  temperature history
+
+All tests currently fail as expected (TDD).
+
+- Add CycleTracker inter_cycle_drift tests
+  ([`6844242`](https://github.com/afewyards/ha-adaptive-thermostat/commit/6844242d33a5f211e2a778ec5fb34f10a3285485))
+
+- Add CycleTracker settling_mae tests
+  ([`7a7ae6f`](https://github.com/afewyards/ha-adaptive-thermostat/commit/7a7ae6fca959078351d82705aeaf54f91038195e))
+
+Add tests to verify settling_mae calculation during _record_cycle_metrics: - Test settling_mae is
+  calculated during cycle finalization - Test settling_mae uses _device_off_time as
+  settling_start_time parameter - Test with various settling patterns (stable vs oscillating) - Test
+  settling_mae is None when device_off_time is not set
+
+Tests currently fail (TDD) as calculate_settling_mae is not yet called in _record_cycle_metrics
+  implementation.
+
+- Add INTER_CYCLE_DRIFT rule tests
+  ([`118ae46`](https://github.com/afewyards/ha-adaptive-thermostat/commit/118ae4602682aab7280cb2d72f44677f38fba45c))
+
+Add tests for new INTER_CYCLE_DRIFT PID rule that detects room cooling between heating cycles
+  (negative drift indicates Ki too low).
+
+Tests verify: - Drift within threshold does NOT fire rule - Negative drift exceeding threshold fires
+  with Ki=1.15 - Positive drift does NOT fire rule - Zero drift does NOT fire rule - Custom
+  thresholds are respected
+
+All tests currently fail (TDD) - awaiting implementation.
+
+
 ## v0.27.1 (2026-01-24)
 
 ### Bug Fixes
