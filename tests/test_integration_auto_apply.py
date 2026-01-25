@@ -1248,10 +1248,11 @@ class TestMultiZoneAutoApply:
         start_time = datetime(2024, 1, 1, 10, 0, 0)
         for cycle_num in range(6):
             current_time = start_time + timedelta(hours=cycle_num * 2)
-            zone1_dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=current_time, target_temp=21.0, current_temp=19.0))
+            start_temp_z1 = 20.85  # undershoot will be 21.0 - 20.85 = 0.15°C
+            zone1_dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=current_time, target_temp=21.0, current_temp=start_temp_z1))
 
             for i in range(20):
-                temp = 19.0 + min(i * 0.15, 2.0)
+                temp = start_temp_z1 + min(i * 0.01, 0.15)
                 await zone1_tracker.update_temperature(current_time, temp)
                 current_time += timedelta(seconds=30)
 
@@ -1268,10 +1269,11 @@ class TestMultiZoneAutoApply:
         start_time = datetime(2024, 1, 1, 10, 0, 0)
         for cycle_num in range(7):
             current_time = start_time + timedelta(hours=cycle_num * 2)
-            zone2_dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=current_time, target_temp=20.0, current_temp=18.0))
+            start_temp_z2 = 19.85  # undershoot will be 20.0 - 19.85 = 0.15°C
+            zone2_dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=current_time, target_temp=20.0, current_temp=start_temp_z2))
 
             for i in range(20):
-                temp = 18.0 + min(i * 0.15, 2.0)
+                temp = start_temp_z2 + min(i * 0.01, 0.15)
                 await zone2_tracker.update_temperature(current_time, temp)
                 current_time += timedelta(seconds=30)
 
@@ -1290,9 +1292,10 @@ class TestMultiZoneAutoApply:
         zone2_time = datetime(2024, 1, 2, 10, 0, 0)
 
         # Zone1 cycle
-        zone1_dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=zone1_time, target_temp=21.0, current_temp=19.0))
+        start_temp_z1 = 20.85
+        zone1_dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=zone1_time, target_temp=21.0, current_temp=start_temp_z1))
         for i in range(20):
-            temp = 19.0 + min(i * 0.15, 2.0)
+            temp = start_temp_z1 + min(i * 0.01, 0.15)
             await zone1_tracker.update_temperature(zone1_time, temp)
             zone1_time += timedelta(seconds=30)
         zone1_dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=zone1_time))
@@ -1301,9 +1304,10 @@ class TestMultiZoneAutoApply:
             zone1_time += timedelta(seconds=30)
 
         # Zone2 cycle
-        zone2_dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=zone2_time, target_temp=20.0, current_temp=18.0))
+        start_temp_z2 = 19.85
+        zone2_dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=zone2_time, target_temp=20.0, current_temp=start_temp_z2))
         for i in range(20):
-            temp = 18.0 + min(i * 0.15, 2.0)
+            temp = start_temp_z2 + min(i * 0.01, 0.15)
             await zone2_tracker.update_temperature(zone2_time, temp)
             zone2_time += timedelta(seconds=30)
         zone2_dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=zone2_time))
