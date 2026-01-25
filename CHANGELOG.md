@@ -1,6 +1,60 @@
 # CHANGELOG
 
 
+## v0.29.0 (2026-01-25)
+
+### Bug Fixes
+
+- Update tests for undershoot convergence check
+  ([`165f312`](https://github.com/afewyards/ha-adaptive-thermostat/commit/165f3125de67d7f4a09e78af56600ed4db1f6c01))
+
+- Add undershoot field to good cycle metrics in auto-apply tests - Adjust test temperatures to keep
+  undershoot within convergence threshold - Document HAOS sensor behavior caveat in CLAUDE.md
+
+### Documentation
+
+- Add undershoot to convergence metrics table
+  ([`7f10bce`](https://github.com/afewyards/ha-adaptive-thermostat/commit/7f10bce271778077b8bae3f2440f69cc7336ac17))
+
+### Features
+
+- Add undershoot check to _check_convergence()
+  ([`59374b3`](https://github.com/afewyards/ha-adaptive-thermostat/commit/59374b3dd0a9c3d78c4d2c4a21d74a5081d7c308))
+
+- Add avg_undershoot parameter to _check_convergence() method - Add condition to check undershoot <=
+  threshold (default 0.2°C) - Update call site in evaluate_pid_adjustment() to pass avg_undershoot -
+  Add undershoot to convergence log message - Add tests for undershoot convergence checking - Add
+  undershoot to convergence confidence tracking - Add detailed debug logging for cycle metrics and
+  learning evaluation
+
+- Add undershoot check to update_convergence_tracking()
+  ([`3e85ac0`](https://github.com/afewyards/ha-adaptive-thermostat/commit/3e85ac0967012b565133f1949d9946973473d635))
+
+- Add undershoot extraction from CycleMetrics (defaults to 0.0 if None) - Add undershoot check to
+  is_cycle_converged condition in update_convergence_tracking() - Use convergence threshold
+  undershoot_max (default 0.2°C) for validation - Ensures high undershoot resets consecutive
+  converged cycle counter - Makes existing tests pass for convergence tracking with undershoot
+
+- Add undershoot_max to convergence thresholds
+  ([`1d1a4a4`](https://github.com/afewyards/ha-adaptive-thermostat/commit/1d1a4a46a37aee17b32cd3e606856e82bd03385e))
+
+Add undershoot_max threshold to convergence criteria, matching overshoot_max values for each heating
+  type. This provides symmetrical validation for both overshoot and undershoot conditions.
+
+Values: - Default: 0.2°C - Floor hydronic: 0.3°C - Radiator: 0.25°C - Convector: 0.2°C - Forced air:
+  0.15°C
+
+Tests added to verify undershoot_max is present in all threshold dicts.
+
+- Adjust integration test temps to pass undershoot check
+  ([`3fecdf2`](https://github.com/afewyards/ha-adaptive-thermostat/commit/3fecdf25b27482a160da26ccc01d0ac5ce814ed6))
+
+- Update test_full_auto_apply_flow to start at 20.85°C instead of 19.0°C - Update
+  test_multiple_zones_auto_apply_simultaneously for both zones - Reduces undershoot from 2.0°C to
+  0.15°C to pass convergence threshold - Ensures tests pass with new undershoot check in
+  update_convergence_confidence()
+
+
 ## v0.28.1 (2026-01-25)
 
 ### Bug Fixes
