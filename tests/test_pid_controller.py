@@ -2524,5 +2524,246 @@ class TestPIDClampingStateTracking:
         assert pid.clamp_reason == 'safety_net', "clamp_reason updates to most recent clamp event"
 
 
+    def test_integral_accumulation_normal_without_dead_time(self):
+        """Test baseline integral accumulation without dead time.
+
+        This establishes the baseline for comparison with dead time tests.
+        With Ki = 1.2 %/(°C·hour) and 1°C error for 1 hour, integral should accumulate 1.2%.
+        """
+        pid = PID(kp=0.3, ki=1.2, kd=2.5, out_min=0, out_max=100)
+
+        # First calculation establishes baseline
+        pid.calc(input_val=19.0, set_point=20.0, input_time=0.0, last_input_time=None)
+        assert pid.integral == 0.0
+
+        # Accumulate over 1 hour with 1°C error
+        pid.calc(input_val=19.0, set_point=20.0, input_time=3600.0, last_input_time=0.0)
+
+        # Expected: 1.2 * 1.0 * 1.0 = 1.2%
+        assert abs(pid.integral - 1.2) < 0.01, f"Expected integral ~1.2, got {pid.integral}"
+
+    def test_integral_accumulation_during_dead_time(self):
+        """Test integral accumulates at 25% rate during dead time.
+
+        When transport delay is active (dead time), integral should accumulate
+        at 25% of normal rate until elapsed time >= transport_delay.
+        """
+        pid = PID(kp=0.3, ki=1.2, kd=2.5, out_min=0, out_max=100)
+
+        # First calculation establishes baseline
+        pid.calc(input_val=19.0, set_point=20.0, input_time=0.0, last_input_time=None)
+        assert pid.integral == 0.0
+
+        # Set transport delay to 30 minutes (0.5 hours)
+        pid.set_transport_delay(30.0)
+
+        # Accumulate for 15 minutes (0.25 hours) - still within dead time
+        pid.calc(input_val=19.0, set_point=20.0, input_time=900.0, last_input_time=0.0)
+
+        # Expected: 1.2 * 1.0 * 0.25 * 0.25 = 0.075%
+        # (Ki * error * dt_hours * 0.25 dead time factor)
+        expected = 1.2 * 1.0 * (900.0 / 3600.0) * 0.25
+        assert abs(pid.integral - expected) < 0.01, f"Expected integral ~{expected}, got {pid.integral}"
+
+        # Accumulate for another 15 minutes (total 30 min) - should reach end of dead time
+        pid.calc(input_val=19.0, set_point=20.0, input_time=1800.0, last_input_time=900.0)
+
+        # Total expected: previous + (1.2 * 1.0 * 0.25 * 0.25)
+        expected_total = expected + (1.2 * 1.0 * (900.0 / 3600.0) * 0.25)
+        assert abs(pid.integral - expected_total) < 0.01, f"Expected integral ~{expected_total}, got {pid.integral}"
+
+    def test_dead_time_starts_when_transport_delay_set(self):
+        """Test dead time state starts when set_transport_delay() is called with delay > 0."""
+        pid = PID(kp=0.3, ki=1.2, kd=2.5, out_min=0, out_max=100)
+
+        # Initially no dead time
+        assert not hasattr(pid, '_transport_delay') or pid._transport_delay is None or pid._transport_delay == 0
+
+        # First calculation establishes baseline
+        pid.calc(input_val=19.0, set_point=20.0, input_time=0.0, last_input_time=None)
+
+        # Set transport delay - this should start dead time tracking
+        pid.set_transport_delay(30.0)
+
+        # Verify dead time is active
+        assert pid._transport_delay == 30.0
+        assert hasattr(pid, '_dead_time_start')
+        assert pid._dead_time_start is not None
+
+        # Verify integral accumulation is reduced
+        pid.calc(input_val=19.0, set_point=20.0, input_time=900.0, last_input_time=0.0)
+
+        # Should be 25% of normal rate
+        expected = 1.2 * 1.0 * (900.0 / 3600.0) * 0.25
+        assert abs(pid.integral - expected) < 0.01
+
+    def test_dead_time_ends_after_transport_delay_elapsed(self):
+        """Test dead time ends when elapsed time >= transport_delay."""
+        pid = PID(kp=0.3, ki=1.2, kd=2.5, out_min=0, out_max=100)
+
+        # First calculation establishes baseline
+        pid.calc(input_val=19.0, set_point=20.0, input_time=0.0, last_input_time=None)
+
+        # Set transport delay to 30 minutes
+        pid.set_transport_delay(30.0)
+
+        # Accumulate for 15 minutes - within dead time (25% rate)
+        pid.calc(input_val=19.0, set_point=20.0, input_time=900.0, last_input_time=0.0)
+        integral_at_15min = pid.integral
+
+        # Accumulate for another 20 minutes (total 35 min) - exceeds 30 min delay
+        # Last 5 minutes should be at full rate
+        pid.calc(input_val=19.0, set_point=20.0, input_time=2100.0, last_input_time=900.0)
+
+        # Expected:
+        # - First 15 min (to 30 min total): 1.2 * 1.0 * (15/60) * 0.25 = 0.075%
+        # - Last 5 min (after dead time): 1.2 * 1.0 * (5/60) = 0.1%
+        expected_15_to_30 = 1.2 * 1.0 * (900.0 / 3600.0) * 0.25  # 0.075%
+        expected_30_to_35 = 1.2 * 1.0 * (300.0 / 3600.0)  # 0.1%
+        expected_total = integral_at_15min + expected_15_to_30 + expected_30_to_35
+
+        assert abs(pid.integral - expected_total) < 0.01, f"Expected integral ~{expected_total}, got {pid.integral}"
+
+    def test_reset_dead_time_clears_state(self):
+        """Test reset_dead_time() clears dead time state (called when heater turns off)."""
+        pid = PID(kp=0.3, ki=1.2, kd=2.5, out_min=0, out_max=100)
+
+        # First calculation establishes baseline
+        pid.calc(input_val=19.0, set_point=20.0, input_time=0.0, last_input_time=None)
+
+        # Set transport delay
+        pid.set_transport_delay(30.0)
+        assert pid._transport_delay == 30.0
+        assert hasattr(pid, '_dead_time_start') and pid._dead_time_start is not None
+
+        # Reset dead time
+        pid.reset_dead_time()
+
+        # Verify dead time state is cleared
+        assert not hasattr(pid, '_dead_time_start') or pid._dead_time_start is None
+
+        # Verify integral accumulation returns to normal rate
+        pid.calc(input_val=19.0, set_point=20.0, input_time=900.0, last_input_time=0.0)
+
+        # Should be full rate (not 25%)
+        expected = 1.2 * 1.0 * (900.0 / 3600.0)  # 0.3%
+        assert abs(pid.integral - expected) < 0.01, f"Expected integral ~{expected}, got {pid.integral}"
+
+    def test_no_dead_time_when_transport_delay_is_zero(self):
+        """Test no dead time effect when transport_delay is 0."""
+        pid = PID(kp=0.3, ki=1.2, kd=2.5, out_min=0, out_max=100)
+
+        # First calculation establishes baseline
+        pid.calc(input_val=19.0, set_point=20.0, input_time=0.0, last_input_time=None)
+
+        # Set transport delay to 0
+        pid.set_transport_delay(0.0)
+
+        # Accumulate for 15 minutes
+        pid.calc(input_val=19.0, set_point=20.0, input_time=900.0, last_input_time=0.0)
+
+        # Should be full rate (not 25%)
+        expected = 1.2 * 1.0 * (900.0 / 3600.0)
+        assert abs(pid.integral - expected) < 0.01, f"Expected integral ~{expected}, got {pid.integral}"
+
+    def test_no_dead_time_when_transport_delay_is_none(self):
+        """Test no dead time effect when transport_delay is None."""
+        pid = PID(kp=0.3, ki=1.2, kd=2.5, out_min=0, out_max=100)
+
+        # First calculation establishes baseline
+        pid.calc(input_val=19.0, set_point=20.0, input_time=0.0, last_input_time=None)
+
+        # Set transport delay to None (explicitly)
+        pid.set_transport_delay(None)
+
+        # Accumulate for 15 minutes
+        pid.calc(input_val=19.0, set_point=20.0, input_time=900.0, last_input_time=0.0)
+
+        # Should be full rate (not 25%)
+        expected = 1.2 * 1.0 * (900.0 / 3600.0)
+        assert abs(pid.integral - expected) < 0.01, f"Expected integral ~{expected}, got {pid.integral}"
+
+    def test_dead_time_transition_at_exact_boundary(self):
+        """Test dead time transition at exact boundary (elapsed time == transport_delay)."""
+        pid = PID(kp=0.3, ki=1.2, kd=2.5, out_min=0, out_max=100)
+
+        # First calculation establishes baseline
+        pid.calc(input_val=19.0, set_point=20.0, input_time=0.0, last_input_time=None)
+
+        # Set transport delay to 30 minutes
+        pid.set_transport_delay(30.0)
+
+        # Accumulate exactly 30 minutes
+        pid.calc(input_val=19.0, set_point=20.0, input_time=1800.0, last_input_time=0.0)
+
+        # All 30 minutes should be at 25% rate
+        expected = 1.2 * 1.0 * (1800.0 / 3600.0) * 0.25
+        assert abs(pid.integral - expected) < 0.01, f"Expected integral ~{expected}, got {pid.integral}"
+
+        # Next calculation should be at full rate
+        pid.calc(input_val=19.0, set_point=20.0, input_time=2700.0, last_input_time=1800.0)
+
+        # Additional 15 minutes at full rate
+        expected_total = expected + (1.2 * 1.0 * (900.0 / 3600.0))
+        assert abs(pid.integral - expected_total) < 0.01, f"Expected integral ~{expected_total}, got {pid.integral}"
+
+    def test_dead_time_with_variable_error(self):
+        """Test dead time with variable error (temperature changing during dead time)."""
+        pid = PID(kp=0.3, ki=1.2, kd=2.5, out_min=0, out_max=100)
+
+        # First calculation establishes baseline
+        pid.calc(input_val=18.0, set_point=20.0, input_time=0.0, last_input_time=None)
+        assert pid.integral == 0.0
+
+        # Set transport delay to 30 minutes
+        pid.set_transport_delay(30.0)
+
+        # After 10 minutes: error = 2.0°C, dt = 10/60 hours
+        pid.calc(input_val=18.0, set_point=20.0, input_time=600.0, last_input_time=0.0)
+        expected_1 = 1.2 * 2.0 * (600.0 / 3600.0) * 0.25
+        assert abs(pid.integral - expected_1) < 0.01
+
+        # After 20 minutes total: temp rises to 18.5°C, error = 1.5°C, dt = 10/60 hours
+        pid.calc(input_val=18.5, set_point=20.0, input_time=1200.0, last_input_time=600.0)
+        expected_2 = expected_1 + (1.2 * 1.5 * (600.0 / 3600.0) * 0.25)
+        assert abs(pid.integral - expected_2) < 0.01
+
+        # After 40 minutes total: temp at 19.0°C, error = 1.0°C, dt = 20/60 hours
+        # First 10 min (to 30 min total) at 25% rate, last 10 min at full rate
+        pid.calc(input_val=19.0, set_point=20.0, input_time=2400.0, last_input_time=1200.0)
+
+        # Split the period: 10 min at 25%, 10 min at 100%
+        expected_3 = expected_2 + (1.2 * 1.0 * (600.0 / 3600.0) * 0.25) + (1.2 * 1.0 * (600.0 / 3600.0))
+        assert abs(pid.integral - expected_3) < 0.01, f"Expected integral ~{expected_3}, got {pid.integral}"
+
+    def test_dead_time_reset_and_restart(self):
+        """Test dead time can be reset and restarted (heater cycling)."""
+        pid = PID(kp=0.3, ki=1.2, kd=2.5, out_min=0, out_max=100)
+
+        # First calculation establishes baseline
+        pid.calc(input_val=19.0, set_point=20.0, input_time=0.0, last_input_time=None)
+
+        # First cycle: set transport delay and accumulate
+        pid.set_transport_delay(30.0)
+        pid.calc(input_val=19.0, set_point=20.0, input_time=900.0, last_input_time=0.0)
+        integral_after_cycle1 = pid.integral
+
+        # Reset dead time (heater turns off)
+        pid.reset_dead_time()
+
+        # Accumulate at full rate for 15 minutes
+        pid.calc(input_val=19.0, set_point=20.0, input_time=1800.0, last_input_time=900.0)
+        expected_after_reset = integral_after_cycle1 + (1.2 * 1.0 * (900.0 / 3600.0))
+        assert abs(pid.integral - expected_after_reset) < 0.01
+
+        # Start new dead time period (heater turns on again)
+        pid.set_transport_delay(30.0)
+        pid.calc(input_val=19.0, set_point=20.0, input_time=2700.0, last_input_time=1800.0)
+
+        # Should be back to 25% rate
+        expected_final = expected_after_reset + (1.2 * 1.0 * (900.0 / 3600.0) * 0.25)
+        assert abs(pid.integral - expected_final) < 0.01, f"Expected integral ~{expected_final}, got {pid.integral}"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
