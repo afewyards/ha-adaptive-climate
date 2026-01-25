@@ -2827,3 +2827,255 @@ class TestEndTemperatureTracking:
         assert not mock_adaptive_learner.add_cycle_metrics.called
 
 
+class TestInterCycleDrift:
+    """Tests for inter_cycle_drift calculation (Story 3.2)."""
+
+    @pytest.mark.asyncio
+    async def test_first_cycle_drift_is_none(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
+    ):
+        """Test that first cycle has inter_cycle_drift = None."""
+        from datetime import timedelta
+
+        tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            get_target_temp=mock_callbacks["get_target_temp"],
+            get_current_temp=mock_callbacks["get_current_temp"],
+            get_hvac_mode=mock_callbacks["get_hvac_mode"],
+            get_in_grace_period=mock_callbacks["get_in_grace_period"],
+            dispatcher=dispatcher,
+        )
+        tracker.set_restoration_complete()
+
+        # Start first cycle
+        start_time = datetime(2025, 1, 25, 10, 0, 0)
+        dispatcher.emit(CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=start_time,
+            target_temp=20.0,
+            current_temp=18.0
+        ))
+
+        # Add temperature samples
+        for i in range(15):
+            await tracker.update_temperature(
+                timestamp=start_time + timedelta(minutes=i),
+                temperature=18.0 + (i * 0.15)
+            )
+
+        # Finalize first cycle
+        await tracker._finalize_cycle()
+
+        # Verify metrics were recorded
+        mock_adaptive_learner.add_cycle_metrics.assert_called_once()
+        metrics = mock_adaptive_learner.add_cycle_metrics.call_args[0][0]
+
+        # First cycle should have inter_cycle_drift = None
+        assert metrics.inter_cycle_drift is None
+
+    @pytest.mark.asyncio
+    async def test_second_cycle_drift_with_positive_drift(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
+    ):
+        """Test second cycle calculates positive inter_cycle_drift (warmer start)."""
+        from datetime import timedelta
+
+        tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            get_target_temp=mock_callbacks["get_target_temp"],
+            get_current_temp=mock_callbacks["get_current_temp"],
+            get_hvac_mode=mock_callbacks["get_hvac_mode"],
+            get_in_grace_period=mock_callbacks["get_in_grace_period"],
+            dispatcher=dispatcher,
+        )
+        tracker.set_restoration_complete()
+
+        # First cycle: 18.0 -> 20.0 (end temp)
+        start_time = datetime(2025, 1, 25, 10, 0, 0)
+        dispatcher.emit(CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=start_time,
+            target_temp=20.0,
+            current_temp=18.0
+        ))
+
+        for i in range(15):
+            await tracker.update_temperature(
+                timestamp=start_time + timedelta(minutes=i),
+                temperature=18.0 + (i * 0.133)  # Ends at ~20.0
+            )
+
+        await tracker._finalize_cycle()
+
+        # Second cycle: starts at 20.5 (warmer than previous end)
+        start_time2 = datetime(2025, 1, 25, 11, 0, 0)
+        dispatcher.emit(CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=start_time2,
+            target_temp=20.0,
+            current_temp=20.5  # Warmer start
+        ))
+
+        for i in range(15):
+            await tracker.update_temperature(
+                timestamp=start_time2 + timedelta(minutes=i),
+                temperature=20.5 + (i * 0.05)
+            )
+
+        await tracker._finalize_cycle()
+
+        # Verify second cycle has positive drift
+        assert mock_adaptive_learner.add_cycle_metrics.call_count == 2
+        second_metrics = mock_adaptive_learner.add_cycle_metrics.call_args_list[1][0][0]
+
+        # drift = start_temp[current] - end_temp[previous]
+        # drift = 20.5 - 20.0 = 0.5
+        assert second_metrics.inter_cycle_drift is not None
+        assert second_metrics.inter_cycle_drift == pytest.approx(0.5, abs=0.01)
+
+    @pytest.mark.asyncio
+    async def test_second_cycle_drift_with_negative_drift(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
+    ):
+        """Test second cycle calculates negative inter_cycle_drift (cooler start - problematic case)."""
+        from datetime import timedelta
+
+        tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            get_target_temp=mock_callbacks["get_target_temp"],
+            get_current_temp=mock_callbacks["get_current_temp"],
+            get_hvac_mode=mock_callbacks["get_hvac_mode"],
+            get_in_grace_period=mock_callbacks["get_in_grace_period"],
+            dispatcher=dispatcher,
+        )
+        tracker.set_restoration_complete()
+
+        # First cycle: 18.0 -> 20.0 (end temp)
+        start_time = datetime(2025, 1, 25, 10, 0, 0)
+        dispatcher.emit(CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=start_time,
+            target_temp=20.0,
+            current_temp=18.0
+        ))
+
+        for i in range(15):
+            await tracker.update_temperature(
+                timestamp=start_time + timedelta(minutes=i),
+                temperature=18.0 + (i * 0.133)  # Ends at ~20.0
+            )
+
+        await tracker._finalize_cycle()
+
+        # Second cycle: starts at 19.0 (cooler than previous end)
+        start_time2 = datetime(2025, 1, 25, 11, 0, 0)
+        dispatcher.emit(CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=start_time2,
+            target_temp=20.0,
+            current_temp=19.0  # Cooler start - the problematic case
+        ))
+
+        for i in range(15):
+            await tracker.update_temperature(
+                timestamp=start_time2 + timedelta(minutes=i),
+                temperature=19.0 + (i * 0.067)
+            )
+
+        await tracker._finalize_cycle()
+
+        # Verify second cycle has negative drift
+        assert mock_adaptive_learner.add_cycle_metrics.call_count == 2
+        second_metrics = mock_adaptive_learner.add_cycle_metrics.call_args_list[1][0][0]
+
+        # drift = start_temp[current] - end_temp[previous]
+        # drift = 19.0 - 20.0 = -1.0
+        assert second_metrics.inter_cycle_drift is not None
+        assert second_metrics.inter_cycle_drift == pytest.approx(-1.0, abs=0.01)
+
+    @pytest.mark.asyncio
+    async def test_third_cycle_uses_second_cycle_end_temp(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
+    ):
+        """Test that drift calculation uses the immediately previous cycle's end temp."""
+        from datetime import timedelta
+
+        tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            get_target_temp=mock_callbacks["get_target_temp"],
+            get_current_temp=mock_callbacks["get_current_temp"],
+            get_hvac_mode=mock_callbacks["get_hvac_mode"],
+            get_in_grace_period=mock_callbacks["get_in_grace_period"],
+            dispatcher=dispatcher,
+        )
+        tracker.set_restoration_complete()
+
+        # First cycle: ends at 20.0
+        start_time = datetime(2025, 1, 25, 10, 0, 0)
+        dispatcher.emit(CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=start_time,
+            target_temp=20.0,
+            current_temp=18.0
+        ))
+
+        for i in range(15):
+            await tracker.update_temperature(
+                timestamp=start_time + timedelta(minutes=i),
+                temperature=18.0 + (i * 0.133)
+            )
+
+        await tracker._finalize_cycle()
+
+        # Second cycle: ends at 21.0
+        start_time2 = datetime(2025, 1, 25, 11, 0, 0)
+        dispatcher.emit(CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=start_time2,
+            target_temp=21.0,
+            current_temp=20.0
+        ))
+
+        for i in range(15):
+            await tracker.update_temperature(
+                timestamp=start_time2 + timedelta(minutes=i),
+                temperature=20.0 + (i * 0.067)  # Ends at ~21.0
+            )
+
+        await tracker._finalize_cycle()
+
+        # Third cycle: starts at 20.5
+        start_time3 = datetime(2025, 1, 25, 12, 0, 0)
+        dispatcher.emit(CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=start_time3,
+            target_temp=20.0,
+            current_temp=20.5
+        ))
+
+        for i in range(15):
+            await tracker.update_temperature(
+                timestamp=start_time3 + timedelta(minutes=i),
+                temperature=20.5 - (i * 0.033)
+            )
+
+        await tracker._finalize_cycle()
+
+        # Verify third cycle uses second cycle's end temp
+        assert mock_adaptive_learner.add_cycle_metrics.call_count == 3
+        third_metrics = mock_adaptive_learner.add_cycle_metrics.call_args_list[2][0][0]
+
+        # drift = start_temp[third] - end_temp[second]
+        # drift = 20.5 - 21.0 = -0.5
+        assert third_metrics.inter_cycle_drift is not None
+        assert third_metrics.inter_cycle_drift == pytest.approx(-0.5, abs=0.01)
+
+
