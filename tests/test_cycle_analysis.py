@@ -356,4 +356,48 @@ class TestCycleMetrics:
         # Verify other fields work
         assert metrics.overshoot == 0.4
 
+    def test_cycle_metrics_has_dead_time_field(self):
+        """Test CycleMetrics has dead_time field with default None."""
+        # Create CycleMetrics with dead_time set to a float value
+        metrics_with_dead_time = CycleMetrics(
+            overshoot=0.5,
+            dead_time=2.5,
+        )
+        assert metrics_with_dead_time.dead_time == 2.5
+
+        # Create CycleMetrics without dead_time (should default to None)
+        metrics_default = CycleMetrics(
+            overshoot=0.3,
+        )
+        assert metrics_default.dead_time is None
+
+        # Verify explicit None works
+        metrics_none = CycleMetrics(
+            overshoot=0.4,
+            dead_time=None,
+        )
+        assert metrics_none.dead_time is None
+
+    def test_cycle_metrics_dead_time_accepts_float(self):
+        """Test CycleMetrics accepts dead_time as float value."""
+        # Test various float values
+        metrics1 = CycleMetrics(overshoot=0.2, dead_time=1.0)
+        assert metrics1.dead_time == 1.0
+
+        metrics2 = CycleMetrics(overshoot=0.3, dead_time=5.75)
+        assert metrics2.dead_time == 5.75
+
+        metrics3 = CycleMetrics(overshoot=0.4, dead_time=0.0)
+        assert metrics3.dead_time == 0.0
+
+        # Verify dead_time works alongside other fields
+        metrics4 = CycleMetrics(
+            overshoot=0.5,
+            settling_time=15.0,
+            dead_time=3.2,
+        )
+        assert metrics4.dead_time == 3.2
+        assert metrics4.overshoot == 0.5
+        assert metrics4.settling_time == 15.0
+
 
