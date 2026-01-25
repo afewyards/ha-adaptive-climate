@@ -165,6 +165,11 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
                 })]
             ),
         }),
+        # Manifold integration
+        vol.Optional(const.CONF_LOOPS, default=const.DEFAULT_LOOPS): vol.All(
+            vol.Coerce(int),
+            vol.Range(min=1, max=10)
+        ),
     }
 )
 
@@ -323,6 +328,7 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         'max_power_w': config.get(const.CONF_MAX_POWER_W),
         'supply_temperature': hass.data.get(DOMAIN, {}).get("supply_temperature"),
         'ha_area': config.get(const.CONF_AREA),  # Home Assistant area to assign entity to
+        'loops': config.get(const.CONF_LOOPS),
     }
 
     thermostat = AdaptiveThermostat(**parameters)
@@ -511,6 +517,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         self._window_orientation = kwargs.get('window_orientation')
         self._floor_construction = kwargs.get('floor_construction')
         self._ha_area = kwargs.get('ha_area')  # Home Assistant area to assign entity to
+        self._loops = kwargs.get('loops', const.DEFAULT_LOOPS)
 
         # Derivative filter alpha - get from config or use heating-type-specific default
         self._derivative_filter_alpha = kwargs.get('derivative_filter_alpha')
