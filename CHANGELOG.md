@@ -1,6 +1,94 @@
 # CHANGELOG
 
 
+## v0.30.0 (2026-01-25)
+
+### Documentation
+
+- Add manifold transport delay documentation
+  ([`1be64a5`](https://github.com/afewyards/ha-adaptive-thermostat/commit/1be64a5bd81ee9ed527d37c4b4ea11c1d894634c))
+
+### Features
+
+- Add dead time handling to PID controller
+  ([`22a9d5f`](https://github.com/afewyards/ha-adaptive-thermostat/commit/22a9d5f8c36e83393869404647c40baa5978938b))
+
+- Add dead_time field to CycleMetrics
+  ([`eaf3b7c`](https://github.com/afewyards/ha-adaptive-thermostat/commit/eaf3b7c92095f6742dd99864eea866b658ca5eee))
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+- Add loops config to climate platform schema
+  ([`d0989cf`](https://github.com/afewyards/ha-adaptive-thermostat/commit/d0989cfb4fffaa4a65e43d4e9f0906afa14a9ad3))
+
+- Add manifold integration to climate entity
+  ([`9ba07e6`](https://github.com/afewyards/ha-adaptive-thermostat/commit/9ba07e6c69791f946c9fb584cf9be3c389b5f3a3))
+
+- Add manifold integration to coordinator
+  ([`9a0697e`](https://github.com/afewyards/ha-adaptive-thermostat/commit/9a0697ebbf78c60a548b9ad574f8742dfa2d26dd))
+
+- Add manifold transport delay constants
+  ([`374b625`](https://github.com/afewyards/ha-adaptive-thermostat/commit/374b625da3e424dc1d87e706ebeba651c52707b6))
+
+Added constants for manifold transport delay configuration: - CONF_MANIFOLDS, CONF_PIPE_VOLUME,
+  CONF_FLOW_PER_LOOP, CONF_LOOPS - MANIFOLD_COOLDOWN_MINUTES, DEFAULT_LOOPS, DEFAULT_FLOW_PER_LOOP
+
+- Implement ManifoldRegistry for transport delay
+  ([`3018462`](https://github.com/afewyards/ha-adaptive-thermostat/commit/301846214813f572751c6c00152d724aa0bae49b))
+
+Implements manifold tracking for hydronic heating systems: - Manifold dataclass with zones,
+  pipe_volume, flow_per_loop - ManifoldRegistry with zone-to-manifold lookup - Transport delay
+  calculation: pipe_volume / (active_loops × flow_per_loop) - Warm manifold detection (5 min
+  cooldown returns 0 delay) - Multi-zone flow aggregation per manifold
+
+All 27 tests pass.
+
+### Testing
+
+- Add climate entity manifold integration tests
+  ([`7d6823e`](https://github.com/afewyards/ha-adaptive-thermostat/commit/7d6823e537a7538a7e6c796233ef097297b0df82))
+
+Add comprehensive tests for climate entity manifold integration: - Entity stores loops config value
+  (default: 1) - Entity registers loops with coordinator on async_added_to_hass - Entity queries
+  get_transport_delay_for_zone() when heating starts - Entity passes transport_delay to PID via
+  set_transport_delay() - transport_delay exposed in extra_state_attributes - transport_delay is
+  None when no manifold configured - transport_delay updates on heating restart (cold vs warm
+  manifold)
+
+- Add coordinator manifold integration tests
+  ([`b4d1319`](https://github.com/afewyards/ha-adaptive-thermostat/commit/b4d131900d07281e233d36a85b9a722530d3f497))
+
+- Add CycleMetrics dead_time field tests
+  ([`e9464b4`](https://github.com/afewyards/ha-adaptive-thermostat/commit/e9464b44bd6a7dc513b5763664a624df4d5cffdf))
+
+- Add CycleTrackerManager dead_time tests
+  ([`3ee23e7`](https://github.com/afewyards/ha-adaptive-thermostat/commit/3ee23e752d2f20e2619a60fc7af6ebd7ce882dc7))
+
+- Add manifold config schema tests
+  ([`441ff36`](https://github.com/afewyards/ha-adaptive-thermostat/commit/441ff3680b109d8703fba7536f6554d4c8a9032a))
+
+Add comprehensive test coverage for MANIFOLD_SCHEMA validation: - Valid config with all fields
+  (name, zones, pipe_volume, flow_per_loop) - Valid config with default flow_per_loop (defaults to
+  2.0) - Invalid configs: missing required fields (name, zones, pipe_volume) - Invalid configs:
+  negative pipe_volume - Invalid configs: empty zones list
+
+Tests validate that the schema will properly enforce: - Required fields: name, zones, pipe_volume -
+  Optional field: flow_per_loop (default 2.0) - Range validation: pipe_volume and flow_per_loop must
+  be >= 0.1 - Non-empty zones list requirement
+
+- Add missing @pytest.mark.asyncio decorators to dead_time tests
+  ([`c235ce4`](https://github.com/afewyards/ha-adaptive-thermostat/commit/c235ce4c7f9210ca1bbb8925de5f8e65460f98dd))
+
+Async test functions require the @pytest.mark.asyncio decorator to run properly. Added missing
+  decorators to 6 async dead_time test methods.
+
+- Add PID dead time tests
+  ([`7a53b5f`](https://github.com/afewyards/ha-adaptive-thermostat/commit/7a53b5f16dd5349b9cd3634f1a2825186640240b))
+
+- Add zone loops config tests
+  ([`20852fd`](https://github.com/afewyards/ha-adaptive-thermostat/commit/20852fd7d6e4e093fd66d83f7d12d16b7e9429c0))
+
+
 ## v0.29.0 (2026-01-25)
 
 ### Bug Fixes
