@@ -2723,3 +2723,188 @@ class TestClampedOvershootMultipliers:
             assert adjustment.get("kp_multiplier", 1.0) >= 0.85, (
                 "Disturbed cycles should be excluded - kp should not be reduced for their overshoot"
             )
+
+
+# ============================================================================
+# Convergence Threshold Tests for New Metrics
+# ============================================================================
+
+
+class TestConvergenceThresholdsNewMetrics:
+    """Tests to verify convergence thresholds include new steady-state metrics."""
+
+    def test_default_convergence_thresholds_includes_inter_cycle_drift(self):
+        """Test DEFAULT_CONVERGENCE_THRESHOLDS includes inter_cycle_drift_max."""
+        from custom_components.adaptive_thermostat.const import (
+            DEFAULT_CONVERGENCE_THRESHOLDS
+        )
+
+        assert "inter_cycle_drift_max" in DEFAULT_CONVERGENCE_THRESHOLDS
+        assert isinstance(DEFAULT_CONVERGENCE_THRESHOLDS["inter_cycle_drift_max"], (int, float))
+        assert DEFAULT_CONVERGENCE_THRESHOLDS["inter_cycle_drift_max"] > 0
+
+    def test_default_convergence_thresholds_includes_settling_mae(self):
+        """Test DEFAULT_CONVERGENCE_THRESHOLDS includes settling_mae_max."""
+        from custom_components.adaptive_thermostat.const import (
+            DEFAULT_CONVERGENCE_THRESHOLDS
+        )
+
+        assert "settling_mae_max" in DEFAULT_CONVERGENCE_THRESHOLDS
+        assert isinstance(DEFAULT_CONVERGENCE_THRESHOLDS["settling_mae_max"], (int, float))
+        assert DEFAULT_CONVERGENCE_THRESHOLDS["settling_mae_max"] > 0
+
+    def test_floor_hydronic_thresholds_include_new_metrics(self):
+        """Test floor_hydronic specific thresholds include new metrics."""
+        from custom_components.adaptive_thermostat.const import (
+            HEATING_TYPE_CONVERGENCE_THRESHOLDS,
+            HEATING_TYPE_FLOOR_HYDRONIC,
+        )
+
+        thresholds = HEATING_TYPE_CONVERGENCE_THRESHOLDS[HEATING_TYPE_FLOOR_HYDRONIC]
+        assert "inter_cycle_drift_max" in thresholds
+        assert "settling_mae_max" in thresholds
+
+        # Floor hydronic should have relaxed thresholds due to high thermal mass
+        assert thresholds["inter_cycle_drift_max"] > 0
+        assert thresholds["settling_mae_max"] > 0
+
+    def test_radiator_thresholds_include_new_metrics(self):
+        """Test radiator specific thresholds include new metrics."""
+        from custom_components.adaptive_thermostat.const import (
+            HEATING_TYPE_CONVERGENCE_THRESHOLDS,
+            HEATING_TYPE_RADIATOR,
+        )
+
+        thresholds = HEATING_TYPE_CONVERGENCE_THRESHOLDS[HEATING_TYPE_RADIATOR]
+        assert "inter_cycle_drift_max" in thresholds
+        assert "settling_mae_max" in thresholds
+        assert thresholds["inter_cycle_drift_max"] > 0
+        assert thresholds["settling_mae_max"] > 0
+
+    def test_convector_thresholds_include_new_metrics(self):
+        """Test convector specific thresholds include new metrics."""
+        from custom_components.adaptive_thermostat.const import (
+            HEATING_TYPE_CONVERGENCE_THRESHOLDS,
+            HEATING_TYPE_CONVECTOR,
+        )
+
+        thresholds = HEATING_TYPE_CONVERGENCE_THRESHOLDS[HEATING_TYPE_CONVECTOR]
+        assert "inter_cycle_drift_max" in thresholds
+        assert "settling_mae_max" in thresholds
+        assert thresholds["inter_cycle_drift_max"] > 0
+        assert thresholds["settling_mae_max"] > 0
+
+    def test_forced_air_thresholds_include_new_metrics(self):
+        """Test forced_air specific thresholds include new metrics."""
+        from custom_components.adaptive_thermostat.const import (
+            HEATING_TYPE_CONVERGENCE_THRESHOLDS,
+            HEATING_TYPE_FORCED_AIR,
+        )
+
+        thresholds = HEATING_TYPE_CONVERGENCE_THRESHOLDS[HEATING_TYPE_FORCED_AIR]
+        assert "inter_cycle_drift_max" in thresholds
+        assert "settling_mae_max" in thresholds
+
+        # Forced air should have tighter thresholds due to fast response
+        assert thresholds["inter_cycle_drift_max"] > 0
+        assert thresholds["settling_mae_max"] > 0
+
+    def test_get_convergence_thresholds_returns_new_metrics_default(self):
+        """Test get_convergence_thresholds() returns new metrics for default."""
+        from custom_components.adaptive_thermostat.const import (
+            get_convergence_thresholds
+        )
+
+        thresholds = get_convergence_thresholds(None)
+
+        assert "inter_cycle_drift_max" in thresholds
+        assert "settling_mae_max" in thresholds
+        assert thresholds["inter_cycle_drift_max"] > 0
+        assert thresholds["settling_mae_max"] > 0
+
+    def test_get_convergence_thresholds_returns_new_metrics_floor_hydronic(self):
+        """Test get_convergence_thresholds() returns new metrics for floor_hydronic."""
+        from custom_components.adaptive_thermostat.const import (
+            get_convergence_thresholds,
+            HEATING_TYPE_FLOOR_HYDRONIC,
+        )
+
+        thresholds = get_convergence_thresholds(HEATING_TYPE_FLOOR_HYDRONIC)
+
+        assert "inter_cycle_drift_max" in thresholds
+        assert "settling_mae_max" in thresholds
+        assert thresholds["inter_cycle_drift_max"] > 0
+        assert thresholds["settling_mae_max"] > 0
+
+    def test_get_convergence_thresholds_returns_new_metrics_radiator(self):
+        """Test get_convergence_thresholds() returns new metrics for radiator."""
+        from custom_components.adaptive_thermostat.const import (
+            get_convergence_thresholds,
+            HEATING_TYPE_RADIATOR,
+        )
+
+        thresholds = get_convergence_thresholds(HEATING_TYPE_RADIATOR)
+
+        assert "inter_cycle_drift_max" in thresholds
+        assert "settling_mae_max" in thresholds
+
+    def test_get_convergence_thresholds_returns_new_metrics_convector(self):
+        """Test get_convergence_thresholds() returns new metrics for convector."""
+        from custom_components.adaptive_thermostat.const import (
+            get_convergence_thresholds,
+            HEATING_TYPE_CONVECTOR,
+        )
+
+        thresholds = get_convergence_thresholds(HEATING_TYPE_CONVECTOR)
+
+        assert "inter_cycle_drift_max" in thresholds
+        assert "settling_mae_max" in thresholds
+
+    def test_get_convergence_thresholds_returns_new_metrics_forced_air(self):
+        """Test get_convergence_thresholds() returns new metrics for forced_air."""
+        from custom_components.adaptive_thermostat.const import (
+            get_convergence_thresholds,
+            HEATING_TYPE_FORCED_AIR,
+        )
+
+        thresholds = get_convergence_thresholds(HEATING_TYPE_FORCED_AIR)
+
+        assert "inter_cycle_drift_max" in thresholds
+        assert "settling_mae_max" in thresholds
+
+    def test_new_metrics_thresholds_are_heating_type_appropriate(self):
+        """Test that new metric thresholds are appropriately scaled by heating type."""
+        from custom_components.adaptive_thermostat.const import (
+            get_convergence_thresholds,
+            HEATING_TYPE_FLOOR_HYDRONIC,
+            HEATING_TYPE_FORCED_AIR,
+        )
+
+        floor_thresholds = get_convergence_thresholds(HEATING_TYPE_FLOOR_HYDRONIC)
+        forced_air_thresholds = get_convergence_thresholds(HEATING_TYPE_FORCED_AIR)
+
+        # Floor hydronic (high thermal mass) should have more relaxed thresholds
+        # than forced air (low thermal mass) for steady-state metrics
+        assert floor_thresholds["inter_cycle_drift_max"] >= forced_air_thresholds["inter_cycle_drift_max"]
+        assert floor_thresholds["settling_mae_max"] >= forced_air_thresholds["settling_mae_max"]
+
+
+def test_convergence_thresholds_new_metrics_module_exists():
+    """Verify convergence threshold tests module exists and imports work."""
+    from custom_components.adaptive_thermostat.const import (
+        DEFAULT_CONVERGENCE_THRESHOLDS,
+        HEATING_TYPE_CONVERGENCE_THRESHOLDS,
+        get_convergence_thresholds,
+        HEATING_TYPE_FLOOR_HYDRONIC,
+        HEATING_TYPE_RADIATOR,
+        HEATING_TYPE_CONVECTOR,
+        HEATING_TYPE_FORCED_AIR,
+    )
+
+    assert DEFAULT_CONVERGENCE_THRESHOLDS is not None
+    assert HEATING_TYPE_CONVERGENCE_THRESHOLDS is not None
+    assert callable(get_convergence_thresholds)
+    assert HEATING_TYPE_FLOOR_HYDRONIC is not None
+    assert HEATING_TYPE_RADIATOR is not None
+    assert HEATING_TYPE_CONVECTOR is not None
+    assert HEATING_TYPE_FORCED_AIR is not None
