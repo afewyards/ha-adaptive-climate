@@ -455,5 +455,148 @@ def test_coordinator_update_zone_temp_unknown_zone(coord):
     assert "nonexistent_zone" not in temps
 
 
+# =============================================================================
+# Manifold Integration Tests
+# =============================================================================
+
+
+def test_set_manifold_registry(coord):
+    """Test that coordinator stores manifold registry reference."""
+    # Create a mock manifold registry
+    mock_registry = MagicMock()
+
+    # Set the registry
+    coord.set_manifold_registry(mock_registry)
+
+    # Verify registry was stored
+    assert coord._manifold_registry is mock_registry
+
+
+def test_update_zone_loops(coord):
+    """Test that coordinator tracks loops per zone."""
+    # Register zones first
+    coord.register_zone("zone1", {"name": "Zone 1"})
+    coord.register_zone("zone2", {"name": "Zone 2"})
+
+    # Update loops for zones
+    coord.update_zone_loops("zone1", 2)
+    coord.update_zone_loops("zone2", 3)
+
+    # Verify loops are tracked
+    assert coord._zone_loops["zone1"] == 2
+    assert coord._zone_loops["zone2"] == 3
+
+
+def test_update_zone_loops_unregistered_zone(coord):
+    """Test that updating loops for unregistered zone is handled gracefully."""
+    # Should not raise an error
+    coord.update_zone_loops("nonexistent_zone", 2)
+
+    # Verify it's still tracked (zones can be registered after loops are set)
+    assert coord._zone_loops["nonexistent_zone"] == 2
+
+
+def test_get_transport_delay_for_zone_with_registry(coord):
+    """Test that get_transport_delay_for_zone queries registry with active zones."""
+    # Create a mock registry
+    mock_registry = MagicMock()
+    mock_registry.get_transport_delay.return_value = 5.0  # 5 minutes
+
+    # Set up coordinator with registry
+    coord.set_manifold_registry(mock_registry)
+
+    # Register zones and set demand
+    coord.register_zone("zone1", {"name": "Zone 1"})
+    coord.register_zone("zone2", {"name": "Zone 2"})
+    coord.register_zone("zone3", {"name": "Zone 3"})
+
+    coord.update_zone_demand("zone1", True, "heat")
+    coord.update_zone_demand("zone2", True, "heat")
+    coord.update_zone_demand("zone3", False, "heat")
+
+    # Query delay for zone1
+    delay = coord.get_transport_delay_for_zone("zone1")
+
+    # Verify delay was returned
+    assert delay == 5.0
+
+    # Verify registry was called with zone1 and list of active zones
+    mock_registry.get_transport_delay.assert_called_once()
+    call_args = mock_registry.get_transport_delay.call_args
+    assert call_args[0][0] == "zone1"  # First positional arg is zone_id
+
+    # Second positional arg is list of active zones (zone1 and zone2)
+    active_zones = call_args[0][1]
+    assert "zone1" in active_zones
+    assert "zone2" in active_zones
+    assert "zone3" not in active_zones
+
+
+def test_get_transport_delay_for_zone_no_registry(coord):
+    """Test that get_transport_delay_for_zone returns 0 when no registry set."""
+    # Don't set a registry
+
+    # Register zones with demand
+    coord.register_zone("zone1", {"name": "Zone 1"})
+    coord.update_zone_demand("zone1", True, "heat")
+
+    # Query delay - should return 0 when no registry
+    delay = coord.get_transport_delay_for_zone("zone1")
+
+    assert delay == 0
+
+
+def test_get_transport_delay_for_zone_no_active_zones(coord):
+    """Test transport delay when no zones have demand."""
+    # Create a mock registry
+    mock_registry = MagicMock()
+    mock_registry.get_transport_delay.return_value = 0  # No delay when no active zones
+
+    coord.set_manifold_registry(mock_registry)
+
+    # Register zones with no demand
+    coord.register_zone("zone1", {"name": "Zone 1"})
+    coord.register_zone("zone2", {"name": "Zone 2"})
+    coord.update_zone_demand("zone1", False, "heat")
+    coord.update_zone_demand("zone2", False, "heat")
+
+    # Query delay
+    delay = coord.get_transport_delay_for_zone("zone1")
+
+    # Verify registry was called with empty active zones list
+    mock_registry.get_transport_delay.assert_called_once()
+    call_args = mock_registry.get_transport_delay.call_args
+    assert call_args[0][0] == "zone1"
+    assert call_args[0][1] == []  # No active zones
+
+
+def test_get_transport_delay_for_zone_mode_filter(coord):
+    """Test that only zones with heating demand are considered active."""
+    # Create a mock registry
+    mock_registry = MagicMock()
+    mock_registry.get_transport_delay.return_value = 3.0
+
+    coord.set_manifold_registry(mock_registry)
+
+    # Register zones with mixed modes
+    coord.register_zone("zone1", {"name": "Zone 1"})
+    coord.register_zone("zone2", {"name": "Zone 2"})
+    coord.register_zone("zone3", {"name": "Zone 3"})
+
+    coord.update_zone_demand("zone1", True, "heat")
+    coord.update_zone_demand("zone2", True, "cool")  # Cooling, not heating
+    coord.update_zone_demand("zone3", True, "heat")
+
+    # Query delay
+    delay = coord.get_transport_delay_for_zone("zone1")
+
+    # Verify only heating zones are in active list
+    call_args = mock_registry.get_transport_delay.call_args
+    active_zones = call_args[0][1]
+    assert "zone1" in active_zones
+    assert "zone2" not in active_zones  # Cooling mode, not active for heating
+    assert "zone3" in active_zones
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
