@@ -165,6 +165,8 @@ DEFAULT_CONVERGENCE_THRESHOLDS = {
     "oscillations_max": 1,      # Maximum acceptable oscillations
     "settling_time_max": 60,    # Maximum settling time in minutes
     "rise_time_max": 45,        # Maximum rise time in minutes
+    "inter_cycle_drift_max": 0.25,  # Maximum cycle-to-cycle metric drift (°C)
+    "settling_mae_max": 0.25,   # Maximum mean absolute error during settling (°C)
 }
 
 # Heating-type-specific convergence thresholds
@@ -175,24 +177,32 @@ HEATING_TYPE_CONVERGENCE_THRESHOLDS = {
         "oscillations_max": 1,      # Same as default
         "settling_time_max": 120,   # Relaxed from 60 min - slow systems take longer to stabilize
         "rise_time_max": 90,        # Relaxed from 45 min - slower heating rate
+        "inter_cycle_drift_max": 0.3,  # Relaxed - high thermal mass increases variability
+        "settling_mae_max": 0.3,    # Relaxed - thermal mass makes precise settling harder
     },
     HEATING_TYPE_RADIATOR: {
         "overshoot_max": 0.25,      # Slightly relaxed from 0.2°C
         "oscillations_max": 1,      # Same as default
         "settling_time_max": 90,    # Relaxed from 60 min - moderate thermal mass
         "rise_time_max": 60,        # Relaxed from 45 min - moderate heating rate
+        "inter_cycle_drift_max": 0.25,  # Baseline - moderate thermal mass
+        "settling_mae_max": 0.25,   # Baseline - moderate thermal mass
     },
     HEATING_TYPE_CONVECTOR: {
         "overshoot_max": 0.2,       # Baseline (same as default)
         "oscillations_max": 1,      # Same as default
         "settling_time_max": 60,    # Baseline (same as default)
         "rise_time_max": 45,        # Baseline (same as default)
+        "inter_cycle_drift_max": 0.2,  # Baseline - low thermal mass
+        "settling_mae_max": 0.2,    # Baseline - low thermal mass
     },
     HEATING_TYPE_FORCED_AIR: {
         "overshoot_max": 0.15,      # Tightened from 0.2°C - fast systems should be more precise
         "oscillations_max": 1,      # Same as default
         "settling_time_max": 45,    # Tightened from 60 min - fast settling expected
         "rise_time_max": 30,        # Tightened from 45 min - rapid heating rate
+        "inter_cycle_drift_max": 0.15,  # Tight - very low thermal mass allows precise control
+        "settling_mae_max": 0.15,   # Tight - fast response enables precise settling
     },
 }
 
@@ -212,7 +222,7 @@ def get_convergence_thresholds(heating_type: Optional[str] = None) -> Dict[str, 
 
     Returns:
         Dict with convergence threshold values (overshoot_max, oscillations_max,
-        settling_time_max, rise_time_max)
+        settling_time_max, rise_time_max, inter_cycle_drift_max, settling_mae_max)
 
     Example:
         >>> thresholds = get_convergence_thresholds(HEATING_TYPE_FLOOR_HYDROMIC)
