@@ -61,6 +61,9 @@ from custom_components.adaptive_thermostat.const import (
     CONF_FLOW_RATE_SENSOR,
     CONF_VOLUME_METER_ENTITY,
     CONF_FALLBACK_FLOW_RATE,
+    CONF_MANIFOLDS,
+    CONF_PIPE_VOLUME,
+    CONF_FLOW_PER_LOOP,
     DEFAULT_SOURCE_STARTUP_DELAY,
     DEFAULT_SYNC_MODES,
     DEFAULT_LEARNING_WINDOW_DAYS,
@@ -993,3 +996,298 @@ class TestReloadWithoutLeftoverState:
 
         # Service should be registered exactly once again (not duplicated)
         assert registered_services[f"{DOMAIN}.{SERVICE_RUN_LEARNING}"] == 1
+
+
+# =============================================================================
+# Test Manifold Config Schema Validation
+# =============================================================================
+
+
+class TestManifoldConfigSchema:
+    """Tests for MANIFOLD_SCHEMA validation."""
+
+    def test_valid_manifold_config_all_fields(self):
+        """Test valid manifold config with all fields specified."""
+        if not HAS_VOLUPTUOUS:
+            pytest.skip("voluptuous not installed")
+
+        # Mock cv functions
+        def mock_string(value):
+            if not isinstance(value, str):
+                raise vol.Invalid("Expected string")
+            return value
+
+        def mock_ensure_list(value):
+            if isinstance(value, list):
+                return value
+            return [value]
+
+        # Create MANIFOLD_SCHEMA
+        MANIFOLD_SCHEMA = vol.Schema({
+            vol.Required("name"): mock_string,
+            vol.Required("zones"): vol.All(mock_ensure_list, [mock_string]),
+            vol.Required(CONF_PIPE_VOLUME): vol.All(
+                vol.Coerce(float),
+                vol.Range(min=0.1)
+            ),
+            vol.Optional(CONF_FLOW_PER_LOOP, default=2.0): vol.All(
+                vol.Coerce(float),
+                vol.Range(min=0.1)
+            ),
+        })
+
+        config = {
+            "name": "2nd Floor",
+            "zones": ["climate.bathroom_2nd", "climate.bedroom_2nd"],
+            CONF_PIPE_VOLUME: 20,
+            CONF_FLOW_PER_LOOP: 2.5,
+        }
+
+        result = MANIFOLD_SCHEMA(config)
+        assert result["name"] == "2nd Floor"
+        assert result["zones"] == ["climate.bathroom_2nd", "climate.bedroom_2nd"]
+        assert result[CONF_PIPE_VOLUME] == 20.0
+        assert result[CONF_FLOW_PER_LOOP] == 2.5
+
+    def test_valid_manifold_config_default_flow_per_loop(self):
+        """Test valid manifold config with default flow_per_loop."""
+        if not HAS_VOLUPTUOUS:
+            pytest.skip("voluptuous not installed")
+
+        # Mock cv functions
+        def mock_string(value):
+            if not isinstance(value, str):
+                raise vol.Invalid("Expected string")
+            return value
+
+        def mock_ensure_list(value):
+            if isinstance(value, list):
+                return value
+            return [value]
+
+        # Create MANIFOLD_SCHEMA
+        MANIFOLD_SCHEMA = vol.Schema({
+            vol.Required("name"): mock_string,
+            vol.Required("zones"): vol.All(mock_ensure_list, [mock_string]),
+            vol.Required(CONF_PIPE_VOLUME): vol.All(
+                vol.Coerce(float),
+                vol.Range(min=0.1)
+            ),
+            vol.Optional(CONF_FLOW_PER_LOOP, default=2.0): vol.All(
+                vol.Coerce(float),
+                vol.Range(min=0.1)
+            ),
+        })
+
+        config = {
+            "name": "2nd Floor",
+            "zones": ["climate.bathroom_2nd", "climate.bedroom_2nd"],
+            CONF_PIPE_VOLUME: 20,
+        }
+
+        result = MANIFOLD_SCHEMA(config)
+        assert result["name"] == "2nd Floor"
+        assert result["zones"] == ["climate.bathroom_2nd", "climate.bedroom_2nd"]
+        assert result[CONF_PIPE_VOLUME] == 20.0
+        assert result[CONF_FLOW_PER_LOOP] == 2.0  # Default value
+
+    def test_invalid_manifold_missing_name(self):
+        """Test that manifold config without name is rejected."""
+        if not HAS_VOLUPTUOUS:
+            pytest.skip("voluptuous not installed")
+
+        # Mock cv functions
+        def mock_string(value):
+            if not isinstance(value, str):
+                raise vol.Invalid("Expected string")
+            return value
+
+        def mock_ensure_list(value):
+            if isinstance(value, list):
+                return value
+            return [value]
+
+        # Create MANIFOLD_SCHEMA
+        MANIFOLD_SCHEMA = vol.Schema({
+            vol.Required("name"): mock_string,
+            vol.Required("zones"): vol.All(mock_ensure_list, [mock_string]),
+            vol.Required(CONF_PIPE_VOLUME): vol.All(
+                vol.Coerce(float),
+                vol.Range(min=0.1)
+            ),
+            vol.Optional(CONF_FLOW_PER_LOOP, default=2.0): vol.All(
+                vol.Coerce(float),
+                vol.Range(min=0.1)
+            ),
+        })
+
+        config = {
+            "zones": ["climate.bathroom_2nd"],
+            CONF_PIPE_VOLUME: 20,
+        }
+
+        with pytest.raises(vol.Invalid) as exc_info:
+            MANIFOLD_SCHEMA(config)
+        assert "required key not provided" in str(exc_info.value).lower() or "name" in str(exc_info.value)
+
+    def test_invalid_manifold_missing_zones(self):
+        """Test that manifold config without zones is rejected."""
+        if not HAS_VOLUPTUOUS:
+            pytest.skip("voluptuous not installed")
+
+        # Mock cv functions
+        def mock_string(value):
+            if not isinstance(value, str):
+                raise vol.Invalid("Expected string")
+            return value
+
+        def mock_ensure_list(value):
+            if isinstance(value, list):
+                return value
+            return [value]
+
+        # Create MANIFOLD_SCHEMA
+        MANIFOLD_SCHEMA = vol.Schema({
+            vol.Required("name"): mock_string,
+            vol.Required("zones"): vol.All(mock_ensure_list, [mock_string]),
+            vol.Required(CONF_PIPE_VOLUME): vol.All(
+                vol.Coerce(float),
+                vol.Range(min=0.1)
+            ),
+            vol.Optional(CONF_FLOW_PER_LOOP, default=2.0): vol.All(
+                vol.Coerce(float),
+                vol.Range(min=0.1)
+            ),
+        })
+
+        config = {
+            "name": "2nd Floor",
+            CONF_PIPE_VOLUME: 20,
+        }
+
+        with pytest.raises(vol.Invalid) as exc_info:
+            MANIFOLD_SCHEMA(config)
+        assert "required key not provided" in str(exc_info.value).lower() or "zones" in str(exc_info.value)
+
+    def test_invalid_manifold_missing_pipe_volume(self):
+        """Test that manifold config without pipe_volume is rejected."""
+        if not HAS_VOLUPTUOUS:
+            pytest.skip("voluptuous not installed")
+
+        # Mock cv functions
+        def mock_string(value):
+            if not isinstance(value, str):
+                raise vol.Invalid("Expected string")
+            return value
+
+        def mock_ensure_list(value):
+            if isinstance(value, list):
+                return value
+            return [value]
+
+        # Create MANIFOLD_SCHEMA
+        MANIFOLD_SCHEMA = vol.Schema({
+            vol.Required("name"): mock_string,
+            vol.Required("zones"): vol.All(mock_ensure_list, [mock_string]),
+            vol.Required(CONF_PIPE_VOLUME): vol.All(
+                vol.Coerce(float),
+                vol.Range(min=0.1)
+            ),
+            vol.Optional(CONF_FLOW_PER_LOOP, default=2.0): vol.All(
+                vol.Coerce(float),
+                vol.Range(min=0.1)
+            ),
+        })
+
+        config = {
+            "name": "2nd Floor",
+            "zones": ["climate.bathroom_2nd"],
+        }
+
+        with pytest.raises(vol.Invalid) as exc_info:
+            MANIFOLD_SCHEMA(config)
+        assert "required key not provided" in str(exc_info.value).lower() or CONF_PIPE_VOLUME in str(exc_info.value)
+
+    def test_invalid_manifold_negative_pipe_volume(self):
+        """Test that manifold config with negative pipe_volume is rejected."""
+        if not HAS_VOLUPTUOUS:
+            pytest.skip("voluptuous not installed")
+
+        # Mock cv functions
+        def mock_string(value):
+            if not isinstance(value, str):
+                raise vol.Invalid("Expected string")
+            return value
+
+        def mock_ensure_list(value):
+            if isinstance(value, list):
+                return value
+            return [value]
+
+        # Create MANIFOLD_SCHEMA
+        MANIFOLD_SCHEMA = vol.Schema({
+            vol.Required("name"): mock_string,
+            vol.Required("zones"): vol.All(mock_ensure_list, [mock_string]),
+            vol.Required(CONF_PIPE_VOLUME): vol.All(
+                vol.Coerce(float),
+                vol.Range(min=0.1)
+            ),
+            vol.Optional(CONF_FLOW_PER_LOOP, default=2.0): vol.All(
+                vol.Coerce(float),
+                vol.Range(min=0.1)
+            ),
+        })
+
+        config = {
+            "name": "2nd Floor",
+            "zones": ["climate.bathroom_2nd"],
+            CONF_PIPE_VOLUME: -5,
+        }
+
+        with pytest.raises(vol.Invalid) as exc_info:
+            MANIFOLD_SCHEMA(config)
+        assert "range" in str(exc_info.value).lower() or "0.1" in str(exc_info.value)
+
+    def test_invalid_manifold_empty_zones_list(self):
+        """Test that manifold config with empty zones list is rejected."""
+        if not HAS_VOLUPTUOUS:
+            pytest.skip("voluptuous not installed")
+
+        # Mock cv functions
+        def mock_string(value):
+            if not isinstance(value, str):
+                raise vol.Invalid("Expected string")
+            return value
+
+        def mock_ensure_list(value):
+            if isinstance(value, list):
+                return value
+            return [value]
+
+        # Create MANIFOLD_SCHEMA with minimum length check
+        MANIFOLD_SCHEMA = vol.Schema({
+            vol.Required("name"): mock_string,
+            vol.Required("zones"): vol.All(
+                mock_ensure_list,
+                [mock_string],
+                vol.Length(min=1)
+            ),
+            vol.Required(CONF_PIPE_VOLUME): vol.All(
+                vol.Coerce(float),
+                vol.Range(min=0.1)
+            ),
+            vol.Optional(CONF_FLOW_PER_LOOP, default=2.0): vol.All(
+                vol.Coerce(float),
+                vol.Range(min=0.1)
+            ),
+        })
+
+        config = {
+            "name": "2nd Floor",
+            "zones": [],
+            CONF_PIPE_VOLUME: 20,
+        }
+
+        with pytest.raises(vol.Invalid) as exc_info:
+            MANIFOLD_SCHEMA(config)
+        assert "length" in str(exc_info.value).lower() or "empty" in str(exc_info.value).lower()
