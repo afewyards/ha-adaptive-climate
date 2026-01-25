@@ -3337,3 +3337,294 @@ class TestCycleTrackerSettlingMAE:
             assert call_args[1]["settling_start_time"] is None
 
 
+class TestCycleTrackerDeadTime:
+    """Tests for dead time tracking in cycle tracker."""
+
+    def test_set_transport_delay_stores_delay_for_current_cycle(self, cycle_tracker, dispatcher):
+        """Test set_transport_delay() stores delay for the current cycle."""
+        # Start a cycle
+        dispatcher.emit(CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=datetime(2025, 1, 14, 10, 0, 0),
+            target_temp=20.0,
+            current_temp=18.0
+        ))
+        assert cycle_tracker.state == CycleState.HEATING
+
+        # Set transport delay
+        cycle_tracker.set_transport_delay(2.5)
+
+        # Verify delay is stored
+        assert cycle_tracker._transport_delay_minutes == 2.5
+
+    def test_set_transport_delay_accepts_zero(self, cycle_tracker, dispatcher):
+        """Test set_transport_delay() accepts zero delay (manifold warm)."""
+        # Start a cycle
+        dispatcher.emit(CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=datetime(2025, 1, 14, 10, 0, 0),
+            target_temp=20.0,
+            current_temp=18.0
+        ))
+
+        # Set zero delay
+        cycle_tracker.set_transport_delay(0.0)
+
+        # Verify zero delay is stored
+        assert cycle_tracker._transport_delay_minutes == 0.0
+
+    def test_dead_time_tracked_separately_from_rise_time(self, cycle_tracker, dispatcher, mock_hass, mock_adaptive_learner, mock_callbacks):
+        """Test dead_time duration tracked separately from rise_time."""
+        # Set up temperature tracking
+        mock_callbacks["get_target_temp"].return_value = 20.0
+        mock_callbacks["get_in_grace_period"].return_value = False
+
+        # Start cycle
+        start_time = datetime(2025, 1, 14, 10, 0, 0)
+        dispatcher.emit(CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=start_time,
+            target_temp=20.0,
+            current_temp=18.0
+        ))
+
+        # Set transport delay (dead time)
+        cycle_tracker.set_transport_delay(2.5)
+
+        # Verify internal state
+        assert cycle_tracker._transport_delay_minutes == 2.5
+
+    async def test_rise_time_excludes_dead_time(self, cycle_tracker, dispatcher, mock_hass, mock_adaptive_learner, mock_callbacks):
+        """Test rise_time calculation excludes dead_time (rise_time = total_rise - dead_time)."""
+        # Set up for valid cycle
+        mock_callbacks["get_target_temp"].return_value = 20.0
+        mock_callbacks["get_in_grace_period"].return_value = False
+
+        # Start cycle at 10:00
+        start_time = datetime(2025, 1, 14, 10, 0, 0)
+        dispatcher.emit(CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=start_time,
+            target_temp=20.0,
+            current_temp=18.0
+        ))
+
+        # Set transport delay of 2.5 minutes
+        cycle_tracker.set_transport_delay(2.5)
+
+        # Add temperature samples showing rise over 10 minutes
+        await cycle_tracker.update_temperature(start_time, 18.0)
+        await cycle_tracker.update_temperature(datetime(2025, 1, 14, 10, 2, 0), 18.5)
+        await cycle_tracker.update_temperature(datetime(2025, 1, 14, 10, 4, 0), 19.0)
+        await cycle_tracker.update_temperature(datetime(2025, 1, 14, 10, 6, 0), 19.5)
+        await cycle_tracker.update_temperature(datetime(2025, 1, 14, 10, 10, 0), 20.0)  # Reaches target at 10 min
+
+        # Finalize cycle
+        await cycle_tracker._finalize_cycle()
+
+        # Verify CycleMetrics was created with dead_time
+        assert mock_adaptive_learner.add_cycle_metrics.called
+        metrics = mock_adaptive_learner.add_cycle_metrics.call_args[0][0]
+
+        # dead_time should be 2.5 minutes
+        assert metrics.dead_time == 2.5
+
+        # rise_time should be total_rise (10 min) - dead_time (2.5 min) = 7.5 min
+        # Note: actual rise_time calculation is done in cycle_analysis.calculate_rise_time()
+        # Here we verify that dead_time is passed to CycleMetrics
+        assert metrics.rise_time is not None
+
+    async def test_cycle_metrics_populated_with_dead_time_on_completion(self, cycle_tracker, dispatcher, mock_hass, mock_adaptive_learner, mock_callbacks):
+        """Test CycleMetrics populated with dead_time on cycle completion."""
+        # Set up for valid cycle
+        mock_callbacks["get_target_temp"].return_value = 20.0
+        mock_callbacks["get_in_grace_period"].return_value = False
+
+        # Start cycle
+        start_time = datetime(2025, 1, 14, 10, 0, 0)
+        dispatcher.emit(CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=start_time,
+            target_temp=20.0,
+            current_temp=18.0
+        ))
+
+        # Set transport delay
+        cycle_tracker.set_transport_delay(3.0)
+
+        # Add sufficient temperature samples for valid cycle
+        for i in range(6):
+            await cycle_tracker.update_temperature(
+                datetime(2025, 1, 14, 10, i, 0),
+                18.0 + i * 0.4
+            )
+
+        # Finalize cycle
+        await cycle_tracker._finalize_cycle()
+
+        # Verify CycleMetrics was created with dead_time
+        assert mock_adaptive_learner.add_cycle_metrics.called
+        metrics = mock_adaptive_learner.add_cycle_metrics.call_args[0][0]
+        assert metrics.dead_time == 3.0
+
+    async def test_dead_time_is_none_when_no_transport_delay_set(self, cycle_tracker, dispatcher, mock_hass, mock_adaptive_learner, mock_callbacks):
+        """Test dead_time is None when no transport delay set."""
+        # Set up for valid cycle
+        mock_callbacks["get_target_temp"].return_value = 20.0
+        mock_callbacks["get_in_grace_period"].return_value = False
+
+        # Start cycle
+        start_time = datetime(2025, 1, 14, 10, 0, 0)
+        dispatcher.emit(CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=start_time,
+            target_temp=20.0,
+            current_temp=18.0
+        ))
+
+        # DO NOT set transport delay
+        # cycle_tracker.set_transport_delay() is not called
+
+        # Add sufficient temperature samples for valid cycle
+        for i in range(6):
+            await cycle_tracker.update_temperature(
+                datetime(2025, 1, 14, 10, i, 0),
+                18.0 + i * 0.4
+            )
+
+        # Finalize cycle
+        await cycle_tracker._finalize_cycle()
+
+        # Verify CycleMetrics was created with dead_time=None
+        assert mock_adaptive_learner.add_cycle_metrics.called
+        metrics = mock_adaptive_learner.add_cycle_metrics.call_args[0][0]
+        assert metrics.dead_time is None
+
+    def test_dead_time_resets_on_new_cycle_start(self, cycle_tracker, dispatcher):
+        """Test dead_time resets on new cycle start."""
+        # Start first cycle
+        dispatcher.emit(CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=datetime(2025, 1, 14, 10, 0, 0),
+            target_temp=20.0,
+            current_temp=18.0
+        ))
+
+        # Set transport delay for first cycle
+        cycle_tracker.set_transport_delay(2.5)
+        assert cycle_tracker._transport_delay_minutes == 2.5
+
+        # Start second cycle (should reset dead_time)
+        dispatcher.emit(CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=datetime(2025, 1, 14, 11, 0, 0),
+            target_temp=21.0,
+            current_temp=19.0
+        ))
+
+        # Verify dead_time was reset to None
+        assert cycle_tracker._transport_delay_minutes is None
+
+    async def test_dead_time_preserved_during_settling_phase(self, cycle_tracker, dispatcher, mock_hass, mock_callbacks):
+        """Test dead_time value preserved during settling phase."""
+        # Start cycle
+        dispatcher.emit(CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=datetime(2025, 1, 14, 10, 0, 0),
+            target_temp=20.0,
+            current_temp=18.0
+        ))
+
+        # Set transport delay
+        cycle_tracker.set_transport_delay(1.5)
+        assert cycle_tracker._transport_delay_minutes == 1.5
+
+        # Transition to settling
+        dispatcher.emit(SettlingStartedEvent(
+            hvac_mode="heat",
+            timestamp=datetime(2025, 1, 14, 10, 5, 0),
+            was_clamped=False
+        ))
+        assert cycle_tracker.state == CycleState.SETTLING
+
+        # Verify dead_time still stored during settling
+        assert cycle_tracker._transport_delay_minutes == 1.5
+
+    async def test_dead_time_zero_handled_correctly(self, cycle_tracker, dispatcher, mock_hass, mock_adaptive_learner, mock_callbacks):
+        """Test dead_time=0 (warm manifold) handled correctly in CycleMetrics."""
+        # Set up for valid cycle
+        mock_callbacks["get_target_temp"].return_value = 20.0
+        mock_callbacks["get_in_grace_period"].return_value = False
+
+        # Start cycle
+        start_time = datetime(2025, 1, 14, 10, 0, 0)
+        dispatcher.emit(CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=start_time,
+            target_temp=20.0,
+            current_temp=18.0
+        ))
+
+        # Set zero transport delay (manifold is warm)
+        cycle_tracker.set_transport_delay(0.0)
+
+        # Add sufficient temperature samples
+        for i in range(6):
+            await cycle_tracker.update_temperature(
+                datetime(2025, 1, 14, 10, i, 0),
+                18.0 + i * 0.4
+            )
+
+        # Finalize cycle
+        await cycle_tracker._finalize_cycle()
+
+        # Verify CycleMetrics was created with dead_time=0.0
+        assert mock_adaptive_learner.add_cycle_metrics.called
+        metrics = mock_adaptive_learner.add_cycle_metrics.call_args[0][0]
+        assert metrics.dead_time == 0.0
+
+    def test_set_transport_delay_can_be_called_multiple_times(self, cycle_tracker, dispatcher):
+        """Test set_transport_delay() can be updated during a cycle."""
+        # Start cycle
+        dispatcher.emit(CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=datetime(2025, 1, 14, 10, 0, 0),
+            target_temp=20.0,
+            current_temp=18.0
+        ))
+
+        # Set initial delay
+        cycle_tracker.set_transport_delay(5.0)
+        assert cycle_tracker._transport_delay_minutes == 5.0
+
+        # Update delay (e.g., another zone started)
+        cycle_tracker.set_transport_delay(2.5)
+        assert cycle_tracker._transport_delay_minutes == 2.5
+
+    async def test_dead_time_reset_after_cycle_abort(self, cycle_tracker, dispatcher):
+        """Test dead_time is cleared when cycle is aborted."""
+        # Start cycle
+        dispatcher.emit(CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=datetime(2025, 1, 14, 10, 0, 0),
+            target_temp=20.0,
+            current_temp=18.0
+        ))
+
+        # Set transport delay
+        cycle_tracker.set_transport_delay(3.0)
+        assert cycle_tracker._transport_delay_minutes == 3.0
+
+        # Abort cycle with contact sensor pause
+        dispatcher.emit(ContactPauseEvent(
+            hvac_mode="heat",
+            timestamp=datetime(2025, 1, 14, 10, 10, 0),
+            entity_id="binary_sensor.window"
+        ))
+
+        # Cycle should be aborted and reset to IDLE
+        assert cycle_tracker.state == CycleState.IDLE
+        # dead_time should be cleared
+        assert cycle_tracker._transport_delay_minutes is None
+
+
