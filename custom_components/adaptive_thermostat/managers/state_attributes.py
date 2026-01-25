@@ -70,6 +70,8 @@ def build_state_attributes(thermostat: SmartThermostat) -> dict[str, Any]:
             else 0.0
         ),
         "duty_accumulator_pct": _compute_duty_accumulator_pct(thermostat),
+        # Transport delay from manifold (when heating is active)
+        "transport_delay": thermostat._transport_delay,
     }
 
     # Debug-only attributes

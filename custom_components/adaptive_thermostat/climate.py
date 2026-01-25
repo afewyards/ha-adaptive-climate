@@ -615,6 +615,9 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         self._heater_control_failed = False
         self._last_heater_error: str | None = None
 
+        # Transport delay from manifold (set when heating starts)
+        self._transport_delay: float | None = None
+
         # Calculate PID values from physics (adaptive learning will refine them)
         # Get energy rating from controller domain config
         # Note: hass is not available during __init__, it will be set in async_added_to_hass
@@ -968,6 +971,20 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
                         "%s: Synced auto_apply_count=%d to PID controller",
                         self.entity_id, adaptive_learner._auto_apply_count
                     )
+
+        # Register manifold configuration with coordinator
+        if coordinator and self._zone_id:
+            manifold_registry = self.hass.data.get(DOMAIN, {}).get("manifold_registry")
+            if manifold_registry:
+                # Set manifold registry in coordinator if not already set
+                if not coordinator.has_manifold_registry():
+                    coordinator.set_manifold_registry(manifold_registry)
+                # Update zone's loop count in coordinator
+                coordinator.update_zone_loops(self.entity_id, self._loops)
+                _LOGGER.info(
+                    "%s: Registered with manifold registry (loops=%d)",
+                    self.entity_id, self._loops
+                )
 
         # Set default state to off
         if not self._hvac_mode:
@@ -1423,6 +1440,11 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
     def pid_control_e(self):
         """Return the external output of external temperature compensation."""
         return self._e
+
+    @property
+    def loops(self) -> int:
+        """Return the number of heating loops for this zone."""
+        return self._loops
 
     @property
     def pid_mode(self):
@@ -2319,6 +2341,22 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
 
         Delegates to HeaterController for the actual turn on operation.
         """
+        # Query transport delay from manifold registry
+        coordinator = self.hass.data.get(DOMAIN, {}).get("coordinator")
+        if coordinator and self._zone_id:
+            delay = coordinator.get_transport_delay_for_zone(self.entity_id)
+            if delay is not None and delay > 0:
+                self._transport_delay = delay
+                # Pass to PID controller for dead time compensation
+                self._pid_controller.set_transport_delay(delay)
+                # Pass to cycle tracker if available
+                if self._cycle_tracker:
+                    self._cycle_tracker.set_transport_delay(delay)
+                _LOGGER.debug(
+                    "%s: Set transport delay %.1f minutes for heating start",
+                    self.entity_id, delay
+                )
+
         # Update cycle durations in case PID mode changed
         self._heater_controller.update_cycle_durations(
             self._min_on_cycle_duration.seconds,
@@ -2336,6 +2374,12 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
 
         Delegates to HeaterController for the actual turn off operation.
         """
+        # Reset transport delay when heating stops
+        if self._transport_delay is not None:
+            self._pid_controller.reset_dead_time()
+            self._transport_delay = None
+            _LOGGER.debug("%s: Reset transport delay on heating stop", self.entity_id)
+
         # Update cycle durations in case PID mode changed
         self._heater_controller.update_cycle_durations(
             self._min_on_cycle_duration.seconds,
