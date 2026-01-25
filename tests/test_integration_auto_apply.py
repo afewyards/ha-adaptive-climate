@@ -93,6 +93,7 @@ def create_good_cycle_metrics(overshoot: float = 0.15) -> CycleMetrics:
     """
     return CycleMetrics(
         overshoot=overshoot,
+        undershoot=0.1,  # Low undershoot for good cycle
         oscillations=1,  # Matches convector convergence threshold
         settling_time=30.0,  # Well under 60 min max
         rise_time=20.0,  # Well under 45 min max
@@ -159,13 +160,14 @@ class TestFullAutoApplyFlow:
         for cycle_num in range(6):
             current_time = start_time + timedelta(hours=cycle_num * 2)
 
-            # Start heating via event
-            dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=current_time, target_temp=21.0, current_temp=19.0))
+            # Start heating via event (start closer to setpoint to keep undershoot < 0.2°C)
+            start_temp = 20.85  # undershoot will be 21.0 - 20.85 = 0.15°C
+            dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=current_time, target_temp=21.0, current_temp=start_temp))
             assert tracker.state == CycleState.HEATING
 
             # Collect temperature samples during heating (20 samples = 10 min)
             for i in range(20):
-                temp = 19.0 + min(i * 0.15, 2.0)  # Rise to 21.0°C
+                temp = start_temp + min(i * 0.01, 0.15)  # Rise gradually to 21.0°C
                 await tracker.update_temperature(current_time, temp)
                 current_time += timedelta(seconds=30)
 

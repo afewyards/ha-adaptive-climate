@@ -163,6 +163,7 @@ thermal_groups:
 - **PWM vs Valve:** `pwm > 0` = on/off cycling; `pwm = 0` = direct 0-100%
 - **State persistence:** RestoreEntity - PID integral and gains persist
 - **Ke:** Start 0.3-0.6 for well-insulated buildings
+- **HAOS sensors:** Temperature sensors only update on change, not on interval. Large `sensor_dt` values are normal when temp is stable.
 
 ## Test Organization
 
