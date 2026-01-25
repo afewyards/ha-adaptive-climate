@@ -66,6 +66,7 @@ class PIDRule(Enum):
     MANY_OSCILLATIONS = ("many_oscillations", RULE_PRIORITY_OSCILLATION)
     SOME_OSCILLATIONS = ("some_oscillations", RULE_PRIORITY_OSCILLATION)
     SLOW_SETTLING = ("slow_settling", RULE_PRIORITY_SLOW_RESPONSE)
+    INTER_CYCLE_DRIFT = ("inter_cycle_drift", RULE_PRIORITY_SLOW_RESPONSE)
 
     def __init__(self, rule_name: str, priority: int):
         """Initialize rule with name and priority."""
