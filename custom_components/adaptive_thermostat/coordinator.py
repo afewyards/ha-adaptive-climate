@@ -82,6 +82,14 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
         """
         return self._thermal_group_manager
 
+    def has_manifold_registry(self) -> bool:
+        """Check if a manifold registry has been set.
+
+        Returns:
+            True if a manifold registry is configured, False otherwise.
+        """
+        return self._manifold_registry is not None
+
     def set_manifold_registry(self, registry: "ManifoldRegistry") -> None:
         """Set the manifold registry reference for transport delay calculations.
 
