@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v0.31.0 (2026-01-25)
+
+### Features
+
+- Add 2x cycle multiplier for subsequent PID auto-apply learning
+  ([`0954ca7`](https://github.com/afewyards/ha-adaptive-thermostat/commit/0954ca7c110d34801ec6e67c54f14c527afe0dcc))
+
+After first auto-apply, require double the minimum cycles before next adjustment to ensure higher
+  confidence in learned parameters.
+
+
 ## v0.30.0 (2026-01-25)
 
 ### Documentation
