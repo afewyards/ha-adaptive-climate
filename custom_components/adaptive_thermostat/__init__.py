@@ -61,6 +61,9 @@ from .const import (
     CONF_PRESET_SYNC_MODE,
     CONF_BOOST_PID_OFF,
     CONF_THERMAL_GROUPS,
+    CONF_MANIFOLDS,
+    CONF_PIPE_VOLUME,
+    CONF_FLOW_PER_LOOP,
     # Climate settings (domain-level defaults with per-entity override)
     CONF_MIN_TEMP,
     CONF_MAX_TEMP,
@@ -77,6 +80,7 @@ from .const import (
     DEFAULT_SYNC_MODES,
     DEFAULT_LEARNING_WINDOW_DAYS,
     DEFAULT_FALLBACK_FLOW_RATE,
+    DEFAULT_FLOW_PER_LOOP,
     DEFAULT_WINDOW_RATING,
     DEFAULT_PERSISTENT_NOTIFICATION,
     DEFAULT_VACATION_TARGET_TEMP,
@@ -167,6 +171,17 @@ if HAS_HOMEASSISTANT:
             vol.Range(min=0)
         ),
     })
+
+    # Manifold schema
+    MANIFOLD_SCHEMA = vol.Schema({
+        vol.Required("name"): cv.string,
+        vol.Required("zones"): vol.All(cv.ensure_list, [cv.entity_id], vol.Length(min=1)),
+        vol.Required(CONF_PIPE_VOLUME): vol.All(vol.Coerce(float), vol.Range(min=0.1)),
+        vol.Optional(CONF_FLOW_PER_LOOP, default=DEFAULT_FLOW_PER_LOOP): vol.All(
+            vol.Coerce(float), vol.Range(min=0.1)
+        ),
+    })
+
     CONFIG_SCHEMA = vol.Schema(
         {
             DOMAIN: vol.Schema({
@@ -288,6 +303,9 @@ if HAS_HOMEASSISTANT:
                     cv.ensure_list,
                     [THERMAL_GROUP_SCHEMA]
                 ),
+
+                # Manifolds for hydraulic transport delay tracking
+                vol.Optional(CONF_MANIFOLDS): vol.All(cv.ensure_list, [MANIFOLD_SCHEMA]),
             })
         },
         extra=vol.ALLOW_EXTRA,  # Allow other domains in config
@@ -296,6 +314,7 @@ else:
     # Provide stub for testing without Home Assistant
     CONFIG_SCHEMA = None
     THERMAL_GROUP_SCHEMA = None
+    MANIFOLD_SCHEMA = None
 
 
 async def async_send_notification(
@@ -525,6 +544,31 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             _LOGGER.error("Failed to initialize thermal groups: %s", e)
             # Don't fail setup, just disable thermal groups
             hass.data[DOMAIN]["thermal_group_manager"] = None
+
+    # Manifold registry for hydraulic transport delay tracking
+    manifolds_config = domain_config.get(CONF_MANIFOLDS)
+    manifold_registry = None
+    if manifolds_config:
+        try:
+            from .adaptive.manifold_registry import ManifoldRegistry, Manifold
+            # Create Manifold objects from config
+            manifolds = [
+                Manifold(
+                    name=m["name"],
+                    zones=m["zones"],
+                    pipe_volume=m[CONF_PIPE_VOLUME],
+                    flow_per_loop=m[CONF_FLOW_PER_LOOP],
+                )
+                for m in manifolds_config
+            ]
+            # Create registry
+            manifold_registry = ManifoldRegistry(manifolds)
+            hass.data[DOMAIN]["manifold_registry"] = manifold_registry
+            _LOGGER.info("Manifold registry enabled with %d manifolds", len(manifolds))
+        except (ValueError, ImportError) as e:
+            _LOGGER.error("Failed to initialize manifold registry: %s", e)
+            # Don't fail setup, just disable manifold registry
+            hass.data[DOMAIN]["manifold_registry"] = None
 
     # Learning configuration
     learning_window_days = domain_config.get(

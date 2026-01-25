@@ -15,6 +15,9 @@ except ImportError:
     from const import DOMAIN
     from adaptive.sun_position import SunPositionCalculator, ORIENTATION_AZIMUTH
 
+if TYPE_CHECKING:
+    from .adaptive.manifold_registry import ManifoldRegistry
+
 # Re-export CentralController and constants for backwards compatibility
 try:
     from .central_controller import (
@@ -55,6 +58,8 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
         self._central_controller: "CentralController | None" = None
         self._sun_position_calculator = SunPositionCalculator.from_hass(hass)
         self._thermal_group_manager: Any = None  # ThermalGroupManager or None
+        self._manifold_registry: "ManifoldRegistry | None" = None
+        self._zone_loops: dict[str, int] = {}
 
     def set_central_controller(self, controller: "CentralController") -> None:
         """Set the central controller reference for push-based updates."""
@@ -76,6 +81,50 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
             ThermalGroupManager instance or None
         """
         return self._thermal_group_manager
+
+    def set_manifold_registry(self, registry: "ManifoldRegistry") -> None:
+        """Set the manifold registry reference for transport delay calculations.
+
+        Args:
+            registry: ManifoldRegistry instance
+        """
+        self._manifold_registry = registry
+
+    def update_zone_loops(self, zone_id: str, loops: int) -> None:
+        """Update the number of heating loops for a zone.
+
+        Args:
+            zone_id: Unique identifier for the zone
+            loops: Number of heating loops in this zone
+        """
+        self._zone_loops[zone_id] = loops
+
+    def get_transport_delay_for_zone(self, zone_id: str) -> float:
+        """Get the transport delay for a zone in minutes.
+
+        Calculates the time for hot water to reach the zone based on active
+        zones and their loop counts. Only considers zones with heating demand.
+
+        Args:
+            zone_id: Unique identifier for the zone
+
+        Returns:
+            Transport delay in minutes. Returns 0.0 if no registry is set.
+        """
+        if self._manifold_registry is None:
+            return 0.0
+
+        # Build active_zones dict: {zone_id: loops} for zones with heating demand
+        active_zones: dict[str, int] = {}
+        for zone, demand_state in self._demand_states.items():
+            # Only include zones with heating demand
+            if demand_state.get("demand") and demand_state.get("mode") == "heat":
+                # Get loop count from _zone_loops, default to 1 if not set
+                loop_count = self._zone_loops.get(zone, 1)
+                active_zones[zone] = loop_count
+
+        # Call registry to calculate transport delay
+        return self._manifold_registry.get_transport_delay(zone_id, active_zones)
 
     @property
     def outdoor_temp(self) -> float | None:

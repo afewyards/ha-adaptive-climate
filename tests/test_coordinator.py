@@ -563,11 +563,11 @@ def test_get_transport_delay_for_zone_no_active_zones(coord):
     # Query delay
     delay = coord.get_transport_delay_for_zone("zone1")
 
-    # Verify registry was called with empty active zones list
+    # Verify registry was called with empty active zones dict
     mock_registry.get_transport_delay.assert_called_once()
     call_args = mock_registry.get_transport_delay.call_args
     assert call_args[0][0] == "zone1"
-    assert call_args[0][1] == []  # No active zones
+    assert call_args[0][1] == {}  # No active zones
 
 
 def test_get_transport_delay_for_zone_mode_filter(coord):

@@ -167,6 +167,9 @@ class CycleTrackerManager:
         # Track previous cycle end temperature for inter-cycle drift calculation
         self._prev_cycle_end_temp: float | None = None
 
+        # Transport delay tracking for dead time calculation
+        self._transport_delay_minutes: float | None = None
+
         # Subscribe to events if dispatcher provided
         if self._dispatcher is not None:
             from .events import CycleEventType
@@ -245,6 +248,22 @@ class CycleTrackerManager:
         self._restoration_complete = True
         self._logger.debug("Restoration complete, temperature updates now enabled")
 
+    def set_transport_delay(self, minutes: float) -> None:
+        """Set transport delay for current cycle.
+
+        This method records the transport delay (dead time) from the manifold
+        to the zone for the current heating cycle. The delay will be included
+        in cycle metrics and excluded from rise time calculations.
+
+        Args:
+            minutes: Transport delay in minutes (can be 0 for warm manifold)
+        """
+        self._transport_delay_minutes = minutes
+        self._logger.debug(
+            "Transport delay set to %.1f minutes for current cycle",
+            minutes
+        )
+
     def _on_cycle_started(self, event: "CycleStartedEvent") -> None:
         """Handle CYCLE_STARTED event.
 
@@ -262,6 +281,9 @@ class CycleTrackerManager:
         # Clear integral tracking for new cycle (must happen before idempotent check)
         self._integral_at_tolerance_entry = None
         self._integral_at_setpoint_cross = None
+
+        # Clear transport delay for new cycle (must happen before idempotent check)
+        self._transport_delay_minutes = None
 
         # Idempotent: ignore if already in the target state
         if self._state == new_state:
@@ -609,6 +631,9 @@ class CycleTrackerManager:
         # Clear clamping state
         self._was_clamped = False
 
+        # Clear transport delay
+        self._transport_delay_minutes = None
+
         # Set state to IDLE
         self._state = CycleState.IDLE
 
@@ -881,6 +906,9 @@ class CycleTrackerManager:
             settling_start_time=self._device_off_time,
         )
 
+        # Calculate dead_time from transport delay if set
+        dead_time = self._transport_delay_minutes
+
         # Create CycleMetrics object with interruption history
         metrics = CycleMetrics(
             overshoot=overshoot,
@@ -898,6 +926,7 @@ class CycleTrackerManager:
             end_temp=end_temp,
             settling_mae=settling_mae,
             inter_cycle_drift=inter_cycle_drift,
+            dead_time=dead_time,
         )
 
         # Record metrics with adaptive learner
