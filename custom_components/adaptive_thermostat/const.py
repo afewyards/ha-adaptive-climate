@@ -776,3 +776,12 @@ FLOOR_THICKNESS_LIMITS = {
     'top_floor': (5, 25),
     'screed': (30, 100),
 }
+
+# Manifold transport delay
+CONF_MANIFOLDS = "manifolds"
+CONF_PIPE_VOLUME = "pipe_volume"
+CONF_FLOW_PER_LOOP = "flow_per_loop"
+CONF_LOOPS = "loops"
+MANIFOLD_COOLDOWN_MINUTES = 5
+DEFAULT_LOOPS = 1
+DEFAULT_FLOW_PER_LOOP = 2.0
