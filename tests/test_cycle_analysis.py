@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 import pytest
 
 from custom_components.adaptive_thermostat.adaptive.cycle_analysis import (
+    calculate_settling_mae,
     calculate_settling_time,
     CycleMetrics,
 )
@@ -299,3 +300,119 @@ class TestCycleMetrics:
             was_clamped=False,
         )
         assert metrics_not_clamped.was_clamped is False
+
+
+class TestCalculateSettlingMAE:
+    """Test calculate_settling_mae function."""
+
+    def test_empty_temperature_history(self):
+        """Test that empty temperature history returns None."""
+        target_temp = 21.0
+        base_time = datetime(2024, 1, 1, 10, 0)
+
+        mae = calculate_settling_mae(
+            temperature_history=[],
+            target_temp=target_temp,
+            settling_start_time=base_time,
+        )
+
+        assert mae is None
+
+    def test_no_settling_phase(self):
+        """Test that None settling_start_time returns None."""
+        target_temp = 21.0
+        base_time = datetime(2024, 1, 1, 10, 0)
+
+        temperature_history = [
+            (base_time, 20.5),
+            (base_time + timedelta(minutes=5), 20.8),
+            (base_time + timedelta(minutes=10), 21.0),
+            (base_time + timedelta(minutes=15), 21.1),
+        ]
+
+        mae = calculate_settling_mae(
+            temperature_history=temperature_history,
+            target_temp=target_temp,
+            settling_start_time=None,
+        )
+
+        assert mae is None
+
+    def test_normal_settling_phase(self):
+        """Test normal settling phase returns mean absolute error from target."""
+        target_temp = 21.0
+        base_time = datetime(2024, 1, 1, 10, 0)
+        settling_start_time = base_time + timedelta(minutes=20)
+
+        temperature_history = [
+            # Heating phase (before settling)
+            (base_time, 19.0),
+            (base_time + timedelta(minutes=5), 19.5),
+            (base_time + timedelta(minutes=10), 20.0),
+            (base_time + timedelta(minutes=15), 20.5),
+            # Settling phase starts at 20 minutes
+            (base_time + timedelta(minutes=20), 21.3),  # Error: 0.3
+            (base_time + timedelta(minutes=25), 21.2),  # Error: 0.2
+            (base_time + timedelta(minutes=30), 21.1),  # Error: 0.1
+            (base_time + timedelta(minutes=35), 21.0),  # Error: 0.0
+            (base_time + timedelta(minutes=40), 20.9),  # Error: 0.1
+        ]
+
+        mae = calculate_settling_mae(
+            temperature_history=temperature_history,
+            target_temp=target_temp,
+            settling_start_time=settling_start_time,
+        )
+
+        # MAE = (0.3 + 0.2 + 0.1 + 0.0 + 0.1) / 5 = 0.7 / 5 = 0.14
+        assert mae is not None
+        assert mae == pytest.approx(0.14, abs=0.001)
+
+    def test_partial_settling_window(self):
+        """Test that only temps after settling_start_time are used for MAE."""
+        target_temp = 21.0
+        base_time = datetime(2024, 1, 1, 10, 0)
+        # Settling starts at 15 minutes
+        settling_start_time = base_time + timedelta(minutes=15)
+
+        temperature_history = [
+            (base_time, 19.0),
+            (base_time + timedelta(minutes=5), 19.5),
+            (base_time + timedelta(minutes=10), 20.0),
+            # Only these should be included (after 15 min)
+            (base_time + timedelta(minutes=20), 21.4),  # Error: 0.4
+            (base_time + timedelta(minutes=25), 21.2),  # Error: 0.2
+        ]
+
+        mae = calculate_settling_mae(
+            temperature_history=temperature_history,
+            target_temp=target_temp,
+            settling_start_time=settling_start_time,
+        )
+
+        # MAE = (0.4 + 0.2) / 2 = 0.6 / 2 = 0.3
+        assert mae is not None
+        assert mae == pytest.approx(0.3, abs=0.001)
+
+    def test_all_temps_before_settling_start(self):
+        """Test that all temps before settling_start_time returns None."""
+        target_temp = 21.0
+        base_time = datetime(2024, 1, 1, 10, 0)
+        # Settling starts after all temperature samples
+        settling_start_time = base_time + timedelta(minutes=30)
+
+        temperature_history = [
+            (base_time, 19.0),
+            (base_time + timedelta(minutes=5), 19.5),
+            (base_time + timedelta(minutes=10), 20.0),
+            (base_time + timedelta(minutes=15), 20.5),
+            (base_time + timedelta(minutes=20), 20.8),
+        ]
+
+        mae = calculate_settling_mae(
+            temperature_history=temperature_history,
+            target_temp=target_temp,
+            settling_start_time=settling_start_time,
+        )
+
+        assert mae is None
