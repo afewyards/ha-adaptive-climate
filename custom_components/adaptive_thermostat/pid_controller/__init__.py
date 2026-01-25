@@ -1,5 +1,6 @@
 import logging
 import math
+from datetime import datetime
 from time import time
 
 _LOGGER = logging.getLogger(__name__)
@@ -107,6 +108,9 @@ class PID:
         # Clamping state tracking for learning feedback
         self._was_clamped = False
         self._clamp_reason = None  # 'tolerance' or 'safety_net'
+        # Dead time (transport delay) tracking
+        self._transport_delay: float | None = None  # Transport delay in minutes
+        self._dead_time_start: float | None = None  # Start time of dead time period (input_time)
 
     @property
     def mode(self):
@@ -237,6 +241,28 @@ class PID:
         """
         return self._clamp_reason
 
+    @property
+    def _in_dead_time(self):
+        """Check if currently in dead time period.
+
+        Returns True if:
+        - _transport_delay > 0
+        - _dead_time_start is set
+        - elapsed time < _transport_delay minutes
+
+        Note: This property is evaluated during calc() when input_time is available.
+        The elapsed time calculation is done in calc() using input_time.
+
+        Returns:
+            bool: True if in dead time period, False otherwise.
+        """
+        if not self._transport_delay or self._transport_delay <= 0:
+            return False
+        if self._dead_time_start is None:
+            return False
+        # Note: Actual elapsed time check is done in calc() using input_time
+        return True  # If we have delay and start time, we're potentially in dead time
+
     def reset_clamp_state(self):
         """Reset clamping state for a new cycle.
 
@@ -245,6 +271,39 @@ class PID:
         """
         self._was_clamped = False
         self._clamp_reason = None
+
+    def set_transport_delay(self, minutes: float):
+        """Set transport delay (dead time) for manifold systems.
+
+        When transport delay is set to a positive value, the dead time period starts
+        from the last known input_time, and integral accumulation is reduced to 25%
+        of normal rate during this period. This models the delay between boiler
+        heating and heat reaching the zone.
+
+        Args:
+            minutes: Transport delay in minutes. Set to 0 or None to disable dead time.
+        """
+        if minutes is None or minutes == 0:
+            self._transport_delay = None
+            self._dead_time_start = None
+        else:
+            self._transport_delay = minutes
+            # Start dead time from the last known input time
+            # If no input_time yet, will be set on first calc()
+            if self._input_time is not None:
+                self._dead_time_start = self._input_time
+            else:
+                # Sentinel value - will be set on first calc()
+                self._dead_time_start = -1.0
+
+    def reset_dead_time(self):
+        """Clear dead time state.
+
+        Called when heater turns off to reset dead time tracking.
+        Integral accumulation returns to normal rate after this call.
+        """
+        self._transport_delay = None
+        self._dead_time_start = None
 
     def prepare_bumpless_transfer(self):
         """Prepare for bumpless transfer by setting integral to maintain continuity.
@@ -551,7 +610,44 @@ class PID:
                     # effective_decay = 1 + shaped_progress * (decay_multiplier - 1)
                     decay_multiplier = 1.0 + shaped_progress * (self._integral_decay_multiplier - 1.0)
 
-                self._integral += self._Ki * self._error * dt_hours * decay_multiplier
+                # Dead time handling: reduce integral accumulation during transport delay
+                # When transport delay is active, split time interval if it spans both
+                # dead time (25% rate) and normal (100% rate) periods
+                if self._transport_delay and self._transport_delay > 0:
+                    # Capture start time on first calc() after set_transport_delay()
+                    if self._dead_time_start == -1.0:
+                        self._dead_time_start = self._input_time
+
+                    if self._dead_time_start is not None and self._dead_time_start >= 0:
+                        # Calculate elapsed time since dead time started (in seconds)
+                        elapsed_seconds = self._input_time - self._dead_time_start
+                        transport_delay_seconds = self._transport_delay * 60.0
+
+                        if elapsed_seconds < transport_delay_seconds:
+                            # Entirely within dead time - use 25% rate
+                            self._integral += self._Ki * self._error * dt_hours * decay_multiplier * 0.25
+                        elif elapsed_seconds - self._dt < transport_delay_seconds:
+                            # Interval spans both dead time and normal periods - split it
+                            # Time remaining in dead time at start of interval
+                            time_in_dead = transport_delay_seconds - (elapsed_seconds - self._dt)
+                            time_normal = self._dt - time_in_dead
+
+                            # Accumulate at 25% rate for dead time portion
+                            dt_dead_hours = time_in_dead / 3600.0
+                            self._integral += self._Ki * self._error * dt_dead_hours * decay_multiplier * 0.25
+
+                            # Accumulate at 100% rate for normal portion
+                            dt_normal_hours = time_normal / 3600.0
+                            self._integral += self._Ki * self._error * dt_normal_hours * decay_multiplier
+                        else:
+                            # Entirely after dead time - use normal rate
+                            self._integral += self._Ki * self._error * dt_hours * decay_multiplier
+                    else:
+                        # No start time yet - use normal rate
+                        self._integral += self._Ki * self._error * dt_hours * decay_multiplier
+                else:
+                    # No dead time - use normal rate
+                    self._integral += self._Ki * self._error * dt_hours * decay_multiplier
 
                 # Exponential integral decay during overhang
                 # Provides aggressive decay that naturally slows as integral approaches zero
