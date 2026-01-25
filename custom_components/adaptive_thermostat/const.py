@@ -162,6 +162,7 @@ PID_LIMITS = {
 # Default thresholds (used for unknown heating types)
 DEFAULT_CONVERGENCE_THRESHOLDS = {
     "overshoot_max": 0.2,       # Maximum acceptable overshoot in °C
+    "undershoot_max": 0.2,      # Maximum acceptable undershoot in °C
     "oscillations_max": 1,      # Maximum acceptable oscillations
     "settling_time_max": 60,    # Maximum settling time in minutes
     "rise_time_max": 45,        # Maximum rise time in minutes
@@ -174,6 +175,7 @@ DEFAULT_CONVERGENCE_THRESHOLDS = {
 HEATING_TYPE_CONVERGENCE_THRESHOLDS = {
     HEATING_TYPE_FLOOR_HYDRONIC: {
         "overshoot_max": 0.3,       # Relaxed from 0.2°C - high thermal mass makes precise control harder
+        "undershoot_max": 0.3,      # Relaxed from 0.2°C - matches overshoot_max
         "oscillations_max": 1,      # Same as default
         "settling_time_max": 120,   # Relaxed from 60 min - slow systems take longer to stabilize
         "rise_time_max": 90,        # Relaxed from 45 min - slower heating rate
@@ -182,6 +184,7 @@ HEATING_TYPE_CONVERGENCE_THRESHOLDS = {
     },
     HEATING_TYPE_RADIATOR: {
         "overshoot_max": 0.25,      # Slightly relaxed from 0.2°C
+        "undershoot_max": 0.25,     # Slightly relaxed from 0.2°C - matches overshoot_max
         "oscillations_max": 1,      # Same as default
         "settling_time_max": 90,    # Relaxed from 60 min - moderate thermal mass
         "rise_time_max": 60,        # Relaxed from 45 min - moderate heating rate
@@ -190,6 +193,7 @@ HEATING_TYPE_CONVERGENCE_THRESHOLDS = {
     },
     HEATING_TYPE_CONVECTOR: {
         "overshoot_max": 0.2,       # Baseline (same as default)
+        "undershoot_max": 0.2,      # Baseline (same as default) - matches overshoot_max
         "oscillations_max": 1,      # Same as default
         "settling_time_max": 60,    # Baseline (same as default)
         "rise_time_max": 45,        # Baseline (same as default)
@@ -198,6 +202,7 @@ HEATING_TYPE_CONVERGENCE_THRESHOLDS = {
     },
     HEATING_TYPE_FORCED_AIR: {
         "overshoot_max": 0.15,      # Tightened from 0.2°C - fast systems should be more precise
+        "undershoot_max": 0.15,     # Tightened from 0.2°C - matches overshoot_max
         "oscillations_max": 1,      # Same as default
         "settling_time_max": 45,    # Tightened from 60 min - fast settling expected
         "rise_time_max": 30,        # Tightened from 45 min - rapid heating rate
@@ -221,7 +226,7 @@ def get_convergence_thresholds(heating_type: Optional[str] = None) -> Dict[str, 
         heating_type: One of HEATING_TYPE_* constants, or None for default thresholds
 
     Returns:
-        Dict with convergence threshold values (overshoot_max, oscillations_max,
+        Dict with convergence threshold values (overshoot_max, undershoot_max, oscillations_max,
         settling_time_max, rise_time_max, inter_cycle_drift_max, settling_mae_max)
 
     Example:

@@ -20,6 +20,7 @@ class TestConvergenceThresholdsHelper:
         thresholds = get_convergence_thresholds(HEATING_TYPE_FLOOR_HYDRONIC)
 
         assert thresholds["overshoot_max"] == 0.3  # Relaxed from 0.2
+        assert thresholds["undershoot_max"] == 0.3  # Matches overshoot_max
         assert thresholds["oscillations_max"] == 1  # Same as default
         assert thresholds["settling_time_max"] == 120  # Relaxed from 60
         assert thresholds["rise_time_max"] == 90  # Relaxed from 45
@@ -29,6 +30,7 @@ class TestConvergenceThresholdsHelper:
         thresholds = get_convergence_thresholds(HEATING_TYPE_RADIATOR)
 
         assert thresholds["overshoot_max"] == 0.25  # Slightly relaxed from 0.2
+        assert thresholds["undershoot_max"] == 0.25  # Matches overshoot_max
         assert thresholds["oscillations_max"] == 1  # Same as default
         assert thresholds["settling_time_max"] == 90  # Relaxed from 60
         assert thresholds["rise_time_max"] == 60  # Relaxed from 45
@@ -38,6 +40,7 @@ class TestConvergenceThresholdsHelper:
         thresholds = get_convergence_thresholds(HEATING_TYPE_CONVECTOR)
 
         assert thresholds["overshoot_max"] == 0.2  # Baseline
+        assert thresholds["undershoot_max"] == 0.2  # Matches overshoot_max
         assert thresholds["oscillations_max"] == 1  # Baseline
         assert thresholds["settling_time_max"] == 60  # Baseline
         assert thresholds["rise_time_max"] == 45  # Baseline
@@ -47,6 +50,7 @@ class TestConvergenceThresholdsHelper:
         thresholds = get_convergence_thresholds(HEATING_TYPE_FORCED_AIR)
 
         assert thresholds["overshoot_max"] == 0.15  # Tightened from 0.2
+        assert thresholds["undershoot_max"] == 0.15  # Matches overshoot_max
         assert thresholds["oscillations_max"] == 1  # Same as default
         assert thresholds["settling_time_max"] == 45  # Tightened from 60
         assert thresholds["rise_time_max"] == 30  # Tightened from 45
@@ -62,6 +66,11 @@ class TestConvergenceThresholdsHelper:
         thresholds = get_convergence_thresholds(None)
 
         assert thresholds == DEFAULT_CONVERGENCE_THRESHOLDS
+
+    def test_default_convergence_thresholds_includes_undershoot(self):
+        """Test that default thresholds include undershoot_max."""
+        assert "undershoot_max" in DEFAULT_CONVERGENCE_THRESHOLDS
+        assert DEFAULT_CONVERGENCE_THRESHOLDS["undershoot_max"] == 0.2
 
 
 class TestAdaptiveLearnerHeatingTypeThresholds:
