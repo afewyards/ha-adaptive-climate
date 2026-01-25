@@ -177,6 +177,7 @@ def evaluate_pid_rules(
     rule_thresholds: Optional[Dict[str, float]] = None,
     decay_contribution: Optional[float] = None,
     integral_at_tolerance_entry: Optional[float] = None,
+    avg_inter_cycle_drift: float = 0.0,
 ) -> List[PIDRuleResult]:
     """
     Evaluate all PID tuning rules against current metrics.
@@ -192,9 +193,10 @@ def evaluate_pid_rules(
         state_tracker: Optional RuleStateTracker for hysteresis logic (optional, backward compatible)
         rule_thresholds: Optional dict of rule thresholds (optional, uses defaults if not provided).
             Supported keys: moderate_overshoot, high_overshoot, slow_response, slow_settling,
-            undershoot, many_oscillations, some_oscillations
+            undershoot, many_oscillations, some_oscillations, inter_cycle_drift_max
         decay_contribution: Integral contribution from settling/decay period (optional)
         integral_at_tolerance_entry: PID integral value when temp enters tolerance band (optional)
+        avg_inter_cycle_drift: Average temperature drift between cycles (optional, default 0.0)
 
     Returns:
         List of applicable rule results (rules that would fire)
@@ -369,6 +371,17 @@ def evaluate_pid_rules(
             ki_factor=ki_factor,
             kd_factor=1.15,
             reason=reason
+        ))
+
+    # Rule 8: Inter-cycle drift (negative drift = room cooling between cycles)
+    drift_threshold = rule_thresholds.get("inter_cycle_drift_max", 0.3)
+    if avg_inter_cycle_drift < -drift_threshold:
+        results.append(PIDRuleResult(
+            rule=PIDRule.INTER_CYCLE_DRIFT,
+            kp_factor=1.0,
+            ki_factor=1.15,  # Increase Ki 15%
+            kd_factor=1.0,
+            reason=f"Inter-cycle drift {avg_inter_cycle_drift:.2f}°C indicates Ki too low"
         ))
 
     return results
