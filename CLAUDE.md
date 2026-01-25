@@ -28,6 +28,7 @@ pytest --cov=custom_components/adaptive_thermostat  # with coverage
 |--------|---------|
 | `climate.py` | Main entity - orchestrates managers, presets, state |
 | `coordinator.py` | Zone registry, CentralController, ModeSync, thermal group triggers |
+| `adaptive/manifold_registry.py` | Manifold topology, transport delay calculation |
 | `pid_controller/__init__.py` | PID with P, I, D, E (outdoor), F (feedforward) terms |
 | `adaptive/learning.py` | Cycle analysis, rule-based PID adjustments |
 | `adaptive/cycle_analysis.py` | Overshoot tracking, cycle metrics |
@@ -153,6 +154,35 @@ thermal_groups:
     transfer_factor: 0.2
     delay_minutes: 15
 ```
+
+### Manifold Transport Delay
+
+Accounts for dead time from heat source to zone manifold. Delay varies by active loops and manifold warmth.
+
+**Domain config:**
+```yaml
+adaptive_thermostat:
+  manifolds:
+    - name: "2nd Floor"
+      zones: [climate.bathroom_2nd, climate.bedroom_2nd]
+      pipe_volume: 20  # liters to manifold
+      flow_per_loop: 2  # L/min (default)
+```
+
+**Zone config:**
+```yaml
+climate:
+  - platform: adaptive_thermostat
+    loops: 2  # floor heating loops (default: 1)
+```
+
+**Delay calculation:**
+- `delay = pipe_volume / (active_loops × flow_per_loop)`
+- Warm manifold (active < 5 min) → 0 delay
+
+**PID behavior during dead time:**
+- Integral accumulates at 25% rate to prevent windup
+- Dead time tracked separately from rise_time in CycleMetrics
 
 ### Persistence
 
