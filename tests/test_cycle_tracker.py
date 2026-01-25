@@ -3394,6 +3394,7 @@ class TestCycleTrackerDeadTime:
         # Verify internal state
         assert cycle_tracker._transport_delay_minutes == 2.5
 
+    @pytest.mark.asyncio
     async def test_rise_time_excludes_dead_time(self, cycle_tracker, dispatcher, mock_hass, mock_adaptive_learner, mock_callbacks):
         """Test rise_time calculation excludes dead_time (rise_time = total_rise - dead_time)."""
         # Set up for valid cycle
@@ -3434,6 +3435,7 @@ class TestCycleTrackerDeadTime:
         # Here we verify that dead_time is passed to CycleMetrics
         assert metrics.rise_time is not None
 
+    @pytest.mark.asyncio
     async def test_cycle_metrics_populated_with_dead_time_on_completion(self, cycle_tracker, dispatcher, mock_hass, mock_adaptive_learner, mock_callbacks):
         """Test CycleMetrics populated with dead_time on cycle completion."""
         # Set up for valid cycle
@@ -3467,6 +3469,7 @@ class TestCycleTrackerDeadTime:
         metrics = mock_adaptive_learner.add_cycle_metrics.call_args[0][0]
         assert metrics.dead_time == 3.0
 
+    @pytest.mark.asyncio
     async def test_dead_time_is_none_when_no_transport_delay_set(self, cycle_tracker, dispatcher, mock_hass, mock_adaptive_learner, mock_callbacks):
         """Test dead_time is None when no transport delay set."""
         # Set up for valid cycle
@@ -3525,6 +3528,7 @@ class TestCycleTrackerDeadTime:
         # Verify dead_time was reset to None
         assert cycle_tracker._transport_delay_minutes is None
 
+    @pytest.mark.asyncio
     async def test_dead_time_preserved_during_settling_phase(self, cycle_tracker, dispatcher, mock_hass, mock_callbacks):
         """Test dead_time value preserved during settling phase."""
         # Start cycle
@@ -3550,6 +3554,7 @@ class TestCycleTrackerDeadTime:
         # Verify dead_time still stored during settling
         assert cycle_tracker._transport_delay_minutes == 1.5
 
+    @pytest.mark.asyncio
     async def test_dead_time_zero_handled_correctly(self, cycle_tracker, dispatcher, mock_hass, mock_adaptive_learner, mock_callbacks):
         """Test dead_time=0 (warm manifold) handled correctly in CycleMetrics."""
         # Set up for valid cycle
@@ -3601,6 +3606,7 @@ class TestCycleTrackerDeadTime:
         cycle_tracker.set_transport_delay(2.5)
         assert cycle_tracker._transport_delay_minutes == 2.5
 
+    @pytest.mark.asyncio
     async def test_dead_time_reset_after_cycle_abort(self, cycle_tracker, dispatcher):
         """Test dead_time is cleared when cycle is aborted."""
         # Start cycle
