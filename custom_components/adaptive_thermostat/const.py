@@ -584,6 +584,8 @@ MAX_CUMULATIVE_DRIFT_PCT = 50
 PID_HISTORY_SIZE = 10
 # Number of cycles in validation window after auto-apply
 VALIDATION_CYCLE_COUNT = 5
+# Multiplier for min_cycles after first auto-apply (subsequent learning requires more data)
+SUBSEQUENT_LEARNING_CYCLE_MULTIPLIER = 2.0
 # Performance degradation threshold for validation failure (30% worse)
 VALIDATION_DEGRADATION_THRESHOLD = 0.30
 # Days to block auto-apply after seasonal shift detected

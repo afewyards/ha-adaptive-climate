@@ -25,6 +25,7 @@ from ..const import (
     SEASONAL_SHIFT_BLOCK_DAYS,
     CLAMPED_OVERSHOOT_MULTIPLIER,
     DEFAULT_CLAMPED_OVERSHOOT_MULTIPLIER,
+    SUBSEQUENT_LEARNING_CYCLE_MULTIPLIER,
     get_convergence_thresholds,
     get_rule_thresholds,
     get_auto_apply_thresholds,
@@ -381,9 +382,14 @@ class AdaptiveLearner:
             min_adjustment_cycles = thresholds["cooldown_cycles"]
             min_cycles = thresholds["min_cycles"]
 
+            # Subsequent learning requires more cycles for higher confidence
+            if self._auto_apply_count > 0:
+                min_cycles = int(min_cycles * SUBSEQUENT_LEARNING_CYCLE_MULTIPLIER)
+
             _LOGGER.debug(
                 f"Auto-apply checks passed: confidence={self._convergence_confidence:.2f}, "
-                f"threshold={confidence_threshold:.2f}, heating_type={self._heating_type}"
+                f"threshold={confidence_threshold:.2f}, heating_type={self._heating_type}, "
+                f"min_cycles={min_cycles} (apply_count={self._auto_apply_count})"
             )
 
         # Check hybrid rate limiting first (both time AND cycles)
