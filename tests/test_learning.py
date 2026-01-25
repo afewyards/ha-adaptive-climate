@@ -804,6 +804,229 @@ class TestConvergenceDetection:
         # Should be converged
         assert result is True
 
+    def test_convergence_fails_when_undershoot_exceeds_threshold(self):
+        """Test that convergence fails when avg_undershoot exceeds threshold."""
+        learner = AdaptiveLearner()
+
+        # All metrics good except undershoot
+        result = learner._check_convergence(
+            avg_overshoot=0.15,           # < 0.2 threshold
+            avg_oscillations=0.5,         # < 1 threshold
+            avg_settling_time=50,         # < 60 threshold
+            avg_rise_time=40,             # < 45 threshold
+            avg_inter_cycle_drift=0.1,    # < 0.25 threshold
+            avg_settling_mae=0.15,        # < 0.25 threshold
+            avg_undershoot=0.25,          # > 0.2 threshold - EXCEEDS
+        )
+
+        # Should NOT be converged
+        assert result is False
+
+    def test_convergence_passes_with_undershoot_within_bounds(self):
+        """Test that convergence passes when undershoot is within bounds."""
+        learner = AdaptiveLearner()
+
+        # All metrics within bounds including undershoot
+        result = learner._check_convergence(
+            avg_overshoot=0.15,           # < 0.2 threshold
+            avg_oscillations=0.5,         # < 1 threshold
+            avg_settling_time=50,         # < 60 threshold
+            avg_rise_time=40,             # < 45 threshold
+            avg_inter_cycle_drift=0.1,    # < 0.25 threshold
+            avg_settling_mae=0.15,        # < 0.25 threshold
+            avg_undershoot=0.15,          # < 0.2 threshold - OK
+        )
+
+        # Should be converged
+        assert result is True
+
+    def test_convergence_tracking_resets_on_high_undershoot(self):
+        """Test that update_convergence_tracking() resets consecutive cycles on high undershoot."""
+        learner = AdaptiveLearner()
+
+        # First, build up some consecutive converged cycles with good metrics
+        for _ in range(3):
+            metrics = CycleMetrics(
+                overshoot=0.1,      # Below 0.2 threshold
+                undershoot=0.1,     # Below 0.2 threshold
+                oscillations=0,     # Below 1 threshold
+                settling_time=30,   # Below 60 threshold
+                rise_time=20,       # Below 45 threshold
+            )
+            learner.update_convergence_tracking(metrics)
+
+        # Verify we have consecutive converged cycles
+        assert learner.get_consecutive_converged_cycles() == 3
+
+        # Now add a cycle with high undershoot - should reset the counter
+        high_undershoot_metrics = CycleMetrics(
+            overshoot=0.1,      # Below 0.2 threshold
+            undershoot=0.25,    # Above 0.2 threshold - EXCEEDS
+            oscillations=0,     # Below 1 threshold
+            settling_time=30,   # Below 60 threshold
+            rise_time=20,       # Below 45 threshold
+        )
+        result = learner.update_convergence_tracking(high_undershoot_metrics)
+
+        # Should NOT be converged and counter should reset to 0
+        assert result is False
+        assert learner.get_consecutive_converged_cycles() == 0
+        assert not learner.is_pid_converged_for_ke()
+
+    def test_convergence_tracking_passes_with_undershoot_within_bounds(self):
+        """Test that update_convergence_tracking() counts cycles with undershoot within bounds."""
+        learner = AdaptiveLearner()
+
+        # Add cycles with undershoot within bounds
+        for _ in range(5):
+            metrics = CycleMetrics(
+                overshoot=0.1,      # Below 0.2 threshold
+                undershoot=0.15,    # Below 0.2 threshold - OK
+                oscillations=0,     # Below 1 threshold
+                settling_time=30,   # Below 60 threshold
+                rise_time=20,       # Below 45 threshold
+            )
+            learner.update_convergence_tracking(metrics)
+
+        # Should have 5 consecutive converged cycles
+        assert learner.get_consecutive_converged_cycles() == 5
+        assert learner.is_pid_converged_for_ke()
+
+    def test_convergence_tracking_handles_none_undershoot(self):
+        """Test that update_convergence_tracking() handles None undershoot (no undershoot detected)."""
+        learner = AdaptiveLearner()
+
+        # Add cycles with None undershoot (should be treated as acceptable)
+        for _ in range(5):
+            metrics = CycleMetrics(
+                overshoot=0.1,      # Below 0.2 threshold
+                undershoot=None,    # None means no undershoot detected
+                oscillations=0,     # Below 1 threshold
+                settling_time=30,   # Below 60 threshold
+                rise_time=20,       # Below 45 threshold
+            )
+            learner.update_convergence_tracking(metrics)
+
+        # Should have 5 consecutive converged cycles (None undershoot is acceptable)
+        assert learner.get_consecutive_converged_cycles() == 5
+        assert learner.is_pid_converged_for_ke()
+
+
+class TestConvergenceConfidence:
+    """Tests for update_convergence_confidence() method."""
+
+    def test_convergence_confidence_increases_on_good_cycle(self):
+        """Test that confidence increases when cycle meets all convergence criteria."""
+        learner = AdaptiveLearner()
+        initial_confidence = learner._convergence_confidence
+
+        # Good cycle - all metrics within convergence thresholds
+        metrics = CycleMetrics(
+            overshoot=0.1,      # < 0.2 threshold
+            undershoot=0.1,     # < 0.2 threshold
+            oscillations=0,     # < 1 threshold
+            settling_time=30,   # < 60 threshold
+            rise_time=20,       # < 45 threshold
+        )
+
+        learner.update_convergence_confidence(metrics)
+
+        # Confidence should increase
+        assert learner._convergence_confidence > initial_confidence
+
+    def test_convergence_confidence_decreases_on_high_overshoot(self):
+        """Test that confidence decreases when overshoot exceeds threshold."""
+        learner = AdaptiveLearner()
+        # Set initial confidence higher than zero
+        learner._convergence_confidence = 0.5
+
+        # Bad cycle - overshoot exceeds threshold
+        metrics = CycleMetrics(
+            overshoot=0.3,      # > 0.2 threshold
+            undershoot=0.1,     # < 0.2 threshold
+            oscillations=0,     # < 1 threshold
+            settling_time=30,   # < 60 threshold
+            rise_time=20,       # < 45 threshold
+        )
+
+        learner.update_convergence_confidence(metrics)
+
+        # Confidence should decrease
+        assert learner._convergence_confidence < 0.5
+
+    def test_convergence_confidence_decreases_on_high_undershoot(self):
+        """Test that confidence decreases when undershoot exceeds threshold."""
+        learner = AdaptiveLearner()
+        # Set initial confidence higher than zero
+        learner._convergence_confidence = 0.5
+
+        # Bad cycle - undershoot exceeds threshold
+        metrics = CycleMetrics(
+            overshoot=0.1,      # < 0.2 threshold
+            undershoot=0.3,     # > 0.2 threshold - EXCEEDS
+            oscillations=0,     # < 1 threshold
+            settling_time=30,   # < 60 threshold
+            rise_time=20,       # < 45 threshold
+        )
+
+        learner.update_convergence_confidence(metrics)
+
+        # Confidence should decrease due to high undershoot
+        assert learner._convergence_confidence < 0.5
+
+    def test_is_good_cycle_includes_undershoot_check(self):
+        """Test that is_good_cycle logic properly checks undershoot."""
+        learner = AdaptiveLearner()
+        learner._convergence_confidence = 0.5
+
+        # All metrics good except undershoot
+        metrics_high_undershoot = CycleMetrics(
+            overshoot=0.1,      # < 0.2 threshold
+            undershoot=0.25,    # > 0.2 threshold
+            oscillations=0,     # < 1 threshold
+            settling_time=30,   # < 60 threshold
+            rise_time=20,       # < 45 threshold
+        )
+
+        learner.update_convergence_confidence(metrics_high_undershoot)
+        # Should decrease confidence because undershoot exceeds threshold
+        assert learner._convergence_confidence < 0.5
+
+        # Reset confidence
+        learner._convergence_confidence = 0.5
+
+        # All metrics good including undershoot
+        metrics_good = CycleMetrics(
+            overshoot=0.1,      # < 0.2 threshold
+            undershoot=0.1,     # < 0.2 threshold
+            oscillations=0,     # < 1 threshold
+            settling_time=30,   # < 60 threshold
+            rise_time=20,       # < 45 threshold
+        )
+
+        learner.update_convergence_confidence(metrics_good)
+        # Should increase confidence
+        assert learner._convergence_confidence > 0.5
+
+    def test_convergence_confidence_handles_none_undershoot(self):
+        """Test that confidence logic handles None undershoot (treated as good)."""
+        learner = AdaptiveLearner()
+        initial_confidence = learner._convergence_confidence
+
+        # Good cycle with None undershoot (acceptable)
+        metrics = CycleMetrics(
+            overshoot=0.1,      # < 0.2 threshold
+            undershoot=None,    # None should be treated as OK
+            oscillations=0,     # < 1 threshold
+            settling_time=30,   # < 60 threshold
+            rise_time=20,       # < 45 threshold
+        )
+
+        learner.update_convergence_confidence(metrics)
+
+        # Confidence should increase (None undershoot is acceptable)
+        assert learner._convergence_confidence > initial_confidence
+
 
 # Test marker for rule conflict module
 def test_rule_conflicts_module_exists():

@@ -136,6 +136,29 @@ class AdaptiveLearner:
         """
         self._cycle_history.append(metrics)
 
+        # Log detailed cycle metrics for debugging
+        _LOGGER.debug(
+            "Cycle recorded [%d/%d]: overshoot=%.3f, undershoot=%.3f, "
+            "settling_time=%.1f, oscillations=%d, rise_time=%.1f, "
+            "inter_cycle_drift=%.3f, settling_mae=%.3f, "
+            "integral@tolerance=%.2f, integral@setpoint=%.2f, decay=%.3f, "
+            "disturbed=%s, clamped=%s",
+            len(self._cycle_history),
+            self._max_history,
+            metrics.overshoot or 0.0,
+            metrics.undershoot or 0.0,
+            metrics.settling_time or 0.0,
+            metrics.oscillations,
+            metrics.rise_time or 0.0,
+            metrics.inter_cycle_drift or 0.0,
+            metrics.settling_mae or 0.0,
+            metrics.integral_at_tolerance_entry or 0.0,
+            metrics.integral_at_setpoint_cross or 0.0,
+            metrics.decay_contribution or 0.0,
+            metrics.is_disturbed,
+            metrics.was_clamped,
+        )
+
         # Increment cycle counter for hybrid rate limiting
         self._cycles_since_last_adjustment += 1
 
@@ -165,6 +188,7 @@ class AdaptiveLearner:
         avg_rise_time: float,
         avg_inter_cycle_drift: float = 0.0,
         avg_settling_mae: float = 0.0,
+        avg_undershoot: float = 0.0,
     ) -> bool:
         """
         Check if the system has converged (is well-tuned).
@@ -179,6 +203,7 @@ class AdaptiveLearner:
             avg_rise_time: Average rise time in minutes
             avg_inter_cycle_drift: Average inter-cycle drift in °C (default 0.0)
             avg_settling_mae: Average settling MAE in °C (default 0.0)
+            avg_undershoot: Average undershoot in °C (default 0.0)
 
         Returns:
             True if converged, False otherwise
@@ -189,7 +214,8 @@ class AdaptiveLearner:
             avg_settling_time <= self._convergence_thresholds["settling_time_max"] and
             avg_rise_time <= self._convergence_thresholds["rise_time_max"] and
             abs(avg_inter_cycle_drift) <= self._convergence_thresholds.get("inter_cycle_drift_max", 0.3) and
-            avg_settling_mae <= self._convergence_thresholds.get("settling_mae_max", 0.3)
+            avg_settling_mae <= self._convergence_thresholds.get("settling_mae_max", 0.3) and
+            avg_undershoot <= self._convergence_thresholds.get("undershoot_max", 0.2)
         )
 
         if is_converged:
@@ -197,7 +223,8 @@ class AdaptiveLearner:
                 f"PID convergence detected - system tuned: "
                 f"overshoot={avg_overshoot:.2f}°C, oscillations={avg_oscillations:.1f}, "
                 f"settling={avg_settling_time:.1f}min, rise={avg_rise_time:.1f}min, "
-                f"inter_cycle_drift={avg_inter_cycle_drift:.2f}°C, settling_mae={avg_settling_mae:.2f}°C"
+                f"inter_cycle_drift={avg_inter_cycle_drift:.2f}°C, settling_mae={avg_settling_mae:.2f}°C, "
+                f"undershoot={avg_undershoot:.2f}°C"
             )
 
         return is_converged
@@ -487,11 +514,28 @@ class AdaptiveLearner:
         ]
         avg_settling_mae = sum(settling_mae_values) / len(settling_mae_values) if settling_mae_values else 0.0
 
+        # Log averaged metrics used for learning decisions
+        _LOGGER.debug(
+            "Learning evaluation using %d cycles: avg_overshoot=%.3f, avg_undershoot=%.3f, "
+            "avg_oscillations=%.1f, avg_settling_time=%.1f, avg_rise_time=%.1f, "
+            "avg_inter_cycle_drift=%.3f, avg_settling_mae=%.3f, avg_decay=%.3f",
+            len(recent_cycles),
+            avg_overshoot,
+            avg_undershoot,
+            avg_oscillations,
+            avg_settling_time,
+            avg_rise_time,
+            avg_inter_cycle_drift,
+            avg_settling_mae,
+            avg_decay_contribution or 0.0,
+        )
+
         # Check for convergence - skip adjustments if system is tuned
         if self._check_convergence(
             avg_overshoot, avg_oscillations, avg_settling_time, avg_rise_time,
             avg_inter_cycle_drift=avg_inter_cycle_drift,
             avg_settling_mae=avg_settling_mae,
+            avg_undershoot=avg_undershoot,
         ):
             _LOGGER.info("Skipping PID adjustment - system has converged")
             return None
@@ -908,6 +952,7 @@ class AdaptiveLearner:
         # Check if this cycle meets convergence criteria
         is_good_cycle = (
             (metrics.overshoot is None or metrics.overshoot <= self._convergence_thresholds["overshoot_max"]) and
+            (metrics.undershoot is None or metrics.undershoot <= self._convergence_thresholds.get("undershoot_max", 0.2)) and
             metrics.oscillations <= self._convergence_thresholds["oscillations_max"] and
             (metrics.settling_time is None or metrics.settling_time <= self._convergence_thresholds["settling_time_max"]) and
             (metrics.rise_time is None or metrics.rise_time <= self._convergence_thresholds["rise_time_max"])
