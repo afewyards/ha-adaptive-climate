@@ -752,6 +752,109 @@ class TestSlowSettlingDecayAware:
         assert "ki" in reason_lower or "3%" in reason_lower or "gentle" in reason_lower
 
 
+class TestInterCycleDriftRule:
+    """Tests for INTER_CYCLE_DRIFT rule that detects room cooling between heating cycles."""
+
+    def test_inter_cycle_drift_within_threshold_no_rule(self):
+        """Test drift within threshold does NOT trigger INTER_CYCLE_DRIFT rule."""
+        # Small negative drift within acceptable range (e.g., -0.2°C < -0.3°C threshold)
+        results = evaluate_pid_rules(
+            avg_overshoot=0.0,
+            avg_undershoot=0.0,
+            avg_oscillations=0.0,
+            avg_rise_time=30.0,
+            avg_settling_time=30.0,
+            avg_inter_cycle_drift=-0.2,  # Within threshold (assuming default -0.3°C)
+        )
+
+        # Should not trigger any rules
+        assert len(results) == 0, "Drift within threshold should not trigger rule"
+
+    def test_inter_cycle_drift_negative_exceeding_threshold_fires(self):
+        """Test negative drift exceeding threshold triggers INTER_CYCLE_DRIFT rule with Ki=1.15."""
+        # Significant negative drift indicates room cooling between cycles (Ki too low)
+        results = evaluate_pid_rules(
+            avg_overshoot=0.0,
+            avg_undershoot=0.0,
+            avg_oscillations=0.0,
+            avg_rise_time=30.0,
+            avg_settling_time=30.0,
+            avg_inter_cycle_drift=-0.5,  # Exceeds threshold (assuming -0.3°C)
+        )
+
+        # Should trigger inter-cycle drift rule
+        assert len(results) == 1
+        assert results[0].rule == PIDRule.INTER_CYCLE_DRIFT
+
+        # Should increase Ki by 15%, keep Kp and Kd unchanged
+        assert results[0].kp_factor == 1.0, "Kp should not change"
+        assert results[0].ki_factor == 1.15, "Ki should increase by 15%"
+        assert results[0].kd_factor == 1.0, "Kd should not change"
+
+        # Verify reason message mentions drift value
+        assert "-0.5" in results[0].reason or "0.5" in results[0].reason
+        assert "drift" in results[0].reason.lower()
+
+    def test_inter_cycle_drift_positive_no_rule(self):
+        """Test positive drift (room warming between cycles) does NOT trigger rule."""
+        # Positive drift means room is warming between cycles (unusual but not a Ki problem)
+        results = evaluate_pid_rules(
+            avg_overshoot=0.0,
+            avg_undershoot=0.0,
+            avg_oscillations=0.0,
+            avg_rise_time=30.0,
+            avg_settling_time=30.0,
+            avg_inter_cycle_drift=0.3,  # Positive drift
+        )
+
+        # Should not trigger any rules (rule only fires for negative drift)
+        assert len(results) == 0, "Positive drift should not trigger INTER_CYCLE_DRIFT rule"
+
+    def test_inter_cycle_drift_zero_no_rule(self):
+        """Test zero drift (perfect steady state) does NOT trigger rule."""
+        results = evaluate_pid_rules(
+            avg_overshoot=0.0,
+            avg_undershoot=0.0,
+            avg_oscillations=0.0,
+            avg_rise_time=30.0,
+            avg_settling_time=30.0,
+            avg_inter_cycle_drift=0.0,  # Perfect steady state
+        )
+
+        # Should not trigger any rules
+        assert len(results) == 0, "Zero drift should not trigger rule"
+
+    def test_inter_cycle_drift_with_custom_threshold(self):
+        """Test INTER_CYCLE_DRIFT rule respects custom threshold from heating type."""
+        # Use a custom threshold (e.g., floor hydronic has -0.3°C threshold)
+        custom_thresholds = {
+            'moderate_overshoot': 0.3,
+            'high_overshoot': 1.5,
+            'slow_response': 120,
+            'slow_settling': 90,
+            'undershoot': 0.3,
+            'many_oscillations': 3,
+            'some_oscillations': 1,
+            'inter_cycle_drift_max': 0.25,  # Custom threshold
+        }
+
+        # Drift of -0.28°C exceeds threshold of -0.25°C
+        results = evaluate_pid_rules(
+            avg_overshoot=0.0,
+            avg_undershoot=0.0,
+            avg_oscillations=0.0,
+            avg_rise_time=30.0,
+            avg_settling_time=30.0,
+            avg_inter_cycle_drift=-0.28,
+            rule_thresholds=custom_thresholds,
+        )
+
+        # Should trigger rule with custom threshold
+        assert len(results) == 1
+        assert results[0].rule == PIDRule.INTER_CYCLE_DRIFT
+        assert results[0].ki_factor == 1.15
+
+
 class TestHeatingTypeSpecificThresholds:
     """Tests for heating-type-specific threshold behavior in evaluate_pid_rules()."""
 
