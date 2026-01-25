@@ -89,6 +89,17 @@ Optional `supply_temperature` config adjusts PID for non-standard supply temps (
 
 For `floor_hydronic`: optional `floor_construction` config with layers (top_floor material, screed material, thicknesses) and pipe_spacing. Calculates `tau_modifier` for thermal mass. Materials defined in `const.py`.
 
+### Steady-State Tracking Metrics
+
+Two metrics detect false convergence (system appears stable but has persistent offset):
+
+| Metric | Purpose | Threshold |
+|--------|---------|-----------|
+| `inter_cycle_drift` | `start_temp[n] - end_temp[n-1]` - detects room cooling between cycles | 0.25-0.3°C |
+| `settling_mae` | Mean absolute error during settling phase | 0.25-0.3°C |
+
+Both metrics must pass thresholds for convergence. Thresholds scale by heating type (floor=0.3, radiator=0.25, convector=0.2, forced_air=0.15).
+
 ### PID Adjustment Rules
 
 In `adaptive/learning.py`. Thresholds per heating type from `get_rule_thresholds()`:
@@ -96,6 +107,7 @@ In `adaptive/learning.py`. Thresholds per heating type from `get_rule_thresholds
 - Moderate overshoot → reduce Kp 5%
 - Slow response → increase Kp 10%
 - Undershoot → increase Ki 20%
+- Negative inter-cycle drift → increase Ki 15% (insufficient integral action)
 - Oscillations → reduce Kp 10%, increase Kd 20%
 - Slow settling → increase Kd 15%
 
