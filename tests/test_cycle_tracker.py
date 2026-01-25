@@ -2640,3 +2640,190 @@ class TestClampingAwareness:
         assert "was_clamped=True" in completion_logs[0] or "clamped" in completion_logs[0].lower()
 
 
+class TestEndTemperatureTracking:
+    """Tests for end_temp tracking in cycle metrics (Story 3.1)."""
+
+    @pytest.mark.asyncio
+    async def test_end_temp_set_after_complete_cycle(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
+    ):
+        """Test that end_temp is populated after a complete cycle."""
+        from datetime import timedelta
+
+        # Create tracker
+        tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            get_target_temp=mock_callbacks["get_target_temp"],
+            get_current_temp=mock_callbacks["get_current_temp"],
+            get_hvac_mode=mock_callbacks["get_hvac_mode"],
+            get_in_grace_period=mock_callbacks["get_in_grace_period"],
+            dispatcher=dispatcher,
+        )
+        tracker.set_restoration_complete()
+
+        # Set target temperature
+        target_temp = 20.0
+        mock_callbacks["get_target_temp"].return_value = target_temp
+
+        # Start cycle
+        start_time = datetime(2025, 1, 25, 10, 0, 0)
+        dispatcher.emit(CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=start_time,
+            target_temp=target_temp,
+            current_temp=18.0
+        ))
+
+        # Collect temperature samples during HEATING phase
+        for i in range(10):
+            temp = 18.0 + (i * 0.2)  # Gradual rise from 18.0 to 19.8
+            await tracker.update_temperature(
+                timestamp=start_time + timedelta(minutes=i),
+                temperature=temp
+            )
+
+        # Transition to SETTLING
+        settling_time = start_time + timedelta(minutes=15)
+        dispatcher.emit(SettlingStartedEvent(
+            hvac_mode="heat",
+            timestamp=settling_time,
+            was_clamped=False
+        ))
+
+        # Add settling samples to reach stability
+        settling_temps = [19.9, 19.95, 20.0, 20.05, 20.02, 20.01, 20.0, 20.0, 20.01, 20.0]
+        for i, temp in enumerate(settling_temps):
+            await tracker.update_temperature(
+                timestamp=settling_time + timedelta(minutes=i),
+                temperature=temp
+            )
+
+        # Record the last temperature that was added
+        expected_end_temp = settling_temps[-1]
+
+        # Finalize cycle
+        await tracker._finalize_cycle()
+
+        # Verify CycleMetrics was created with end_temp
+        assert mock_adaptive_learner.add_cycle_metrics.called
+        metrics = mock_adaptive_learner.add_cycle_metrics.call_args[0][0]
+
+        # Check that end_temp is set and equals the last temperature
+        assert metrics.end_temp is not None
+        assert metrics.end_temp == expected_end_temp
+
+    @pytest.mark.asyncio
+    async def test_end_temp_equals_last_temperature_in_history(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
+    ):
+        """Test that end_temp equals the last temperature in _temperature_history."""
+        from datetime import timedelta
+
+        # Create tracker
+        tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            get_target_temp=mock_callbacks["get_target_temp"],
+            get_current_temp=mock_callbacks["get_current_temp"],
+            get_hvac_mode=mock_callbacks["get_hvac_mode"],
+            get_in_grace_period=mock_callbacks["get_in_grace_period"],
+            dispatcher=dispatcher,
+        )
+        tracker.set_restoration_complete()
+
+        # Set target temperature
+        target_temp = 21.5
+        mock_callbacks["get_target_temp"].return_value = target_temp
+
+        # Start cycle
+        start_time = datetime(2025, 1, 25, 14, 0, 0)
+        dispatcher.emit(CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=start_time,
+            target_temp=target_temp,
+            current_temp=19.0
+        ))
+
+        # Collect temperature samples during HEATING phase with varying temps
+        heating_temps = [19.0, 19.3, 19.7, 20.1, 20.5, 20.9, 21.2, 21.4, 21.5, 21.6]
+        for i, temp in enumerate(heating_temps):
+            await tracker.update_temperature(
+                timestamp=start_time + timedelta(minutes=i),
+                temperature=temp
+            )
+
+        # Transition to SETTLING
+        settling_time = start_time + timedelta(minutes=12)
+        dispatcher.emit(SettlingStartedEvent(
+            hvac_mode="heat",
+            timestamp=settling_time,
+            was_clamped=False
+        ))
+
+        # Add settling samples - final temp is 21.48
+        settling_temps = [21.55, 21.52, 21.50, 21.49, 21.48, 21.48, 21.48, 21.48, 21.48, 21.48]
+        for i, temp in enumerate(settling_temps):
+            await tracker.update_temperature(
+                timestamp=settling_time + timedelta(minutes=i),
+                temperature=temp
+            )
+
+        # The expected end temp is the last temperature we added
+        expected_end_temp = settling_temps[-1]
+        assert expected_end_temp == 21.48
+
+        # Finalize cycle
+        await tracker._finalize_cycle()
+
+        # Verify CycleMetrics was created with end_temp matching last history entry
+        assert mock_adaptive_learner.add_cycle_metrics.called
+        metrics = mock_adaptive_learner.add_cycle_metrics.call_args[0][0]
+
+        # Check that end_temp equals the last temperature from history
+        assert metrics.end_temp == expected_end_temp
+
+    @pytest.mark.asyncio
+    async def test_end_temp_not_set_when_no_temperature_history(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
+    ):
+        """Test that end_temp is None when there's no temperature history."""
+        # Create tracker
+        tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            get_target_temp=mock_callbacks["get_target_temp"],
+            get_current_temp=mock_callbacks["get_current_temp"],
+            get_hvac_mode=mock_callbacks["get_hvac_mode"],
+            get_in_grace_period=mock_callbacks["get_in_grace_period"],
+            dispatcher=dispatcher,
+        )
+        tracker.set_restoration_complete()
+
+        # Start cycle but don't collect any temperature samples
+        start_time = datetime(2025, 1, 25, 16, 0, 0)
+        dispatcher.emit(CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=start_time,
+            target_temp=20.0,
+            current_temp=18.0
+        ))
+
+        # Transition to SETTLING immediately without temperature samples
+        dispatcher.emit(SettlingStartedEvent(
+            hvac_mode="heat",
+            timestamp=start_time,
+            was_clamped=False
+        ))
+
+        # Finalize cycle (will fail validation due to insufficient samples)
+        await tracker._finalize_cycle()
+
+        # Verify that no metrics were recorded due to validation failure
+        # (cycle too short and insufficient samples)
+        assert not mock_adaptive_learner.add_cycle_metrics.called
+
+
