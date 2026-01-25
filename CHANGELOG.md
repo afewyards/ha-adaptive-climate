@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v0.28.1 (2026-01-25)
+
+### Bug Fixes
+
+- Preserve restored PID integral on first calc after reboot
+  ([`9f5e89e`](https://github.com/afewyards/ha-adaptive-thermostat/commit/9f5e89e03537b6bae52b908931a990a3d854b789))
+
+The first PID calculation (dt=0) was resetting integral to 0, wiping out the value just restored
+  from state. Now only derivative is reset.
+
+
 ## v0.28.0 (2026-01-25)
 
 ### Documentation
