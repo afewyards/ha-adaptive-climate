@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v0.31.1 (2026-01-25)
+
+### Bug Fixes
+
+- Add missing has_manifold_registry method to coordinator
+  ([`59ac799`](https://github.com/afewyards/ha-adaptive-thermostat/commit/59ac79906aa76580f9297dd0be73f20af8a2e027))
+
+The method was called in climate.py but never defined, causing AttributeError during entity
+  initialization and unavailable state.
+
+
 ## v0.31.0 (2026-01-25)
 
 ### Features
