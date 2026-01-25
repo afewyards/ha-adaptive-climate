@@ -594,8 +594,8 @@ class PID:
                 self._dt, MIN_DT_FOR_DERIVATIVE, self._integral, self._derivative_filtered
             )
         else:
-            # First call (dt=0) - initialize I and D to zero
-            self._integral = 0.0
+            # First call (dt=0) - initialize D to zero, preserve restored I
+            # Note: Don't reset integral - it may have been restored from previous session
             self._derivative = 0.0
             self._derivative_filtered = 0.0
 
