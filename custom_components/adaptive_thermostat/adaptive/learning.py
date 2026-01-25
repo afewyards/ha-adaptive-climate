@@ -868,12 +868,14 @@ class AdaptiveLearner:
         """
         # Check if this cycle meets convergence thresholds
         overshoot = metrics.overshoot if metrics.overshoot is not None else 0.0
+        undershoot = metrics.undershoot if metrics.undershoot is not None else 0.0
         oscillations = metrics.oscillations
         settling_time = metrics.settling_time if metrics.settling_time is not None else 0.0
         rise_time = metrics.rise_time if metrics.rise_time is not None else 0.0
 
         is_cycle_converged = (
             overshoot <= self._convergence_thresholds["overshoot_max"] and
+            undershoot <= self._convergence_thresholds.get("undershoot_max", 0.2) and
             oscillations <= self._convergence_thresholds["oscillations_max"] and
             settling_time <= self._convergence_thresholds["settling_time_max"] and
             rise_time <= self._convergence_thresholds["rise_time_max"]
