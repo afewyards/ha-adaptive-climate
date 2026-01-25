@@ -506,6 +506,7 @@ class AdaptiveLearner:
             rule_thresholds=self._rule_thresholds,
             decay_contribution=avg_decay_contribution,
             integral_at_tolerance_entry=avg_integral_at_tolerance,
+            avg_inter_cycle_drift=avg_inter_cycle_drift,
         )
 
         if not rule_results:
