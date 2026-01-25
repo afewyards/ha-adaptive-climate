@@ -163,6 +163,8 @@ class AdaptiveLearner:
         avg_oscillations: float,
         avg_settling_time: float,
         avg_rise_time: float,
+        avg_inter_cycle_drift: float = 0.0,
+        avg_settling_mae: float = 0.0,
     ) -> bool:
         """
         Check if the system has converged (is well-tuned).
@@ -175,6 +177,8 @@ class AdaptiveLearner:
             avg_oscillations: Average number of oscillations
             avg_settling_time: Average settling time in minutes
             avg_rise_time: Average rise time in minutes
+            avg_inter_cycle_drift: Average inter-cycle drift in °C (default 0.0)
+            avg_settling_mae: Average settling MAE in °C (default 0.0)
 
         Returns:
             True if converged, False otherwise
@@ -183,14 +187,17 @@ class AdaptiveLearner:
             avg_overshoot <= self._convergence_thresholds["overshoot_max"] and
             avg_oscillations <= self._convergence_thresholds["oscillations_max"] and
             avg_settling_time <= self._convergence_thresholds["settling_time_max"] and
-            avg_rise_time <= self._convergence_thresholds["rise_time_max"]
+            avg_rise_time <= self._convergence_thresholds["rise_time_max"] and
+            abs(avg_inter_cycle_drift) <= self._convergence_thresholds.get("inter_cycle_drift_max", 0.3) and
+            avg_settling_mae <= self._convergence_thresholds.get("settling_mae_max", 0.3)
         )
 
         if is_converged:
             _LOGGER.info(
                 f"PID convergence detected - system tuned: "
                 f"overshoot={avg_overshoot:.2f}°C, oscillations={avg_oscillations:.1f}, "
-                f"settling={avg_settling_time:.1f}min, rise={avg_rise_time:.1f}min"
+                f"settling={avg_settling_time:.1f}min, rise={avg_rise_time:.1f}min, "
+                f"inter_cycle_drift={avg_inter_cycle_drift:.2f}°C, settling_mae={avg_settling_mae:.2f}°C"
             )
 
         return is_converged

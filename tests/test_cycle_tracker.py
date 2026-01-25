@@ -2906,7 +2906,7 @@ class TestInterCycleDrift:
         for i in range(15):
             await tracker.update_temperature(
                 timestamp=start_time + timedelta(minutes=i),
-                temperature=18.0 + (i * 0.133)  # Ends at ~20.0
+                temperature=18.0 + (i * 0.143)  # Ends at 20.0 (14 * 0.143 = 2.002)
             )
 
         await tracker._finalize_cycle()
@@ -2968,7 +2968,7 @@ class TestInterCycleDrift:
         for i in range(15):
             await tracker.update_temperature(
                 timestamp=start_time + timedelta(minutes=i),
-                temperature=18.0 + (i * 0.133)  # Ends at ~20.0
+                temperature=18.0 + (i * 0.143)  # Ends at 20.0 (14 * 0.143 = 2.002)
             )
 
         await tracker._finalize_cycle()
@@ -3030,7 +3030,7 @@ class TestInterCycleDrift:
         for i in range(15):
             await tracker.update_temperature(
                 timestamp=start_time + timedelta(minutes=i),
-                temperature=18.0 + (i * 0.133)
+                temperature=18.0 + (i * 0.143)  # Ends at 20.0 (14 * 0.143 = 2.002)
             )
 
         await tracker._finalize_cycle()
@@ -3047,7 +3047,7 @@ class TestInterCycleDrift:
         for i in range(15):
             await tracker.update_temperature(
                 timestamp=start_time2 + timedelta(minutes=i),
-                temperature=20.0 + (i * 0.067)  # Ends at ~21.0
+                temperature=20.0 + (i * 0.071)  # Ends at 21.0 (14 * 0.071 = 0.994)
             )
 
         await tracker._finalize_cycle()

@@ -164,6 +164,9 @@ class CycleTrackerManager:
         else:
             self._cold_tolerance: float | None = None
 
+        # Track previous cycle end temperature for inter-cycle drift calculation
+        self._prev_cycle_end_temp: float | None = None
+
         # Subscribe to events if dispatcher provided
         if self._dispatcher is not None:
             from .events import CycleEventType
@@ -860,6 +863,16 @@ class CycleTrackerManager:
         # Calculate decay metrics
         integral_at_tolerance, integral_at_setpoint, decay_contribution = self._calculate_decay_metrics()
 
+        # Calculate end_temp from last temperature in history
+        end_temp = None
+        if len(self._temperature_history) > 0:
+            end_temp = self._temperature_history[-1][1]
+
+        # Calculate inter_cycle_drift if we have previous cycle end temp
+        inter_cycle_drift = None
+        if self._prev_cycle_end_temp is not None and start_temp is not None:
+            inter_cycle_drift = start_temp - self._prev_cycle_end_temp
+
         # Create CycleMetrics object with interruption history
         metrics = CycleMetrics(
             overshoot=overshoot,
@@ -874,6 +887,8 @@ class CycleTrackerManager:
             integral_at_setpoint_cross=integral_at_setpoint,
             decay_contribution=decay_contribution,
             was_clamped=self._was_clamped,
+            end_temp=end_temp,
+            inter_cycle_drift=inter_cycle_drift,
         )
 
         # Record metrics with adaptive learner
@@ -946,6 +961,10 @@ class CycleTrackerManager:
                 metrics=metrics_dict,
             )
             self._dispatcher.emit(cycle_ended_event)
+
+        # Store end_temp for next cycle's inter_cycle_drift calculation
+        if end_temp is not None:
+            self._prev_cycle_end_temp = end_temp
 
     async def _finalize_cycle(self) -> None:
         """Finalize cycle and record metrics.
