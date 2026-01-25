@@ -812,6 +812,7 @@ class CycleTrackerManager:
             calculate_settling_time,
             count_oscillations,
             calculate_rise_time,
+            calculate_settling_mae,
         )
         from ..adaptive.disturbance_detector import DisturbanceDetector
 
@@ -873,6 +874,13 @@ class CycleTrackerManager:
         if self._prev_cycle_end_temp is not None and start_temp is not None:
             inter_cycle_drift = start_temp - self._prev_cycle_end_temp
 
+        # Calculate settling_mae
+        settling_mae = calculate_settling_mae(
+            temperature_history=self._temperature_history,
+            target_temp=target_temp,
+            settling_start_time=self._device_off_time,
+        )
+
         # Create CycleMetrics object with interruption history
         metrics = CycleMetrics(
             overshoot=overshoot,
@@ -888,6 +896,7 @@ class CycleTrackerManager:
             decay_contribution=decay_contribution,
             was_clamped=self._was_clamped,
             end_temp=end_temp,
+            settling_mae=settling_mae,
             inter_cycle_drift=inter_cycle_drift,
         )
 

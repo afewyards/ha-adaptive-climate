@@ -473,9 +473,25 @@ class AdaptiveLearner:
             statistics.mean(integral_at_tolerance_values) if integral_at_tolerance_values else None
         )
 
+        # Extract inter_cycle_drift values from recent cycles
+        drift_values = [
+            c.inter_cycle_drift for c in recent_cycles
+            if c.inter_cycle_drift is not None
+        ]
+        avg_inter_cycle_drift = sum(drift_values) / len(drift_values) if drift_values else 0.0
+
+        # Extract settling_mae values
+        settling_mae_values = [
+            c.settling_mae for c in recent_cycles
+            if c.settling_mae is not None
+        ]
+        avg_settling_mae = sum(settling_mae_values) / len(settling_mae_values) if settling_mae_values else 0.0
+
         # Check for convergence - skip adjustments if system is tuned
         if self._check_convergence(
-            avg_overshoot, avg_oscillations, avg_settling_time, avg_rise_time
+            avg_overshoot, avg_oscillations, avg_settling_time, avg_rise_time,
+            avg_inter_cycle_drift=avg_inter_cycle_drift,
+            avg_settling_mae=avg_settling_mae,
         ):
             _LOGGER.info("Skipping PID adjustment - system has converged")
             return None
