@@ -407,31 +407,34 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
             )
         )
 
-    platform.async_register_entity_service(  # type: ignore
-        "reset_pid_to_physics",
-        {},
-        "async_reset_pid_to_physics",
-    )
-    platform.async_register_entity_service(  # type: ignore
-        "apply_adaptive_pid",
-        {},
-        "async_apply_adaptive_pid",
-    )
-    platform.async_register_entity_service(  # type: ignore
-        "apply_adaptive_ke",
-        {},
-        "async_apply_adaptive_ke",
-    )
-    platform.async_register_entity_service(  # type: ignore
-        "clear_learning",
-        {},
-        "async_clear_learning",
-    )
-    platform.async_register_entity_service(  # type: ignore
-        "rollback_pid",
-        {},
-        "async_rollback_pid",
-    )
+    # Register debug-only entity services
+    debug = hass.data[DOMAIN].get("debug", False)
+    if debug:
+        platform.async_register_entity_service(  # type: ignore
+            "reset_pid_to_physics",
+            {},
+            "async_reset_pid_to_physics",
+        )
+        platform.async_register_entity_service(  # type: ignore
+            "apply_adaptive_pid",
+            {},
+            "async_apply_adaptive_pid",
+        )
+        platform.async_register_entity_service(  # type: ignore
+            "apply_adaptive_ke",
+            {},
+            "async_apply_adaptive_ke",
+        )
+        platform.async_register_entity_service(  # type: ignore
+            "clear_learning",
+            {},
+            "async_clear_learning",
+        )
+        platform.async_register_entity_service(  # type: ignore
+            "rollback_pid",
+            {},
+            "async_rollback_pid",
+        )
 
 
 class AdaptiveThermostat(ClimateEntity, RestoreEntity):
