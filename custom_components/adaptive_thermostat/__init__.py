@@ -429,9 +429,9 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     # Import coordinator modules
     from .coordinator import (
         AdaptiveThermostatCoordinator,
-        CentralController,
         ModeSync,
     )
+    from .central_controller import CentralController
     from .adaptive.vacation import VacationMode
 
     # Service schemas
