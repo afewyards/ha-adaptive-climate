@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 STORAGE_KEY = "adaptive_thermostat_learning"
-STORAGE_VERSION = 4
+STORAGE_VERSION = 5
 SAVE_DELAY_SECONDS = 30
 
 
@@ -40,7 +40,7 @@ class LearningDataStore:
             self.storage_file = os.path.join(hass_or_path, "adaptive_thermostat_learning.json")
             self.hass = None
             self._store = None
-            self._data = {"version": 4, "zones": {}}
+            self._data = {"version": 5, "zones": {}}
             self._save_lock = None  # Legacy API doesn't need locks (synchronous)
         else:
             # New API - HA Store based
@@ -48,7 +48,7 @@ class LearningDataStore:
             self.storage_path = None
             self.storage_file = None
             self._store = None
-            self._data = {"version": 4, "zones": {}}
+            self._data = {"version": 5, "zones": {}}
             self._save_lock = None  # Lazily initialized in async context
 
     async def async_load(self) -> Dict[str, Any]:
@@ -74,10 +74,10 @@ class LearningDataStore:
 
         if data is None:
             # No existing data - return default structure
-            self._data = {"version": 4, "zones": {}}
+            self._data = {"version": 5, "zones": {}}
             return self._data
 
-        # Check if migration is needed (v2 -> v3 -> v4)
+        # Check if migration is needed (v2 -> v3 -> v4 -> v5)
         if data.get("version") == 2:
             _LOGGER.info("Migrating learning data from v2 to v3 (zone-keyed storage)")
             data = self._migrate_v2_to_v3(data)
@@ -85,6 +85,10 @@ class LearningDataStore:
         if data.get("version") == 3:
             _LOGGER.info("Migrating learning data from v3 to v4")
             data = self._migrate_v3_to_v4(data)
+
+        if data.get("version") == 4:
+            _LOGGER.info("Migrating learning data from v4 to v5 (mode-keyed structure)")
+            data = self._migrate_v4_to_v5(data)
 
         self._data = data
         return data
@@ -136,6 +140,77 @@ class LearningDataStore:
         _LOGGER.info("Migrated v3 data to v4")
 
         return v4_data
+
+    def _migrate_v4_to_v5(self, v4_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Migrate v4 format to v5 format (mode-keyed structure).
+
+        Splits adaptive_learner into heating/cooling sub-structures:
+        - Existing cycle_history → heating.cycle_history
+        - Existing auto_apply_count → heating.auto_apply_count
+        - Initialize empty cooling sub-structure
+        - Add pid_history to both modes (initialized empty)
+
+        Args:
+            v4_data: v4 format with zones containing adaptive_learner at zone level
+
+        Returns:
+            v5 format with heating/cooling split in adaptive_learner
+        """
+        v5_data = {
+            "version": 5,
+            "zones": {},
+        }
+
+        # Migrate each zone
+        for zone_id, zone_data in v4_data.get("zones", {}).items():
+            v5_zone = {}
+
+            # Migrate adaptive_learner if present
+            if "adaptive_learner" in zone_data:
+                v4_adaptive = zone_data["adaptive_learner"]
+
+                # Build heating sub-structure from existing data
+                heating = {
+                    "cycle_history": v4_adaptive.get("cycle_history", []),
+                    "auto_apply_count": v4_adaptive.get("auto_apply_count", 0),
+                    "convergence_confidence": v4_adaptive.get("convergence_confidence", 0.0),
+                    "pid_history": [],  # Initialize empty, will be populated from state attributes
+                }
+
+                # Build cooling sub-structure (initialized empty)
+                cooling = {
+                    "cycle_history": [],
+                    "auto_apply_count": 0,
+                    "convergence_confidence": 0.0,
+                    "pid_history": [],
+                }
+
+                # Create new mode-keyed structure
+                v5_zone["adaptive_learner"] = {
+                    "heating": heating,
+                    "cooling": cooling,
+                }
+
+                # Preserve other keys from v4 adaptive_learner that aren't mode-specific
+                # (like consecutive_converged_cycles, pid_converged_for_ke, etc.)
+                for key in v4_adaptive:
+                    if key not in ["cycle_history", "auto_apply_count", "convergence_confidence"]:
+                        v5_zone["adaptive_learner"][key] = v4_adaptive[key]
+
+            # Copy other learners unchanged (ke_learner, thermal_learner, valve_tracker, etc.)
+            for key in zone_data:
+                if key != "adaptive_learner":
+                    v5_zone[key] = zone_data[key]
+
+            v5_data["zones"][zone_id] = v5_zone
+
+        _LOGGER.info(
+            "Migrated v4 data to v5: split adaptive_learner into heating/cooling for %d zones",
+            len(v5_data["zones"])
+        )
+
+        return v5_data
 
     def get_zone_data(self, zone_id: str) -> Optional[Dict[str, Any]]:
         """
@@ -298,7 +373,8 @@ class LearningDataStore:
             # Save AdaptiveLearner data
             if adaptive_learner is not None:
                 cycle_history = []
-                for cycle in adaptive_learner._cycle_history:
+                # Use the property which defaults to heating for backward compatibility
+                for cycle in adaptive_learner.cycle_history:
                     cycle_history.append({
                         "overshoot": cycle.overshoot,
                         "undershoot": cycle.undershoot,

@@ -7,6 +7,20 @@ import sys
 import tempfile
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch, Mock
+from enum import Enum
+
+# Mock HVACMode before importing custom components
+class MockHVACMode(str, Enum):
+    """Mock HVAC mode enum."""
+    HEAT = "heat"
+    COOL = "cool"
+    OFF = "off"
+
+# Mock the homeassistant.components.climate module
+mock_climate = MagicMock()
+mock_climate.HVACMode = MockHVACMode
+sys.modules['homeassistant.components.climate'] = mock_climate
+sys.modules['homeassistant.components'] = MagicMock()
 
 from custom_components.adaptive_thermostat.adaptive.learning import (
     LearningDataStore,
@@ -302,7 +316,7 @@ async def test_learning_store_init(mock_hass):
     # Should not create Store instance until async_load is called
     assert store.hass == mock_hass
     assert store._store is None
-    assert store._data == {"version": 4, "zones": {}}
+    assert store._data == {"version": 5, "zones": {}}
 
 
 @pytest.mark.asyncio
@@ -323,11 +337,11 @@ async def test_learning_store_async_load_empty(mock_hass):
         data = await store.async_load()
 
         # Should create Store with correct parameters
-        mock_store_class.assert_called_once_with(mock_hass, 4, "adaptive_thermostat_learning")
+        mock_store_class.assert_called_once_with(mock_hass, 5, "adaptive_thermostat_learning")
 
         # Should return default structure when no data
-        assert data == {"version": 4, "zones": {}}
-        assert store._data == {"version": 4, "zones": {}}
+        assert data == {"version": 5, "zones": {}}
+        assert store._data == {"version": 5, "zones": {}}
 
 
 @pytest.mark.asyncio
@@ -372,17 +386,20 @@ async def test_learning_store_async_load_v2_migration(mock_hass):
         store = LearningDataStore(mock_hass)
         data = await store.async_load()
 
-        # Should migrate through v3 to v4 format
-        assert data["version"] == 4
+        # Should migrate through v3 to v4 to v5 format
+        assert data["version"] == 5
         assert "zones" in data
         assert "default_zone" in data["zones"]
 
-        # Check that old data was migrated to default_zone
+        # Check that old data was migrated to default_zone with v5 structure
         default_zone = data["zones"]["default_zone"]
         assert "thermal_learner" in default_zone
         assert default_zone["thermal_learner"]["cooling_rates"] == [0.5, 0.6]
         assert "adaptive_learner" in default_zone
-        assert len(default_zone["adaptive_learner"]["cycle_history"]) == 1
+        # V5 format: adaptive_learner should have heating/cooling sub-structure
+        assert "heating" in default_zone["adaptive_learner"]
+        assert "cooling" in default_zone["adaptive_learner"]
+        assert len(default_zone["adaptive_learner"]["heating"]["cycle_history"]) == 1
         assert "valve_tracker" in default_zone
         assert default_zone["valve_tracker"]["cycle_count"] == 2
 
@@ -721,21 +738,25 @@ async def test_load_v3_auto_migrates(mock_hass):
         store = LearningDataStore(mock_hass)
         data = await store.async_load()
 
-        # Should migrate to v4 format
-        assert data["version"] == 4
+        # Should migrate to v5 format
+        assert data["version"] == 5
 
-        # Original zone data should be preserved
+        # Original zone data should be preserved with v5 structure
         assert "zones" in data
         assert "climate.kitchen" in data["zones"]
-        assert data["zones"]["climate.kitchen"]["adaptive_learner"]["cycle_history"] == [
+        # V5 format: adaptive_learner should have heating/cooling sub-structure
+        kitchen_adaptive = data["zones"]["climate.kitchen"]["adaptive_learner"]
+        assert "heating" in kitchen_adaptive
+        assert "cooling" in kitchen_adaptive
+        assert kitchen_adaptive["heating"]["cycle_history"] == [
             {"overshoot": 0.2, "undershoot": 0.1}
         ]
         assert data["zones"]["climate.kitchen"]["ke_learner"]["current_ke"] == 0.45
 
 @pytest.mark.asyncio
 async def test_load_v4_no_migration(mock_hass):
-    """Test loading v4 data does not trigger migration."""
-    # Simulate v4 format stored data (already migrated)
+    """Test loading v4 data triggers migration to v5."""
+    # Simulate v4 format stored data (needs migration to v5)
     v4_data = {
         "version": 4,
         "zones": {
@@ -764,18 +785,22 @@ async def test_load_v4_no_migration(mock_hass):
         store = LearningDataStore(mock_hass)
         data = await store.async_load()
 
-        # Should remain v4 with no changes
-        assert data["version"] == 4
+        # Should migrate to v5
+        assert data["version"] == 5
 
-        # Existing zone data should be preserved
+        # Existing zone data should be preserved with v5 structure
         assert "climate.office" in data["zones"]
         assert "climate.living_room" in data["zones"]
-        assert data["zones"]["climate.living_room"]["adaptive_learner"]["cycle_history"] == [{"overshoot": 0.2}]
+        # V5 format: adaptive_learner should have heating/cooling sub-structure
+        living_room_adaptive = data["zones"]["climate.living_room"]["adaptive_learner"]
+        assert "heating" in living_room_adaptive
+        assert "cooling" in living_room_adaptive
+        assert living_room_adaptive["heating"]["cycle_history"] == [{"overshoot": 0.2}]
 
 
 @pytest.mark.asyncio
-async def test_load_v2_migrates_through_v3_to_v4(mock_hass):
-    """Test loading v2 data migrates through v3 to v4."""
+async def test_load_v2_migrates_through_v3_to_v4_to_v5(mock_hass):
+    """Test loading v2 data migrates through v3 to v4 to v5."""
     # Simulate v2 format (flat, no zones)
     v2_data = {
         "version": 2,
@@ -801,13 +826,16 @@ async def test_load_v2_migrates_through_v3_to_v4(mock_hass):
         store = LearningDataStore(mock_hass)
         data = await store.async_load()
 
-        # Should be migrated all the way to v4
-        assert data["version"] == 4
+        # Should be migrated all the way to v5
+        assert data["version"] == 5
 
-        # v2 data should be in default_zone (from v2->v3 migration)
+        # v2 data should be in default_zone (from v2->v3 migration) with v5 structure
         assert "zones" in data
         assert "default_zone" in data["zones"]
-        assert data["zones"]["default_zone"]["adaptive_learner"]["cycle_history"] == [{"overshoot": 0.4}]
+        default_zone_adaptive = data["zones"]["default_zone"]["adaptive_learner"]
+        assert "heating" in default_zone_adaptive
+        assert "cooling" in default_zone_adaptive
+        assert default_zone_adaptive["heating"]["cycle_history"] == [{"overshoot": 0.4}]
         assert data["zones"]["default_zone"]["ke_learner"]["current_ke"] == 0.3
 
 
