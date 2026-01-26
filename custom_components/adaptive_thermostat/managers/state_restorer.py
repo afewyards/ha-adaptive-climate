@@ -188,22 +188,14 @@ class StateRestorer:
     def _restore_dual_gain_sets(self, old_state: State) -> None:
         """Restore dual PIDGains sets (heating and cooling) from pid_history.
 
-        Handles multiple formats:
-        1. New format: pid_history = {"heating": [...], "cooling": [...]}
-        2. Legacy flat format: pid_history = [...]
-        3. Legacy single gains: kp, ki, kd attributes (no pid_history)
+        Supports only the current mode-keyed format:
+        pid_history = {"heating": [...], "cooling": [...]}
 
-        Priority order:
-        1. If pid_history exists with mode keys (heating/cooling), use it
-        2. Else if pid_history is a flat array, migrate to heating gains
-        3. Else if kp/ki/kd attributes exist, use them for heating gains
-        4. Else fall back to physics-based initialization (thermostat._kp/_ki/_kd)
+        Fallback: If no pid_history exists, initialize heating gains from physics baseline.
 
         Args:
             old_state: The restored state object from async_get_last_state().
         """
-        from ..adaptive.physics import calculate_initial_pid
-
         thermostat = self._thermostat
         pid_history = old_state.attributes.get('pid_history')
 
@@ -211,9 +203,8 @@ class StateRestorer:
         thermostat._heating_gains = None
         thermostat._cooling_gains = None
 
-        # Case 1: New format - mode-keyed pid_history
+        # Mode-keyed pid_history format
         if pid_history and isinstance(pid_history, dict):
-            # Check if it's the new nested format (has 'heating' or 'cooling' keys)
             if 'heating' in pid_history or 'cooling' in pid_history:
                 # Restore heating gains from last entry
                 heating_history = pid_history.get('heating', [])
@@ -253,50 +244,9 @@ class StateRestorer:
                     _LOGGER.debug("%s: Cooling gains not in pid_history - will lazy init on first COOL mode",
                                 thermostat.entity_id)
 
-                return  # Successfully restored from new format
+                return  # Successfully restored from mode-keyed format
 
-        # Case 2: Legacy flat array format - migrate to heating gains
-        if pid_history and isinstance(pid_history, list) and len(pid_history) > 0:
-            _LOGGER.info("%s: Migrating legacy flat pid_history to heating gains", thermostat.entity_id)
-            last_entry = pid_history[-1]
-            thermostat._heating_gains = PIDGains(
-                kp=float(last_entry.get('kp', thermostat._kp)),
-                ki=float(last_entry.get('ki', thermostat._ki)),
-                kd=float(last_entry.get('kd', thermostat._kd))
-            )
-            _LOGGER.info(
-                "%s: Migrated heating gains from flat pid_history: Kp=%.4f, Ki=%.5f, Kd=%.3f",
-                thermostat.entity_id,
-                thermostat._heating_gains.kp,
-                thermostat._heating_gains.ki,
-                thermostat._heating_gains.kd
-            )
-            # Cooling gains remain None (lazy init)
-            return
-
-        # Case 3: Legacy single gain attributes (kp, ki, kd) - migrate to heating gains
-        kp = old_state.attributes.get('kp') or old_state.attributes.get('Kp')
-        ki = old_state.attributes.get('ki') or old_state.attributes.get('Ki')
-        kd = old_state.attributes.get('kd') or old_state.attributes.get('Kd')
-
-        if kp is not None and ki is not None and kd is not None:
-            _LOGGER.info("%s: Migrating legacy kp/ki/kd attributes to heating gains", thermostat.entity_id)
-            thermostat._heating_gains = PIDGains(
-                kp=float(kp),
-                ki=float(ki),
-                kd=float(kd)
-            )
-            _LOGGER.info(
-                "%s: Migrated heating gains from legacy attributes: Kp=%.4f, Ki=%.5f, Kd=%.3f",
-                thermostat.entity_id,
-                thermostat._heating_gains.kp,
-                thermostat._heating_gains.ki,
-                thermostat._heating_gains.kd
-            )
-            # Cooling gains remain None (lazy init)
-            return
-
-        # Case 4: No history or legacy gains - fall back to physics-based initialization
+        # Fallback: No history - initialize heating gains from physics-based baseline
         # The thermostat._kp/_ki/_kd values are already set from calculate_initial_pid() or config
         if thermostat._kp and thermostat._ki and thermostat._kd:
             thermostat._heating_gains = PIDGains(
