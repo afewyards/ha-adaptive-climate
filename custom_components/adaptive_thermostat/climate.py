@@ -758,8 +758,18 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
             if zone_data:
                 stored_preheat_data = zone_data.get("stored_preheat_data")
 
-        # Initialize or restore PreheatLearner
-        if self._night_setback_config and self._night_setback_config.get("preheat_enabled"):
+        # Initialize or restore PreheatLearner (enabled by default when recovery_deadline is set)
+        has_recovery_deadline = (
+            self._night_setback_config.get("recovery_deadline") is not None
+            if self._night_setback_config
+            else False
+        )
+        preheat_should_init = (
+            self._night_setback_config.get("preheat_enabled", has_recovery_deadline)
+            if self._night_setback_config
+            else False
+        )
+        if preheat_should_init:
             if stored_preheat_data:
                 # Restore from persistence
                 self._preheat_learner = PreheatLearner.from_dict(stored_preheat_data)
@@ -781,8 +791,14 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
 
         # Initialize night setback controller now that hass is available
         if self._night_setback or self._night_setback_config:
+            # Preheat defaults to True when recovery_deadline is set, False otherwise
+            has_recovery_deadline = (
+                self._night_setback_config.get("recovery_deadline") is not None
+                if self._night_setback_config
+                else False
+            )
             preheat_enabled = (
-                self._night_setback_config.get("preheat_enabled", False)
+                self._night_setback_config.get("preheat_enabled", has_recovery_deadline)
                 if self._night_setback_config
                 else False
             )
