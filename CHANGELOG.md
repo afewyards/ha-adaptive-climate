@@ -1,6 +1,95 @@
 # CHANGELOG
 
 
+## v0.34.0 (2026-01-26)
+
+### Documentation
+
+- Add humidity detection documentation
+  ([`075fbd5`](https://github.com/afewyards/ha-adaptive-thermostat/commit/075fbd5bed0262f90398b62397fee6ad2dbce5ba))
+
+### Features
+
+- **humidity**: Add configuration constants
+  ([`c69a951`](https://github.com/afewyards/ha-adaptive-thermostat/commit/c69a951d6c8d47ce203b5a73ac4dfcfbaebe51cb))
+
+- **humidity**: Add HumidityDetector core module
+  ([`e751848`](https://github.com/afewyards/ha-adaptive-thermostat/commit/e7518481fb6a4861c2781cd80c7bf48f542915a5))
+
+Add humidity spike detection with state machine (NORMAL -> PAUSED -> STABILIZING -> NORMAL). Detects
+  rapid humidity rises (>15% in 5min) or absolute threshold (>80%) to pause heating. Exits after
+  humidity drops <70% and >10% from peak, then stabilizes for 5min.
+
+- Tests: 25 test cases covering state transitions, edge cases, timing - Implementation: Ring buffer
+  with FIFO eviction, configurable thresholds
+
+- **humidity**: Add max pause and back-to-back shower handling
+  ([`ce225ca`](https://github.com/afewyards/ha-adaptive-thermostat/commit/ce225ca09ea6789c0ee1e63b4b8b25138bddca84))
+
+- Add max_pause_duration (60 min default) to force resume from PAUSED - Track pause start time with
+  _pause_start timestamp - Log warning when max pause duration reached - Add tests for max pause
+  functionality - Back-to-back shower detection already implemented
+
+- **humidity**: Expose state attributes
+  ([`d597926`](https://github.com/afewyards/ha-adaptive-thermostat/commit/d5979264797c3007417133218eaf6041eb434a62))
+
+Add humidity detection state attributes to state_attributes manager: - humidity_detection_state:
+  "normal" | "paused" | "stabilizing" - humidity_resume_in: seconds until resume (or None)
+
+Implementation follows existing pattern from preheat/contact_sensors. TDD: tests verify attributes
+  present when detector configured and absent when not configured.
+
+- **humidity**: Integrate detection in climate entity
+  ([`38f582e`](https://github.com/afewyards/ha-adaptive-thermostat/commit/38f582e2a98078de77ea7ff3edec24376073b218))
+
+- Add config schema for humidity sensor and detection parameters - Initialize HumidityDetector when
+  humidity_sensor configured - Subscribe to humidity sensor state changes - Integrate humidity pause
+  in control loop BEFORE contact sensors - Decay PID integral during pause (10%/min exponential
+  decay) - Block preheat during humidity pause - Add state attributes: humidity_detection_state,
+  humidity_paused, humidity_resume_in - Add comprehensive test coverage in
+  test_humidity_integration.py
+
+All tests pass (17 new tests + 104 existing climate tests).
+
+- **pid**: Add decay_integral method for humidity pause
+  ([`d8e8b33`](https://github.com/afewyards/ha-adaptive-thermostat/commit/d8e8b33466367a679d3f3738ee806880f46ec712))
+
+Add decay_integral method to PID controller for gradual integral decay during humidity pause
+  scenarios. Method multiplies integral by factor (0-1), preserving sign for both heating and
+  cooling.
+
+Tests cover: - Proportional decay (0.9 factor reduces to 90%) - Full reset (0.0 factor clears
+  integral) - Sign preservation (negative integral stays negative)
+
+### Refactoring
+
+- Remove backward compatibility re-exports
+  ([`fc06d79`](https://github.com/afewyards/ha-adaptive-thermostat/commit/fc06d79eeb0db0e28fa59cf8cada1fe0b16fefaa))
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+- **state_attributes**: Remove migration marker attributes
+  ([`a564e3d`](https://github.com/afewyards/ha-adaptive-thermostat/commit/a564e3d976a440bc7bc0b0749c5d6123b4528a91))
+
+### Testing
+
+- Fix imports after removing backward compat re-exports
+  ([`088fea6`](https://github.com/afewyards/ha-adaptive-thermostat/commit/088fea6296711b6758130815c44564e709f62961))
+
+- Remove migration-related tests
+  ([`8f779c7`](https://github.com/afewyards/ha-adaptive-thermostat/commit/8f779c76c19e5a007ed87a12fcef8bca947faf9c))
+
+Remove migration tests from test_learning_storage.py: - v2→v3, v3→v4, v4→v5 migration scenarios -
+  All legacy format migration tests
+
+Remove migration tests from test_state_restorer.py: - Legacy flat pid_history migration tests
+
+Keep only tests for current v5 data format behavior.
+
+- Remove preheat migration test from test_persistence_preheat.py
+  ([`1dbbe21`](https://github.com/afewyards/ha-adaptive-thermostat/commit/1dbbe212f10157ece269c7fbfc2f5b4eb20606f2))
+
+
 ## v0.33.1 (2026-01-26)
 
 ### Bug Fixes
