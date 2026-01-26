@@ -657,6 +657,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         vacation_schema=VACATION_MODE_SCHEMA,
         cost_report_schema=COST_REPORT_SCHEMA,
         default_vacation_target_temp=DEFAULT_VACATION_TARGET_TEMP,
+        debug=domain_config.get(CONF_DEBUG, DEFAULT_DEBUG),
     )
 
     # Event listener to set integral values (for restoration/debugging)
