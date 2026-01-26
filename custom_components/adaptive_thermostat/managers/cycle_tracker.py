@@ -917,6 +917,18 @@ class CycleTrackerManager:
         # Calculate dead_time from transport delay if set
         dead_time = self._transport_delay_minutes
 
+        # Determine mode from current cycle state
+        mode = None
+        if self._state in (CycleState.HEATING, CycleState.SETTLING):
+            # Check if we were in a heating cycle
+            hvac_mode = self._get_hvac_mode()
+            if hvac_mode == "heat":
+                mode = "heating"
+            elif hvac_mode == "cool":
+                mode = "cooling"
+        elif self._state == CycleState.COOLING:
+            mode = "cooling"
+
         # Create CycleMetrics object with interruption history
         metrics = CycleMetrics(
             overshoot=overshoot,
@@ -935,6 +947,7 @@ class CycleTrackerManager:
             settling_mae=settling_mae,
             inter_cycle_drift=inter_cycle_drift,
             dead_time=dead_time,
+            mode=mode,
         )
 
         # Record metrics with adaptive learner
