@@ -120,6 +120,7 @@ class CycleTrackerManager:
         self._last_interruption_reason: str | None = None  # Persists across cycle resets
         self._restoration_complete: bool = False  # Gate temperature updates until restoration done
         self._was_clamped: bool = False  # Tracks if PID was clamped during current cycle
+        self._finalizing: bool = False  # Guard against concurrent finalization calls
 
         # Calculate dynamic settling timeout based on thermal mass
         self._settling_timeout_source = "default"
@@ -289,7 +290,7 @@ class CycleTrackerManager:
         if self._state == new_state:
             return
 
-        if self._state == CycleState.SETTLING:
+        if self._state == CycleState.SETTLING and not self._finalizing:
             self._logger.info("Finalizing previous cycle before starting new one")
             # Record metrics synchronously before starting new cycle
             self._record_cycle_metrics()
@@ -522,11 +523,14 @@ class CycleTrackerManager:
         # Schedule new timeout
         async def _settling_timeout(_: datetime) -> None:
             """Handle settling timeout."""
+            if self._finalizing:
+                self._logger.debug("Finalization already in progress, ignoring timeout")
+                return
+            self._finalizing = True
             self._logger.warning(
                 "Settling timeout reached (%d minutes), finalizing cycle",
                 self._max_settling_time_minutes,
             )
-            # Clear handle before finalize to avoid double-cancel attempt
             self._settling_timeout_handle = None
             await self._finalize_cycle()
 
@@ -563,8 +567,9 @@ class CycleTrackerManager:
                 self._outdoor_temp_history.append((timestamp, outdoor_temp))
 
         # Check for settling completion during SETTLING state
-        if self._state == CycleState.SETTLING:
+        if self._state == CycleState.SETTLING and not self._finalizing:
             if self._is_settling_complete():
+                self._finalizing = True
                 self._logger.info("Settling complete, finalizing cycle")
                 await self._finalize_cycle()
 
@@ -636,6 +641,9 @@ class CycleTrackerManager:
 
         # Set state to IDLE
         self._state = CycleState.IDLE
+
+        # Reset finalization guard
+        self._finalizing = False
 
         # Cancel settling timeout if active
         self._cancel_settling_timeout()
