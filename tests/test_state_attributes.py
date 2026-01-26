@@ -1,7 +1,18 @@
 """Tests for state attribute building."""
+import sys
 import pytest
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, Mock
+
+# Mock homeassistant.components.climate for HVACMode
+mock_ha_climate = MagicMock()
+# Create mock HVACMode enum
+mock_hvac_mode = MagicMock()
+mock_hvac_mode.HEAT = "heat"
+mock_hvac_mode.COOL = "cool"
+mock_ha_climate.HVACMode = mock_hvac_mode
+sys.modules['homeassistant.components'] = MagicMock()
+sys.modules['homeassistant.components.climate'] = mock_ha_climate
 
 from custom_components.adaptive_thermostat.managers.state_attributes import (
     _compute_learning_status,
@@ -751,7 +762,7 @@ class TestPerModeConvergenceConfidence:
         # Should have heating_convergence_confidence attribute
         assert "heating_convergence_confidence" in attrs
         # Verify it's called with HVACMode.HEAT
-        adaptive_learner.get_convergence_confidence.assert_called_with(HVACMode.HEAT)
+        adaptive_learner.get_convergence_confidence.assert_any_call(HVACMode.HEAT)
         # Value should be percentage (0.75 -> 75)
         assert attrs["heating_convergence_confidence"] == 75
 

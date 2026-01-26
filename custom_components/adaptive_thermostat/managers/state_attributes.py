@@ -38,9 +38,6 @@ def build_state_attributes(thermostat: SmartThermostat) -> dict[str, Any]:
         "sleep_temp": thermostat._sleep_temp,
         "activity_temp": thermostat._activity_temp,
         "control_output": thermostat._control_output,
-        "kp": thermostat._kp,
-        "ki": thermostat._ki,
-        "kd": thermostat._kd,
         "ke": thermostat._ke,
         "pid_mode": thermostat.pid_mode,
         "pid_i": thermostat.pid_control_i,
@@ -100,6 +97,9 @@ def build_state_attributes(thermostat: SmartThermostat) -> dict[str, Any]:
 
     # Learning/adaptation status
     _add_learning_status_attributes(thermostat, attrs)
+
+    # Per-mode convergence confidence
+    _add_per_mode_convergence_attributes(thermostat, attrs)
 
     return attrs
 
@@ -306,5 +306,41 @@ def _add_learning_status_attributes(
                 attrs[ATTR_PID_HISTORY] = formatted_history
             else:
                 attrs[ATTR_PID_HISTORY] = []
+
+            break
+
+
+def _add_per_mode_convergence_attributes(
+    thermostat: SmartThermostat, attrs: dict[str, Any]
+) -> None:
+    """Add per-mode convergence confidence attributes.
+
+    Args:
+        thermostat: The SmartThermostat instance.
+        attrs: Dictionary of state attributes to update.
+    """
+    from ..const import DOMAIN
+    from homeassistant.components.climate import HVACMode
+
+    # Get adaptive learner from coordinator
+    coordinator = thermostat.hass.data.get(DOMAIN, {}).get("coordinator")
+    if not coordinator:
+        return
+
+    all_zones = coordinator.get_all_zones()
+    for zone_id, zone_data in all_zones.items():
+        if zone_data.get("climate_entity_id") == thermostat.entity_id:
+            adaptive_learner = zone_data.get("adaptive_learner")
+
+            if not adaptive_learner:
+                return
+
+            # Get convergence confidence for heating mode (0.0-1.0 -> 0-100%)
+            heating_confidence = adaptive_learner.get_convergence_confidence(HVACMode.HEAT)
+            attrs["heating_convergence_confidence"] = round(heating_confidence * 100)
+
+            # Get convergence confidence for cooling mode (0.0-1.0 -> 0-100%)
+            cooling_confidence = adaptive_learner.get_convergence_confidence(HVACMode.COOL)
+            attrs["cooling_convergence_confidence"] = round(cooling_confidence * 100)
 
             break
