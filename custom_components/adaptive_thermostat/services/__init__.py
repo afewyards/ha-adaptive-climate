@@ -535,6 +535,7 @@ def async_register_services(
     vacation_schema,
     cost_report_schema,
     default_vacation_target_temp: float,
+    debug: bool = False,
 ) -> None:
     """Register all services for the Adaptive Thermostat integration.
 
@@ -549,6 +550,7 @@ def async_register_services(
         vacation_schema: Schema for vacation mode service
         cost_report_schema: Schema for cost report service
         default_vacation_target_temp: Default target temp for vacation mode
+        debug: Debug mode flag
     """
 
     # Create service handler wrappers that capture the context
@@ -589,9 +591,6 @@ def async_register_services(
         DOMAIN, SERVICE_RUN_LEARNING, _run_learning_handler
     )
     hass.services.async_register(
-        DOMAIN, SERVICE_HEALTH_CHECK, _health_check_handler
-    )
-    hass.services.async_register(
         DOMAIN, SERVICE_WEEKLY_REPORT, _weekly_report_handler
     )
     hass.services.async_register(
@@ -609,7 +608,7 @@ def async_register_services(
         DOMAIN, SERVICE_PID_RECOMMENDATIONS, _pid_recommendations_handler
     )
 
-    _LOGGER.debug("Registered %d services for %s domain", 7, DOMAIN)
+    _LOGGER.debug("Registered %d services for %s domain", 6, DOMAIN)
 
 
 def async_unregister_services(hass: HomeAssistant) -> None:
@@ -620,7 +619,6 @@ def async_unregister_services(hass: HomeAssistant) -> None:
     """
     services_to_remove = [
         SERVICE_RUN_LEARNING,
-        SERVICE_HEALTH_CHECK,
         SERVICE_WEEKLY_REPORT,
         SERVICE_COST_REPORT,
         SERVICE_SET_VACATION_MODE,

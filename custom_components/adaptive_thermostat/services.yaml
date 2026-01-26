@@ -52,10 +52,6 @@ run_learning:
     metrics (overshoot, undershoot, settling time, oscillations). Results are
     returned and also logged for review.
 
-health_check:
-  name: Health Check
-  description: Run a health check on all zones and send alerts for any issues detected. Checks cycle times, power consumption, and sensor availability.
-
 weekly_report:
   name: Weekly Report
   description: Generate and send a weekly performance report via the configured notification service. Includes duty cycles, energy usage, and zone statistics.
