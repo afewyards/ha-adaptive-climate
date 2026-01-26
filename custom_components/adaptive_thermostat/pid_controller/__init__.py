@@ -305,6 +305,15 @@ class PID:
         self._transport_delay = None
         self._dead_time_start = None
 
+    def decay_integral(self, factor: float) -> None:
+        """Decay integral term by factor (0-1). Used during humidity pause.
+
+        Args:
+            factor: Decay factor between 0 and 1. The integral is multiplied
+                   by this factor. 0.0 clears integral, 1.0 preserves it.
+        """
+        self._integral *= factor
+
     def prepare_bumpless_transfer(self):
         """Prepare for bumpless transfer by setting integral to maintain continuity.
 

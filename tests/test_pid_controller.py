@@ -2765,5 +2765,64 @@ class TestPIDClampingStateTracking:
         assert abs(pid.integral - expected_final) < 0.01, f"Expected integral ~{expected_final}, got {pid.integral}"
 
 
+class TestDecayIntegral:
+    """Test decay_integral method for humidity pause scenarios."""
+
+    def test_decay_integral_reduces_value(self):
+        """Test that decay_integral(0.9) multiplies integral by 0.9."""
+        pid = PID(kp=10, ki=1.2, kd=0, out_min=0, out_max=100)
+
+        # Build up some integral
+        pid.calc(input_val=19.0, set_point=20.0, input_time=0.0, last_input_time=None)
+        pid.calc(input_val=19.0, set_point=20.0, input_time=300.0, last_input_time=0.0)
+
+        initial_integral = pid.integral
+        assert initial_integral > 0, "Integral should be positive after heating"
+
+        # Apply decay
+        pid.decay_integral(0.9)
+
+        # Should be 90% of original value
+        expected = initial_integral * 0.9
+        assert abs(pid.integral - expected) < 0.001, \
+            f"Expected integral {expected}, got {pid.integral}"
+
+    def test_decay_integral_zero_factor(self):
+        """Test that decay_integral(0.0) sets integral to 0."""
+        pid = PID(kp=10, ki=1.2, kd=0, out_min=0, out_max=100)
+
+        # Build up some integral
+        pid.calc(input_val=19.0, set_point=20.0, input_time=0.0, last_input_time=None)
+        pid.calc(input_val=19.0, set_point=20.0, input_time=300.0, last_input_time=0.0)
+
+        assert pid.integral > 0, "Integral should be positive before decay"
+
+        # Apply full decay
+        pid.decay_integral(0.0)
+
+        # Should be zero
+        assert pid.integral == 0.0, f"Expected integral 0.0, got {pid.integral}"
+
+    def test_decay_integral_preserves_sign(self):
+        """Test that negative integral stays negative after decay."""
+        pid = PID(kp=10, ki=1.2, kd=0, out_min=-100, out_max=100)
+
+        # Build up negative integral (cooling scenario)
+        pid.calc(input_val=21.0, set_point=20.0, input_time=0.0, last_input_time=None)
+        pid.calc(input_val=21.0, set_point=20.0, input_time=300.0, last_input_time=0.0)
+
+        initial_integral = pid.integral
+        assert initial_integral < 0, "Integral should be negative after cooling"
+
+        # Apply decay
+        pid.decay_integral(0.8)
+
+        # Should be 80% of original (still negative)
+        expected = initial_integral * 0.8
+        assert pid.integral < 0, "Integral should still be negative"
+        assert abs(pid.integral - expected) < 0.001, \
+            f"Expected integral {expected}, got {pid.integral}"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
