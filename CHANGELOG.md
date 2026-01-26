@@ -1,6 +1,96 @@
 # CHANGELOG
 
 
+## v0.35.0 (2026-01-26)
+
+### Documentation
+
+- Update CLAUDE.md with consolidated state attributes
+  ([`8d474df`](https://github.com/afewyards/ha-adaptive-thermostat/commit/8d474dfa21f98046f8c12097563bae0a0a1c4218))
+
+- Add State Attributes section documenting the minimized attribute set - Update Open Window and
+  Humidity Detection sections to reference pause - Update Preheat section to note debug-only status
+  - Document consolidated pause attribute structure with priority rules
+
+### Features
+
+- Add current_cycle_state and cycles_required_for_learning in debug mode
+  ([`89fa36b`](https://github.com/afewyards/ha-adaptive-thermostat/commit/89fa36b38980ca1f243626012863977983155a3a))
+
+### Refactoring
+
+- Clean up state attributes exposure
+  ([`977006a`](https://github.com/afewyards/ha-adaptive-thermostat/commit/977006ab34c02afdd6d5ff759746178d10b23b6d))
+
+- Remove pid_i from core attrs, rename to integral (debug only) - Remove pid_p, pid_d, pid_e, pid_dt
+  debug block - Make preheat attributes debug-only when enabled - Omit last_pid_adjustment when null
+  - Omit pid_history when empty - Omit preheat_heating_rate_learned when null
+
+- Remove non-critical diagnostic attributes
+  ([`3e99bfe`](https://github.com/afewyards/ha-adaptive-thermostat/commit/3e99bfeb0a280aaa05a664b069eec3117cb05e5f))
+
+Removed duty_accumulator, transport_delay, and outdoor_temp_lag_tau from exposed state attributes.
+  These config-derived values provide limited user value. Retained duty_accumulator_pct as it
+  provides meaningful operational feedback.
+
+- Remove unused attribute helper functions
+  ([`5a0028e`](https://github.com/afewyards/ha-adaptive-thermostat/commit/5a0028ee46337bb30f099f95802859ce80926797))
+
+Remove helper functions and their calls from state_attributes.py: - _add_learning_grace_attributes
+  (learning_paused, learning_resumes) - _add_ke_learning_attributes (ke_learning_enabled,
+  ke_observations, pid_converged, consecutive_converged_cycles) -
+  _add_per_mode_convergence_attributes (heating_convergence_confidence,
+  cooling_convergence_confidence) - _add_heater_failure_attributes (heater_control_failed,
+  last_heater_error)
+
+Remove unused constants: - ATTR_CYCLES_REQUIRED - ATTR_CURRENT_CYCLE_STATE -
+  ATTR_LAST_CYCLE_INTERRUPTED - ATTR_LAST_PID_ADJUSTMENT
+
+Update _add_learning_status_attributes to remove references to removed attributes.
+
+Update test_state_attributes.py to remove assertions for removed attributes and simplify tests.
+
+- Simplify learning status attributes
+  ([`4678068`](https://github.com/afewyards/ha-adaptive-thermostat/commit/4678068bd0365cfb09f674e142463c6173ffc9fe))
+
+Remove internal/diagnostic attributes from state exposure: - auto_apply_pid_enabled (config flag,
+  not runtime state) - auto_apply_count (internal counter) - validation_mode (internal state)
+
+Keep only user-relevant learning metrics: - learning_status (collecting/ready/active/converged) -
+  cycles_collected (count) - convergence_confidence_pct (0-100%) - pid_history (adjustment log)
+
+- Wire up consolidated pause attribute in state attributes
+  ([`b9ce83e`](https://github.com/afewyards/ha-adaptive-thermostat/commit/b9ce83e47ec709a9dfb8dd9cf3e92f9118a8ba32))
+
+Remove calls to _add_contact_sensor_attributes and _add_humidity_detector_attributes, replacing them
+  with a single call to _build_pause_attribute. This consolidates pause state from multiple sources
+  (contact sensors, humidity detection) into a unified "pause" attribute with
+  active/reason/resume_in fields.
+
+Keep _add_humidity_detection_attributes for debug-only state attributes.
+
+### Testing
+
+- Add tests for consolidated pause attribute
+  ([`94e7580`](https://github.com/afewyards/ha-adaptive-thermostat/commit/94e758003d5ffca03361471bc7318dd23c3efb75))
+
+- Final cleanup of state attributes tests
+  ([`7a1cb7a`](https://github.com/afewyards/ha-adaptive-thermostat/commit/7a1cb7a2d422367965d84f3e87549fcc395e3a4b))
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+- Update humidity detection tests for consolidated pause attribute
+  ([`e423346`](https://github.com/afewyards/ha-adaptive-thermostat/commit/e4233468dec1c60573d943f8579493206d9340d2))
+
+Updated TestHumidityDetectionAttributes class to verify the consolidated pause attribute behavior
+  instead of individual humidity attributes.
+
+Changes: - Tests now verify pause["active"] and pause["reason"] when humidity detector is
+  paused/stabilizing - Tests verify pause["resume_in"] countdown during stabilizing state - Added
+  test to ensure debug-only attributes (humidity_detection_state, humidity_resume_in) are still
+  exposed via _add_humidity_detection_attributes - All 49 tests in test_state_attributes.py pass
+
+
 ## v0.34.1 (2026-01-26)
 
 ### Bug Fixes
