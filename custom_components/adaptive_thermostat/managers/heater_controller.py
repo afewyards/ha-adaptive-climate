@@ -59,7 +59,7 @@ except ImportError:
     HomeAssistantError = Exception
     ServiceNotFound = Exception
 
-from ..const import DOMAIN
+from ..const import DOMAIN, COOLING_TYPE_CHARACTERISTICS
 from .events import (
     CycleEventDispatcher,
     CycleStartedEvent,
@@ -94,6 +94,7 @@ class HeaterController:
         min_on_cycle_duration: float,  # in seconds
         min_off_cycle_duration: float,  # in seconds
         dispatcher: Optional[CycleEventDispatcher] = None,
+        cooling_type: Optional[str] = None,
     ):
         """Initialize the HeaterController.
 
@@ -109,6 +110,7 @@ class HeaterController:
             min_on_cycle_duration: Minimum on cycle duration in seconds
             min_off_cycle_duration: Minimum off cycle duration in seconds
             dispatcher: Optional event dispatcher for cycle events
+            cooling_type: Type of cooling system for compressor protection (forced_air, mini_split, chilled_water)
         """
         self._hass = hass
         self._thermostat = thermostat
@@ -121,6 +123,7 @@ class HeaterController:
         self._min_on_cycle_duration = min_on_cycle_duration
         self._min_off_cycle_duration = min_off_cycle_duration
         self._dispatcher = dispatcher
+        self._cooling_type = cooling_type
 
         # State tracking (owned by thermostat, but accessed here)
         self._heater_control_failed = False
@@ -209,6 +212,11 @@ class HeaterController:
     def min_on_cycle_duration(self) -> float:
         """Return the minimum on cycle duration in seconds."""
         return self._min_on_cycle_duration
+
+    @property
+    def cooling_type(self) -> Optional[str]:
+        """Return the cooling system type for compressor protection."""
+        return self._cooling_type
 
     def set_duty_accumulator(self, seconds: float) -> None:
         """Set the duty accumulator value (used during state restoration).
@@ -553,12 +561,16 @@ class HeaterController:
     ) -> None:
         """Turn heater toggleable device off.
 
+        Enforces minimum on-time protection for compressor-based cooling systems
+        (forced_air, mini_split) to prevent short-cycling damage. Chilled water
+        systems (no compressor) have min_cycle=0 and can turn off immediately.
+
         Args:
             hvac_mode: Current HVAC mode
             get_cycle_start_time: Callable that returns cycle start time
             set_is_heating: Callback to set heating state
             set_last_heat_cycle_time: Callback to set last heat cycle time
-            force: Force turn off regardless of cycle duration
+            force: Force turn off regardless of cycle duration (for emergency shutdowns)
         """
         entities = self.get_entities(hvac_mode)
         thermostat_entity_id = self._thermostat.entity_id
@@ -572,6 +584,9 @@ class HeaterController:
                 ", ".join(entities)
             )
         elif time.time() - get_cycle_start_time() >= self._min_on_cycle_duration or force:
+            # Minimum cycle protection: Only turn off if min_on_cycle_duration has elapsed
+            # or force=True (for emergency shutdowns). This protects compressors from
+            # short-cycling which can damage equipment.
             _LOGGER.info(
                 "%s: Turning OFF %s",
                 thermostat_entity_id,
