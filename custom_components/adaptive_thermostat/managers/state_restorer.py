@@ -124,10 +124,22 @@ class StateRestorer:
         # This ensures pid_history takes precedence over legacy kp/ki/kd attributes
         self._restore_dual_gain_sets(old_state)
 
-        # Restore PID integral value
-        if isinstance(old_state.attributes.get('pid_i'), (float, int)):
-            thermostat._i = float(old_state.attributes.get('pid_i'))
+        # Restore PID integral value (check new name first, then legacy)
+        integral_value = old_state.attributes.get('integral')
+        if integral_value is None:
+            integral_value = old_state.attributes.get('pid_i')  # Legacy name
+        if isinstance(integral_value, (float, int)):
+            thermostat._i = float(integral_value)
             thermostat._pid_controller.integral = thermostat._i
+            _LOGGER.info("%s: Restored integral=%.2f", thermostat.entity_id, thermostat._i)
+        else:
+            _LOGGER.warning(
+                "%s: No integral in old_state (integral=%s, pid_i=%s). Available attrs: %s",
+                thermostat.entity_id,
+                old_state.attributes.get('integral'),
+                old_state.attributes.get('pid_i'),
+                list(old_state.attributes.keys())
+            )
 
         # Restore Kp
         if old_state.attributes.get('kp') is not None:

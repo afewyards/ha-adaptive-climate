@@ -659,6 +659,26 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         default_vacation_target_temp=DEFAULT_VACATION_TARGET_TEMP,
     )
 
+    # Event listener to set integral values (for restoration/debugging)
+    async def _handle_set_integral_event(event):
+        """Handle adaptive_thermostat_set_integral event."""
+        values = event.data.get("values", {})
+        entity_component = hass.data.get("climate")
+        if not entity_component:
+            _LOGGER.warning("set_integral: Climate component not available")
+            return
+        for entity_id, integral_value in values.items():
+            thermostat = entity_component.get_entity(entity_id)
+            if thermostat and hasattr(thermostat, "_pid_controller") and thermostat._pid_controller:
+                thermostat._pid_controller.integral = float(integral_value)
+                thermostat._i = float(integral_value)
+                _LOGGER.info("%s: Set integral to %.2f via event", entity_id, integral_value)
+                thermostat.async_write_ha_state()
+            else:
+                _LOGGER.warning("set_integral: Entity not found or no PID controller: %s", entity_id)
+
+    hass.bus.async_listen("adaptive_thermostat_set_integral", _handle_set_integral_event)
+
     # Store cancel callbacks for scheduled tasks (needed for unload)
     unsub_callbacks = []
 

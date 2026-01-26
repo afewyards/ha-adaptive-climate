@@ -35,6 +35,9 @@ def build_state_attributes(thermostat: SmartThermostat) -> dict[str, Any]:
         "activity_temp": thermostat._activity_temp,
         "control_output": thermostat._control_output,
         "ke": thermostat._ke,
+        "kp": thermostat._kp,
+        "ki": thermostat._ki,
+        "kd": thermostat._kd,
         "pid_mode": thermostat.pid_mode,
         # Outdoor temperature lag state
         "outdoor_temp_lagged": thermostat._pid_controller.outdoor_temp_lagged,
@@ -51,11 +54,9 @@ def build_state_attributes(thermostat: SmartThermostat) -> dict[str, Any]:
         ),
         # Duty accumulator percentage
         "duty_accumulator_pct": _compute_duty_accumulator_pct(thermostat),
+        # PID integral - always persisted for restoration
+        "integral": thermostat.pid_control_i,
     }
-
-    # Debug-only attributes
-    if thermostat.hass.data.get(DOMAIN, {}).get("debug", False):
-        attrs["integral"] = thermostat.pid_control_i
 
     # Night setback attributes
     _add_night_setback_attributes(thermostat, attrs)

@@ -517,8 +517,8 @@ class TestDutyAccumulatorAttributes:
 class TestPerModeConvergenceConfidence:
     """Tests for per-mode convergence confidence attributes."""
 
-    def test_kp_ki_kd_removed_from_state_attributes(self):
-        """Test that kp, ki, kd are no longer in state attributes (moved to persistence)."""
+    def test_kp_ki_kd_in_state_attributes_for_persistence(self):
+        """Test that kp, ki, kd are included in state attributes for persistence."""
         from custom_components.adaptive_thermostat.managers.state_attributes import (
             build_state_attributes,
         )
@@ -561,10 +561,13 @@ class TestPerModeConvergenceConfidence:
 
         attrs = build_state_attributes(thermostat)
 
-        # kp, ki, kd should NOT be in state attributes
-        assert "kp" not in attrs
-        assert "ki" not in attrs
-        assert "kd" not in attrs
+        # kp, ki, kd should be in state attributes for persistence
+        assert "kp" in attrs
+        assert attrs["kp"] == 20.0
+        assert "ki" in attrs
+        assert attrs["ki"] == 0.01
+        assert "kd" in attrs
+        assert attrs["kd"] == 100.0
         # Other attributes should still be present
         assert "ke" in attrs
         assert "pid_mode" in attrs

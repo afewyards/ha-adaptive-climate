@@ -150,8 +150,9 @@ Exposed via `extra_state_attributes`. Minimized for clarity - only restoration +
     "away_temp", "eco_temp", "boost_temp", "comfort_temp",
     "home_temp", "sleep_temp", "activity_temp",
 
-    # Restoration
-    "ke", "pid_mode", "outdoor_temp_lagged",
+    # Restoration (PID state)
+    "kp", "ki", "kd", "ke", "integral",
+    "pid_mode", "outdoor_temp_lagged",
     "heater_cycle_count", "cooler_cycle_count",
 
     # Critical diagnostics
@@ -176,7 +177,6 @@ Exposed via `extra_state_attributes`. Minimized for clarity - only restoration +
 **Priority:** Contact sensor pause > humidity detection pause (if both active, contact shown)
 
 **Debug-only attributes** (require `debug: true` in domain config):
-- `integral` - PID integral term
 - `current_cycle_state` - Cycle tracker state (idle/heating/settling)
 - `cycles_required_for_learning` - Minimum cycles needed (constant: 6)
 - `preheat_*` - Preheat learning/scheduling details
