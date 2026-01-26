@@ -466,3 +466,64 @@ def _add_humidity_detection_attributes(
     detector = thermostat._humidity_detector
     attrs["humidity_detection_state"] = detector.get_state()
     attrs["humidity_resume_in"] = detector.get_time_until_resume()
+
+
+def _build_pause_attribute(thermostat: SmartThermostat) -> dict[str, Any]:
+    """Build consolidated pause attribute.
+
+    The pause attribute provides unified information about heating pause state
+    from all possible sources (contact sensors, humidity detection). Contact
+    sensors take priority over humidity detection.
+
+    Args:
+        thermostat: The SmartThermostat instance
+
+    Returns:
+        Dictionary with structure:
+        {
+            "active": bool,        # Whether heating is currently paused
+            "reason": str | None,  # "contact" | "humidity" | None
+            "resume_in": int       # Optional seconds until resume (only when countdown active)
+        }
+    """
+    # Initialize with inactive state
+    pause_data: dict[str, Any] = {
+        "active": False,
+        "reason": None,
+    }
+
+    # Check contact sensor first (priority)
+    if thermostat._contact_sensor_handler:
+        is_open = thermostat._contact_sensor_handler.is_any_contact_open()
+        is_paused = thermostat._contact_sensor_handler.should_take_action()
+
+        if is_paused:
+            # Contact sensor is actively pausing
+            pause_data["active"] = True
+            pause_data["reason"] = "contact"
+            return pause_data
+        elif is_open:
+            # Contact is open but not paused yet (in delay countdown)
+            time_until_action = thermostat._contact_sensor_handler.get_time_until_action()
+            if time_until_action is not None and time_until_action > 0:
+                pause_data["resume_in"] = time_until_action
+            return pause_data
+
+    # Check humidity detector (only if contact didn't trigger)
+    if thermostat._humidity_detector:
+        is_paused = thermostat._humidity_detector.should_pause()
+
+        if is_paused:
+            # Humidity detector is actively pausing
+            pause_data["active"] = True
+            pause_data["reason"] = "humidity"
+
+            # Add countdown if available (during stabilizing state)
+            time_until_resume = thermostat._humidity_detector.get_time_until_resume()
+            if time_until_resume is not None and time_until_resume > 0:
+                pause_data["resume_in"] = time_until_resume
+
+            return pause_data
+
+    # No pause detected from any source
+    return pause_data
