@@ -1,6 +1,22 @@
 # CHANGELOG
 
 
+## v0.32.1 (2026-01-26)
+
+### Bug Fixes
+
+- Resolve mode-specific refactoring issues and test failures
+  ([`7a6b825`](https://github.com/afewyards/ha-adaptive-thermostat/commit/7a6b82514f55e0ff79cffef9ad6f8263fd2df09c))
+
+- Fix AdaptiveLearner methods using obsolete attribute names: - check_performance_degradation:
+  _cycle_history → mode-aware - check_auto_apply_limits: _auto_apply_count → combined count -
+  apply_confidence_decay: decay both heating/cooling confidence - Add backward-compatible property
+  aliases for private attributes - Update to_dict() to include v4-compatible top-level keys - Fix
+  climate.py NUMBER_DOMAIN import for HA version compatibility - Remove unused ABC inheritance
+  causing metaclass conflict - Fix test assertions for PID limits and boundary conditions - Enhance
+  conftest.py with comprehensive HA module mocks
+
+
 ## v0.32.0 (2026-01-26)
 
 ### Features
