@@ -3685,7 +3685,8 @@ class TestModeSpecificCycleHistories:
         learner.update_convergence_confidence(poor_metrics, mode=HVACMode.COOL)
 
         # Heating should have high confidence, cooling should have low/zero
-        assert learner._heating_convergence_confidence > 0.5
+        # 5 good cycles × 0.1 per cycle = 0.5 (exactly at 0.5)
+        assert learner._heating_convergence_confidence >= 0.5
         assert learner._cooling_convergence_confidence < 0.2
 
     def test_get_auto_apply_count_returns_heating_count(self):
@@ -3744,16 +3745,18 @@ class TestModeSpecificCycleHistories:
             )
 
         # Calculate adjustment for heating mode
+        # Note: Use Kd=2.0 so 20% increase (to 2.4) stays under PID_LIMITS["kd_max"]=3.3
         adjustment = learner.calculate_pid_adjustment(
             current_kp=100.0,
             current_ki=1.0,
-            current_kd=10.0,
+            current_kd=2.0,
             mode=HVACMode.HEAT
         )
 
-        # Should get adjustment based on high heating overshoot
+        # Should get adjustment based on heating overshoot
+        # Note: Moderate overshoot (0.2-1.0°C) only increases Kd, doesn't touch Kp
         assert adjustment is not None
-        assert adjustment["kp"] < 100.0  # Kp should decrease due to overshoot
+        assert adjustment["kd"] > 2.0  # Kd should increase due to moderate overshoot
 
     def test_calculate_pid_adjustment_uses_cooling_history(self):
         """Test that calculate_pid_adjustment() uses cooling history when mode=COOL."""
@@ -3776,16 +3779,18 @@ class TestModeSpecificCycleHistories:
             )
 
         # Calculate adjustment for cooling mode
+        # Note: Use Kd=2.0 so 20% increase (to 2.4) stays under PID_LIMITS["kd_max"]=3.3
         adjustment = learner.calculate_pid_adjustment(
             current_kp=100.0,
             current_ki=1.0,
-            current_kd=10.0,
+            current_kd=2.0,
             mode=HVACMode.COOL
         )
 
-        # Should get adjustment based on high cooling overshoot
+        # Should get adjustment based on cooling overshoot
+        # Note: Moderate overshoot (0.2-1.0°C) only increases Kd, doesn't touch Kp
         assert adjustment is not None
-        assert adjustment["kp"] < 100.0  # Kp should decrease due to overshoot
+        assert adjustment["kd"] > 2.0  # Kd should increase due to moderate overshoot
 
     def test_clear_history_clears_both_mode_histories(self):
         """Test that clear_history() clears both heating and cooling cycle histories."""

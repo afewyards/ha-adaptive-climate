@@ -5,7 +5,7 @@ https://github.com/ScratMan/HASmartThermostat"""
 import asyncio
 import logging
 import time
-from abc import ABC
+# ABC removed - no abstract methods in this class
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -28,8 +28,8 @@ from homeassistant.const import (
     STATE_UNAVAILABLE,
     STATE_UNKNOWN,
 )
-from homeassistant.components.number.const import DOMAIN as NUMBER_DOMAIN
 from homeassistant.components.input_number import DOMAIN as INPUT_NUMBER_DOMAIN
+NUMBER_DOMAIN = "number"  # Avoid importing from number.const for HA version compatibility
 from homeassistant.components.light import (SERVICE_TURN_ON as SERVICE_TURN_LIGHT_ON,
                                             ATTR_BRIGHTNESS_PCT)
 from homeassistant.components.valve import (SERVICE_SET_VALVE_POSITION, ATTR_POSITION)
@@ -43,7 +43,7 @@ from homeassistant.helpers.event import (
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.exceptions import HomeAssistantError, ServiceNotFound
 
-from .adaptive.physics import calculate_thermal_time_constant, calculate_initial_pid, calculate_initial_ke
+from .adaptive.physics import calculate_thermal_time_constant, calculate_initial_pid, calculate_initial_ke, calculate_initial_cooling_pid
 from .adaptive.night_setback import NightSetback
 from .adaptive.sun_position import SunPositionCalculator
 from .adaptive.contact_sensors import ContactSensorHandler, ContactAction
@@ -414,7 +414,7 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     )
 
 
-class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
+class AdaptiveThermostat(ClimateEntity, RestoreEntity):
     """Representation of an Adaptive Thermostat device."""
 
     def __init__(self, **kwargs):

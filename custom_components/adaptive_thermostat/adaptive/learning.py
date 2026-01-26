@@ -147,6 +147,37 @@ class AdaptiveLearner:
         """Set cycle history (primarily for testing, defaults to heating for backward compatibility)."""
         self._heating_cycle_history = value
 
+    # Backward-compatible aliases for private attributes (used by tests)
+    @property
+    def _cycle_history(self) -> List[CycleMetrics]:
+        """Backward-compatible alias for _heating_cycle_history."""
+        return self._heating_cycle_history
+
+    @_cycle_history.setter
+    def _cycle_history(self, value: List[CycleMetrics]) -> None:
+        """Backward-compatible alias setter for _heating_cycle_history."""
+        self._heating_cycle_history = value
+
+    @property
+    def _auto_apply_count(self) -> int:
+        """Backward-compatible alias for _heating_auto_apply_count."""
+        return self._heating_auto_apply_count
+
+    @_auto_apply_count.setter
+    def _auto_apply_count(self, value: int) -> None:
+        """Backward-compatible alias setter for _heating_auto_apply_count."""
+        self._heating_auto_apply_count = value
+
+    @property
+    def _convergence_confidence(self) -> float:
+        """Backward-compatible alias for _heating_convergence_confidence."""
+        return self._heating_convergence_confidence
+
+    @_convergence_confidence.setter
+    def _convergence_confidence(self, value: float) -> None:
+        """Backward-compatible alias setter for _heating_convergence_confidence."""
+        self._heating_convergence_confidence = value
+
     def add_cycle_metrics(self, metrics: CycleMetrics, mode: "HVACMode" = None) -> None:
         """
         Add a cycle's performance metrics to history.
@@ -1091,23 +1122,28 @@ class AdaptiveLearner:
         else:
             self._heating_convergence_confidence = current_confidence
 
-    def check_performance_degradation(self, baseline_window: int = 10) -> bool:
+    def check_performance_degradation(self, baseline_window: int = 10, mode: "HVACMode" = None) -> bool:
         """Check if recent performance has degraded compared to baseline.
 
         Compares recent cycles to earlier baseline to detect if tuning has drifted.
 
         Args:
             baseline_window: Number of cycles to use for baseline comparison
+            mode: HVACMode (HEAT or COOL) to check (defaults to HEAT)
 
         Returns:
             True if performance has degraded significantly, False otherwise
         """
-        if len(self._cycle_history) < baseline_window * 2:
+        if mode is None:
+            mode = _get_hvac_heat_mode()
+        cycle_history = self._cooling_cycle_history if mode == _get_hvac_cool_mode() else self._heating_cycle_history
+
+        if len(cycle_history) < baseline_window * 2:
             return False  # Not enough data
 
         # Get baseline (older cycles) and recent cycles
-        baseline_cycles = self._cycle_history[:baseline_window]
-        recent_cycles = self._cycle_history[-baseline_window:]
+        baseline_cycles = cycle_history[:baseline_window]
+        recent_cycles = cycle_history[-baseline_window:]
 
         # Calculate average overshoot for both windows
         baseline_overshoot = statistics.mean(
@@ -1181,11 +1217,17 @@ class AdaptiveLearner:
 
         Reduces confidence by CONFIDENCE_DECAY_RATE_DAILY (2% per day).
         Call this once per day or on each cycle with appropriate scaling.
+        Decays both heating and cooling mode confidence.
         """
-        # Decay confidence
-        self._convergence_confidence = max(
+        # Decay heating confidence
+        self._heating_convergence_confidence = max(
             0.0,
-            self._convergence_confidence * (1.0 - CONFIDENCE_DECAY_RATE_DAILY)
+            self._heating_convergence_confidence * (1.0 - CONFIDENCE_DECAY_RATE_DAILY)
+        )
+        # Decay cooling confidence
+        self._cooling_convergence_confidence = max(
+            0.0,
+            self._cooling_convergence_confidence * (1.0 - CONFIDENCE_DECAY_RATE_DAILY)
         )
 
     def get_learning_rate_multiplier(self, confidence: Optional[float] = None) -> float:
@@ -1328,10 +1370,11 @@ class AdaptiveLearner:
             None if all checks pass (OK to auto-apply),
             Error message string if any check fails (blocked).
         """
-        # Check 1: Lifetime limit
-        if self._auto_apply_count >= MAX_AUTO_APPLIES_LIFETIME:
+        # Check 1: Lifetime limit (combined across all modes)
+        total_auto_apply_count = self._heating_auto_apply_count + self._cooling_auto_apply_count
+        if total_auto_apply_count >= MAX_AUTO_APPLIES_LIFETIME:
             return (
-                f"Lifetime limit reached: {self._auto_apply_count} auto-applies "
+                f"Lifetime limit reached: {total_auto_apply_count} auto-applies "
                 f"(max {MAX_AUTO_APPLIES_LIFETIME}). Manual review required."
             )
 
@@ -1407,15 +1450,12 @@ class AdaptiveLearner:
         }
 
     def to_dict(self) -> Dict[str, Any]:
-        """Serialize AdaptiveLearner state to a dictionary in v5 format.
+        """Serialize AdaptiveLearner state to a dictionary in v5 format with v4 backward compatibility.
 
         Returns:
-            Dictionary containing mode-keyed structure:
-            - heating: Dict with cycle_history, auto_apply_count, convergence_confidence, pid_history
-            - cooling: Dict with cycle_history, auto_apply_count, convergence_confidence, pid_history
-            - last_adjustment_time: ISO timestamp string or None (shared across modes)
-            - consecutive_converged_cycles: Number of consecutive converged cycles (shared)
-            - pid_converged_for_ke: Whether PID has converged for Ke learning (shared)
+            Dictionary containing:
+            - v5 mode-keyed structure (heating/cooling sub-dicts)
+            - v4 backward-compatible top-level keys (cycle_history, auto_apply_count, etc.)
         """
         # Serialize PID history with ISO timestamps
         serialized_pid_history = []
@@ -1425,19 +1465,29 @@ class AdaptiveLearner:
                 serialized_entry["timestamp"] = entry["timestamp"].isoformat()
             serialized_pid_history.append(serialized_entry)
 
+        # Serialize heating cycle history for both v4 and v5 formats
+        serialized_heating_cycles = [self._serialize_cycle(cycle) for cycle in self._heating_cycle_history]
+        serialized_cooling_cycles = [self._serialize_cycle(cycle) for cycle in self._cooling_cycle_history]
+
         return {
+            # V5 mode-keyed structure
             "heating": {
-                "cycle_history": [self._serialize_cycle(cycle) for cycle in self._heating_cycle_history],
+                "cycle_history": serialized_heating_cycles,
                 "auto_apply_count": self._heating_auto_apply_count,
                 "convergence_confidence": self._heating_convergence_confidence,
                 "pid_history": serialized_pid_history,
             },
             "cooling": {
-                "cycle_history": [self._serialize_cycle(cycle) for cycle in self._cooling_cycle_history],
+                "cycle_history": serialized_cooling_cycles,
                 "auto_apply_count": self._cooling_auto_apply_count,
                 "convergence_confidence": self._cooling_convergence_confidence,
                 "pid_history": [],  # Cooling mode typically shares PID history or has separate tracking
             },
+            # V4 backward-compatible top-level keys (for heating mode as default)
+            "cycle_history": serialized_heating_cycles,
+            "auto_apply_count": self._heating_auto_apply_count,
+            "convergence_confidence": self._heating_convergence_confidence,
+            # Shared fields
             "last_adjustment_time": (
                 self._last_adjustment_time.isoformat()
                 if self._last_adjustment_time is not None
