@@ -1245,6 +1245,334 @@ class TestDutyAccumulation:
         assert controller._duty_accumulator_seconds == 0.0
 
 
+class TestCompressorMinCycleProtection:
+    """Tests for compressor minimum cycle protection in cooling mode."""
+
+    @pytest.fixture
+    def cooler_controller_forced_air(self, mock_hass, mock_thermostat):
+        """Create a HeaterController for forced_air cooling (compressor-based)."""
+        return HeaterController(
+            hass=mock_hass,
+            thermostat=mock_thermostat,
+            heater_entity_id=None,
+            cooler_entity_id=["switch.ac_unit"],
+            demand_switch_entity_id=None,
+            heater_polarity_invert=False,
+            pwm=180,  # 3 minutes PWM for forced_air
+            difference=100.0,
+            min_on_cycle_duration=180.0,  # 3 minutes min cycle for compressor protection
+            min_off_cycle_duration=180.0,
+            dispatcher=None,
+        )
+
+    @pytest.fixture
+    def cooler_controller_mini_split(self, mock_hass, mock_thermostat):
+        """Create a HeaterController for mini_split cooling (compressor-based)."""
+        return HeaterController(
+            hass=mock_hass,
+            thermostat=mock_thermostat,
+            heater_entity_id=None,
+            cooler_entity_id=["climate.mini_split"],
+            demand_switch_entity_id=None,
+            heater_polarity_invert=False,
+            pwm=300,  # 5 minutes PWM for mini_split
+            difference=100.0,
+            min_on_cycle_duration=300.0,  # 5 minutes min cycle for compressor protection
+            min_off_cycle_duration=300.0,
+            dispatcher=None,
+        )
+
+    @pytest.fixture
+    def cooler_controller_chilled_water(self, mock_hass, mock_thermostat):
+        """Create a HeaterController for chilled_water cooling (no compressor)."""
+        return HeaterController(
+            hass=mock_hass,
+            thermostat=mock_thermostat,
+            heater_entity_id=None,
+            cooler_entity_id=["number.chilled_water_valve"],
+            demand_switch_entity_id=None,
+            heater_polarity_invert=False,
+            pwm=0,  # Valve mode for chilled_water
+            difference=100.0,
+            min_on_cycle_duration=0.0,  # No min cycle for chilled water
+            min_off_cycle_duration=0.0,
+            dispatcher=None,
+        )
+
+    @pytest.mark.asyncio
+    async def test_forced_air_compressor_respects_min_cycle(self, cooler_controller_forced_air):
+        """Test forced_air compressor cannot turn off before min_on_cycle_duration (180s).
+
+        This protects compressor from short-cycling which can damage the equipment.
+        """
+        controller = cooler_controller_forced_air
+
+        # Mock service calls and state
+        controller._hass.services.async_call = MagicMock()
+        controller._hass.states.is_state = MagicMock(return_value=True)  # Compressor is ON
+
+        # Mock callbacks
+        get_cycle_start_time = MagicMock(return_value=0.0)
+        set_is_heating = MagicMock()
+        set_last_heat_cycle_time = MagicMock()
+
+        # Set previous state for cycle count
+        controller._last_cooler_state = True
+
+        import time
+        # Simulate only 60 seconds have passed (less than 180s min_cycle)
+        get_cycle_start_time.return_value = time.time() - 60
+
+        # Attempt to turn off compressor - should be rejected
+        await controller.async_turn_off(
+            hvac_mode=MockHVACMode.COOL,
+            get_cycle_start_time=get_cycle_start_time,
+            set_is_heating=set_is_heating,
+            set_last_heat_cycle_time=set_last_heat_cycle_time,
+        )
+
+        # Verify turn_off service was NOT called (protection engaged)
+        for call in controller._hass.services.async_call.call_args_list:
+            args, kwargs = call
+            assert args[1] != "turn_off", "Compressor should not turn off before min_cycle elapsed"
+
+    @pytest.mark.asyncio
+    async def test_forced_air_compressor_allows_turn_off_after_min_cycle(self, cooler_controller_forced_air):
+        """Test forced_air compressor CAN turn off after min_on_cycle_duration (180s)."""
+        controller = cooler_controller_forced_air
+
+        # Mock service calls and state
+        async def mock_async_call(*args, **kwargs):
+            pass
+        controller._hass.services.async_call = mock_async_call
+        controller._hass.states.is_state = MagicMock(return_value=True)  # Compressor is ON
+
+        # Mock callbacks
+        get_cycle_start_time = MagicMock(return_value=0.0)
+        set_is_heating = MagicMock()
+        set_last_heat_cycle_time = MagicMock()
+
+        # Set previous state for cycle count
+        controller._last_cooler_state = True
+
+        import time
+        # Simulate 200 seconds have passed (more than 180s min_cycle)
+        get_cycle_start_time.return_value = time.time() - 200
+
+        # Turn off compressor - should succeed
+        await controller.async_turn_off(
+            hvac_mode=MockHVACMode.COOL,
+            get_cycle_start_time=get_cycle_start_time,
+            set_is_heating=set_is_heating,
+            set_last_heat_cycle_time=set_last_heat_cycle_time,
+        )
+
+        # Verify set_last_heat_cycle_time was called (indicates successful turn-off)
+        set_last_heat_cycle_time.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_mini_split_compressor_respects_min_cycle(self, cooler_controller_mini_split):
+        """Test mini_split compressor cannot turn off before min_on_cycle_duration (300s)."""
+        controller = cooler_controller_mini_split
+
+        # Mock service calls and state
+        controller._hass.services.async_call = MagicMock()
+        controller._hass.states.is_state = MagicMock(return_value=True)  # Compressor is ON
+
+        # Mock callbacks
+        get_cycle_start_time = MagicMock(return_value=0.0)
+        set_is_heating = MagicMock()
+        set_last_heat_cycle_time = MagicMock()
+
+        # Set previous state
+        controller._last_cooler_state = True
+
+        import time
+        # Simulate only 120 seconds have passed (less than 300s min_cycle)
+        get_cycle_start_time.return_value = time.time() - 120
+
+        # Attempt to turn off compressor - should be rejected
+        await controller.async_turn_off(
+            hvac_mode=MockHVACMode.COOL,
+            get_cycle_start_time=get_cycle_start_time,
+            set_is_heating=set_is_heating,
+            set_last_heat_cycle_time=set_last_heat_cycle_time,
+        )
+
+        # Verify turn_off service was NOT called (protection engaged)
+        for call in controller._hass.services.async_call.call_args_list:
+            args, kwargs = call
+            assert args[1] != "turn_off", "Mini-split compressor should not turn off before min_cycle elapsed"
+
+    @pytest.mark.asyncio
+    async def test_mini_split_compressor_allows_turn_off_after_min_cycle(self, cooler_controller_mini_split):
+        """Test mini_split compressor CAN turn off after min_on_cycle_duration (300s)."""
+        controller = cooler_controller_mini_split
+
+        # Mock service calls
+        async def mock_async_call(*args, **kwargs):
+            pass
+        controller._hass.services.async_call = mock_async_call
+        controller._hass.states.is_state = MagicMock(return_value=True)  # Compressor is ON
+
+        # Mock callbacks
+        get_cycle_start_time = MagicMock(return_value=0.0)
+        set_is_heating = MagicMock()
+        set_last_heat_cycle_time = MagicMock()
+
+        # Set previous state
+        controller._last_cooler_state = True
+
+        import time
+        # Simulate 350 seconds have passed (more than 300s min_cycle)
+        get_cycle_start_time.return_value = time.time() - 350
+
+        # Turn off compressor - should succeed
+        await controller.async_turn_off(
+            hvac_mode=MockHVACMode.COOL,
+            get_cycle_start_time=get_cycle_start_time,
+            set_is_heating=set_is_heating,
+            set_last_heat_cycle_time=set_last_heat_cycle_time,
+        )
+
+        # Verify set_last_heat_cycle_time was called (indicates successful turn-off)
+        set_last_heat_cycle_time.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_chilled_water_no_min_cycle_protection(self, cooler_controller_chilled_water):
+        """Test chilled_water has no min_cycle protection (can turn off immediately).
+
+        Chilled water systems use valves, not compressors, so they don't need
+        minimum cycle protection.
+        """
+        controller = cooler_controller_chilled_water
+
+        # Verify min_on_cycle_duration is 0
+        assert controller.min_on_cycle_duration == 0.0
+
+        # Mock service calls (valve mode)
+        async def mock_async_call(*args, **kwargs):
+            pass
+        controller._hass.services.async_call = mock_async_call
+        controller._hass.states.get = MagicMock(return_value=MagicMock(state="50"))
+
+        import time
+        # Start with valve open at 50%
+        controller._last_cooler_state = True
+
+        # Close valve immediately (0 seconds elapsed) - should work since min_cycle=0
+        await controller.async_set_valve_value(0.0, MockHVACMode.COOL)
+
+        # Verify valve was closed (cycle count incremented)
+        assert controller._cooler_cycle_count == 1
+
+    @pytest.mark.asyncio
+    async def test_force_flag_bypasses_min_cycle_protection(self, cooler_controller_forced_air):
+        """Test force=True bypasses compressor min_cycle protection.
+
+        This is needed for emergency shutdowns or mode changes.
+        """
+        controller = cooler_controller_forced_air
+
+        # Mock service calls
+        async def mock_async_call(*args, **kwargs):
+            pass
+        controller._hass.services.async_call = mock_async_call
+        controller._hass.states.is_state = MagicMock(return_value=True)  # Compressor is ON
+
+        # Mock callbacks
+        get_cycle_start_time = MagicMock(return_value=0.0)
+        set_is_heating = MagicMock()
+        set_last_heat_cycle_time = MagicMock()
+
+        # Set previous state
+        controller._last_cooler_state = True
+
+        import time
+        # Simulate only 10 seconds have passed (way less than 180s min_cycle)
+        get_cycle_start_time.return_value = time.time() - 10
+
+        # Turn off compressor with force=True - should succeed despite short cycle
+        await controller.async_turn_off(
+            hvac_mode=MockHVACMode.COOL,
+            get_cycle_start_time=get_cycle_start_time,
+            set_is_heating=set_is_heating,
+            set_last_heat_cycle_time=set_last_heat_cycle_time,
+            force=True,
+        )
+
+        # Verify set_last_heat_cycle_time was called (indicates successful turn-off)
+        set_last_heat_cycle_time.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_compressor_cycle_count_increments_on_valid_turn_off(self, cooler_controller_forced_air):
+        """Test cooler_cycle_count increments when compressor turns off after min_cycle."""
+        controller = cooler_controller_forced_air
+
+        # Mock service calls
+        async def mock_async_call(*args, **kwargs):
+            pass
+        controller._hass.services.async_call = mock_async_call
+        controller._hass.states.is_state = MagicMock(return_value=True)  # Compressor is ON
+
+        # Mock callbacks
+        get_cycle_start_time = MagicMock(return_value=0.0)
+        set_is_heating = MagicMock()
+        set_last_heat_cycle_time = MagicMock()
+
+        # Set previous state and initial cycle count
+        controller._last_cooler_state = True
+        initial_count = controller._cooler_cycle_count
+
+        import time
+        # Simulate 200 seconds have passed (more than 180s min_cycle)
+        get_cycle_start_time.return_value = time.time() - 200
+
+        # Turn off compressor
+        await controller.async_turn_off(
+            hvac_mode=MockHVACMode.COOL,
+            get_cycle_start_time=get_cycle_start_time,
+            set_is_heating=set_is_heating,
+            set_last_heat_cycle_time=set_last_heat_cycle_time,
+        )
+
+        # Verify cycle count incremented
+        assert controller._cooler_cycle_count == initial_count + 1
+
+    @pytest.mark.asyncio
+    async def test_compressor_cycle_count_does_not_increment_on_rejected_turn_off(self, cooler_controller_forced_air):
+        """Test cooler_cycle_count does NOT increment when turn-off is rejected."""
+        controller = cooler_controller_forced_air
+
+        # Mock service calls
+        controller._hass.services.async_call = MagicMock()
+        controller._hass.states.is_state = MagicMock(return_value=True)  # Compressor is ON
+
+        # Mock callbacks
+        get_cycle_start_time = MagicMock(return_value=0.0)
+        set_is_heating = MagicMock()
+        set_last_heat_cycle_time = MagicMock()
+
+        # Set previous state and initial cycle count
+        controller._last_cooler_state = True
+        initial_count = controller._cooler_cycle_count
+
+        import time
+        # Simulate only 60 seconds have passed (less than 180s min_cycle)
+        get_cycle_start_time.return_value = time.time() - 60
+
+        # Attempt to turn off compressor - should be rejected
+        await controller.async_turn_off(
+            hvac_mode=MockHVACMode.COOL,
+            get_cycle_start_time=get_cycle_start_time,
+            set_is_heating=set_is_heating,
+            set_last_heat_cycle_time=set_last_heat_cycle_time,
+        )
+
+        # Verify cycle count did NOT increment
+        assert controller._cooler_cycle_count == initial_count
+
+
 class TestDutyAccumulatorPulse:
     """Tests for firing minimum pulse when accumulator reaches threshold (story 2.2)."""
 
