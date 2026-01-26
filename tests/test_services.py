@@ -83,25 +83,17 @@ def mock_notification_funcs():
 class TestServiceRegistration:
     """Tests for service registration."""
 
-    def test_all_services_registered(self, mock_hass, mock_coordinator, mock_vacation_mode, mock_notification_funcs):
-        """Verify all expected services are registered."""
+    def test_public_services_registered_without_debug(self, mock_hass, mock_coordinator, mock_vacation_mode, mock_notification_funcs):
+        """Verify only public services are registered when debug=False."""
         from custom_components.adaptive_thermostat.services import (
             async_register_services,
-            SERVICE_RUN_LEARNING,
-            SERVICE_HEALTH_CHECK,
             SERVICE_WEEKLY_REPORT,
             SERVICE_COST_REPORT,
             SERVICE_SET_VACATION_MODE,
             SERVICE_ENERGY_STATS,
-            SERVICE_PID_RECOMMENDATIONS,
         )
-        from custom_components.adaptive_thermostat.const import DOMAIN
 
-        # Create mock schemas
-        mock_vacation_schema = Mock()
-        mock_cost_schema = Mock()
-
-        # Register services
+        # Register services with debug=False (default)
         async_register_services(
             hass=mock_hass,
             coordinator=mock_coordinator,
@@ -110,13 +102,59 @@ class TestServiceRegistration:
             persistent_notification=True,
             async_send_notification_func=mock_notification_funcs["send_notification"],
             async_send_persistent_notification_func=mock_notification_funcs["send_persistent"],
-            vacation_schema=mock_vacation_schema,
-            cost_report_schema=mock_cost_schema,
+            vacation_schema=Mock(),
+            cost_report_schema=Mock(),
             default_vacation_target_temp=15.0,
+            debug=False,
         )
 
-        # Verify all 7 services were registered
-        assert mock_hass.services.async_register.call_count == 7
+        # Verify only 4 public services were registered
+        assert mock_hass.services.async_register.call_count == 4
+
+        # Get all registered service names
+        registered_services = [
+            call[0][1] for call in mock_hass.services.async_register.call_args_list
+        ]
+
+        # Verify each public service was registered
+        expected_services = [
+            SERVICE_SET_VACATION_MODE,
+            SERVICE_COST_REPORT,
+            SERVICE_ENERGY_STATS,
+            SERVICE_WEEKLY_REPORT,
+        ]
+        for service in expected_services:
+            assert service in registered_services, f"Public service {service} not registered"
+
+    def test_all_services_registered_with_debug(self, mock_hass, mock_coordinator, mock_vacation_mode, mock_notification_funcs):
+        """Verify all services are registered when debug=True."""
+        from custom_components.adaptive_thermostat.services import (
+            async_register_services,
+            SERVICE_RUN_LEARNING,
+            SERVICE_WEEKLY_REPORT,
+            SERVICE_COST_REPORT,
+            SERVICE_SET_VACATION_MODE,
+            SERVICE_ENERGY_STATS,
+            SERVICE_PID_RECOMMENDATIONS,
+        )
+
+        # Register services with debug=True
+        async_register_services(
+            hass=mock_hass,
+            coordinator=mock_coordinator,
+            vacation_mode=mock_vacation_mode,
+            notify_service="test_notify",
+            persistent_notification=True,
+            async_send_notification_func=mock_notification_funcs["send_notification"],
+            async_send_persistent_notification_func=mock_notification_funcs["send_persistent"],
+            vacation_schema=Mock(),
+            cost_report_schema=Mock(),
+            default_vacation_target_temp=15.0,
+            debug=True,
+        )
+
+        # Verify all 6 services were registered (4 public + 2 debug)
+        assert mock_hass.services.async_register.call_count == 6
 
         # Get all registered service names
         registered_services = [
@@ -125,16 +163,47 @@ class TestServiceRegistration:
 
         # Verify each expected service was registered
         expected_services = [
-            SERVICE_RUN_LEARNING,
-            SERVICE_HEALTH_CHECK,
-            SERVICE_WEEKLY_REPORT,
-            SERVICE_COST_REPORT,
             SERVICE_SET_VACATION_MODE,
+            SERVICE_COST_REPORT,
             SERVICE_ENERGY_STATS,
+            SERVICE_WEEKLY_REPORT,
+            SERVICE_RUN_LEARNING,
             SERVICE_PID_RECOMMENDATIONS,
         ]
         for service in expected_services:
             assert service in registered_services, f"Service {service} not registered"
+
+    def test_debug_services_not_registered_without_debug(self, mock_hass, mock_coordinator, mock_vacation_mode, mock_notification_funcs):
+        """Verify debug services are NOT registered when debug=False."""
+        from custom_components.adaptive_thermostat.services import (
+            async_register_services,
+            SERVICE_RUN_LEARNING,
+            SERVICE_PID_RECOMMENDATIONS,
+        )
+
+        # Register services with debug=False
+        async_register_services(
+            hass=mock_hass,
+            coordinator=mock_coordinator,
+            vacation_mode=mock_vacation_mode,
+            notify_service="test_notify",
+            persistent_notification=True,
+            async_send_notification_func=mock_notification_funcs["send_notification"],
+            async_send_persistent_notification_func=mock_notification_funcs["send_persistent"],
+            vacation_schema=Mock(),
+            cost_report_schema=Mock(),
+            default_vacation_target_temp=15.0,
+            debug=False,
+        )
+
+        # Get all registered service names
+        registered_services = [
+            call[0][1] for call in mock_hass.services.async_register.call_args_list
+        ]
+
+        # Verify debug services were NOT registered
+        assert SERVICE_RUN_LEARNING not in registered_services, "Debug service run_learning should not be registered"
+        assert SERVICE_PID_RECOMMENDATIONS not in registered_services, "Debug service pid_recommendations should not be registered"
 
     def test_services_registered_with_correct_domain(self, mock_hass, mock_coordinator, mock_vacation_mode, mock_notification_funcs):
         """Verify services are registered under correct domain."""
@@ -197,19 +266,18 @@ class TestServiceRegistration:
 
 
 class TestHealthCheckDeduplication:
-    """Tests for health check deduplication."""
+    """Tests for health check deduplication (scheduled health checks still exist)."""
 
-    def test_manual_and_scheduled_use_same_core(self, mock_hass, mock_coordinator, mock_notification_funcs):
-        """Verify both manual and scheduled use the same core logic."""
+    def test_scheduled_health_check_exists(self, mock_hass, mock_coordinator, mock_notification_funcs):
+        """Verify scheduled health check function exists."""
         from custom_components.adaptive_thermostat.services import (
-            async_handle_health_check,
             async_scheduled_health_check,
             _run_health_check_core,
         )
 
-        # Both functions should delegate to _run_health_check_core
-        # This is verified by checking that _run_health_check_core exists and is used
+        # Both functions should exist
         assert _run_health_check_core is not None
+        assert async_scheduled_health_check is not None
 
         # Verify the function signature accepts is_scheduled parameter
         import inspect
@@ -576,7 +644,6 @@ class TestServiceConstants:
         """Verify all service name constants are defined."""
         from custom_components.adaptive_thermostat.services import (
             SERVICE_RUN_LEARNING,
-            SERVICE_HEALTH_CHECK,
             SERVICE_WEEKLY_REPORT,
             SERVICE_COST_REPORT,
             SERVICE_SET_VACATION_MODE,
@@ -585,7 +652,6 @@ class TestServiceConstants:
         )
 
         assert SERVICE_RUN_LEARNING == "run_learning"
-        assert SERVICE_HEALTH_CHECK == "health_check"
         assert SERVICE_WEEKLY_REPORT == "weekly_report"
         assert SERVICE_COST_REPORT == "cost_report"
         assert SERVICE_SET_VACATION_MODE == "set_vacation_mode"
@@ -604,7 +670,6 @@ def test_services_module_exists():
 
     assert services is not None
     assert hasattr(services, "async_register_services")
-    assert hasattr(services, "async_handle_health_check")
     assert hasattr(services, "async_handle_weekly_report")
     assert hasattr(services, "async_handle_cost_report")
     assert hasattr(services, "async_handle_run_learning")
