@@ -1,6 +1,21 @@
 # CHANGELOG
 
 
+## v0.32.2 (2026-01-26)
+
+### Bug Fixes
+
+- Add storage migration function to prevent NotImplementedError
+  ([`da0e822`](https://github.com/afewyards/ha-adaptive-thermostat/commit/da0e8222866451e2f95806a02a5606707faf784f))
+
+HA's Store class requires a migrate_func when stored data version differs from current
+  STORAGE_VERSION. Without it, Store raises NotImplementedError during async_load, causing all
+  climate entities to become unavailable.
+
+- Add _async_migrate_storage() method to LearningDataStore - Pass migrate_func parameter to Store
+  constructor - Update test assertion for new Store parameters
+
+
 ## v0.32.1 (2026-01-26)
 
 ### Bug Fixes
