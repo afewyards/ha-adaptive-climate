@@ -87,6 +87,9 @@ def build_state_attributes(thermostat: SmartThermostat) -> dict[str, Any]:
     # Contact sensor status
     _add_contact_sensor_attributes(thermostat, attrs)
 
+    # Humidity detector status
+    _add_humidity_detector_attributes(thermostat, attrs)
+
     # Ke learning status
     _add_ke_learning_attributes(thermostat, attrs)
 
@@ -171,6 +174,21 @@ def _add_contact_sensor_attributes(
             time_until = thermostat._contact_sensor_handler.get_time_until_action()
             if time_until is not None and time_until > 0:
                 attrs["contact_pause_in"] = time_until
+
+
+def _add_humidity_detector_attributes(
+    thermostat: SmartThermostat, attrs: dict[str, Any]
+) -> None:
+    """Add humidity detector status attributes."""
+    if thermostat._humidity_detector:
+        state = thermostat._humidity_detector.get_state()
+        is_paused = thermostat._humidity_detector.should_pause()
+        attrs["humidity_detection_state"] = state
+        attrs["humidity_paused"] = is_paused
+        if state == "stabilizing":
+            time_until = thermostat._humidity_detector.get_time_until_resume()
+            if time_until is not None and time_until > 0:
+                attrs["humidity_resume_in"] = time_until
 
 
 def _add_ke_learning_attributes(
@@ -422,12 +440,19 @@ def _add_preheat_attributes(
                 if (isinstance(current_temp, (int, float)) and
                     isinstance(target_temp, (int, float)) and
                     isinstance(outdoor_temp, (int, float))):
+                    # Check if humidity detector is paused
+                    humidity_paused = (
+                        thermostat._humidity_detector.should_pause()
+                        if hasattr(thermostat, '_humidity_detector') and thermostat._humidity_detector
+                        else False
+                    )
                     preheat_info = thermostat._night_setback_controller.calculator.get_preheat_info(
                         now=now,
                         current_temp=current_temp,
                         target_temp=target_temp,
                         outdoor_temp=outdoor_temp,
                         deadline=deadline,
+                        humidity_paused=humidity_paused,
                     )
 
                     attrs["preheat_active"] = preheat_info["active"]

@@ -342,6 +342,7 @@ class NightSetbackCalculator:
         current_temp: float,
         target_temp: float,
         outdoor_temp: float,
+        humidity_paused: bool = False,
     ) -> Optional[datetime]:
         """Calculate when to start preheating before recovery deadline.
 
@@ -350,10 +351,15 @@ class NightSetbackCalculator:
             current_temp: Current temperature in C
             target_temp: Target temperature in C
             outdoor_temp: Outdoor temperature in C
+            humidity_paused: Whether heating is paused due to humidity spike
 
         Returns:
             Datetime when preheat should start, or None if preheat is disabled/not configured
         """
+        # Block preheat if humidity spike detected
+        if humidity_paused:
+            return None
+
         # Check if preheat is enabled and configured
         if not self._preheat_enabled:
             return None
@@ -393,6 +399,7 @@ class NightSetbackCalculator:
         target_temp: float,
         outdoor_temp: float,
         deadline: datetime,
+        humidity_paused: bool = False,
     ) -> Dict[str, Any]:
         """Get preheat information for state attributes.
 
@@ -402,6 +409,7 @@ class NightSetbackCalculator:
             target_temp: Target temperature in C
             outdoor_temp: Outdoor temperature in C
             deadline: Recovery deadline datetime
+            humidity_paused: Whether heating is paused due to humidity spike
 
         Returns:
             Dict with scheduled_start, estimated_duration, and active status
@@ -417,7 +425,7 @@ class NightSetbackCalculator:
 
         # Calculate scheduled start
         scheduled_start = self.calculate_preheat_start(
-            deadline, current_temp, target_temp, outdoor_temp
+            deadline, current_temp, target_temp, outdoor_temp, humidity_paused
         )
 
         if scheduled_start is None:

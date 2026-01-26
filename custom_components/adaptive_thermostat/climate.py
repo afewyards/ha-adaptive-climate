@@ -47,6 +47,7 @@ from .adaptive.physics import calculate_thermal_time_constant, calculate_initial
 from .adaptive.night_setback import NightSetback
 from .adaptive.sun_position import SunPositionCalculator
 from .adaptive.contact_sensors import ContactSensorHandler, ContactAction
+from .adaptive.humidity_detector import HumidityDetector
 from .adaptive.ke_learning import KeLearner
 from .adaptive.preheat import PreheatLearner
 
@@ -148,6 +149,12 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Optional(const.CONF_CONTACT_SENSORS): cv.entity_ids,
         vol.Optional(const.CONF_CONTACT_ACTION, default=const.CONTACT_ACTION_PAUSE): vol.In(const.VALID_CONTACT_ACTIONS),
         vol.Optional(const.CONF_CONTACT_DELAY, default=const.DEFAULT_CONTACT_DELAY): vol.Coerce(int),
+        # Humidity detection
+        vol.Optional(const.CONF_HUMIDITY_SENSOR): cv.entity_id,
+        vol.Optional(const.CONF_HUMIDITY_SPIKE_THRESHOLD, default=const.DEFAULT_HUMIDITY_SPIKE_THRESHOLD): vol.Coerce(float),
+        vol.Optional(const.CONF_HUMIDITY_ABSOLUTE_MAX, default=const.DEFAULT_HUMIDITY_ABSOLUTE_MAX): vol.Coerce(float),
+        vol.Optional(const.CONF_HUMIDITY_DETECTION_WINDOW, default=const.DEFAULT_HUMIDITY_DETECTION_WINDOW): vol.Coerce(int),
+        vol.Optional(const.CONF_HUMIDITY_STABILIZATION_DELAY, default=const.DEFAULT_HUMIDITY_STABILIZATION_DELAY): vol.Coerce(int),
         # Night setback
         vol.Optional(const.CONF_NIGHT_SETBACK): vol.Schema({
             vol.Optional(const.CONF_NIGHT_SETBACK_START): cv.string,
@@ -326,6 +333,11 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         'contact_sensors': config.get(const.CONF_CONTACT_SENSORS),
         'contact_action': config.get(const.CONF_CONTACT_ACTION),
         'contact_delay': config.get(const.CONF_CONTACT_DELAY),
+        'humidity_sensor': config.get(const.CONF_HUMIDITY_SENSOR),
+        'humidity_spike_threshold': config.get(const.CONF_HUMIDITY_SPIKE_THRESHOLD),
+        'humidity_absolute_max': config.get(const.CONF_HUMIDITY_ABSOLUTE_MAX),
+        'humidity_detection_window': config.get(const.CONF_HUMIDITY_DETECTION_WINDOW),
+        'humidity_stabilization_delay': config.get(const.CONF_HUMIDITY_STABILIZATION_DELAY),
         'night_setback_config': config.get(const.CONF_NIGHT_SETBACK),
         'floor_construction': config.get(const.CONF_FLOOR_CONSTRUCTION),
         'max_power_w': config.get(const.CONF_MAX_POWER_W),
@@ -590,6 +602,30 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
             _LOGGER.info(
                 "%s: Contact sensors configured: %s (action=%s, delay=%ds)",
                 self._name, contact_sensors, contact_action, contact_delay
+            )
+
+        # Humidity detector (shower/bathroom humidity spike detection)
+        self._humidity_detector = None
+        self._humidity_sensor_entity_id = None
+        humidity_sensor = kwargs.get('humidity_sensor')
+        if humidity_sensor:
+            spike_threshold = kwargs.get('humidity_spike_threshold', const.DEFAULT_HUMIDITY_SPIKE_THRESHOLD)
+            absolute_max = kwargs.get('humidity_absolute_max', const.DEFAULT_HUMIDITY_ABSOLUTE_MAX)
+            detection_window = kwargs.get('humidity_detection_window', const.DEFAULT_HUMIDITY_DETECTION_WINDOW)
+            stabilization_delay = kwargs.get('humidity_stabilization_delay', const.DEFAULT_HUMIDITY_STABILIZATION_DELAY)
+            max_pause_duration = kwargs.get('humidity_max_pause_duration', const.DEFAULT_HUMIDITY_MAX_PAUSE)
+
+            self._humidity_sensor_entity_id = humidity_sensor
+            self._humidity_detector = HumidityDetector(
+                spike_threshold=spike_threshold,
+                absolute_max=absolute_max,
+                detection_window=detection_window,
+                stabilization_delay=stabilization_delay,
+                max_pause_duration=max_pause_duration,
+            )
+            _LOGGER.info(
+                "%s: Humidity detection configured: sensor=%s (spike_threshold=%.1f%%, absolute_max=%.1f%%)",
+                self._name, humidity_sensor, spike_threshold, absolute_max
             )
 
         # Heater controller (initialized in async_added_to_hass when hass is available)
@@ -1274,6 +1310,14 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
                     self._async_contact_sensor_changed))
             # Initialize contact sensor states on startup
             self._update_contact_sensor_states()
+
+        # Humidity sensor listener (shower/bathroom humidity spike detection)
+        if self._humidity_detector and self._humidity_sensor_entity_id:
+            self.async_on_remove(
+                async_track_state_change_event(
+                    self.hass,
+                    [self._humidity_sensor_entity_id],
+                    self._async_humidity_sensor_changed))
 
         # Thermal groups leader tracking (follower zones track leader setpoint)
         coordinator = self.hass.data.get(DOMAIN, {}).get("coordinator")
@@ -2037,6 +2081,34 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
         # Trigger control heating to potentially pause/resume
         await self._async_control_heating(calc_pid=False, is_temp_sensor_update=False)
 
+    async def _async_humidity_sensor_changed(self, event: Event[EventStateChangedData]):
+        """Handle humidity sensor state changes."""
+        new_state = event.data["new_state"]
+        if new_state is None or new_state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+            return
+
+        if not self._humidity_detector:
+            return
+
+        try:
+            humidity = float(new_state.state)
+            now = datetime.now()
+            self._humidity_detector.record_humidity(now, humidity)
+
+            _LOGGER.debug(
+                "%s: Humidity sensor changed to %.1f%% (state=%s)",
+                self.entity_id, humidity, self._humidity_detector.get_state()
+            )
+
+            # Trigger control heating to potentially pause/resume
+            await self._async_control_heating(calc_pid=False, is_temp_sensor_update=False)
+
+        except (ValueError, TypeError) as e:
+            _LOGGER.warning(
+                "%s: Failed to parse humidity sensor value: %s (error: %s)",
+                self.entity_id, new_state.state, e
+            )
+
     def _update_contact_sensor_states(self):
         """Update contact sensor handler with current states from Home Assistant."""
         if not self._contact_sensor_handler:
@@ -2192,6 +2264,30 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
                         self._control_output = self._output_min
                         await self._async_set_valve_value(self._control_output)
                 # Update zone demand to False when OFF/inactive
+                if self._zone_id:
+                    coordinator = self.hass.data.get(const.DOMAIN, {}).get("coordinator")
+                    if coordinator:
+                        coordinator.update_zone_demand(self._zone_id, False, self._hvac_mode.value if self._hvac_mode else None)
+                self.async_write_ha_state()
+                return
+
+            # Humidity spike pause check (shower/bathroom detection)
+            if self._humidity_detector and self._humidity_detector.should_pause():
+                _LOGGER.info(
+                    "%s: Humidity spike detected - pausing heating (state=%s)",
+                    self.entity_id, self._humidity_detector.get_state()
+                )
+                # Decay integral while paused (~10%/min)
+                elapsed = time.time() - self._last_control_time
+                decay_factor = 0.9 ** (elapsed / 60)  # 10% decay per minute
+                self._pid_controller.decay_integral(decay_factor)
+
+                if self._pwm:
+                    await self._async_heater_turn_off(force=True)
+                else:
+                    self._control_output = self._output_min
+                    await self._async_set_valve_value(self._control_output)
+                # Update zone demand to False when paused
                 if self._zone_id:
                     coordinator = self.hass.data.get(const.DOMAIN, {}).get("coordinator")
                     if coordinator:
