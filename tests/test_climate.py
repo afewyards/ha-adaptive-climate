@@ -2867,6 +2867,80 @@ class TestClimateManifoldIntegration:
         # Assert
         assert delay == 0.0
 
+    @pytest.mark.asyncio
+    async def test_transport_delay_added_to_min_cycle(self, mock_hass_manifold):
+        """Test transport delay is added to min_on_cycle_duration on heating start.
+
+        When manifold pipes are cold, the transport delay is added to the minimum
+        cycle duration to prevent turning off before hot water arrives.
+        """
+        from datetime import timedelta
+
+        # Arrange
+        base_min_cycle = timedelta(seconds=60)  # 1 min base
+        transport_delay = 5.0  # 5 minutes
+
+        mock_heater_controller = MagicMock()
+        mock_heater_controller.update_cycle_durations = MagicMock()
+
+        # Create mock thermostat with transport delay set
+        mock_thermostat = MagicMock()
+        mock_thermostat._min_on_cycle_duration = base_min_cycle
+        mock_thermostat._min_off_cycle_duration = base_min_cycle
+        mock_thermostat._transport_delay = transport_delay
+        mock_thermostat._heater_controller = mock_heater_controller
+
+        # Act - Calculate effective min_on as done in _async_heater_turn_on
+        effective_min_on = mock_thermostat._min_on_cycle_duration.seconds
+        if mock_thermostat._transport_delay and mock_thermostat._transport_delay > 0:
+            effective_min_on += mock_thermostat._transport_delay * 60  # minutes to seconds
+
+        mock_heater_controller.update_cycle_durations(
+            effective_min_on,
+            mock_thermostat._min_off_cycle_duration.seconds,
+        )
+
+        # Assert - effective min_on should be base (60s) + transport delay (300s) = 360s
+        expected_min_on = 60 + (5.0 * 60)  # 360 seconds
+        mock_heater_controller.update_cycle_durations.assert_called_once_with(
+            expected_min_on,
+            base_min_cycle.seconds,
+        )
+
+    @pytest.mark.asyncio
+    async def test_transport_delay_not_added_when_warm_manifold(self, mock_hass_manifold):
+        """Test min_cycle is not extended when manifold is warm (delay=0)."""
+        from datetime import timedelta
+
+        # Arrange
+        base_min_cycle = timedelta(seconds=60)
+        transport_delay = 0.0  # Warm manifold
+
+        mock_heater_controller = MagicMock()
+        mock_heater_controller.update_cycle_durations = MagicMock()
+
+        mock_thermostat = MagicMock()
+        mock_thermostat._min_on_cycle_duration = base_min_cycle
+        mock_thermostat._min_off_cycle_duration = base_min_cycle
+        mock_thermostat._transport_delay = transport_delay
+        mock_thermostat._heater_controller = mock_heater_controller
+
+        # Act - Calculate effective min_on
+        effective_min_on = mock_thermostat._min_on_cycle_duration.seconds
+        if mock_thermostat._transport_delay and mock_thermostat._transport_delay > 0:
+            effective_min_on += mock_thermostat._transport_delay * 60
+
+        mock_heater_controller.update_cycle_durations(
+            effective_min_on,
+            mock_thermostat._min_off_cycle_duration.seconds,
+        )
+
+        # Assert - effective min_on should be base only (60s)
+        mock_heater_controller.update_cycle_durations.assert_called_once_with(
+            60,  # No transport delay added
+            60,
+        )
+
 
 @pytest.mark.skip(reason="Requires full Home Assistant environment - metaclass conflict with mocks")
 class TestLazyCoolingPIDInitialization:

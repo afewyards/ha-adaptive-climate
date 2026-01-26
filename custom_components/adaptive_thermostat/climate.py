@@ -2590,8 +2590,13 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
                 )
 
         # Update cycle durations in case PID mode changed
+        # Add transport delay to min_on_cycle - no point cycling off before hot water arrives
+        effective_min_on = self._min_on_cycle_duration.seconds
+        if self._transport_delay and self._transport_delay > 0:
+            effective_min_on += self._transport_delay * 60  # minutes to seconds
+
         self._heater_controller.update_cycle_durations(
-            self._min_on_cycle_duration.seconds,
+            effective_min_on,
             self._min_off_cycle_duration.seconds,
         )
         await self._heater_controller.async_turn_on(
