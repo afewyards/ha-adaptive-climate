@@ -458,7 +458,7 @@ class TestDutyAccumulatorAttributes:
     """Tests for duty accumulator state attributes."""
 
     def test_accumulator_in_state_attributes(self):
-        """Test duty_accumulator exposed in extra_state_attributes."""
+        """Test duty_accumulator removed but duty_accumulator_pct present."""
         from custom_components.adaptive_thermostat.managers.state_attributes import (
             build_state_attributes,
         )
@@ -480,7 +480,6 @@ class TestDutyAccumulatorAttributes:
         thermostat.pid_control_i = 5.0
         thermostat._pid_controller = MagicMock()
         thermostat._pid_controller.outdoor_temp_lagged = 5.0
-        thermostat._pid_controller.outdoor_temp_lag_tau = 3600.0
         thermostat._heater_controller = MagicMock()
         thermostat._heater_controller.heater_cycle_count = 100
         thermostat._heater_controller.cooler_cycle_count = 50
@@ -500,11 +499,12 @@ class TestDutyAccumulatorAttributes:
 
         attrs = build_state_attributes(thermostat)
 
-        assert "duty_accumulator" in attrs
-        assert attrs["duty_accumulator"] == 120.5
+        # duty_accumulator removed, but pct version remains
+        assert "duty_accumulator" not in attrs
+        assert "duty_accumulator_pct" in attrs
 
     def test_accumulator_zero_without_heater_controller(self):
-        """Test duty_accumulator is 0 when heater_controller is None."""
+        """Test duty_accumulator removed when heater_controller is None."""
         from custom_components.adaptive_thermostat.managers.state_attributes import (
             build_state_attributes,
         )
@@ -526,7 +526,6 @@ class TestDutyAccumulatorAttributes:
         thermostat.pid_control_i = 5.0
         thermostat._pid_controller = MagicMock()
         thermostat._pid_controller.outdoor_temp_lagged = 5.0
-        thermostat._pid_controller.outdoor_temp_lag_tau = 3600.0
         thermostat._heater_controller = None
         thermostat._night_setback = None
         thermostat._night_setback_config = None
@@ -542,8 +541,9 @@ class TestDutyAccumulatorAttributes:
 
         attrs = build_state_attributes(thermostat)
 
-        assert "duty_accumulator" in attrs
-        assert attrs["duty_accumulator"] == 0.0
+        # duty_accumulator removed, but pct version is still 0.0
+        assert "duty_accumulator" not in attrs
+        assert attrs["duty_accumulator_pct"] == 0.0
 
     def test_accumulator_pct_attribute(self):
         """Test duty_accumulator_pct shows percentage of threshold."""

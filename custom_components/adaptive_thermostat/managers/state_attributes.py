@@ -42,7 +42,6 @@ def build_state_attributes(thermostat: SmartThermostat) -> dict[str, Any]:
         "pid_mode": thermostat.pid_mode,
         # Outdoor temperature lag state
         "outdoor_temp_lagged": thermostat._pid_controller.outdoor_temp_lagged,
-        "outdoor_temp_lag_tau": thermostat._pid_controller.outdoor_temp_lag_tau,
         # Actuator wear tracking - cycle counts
         "heater_cycle_count": (
             thermostat._heater_controller.heater_cycle_count
@@ -54,15 +53,8 @@ def build_state_attributes(thermostat: SmartThermostat) -> dict[str, Any]:
             if thermostat._heater_controller
             else 0
         ),
-        # Duty accumulator for sub-threshold PWM outputs
-        "duty_accumulator": (
-            thermostat._heater_controller.duty_accumulator_seconds
-            if thermostat._heater_controller
-            else 0.0
-        ),
+        # Duty accumulator percentage
         "duty_accumulator_pct": _compute_duty_accumulator_pct(thermostat),
-        # Transport delay from manifold (when heating is active)
-        "transport_delay": thermostat._transport_delay,
     }
 
     # Debug-only attributes
