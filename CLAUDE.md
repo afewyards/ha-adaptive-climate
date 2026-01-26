@@ -177,6 +177,8 @@ Exposed via `extra_state_attributes`. Minimized for clarity - only restoration +
 
 **Debug-only attributes** (require `debug: true` in domain config):
 - `integral` - PID integral term
+- `current_cycle_state` - Cycle tracker state (idle/heating/settling)
+- `cycles_required_for_learning` - Minimum cycles needed (constant: 6)
 - `preheat_*` - Preheat learning/scheduling details
 - `humidity_detection_state`, `humidity_resume_in` - Detailed humidity state
 
