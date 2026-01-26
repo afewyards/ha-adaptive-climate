@@ -44,6 +44,7 @@ class TestPreheatStateAttributes:
         thermostat._ke_learner = None
         thermostat._heater_control_failed = False
         thermostat._contact_sensor_handler = None
+        thermostat._humidity_detector = None
         thermostat.in_learning_grace_period = False
         thermostat.hass = MagicMock()
         # Enable debug mode for preheat attributes to be visible
