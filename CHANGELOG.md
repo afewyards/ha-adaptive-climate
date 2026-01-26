@@ -1,6 +1,31 @@
 # CHANGELOG
 
 
+## v0.31.2 (2026-01-26)
+
+### Bug Fixes
+
+- Add finalizing guard to prevent duplicate cycle recording
+  ([`fd4411d`](https://github.com/afewyards/ha-adaptive-thermostat/commit/fd4411d220766669c6500d5618910edd2baa96f2))
+
+Race condition caused bathroom to record 86 cycles with 77 duplicates. Multiple concurrent calls to
+  _finalize_cycle() would each see SETTLING state and record metrics before state transitioned to
+  IDLE.
+
+Added _finalizing boolean flag to guard all three finalization paths: - update_temperature()
+  settling completion check - _settling_timeout() timeout handler - _on_cycle_started() previous
+  cycle finalization
+
+Flag is reset in _reset_cycle_state() when transitioning to IDLE.
+
+### Documentation
+
+- Condense CLAUDE.md and update gitignore pattern
+  ([`c13d399`](https://github.com/afewyards/ha-adaptive-thermostat/commit/c13d399cb3582dce3b757d41ad9659f8fdf640e8))
+
+- Simplify CLAUDE.md documentation for brevity - Change PLAN.md to PLAN-*.md glob in gitignore
+
+
 ## v0.31.1 (2026-01-25)
 
 ### Bug Fixes
