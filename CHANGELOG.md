@@ -1,6 +1,20 @@
 # CHANGELOG
 
 
+## v0.32.3 (2026-01-26)
+
+### Bug Fixes
+
+- Use Store subclass for migration instead of migrate_func parameter
+  ([`1f7ed1f`](https://github.com/afewyards/ha-adaptive-thermostat/commit/1f7ed1f4bb2e287d58e85537d86cdfd52d6b8f41))
+
+The migrate_func parameter is not available in all HA versions. Create MigratingStore subclass that
+  overrides _async_migrate_func to provide storage migration support across HA versions.
+
+- Add _create_migrating_store() helper function - Update tests to use MockStore class that can be
+  subclassed
+
+
 ## v0.32.2 (2026-01-26)
 
 ### Bug Fixes
