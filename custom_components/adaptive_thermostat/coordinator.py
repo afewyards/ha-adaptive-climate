@@ -17,26 +17,6 @@ except ImportError:
 
 if TYPE_CHECKING:
     from .adaptive.manifold_registry import ManifoldRegistry
-
-# Re-export CentralController and constants for backwards compatibility
-try:
-    from .central_controller import (
-        CentralController,
-        MAX_SERVICE_CALL_RETRIES,
-        BASE_RETRY_DELAY_SECONDS,
-        CONSECUTIVE_FAILURE_WARNING_THRESHOLD,
-        TURN_OFF_DEBOUNCE_SECONDS,
-    )
-except ImportError:
-    from central_controller import (
-        CentralController,
-        MAX_SERVICE_CALL_RETRIES,
-        BASE_RETRY_DELAY_SECONDS,
-        CONSECUTIVE_FAILURE_WARNING_THRESHOLD,
-        TURN_OFF_DEBOUNCE_SECONDS,
-    )
-
-if TYPE_CHECKING:
     from .central_controller import CentralController as CentralControllerType
 
 _LOGGER = logging.getLogger(__name__)

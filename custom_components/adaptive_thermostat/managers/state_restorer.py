@@ -107,9 +107,8 @@ class StateRestorer:
 
         This method restores:
         - PID integral value (pid_i)
-        - PID gains: Kp, Ki, Kd, Ke (supports both lowercase and uppercase attribute names)
+        - PID gains: kp, ki, kd, ke
         - Dual gain sets: _heating_gains and _cooling_gains (from pid_history)
-        - Legacy migration: kp/ki/kd attributes and flat pid_history arrays
         - PID mode (auto/off)
 
         Args:
@@ -125,77 +124,29 @@ class StateRestorer:
         # This ensures pid_history takes precedence over legacy kp/ki/kd attributes
         self._restore_dual_gain_sets(old_state)
 
-        # Restore PID integral value with migration for v0.7.0 dimensional fix
-        # In v0.6.x and earlier, integral was accumulated with dt in seconds
-        # In v0.7.0+, integral uses dt in hours, so we need to multiply by 3600
+        # Restore PID integral value
         if isinstance(old_state.attributes.get('pid_i'), (float, int)):
-            old_integral = float(old_state.attributes.get('pid_i'))
-            # Check if migration is needed by looking for version marker
-            # If no marker exists, assume old version and migrate
-            needs_migration = old_state.attributes.get('pid_integral_migrated') != True
-
-            if needs_migration and old_integral != 0:
-                # Migrate: old integral was in %·seconds, new integral is in %·hours
-                # So multiply by 3600 to convert seconds to hours
-                thermostat._i = old_integral * 3600.0
-                _LOGGER.info(
-                    "%s: Migrated PID integral from v0.6.x (seconds) to v0.7.0+ (hours): "
-                    "%.4f -> %.4f",
-                    thermostat.entity_id, old_integral, thermostat._i
-                )
-            else:
-                thermostat._i = old_integral
-
+            thermostat._i = float(old_state.attributes.get('pid_i'))
             thermostat._pid_controller.integral = thermostat._i
 
-        # Restore Kp (supports both 'kp' and 'Kp')
+        # Restore Kp
         if old_state.attributes.get('kp') is not None:
             thermostat._kp = float(old_state.attributes.get('kp'))
             thermostat._pid_controller.set_pid_param(kp=thermostat._kp)
-        elif old_state.attributes.get('Kp') is not None:
-            thermostat._kp = float(old_state.attributes.get('Kp'))
-            thermostat._pid_controller.set_pid_param(kp=thermostat._kp)
 
-        # Restore Ki (supports both 'ki' and 'Ki')
+        # Restore Ki
         if old_state.attributes.get('ki') is not None:
             thermostat._ki = float(old_state.attributes.get('ki'))
             thermostat._pid_controller.set_pid_param(ki=thermostat._ki)
-        elif old_state.attributes.get('Ki') is not None:
-            thermostat._ki = float(old_state.attributes.get('Ki'))
-            thermostat._pid_controller.set_pid_param(ki=thermostat._ki)
 
-        # Restore Kd (supports both 'kd' and 'Kd')
+        # Restore Kd
         if old_state.attributes.get('kd') is not None:
             thermostat._kd = float(old_state.attributes.get('kd'))
             thermostat._pid_controller.set_pid_param(kd=thermostat._kd)
-        elif old_state.attributes.get('Kd') is not None:
-            thermostat._kd = float(old_state.attributes.get('Kd'))
-            thermostat._pid_controller.set_pid_param(kd=thermostat._kd)
 
-        # Restore Ke (supports both 'ke' and 'Ke') with migration for v0.7.1 scaling restoration
-        # In v0.7.0, Ke values were incorrectly scaled down by 100x
-        # In v0.7.1+, Ke restored to proper range by multiplying by 100x
-        ke_value = None
+        # Restore Ke
         if old_state.attributes.get('ke') is not None:
-            ke_value = float(old_state.attributes.get('ke'))
-        elif old_state.attributes.get('Ke') is not None:
-            ke_value = float(old_state.attributes.get('Ke'))
-
-        if ke_value is not None:
-            # Check if migration is needed by looking for version marker
-            # If no marker exists, assume v0.7.0 and migrate if Ke < 0.05
-            ke_v071_migrated = old_state.attributes.get('ke_v071_migrated') == True
-
-            if not ke_v071_migrated and ke_value < 0.05:
-                # Migrate: v0.7.0 Ke was 100x too small, multiply by 100
-                thermostat._ke = ke_value * 100.0
-                _LOGGER.info(
-                    "%s: Ke v0.7.1 migration: %.4f -> %.4f",
-                    thermostat.entity_id, ke_value, thermostat._ke
-                )
-            else:
-                thermostat._ke = ke_value
-
+            thermostat._ke = float(old_state.attributes.get('ke'))
             thermostat._pid_controller.set_pid_param(ke=thermostat._ke)
 
         # Restore outdoor temperature lag state

@@ -156,30 +156,3 @@ async def async_setup_platform(
             sensor.async_write_ha_state()
 
     async_track_time_interval(hass, async_update_sensors, UPDATE_INTERVAL)
-
-
-# Re-export all sensor classes for backward compatibility
-__all__ = [
-    # Performance sensors
-    "AdaptiveThermostatSensor",
-    "DutyCycleSensor",
-    "CycleTimeSensor",
-    "OvershootSensor",
-    "SettlingTimeSensor",
-    "OscillationsSensor",
-    "HeaterStateChange",
-    "DEFAULT_DUTY_CYCLE_WINDOW",
-    "DEFAULT_ROLLING_AVERAGE_SIZE",
-    # Energy sensors
-    "PowerPerM2Sensor",
-    "HeatOutputSensor",
-    "TotalPowerSensor",
-    "WeeklyCostSensor",
-    # Health sensors
-    "SystemHealthSensor",
-    # Comfort sensors
-    "TimeAtTargetSensor",
-    "ComfortScoreSensor",
-    # Actuator wear sensors
-    "ActuatorWearSensor",
-]

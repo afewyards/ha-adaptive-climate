@@ -60,9 +60,6 @@ from .cycle_analysis import (
     calculate_settling_time,
 )
 
-# Import and re-export LearningDataStore for backward compatibility
-from .persistence import LearningDataStore
-
 # Import and re-export PWM tuning utilities for backward compatibility
 from .pwm_tuning import calculate_pwm_adjustment, ValveCycleTracker
 

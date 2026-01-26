@@ -363,56 +363,6 @@ async def test_learning_store_async_load_empty(mock_hass):
         assert store._data == {"version": 5, "zones": {}}
 
 
-@pytest.mark.asyncio
-async def test_learning_store_async_load_v2_migration(mock_hass):
-    """Test async_load migrates v2 format through v3 to v4."""
-    # Simulate old v2 format (flat structure, no zones)
-    v2_data = {
-        "version": 2,
-        "last_updated": "2026-01-19T10:00:00",
-        "thermal_learner": {
-            "cooling_rates": [0.5, 0.6],
-            "heating_rates": [2.0, 2.2],
-            "outlier_threshold": 1.5,
-        },
-        "adaptive_learner": {
-            "cycle_history": [
-                {"overshoot": 0.3, "undershoot": 0.2, "settling_time": 45.0, "oscillations": 1, "rise_time": 30.0}
-            ],
-            "last_adjustment_time": None,
-            "max_history": 50,
-            "heating_type": "radiator",
-            "consecutive_converged_cycles": 0,
-            "pid_converged_for_ke": False,
-        },
-        "valve_tracker": {
-            "cycle_count": 2,
-            "last_state": True,
-        },
-    }
-
-    mock_storage_module = create_mock_storage_module(load_data=v2_data)
-
-    with patch.dict('sys.modules', {'homeassistant.helpers.storage': mock_storage_module}):
-        store = LearningDataStore(mock_hass)
-        data = await store.async_load()
-
-        # Should migrate through v3 to v4 to v5 format
-        assert data["version"] == 5
-        assert "zones" in data
-        assert "default_zone" in data["zones"]
-
-        # Check that old data was migrated to default_zone with v5 structure
-        default_zone = data["zones"]["default_zone"]
-        assert "thermal_learner" in default_zone
-        assert default_zone["thermal_learner"]["cooling_rates"] == [0.5, 0.6]
-        assert "adaptive_learner" in default_zone
-        # V5 format: adaptive_learner should have heating/cooling sub-structure
-        assert "heating" in default_zone["adaptive_learner"]
-        assert "cooling" in default_zone["adaptive_learner"]
-        assert len(default_zone["adaptive_learner"]["heating"]["cycle_history"]) == 1
-        assert "valve_tracker" in default_zone
-        assert default_zone["valve_tracker"]["cycle_count"] == 2
 
 
 

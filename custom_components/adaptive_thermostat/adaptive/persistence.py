@@ -23,41 +23,10 @@ STORAGE_VERSION = 5
 SAVE_DELAY_SECONDS = 30
 
 
-def _create_migrating_store(hass, version: int, key: str, data_store: "LearningDataStore"):
-    """Create a Store subclass with migration support.
-
-    HA's Store raises NotImplementedError when stored version differs from
-    requested version unless a migration function is provided. We create
-    a subclass that provides the migration function.
-    """
+def _create_store(hass, version: int, key: str):
+    """Create a Store instance."""
     from homeassistant.helpers.storage import Store
-
-    class MigratingStore(Store):
-        """Store subclass with migration support."""
-
-        async def _async_migrate_func(
-            self, old_major_version: int, old_minor_version: int, old_data: dict
-        ) -> dict:
-            """Migrate storage data from older versions."""
-            _LOGGER.info(
-                "Migrating storage from v%d.%d to v%d",
-                old_major_version, old_minor_version, version
-            )
-            data = old_data
-
-            # Apply migrations in sequence
-            if old_major_version <= 2:
-                data = data_store._migrate_v2_to_v3(data)
-
-            if data.get("version", old_major_version) <= 3:
-                data = data_store._migrate_v3_to_v4(data)
-
-            if data.get("version", old_major_version) <= 4:
-                data = data_store._migrate_v4_to_v5(data)
-
-            return data
-
-    return MigratingStore(hass, version, key)
+    return Store(hass, version, key)
 
 
 class LearningDataStore:
@@ -93,7 +62,7 @@ class LearningDataStore:
         Load learning data from HA Store.
 
         Returns:
-            Dictionary with learning data in v3 format (zone-keyed)
+            Dictionary with learning data in v5 format (zone-keyed)
         """
         if self.hass is None:
             raise RuntimeError("async_load requires HomeAssistant instance")
@@ -103,13 +72,7 @@ class LearningDataStore:
             self._save_lock = asyncio.Lock()
 
         if self._store is None:
-            # Create Store with migration support via subclass
-            self._store = _create_migrating_store(
-                self.hass,
-                STORAGE_VERSION,
-                STORAGE_KEY,
-                self,
-            )
+            self._store = _create_store(self.hass, STORAGE_VERSION, STORAGE_KEY)
 
         data = await self._store.async_load()
 
@@ -117,19 +80,6 @@ class LearningDataStore:
             # No existing data - return default structure
             self._data = {"version": 5, "zones": {}}
             return self._data
-
-        # Check if migration is needed (v2 -> v3 -> v4 -> v5)
-        if data.get("version") == 2:
-            _LOGGER.info("Migrating learning data from v2 to v3 (zone-keyed storage)")
-            data = self._migrate_v2_to_v3(data)
-
-        if data.get("version") == 3:
-            _LOGGER.info("Migrating learning data from v3 to v4")
-            data = self._migrate_v3_to_v4(data)
-
-        if data.get("version") == 4:
-            _LOGGER.info("Migrating learning data from v4 to v5 (mode-keyed structure)")
-            data = self._migrate_v4_to_v5(data)
 
         self._data = data
         return data
