@@ -46,7 +46,8 @@ class TestPreheatStateAttributes:
         thermostat._contact_sensor_handler = None
         thermostat.in_learning_grace_period = False
         thermostat.hass = MagicMock()
-        thermostat.hass.data = {}
+        # Enable debug mode for preheat attributes to be visible
+        thermostat.hass.data = {"adaptive_thermostat": {"debug": True}}
         # Add temperature getters for preheat
         thermostat._get_current_temp = MagicMock(return_value=18.0)
         thermostat._get_target_temp = MagicMock(return_value=21.0)
@@ -58,27 +59,20 @@ class TestPreheatStateAttributes:
         return thermostat
 
     def test_preheat_disabled_attributes(self):
-        """Test preheat attributes when preheat is disabled (None values)."""
+        """Test preheat attributes when preheat is disabled (not shown)."""
         thermostat = self._create_base_thermostat()
         thermostat._preheat_learner = None
 
         attrs = build_state_attributes(thermostat)
 
-        # All preheat attributes should be present but with None/False values
-        assert "preheat_enabled" in attrs
-        assert attrs["preheat_enabled"] is False
-        assert "preheat_active" in attrs
-        assert attrs["preheat_active"] is False
-        assert "preheat_scheduled_start" in attrs
-        assert attrs["preheat_scheduled_start"] is None
-        assert "preheat_estimated_duration_min" in attrs
-        assert attrs["preheat_estimated_duration_min"] == 0
-        assert "preheat_learning_confidence" in attrs
-        assert attrs["preheat_learning_confidence"] == 0.0
-        assert "preheat_heating_rate_learned" in attrs
-        assert attrs["preheat_heating_rate_learned"] is None
-        assert "preheat_observation_count" in attrs
-        assert attrs["preheat_observation_count"] == 0
+        # Preheat attributes should NOT be present when preheat is disabled
+        assert "preheat_enabled" not in attrs
+        assert "preheat_active" not in attrs
+        assert "preheat_scheduled_start" not in attrs
+        assert "preheat_estimated_duration_min" not in attrs
+        assert "preheat_learning_confidence" not in attrs
+        assert "preheat_heating_rate_learned" not in attrs
+        assert "preheat_observation_count" not in attrs
 
     def test_preheat_enabled_no_data(self):
         """Test preheat attributes when enabled but no learning data yet."""
@@ -104,12 +98,9 @@ class TestPreheatStateAttributes:
 
         attrs = build_state_attributes(thermostat)
 
-        assert attrs["preheat_enabled"] is True
-        assert attrs["preheat_active"] is False
-        assert attrs["preheat_scheduled_start"] is None
-        assert attrs["preheat_estimated_duration_min"] == 0
+        # preheat_enabled no longer exposed - attributes only present when enabled
         assert attrs["preheat_learning_confidence"] == 0.0
-        assert attrs["preheat_heating_rate_learned"] is None
+        assert "preheat_heating_rate_learned" not in attrs  # Not set when no learned rate
         assert attrs["preheat_observation_count"] == 0
 
     def test_preheat_scheduled_not_active(self):
@@ -143,7 +134,6 @@ class TestPreheatStateAttributes:
 
         attrs = build_state_attributes(thermostat)
 
-        assert attrs["preheat_enabled"] is True
         assert attrs["preheat_active"] is False
         assert attrs["preheat_scheduled_start"] == scheduled_start.isoformat()
         assert attrs["preheat_estimated_duration_min"] == 45
@@ -182,7 +172,6 @@ class TestPreheatStateAttributes:
 
         attrs = build_state_attributes(thermostat)
 
-        assert attrs["preheat_enabled"] is True
         assert attrs["preheat_active"] is True
         assert attrs["preheat_scheduled_start"] == scheduled_start.isoformat()
         assert attrs["preheat_estimated_duration_min"] == 60
@@ -238,9 +227,9 @@ class TestPreheatStateAttributes:
 
         attrs = build_state_attributes(thermostat)
 
-        assert attrs["preheat_enabled"] is True
         assert attrs["preheat_learning_confidence"] == 0.3
-        assert attrs["preheat_heating_rate_learned"] is None
+        # preheat_heating_rate_learned not set when None
+        assert "preheat_heating_rate_learned" not in attrs
         assert attrs["preheat_observation_count"] == 3
 
     def test_preheat_without_calculator(self):
@@ -257,13 +246,13 @@ class TestPreheatStateAttributes:
         attrs = build_state_attributes(thermostat)
 
         # Should still show learner data but no schedule info
-        assert attrs["preheat_enabled"] is True
-        assert attrs["preheat_active"] is False
-        assert attrs["preheat_scheduled_start"] is None
-        assert attrs["preheat_estimated_duration_min"] == 0
         assert attrs["preheat_learning_confidence"] == 0.4
         assert attrs["preheat_heating_rate_learned"] == 2.1
         assert attrs["preheat_observation_count"] == 4
+        # No schedule info when controller is None
+        assert "preheat_active" not in attrs
+        assert "preheat_scheduled_start" not in attrs
+        assert "preheat_estimated_duration_min" not in attrs
 
     def test_preheat_timestamp_formatting(self):
         """Test that scheduled_start is formatted as ISO 8601."""

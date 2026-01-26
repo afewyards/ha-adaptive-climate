@@ -40,7 +40,6 @@ def build_state_attributes(thermostat: SmartThermostat) -> dict[str, Any]:
         "control_output": thermostat._control_output,
         "ke": thermostat._ke,
         "pid_mode": thermostat.pid_mode,
-        "pid_i": thermostat.pid_control_i,
         # Outdoor temperature lag state
         "outdoor_temp_lagged": thermostat._pid_controller.outdoor_temp_lagged,
         "outdoor_temp_lag_tau": thermostat._pid_controller.outdoor_temp_lag_tau,
@@ -68,12 +67,7 @@ def build_state_attributes(thermostat: SmartThermostat) -> dict[str, Any]:
 
     # Debug-only attributes
     if thermostat.hass.data.get(DOMAIN, {}).get("debug", False):
-        attrs.update({
-            "pid_p": thermostat.pid_control_p,
-            "pid_d": thermostat.pid_control_d,
-            "pid_e": thermostat.pid_control_e,
-            "pid_dt": thermostat._dt,
-        })
+        attrs["integral"] = thermostat.pid_control_i
 
     # Night setback attributes
     _add_night_setback_attributes(thermostat, attrs)
@@ -289,13 +283,11 @@ def _add_learning_status_attributes(
             last_interruption = cycle_tracker.get_last_interruption_reason()
             attrs[ATTR_LAST_CYCLE_INTERRUPTED] = last_interruption
 
-            # Get last PID adjustment timestamp
+            # Get last PID adjustment timestamp (only include if set)
             last_adjustment = adaptive_learner.get_last_adjustment_time()
             if last_adjustment:
                 # Format as ISO 8601 timestamp
                 attrs[ATTR_LAST_PID_ADJUSTMENT] = last_adjustment.isoformat()
-            else:
-                attrs[ATTR_LAST_PID_ADJUSTMENT] = None
 
             # Auto-apply status attributes
             from ..const import (
@@ -309,7 +301,7 @@ def _add_learning_status_attributes(
             attrs[ATTR_AUTO_APPLY_COUNT] = adaptive_learner.get_auto_apply_count()
             attrs[ATTR_VALIDATION_MODE] = adaptive_learner.is_in_validation_mode()
 
-            # Format PID history (all entries for persistence and rollback support)
+            # Format PID history (only include if non-empty)
             pid_history = adaptive_learner.get_pid_history()
             if pid_history:
                 formatted_history = [
@@ -323,8 +315,6 @@ def _add_learning_status_attributes(
                     for entry in pid_history
                 ]
                 attrs[ATTR_PID_HISTORY] = formatted_history
-            else:
-                attrs[ATTR_PID_HISTORY] = []
 
             break
 
@@ -374,19 +364,12 @@ def _add_preheat_attributes(
         thermostat: The SmartThermostat instance
         attrs: Dictionary to update with preheat attributes
     """
-    # Check if preheat is enabled
-    preheat_enabled = thermostat._preheat_learner is not None
+    from ..const import DOMAIN
 
-    # Default values (when preheat is disabled)
-    attrs["preheat_enabled"] = preheat_enabled
-    attrs["preheat_active"] = False
-    attrs["preheat_scheduled_start"] = None
-    attrs["preheat_estimated_duration_min"] = 0
-    attrs["preheat_learning_confidence"] = 0.0
-    attrs["preheat_heating_rate_learned"] = None
-    attrs["preheat_observation_count"] = 0
-
-    if not preheat_enabled:
+    # Only expose in debug mode when preheat is enabled
+    if not thermostat.hass.data.get(DOMAIN, {}).get("debug", False):
+        return
+    if thermostat._preheat_learner is None:
         return
 
     # Get learner data
@@ -408,7 +391,8 @@ def _add_preheat_attributes(
             delta = target_temp - current_temp
             if delta > 0:
                 learned_rate = learner.get_learned_rate(delta, outdoor_temp)
-                attrs["preheat_heating_rate_learned"] = learned_rate
+                if learned_rate is not None:
+                    attrs["preheat_heating_rate_learned"] = learned_rate
     except (TypeError, AttributeError):
         # If anything goes wrong, just skip setting the learned rate
         pass

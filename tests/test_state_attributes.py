@@ -200,7 +200,7 @@ class TestAddLearningStatusAttributes:
         assert attrs[ATTR_CONVERGENCE_CONFIDENCE] == 0
         assert attrs[ATTR_CURRENT_CYCLE_STATE] == "idle"
         assert attrs[ATTR_LAST_CYCLE_INTERRUPTED] is None
-        assert attrs[ATTR_LAST_PID_ADJUSTMENT] is None
+        # last_pid_adjustment not set when None (cleaned up)
 
     def test_active_state_with_heating_cycle(self):
         """Test attributes in active state with heating cycle."""
@@ -699,7 +699,8 @@ class TestPerModeConvergenceConfidence:
         # Other attributes should still be present
         assert "ke" in attrs
         assert "pid_mode" in attrs
-        assert "pid_i" in attrs
+        # pid_i renamed to integral and only shown in debug mode
+        assert "pid_i" not in attrs
 
     def test_heating_convergence_confidence_attribute(self):
         """Test heating_convergence_confidence attribute is added."""
