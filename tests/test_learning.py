@@ -2218,6 +2218,66 @@ class TestAdaptiveLearnerSerialization:
         assert cycle["integral_at_setpoint_cross"] is None
         assert cycle["decay_contribution"] is None
 
+    def test_serialize_cycle_includes_mode_field_heating(self):
+        """Test to_dict serializes mode='heating' from CycleMetrics."""
+        learner = AdaptiveLearner()
+
+        # Add cycle with mode='heating'
+        learner.add_cycle_metrics(CycleMetrics(
+            overshoot=0.3,
+            undershoot=0.1,
+            settling_time=35.0,
+            oscillations=0,
+            rise_time=25.0,
+            mode="heating",
+        ))
+
+        result = learner.to_dict()
+
+        # Verify mode field is serialized
+        assert len(result["cycle_history"]) == 1
+        cycle = result["cycle_history"][0]
+
+        assert cycle["mode"] == "heating"
+        assert cycle["overshoot"] == 0.3
+        assert cycle["settling_time"] == 35.0
+
+    def test_serialize_cycle_includes_mode_field_cooling(self):
+        """Test to_dict serializes mode='cooling' from CycleMetrics."""
+        learner = AdaptiveLearner()
+
+        # Add cycle with mode='cooling'
+        learner.add_cycle_metrics(CycleMetrics(
+            overshoot=0.4,
+            undershoot=0.2,
+            settling_time=40.0,
+            oscillations=1,
+            rise_time=30.0,
+            mode="cooling",
+        ))
+
+        result = learner.to_dict()
+
+        # Verify mode field is serialized
+        cycle = result["cycle_history"][0]
+        assert cycle["mode"] == "cooling"
+
+    def test_serialize_cycle_includes_mode_field_none(self):
+        """Test to_dict handles None mode field correctly (backwards compat)."""
+        learner = AdaptiveLearner()
+
+        # Add cycle without mode field (defaults to None)
+        learner.add_cycle_metrics(CycleMetrics(
+            overshoot=0.2,
+            oscillations=1,
+            settling_time=30.0,
+        ))
+
+        result = learner.to_dict()
+
+        cycle = result["cycle_history"][0]
+        assert cycle["mode"] is None
+
 
 # Marker test for Story 1.1
 def test_adaptive_learner_serialization_exists():
@@ -2494,6 +2554,148 @@ def test_restore_cycle_parses_decay_fields():
     assert cycle2.integral_at_tolerance_entry is None
     assert cycle2.integral_at_setpoint_cross is None
     assert cycle2.decay_contribution is None
+
+
+def test_restore_cycle_parses_mode_field_heating():
+    """Test restore_from_dict() reconstructs CycleMetrics with mode='heating'."""
+    learner = AdaptiveLearner()
+
+    # Prepare data with mode='heating'
+    data = {
+        "cycle_history": [
+            {
+                "overshoot": 0.5,
+                "undershoot": 0.2,
+                "settling_time": 45.0,
+                "oscillations": 1,
+                "rise_time": 30.0,
+                "mode": "heating",
+            },
+        ],
+        "last_adjustment_time": None,
+        "consecutive_converged_cycles": 0,
+        "pid_converged_for_ke": False,
+        "auto_apply_count": 0,
+    }
+
+    learner.restore_from_dict(data)
+
+    # Verify cycle is restored with mode field
+    assert len(learner._cycle_history) == 1
+    cycle = learner._cycle_history[0]
+    assert isinstance(cycle, CycleMetrics)
+    assert cycle.mode == "heating"
+    assert cycle.overshoot == 0.5
+    assert cycle.settling_time == 45.0
+
+
+def test_restore_cycle_parses_mode_field_cooling():
+    """Test restore_from_dict() reconstructs CycleMetrics with mode='cooling'."""
+    learner = AdaptiveLearner()
+
+    # Prepare data with mode='cooling'
+    data = {
+        "cycle_history": [
+            {
+                "overshoot": 0.3,
+                "undershoot": 0.1,
+                "settling_time": 40.0,
+                "oscillations": 0,
+                "rise_time": 25.0,
+                "mode": "cooling",
+            },
+        ],
+        "last_adjustment_time": None,
+        "consecutive_converged_cycles": 0,
+        "pid_converged_for_ke": False,
+        "auto_apply_count": 0,
+    }
+
+    learner.restore_from_dict(data)
+
+    # Verify cycle is restored with mode field
+    cycle = learner._cycle_history[0]
+    assert cycle.mode == "cooling"
+
+
+def test_restore_cycle_parses_mode_field_none():
+    """Test restore_from_dict() handles missing mode field for backwards compatibility."""
+    learner = AdaptiveLearner()
+
+    # Prepare data without mode field (old format)
+    data = {
+        "cycle_history": [
+            {
+                "overshoot": 0.4,
+                "undershoot": 0.15,
+                "settling_time": 35.0,
+                "oscillations": 1,
+                "rise_time": 28.0,
+                # mode field not present (old format)
+            },
+        ],
+        "last_adjustment_time": None,
+        "consecutive_converged_cycles": 0,
+        "pid_converged_for_ke": False,
+        "auto_apply_count": 0,
+    }
+
+    learner.restore_from_dict(data)
+
+    # Verify cycle is restored with mode defaulting to None
+    cycle = learner._cycle_history[0]
+    assert cycle.mode is None
+    assert cycle.overshoot == 0.4
+
+
+def test_restore_cycle_mode_field_roundtrip():
+    """Test that mode field is preserved through serialize->deserialize roundtrip."""
+    learner1 = AdaptiveLearner()
+
+    # Add cycles with different modes
+    learner1.add_cycle_metrics(CycleMetrics(
+        overshoot=0.5,
+        undershoot=0.2,
+        settling_time=45.0,
+        oscillations=1,
+        rise_time=30.0,
+        mode="heating",
+    ))
+    learner1.add_cycle_metrics(CycleMetrics(
+        overshoot=0.3,
+        undershoot=0.1,
+        settling_time=40.0,
+        oscillations=0,
+        rise_time=25.0,
+        mode="cooling",
+    ))
+    learner1.add_cycle_metrics(CycleMetrics(
+        overshoot=0.4,
+        settling_time=38.0,
+        # mode defaults to None
+    ))
+
+    # Serialize
+    data = learner1.to_dict()
+
+    # Restore to new learner
+    learner2 = AdaptiveLearner()
+    learner2.restore_from_dict(data)
+
+    # Verify mode field is preserved for all cycles
+    assert len(learner2._cycle_history) == 3
+
+    cycle1 = learner2._cycle_history[0]
+    assert cycle1.mode == "heating"
+    assert cycle1.overshoot == 0.5
+
+    cycle2 = learner2._cycle_history[1]
+    assert cycle2.mode == "cooling"
+    assert cycle2.overshoot == 0.3
+
+    cycle3 = learner2._cycle_history[2]
+    assert cycle3.mode is None
+    assert cycle3.overshoot == 0.4
 
 
 # ============================================================================

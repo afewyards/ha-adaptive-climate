@@ -400,4 +400,98 @@ class TestCycleMetrics:
         assert metrics4.overshoot == 0.5
         assert metrics4.settling_time == 15.0
 
+    def test_cycle_metrics_mode_field_heating(self):
+        """Test CycleMetrics can be created with mode='heating'."""
+        metrics = CycleMetrics(
+            overshoot=0.5,
+            undershoot=0.2,
+            settling_time=15.0,
+            mode="heating",
+        )
+
+        assert metrics.mode == "heating"
+        assert metrics.overshoot == 0.5
+        assert metrics.undershoot == 0.2
+        assert metrics.settling_time == 15.0
+
+    def test_cycle_metrics_mode_field_cooling(self):
+        """Test CycleMetrics can be created with mode='cooling'."""
+        metrics = CycleMetrics(
+            overshoot=0.3,
+            undershoot=0.1,
+            settling_time=12.0,
+            mode="cooling",
+        )
+
+        assert metrics.mode == "cooling"
+        assert metrics.overshoot == 0.3
+        assert metrics.undershoot == 0.1
+        assert metrics.settling_time == 12.0
+
+    def test_cycle_metrics_mode_field_optional(self):
+        """Test mode field is optional and defaults to None for backwards compatibility."""
+        # Create CycleMetrics without mode field
+        metrics = CycleMetrics(
+            overshoot=0.4,
+            settling_time=10.0,
+        )
+
+        # Verify mode defaults to None for backwards compatibility
+        assert metrics.mode is None
+
+        # Verify other fields still work
+        assert metrics.overshoot == 0.4
+        assert metrics.settling_time == 10.0
+
+    def test_cycle_metrics_mode_field_explicit_none(self):
+        """Test mode field can be explicitly set to None."""
+        metrics = CycleMetrics(
+            overshoot=0.5,
+            mode=None,
+        )
+
+        assert metrics.mode is None
+        assert metrics.overshoot == 0.5
+
+    def test_cycle_metrics_mode_field_with_all_fields(self):
+        """Test mode field works alongside all other CycleMetrics fields."""
+        metrics = CycleMetrics(
+            overshoot=0.5,
+            undershoot=0.2,
+            settling_time=15.0,
+            oscillations=2,
+            rise_time=10.0,
+            heater_cycles=5,
+            outdoor_temp_avg=5.0,
+            integral_at_tolerance_entry=1.5,
+            integral_at_setpoint_cross=2.3,
+            decay_contribution=0.8,
+            was_clamped=True,
+            end_temp=21.3,
+            settling_mae=0.15,
+            inter_cycle_drift=0.08,
+            dead_time=2.5,
+            mode="heating",
+        )
+
+        # Verify mode is set correctly
+        assert metrics.mode == "heating"
+
+        # Verify other fields are preserved
+        assert metrics.overshoot == 0.5
+        assert metrics.undershoot == 0.2
+        assert metrics.settling_time == 15.0
+        assert metrics.oscillations == 2
+        assert metrics.rise_time == 10.0
+        assert metrics.heater_cycles == 5
+        assert metrics.outdoor_temp_avg == 5.0
+        assert metrics.integral_at_tolerance_entry == 1.5
+        assert metrics.integral_at_setpoint_cross == 2.3
+        assert metrics.decay_contribution == 0.8
+        assert metrics.was_clamped is True
+        assert metrics.end_temp == 21.3
+        assert metrics.settling_mae == 0.15
+        assert metrics.inter_cycle_drift == 0.08
+        assert metrics.dead_time == 2.5
+
 
