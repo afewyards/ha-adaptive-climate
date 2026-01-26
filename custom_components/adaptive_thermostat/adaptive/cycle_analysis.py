@@ -301,6 +301,7 @@ class CycleMetrics:
         settling_mae: Optional[float] = None,
         inter_cycle_drift: Optional[float] = None,
         dead_time: Optional[float] = None,
+        mode: Optional[str] = None,
     ):
         """
         Initialize cycle metrics.
@@ -323,6 +324,7 @@ class CycleMetrics:
             settling_mae: Mean absolute error during settling phase in °C
             inter_cycle_drift: Temperature drift between cycles in °C
             dead_time: Transport delay from heater to sensor in minutes
+            mode: HVAC mode during cycle ("heating", "cooling", or None for backwards compatibility)
         """
         self.overshoot = overshoot
         self.undershoot = undershoot
@@ -341,6 +343,7 @@ class CycleMetrics:
         self.settling_mae = settling_mae
         self.inter_cycle_drift = inter_cycle_drift
         self.dead_time = dead_time
+        self.mode = mode
 
     @property
     def is_disturbed(self) -> bool:

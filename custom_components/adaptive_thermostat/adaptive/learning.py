@@ -1312,6 +1312,7 @@ class AdaptiveLearner:
             "integral_at_tolerance_entry": cycle.integral_at_tolerance_entry,
             "integral_at_setpoint_cross": cycle.integral_at_setpoint_cross,
             "decay_contribution": cycle.decay_contribution,
+            "mode": cycle.mode,
         }
 
     def to_dict(self) -> Dict[str, Any]:
@@ -1365,6 +1366,7 @@ class AdaptiveLearner:
                 integral_at_tolerance_entry=cycle_dict.get("integral_at_tolerance_entry"),
                 integral_at_setpoint_cross=cycle_dict.get("integral_at_setpoint_cross"),
                 decay_contribution=cycle_dict.get("decay_contribution"),
+                mode=cycle_dict.get("mode"),
             )
             self._cycle_history.append(cycle)
 
