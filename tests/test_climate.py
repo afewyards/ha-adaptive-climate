@@ -2866,3 +2866,261 @@ class TestClimateManifoldIntegration:
 
         # Assert
         assert delay == 0.0
+
+
+class TestLazyCoolingPIDInitialization:
+    """Tests for lazy cooling PID initialization (Story 21)."""
+
+    def test_cooling_gains_none_initially(self):
+        """Verify _cooling_gains is None on thermostat initialization.
+
+        This test verifies that climate.py __init__ sets _cooling_gains to None
+        and does NOT calculate cooling PID parameters during initialization.
+        Only heating PID should be calculated at startup.
+        """
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+
+        from custom_components.adaptive_thermostat.climate import AdaptiveThermostat
+        from unittest.mock import Mock
+
+        # Arrange - Create minimal mock config for thermostat
+        mock_hass = Mock()
+        mock_hass.data = {DOMAIN: {}}
+
+        config = {
+            "name": "Test Thermostat",
+            "heater": ["switch.heater"],
+            "target_sensor": "sensor.temp",
+            "heating_type": "radiator",
+            "ac_mode": True,  # Enable cooling support
+        }
+
+        # Act - Create thermostat instance
+        thermostat = AdaptiveThermostat(
+            hass=mock_hass,
+            name="Test Thermostat",
+            heater_entity_id=["switch.heater"],
+            cooler_entity_id=None,
+            sensor_entity_id="sensor.temp",
+            min_temp=7,
+            max_temp=35,
+            target_temp=20,
+            ac_mode=True,
+            heating_type="radiator",
+            area_m2=20,
+        )
+
+        # Assert - _cooling_gains should be None initially
+        assert hasattr(thermostat, '_cooling_gains'), \
+            "AdaptiveThermostat should have _cooling_gains attribute"
+        assert thermostat._cooling_gains is None, \
+            "_cooling_gains should be None on initialization, not calculated until first COOL mode"
+
+    @pytest.mark.asyncio
+    async def test_calculate_initial_cooling_pid_called_on_first_cool(self):
+        """Verify calculate_initial_cooling_pid() is called on first COOL mode activation.
+
+        This test verifies that:
+        1. When HVAC mode is set to COOL for the first time
+        2. climate.py calls calculate_initial_cooling_pid() from physics module
+        3. The function is NOT called again on subsequent COOL activations
+        """
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+
+        from custom_components.adaptive_thermostat.climate import AdaptiveThermostat
+        from unittest.mock import Mock, patch, AsyncMock
+        from homeassistant.components.climate import HVACMode
+
+        # Arrange - Create thermostat with AC mode enabled
+        mock_hass = Mock()
+        mock_hass.data = {DOMAIN: {}}
+        mock_hass.services = Mock()
+        mock_hass.services.async_call = AsyncMock()
+
+        thermostat = AdaptiveThermostat(
+            hass=mock_hass,
+            name="Test Thermostat",
+            heater_entity_id=["switch.heater"],
+            cooler_entity_id=["switch.cooler"],
+            sensor_entity_id="sensor.temp",
+            min_temp=7,
+            max_temp=35,
+            target_temp=20,
+            ac_mode=True,
+            heating_type="radiator",
+            area_m2=20,
+        )
+
+        # Mock the physics calculation function
+        with patch('custom_components.adaptive_thermostat.climate.calculate_initial_cooling_pid') as mock_calc:
+            mock_calc.return_value = (50.0, 0.0005, 25.0)  # Mock Kp, Ki, Kd
+
+            # Act - Switch to COOL mode for the first time
+            await thermostat.async_set_hvac_mode(HVACMode.COOL)
+
+            # Assert - calculate_initial_cooling_pid should be called once
+            assert mock_calc.call_count == 1, \
+                "calculate_initial_cooling_pid() should be called on first COOL mode activation"
+
+            # Act - Switch to HEAT and back to COOL
+            await thermostat.async_set_hvac_mode(HVACMode.HEAT)
+            await thermostat.async_set_hvac_mode(HVACMode.COOL)
+
+            # Assert - Should still only be called once (not called again)
+            assert mock_calc.call_count == 1, \
+                "calculate_initial_cooling_pid() should NOT be called again on subsequent COOL activations"
+
+    def test_cooling_tau_estimated_from_heating_tau(self):
+        """Verify cooling tau is estimated from heating_tau × tau_ratio.
+
+        This test verifies that calculate_initial_cooling_pid():
+        1. Takes heating_tau as input parameter
+        2. Applies tau_ratio (default ~0.7) to estimate cooling tau
+        3. Cooling systems respond faster than heating (shorter tau)
+        4. Uses cooling tau for Ziegler-Nichols PID calculation
+        """
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+
+        from custom_components.adaptive_thermostat.adaptive.physics import calculate_initial_cooling_pid
+
+        # Arrange - Known heating tau
+        heating_tau = 3600.0  # 1 hour heating time constant
+        expected_tau_ratio = 0.7  # Cooling typically faster than heating
+        expected_cooling_tau = heating_tau * expected_tau_ratio
+
+        # Act - Calculate cooling PID from heating tau
+        kp, ki, kd = calculate_initial_cooling_pid(
+            heating_tau=heating_tau,
+            heating_type="radiator",
+            tau_ratio=expected_tau_ratio
+        )
+
+        # Assert - Should return valid PID gains
+        assert kp > 0, "Cooling Kp should be positive"
+        assert ki > 0, "Cooling Ki should be positive"
+        assert kd > 0, "Cooling Kd should be positive"
+
+        # Assert - Cooling gains should differ from heating gains
+        # (we can verify this by comparing with standard heating PID calculation)
+        from custom_components.adaptive_thermostat.adaptive.physics import calculate_initial_pid
+        heating_kp, heating_ki, heating_kd = calculate_initial_pid(
+            thermal_time_constant=heating_tau,
+            heating_type="radiator"
+        )
+
+        # Cooling PID should be different due to shorter tau
+        assert kp != heating_kp, "Cooling Kp should differ from heating Kp"
+        assert ki != heating_ki, "Cooling Ki should differ from heating Ki"
+        assert kd != heating_kd, "Cooling Kd should differ from heating Kd"
+
+    @pytest.mark.asyncio
+    async def test_cooling_gains_populated_after_first_cool(self):
+        """Verify _cooling_gains is populated after first COOL mode activation.
+
+        This test verifies that:
+        1. _cooling_gains starts as None
+        2. After first COOL mode activation, _cooling_gains contains (Kp, Ki, Kd) tuple
+        3. The gains are stored for reuse on subsequent COOL activations
+        """
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+
+        from custom_components.adaptive_thermostat.climate import AdaptiveThermostat
+        from unittest.mock import Mock, AsyncMock
+        from homeassistant.components.climate import HVACMode
+
+        # Arrange - Create thermostat
+        mock_hass = Mock()
+        mock_hass.data = {DOMAIN: {}}
+        mock_hass.services = Mock()
+        mock_hass.services.async_call = AsyncMock()
+
+        thermostat = AdaptiveThermostat(
+            hass=mock_hass,
+            name="Test Thermostat",
+            heater_entity_id=["switch.heater"],
+            cooler_entity_id=["switch.cooler"],
+            sensor_entity_id="sensor.temp",
+            min_temp=7,
+            max_temp=35,
+            target_temp=20,
+            ac_mode=True,
+            heating_type="radiator",
+            area_m2=20,
+        )
+
+        # Verify initial state
+        assert thermostat._cooling_gains is None, \
+            "_cooling_gains should start as None"
+
+        # Act - Activate COOL mode
+        await thermostat.async_set_hvac_mode(HVACMode.COOL)
+
+        # Assert - _cooling_gains should now be populated with a tuple
+        assert thermostat._cooling_gains is not None, \
+            "_cooling_gains should be populated after first COOL activation"
+        assert isinstance(thermostat._cooling_gains, tuple), \
+            "_cooling_gains should be a tuple"
+        assert len(thermostat._cooling_gains) == 3, \
+            "_cooling_gains should contain (Kp, Ki, Kd)"
+
+        kp, ki, kd = thermostat._cooling_gains
+        assert kp > 0, "Cooling Kp should be positive"
+        assert ki > 0, "Cooling Ki should be positive"
+        assert kd > 0, "Cooling Kd should be positive"
+
+    @pytest.mark.asyncio
+    async def test_subsequent_cool_activations_use_existing_gains(self):
+        """Verify subsequent COOL activations reuse existing _cooling_gains.
+
+        This test verifies that:
+        1. First COOL activation calculates and stores _cooling_gains
+        2. Switching to HEAT or OFF and back to COOL reuses stored gains
+        3. No recalculation occurs on subsequent COOL activations
+        """
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+
+        from custom_components.adaptive_thermostat.climate import AdaptiveThermostat
+        from unittest.mock import Mock, patch, AsyncMock
+        from homeassistant.components.climate import HVACMode
+
+        # Arrange - Create thermostat
+        mock_hass = Mock()
+        mock_hass.data = {DOMAIN: {}}
+        mock_hass.services = Mock()
+        mock_hass.services.async_call = AsyncMock()
+
+        thermostat = AdaptiveThermostat(
+            hass=mock_hass,
+            name="Test Thermostat",
+            heater_entity_id=["switch.heater"],
+            cooler_entity_id=["switch.cooler"],
+            sensor_entity_id="sensor.temp",
+            min_temp=7,
+            max_temp=35,
+            target_temp=20,
+            ac_mode=True,
+            heating_type="radiator",
+            area_m2=20,
+        )
+
+        # Act - First COOL activation
+        with patch('custom_components.adaptive_thermostat.climate.calculate_initial_cooling_pid') as mock_calc:
+            mock_calc.return_value = (50.0, 0.0005, 25.0)
+
+            await thermostat.async_set_hvac_mode(HVACMode.COOL)
+            first_cooling_gains = thermostat._cooling_gains
+
+            # Assert - Gains were calculated
+            assert mock_calc.call_count == 1
+            assert first_cooling_gains is not None
+
+            # Act - Switch modes and back to COOL
+            await thermostat.async_set_hvac_mode(HVACMode.HEAT)
+            await thermostat.async_set_hvac_mode(HVACMode.OFF)
+            await thermostat.async_set_hvac_mode(HVACMode.COOL)
+
+            # Assert - Same gains are reused, no recalculation
+            assert thermostat._cooling_gains == first_cooling_gains, \
+                "_cooling_gains should be reused on subsequent COOL activations"
+            assert mock_calc.call_count == 1, \
+                "calculate_initial_cooling_pid() should not be called again"
