@@ -664,6 +664,13 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity, ABC):
         # Initialize KeLearner (will be configured properly in async_added_to_hass)
         self._ke_learner: Optional[KeLearner] = None
 
+        # Initialize dual gain sets for mode-specific PID tuning (heating and cooling)
+        # These will be restored from persistence or initialized from physics-based values
+        # _heating_gains: PID gains for HEAT mode
+        # _cooling_gains: PID gains for COOL mode (lazy init on first COOL mode)
+        self._heating_gains: Optional[const.PIDGains] = None
+        self._cooling_gains: Optional[const.PIDGains] = None
+
         self._pwm = kwargs.get('pwm').seconds
         self._p = self._i = self._d = self._e = self._dt = 0
         self._control_output = self._output_min
