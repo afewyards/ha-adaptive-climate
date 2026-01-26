@@ -1,6 +1,112 @@
 # CHANGELOG
 
 
+## v0.33.0 (2026-01-26)
+
+### Documentation
+
+- Add preheat feature documentation
+  ([`4a0a351`](https://github.com/afewyards/ha-adaptive-thermostat/commit/4a0a351167146c56f618a56489a6b6a2b2dfef32))
+
+### Features
+
+- **preheat**: Add preheat config constants
+  ([`fe2d241`](https://github.com/afewyards/ha-adaptive-thermostat/commit/fe2d2418a1146277d9e8ad2d28f88ff5e0a11bb4))
+
+Add CONF_PREHEAT_ENABLED and CONF_MAX_PREHEAT_HOURS config keys. Add HEATING_TYPE_PREHEAT_CONFIG
+  with heating-type-specific defaults: - max_hours: maximum preheat duration (8h floor, 4h radiator,
+  2h convector, 1.5h forced_air) - cold_soak_margin: margin multiplier for cold-soak calculations -
+  fallback_rate: heating rate fallback (°C/hour) when tau unavailable
+
+- **preheat**: Add preheat persistence support
+  ([`f370b42`](https://github.com/afewyards/ha-adaptive-thermostat/commit/f370b42d00a1d4680e9db32432c2435b62bf2623))
+
+Add preheat_data parameter to persistence layer methods: - update_zone_data() accepts preheat_data
+  parameter - async_save_zone() persists preheat_data alongside other learners - get_zone_data()
+  returns preheat_data field when present - restore_preheat_learner() recreates PreheatLearner from
+  saved dict
+
+Backward compatibility: - v4 data without preheat_data loads successfully -
+  restore_preheat_learner() returns None if data missing - Error handling for corrupt preheat data
+
+Comprehensive test coverage in test_persistence_preheat.py
+
+- **preheat**: Add preheat start calculation to NightSetbackCalculator
+  ([`1b2296f`](https://github.com/afewyards/ha-adaptive-thermostat/commit/1b2296fa78dabb0e866ef1a71f7d10e58db5f392))
+
+Add calculate_preheat_start() and get_preheat_info() methods to NightSetbackCalculator. These
+  methods use PreheatLearner to estimate time-to-target and calculate optimal preheat start time
+  before recovery deadline.
+
+Features: - calculate_preheat_start(): Returns datetime when preheat should begin -
+  get_preheat_info(): Returns dict with scheduled_start, estimated_duration, active status - Adds
+  10% buffer (minimum 15 minutes) to learned time estimates - Clamps total time to max_preheat_hours
+  from learner config - Returns None when preheat_enabled=False or no recovery_deadline
+
+Tests include: - Basic preheat start calculation with learned data - Buffer addition (10% with 15
+  min minimum) - Clamping to max_preheat_hours - Disabled state handling - No recovery_deadline
+  handling - Already at target temperature edge cases - Preheat info dict structure and active
+  status
+
+- **preheat**: Add preheat state attributes
+  ([`01569d1`](https://github.com/afewyards/ha-adaptive-thermostat/commit/01569d1fb6e774dea496b2e28eada8133b8e1605))
+
+Add comprehensive state attributes for preheat functionality: - preheat_enabled: whether preheat is
+  configured - preheat_active: whether currently in preheat period - preheat_scheduled_start: next
+  preheat start time (ISO format) - preheat_estimated_duration_min: estimated preheat duration -
+  preheat_learning_confidence: learning confidence (0.0-1.0) - preheat_heating_rate_learned: learned
+  heating rate in C/hour - preheat_observation_count: total observations collected
+
+Attributes gracefully handle cases where preheat is disabled, calculator is not initialized, or
+  temperature values are unavailable. All attributes are always present for consistency.
+
+Tests cover all scenarios including disabled, enabled with no data, scheduled but not active,
+  currently active, and timestamp formatting.
+
+- **preheat**: Add PreheatLearner class
+  ([`0cab6b6`](https://github.com/afewyards/ha-adaptive-thermostat/commit/0cab6b622ffc9afbca4dcca72caef6a275b715dd))
+
+Implements predictive preheat learning for time-to-temperature estimation:
+
+- PreheatLearner class with delta/outdoor binning for observations - Bins: delta (0-2C, 2-4C, 4-6C,
+  6+C), outdoor (cold/mild/moderate) - estimate_time_to_target() with learned rates or fallback -
+  Cold soak margin scales with delta: margin = (1 + delta/10 * 0.3) * cold_soak_margin - 90-day
+  rolling window with 100 obs/bin limit - Confidence metric (0-1) based on observation count -
+  Serialization support (to_dict/from_dict) - HEATING_TYPE_PREHEAT_CONFIG with max_hours,
+  cold_soak_margin, fallback_rate per heating type
+
+Test coverage: - Binning logic (delta/outdoor) - Observation storage and expiry - Time estimation
+  with/without data - Margin scaling, clamping to max_hours - Confidence calculation - Serialization
+  round-trip
+
+- **preheat**: Enable preheat by default when recovery_deadline is set
+  ([`b177b9f`](https://github.com/afewyards/ha-adaptive-thermostat/commit/b177b9f4a7bc2f13c5867dc2768664e3163b11b3))
+
+- **preheat**: Integrate PreheatLearner in climate entity
+  ([`8576ad0`](https://github.com/afewyards/ha-adaptive-thermostat/commit/8576ad071788310dd801c28b5276d21bb2ecd2df))
+
+- Add PreheatLearner import and instance variable - Initialize/restore PreheatLearner in
+  async_added_to_hass when preheat_enabled - Pass PreheatLearner to NightSetbackController and
+  NightSetbackCalculator - Subscribe to CYCLE_ENDED events to record heating observations - Store
+  preheat data in zone_data for persistence - Add _handle_cycle_ended_for_preheat to record
+  successful cycles - Update NightSetbackController/Manager to accept preheat parameters - Add
+  comprehensive tests for preheat integration
+
+- **preheat**: Integrate PreheatLearner with night setback recovery
+  ([`06b8b87`](https://github.com/afewyards/ha-adaptive-thermostat/commit/06b8b8797b1bf5f3e0f73e97fe83273475dfa597))
+
+- Add preheat_learner parameter to NightSetback.__init__() - Add outdoor_temp parameter to
+  should_start_recovery() - Use preheat_learner.estimate_time_to_target() when available - Fallback
+  to heating_type-based rate estimate when no learner - Respects max_preheat_hours cap from learner
+  config - Backward compatible: outdoor_temp is optional - All tests passing (11 new, 23 existing)
+
+TEST: test_night_setback_preheat.py - Tests PreheatLearner integration - Tests fallback to heating
+  type estimates - Tests max_preheat_hours clamping - Tests backward compatibility
+
+IMPL: adaptive/night_setback.py - Modified should_start_recovery() to use PreheatLearner - Added
+  preheat_learner attribute
+
+
 ## v0.32.3 (2026-01-26)
 
 ### Bug Fixes
