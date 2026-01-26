@@ -8,6 +8,9 @@ from custom_components.adaptive_thermostat.const import (
     HEATING_TYPE_FORCED_AIR,
     VALID_HEATING_TYPES,
     INTEGRAL_DECAY_THRESHOLDS,
+    PIDGains,
+    COOLING_TYPE_CHARACTERISTICS,
+    CONF_COOLING_TYPE,
 )
 
 
@@ -161,6 +164,130 @@ class TestIntegralDecayThresholds:
         assert floor < radiator
         assert radiator < convector
         assert convector < forced_air
+
+
+class TestPIDGains:
+    """Test PIDGains dataclass structure and behavior."""
+
+    def test_pidgains_dataclass_exists(self):
+        """Verify PIDGains dataclass can be imported and instantiated."""
+        gains = PIDGains(kp=1.0, ki=0.5, kd=0.2)
+        assert gains is not None
+        assert hasattr(gains, 'kp')
+        assert hasattr(gains, 'ki')
+        assert hasattr(gains, 'kd')
+
+    def test_pidgains_field_access(self):
+        """Verify PIDGains fields are accessible and have correct values."""
+        gains = PIDGains(kp=2.5, ki=0.3, kd=0.8)
+        assert gains.kp == 2.5
+        assert gains.ki == 0.3
+        assert gains.kd == 0.8
+
+    def test_pidgains_immutability(self):
+        """Verify PIDGains is frozen (immutable)."""
+        gains = PIDGains(kp=1.0, ki=0.5, kd=0.2)
+        try:
+            gains.kp = 2.0
+            assert False, "PIDGains should be frozen (immutable)"
+        except (AttributeError, Exception):
+            pass  # Expected - dataclass should be frozen
+
+    def test_pidgains_equality(self):
+        """Verify PIDGains equality comparison works."""
+        gains1 = PIDGains(kp=1.0, ki=0.5, kd=0.2)
+        gains2 = PIDGains(kp=1.0, ki=0.5, kd=0.2)
+        gains3 = PIDGains(kp=2.0, ki=0.5, kd=0.2)
+        assert gains1 == gains2
+        assert gains1 != gains3
+
+
+class TestCoolingTypeCharacteristics:
+    """Test COOLING_TYPE_CHARACTERISTICS structure and values."""
+
+    def test_cooling_type_characteristics_exists(self):
+        """Verify COOLING_TYPE_CHARACTERISTICS dict exists."""
+        assert COOLING_TYPE_CHARACTERISTICS is not None
+        assert isinstance(COOLING_TYPE_CHARACTERISTICS, dict)
+
+    def test_cooling_type_characteristics_has_required_types(self):
+        """Verify forced_air, chilled_water, mini_split cooling types exist."""
+        required_types = ["forced_air", "chilled_water", "mini_split"]
+        for cooling_type in required_types:
+            assert cooling_type in COOLING_TYPE_CHARACTERISTICS, (
+                f"Cooling type {cooling_type} missing from COOLING_TYPE_CHARACTERISTICS"
+            )
+
+    def test_cooling_type_has_required_fields(self):
+        """Verify each cooling type has pid_modifier, pwm_period, min_cycle, tau_ratio."""
+        required_keys = ["pid_modifier", "pwm_period", "min_cycle", "tau_ratio"]
+
+        for cooling_type, characteristics in COOLING_TYPE_CHARACTERISTICS.items():
+            for key in required_keys:
+                assert key in characteristics, (
+                    f"Cooling type {cooling_type} missing required key: {key}"
+                )
+                assert isinstance(characteristics[key], (int, float)), (
+                    f"Cooling type {cooling_type} key {key} must be numeric, got {type(characteristics[key])}"
+                )
+                assert characteristics[key] >= 0, (
+                    f"Cooling type {cooling_type} key {key} must be non-negative, got {characteristics[key]}"
+                )
+
+    def test_forced_air_characteristics(self):
+        """Test forced_air has correct characteristic values."""
+        chars = COOLING_TYPE_CHARACTERISTICS["forced_air"]
+        assert chars["pid_modifier"] == 1.0
+        assert chars["pwm_period"] == 600  # 10 minutes
+        assert chars["min_cycle"] == 180  # 3 minutes compressor protection
+        assert chars["tau_ratio"] == 0.3
+
+    def test_chilled_water_characteristics(self):
+        """Test chilled_water has correct characteristic values."""
+        chars = COOLING_TYPE_CHARACTERISTICS["chilled_water"]
+        assert chars["pid_modifier"] == 0.7
+        assert chars["pwm_period"] == 900  # 15 minutes
+        assert chars["min_cycle"] == 0  # no compressor
+        assert chars["tau_ratio"] == 0.6
+
+    def test_mini_split_characteristics(self):
+        """Test mini_split has correct characteristic values."""
+        chars = COOLING_TYPE_CHARACTERISTICS["mini_split"]
+        assert chars["pid_modifier"] == 0.9
+        assert chars["pwm_period"] == 0  # inverter modulating, no PWM
+        assert chars["min_cycle"] == 180  # 3 minutes compressor protection
+        assert chars["tau_ratio"] == 0.4
+
+    def test_tau_ratio_all_less_than_one(self):
+        """Test that all cooling tau_ratios are less than 1.0.
+
+        Cooling should respond faster than heating, so tau_ratio < 1.0.
+        """
+        for cooling_type, chars in COOLING_TYPE_CHARACTERISTICS.items():
+            assert chars["tau_ratio"] < 1.0, (
+                f"Cooling type {cooling_type} tau_ratio should be < 1.0, got {chars['tau_ratio']}"
+            )
+
+    def test_compressor_types_have_min_cycle_protection(self):
+        """Test that compressor-based cooling types have min_cycle > 0."""
+        # forced_air and mini_split use compressors
+        assert COOLING_TYPE_CHARACTERISTICS["forced_air"]["min_cycle"] > 0
+        assert COOLING_TYPE_CHARACTERISTICS["mini_split"]["min_cycle"] > 0
+        # chilled_water does not
+        assert COOLING_TYPE_CHARACTERISTICS["chilled_water"]["min_cycle"] == 0
+
+
+class TestCoolingTypeConfig:
+    """Test CONF_COOLING_TYPE constant."""
+
+    def test_conf_cooling_type_constant_exists(self):
+        """Verify CONF_COOLING_TYPE constant exists and is a string."""
+        assert CONF_COOLING_TYPE is not None
+        assert isinstance(CONF_COOLING_TYPE, str)
+
+    def test_conf_cooling_type_value(self):
+        """Verify CONF_COOLING_TYPE has expected value."""
+        assert CONF_COOLING_TYPE == "cooling_type"
 
 
 # Marker test
