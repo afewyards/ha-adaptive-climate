@@ -87,7 +87,7 @@ Algorithmic detection of open windows based on rapid temperature drops (Danfoss 
 - `_async_control_heating` checks pause state
 - Suppression on setpoint decrease and night setback transitions
 
-**State attributes:** `open_window_detection_active`, `open_window_cooldown_remaining`
+**Pause attribute:** See consolidated `pause` attribute below.
 
 ### Humidity-Based Steam Detection
 
@@ -118,7 +118,7 @@ NORMAL ──(spike)──> PAUSED ──(drop)──> STABILIZING ──(delay)
 - Preheat interaction: No preheat starts while paused
 - Safety: 60 min max pause duration
 
-**State attributes:** `humidity_detection_state`, `humidity_resume_in`
+**Pause attribute:** See consolidated `pause` attribute below.
 
 ### Predictive Pre-Heating
 
@@ -137,7 +137,48 @@ night_setback:
 - Requires 3+ observations for learned rate
 - Fallback: Uses `HEATING_TYPE_PREHEAT_CONFIG` rates until sufficient data
 
-**State attributes:** `preheat_enabled`, `preheat_active`, `preheat_scheduled_start`, `preheat_estimated_duration_min`, `preheat_learning_confidence`, `preheat_heating_rate_learned`, `preheat_observation_count`
+**State attributes (debug only):** `preheat_active`, `preheat_scheduled_start`, `preheat_estimated_duration_min`, `preheat_learning_confidence`, `preheat_heating_rate_learned`, `preheat_observation_count`
+
+### State Attributes
+
+Exposed via `extra_state_attributes`. Minimized for clarity - only restoration + critical diagnostics.
+
+**Core attributes:**
+```python
+{
+    # Preset temps (standard)
+    "away_temp", "eco_temp", "boost_temp", "comfort_temp",
+    "home_temp", "sleep_temp", "activity_temp",
+
+    # Restoration
+    "ke", "pid_mode", "outdoor_temp_lagged",
+    "heater_cycle_count", "cooler_cycle_count",
+
+    # Critical diagnostics
+    "control_output",        # Current PID output %
+    "duty_accumulator_pct",  # PWM accumulation as % of threshold
+
+    # Learning status
+    "learning_status",           # "collecting" | "ready" | "active" | "converged"
+    "cycles_collected",          # Count of complete cycles
+    "convergence_confidence_pct", # 0-100%
+    "pid_history",               # List of PID adjustments (when non-empty)
+
+    # Consolidated pause (contact sensors + humidity detection)
+    "pause": {
+        "active": bool,          # True when heating is paused
+        "reason": str | None,    # "contact" | "humidity" | None
+        "resume_in": int         # Seconds until resume (optional, only when countdown active)
+    }
+}
+```
+
+**Priority:** Contact sensor pause > humidity detection pause (if both active, contact shown)
+
+**Debug-only attributes** (require `debug: true` in domain config):
+- `integral` - PID integral term
+- `preheat_*` - Preheat learning/scheduling details
+- `humidity_detection_state`, `humidity_resume_in` - Detailed humidity state
 
 ### Persistence
 
