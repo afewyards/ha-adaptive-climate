@@ -78,11 +78,8 @@ def build_state_attributes(thermostat: SmartThermostat) -> dict[str, Any]:
     # Heater control failure status
     _add_heater_failure_attributes(thermostat, attrs)
 
-    # Contact sensor status
-    _add_contact_sensor_attributes(thermostat, attrs)
-
-    # Humidity detector status
-    _add_humidity_detector_attributes(thermostat, attrs)
+    # Consolidated pause attribute
+    attrs["pause"] = _build_pause_attribute(thermostat)
 
     # Ke learning status
     _add_ke_learning_attributes(thermostat, attrs)
@@ -153,36 +150,6 @@ def _add_heater_failure_attributes(
     if thermostat._heater_control_failed:
         attrs["heater_control_failed"] = True
         attrs["last_heater_error"] = thermostat._last_heater_error
-
-
-def _add_contact_sensor_attributes(
-    thermostat: SmartThermostat, attrs: dict[str, Any]
-) -> None:
-    """Add contact sensor status attributes."""
-    if thermostat._contact_sensor_handler:
-        is_open = thermostat._contact_sensor_handler.is_any_contact_open()
-        is_paused = thermostat._contact_sensor_handler.should_take_action()
-        attrs["contact_open"] = is_open
-        attrs["contact_paused"] = is_paused
-        if is_open and not is_paused:
-            time_until = thermostat._contact_sensor_handler.get_time_until_action()
-            if time_until is not None and time_until > 0:
-                attrs["contact_pause_in"] = time_until
-
-
-def _add_humidity_detector_attributes(
-    thermostat: SmartThermostat, attrs: dict[str, Any]
-) -> None:
-    """Add humidity detector status attributes."""
-    if thermostat._humidity_detector:
-        state = thermostat._humidity_detector.get_state()
-        is_paused = thermostat._humidity_detector.should_pause()
-        attrs["humidity_detection_state"] = state
-        attrs["humidity_paused"] = is_paused
-        if state == "stabilizing":
-            time_until = thermostat._humidity_detector.get_time_until_resume()
-            if time_until is not None and time_until > 0:
-                attrs["humidity_resume_in"] = time_until
 
 
 def _add_ke_learning_attributes(

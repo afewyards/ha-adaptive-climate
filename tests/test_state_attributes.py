@@ -493,6 +493,7 @@ class TestDutyAccumulatorAttributes:
         thermostat._ke_learner = None
         thermostat._heater_control_failed = False
         thermostat._contact_sensor_handler = None
+        thermostat._humidity_detector = None
         thermostat.in_learning_grace_period = False
         thermostat.hass = MagicMock()
         thermostat.hass.data = {}
@@ -534,6 +535,7 @@ class TestDutyAccumulatorAttributes:
         thermostat._ke_learner = None
         thermostat._heater_control_failed = False
         thermostat._contact_sensor_handler = None
+        thermostat._humidity_detector = None
         thermostat.in_learning_grace_period = False
         thermostat.hass = MagicMock()
         thermostat.hass.data = {}
@@ -579,6 +581,7 @@ class TestDutyAccumulatorAttributes:
         thermostat._ke_learner = None
         thermostat._heater_control_failed = False
         thermostat._contact_sensor_handler = None
+        thermostat._humidity_detector = None
         thermostat.in_learning_grace_period = False
         thermostat.hass = MagicMock()
         thermostat.hass.data = {}
@@ -687,6 +690,7 @@ class TestPerModeConvergenceConfidence:
         thermostat._ke_learner = None
         thermostat._heater_control_failed = False
         thermostat._contact_sensor_handler = None
+        thermostat._humidity_detector = None
         thermostat.in_learning_grace_period = False
         thermostat.hass = MagicMock()
         thermostat.hass.data = {}
@@ -741,6 +745,7 @@ class TestPerModeConvergenceConfidence:
         thermostat._ke_learner = None
         thermostat._heater_control_failed = False
         thermostat._contact_sensor_handler = None
+        thermostat._humidity_detector = None
         thermostat.in_learning_grace_period = False
         thermostat.entity_id = "climate.test_zone"
 
@@ -806,6 +811,7 @@ class TestPerModeConvergenceConfidence:
         thermostat._ke_learner = None
         thermostat._heater_control_failed = False
         thermostat._contact_sensor_handler = None
+        thermostat._humidity_detector = None
         thermostat.in_learning_grace_period = False
         thermostat.entity_id = "climate.test_zone"
 
@@ -871,6 +877,7 @@ class TestPerModeConvergenceConfidence:
         thermostat._ke_learner = None
         thermostat._heater_control_failed = False
         thermostat._contact_sensor_handler = None
+        thermostat._humidity_detector = None
         thermostat.in_learning_grace_period = False
         thermostat.entity_id = "climate.test_zone"
 
@@ -943,6 +950,7 @@ class TestPerModeConvergenceConfidence:
         thermostat._ke_learner = None
         thermostat._heater_control_failed = False
         thermostat._contact_sensor_handler = None
+        thermostat._humidity_detector = None
         thermostat.in_learning_grace_period = False
         thermostat.hass = MagicMock()
         thermostat.hass.data = {}
@@ -990,6 +998,7 @@ class TestPerModeConvergenceConfidence:
         thermostat._ke_learner = None
         thermostat._heater_control_failed = False
         thermostat._contact_sensor_handler = None
+        thermostat._humidity_detector = None
         thermostat.in_learning_grace_period = False
         thermostat.entity_id = "climate.test_zone"
 
@@ -1048,6 +1057,7 @@ class TestPerModeConvergenceConfidence:
         thermostat._ke_learner = None
         thermostat._heater_control_failed = False
         thermostat._contact_sensor_handler = None
+        thermostat._humidity_detector = None
         thermostat.in_learning_grace_period = False
         thermostat.entity_id = "climate.test_zone"
 
