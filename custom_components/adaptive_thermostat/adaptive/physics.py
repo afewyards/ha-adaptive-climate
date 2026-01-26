@@ -463,6 +463,150 @@ def calculate_initial_ke(
     return round(base_ke, 4)
 
 
+def estimate_cooling_time_constant(
+    heating_tau: float,
+    cooling_type: str = "forced_air"
+) -> float:
+    """Estimate cooling time constant from heating time constant.
+
+    Cooling systems typically have faster response than heating due to
+    cooler surface temperatures and different convection patterns. This
+    function estimates the cooling tau by applying a tau_ratio based on
+    the cooling system type.
+
+    Args:
+        heating_tau: Thermal time constant for heating in hours.
+        cooling_type: Type of cooling system. Valid values include both
+                     dedicated cooling types and heating types (for dual systems):
+            - "forced_air": Fast cooling (AC, heat pump)
+            - "chilled_water": Chilled water system
+            - "mini_split": Ductless mini-split
+            - "radiator": Radiator-based cooling (fan coil units)
+            - "convector": Convector-based cooling
+            - "floor_hydronic": Floor cooling with chilled water
+
+    Returns:
+        Cooling time constant in hours (heating_tau * tau_ratio).
+
+    Notes:
+        - tau_ratio values come from COOLING_TYPE_CHARACTERISTICS in const.py
+        - Heating types map to closest cooling system equivalent
+        - Cooling is typically 1.5-3x faster than heating (tau_ratio 0.3-0.6)
+    """
+    # Import here to avoid circular dependency
+    from ..const import COOLING_TYPE_CHARACTERISTICS
+
+    # Map heating types to cooling characteristics
+    # For heating types used in cooling mode, map to closest equivalent
+    cooling_type_map = {
+        "forced_air": "forced_air",       # Direct match
+        "mini_split": "mini_split",       # Direct match
+        "chilled_water": "chilled_water", # Direct match
+        "radiator": "radiator",           # Fan coil units - moderate cooling
+        "convector": "convector",         # Convector cooling - moderate
+        "floor_hydronic": "floor_hydronic",  # Floor cooling - slow response
+    }
+
+    # Get mapped cooling type (default to forced_air if unknown)
+    mapped_type = cooling_type_map.get(cooling_type, "forced_air")
+
+    # Get cooling characteristics (fallback to forced_air if not found)
+    cooling_chars = COOLING_TYPE_CHARACTERISTICS.get(
+        mapped_type,
+        COOLING_TYPE_CHARACTERISTICS["forced_air"]
+    )
+
+    # Calculate cooling tau using tau_ratio
+    tau_ratio = cooling_chars.get("tau_ratio", 0.3)
+    cooling_tau = heating_tau * tau_ratio
+
+    return cooling_tau
+
+
+def calculate_initial_cooling_pid(
+    thermal_time_constant: float,
+    cooling_type: str = "forced_air",
+    area_m2: Optional[float] = None,
+    max_power_w: Optional[float] = None,
+) -> Tuple[float, float, float]:
+    """Calculate initial PID parameters for cooling mode.
+
+    Similar to calculate_initial_pid but optimized for cooling dynamics.
+    Cooling typically requires higher proportional gain (1.5-2x) for the
+    same tau due to different heat transfer characteristics.
+
+    Args:
+        thermal_time_constant: System thermal time constant in hours (tau).
+                               Can be either heating tau or cooling tau depending on context.
+        cooling_type: Type of cooling system. Valid values include both
+                     dedicated cooling types and heating types (for dual systems):
+            - "forced_air": Fast cooling (AC, heat pump)
+            - "chilled_water": Chilled water system
+            - "mini_split": Ductless mini-split
+            - "radiator": Radiator-based cooling (fan coil units)
+            - "convector": Convector-based cooling
+            - "floor_hydronic": Floor cooling with chilled water
+        area_m2: Zone floor area in square meters. Required for power scaling.
+        max_power_w: Total cooling power in watts. If provided with area_m2,
+                     PID gains are scaled based on power density.
+
+    Returns:
+        Tuple of (Kp, Ki, Kd) PID parameters for cooling mode.
+
+    Notes:
+        - Kp is amplified ~1.5-2x vs heating for same tau due to cooling dynamics
+        - pid_modifier from COOLING_TYPE_CHARACTERISTICS adjusts gains
+        - Power scaling works same as heating version
+        - Values rounded: Kp=4 decimals, Ki=5 decimals, Kd=2 decimals
+    """
+    # Import here to avoid circular dependency
+    from ..const import COOLING_TYPE_CHARACTERISTICS
+
+    # Map cooling type to heating type for getting base PID profile
+    # This allows us to use the existing reference profiles
+    cooling_to_heating_map = {
+        "forced_air": "forced_air",
+        "mini_split": "forced_air",       # Mini-split similar to forced air
+        "chilled_water": "radiator",      # Chilled water similar to radiator
+        "radiator": "radiator",
+        "convector": "convector",
+        "floor_hydronic": "floor_hydronic",
+    }
+
+    heating_type = cooling_to_heating_map.get(cooling_type, "forced_air")
+
+    # Calculate base PID using given tau and mapped heating type
+    # This gives us the baseline PID gains for this tau value
+    base_kp, base_ki, base_kd = calculate_initial_pid(
+        thermal_time_constant,
+        heating_type,
+        area_m2=area_m2,
+        max_power_w=max_power_w,
+    )
+
+    # Apply cooling-specific multipliers
+    # Cooling needs higher Kp and Ki (1.5-2x) for faster response
+    # This is because cooling has different convection patterns
+    cooling_multiplier = 1.75  # 1.75x baseline for cooling vs heating
+
+    # Get pid_modifier from cooling characteristics
+    cooling_chars = COOLING_TYPE_CHARACTERISTICS.get(
+        cooling_type,
+        COOLING_TYPE_CHARACTERISTICS["forced_air"]
+    )
+    pid_modifier = cooling_chars.get("pid_modifier", 1.0)
+
+    # Apply multipliers
+    # Kp and Ki both get cooling multiplier for faster response
+    Kp = base_kp * cooling_multiplier * pid_modifier
+    Ki = base_ki * cooling_multiplier * pid_modifier
+    # Kd stays as-is - derivative provides damping which is important
+    # for all cooling systems regardless of type modifier
+    Kd = base_kd
+
+    return (round(Kp, 4), round(Ki, 5), round(Kd, 2))
+
+
 def calculate_ke_wind(
     energy_rating: Optional[str] = None,
     window_area_m2: Optional[float] = None,

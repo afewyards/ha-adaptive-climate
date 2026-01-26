@@ -176,6 +176,24 @@ COOLING_TYPE_CHARACTERISTICS = {
         "min_cycle": 180,
         "tau_ratio": 0.4,
     },
+    "radiator": {
+        "pid_modifier": 0.7,
+        "pwm_period": 600,      # 10 min
+        "min_cycle": 0,         # no compressor (fan coil units)
+        "tau_ratio": 0.5,       # moderate cooling speed
+    },
+    "convector": {
+        "pid_modifier": 1.0,
+        "pwm_period": 300,      # 5 min
+        "min_cycle": 0,         # no compressor
+        "tau_ratio": 0.6,       # moderate cooling speed
+    },
+    "floor_hydronic": {
+        "pid_modifier": 0.5,
+        "pwm_period": 900,      # 15 min
+        "min_cycle": 0,         # no compressor (valve-based)
+        "tau_ratio": 0.8,       # slow cooling (high thermal mass)
+    },
 }
 
 # Adaptive learning PID limits
