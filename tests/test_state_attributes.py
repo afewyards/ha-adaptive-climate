@@ -633,3 +633,429 @@ class TestDutyAccumulatorAttributes:
         pct = _compute_duty_accumulator_pct(thermostat)
 
         assert pct == 0.0
+
+
+class TestPerModeConvergenceConfidence:
+    """Tests for per-mode convergence confidence attributes."""
+
+    def test_kp_ki_kd_removed_from_state_attributes(self):
+        """Test that kp, ki, kd are no longer in state attributes (moved to persistence)."""
+        from custom_components.adaptive_thermostat.managers.state_attributes import (
+            build_state_attributes,
+        )
+
+        thermostat = MagicMock()
+        thermostat._away_temp = 18.0
+        thermostat._eco_temp = 19.0
+        thermostat._boost_temp = 24.0
+        thermostat._comfort_temp = 21.0
+        thermostat._home_temp = 20.0
+        thermostat._sleep_temp = 18.0
+        thermostat._activity_temp = 20.0
+        thermostat._control_output = 50.0
+        thermostat._kp = 20.0
+        thermostat._ki = 0.01
+        thermostat._kd = 100.0
+        thermostat._ke = 0.5
+        thermostat.pid_mode = "auto"
+        thermostat.pid_control_i = 5.0
+        thermostat._pid_controller = MagicMock()
+        thermostat._pid_controller.outdoor_temp_lagged = 5.0
+        thermostat._pid_controller.outdoor_temp_lag_tau = 3600.0
+        thermostat._heater_controller = MagicMock()
+        thermostat._heater_controller.heater_cycle_count = 100
+        thermostat._heater_controller.cooler_cycle_count = 50
+        thermostat._heater_controller.duty_accumulator_seconds = 120.5
+        thermostat._heater_controller.min_on_cycle_duration = 300.0
+        thermostat._transport_delay = 0
+        thermostat._night_setback = None
+        thermostat._night_setback_config = None
+        thermostat._night_setback_controller = None
+        thermostat._control_output_manager = None
+        thermostat._ke_learner = None
+        thermostat._heater_control_failed = False
+        thermostat._contact_sensor_handler = None
+        thermostat.in_learning_grace_period = False
+        thermostat.hass = MagicMock()
+        thermostat.hass.data = {}
+
+        attrs = build_state_attributes(thermostat)
+
+        # kp, ki, kd should NOT be in state attributes
+        assert "kp" not in attrs
+        assert "ki" not in attrs
+        assert "kd" not in attrs
+        # Other attributes should still be present
+        assert "ke" in attrs
+        assert "pid_mode" in attrs
+        assert "pid_i" in attrs
+
+    def test_heating_convergence_confidence_attribute(self):
+        """Test heating_convergence_confidence attribute is added."""
+        from custom_components.adaptive_thermostat.managers.state_attributes import (
+            build_state_attributes,
+        )
+        from homeassistant.components.climate import HVACMode
+
+        thermostat = MagicMock()
+        thermostat._away_temp = 18.0
+        thermostat._eco_temp = 19.0
+        thermostat._boost_temp = 24.0
+        thermostat._comfort_temp = 21.0
+        thermostat._home_temp = 20.0
+        thermostat._sleep_temp = 18.0
+        thermostat._activity_temp = 20.0
+        thermostat._control_output = 50.0
+        thermostat._kp = 20.0
+        thermostat._ki = 0.01
+        thermostat._kd = 100.0
+        thermostat._ke = 0.5
+        thermostat.pid_mode = "auto"
+        thermostat.pid_control_i = 5.0
+        thermostat._pid_controller = MagicMock()
+        thermostat._pid_controller.outdoor_temp_lagged = 5.0
+        thermostat._pid_controller.outdoor_temp_lag_tau = 3600.0
+        thermostat._heater_controller = MagicMock()
+        thermostat._heater_controller.heater_cycle_count = 100
+        thermostat._heater_controller.cooler_cycle_count = 50
+        thermostat._heater_controller.duty_accumulator_seconds = 120.5
+        thermostat._heater_controller.min_on_cycle_duration = 300.0
+        thermostat._transport_delay = 0
+        thermostat._night_setback = None
+        thermostat._night_setback_config = None
+        thermostat._night_setback_controller = None
+        thermostat._control_output_manager = None
+        thermostat._ke_learner = None
+        thermostat._heater_control_failed = False
+        thermostat._contact_sensor_handler = None
+        thermostat.in_learning_grace_period = False
+        thermostat.entity_id = "climate.test_zone"
+
+        # Setup coordinator with adaptive learner
+        adaptive_learner = MagicMock()
+        adaptive_learner.get_convergence_confidence.return_value = 0.75
+
+        coordinator = MagicMock()
+        coordinator.get_all_zones.return_value = {
+            "zone1": {
+                "climate_entity_id": "climate.test_zone",
+                "adaptive_learner": adaptive_learner,
+            }
+        }
+
+        thermostat.hass = MagicMock()
+        thermostat.hass.data = {"adaptive_thermostat": {"coordinator": coordinator}}
+
+        attrs = build_state_attributes(thermostat)
+
+        # Should have heating_convergence_confidence attribute
+        assert "heating_convergence_confidence" in attrs
+        # Verify it's called with HVACMode.HEAT
+        adaptive_learner.get_convergence_confidence.assert_called_with(HVACMode.HEAT)
+        # Value should be percentage (0.75 -> 75)
+        assert attrs["heating_convergence_confidence"] == 75
+
+    def test_cooling_convergence_confidence_attribute(self):
+        """Test cooling_convergence_confidence attribute is added."""
+        from custom_components.adaptive_thermostat.managers.state_attributes import (
+            build_state_attributes,
+        )
+        from homeassistant.components.climate import HVACMode
+
+        thermostat = MagicMock()
+        thermostat._away_temp = 18.0
+        thermostat._eco_temp = 19.0
+        thermostat._boost_temp = 24.0
+        thermostat._comfort_temp = 21.0
+        thermostat._home_temp = 20.0
+        thermostat._sleep_temp = 18.0
+        thermostat._activity_temp = 20.0
+        thermostat._control_output = 50.0
+        thermostat._kp = 20.0
+        thermostat._ki = 0.01
+        thermostat._kd = 100.0
+        thermostat._ke = 0.5
+        thermostat.pid_mode = "auto"
+        thermostat.pid_control_i = 5.0
+        thermostat._pid_controller = MagicMock()
+        thermostat._pid_controller.outdoor_temp_lagged = 5.0
+        thermostat._pid_controller.outdoor_temp_lag_tau = 3600.0
+        thermostat._heater_controller = MagicMock()
+        thermostat._heater_controller.heater_cycle_count = 100
+        thermostat._heater_controller.cooler_cycle_count = 50
+        thermostat._heater_controller.duty_accumulator_seconds = 120.5
+        thermostat._heater_controller.min_on_cycle_duration = 300.0
+        thermostat._transport_delay = 0
+        thermostat._night_setback = None
+        thermostat._night_setback_config = None
+        thermostat._night_setback_controller = None
+        thermostat._control_output_manager = None
+        thermostat._ke_learner = None
+        thermostat._heater_control_failed = False
+        thermostat._contact_sensor_handler = None
+        thermostat.in_learning_grace_period = False
+        thermostat.entity_id = "climate.test_zone"
+
+        # Setup coordinator with adaptive learner
+        adaptive_learner = MagicMock()
+        adaptive_learner.get_convergence_confidence.return_value = 0.85
+
+        coordinator = MagicMock()
+        coordinator.get_all_zones.return_value = {
+            "zone1": {
+                "climate_entity_id": "climate.test_zone",
+                "adaptive_learner": adaptive_learner,
+            }
+        }
+
+        thermostat.hass = MagicMock()
+        thermostat.hass.data = {"adaptive_thermostat": {"coordinator": coordinator}}
+
+        attrs = build_state_attributes(thermostat)
+
+        # Should have cooling_convergence_confidence attribute
+        assert "cooling_convergence_confidence" in attrs
+        # Verify it's called with HVACMode.COOL
+        adaptive_learner.get_convergence_confidence.assert_called_with(HVACMode.COOL)
+        # Value should be percentage (0.85 -> 85)
+        assert attrs["cooling_convergence_confidence"] == 85
+
+    def test_both_mode_convergence_attributes(self):
+        """Test both heating and cooling convergence attributes are present."""
+        from custom_components.adaptive_thermostat.managers.state_attributes import (
+            build_state_attributes,
+        )
+        from homeassistant.components.climate import HVACMode
+
+        thermostat = MagicMock()
+        thermostat._away_temp = 18.0
+        thermostat._eco_temp = 19.0
+        thermostat._boost_temp = 24.0
+        thermostat._comfort_temp = 21.0
+        thermostat._home_temp = 20.0
+        thermostat._sleep_temp = 18.0
+        thermostat._activity_temp = 20.0
+        thermostat._control_output = 50.0
+        thermostat._kp = 20.0
+        thermostat._ki = 0.01
+        thermostat._kd = 100.0
+        thermostat._ke = 0.5
+        thermostat.pid_mode = "auto"
+        thermostat.pid_control_i = 5.0
+        thermostat._pid_controller = MagicMock()
+        thermostat._pid_controller.outdoor_temp_lagged = 5.0
+        thermostat._pid_controller.outdoor_temp_lag_tau = 3600.0
+        thermostat._heater_controller = MagicMock()
+        thermostat._heater_controller.heater_cycle_count = 100
+        thermostat._heater_controller.cooler_cycle_count = 50
+        thermostat._heater_controller.duty_accumulator_seconds = 120.5
+        thermostat._heater_controller.min_on_cycle_duration = 300.0
+        thermostat._transport_delay = 0
+        thermostat._night_setback = None
+        thermostat._night_setback_config = None
+        thermostat._night_setback_controller = None
+        thermostat._control_output_manager = None
+        thermostat._ke_learner = None
+        thermostat._heater_control_failed = False
+        thermostat._contact_sensor_handler = None
+        thermostat.in_learning_grace_period = False
+        thermostat.entity_id = "climate.test_zone"
+
+        # Setup coordinator with adaptive learner
+        adaptive_learner = MagicMock()
+        # Return different values for different modes
+        def get_confidence_by_mode(mode):
+            if mode == HVACMode.HEAT:
+                return 0.65
+            elif mode == HVACMode.COOL:
+                return 0.90
+            return 0.0
+
+        adaptive_learner.get_convergence_confidence.side_effect = get_confidence_by_mode
+
+        coordinator = MagicMock()
+        coordinator.get_all_zones.return_value = {
+            "zone1": {
+                "climate_entity_id": "climate.test_zone",
+                "adaptive_learner": adaptive_learner,
+            }
+        }
+
+        thermostat.hass = MagicMock()
+        thermostat.hass.data = {"adaptive_thermostat": {"coordinator": coordinator}}
+
+        attrs = build_state_attributes(thermostat)
+
+        # Both attributes should be present
+        assert "heating_convergence_confidence" in attrs
+        assert "cooling_convergence_confidence" in attrs
+        # Values should be different
+        assert attrs["heating_convergence_confidence"] == 65
+        assert attrs["cooling_convergence_confidence"] == 90
+
+    def test_convergence_confidence_no_coordinator(self):
+        """Test that missing coordinator doesn't add per-mode convergence attributes."""
+        from custom_components.adaptive_thermostat.managers.state_attributes import (
+            build_state_attributes,
+        )
+
+        thermostat = MagicMock()
+        thermostat._away_temp = 18.0
+        thermostat._eco_temp = 19.0
+        thermostat._boost_temp = 24.0
+        thermostat._comfort_temp = 21.0
+        thermostat._home_temp = 20.0
+        thermostat._sleep_temp = 18.0
+        thermostat._activity_temp = 20.0
+        thermostat._control_output = 50.0
+        thermostat._kp = 20.0
+        thermostat._ki = 0.01
+        thermostat._kd = 100.0
+        thermostat._ke = 0.5
+        thermostat.pid_mode = "auto"
+        thermostat.pid_control_i = 5.0
+        thermostat._pid_controller = MagicMock()
+        thermostat._pid_controller.outdoor_temp_lagged = 5.0
+        thermostat._pid_controller.outdoor_temp_lag_tau = 3600.0
+        thermostat._heater_controller = MagicMock()
+        thermostat._heater_controller.heater_cycle_count = 100
+        thermostat._heater_controller.cooler_cycle_count = 50
+        thermostat._heater_controller.duty_accumulator_seconds = 120.5
+        thermostat._heater_controller.min_on_cycle_duration = 300.0
+        thermostat._transport_delay = 0
+        thermostat._night_setback = None
+        thermostat._night_setback_config = None
+        thermostat._night_setback_controller = None
+        thermostat._control_output_manager = None
+        thermostat._ke_learner = None
+        thermostat._heater_control_failed = False
+        thermostat._contact_sensor_handler = None
+        thermostat.in_learning_grace_period = False
+        thermostat.hass = MagicMock()
+        thermostat.hass.data = {}
+
+        attrs = build_state_attributes(thermostat)
+
+        # Per-mode convergence attributes should not be present
+        assert "heating_convergence_confidence" not in attrs
+        assert "cooling_convergence_confidence" not in attrs
+
+    def test_convergence_confidence_no_adaptive_learner(self):
+        """Test that missing adaptive learner doesn't add per-mode convergence attributes."""
+        from custom_components.adaptive_thermostat.managers.state_attributes import (
+            build_state_attributes,
+        )
+
+        thermostat = MagicMock()
+        thermostat._away_temp = 18.0
+        thermostat._eco_temp = 19.0
+        thermostat._boost_temp = 24.0
+        thermostat._comfort_temp = 21.0
+        thermostat._home_temp = 20.0
+        thermostat._sleep_temp = 18.0
+        thermostat._activity_temp = 20.0
+        thermostat._control_output = 50.0
+        thermostat._kp = 20.0
+        thermostat._ki = 0.01
+        thermostat._kd = 100.0
+        thermostat._ke = 0.5
+        thermostat.pid_mode = "auto"
+        thermostat.pid_control_i = 5.0
+        thermostat._pid_controller = MagicMock()
+        thermostat._pid_controller.outdoor_temp_lagged = 5.0
+        thermostat._pid_controller.outdoor_temp_lag_tau = 3600.0
+        thermostat._heater_controller = MagicMock()
+        thermostat._heater_controller.heater_cycle_count = 100
+        thermostat._heater_controller.cooler_cycle_count = 50
+        thermostat._heater_controller.duty_accumulator_seconds = 120.5
+        thermostat._heater_controller.min_on_cycle_duration = 300.0
+        thermostat._transport_delay = 0
+        thermostat._night_setback = None
+        thermostat._night_setback_config = None
+        thermostat._night_setback_controller = None
+        thermostat._control_output_manager = None
+        thermostat._ke_learner = None
+        thermostat._heater_control_failed = False
+        thermostat._contact_sensor_handler = None
+        thermostat.in_learning_grace_period = False
+        thermostat.entity_id = "climate.test_zone"
+
+        coordinator = MagicMock()
+        coordinator.get_all_zones.return_value = {
+            "zone1": {
+                "climate_entity_id": "climate.test_zone",
+                "adaptive_learner": None,
+            }
+        }
+
+        thermostat.hass = MagicMock()
+        thermostat.hass.data = {"adaptive_thermostat": {"coordinator": coordinator}}
+
+        attrs = build_state_attributes(thermostat)
+
+        # Per-mode convergence attributes should not be present
+        assert "heating_convergence_confidence" not in attrs
+        assert "cooling_convergence_confidence" not in attrs
+
+    def test_convergence_confidence_rounding(self):
+        """Test that convergence confidence is properly rounded to integer percentage."""
+        from custom_components.adaptive_thermostat.managers.state_attributes import (
+            build_state_attributes,
+        )
+        from homeassistant.components.climate import HVACMode
+
+        thermostat = MagicMock()
+        thermostat._away_temp = 18.0
+        thermostat._eco_temp = 19.0
+        thermostat._boost_temp = 24.0
+        thermostat._comfort_temp = 21.0
+        thermostat._home_temp = 20.0
+        thermostat._sleep_temp = 18.0
+        thermostat._activity_temp = 20.0
+        thermostat._control_output = 50.0
+        thermostat._kp = 20.0
+        thermostat._ki = 0.01
+        thermostat._kd = 100.0
+        thermostat._ke = 0.5
+        thermostat.pid_mode = "auto"
+        thermostat.pid_control_i = 5.0
+        thermostat._pid_controller = MagicMock()
+        thermostat._pid_controller.outdoor_temp_lagged = 5.0
+        thermostat._pid_controller.outdoor_temp_lag_tau = 3600.0
+        thermostat._heater_controller = MagicMock()
+        thermostat._heater_controller.heater_cycle_count = 100
+        thermostat._heater_controller.cooler_cycle_count = 50
+        thermostat._heater_controller.duty_accumulator_seconds = 120.5
+        thermostat._heater_controller.min_on_cycle_duration = 300.0
+        thermostat._transport_delay = 0
+        thermostat._night_setback = None
+        thermostat._night_setback_config = None
+        thermostat._night_setback_controller = None
+        thermostat._control_output_manager = None
+        thermostat._ke_learner = None
+        thermostat._heater_control_failed = False
+        thermostat._contact_sensor_handler = None
+        thermostat.in_learning_grace_period = False
+        thermostat.entity_id = "climate.test_zone"
+
+        # Setup coordinator with adaptive learner
+        adaptive_learner = MagicMock()
+        # Return value that needs rounding
+        adaptive_learner.get_convergence_confidence.return_value = 0.7349
+
+        coordinator = MagicMock()
+        coordinator.get_all_zones.return_value = {
+            "zone1": {
+                "climate_entity_id": "climate.test_zone",
+                "adaptive_learner": adaptive_learner,
+            }
+        }
+
+        thermostat.hass = MagicMock()
+        thermostat.hass.data = {"adaptive_thermostat": {"coordinator": coordinator}}
+
+        attrs = build_state_attributes(thermostat)
+
+        # Should be rounded to integer (0.7349 * 100 = 73.49 -> 73)
+        assert attrs["heating_convergence_confidence"] == 73
+        assert attrs["cooling_convergence_confidence"] == 73

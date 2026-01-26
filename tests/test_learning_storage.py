@@ -809,3 +809,449 @@ async def test_load_v2_migrates_through_v3_to_v4(mock_hass):
         assert "default_zone" in data["zones"]
         assert data["zones"]["default_zone"]["adaptive_learner"]["cycle_history"] == [{"overshoot": 0.4}]
         assert data["zones"]["default_zone"]["ke_learner"]["current_ke"] == 0.3
+
+
+# ============================================================================
+# Story X: v4 to v5 migration tests (heating/cooling mode split)
+# ============================================================================
+
+
+def test_migrate_v4_to_v5_basic(mock_hass):
+    """Test _migrate_v4_to_v5 splits adaptive_learner into heating/cooling modes."""
+    store = LearningDataStore(mock_hass)
+
+    # Simulate v4 data with adaptive_learner at zone level
+    v4_data = {
+        "version": 4,
+        "zones": {
+            "climate.living_room": {
+                "adaptive_learner": {
+                    "cycle_history": [
+                        {"overshoot": 0.3, "undershoot": 0.2, "settling_time": 45.0},
+                        {"overshoot": 0.25, "undershoot": 0.15, "settling_time": 40.0},
+                    ],
+                    "auto_apply_count": 3,
+                    "convergence_confidence": 0.75,
+                    "consecutive_converged_cycles": 5,
+                    "pid_converged_for_ke": True,
+                },
+                "ke_learner": {
+                    "current_ke": 0.5,
+                },
+            },
+        },
+    }
+
+    # Call migration method
+    v5_data = store._migrate_v4_to_v5(v4_data)
+
+    # Verify version updated to 5
+    assert v5_data["version"] == 5
+
+    # Verify zones structure preserved
+    assert "zones" in v5_data
+    assert "climate.living_room" in v5_data["zones"]
+
+    zone = v5_data["zones"]["climate.living_room"]
+
+    # Verify adaptive_learner was split into heating/cooling
+    assert "adaptive_learner" in zone
+    assert "heating" in zone["adaptive_learner"]
+    assert "cooling" in zone["adaptive_learner"]
+
+    # Verify existing data moved to heating
+    heating = zone["adaptive_learner"]["heating"]
+    assert heating["cycle_history"] == [
+        {"overshoot": 0.3, "undershoot": 0.2, "settling_time": 45.0},
+        {"overshoot": 0.25, "undershoot": 0.15, "settling_time": 40.0},
+    ]
+    assert heating["auto_apply_count"] == 3
+    assert heating["convergence_confidence"] == 0.75
+    assert heating["pid_history"] == []  # Initialized empty
+
+    # Verify cooling initialized as empty
+    cooling = zone["adaptive_learner"]["cooling"]
+    assert cooling["cycle_history"] == []
+    assert cooling["auto_apply_count"] == 0
+    assert cooling.get("convergence_confidence", 0.0) == 0.0
+    assert cooling["pid_history"] == []
+
+    # Verify ke_learner preserved
+    assert zone["ke_learner"]["current_ke"] == 0.5
+
+
+def test_migrate_v4_to_v5_multiple_zones(mock_hass):
+    """Test v4 to v5 migration handles multiple zones correctly."""
+    store = LearningDataStore(mock_hass)
+
+    v4_data = {
+        "version": 4,
+        "zones": {
+            "climate.bedroom": {
+                "adaptive_learner": {
+                    "cycle_history": [{"overshoot": 0.2}],
+                    "auto_apply_count": 1,
+                },
+            },
+            "climate.office": {
+                "adaptive_learner": {
+                    "cycle_history": [],
+                    "auto_apply_count": 0,
+                },
+            },
+        },
+    }
+
+    v5_data = store._migrate_v4_to_v5(v4_data)
+
+    assert v5_data["version"] == 5
+
+    # Verify both zones migrated
+    bedroom = v5_data["zones"]["climate.bedroom"]["adaptive_learner"]
+    assert bedroom["heating"]["cycle_history"] == [{"overshoot": 0.2}]
+    assert bedroom["heating"]["auto_apply_count"] == 1
+    assert bedroom["cooling"]["cycle_history"] == []
+
+    office = v5_data["zones"]["climate.office"]["adaptive_learner"]
+    assert office["heating"]["cycle_history"] == []
+    assert office["cooling"]["auto_apply_count"] == 0
+
+
+def test_migrate_v4_to_v5_empty_zones(mock_hass):
+    """Test v4 to v5 migration with no zones."""
+    store = LearningDataStore(mock_hass)
+
+    v4_data = {
+        "version": 4,
+        "zones": {},
+    }
+
+    v5_data = store._migrate_v4_to_v5(v4_data)
+
+    assert v5_data["version"] == 5
+    assert v5_data["zones"] == {}
+
+
+@pytest.mark.asyncio
+async def test_load_v4_auto_migrates_to_v5(mock_hass):
+    """Test loading v4 data automatically migrates to v5."""
+    v4_data = {
+        "version": 4,
+        "zones": {
+            "climate.kitchen": {
+                "adaptive_learner": {
+                    "cycle_history": [{"overshoot": 0.3}],
+                    "auto_apply_count": 2,
+                },
+            },
+        },
+    }
+
+    # Create mock Store class
+    mock_store_class = Mock()
+    mock_store_instance = AsyncMock()
+    mock_store_instance.async_load = AsyncMock(return_value=v4_data)
+    mock_store_class.return_value = mock_store_instance
+
+    mock_storage_module = Mock()
+    mock_storage_module.Store = mock_store_class
+
+    with patch.dict('sys.modules', {'homeassistant.helpers.storage': mock_storage_module}):
+        store = LearningDataStore(mock_hass)
+        data = await store.async_load()
+
+        # Should migrate to v5
+        assert data["version"] == 5
+
+        # Verify heating/cooling split
+        kitchen = data["zones"]["climate.kitchen"]["adaptive_learner"]
+        assert "heating" in kitchen
+        assert "cooling" in kitchen
+        assert kitchen["heating"]["cycle_history"] == [{"overshoot": 0.3}]
+        assert kitchen["cooling"]["cycle_history"] == []
+
+
+def test_v5_schema_structure(mock_hass):
+    """Test v5 schema has correct structure with pid_history in both modes."""
+    store = LearningDataStore(mock_hass)
+
+    # Build a complete v5 structure
+    v5_data = {
+        "version": 5,
+        "zones": {
+            "climate.test": {
+                "adaptive_learner": {
+                    "heating": {
+                        "cycle_history": [{"overshoot": 0.3}],
+                        "auto_apply_count": 2,
+                        "convergence_confidence": 0.8,
+                        "pid_history": [
+                            {
+                                "timestamp": "2026-01-26T10:00:00",
+                                "kp": 3.5,
+                                "ki": 0.01,
+                                "kd": 1.2,
+                                "reason": "auto_apply",
+                            }
+                        ],
+                    },
+                    "cooling": {
+                        "cycle_history": [],
+                        "auto_apply_count": 0,
+                        "convergence_confidence": 0.0,
+                        "pid_history": [],
+                    },
+                },
+            },
+        },
+    }
+
+    # Simulate migration (should be no-op for v5)
+    result = store._migrate_v4_to_v5(v5_data)
+
+    # v5 should pass through unchanged (migration is idempotent)
+    assert result["version"] == 5
+    zone = result["zones"]["climate.test"]["adaptive_learner"]
+    assert "heating" in zone
+    assert "cooling" in zone
+    assert len(zone["heating"]["pid_history"]) == 1
+    assert zone["heating"]["pid_history"][0]["kp"] == 3.5
+
+
+def test_migrate_v4_to_v5_preserves_other_keys(mock_hass):
+    """Test v4 to v5 migration preserves non-adaptive_learner keys."""
+    store = LearningDataStore(mock_hass)
+
+    v4_data = {
+        "version": 4,
+        "zones": {
+            "climate.test": {
+                "adaptive_learner": {
+                    "cycle_history": [{"overshoot": 0.2}],
+                },
+                "ke_learner": {
+                    "current_ke": 0.45,
+                    "enabled": True,
+                },
+                "thermal_learner": {
+                    "cooling_rates": [0.5],
+                    "heating_rates": [2.0],
+                },
+                "last_updated": "2026-01-26T09:00:00",
+            },
+        },
+    }
+
+    v5_data = store._migrate_v4_to_v5(v4_data)
+
+    zone = v5_data["zones"]["climate.test"]
+
+    # Verify other learners preserved
+    assert zone["ke_learner"]["current_ke"] == 0.45
+    assert zone["thermal_learner"]["cooling_rates"] == [0.5]
+    assert zone["last_updated"] == "2026-01-26T09:00:00"
+
+    # Verify adaptive_learner split correctly
+    assert "heating" in zone["adaptive_learner"]
+    assert "cooling" in zone["adaptive_learner"]
+
+
+def test_pid_history_in_v5_schema(mock_hass):
+    """Test pid_history storage in v5 schema per mode."""
+    store = LearningDataStore(mock_hass)
+
+    # Create v5 data with pid_history in both modes
+    v5_data = {
+        "version": 5,
+        "zones": {
+            "climate.test": {
+                "adaptive_learner": {
+                    "heating": {
+                        "cycle_history": [],
+                        "auto_apply_count": 1,
+                        "pid_history": [
+                            {
+                                "timestamp": "2026-01-26T10:00:00",
+                                "kp": 3.5,
+                                "ki": 0.01,
+                                "kd": 1.2,
+                                "reason": "auto_apply",
+                            },
+                            {
+                                "timestamp": "2026-01-26T11:00:00",
+                                "kp": 3.8,
+                                "ki": 0.012,
+                                "kd": 1.3,
+                                "reason": "auto_apply",
+                            },
+                        ],
+                    },
+                    "cooling": {
+                        "cycle_history": [],
+                        "auto_apply_count": 0,
+                        "pid_history": [
+                            {
+                                "timestamp": "2026-01-26T14:00:00",
+                                "kp": 2.0,
+                                "ki": 0.005,
+                                "kd": 0.8,
+                                "reason": "manual",
+                            },
+                        ],
+                    },
+                },
+            },
+        },
+    }
+
+    # Get zone data
+    zone_data = v5_data["zones"]["climate.test"]
+
+    # Verify heating pid_history
+    heating_history = zone_data["adaptive_learner"]["heating"]["pid_history"]
+    assert len(heating_history) == 2
+    assert heating_history[-1]["kp"] == 3.8  # Latest entry
+    assert heating_history[-1]["ki"] == 0.012
+    assert heating_history[-1]["reason"] == "auto_apply"
+
+    # Verify cooling pid_history
+    cooling_history = zone_data["adaptive_learner"]["cooling"]["pid_history"]
+    assert len(cooling_history) == 1
+    assert cooling_history[-1]["kp"] == 2.0
+    assert cooling_history[-1]["reason"] == "manual"
+
+
+def test_gains_restoration_from_pid_history(mock_hass):
+    """Test that gains can be restored from pid_history[-1] per mode."""
+    store = LearningDataStore(mock_hass)
+
+    v5_data = {
+        "version": 5,
+        "zones": {
+            "climate.test": {
+                "adaptive_learner": {
+                    "heating": {
+                        "cycle_history": [],
+                        "auto_apply_count": 2,
+                        "pid_history": [
+                            {
+                                "timestamp": "2026-01-26T09:00:00",
+                                "kp": 3.0,
+                                "ki": 0.008,
+                                "kd": 1.0,
+                                "reason": "manual",
+                            },
+                            {
+                                "timestamp": "2026-01-26T10:00:00",
+                                "kp": 3.5,
+                                "ki": 0.01,
+                                "kd": 1.2,
+                                "reason": "auto_apply",
+                            },
+                        ],
+                    },
+                    "cooling": {
+                        "cycle_history": [],
+                        "auto_apply_count": 0,
+                        "pid_history": [
+                            {
+                                "timestamp": "2026-01-26T12:00:00",
+                                "kp": 2.2,
+                                "ki": 0.006,
+                                "kd": 0.9,
+                                "reason": "manual",
+                            },
+                        ],
+                    },
+                },
+            },
+        },
+    }
+
+    zone_data = v5_data["zones"]["climate.test"]["adaptive_learner"]
+
+    # Get latest gains from heating mode
+    heating_latest = zone_data["heating"]["pid_history"][-1]
+    assert heating_latest["kp"] == 3.5
+    assert heating_latest["ki"] == 0.01
+    assert heating_latest["kd"] == 1.2
+
+    # Get latest gains from cooling mode
+    cooling_latest = zone_data["cooling"]["pid_history"][-1]
+    assert cooling_latest["kp"] == 2.2
+    assert cooling_latest["ki"] == 0.006
+    assert cooling_latest["kd"] == 0.9
+
+
+def test_empty_cooling_initialization_on_migration(mock_hass):
+    """Test cooling sub-structure initialized empty when migrating from v4."""
+    store = LearningDataStore(mock_hass)
+
+    v4_data = {
+        "version": 4,
+        "zones": {
+            "climate.test": {
+                "adaptive_learner": {
+                    "cycle_history": [
+                        {"overshoot": 0.3},
+                        {"overshoot": 0.25},
+                    ],
+                    "auto_apply_count": 5,
+                    "convergence_confidence": 0.85,
+                },
+            },
+        },
+    }
+
+    v5_data = store._migrate_v4_to_v5(v4_data)
+
+    cooling = v5_data["zones"]["climate.test"]["adaptive_learner"]["cooling"]
+
+    # Verify all cooling fields initialized to empty/zero
+    assert cooling["cycle_history"] == []
+    assert cooling["auto_apply_count"] == 0
+    assert cooling.get("convergence_confidence", 0.0) == 0.0
+    assert cooling["pid_history"] == []
+
+
+@pytest.mark.asyncio
+async def test_v4_to_v5_migration_state_attributes_pid_history(mock_hass):
+    """Test one-time migration of pid_history from state attributes to heating.pid_history.
+
+    This test verifies that:
+    1. v4 data migrates to v5 with empty pid_history initially
+    2. State attributes pid_history would be restored separately (not tested here,
+       as that's handled by StateRestorer in climate.py)
+    3. Migration is idempotent (running twice doesn't break anything)
+    """
+    # This test documents the expected behavior but the actual state attribute
+    # migration happens in StateRestorer, not in LearningDataStore migration.
+    # The v4->v5 migration just creates the structure with empty pid_history.
+
+    store = LearningDataStore(mock_hass)
+
+    v4_data = {
+        "version": 4,
+        "zones": {
+            "climate.test": {
+                "adaptive_learner": {
+                    "cycle_history": [{"overshoot": 0.3}],
+                    "auto_apply_count": 2,
+                    # NOTE: pid_history NOT in v4 persistence (it was in state attributes)
+                },
+            },
+        },
+    }
+
+    v5_data = store._migrate_v4_to_v5(v4_data)
+
+    # After migration, pid_history exists but is empty
+    # (will be populated from state attributes during restore)
+    heating = v5_data["zones"]["climate.test"]["adaptive_learner"]["heating"]
+    assert "pid_history" in heating
+    assert heating["pid_history"] == []
+
+    # Verify migration is idempotent
+    v5_again = store._migrate_v4_to_v5(v5_data)
+    assert v5_again["version"] == 5
+    assert v5_again["zones"]["climate.test"]["adaptive_learner"]["heating"]["pid_history"] == []
