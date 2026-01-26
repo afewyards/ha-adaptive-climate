@@ -23,6 +23,43 @@ STORAGE_VERSION = 5
 SAVE_DELAY_SECONDS = 30
 
 
+def _create_migrating_store(hass, version: int, key: str, data_store: "LearningDataStore"):
+    """Create a Store subclass with migration support.
+
+    HA's Store raises NotImplementedError when stored version differs from
+    requested version unless a migration function is provided. We create
+    a subclass that provides the migration function.
+    """
+    from homeassistant.helpers.storage import Store
+
+    class MigratingStore(Store):
+        """Store subclass with migration support."""
+
+        async def _async_migrate_func(
+            self, old_major_version: int, old_minor_version: int, old_data: dict
+        ) -> dict:
+            """Migrate storage data from older versions."""
+            _LOGGER.info(
+                "Migrating storage from v%d.%d to v%d",
+                old_major_version, old_minor_version, version
+            )
+            data = old_data
+
+            # Apply migrations in sequence
+            if old_major_version <= 2:
+                data = data_store._migrate_v2_to_v3(data)
+
+            if data.get("version", old_major_version) <= 3:
+                data = data_store._migrate_v3_to_v4(data)
+
+            if data.get("version", old_major_version) <= 4:
+                data = data_store._migrate_v4_to_v5(data)
+
+            return data
+
+    return MigratingStore(hass, version, key)
+
+
 class LearningDataStore:
     """Persist learning data across Home Assistant restarts."""
 
@@ -61,19 +98,17 @@ class LearningDataStore:
         if self.hass is None:
             raise RuntimeError("async_load requires HomeAssistant instance")
 
-        from homeassistant.helpers.storage import Store
-
         # Lazily initialize lock in async context
         if self._save_lock is None:
             self._save_lock = asyncio.Lock()
 
         if self._store is None:
-            self._store = Store(
+            # Create Store with migration support via subclass
+            self._store = _create_migrating_store(
                 self.hass,
                 STORAGE_VERSION,
                 STORAGE_KEY,
-                minor_version=1,
-                migrate_func=self._async_migrate_storage,
+                self,
             )
 
         data = await self._store.async_load()
