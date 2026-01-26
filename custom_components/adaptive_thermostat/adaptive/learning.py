@@ -1,9 +1,12 @@
 """Thermal rate learning and adaptive PID adjustments for Adaptive Thermostat."""
 
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, TYPE_CHECKING
 import statistics
 import logging
+
+if TYPE_CHECKING:
+    from homeassistant.components.climate import HVACMode
 
 from ..const import (
     PID_LIMITS,
@@ -68,6 +71,21 @@ _LOGGER = logging.getLogger(__name__)
 
 # Adaptive learning (CycleMetrics imported from cycle_analysis)
 
+def _mode_to_str(mode):
+    """Convert mode to string (handles both enum and string)."""
+    return _mode_to_str(mode) if hasattr(mode, 'value') else str(mode)
+
+
+def _get_hvac_heat_mode():
+    """Lazy import of HVACMode.HEAT for default parameter."""
+    from homeassistant.components.climate import HVACMode
+    return HVACMode.HEAT
+
+def _get_hvac_cool_mode():
+    """Lazy import of HVACMode.COOL for comparison."""
+    from homeassistant.components.climate import HVACMode
+    return HVACMode.COOL
+
 
 class AdaptiveLearner:
     """Adaptive PID tuning based on observed heating cycle performance."""
@@ -81,7 +99,9 @@ class AdaptiveLearner:
             heating_type: Heating system type (floor_hydronic, radiator, convector, forced_air)
                          Used to select appropriate convergence thresholds
         """
-        self._cycle_history: List[CycleMetrics] = []
+        # Mode-specific cycle histories
+        self._heating_cycle_history: List[CycleMetrics] = []
+        self._cooling_cycle_history: List[CycleMetrics] = []
         self._max_history = max_history
         self._heating_type = heating_type
         self._convergence_thresholds = get_convergence_thresholds(heating_type)
@@ -90,8 +110,9 @@ class AdaptiveLearner:
         # Convergence tracking for Ke learning activation
         self._consecutive_converged_cycles: int = 0
         self._pid_converged_for_ke: bool = False
-        # Adaptive convergence confidence tracking
-        self._convergence_confidence: float = 0.0
+        # Mode-specific convergence confidence tracking
+        self._heating_convergence_confidence: float = 0.0
+        self._cooling_convergence_confidence: float = 0.0
         self._last_seasonal_check: Optional[datetime] = None
         self._outdoor_temp_history: List[float] = []
         self._duty_cycle_history: List[float] = []
@@ -100,8 +121,9 @@ class AdaptiveLearner:
         # Rule state tracker with hysteresis to prevent oscillation
         self._rule_state_tracker = RuleStateTracker()
 
-        # Auto-apply tracking state
-        self._auto_apply_count: int = 0
+        # Mode-specific auto-apply tracking state
+        self._heating_auto_apply_count: int = 0
+        self._cooling_auto_apply_count: int = 0
         self._last_seasonal_shift: Optional[datetime] = None
         self._pid_history: List[Dict[str, Any]] = []
 
@@ -117,15 +139,15 @@ class AdaptiveLearner:
 
     @property
     def cycle_history(self) -> List[CycleMetrics]:
-        """Return cycle history for external access."""
-        return self._cycle_history
+        """Return cycle history for external access (defaults to heating for backward compatibility)."""
+        return self._heating_cycle_history
 
     @cycle_history.setter
     def cycle_history(self, value: List[CycleMetrics]) -> None:
-        """Set cycle history (primarily for testing)."""
-        self._cycle_history = value
+        """Set cycle history (primarily for testing, defaults to heating for backward compatibility)."""
+        self._heating_cycle_history = value
 
-    def add_cycle_metrics(self, metrics: CycleMetrics) -> None:
+    def add_cycle_metrics(self, metrics: CycleMetrics, mode: "HVACMode" = None) -> None:
         """
         Add a cycle's performance metrics to history.
 
@@ -134,17 +156,27 @@ class AdaptiveLearner:
 
         Args:
             metrics: CycleMetrics object with performance data
+            mode: HVACMode (HEAT or COOL) to route cycle to correct history (defaults to HEAT)
         """
-        self._cycle_history.append(metrics)
+        if mode is None:
+            mode = _get_hvac_heat_mode()
+        # Route to correct history based on mode
+        if mode == _get_hvac_cool_mode():
+            cycle_history = self._cooling_cycle_history
+        else:
+            cycle_history = self._heating_cycle_history
+
+        cycle_history.append(metrics)
 
         # Log detailed cycle metrics for debugging
         _LOGGER.debug(
-            "Cycle recorded [%d/%d]: overshoot=%.3f, undershoot=%.3f, "
+            "Cycle recorded [%s mode, %d/%d]: overshoot=%.3f, undershoot=%.3f, "
             "settling_time=%.1f, oscillations=%d, rise_time=%.1f, "
             "inter_cycle_drift=%.3f, settling_mae=%.3f, "
             "integral@tolerance=%.2f, integral@setpoint=%.2f, decay=%.3f, "
             "disturbed=%s, clamped=%s",
-            len(self._cycle_history),
+            _mode_to_str(mode),
+            len(cycle_history),
             self._max_history,
             metrics.overshoot or 0.0,
             metrics.undershoot or 0.0,
@@ -164,22 +196,33 @@ class AdaptiveLearner:
         self._cycles_since_last_adjustment += 1
 
         # FIFO eviction: remove oldest entries when exceeding max history
-        if len(self._cycle_history) > self._max_history:
-            evicted_count = len(self._cycle_history) - self._max_history
-            self._cycle_history = self._cycle_history[-self._max_history:]
+        if len(cycle_history) > self._max_history:
+            evicted_count = len(cycle_history) - self._max_history
+            if mode == _get_hvac_cool_mode():
+                self._cooling_cycle_history = self._cooling_cycle_history[-self._max_history:]
+            else:
+                self._heating_cycle_history = self._heating_cycle_history[-self._max_history:]
             _LOGGER.debug(
-                f"Cycle history exceeded max ({self._max_history}), "
+                f"Cycle history ({_mode_to_str(mode)} mode) exceeded max ({self._max_history}), "
                 f"evicted {evicted_count} oldest entries"
             )
 
-    def get_cycle_count(self) -> int:
+    def get_cycle_count(self, mode: "HVACMode" = None) -> int:
         """
         Get number of stored cycle metrics.
 
+        Args:
+            mode: HVACMode (HEAT or COOL) to check (defaults to HEAT)
+
         Returns:
-            Number of cycles in history
+            Number of cycles in history for specified mode
         """
-        return len(self._cycle_history)
+        if mode is None:
+            mode = _get_hvac_heat_mode()
+        if mode == _get_hvac_cool_mode():
+            return len(self._cooling_cycle_history)
+        else:
+            return len(self._heating_cycle_history)
 
     def _check_convergence(
         self,
@@ -295,6 +338,7 @@ class AdaptiveLearner:
         pwm_seconds: float = 0,
         check_auto_apply: bool = False,
         outdoor_temp: Optional[float] = None,
+        mode: "HVACMode" = None,
     ) -> Optional[Dict[str, float]]:
         """
         Calculate PID adjustments based on observed cycle performance.
@@ -329,11 +373,19 @@ class AdaptiveLearner:
             check_auto_apply: If True, enforce auto-apply safety gates and use
                 heating-type-specific thresholds
             outdoor_temp: Current outdoor temperature for seasonal shift detection
+            mode: HVACMode (HEAT or COOL) to use correct history (defaults to HEAT)
 
         Returns:
             Dictionary with recommended kp, ki, kd values, or None if insufficient data,
             system is converged, rate limited, or blocked by auto-apply safety gates
         """
+        # Select the correct cycle history based on mode
+        if mode is None:
+            mode = _get_hvac_heat_mode()
+        cycle_history = self._cooling_cycle_history if mode == _get_hvac_cool_mode() else self._heating_cycle_history
+        auto_apply_count = self._cooling_auto_apply_count if mode == _get_hvac_cool_mode() else self._heating_auto_apply_count
+        convergence_confidence = self._cooling_convergence_confidence if mode == _get_hvac_cool_mode() else self._heating_convergence_confidence
+
         # Auto-apply safety gates (when called for automatic PID application)
         if check_auto_apply:
             # Check 1: Skip if in validation mode (validating previous auto-apply)
@@ -365,15 +417,15 @@ class AdaptiveLearner:
             # Check 4: Confidence threshold (first apply vs subsequent)
             confidence_threshold = (
                 thresholds["confidence_first"]
-                if self._auto_apply_count == 0
+                if auto_apply_count == 0
                 else thresholds["confidence_subsequent"]
             )
-            if self._convergence_confidence < confidence_threshold:
+            if convergence_confidence < confidence_threshold:
                 _LOGGER.debug(
-                    f"Auto-apply blocked: confidence {self._convergence_confidence:.2f} "
+                    f"Auto-apply blocked: confidence {convergence_confidence:.2f} "
                     f"< threshold {confidence_threshold:.2f} "
-                    f"(heating_type={self._heating_type}, "
-                    f"apply_count={self._auto_apply_count})"
+                    f"(heating_type={self._heating_type}, mode={_mode_to_str(mode)}, "
+                    f"apply_count={auto_apply_count})"
                 )
                 return None
 
@@ -383,28 +435,28 @@ class AdaptiveLearner:
             min_cycles = thresholds["min_cycles"]
 
             # Subsequent learning requires more cycles for higher confidence
-            if self._auto_apply_count > 0:
+            if auto_apply_count > 0:
                 min_cycles = int(min_cycles * SUBSEQUENT_LEARNING_CYCLE_MULTIPLIER)
 
             _LOGGER.debug(
-                f"Auto-apply checks passed: confidence={self._convergence_confidence:.2f}, "
+                f"Auto-apply checks passed: confidence={convergence_confidence:.2f}, "
                 f"threshold={confidence_threshold:.2f}, heating_type={self._heating_type}, "
-                f"min_cycles={min_cycles} (apply_count={self._auto_apply_count})"
+                f"mode={_mode_to_str(mode)}, min_cycles={min_cycles} (apply_count={auto_apply_count})"
             )
 
         # Check hybrid rate limiting first (both time AND cycles)
         if self._check_rate_limit(min_interval_hours, min_adjustment_cycles):
             return None
 
-        if len(self._cycle_history) < min_cycles:
+        if len(cycle_history) < min_cycles:
             _LOGGER.debug(
-                f"Insufficient cycles for learning: {len(self._cycle_history)} < {min_cycles}"
+                f"Insufficient cycles for learning ({_mode_to_str(mode)} mode): {len(cycle_history)} < {min_cycles}"
             )
             return None
 
         # Calculate average metrics from recent cycles
         # Filter out disturbed cycles for more accurate learning
-        recent_cycles = self._cycle_history[-min_cycles * 2:]  # Get more cycles to account for filtering
+        recent_cycles = cycle_history[-min_cycles * 2:]  # Get more cycles to account for filtering
         undisturbed_cycles = [c for c in recent_cycles if not c.is_disturbed]
 
         # If too many cycles were filtered out, we don't have enough data
@@ -586,11 +638,11 @@ class AdaptiveLearner:
             rule_results = resolve_rule_conflicts(rule_results, conflicts)
 
         # Get learning rate multiplier based on convergence confidence
-        learning_rate = self.get_learning_rate_multiplier()
+        learning_rate = self.get_learning_rate_multiplier(convergence_confidence)
         if learning_rate != 1.0:
             _LOGGER.info(
                 f"Applying learning rate multiplier: {learning_rate:.2f}x "
-                f"(confidence: {self._convergence_confidence:.2f})"
+                f"(confidence: {convergence_confidence:.2f}, mode: {_mode_to_str(mode)})"
             )
 
         # Apply resolved rules with learning rate scaling
@@ -654,15 +706,17 @@ class AdaptiveLearner:
         """Clear all stored cycle metrics, reset adjustment tracking, and exit validation mode.
 
         This resets:
-        - Cycle history
+        - Cycle history (both heating and cooling)
         - Last adjustment time and cycle counter
-        - Convergence confidence
+        - Convergence confidence (both heating and cooling)
         - Validation mode state and collected validation cycles
         """
-        self._cycle_history.clear()
+        self._heating_cycle_history.clear()
+        self._cooling_cycle_history.clear()
         self._last_adjustment_time = None
         self._cycles_since_last_adjustment = 0
-        self._convergence_confidence = 0.0
+        self._heating_convergence_confidence = 0.0
+        self._cooling_convergence_confidence = 0.0
         self._validation_mode = False
         self._validation_cycles = []
 
@@ -948,7 +1002,40 @@ class AdaptiveLearner:
                 old_count,
             )
 
-    def update_convergence_confidence(self, metrics: CycleMetrics) -> None:
+
+    def get_convergence_confidence(self, mode: "HVACMode" = None) -> float:
+        """Get current convergence confidence level for specified mode.
+
+        Args:
+            mode: HVACMode (HEAT or COOL) to check (defaults to HEAT)
+
+        Returns:
+            Confidence in range [0.0, 1.0]
+        """
+        if mode is None:
+            mode = _get_hvac_heat_mode()
+        if mode == _get_hvac_cool_mode():
+            return self._cooling_convergence_confidence
+        else:
+            return self._heating_convergence_confidence
+
+    def get_auto_apply_count(self, mode: "HVACMode" = None) -> int:
+        """Get number of times PID has been auto-applied for specified mode.
+
+        Args:
+            mode: HVACMode (HEAT or COOL) to check (defaults to HEAT)
+
+        Returns:
+            Total count of auto-applied PID adjustments for the specified mode.
+        """
+        if mode is None:
+            mode = _get_hvac_heat_mode()
+        if mode == _get_hvac_cool_mode():
+            return self._cooling_auto_apply_count
+        else:
+            return self._heating_auto_apply_count
+
+    def update_convergence_confidence(self, metrics: CycleMetrics, mode: "HVACMode" = None) -> None:
         """Update convergence confidence based on cycle performance.
 
         Confidence increases when cycles meet convergence criteria, and is used
@@ -956,7 +1043,16 @@ class AdaptiveLearner:
 
         Args:
             metrics: CycleMetrics from the latest completed cycle
+            mode: HVACMode (HEAT or COOL) to update (defaults to HEAT)
         """
+        if mode is None:
+            mode = _get_hvac_heat_mode()
+        # Select confidence value based on mode
+        if mode == _get_hvac_cool_mode():
+            current_confidence = self._cooling_convergence_confidence
+        else:
+            current_confidence = self._heating_convergence_confidence
+
         # Check if this cycle meets convergence criteria
         is_good_cycle = (
             (metrics.overshoot is None or metrics.overshoot <= self._convergence_thresholds["overshoot_max"]) and
@@ -968,26 +1064,32 @@ class AdaptiveLearner:
 
         if is_good_cycle:
             # Increase confidence, capped at maximum
-            self._convergence_confidence = min(
+            current_confidence = min(
                 CONVERGENCE_CONFIDENCE_HIGH,
-                self._convergence_confidence + CONFIDENCE_INCREASE_PER_GOOD_CYCLE
+                current_confidence + CONFIDENCE_INCREASE_PER_GOOD_CYCLE
             )
             _LOGGER.debug(
-                f"Convergence confidence increased to {self._convergence_confidence:.2f} "
+                f"Convergence confidence ({_mode_to_str(mode)} mode) increased to {current_confidence:.2f} "
                 f"(good cycle: overshoot={metrics.overshoot:.2f}°C, "
                 f"oscillations={metrics.oscillations}, "
                 f"settling={metrics.settling_time:.1f}min)"
             )
         else:
             # Poor cycle - reduce confidence slightly
-            self._convergence_confidence = max(
+            current_confidence = max(
                 0.0,
-                self._convergence_confidence - CONFIDENCE_INCREASE_PER_GOOD_CYCLE * 0.5
+                current_confidence - CONFIDENCE_INCREASE_PER_GOOD_CYCLE * 0.5
             )
             _LOGGER.debug(
-                f"Convergence confidence decreased to {self._convergence_confidence:.2f} "
+                f"Convergence confidence ({_mode_to_str(mode)} mode) decreased to {current_confidence:.2f} "
                 f"(poor cycle detected)"
             )
+
+        # Store updated confidence back
+        if mode == _get_hvac_cool_mode():
+            self._cooling_convergence_confidence = current_confidence
+        else:
+            self._heating_convergence_confidence = current_confidence
 
     def check_performance_degradation(self, baseline_window: int = 10) -> bool:
         """Check if recent performance has degraded compared to baseline.
@@ -1086,27 +1188,24 @@ class AdaptiveLearner:
             self._convergence_confidence * (1.0 - CONFIDENCE_DECAY_RATE_DAILY)
         )
 
-    def get_learning_rate_multiplier(self) -> float:
+    def get_learning_rate_multiplier(self, confidence: Optional[float] = None) -> float:
         """Get learning rate multiplier based on convergence confidence.
+
+        Args:
+            confidence: Optional confidence value to use. If None, uses heating mode confidence.
 
         Returns:
             Multiplier in range [0.5, 2.0]:
             - Low confidence (0.0): 2.0x faster learning
             - High confidence (1.0): 0.5x slower learning
         """
+        if confidence is None:
+            confidence = self._heating_convergence_confidence
         # Low confidence = faster learning (larger adjustments)
         # High confidence = slower learning (smaller adjustments)
         # Linear interpolation from 2.0 (confidence=0) to 0.5 (confidence=1)
-        multiplier = 2.0 - (self._convergence_confidence * 1.5)
+        multiplier = 2.0 - (confidence * 1.5)
         return max(0.5, min(2.0, multiplier))
-
-    def get_convergence_confidence(self) -> float:
-        """Get current convergence confidence level.
-
-        Returns:
-            Confidence in range [0.0, 1.0]
-        """
-        return self._convergence_confidence
 
     def start_validation_mode(self, baseline_overshoot: float) -> None:
         """Start validation mode after auto-applying PID changes.
@@ -1285,14 +1384,6 @@ class AdaptiveLearner:
             "Seasonal shift recorded - auto-apply blocked for next %d days",
             SEASONAL_SHIFT_BLOCK_DAYS,
         )
-
-    def get_auto_apply_count(self) -> int:
-        """Get number of times PID has been auto-applied.
-
-        Returns:
-            Total count of auto-applied PID adjustments in the learner's lifetime.
-        """
-        return self._auto_apply_count
 
     def _serialize_cycle(self, cycle: CycleMetrics) -> Dict[str, Any]:
         """Convert a CycleMetrics object to a dictionary.
