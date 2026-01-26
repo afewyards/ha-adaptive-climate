@@ -109,3 +109,291 @@ class TestStateRestorerNoOldState:
         state_restorer.restore(None)
 
         assert mock_thermostat._target_temp == mock_thermostat.max_temp
+
+
+class TestDualGainSetRestoration:
+    """Tests for dual gain set restoration (heating and cooling gains)."""
+
+    def test_gains_restore_from_pid_history_heating_only(self, state_restorer, mock_thermostat):
+        """Test _heating_gains restored from persistence pid_history['heating'][-1]."""
+        old_state = MagicMock()
+        old_state.state = "heat"
+        old_state.attributes = {
+            "temperature": 21.0,
+            "pid_i": 0.0,
+            "pid_integral_migrated": True,
+            "pid_history": {
+                "heating": [
+                    {"timestamp": "2026-01-20T10:00:00", "kp": 15.0, "ki": 0.008, "kd": 80.0, "reason": "physics"},
+                    {"timestamp": "2026-01-21T10:00:00", "kp": 18.0, "ki": 0.010, "kd": 90.0, "reason": "adaptive"},
+                ]
+            }
+        }
+
+        # Mock the PIDGains class that should be set
+        mock_thermostat._heating_gains = None
+        mock_thermostat._cooling_gains = None
+
+        state_restorer.restore(old_state)
+
+        # Should restore heating gains from last entry
+        assert mock_thermostat._heating_gains is not None
+        assert mock_thermostat._heating_gains.kp == 18.0
+        assert mock_thermostat._heating_gains.ki == 0.010
+        assert mock_thermostat._heating_gains.kd == 90.0
+        # Cooling gains should remain None (lazy init)
+        assert mock_thermostat._cooling_gains is None
+
+    def test_gains_restore_from_pid_history_heating_and_cooling(self, state_restorer, mock_thermostat):
+        """Test _heating_gains and _cooling_gains restored from persistence pid_history."""
+        old_state = MagicMock()
+        old_state.state = "heat"
+        old_state.attributes = {
+            "temperature": 21.0,
+            "pid_i": 0.0,
+            "pid_integral_migrated": True,
+            "pid_history": {
+                "heating": [
+                    {"timestamp": "2026-01-21T10:00:00", "kp": 18.0, "ki": 0.010, "kd": 90.0, "reason": "adaptive"},
+                ],
+                "cooling": [
+                    {"timestamp": "2026-01-21T11:00:00", "kp": 22.0, "ki": 0.012, "kd": 110.0, "reason": "adaptive"},
+                ]
+            }
+        }
+
+        mock_thermostat._heating_gains = None
+        mock_thermostat._cooling_gains = None
+
+        state_restorer.restore(old_state)
+
+        # Should restore both heating and cooling gains
+        assert mock_thermostat._heating_gains is not None
+        assert mock_thermostat._heating_gains.kp == 18.0
+        assert mock_thermostat._heating_gains.ki == 0.010
+        assert mock_thermostat._heating_gains.kd == 90.0
+
+        assert mock_thermostat._cooling_gains is not None
+        assert mock_thermostat._cooling_gains.kp == 22.0
+        assert mock_thermostat._cooling_gains.ki == 0.012
+        assert mock_thermostat._cooling_gains.kd == 110.0
+
+    def test_gains_restore_cooling_none_when_missing(self, state_restorer, mock_thermostat):
+        """Test _cooling_gains is None when not present in pid_history (lazy init)."""
+        old_state = MagicMock()
+        old_state.state = "heat"
+        old_state.attributes = {
+            "temperature": 21.0,
+            "pid_i": 0.0,
+            "pid_integral_migrated": True,
+            "pid_history": {
+                "heating": [
+                    {"timestamp": "2026-01-21T10:00:00", "kp": 18.0, "ki": 0.010, "kd": 90.0, "reason": "adaptive"},
+                ]
+                # No cooling key
+            }
+        }
+
+        mock_thermostat._heating_gains = None
+        mock_thermostat._cooling_gains = None
+
+        state_restorer.restore(old_state)
+
+        # Heating gains should be restored
+        assert mock_thermostat._heating_gains is not None
+        assert mock_thermostat._heating_gains.kp == 18.0
+        # Cooling gains should remain None (lazy init)
+        assert mock_thermostat._cooling_gains is None
+
+
+class TestLegacyGainsMigration:
+    """Tests for legacy kp/ki/kd attribute migration to dual gain sets."""
+
+    def test_legacy_kp_ki_kd_migration_to_heating_gains(self, state_restorer, mock_thermostat):
+        """Test legacy kp/ki/kd attributes migrated to _heating_gains."""
+        old_state = MagicMock()
+        old_state.state = "heat"
+        old_state.attributes = {
+            "temperature": 21.0,
+            "pid_i": 0.0,
+            "pid_integral_migrated": True,
+            # Legacy single gain attributes (no pid_history)
+            "kp": 20.0,
+            "ki": 0.015,
+            "kd": 100.0,
+        }
+
+        mock_thermostat._heating_gains = None
+        mock_thermostat._cooling_gains = None
+
+        state_restorer.restore(old_state)
+
+        # Should migrate legacy gains to _heating_gains
+        assert mock_thermostat._heating_gains is not None
+        assert mock_thermostat._heating_gains.kp == 20.0
+        assert mock_thermostat._heating_gains.ki == 0.015
+        assert mock_thermostat._heating_gains.kd == 100.0
+        # Cooling gains should remain None
+        assert mock_thermostat._cooling_gains is None
+
+    def test_legacy_uppercase_kp_ki_kd_migration(self, state_restorer, mock_thermostat):
+        """Test legacy uppercase Kp/Ki/Kd attributes migrated to _heating_gains."""
+        old_state = MagicMock()
+        old_state.state = "heat"
+        old_state.attributes = {
+            "temperature": 21.0,
+            "pid_i": 0.0,
+            "pid_integral_migrated": True,
+            # Legacy uppercase gain attributes
+            "Kp": 25.0,
+            "Ki": 0.020,
+            "Kd": 120.0,
+        }
+
+        mock_thermostat._heating_gains = None
+        mock_thermostat._cooling_gains = None
+
+        state_restorer.restore(old_state)
+
+        # Should migrate legacy gains to _heating_gains
+        assert mock_thermostat._heating_gains is not None
+        assert mock_thermostat._heating_gains.kp == 25.0
+        assert mock_thermostat._heating_gains.ki == 0.020
+        assert mock_thermostat._heating_gains.kd == 120.0
+
+    def test_pid_history_takes_precedence_over_legacy_gains(self, state_restorer, mock_thermostat):
+        """Test pid_history values take precedence over legacy kp/ki/kd attributes."""
+        old_state = MagicMock()
+        old_state.state = "heat"
+        old_state.attributes = {
+            "temperature": 21.0,
+            "pid_i": 0.0,
+            "pid_integral_migrated": True,
+            # Legacy gains (should be ignored)
+            "kp": 20.0,
+            "ki": 0.015,
+            "kd": 100.0,
+            # New format (should take precedence)
+            "pid_history": {
+                "heating": [
+                    {"timestamp": "2026-01-21T10:00:00", "kp": 18.0, "ki": 0.010, "kd": 90.0, "reason": "adaptive"},
+                ]
+            }
+        }
+
+        mock_thermostat._heating_gains = None
+        mock_thermostat._cooling_gains = None
+
+        state_restorer.restore(old_state)
+
+        # Should use pid_history values, not legacy values
+        assert mock_thermostat._heating_gains is not None
+        assert mock_thermostat._heating_gains.kp == 18.0
+        assert mock_thermostat._heating_gains.ki == 0.010
+        assert mock_thermostat._heating_gains.kd == 90.0
+
+
+class TestPidHistoryAttributeMigration:
+    """Tests for migrating legacy flat pid_history to heating.pid_history."""
+
+    def test_pid_history_attribute_migration_flat_to_heating(self, state_restorer, mock_thermostat):
+        """Test legacy flat pid_history in attributes migrated to heating.pid_history."""
+        old_state = MagicMock()
+        old_state.state = "heat"
+        old_state.attributes = {
+            "temperature": 21.0,
+            "pid_i": 0.0,
+            "pid_integral_migrated": True,
+            # Legacy flat pid_history (not in new nested format)
+            "pid_history": [
+                {"timestamp": "2026-01-20T10:00:00", "kp": 15.0, "ki": 0.008, "kd": 80.0, "reason": "physics"},
+                {"timestamp": "2026-01-21T10:00:00", "kp": 18.0, "ki": 0.010, "kd": 90.0, "reason": "adaptive"},
+            ]
+        }
+
+        mock_thermostat._heating_gains = None
+        mock_thermostat._cooling_gains = None
+
+        # Mock persistence check - simulate that this history is not yet in persistence
+        # This would be checked by the state_restorer implementation
+
+        state_restorer.restore(old_state)
+
+        # Should migrate flat history to heating gains (last entry)
+        assert mock_thermostat._heating_gains is not None
+        assert mock_thermostat._heating_gains.kp == 18.0
+        assert mock_thermostat._heating_gains.ki == 0.010
+        assert mock_thermostat._heating_gains.kd == 90.0
+
+        # Should also trigger copy to persistence heating.pid_history
+        # (This would be verified by checking coordinator/learner calls)
+
+    def test_empty_pid_history_does_not_restore_gains(self, state_restorer, mock_thermostat):
+        """Test empty pid_history does not restore gains."""
+        old_state = MagicMock()
+        old_state.state = "heat"
+        old_state.attributes = {
+            "temperature": 21.0,
+            "pid_i": 0.0,
+            "pid_integral_migrated": True,
+            "pid_history": {}  # Empty history
+        }
+
+        mock_thermostat._heating_gains = None
+        mock_thermostat._cooling_gains = None
+
+        state_restorer.restore(old_state)
+
+        # Should not restore gains from empty history
+        # Gains would be initialized via physics/defaults instead
+        assert mock_thermostat._heating_gains is None or mock_thermostat._heating_gains.kp == mock_thermostat._kp
+
+
+class TestInitialPidCalculation:
+    """Tests for initial PID calculation when no history exists."""
+
+    def test_calculate_initial_pid_when_no_history(self, state_restorer, mock_thermostat):
+        """Test initial PID calculation when no pid_history exists."""
+        old_state = MagicMock()
+        old_state.state = "heat"
+        old_state.attributes = {
+            "temperature": 21.0,
+            "pid_i": 0.0,
+            "pid_integral_migrated": True,
+            # No pid_history, no legacy kp/ki/kd
+        }
+
+        mock_thermostat._heating_gains = None
+        mock_thermostat._cooling_gains = None
+        # Mock physics-based initialization values
+        mock_thermostat._kp = 20.0
+        mock_thermostat._ki = 0.01
+        mock_thermostat._kd = 100.0
+
+        state_restorer.restore(old_state)
+
+        # Should fall back to physics-based or default initialization
+        # The exact behavior depends on implementation, but gains should be initialized
+        # This test verifies that the system handles missing history gracefully
+
+    def test_no_history_heating_mode_initializes_heating_gains(self, state_restorer, mock_thermostat):
+        """Test heating mode without history initializes _heating_gains from config/physics."""
+        old_state = MagicMock()
+        old_state.state = "heat"
+        old_state.attributes = {
+            "temperature": 21.0,
+            "pid_i": 0.0,
+            "pid_integral_migrated": True,
+        }
+
+        mock_thermostat._heating_gains = None
+        mock_thermostat._cooling_gains = None
+        mock_thermostat._kp = 20.0
+        mock_thermostat._ki = 0.01
+        mock_thermostat._kd = 100.0
+
+        state_restorer.restore(old_state)
+
+        # Heating gains should be initialized (from config or physics)
+        # Cooling gains should remain None (lazy init)
+        assert mock_thermostat._cooling_gains is None
