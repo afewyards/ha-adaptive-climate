@@ -3414,3 +3414,429 @@ def test_convergence_thresholds_new_metrics_module_exists():
     assert HEATING_TYPE_RADIATOR is not None
     assert HEATING_TYPE_CONVECTOR is not None
     assert HEATING_TYPE_FORCED_AIR is not None
+
+
+# ============================================================================
+# Mode-Specific Cycle Histories Tests (Task #7)
+# ============================================================================
+
+
+class TestModeSpecificCycleHistories:
+    """Tests for mode-specific cycle history tracking in AdaptiveLearner."""
+
+    def test_separate_heating_and_cooling_histories_exist(self):
+        """Test that AdaptiveLearner has separate cycle histories for heating and cooling modes."""
+        from homeassistant.components.climate import HVACMode
+
+        learner = AdaptiveLearner()
+
+        # Verify separate histories exist
+        assert hasattr(learner, '_heating_cycle_history')
+        assert hasattr(learner, '_cooling_cycle_history')
+        assert isinstance(learner._heating_cycle_history, list)
+        assert isinstance(learner._cooling_cycle_history, list)
+
+        # Both should start empty
+        assert len(learner._heating_cycle_history) == 0
+        assert len(learner._cooling_cycle_history) == 0
+
+    def test_separate_convergence_confidence_for_modes(self):
+        """Test that AdaptiveLearner has separate convergence confidence for heating and cooling."""
+        learner = AdaptiveLearner()
+
+        # Verify separate confidence tracking exists
+        assert hasattr(learner, '_heating_convergence_confidence')
+        assert hasattr(learner, '_cooling_convergence_confidence')
+
+        # Both should start at 0.0
+        assert learner._heating_convergence_confidence == 0.0
+        assert learner._cooling_convergence_confidence == 0.0
+
+    def test_separate_auto_apply_count_per_mode(self):
+        """Test that AdaptiveLearner tracks auto_apply_count separately per mode."""
+        learner = AdaptiveLearner()
+
+        # Verify separate auto_apply counters exist
+        assert hasattr(learner, '_heating_auto_apply_count')
+        assert hasattr(learner, '_cooling_auto_apply_count')
+
+        # Both should start at 0
+        assert learner._heating_auto_apply_count == 0
+        assert learner._cooling_auto_apply_count == 0
+
+    def test_add_cycle_metrics_routes_to_heating_history(self):
+        """Test that add_cycle_metrics() routes cycles to heating history when mode=HEAT."""
+        from homeassistant.components.climate import HVACMode
+
+        learner = AdaptiveLearner()
+
+        metrics = CycleMetrics(
+            overshoot=0.5,
+            undershoot=0.2,
+            settling_time=45.0,
+            oscillations=1,
+            rise_time=30.0,
+        )
+
+        # Add cycle for heating mode
+        learner.add_cycle_metrics(metrics, mode=HVACMode.HEAT)
+
+        # Should be in heating history, not cooling
+        assert len(learner._heating_cycle_history) == 1
+        assert len(learner._cooling_cycle_history) == 0
+        assert learner._heating_cycle_history[0] == metrics
+
+    def test_add_cycle_metrics_routes_to_cooling_history(self):
+        """Test that add_cycle_metrics() routes cycles to cooling history when mode=COOL."""
+        from homeassistant.components.climate import HVACMode
+
+        learner = AdaptiveLearner()
+
+        metrics = CycleMetrics(
+            overshoot=0.3,
+            undershoot=0.1,
+            settling_time=30.0,
+            oscillations=0,
+            rise_time=20.0,
+        )
+
+        # Add cycle for cooling mode
+        learner.add_cycle_metrics(metrics, mode=HVACMode.COOL)
+
+        # Should be in cooling history, not heating
+        assert len(learner._heating_cycle_history) == 0
+        assert len(learner._cooling_cycle_history) == 1
+        assert learner._cooling_cycle_history[0] == metrics
+
+    def test_add_cycle_metrics_multiple_modes_separate(self):
+        """Test that cycles for different modes are kept separate."""
+        from homeassistant.components.climate import HVACMode
+
+        learner = AdaptiveLearner()
+
+        heating_metrics_1 = CycleMetrics(overshoot=0.5, oscillations=1, settling_time=40.0)
+        heating_metrics_2 = CycleMetrics(overshoot=0.4, oscillations=0, settling_time=35.0)
+        cooling_metrics_1 = CycleMetrics(overshoot=0.3, oscillations=1, settling_time=25.0)
+        cooling_metrics_2 = CycleMetrics(overshoot=0.2, oscillations=0, settling_time=20.0)
+
+        # Add heating cycles
+        learner.add_cycle_metrics(heating_metrics_1, mode=HVACMode.HEAT)
+        learner.add_cycle_metrics(heating_metrics_2, mode=HVACMode.HEAT)
+
+        # Add cooling cycles
+        learner.add_cycle_metrics(cooling_metrics_1, mode=HVACMode.COOL)
+        learner.add_cycle_metrics(cooling_metrics_2, mode=HVACMode.COOL)
+
+        # Verify correct routing
+        assert len(learner._heating_cycle_history) == 2
+        assert len(learner._cooling_cycle_history) == 2
+
+        assert learner._heating_cycle_history[0] == heating_metrics_1
+        assert learner._heating_cycle_history[1] == heating_metrics_2
+        assert learner._cooling_cycle_history[0] == cooling_metrics_1
+        assert learner._cooling_cycle_history[1] == cooling_metrics_2
+
+    def test_add_cycle_metrics_fifo_eviction_per_mode(self):
+        """Test that FIFO eviction works independently for each mode's history."""
+        from homeassistant.components.climate import HVACMode
+
+        learner = AdaptiveLearner(max_history=5)
+
+        # Add 7 heating cycles (should evict 2)
+        for i in range(7):
+            learner.add_cycle_metrics(
+                CycleMetrics(overshoot=float(i), oscillations=0, settling_time=30.0),
+                mode=HVACMode.HEAT
+            )
+
+        # Add 3 cooling cycles (should not evict any)
+        for i in range(3):
+            learner.add_cycle_metrics(
+                CycleMetrics(overshoot=float(i), oscillations=0, settling_time=20.0),
+                mode=HVACMode.COOL
+            )
+
+        # Heating should have evicted oldest 2, keeping last 5
+        assert len(learner._heating_cycle_history) == 5
+        assert learner._heating_cycle_history[0].overshoot == 2.0  # First 2 evicted (0, 1)
+        assert learner._heating_cycle_history[-1].overshoot == 6.0
+
+        # Cooling should have all 3 (no eviction needed)
+        assert len(learner._cooling_cycle_history) == 3
+        assert learner._cooling_cycle_history[0].overshoot == 0.0
+        assert learner._cooling_cycle_history[-1].overshoot == 2.0
+
+    def test_get_convergence_confidence_returns_heating_value(self):
+        """Test that get_convergence_confidence(mode=HEAT) returns heating-specific confidence."""
+        from homeassistant.components.climate import HVACMode
+
+        learner = AdaptiveLearner()
+
+        # Set different confidence values
+        learner._heating_convergence_confidence = 0.75
+        learner._cooling_convergence_confidence = 0.45
+
+        # Should return heating confidence for HEAT mode
+        confidence = learner.get_convergence_confidence(mode=HVACMode.HEAT)
+        assert confidence == 0.75
+
+    def test_get_convergence_confidence_returns_cooling_value(self):
+        """Test that get_convergence_confidence(mode=COOL) returns cooling-specific confidence."""
+        from homeassistant.components.climate import HVACMode
+
+        learner = AdaptiveLearner()
+
+        # Set different confidence values
+        learner._heating_convergence_confidence = 0.75
+        learner._cooling_convergence_confidence = 0.45
+
+        # Should return cooling confidence for COOL mode
+        confidence = learner.get_convergence_confidence(mode=HVACMode.COOL)
+        assert confidence == 0.45
+
+    def test_get_convergence_confidence_defaults_to_heating_when_no_mode(self):
+        """Test that get_convergence_confidence() defaults to heating mode when no mode specified."""
+        learner = AdaptiveLearner()
+
+        learner._heating_convergence_confidence = 0.80
+        learner._cooling_convergence_confidence = 0.30
+
+        # No mode parameter - should default to heating for backward compatibility
+        confidence = learner.get_convergence_confidence()
+        assert confidence == 0.80
+
+    def test_update_convergence_confidence_updates_heating_mode(self):
+        """Test that update_convergence_confidence() updates heating confidence when mode=HEAT."""
+        from homeassistant.components.climate import HVACMode
+
+        learner = AdaptiveLearner()
+
+        # Start with 0 confidence for both
+        assert learner._heating_convergence_confidence == 0.0
+        assert learner._cooling_convergence_confidence == 0.0
+
+        # Add a good heating cycle
+        metrics = CycleMetrics(
+            overshoot=0.15,  # Good - below threshold
+            undershoot=0.1,
+            settling_time=25.0,
+            oscillations=0,
+            rise_time=20.0,
+        )
+
+        learner.update_convergence_confidence(metrics, mode=HVACMode.HEAT)
+
+        # Heating confidence should increase, cooling should stay at 0
+        assert learner._heating_convergence_confidence > 0.0
+        assert learner._cooling_convergence_confidence == 0.0
+
+    def test_update_convergence_confidence_updates_cooling_mode(self):
+        """Test that update_convergence_confidence() updates cooling confidence when mode=COOL."""
+        from homeassistant.components.climate import HVACMode
+
+        learner = AdaptiveLearner()
+
+        # Start with 0 confidence for both
+        assert learner._heating_convergence_confidence == 0.0
+        assert learner._cooling_convergence_confidence == 0.0
+
+        # Add a good cooling cycle
+        metrics = CycleMetrics(
+            overshoot=0.15,  # Good - below threshold
+            undershoot=0.1,
+            settling_time=25.0,
+            oscillations=0,
+            rise_time=20.0,
+        )
+
+        learner.update_convergence_confidence(metrics, mode=HVACMode.COOL)
+
+        # Cooling confidence should increase, heating should stay at 0
+        assert learner._heating_convergence_confidence == 0.0
+        assert learner._cooling_convergence_confidence > 0.0
+
+    def test_update_convergence_confidence_independent_per_mode(self):
+        """Test that confidence tracking is fully independent between heating and cooling."""
+        from homeassistant.components.climate import HVACMode
+
+        learner = AdaptiveLearner()
+
+        # Good heating cycle
+        good_metrics = CycleMetrics(
+            overshoot=0.15,
+            oscillations=0,
+            settling_time=25.0,
+            rise_time=20.0,
+        )
+
+        # Poor cooling cycle
+        poor_metrics = CycleMetrics(
+            overshoot=0.8,  # High overshoot
+            oscillations=3,  # Many oscillations
+            settling_time=60.0,
+            rise_time=45.0,
+        )
+
+        # Update heating with good cycle multiple times
+        for _ in range(5):
+            learner.update_convergence_confidence(good_metrics, mode=HVACMode.HEAT)
+
+        # Update cooling with poor cycle
+        learner.update_convergence_confidence(poor_metrics, mode=HVACMode.COOL)
+
+        # Heating should have high confidence, cooling should have low/zero
+        assert learner._heating_convergence_confidence > 0.5
+        assert learner._cooling_convergence_confidence < 0.2
+
+    def test_get_auto_apply_count_returns_heating_count(self):
+        """Test that get_auto_apply_count(mode=HEAT) returns heating-specific count."""
+        from homeassistant.components.climate import HVACMode
+
+        learner = AdaptiveLearner()
+
+        learner._heating_auto_apply_count = 3
+        learner._cooling_auto_apply_count = 1
+
+        count = learner.get_auto_apply_count(mode=HVACMode.HEAT)
+        assert count == 3
+
+    def test_get_auto_apply_count_returns_cooling_count(self):
+        """Test that get_auto_apply_count(mode=COOL) returns cooling-specific count."""
+        from homeassistant.components.climate import HVACMode
+
+        learner = AdaptiveLearner()
+
+        learner._heating_auto_apply_count = 3
+        learner._cooling_auto_apply_count = 1
+
+        count = learner.get_auto_apply_count(mode=HVACMode.COOL)
+        assert count == 1
+
+    def test_get_auto_apply_count_defaults_to_heating(self):
+        """Test that get_auto_apply_count() defaults to heating mode when no mode specified."""
+        learner = AdaptiveLearner()
+
+        learner._heating_auto_apply_count = 5
+        learner._cooling_auto_apply_count = 2
+
+        # No mode parameter - should default to heating for backward compatibility
+        count = learner.get_auto_apply_count()
+        assert count == 5
+
+    def test_calculate_pid_adjustment_uses_heating_history(self):
+        """Test that calculate_pid_adjustment() uses heating history when mode=HEAT."""
+        from homeassistant.components.climate import HVACMode
+
+        learner = AdaptiveLearner()
+
+        # Add heating cycles with overshoot (should trigger adjustment)
+        for _ in range(6):
+            learner.add_cycle_metrics(
+                CycleMetrics(overshoot=0.8, oscillations=0, settling_time=30.0, rise_time=20.0),
+                mode=HVACMode.HEAT
+            )
+
+        # Add different cooling cycles (should not affect heating calculation)
+        for _ in range(6):
+            learner.add_cycle_metrics(
+                CycleMetrics(overshoot=0.1, oscillations=0, settling_time=20.0, rise_time=15.0),
+                mode=HVACMode.COOL
+            )
+
+        # Calculate adjustment for heating mode
+        adjustment = learner.calculate_pid_adjustment(
+            current_kp=100.0,
+            current_ki=1.0,
+            current_kd=10.0,
+            mode=HVACMode.HEAT
+        )
+
+        # Should get adjustment based on high heating overshoot
+        assert adjustment is not None
+        assert adjustment["kp"] < 100.0  # Kp should decrease due to overshoot
+
+    def test_calculate_pid_adjustment_uses_cooling_history(self):
+        """Test that calculate_pid_adjustment() uses cooling history when mode=COOL."""
+        from homeassistant.components.climate import HVACMode
+
+        learner = AdaptiveLearner()
+
+        # Add cooling cycles with overshoot (should trigger adjustment)
+        for _ in range(6):
+            learner.add_cycle_metrics(
+                CycleMetrics(overshoot=0.8, oscillations=0, settling_time=30.0, rise_time=20.0),
+                mode=HVACMode.COOL
+            )
+
+        # Add different heating cycles (should not affect cooling calculation)
+        for _ in range(6):
+            learner.add_cycle_metrics(
+                CycleMetrics(overshoot=0.1, oscillations=0, settling_time=20.0, rise_time=15.0),
+                mode=HVACMode.HEAT
+            )
+
+        # Calculate adjustment for cooling mode
+        adjustment = learner.calculate_pid_adjustment(
+            current_kp=100.0,
+            current_ki=1.0,
+            current_kd=10.0,
+            mode=HVACMode.COOL
+        )
+
+        # Should get adjustment based on high cooling overshoot
+        assert adjustment is not None
+        assert adjustment["kp"] < 100.0  # Kp should decrease due to overshoot
+
+    def test_clear_history_clears_both_mode_histories(self):
+        """Test that clear_history() clears both heating and cooling cycle histories."""
+        from homeassistant.components.climate import HVACMode
+
+        learner = AdaptiveLearner()
+
+        # Add cycles to both modes
+        for _ in range(3):
+            learner.add_cycle_metrics(
+                CycleMetrics(overshoot=0.5, oscillations=0, settling_time=30.0),
+                mode=HVACMode.HEAT
+            )
+            learner.add_cycle_metrics(
+                CycleMetrics(overshoot=0.3, oscillations=0, settling_time=20.0),
+                mode=HVACMode.COOL
+            )
+
+        assert len(learner._heating_cycle_history) == 3
+        assert len(learner._cooling_cycle_history) == 3
+
+        # Clear all history
+        learner.clear_history()
+
+        # Both should be empty
+        assert len(learner._heating_cycle_history) == 0
+        assert len(learner._cooling_cycle_history) == 0
+
+    def test_clear_history_resets_both_mode_confidences(self):
+        """Test that clear_history() resets both heating and cooling convergence confidence."""
+        from homeassistant.components.climate import HVACMode
+
+        learner = AdaptiveLearner()
+
+        learner._heating_convergence_confidence = 0.85
+        learner._cooling_convergence_confidence = 0.65
+
+        learner.clear_history()
+
+        assert learner._heating_convergence_confidence == 0.0
+        assert learner._cooling_convergence_confidence == 0.0
+
+    def test_backward_compatibility_mode_defaults_to_heat(self):
+        """Test that existing calls without mode parameter default to heating mode."""
+        learner = AdaptiveLearner()
+
+        metrics = CycleMetrics(overshoot=0.5, oscillations=0, settling_time=30.0)
+
+        # Call without mode parameter (backward compatibility)
+        learner.add_cycle_metrics(metrics)
+
+        # Should default to heating mode
+        assert len(learner._heating_cycle_history) == 1
+        assert len(learner._cooling_cycle_history) == 0
