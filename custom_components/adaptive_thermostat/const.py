@@ -1,4 +1,5 @@
 """Constants for Adaptive Thermostat"""
+from dataclasses import dataclass
 from typing import Dict, Optional
 
 DOMAIN = "adaptive_thermostat"
@@ -70,6 +71,7 @@ CONF_BOOST_PID_OFF = 'boost_pid_off'
 CONF_DEBUG = 'debug'
 DEFAULT_DEBUG = False
 CONF_HEATING_TYPE = "heating_type"
+CONF_COOLING_TYPE = "cooling_type"
 CONF_DERIVATIVE_FILTER = "derivative_filter_alpha"
 CONF_DISTURBANCE_REJECTION_ENABLED = "disturbance_rejection_enabled"
 CONF_KE_LEARNING_FIRST = "ke_learning_first"
@@ -90,6 +92,15 @@ VALID_HEATING_TYPES = [
     HEATING_TYPE_CONVECTOR,
     HEATING_TYPE_FORCED_AIR,
 ]
+
+
+# PID gains dataclass for type-safe PID parameter storage
+@dataclass(frozen=True)
+class PIDGains:
+    """Immutable PID gain parameters."""
+    kp: float
+    ki: float
+    kd: float
 
 # Heating type characteristics lookup table
 # Used by adaptive/physics.py for PID initialization
@@ -141,6 +152,29 @@ HEATING_TYPE_CHARACTERISTICS = {
         "decay_exponent": 0.5,    # Exponential decay rate for integral during settling
         "max_settling_time": 15,  # Maximum settling time in minutes
         "description": "Forced air heating - very low thermal mass, fast response",
+    },
+}
+
+# Cooling system types characteristics lookup table
+# Used for PID initialization and control in cooling mode
+COOLING_TYPE_CHARACTERISTICS = {
+    "forced_air": {
+        "pid_modifier": 1.0,
+        "pwm_period": 600,      # 10 min
+        "min_cycle": 180,       # 3 min compressor protection
+        "tau_ratio": 0.3,       # cooling tau = heating_tau * 0.3
+    },
+    "chilled_water": {
+        "pid_modifier": 0.7,
+        "pwm_period": 900,      # 15 min
+        "min_cycle": 0,         # no compressor
+        "tau_ratio": 0.6,
+    },
+    "mini_split": {
+        "pid_modifier": 0.9,
+        "pwm_period": 0,        # inverter modulating, no PWM
+        "min_cycle": 180,
+        "tau_ratio": 0.4,
     },
 }
 
