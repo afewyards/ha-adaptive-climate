@@ -1,6 +1,25 @@
 # CHANGELOG
 
 
+## v0.36.0 (2026-01-26)
+
+### Documentation
+
+- Add debug-only cycle state attributes to CLAUDE.md
+  ([`f814b59`](https://github.com/afewyards/ha-adaptive-thermostat/commit/f814b5913bb49834c4a01e66e051780dbdc0a6b3))
+
+### Features
+
+- **manifold**: Add transport delay to min_cycle duration
+  ([`e2cb2e6`](https://github.com/afewyards/ha-adaptive-thermostat/commit/e2cb2e6977cdb7db9e013d56f603f8c9e018fce2))
+
+When manifold pipes are cold, the transport delay is now added to min_on_cycle_duration to prevent
+  cycling off before hot water arrives.
+
+- Cold manifold: effective min_cycle = base + transport_delay - Warm manifold: effective min_cycle =
+  base (unchanged)
+
+
 ## v0.35.0 (2026-01-26)
 
 ### Documentation
