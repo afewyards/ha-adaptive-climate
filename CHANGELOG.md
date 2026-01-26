@@ -1,6 +1,197 @@
 # CHANGELOG
 
 
+## v0.32.0 (2026-01-26)
+
+### Features
+
+- Add compressor min cycle protection for cooling
+  ([`00b3c84`](https://github.com/afewyards/ha-adaptive-thermostat/commit/00b3c84ddab1407db9e3b1767cb5a10fb1f359ec))
+
+Add cooling_type parameter to HeaterController to track cooling system type for proper compressor
+  protection. Import COOLING_TYPE_CHARACTERISTICS from const.py for reference to cooling system
+  characteristics.
+
+The existing async_turn_off method already enforces minimum on-time protection via
+  min_on_cycle_duration parameter: - forced_air: 180s min cycle (compressor protection) -
+  mini_split: 180s min cycle (compressor protection) - chilled_water: 0s (no compressor, no
+  protection needed)
+
+The force=True parameter bypasses protection for emergency shutdowns.
+
+- Add cooling PID calculation functions
+  ([`6ca2267`](https://github.com/afewyards/ha-adaptive-thermostat/commit/6ca226785ed82635c0565e604d76659b36c79c1e))
+
+Add two new functions for cooling PID calculation:
+
+1. estimate_cooling_time_constant(heating_tau, cooling_type): - Converts heating tau to cooling tau
+  using tau_ratio from COOLING_TYPE_CHARACTERISTICS - Supports both dedicated cooling types
+  (forced_air, chilled_water, mini_split) - And heating types used for cooling (radiator, convector,
+  floor_hydronic)
+
+2. calculate_initial_cooling_pid(thermal_time_constant, cooling_type, area_m2, max_power_w): -
+  Calculates PID gains optimized for cooling dynamics - Cooling Kp/Ki are 1.75x heating values for
+  same tau (faster response needed) - Kd remains unchanged (damping important regardless) - Supports
+  power scaling like heating version - Returns properly rounded values (Kp:4, Ki:5, Kd:2 decimals)
+
+Extended COOLING_TYPE_CHARACTERISTICS with heating type mappings: - radiator: tau_ratio 0.5,
+  pid_modifier 0.7 - convector: tau_ratio 0.6, pid_modifier 1.0 - floor_hydronic: tau_ratio 0.8,
+  pid_modifier 0.5
+
+All 141 physics tests pass including 12 new cooling tests.
+
+- Add mode field to CycleMetrics dataclass
+  ([`4672133`](https://github.com/afewyards/ha-adaptive-thermostat/commit/46721336544aeee54952a8f9e20404c73bf03406))
+
+- Add mode-specific cycle histories to AdaptiveLearner
+  ([`b72b6fc`](https://github.com/afewyards/ha-adaptive-thermostat/commit/b72b6fc2ac186aa38a232ea5d8726e4ca85a203f))
+
+Refactored AdaptiveLearner to track heating and cooling cycles separately:
+
+1. Replaced `_cycle_history` with: - `_heating_cycle_history: List[CycleMetrics]` -
+  `_cooling_cycle_history: List[CycleMetrics]`
+
+2. Replaced `_convergence_confidence` with: - `_heating_convergence_confidence: float` -
+  `_cooling_convergence_confidence: float`
+
+3. Added per-mode auto_apply_count: - `_heating_auto_apply_count: int` - `_cooling_auto_apply_count:
+  int`
+
+4. Updated methods to accept `mode` parameter: - `add_cycle_metrics(metrics, mode=HVACMode.HEAT)` -
+  routes to correct history - `get_convergence_confidence(mode=HVACMode.HEAT)` - returns
+  mode-specific confidence - `get_auto_apply_count(mode=HVACMode.HEAT)` - returns mode-specific
+  count - `calculate_pid_adjustment()` uses correct history based on mode -
+  `update_convergence_confidence()` updates mode-specific confidence - `get_cycle_count()` returns
+  count for specified mode
+
+5. Maintains backward compatibility: - All methods default to HEAT mode when no mode specified -
+  cycle_history property returns heating history for compatibility
+
+6. Implementation details: - Uses TYPE_CHECKING for HVACMode import to avoid test environment issues
+  - Lazy imports via helper functions for default parameters - Mode-to-string helper handles both
+  enum and string modes
+
+This enables separate PID tuning for heating and cooling modes, with independent learning histories
+  and confidence tracking for each.
+
+- Add per-mode convergence confidence to state attributes
+  ([`75d9cd8`](https://github.com/afewyards/ha-adaptive-thermostat/commit/75d9cd80fc9f300c4b426d43cdeac9473182be07))
+
+- Remove kp, ki, kd from state attributes (now in persistence) - Add heating_convergence_confidence
+  attribute (0-100%) - Add cooling_convergence_confidence attribute (0-100%) - Get values from
+  adaptive_learner.get_convergence_confidence() per mode - Only add when coordinator and
+  adaptive_learner available
+
+- Add persistence v5 schema with mode-keyed structure
+  ([`3874d43`](https://github.com/afewyards/ha-adaptive-thermostat/commit/3874d4392a913e3dfa1562d4eb7054eb651cff6b))
+
+- Update STORAGE_VERSION to 5 in persistence.py - Add _migrate_v4_to_v5() method to split
+  adaptive_learner into heating/cooling sub-structures - Update async_load() to call v4→v5 migration
+  after v3→v4 - Implement v5 schema structure per zone with mode-specific data: - heating:
+  {cycle_history, auto_apply_count, convergence_confidence, pid_history} - cooling: {cycle_history,
+  auto_apply_count, convergence_confidence, pid_history} - Update AdaptiveLearner.to_dict() to
+  serialize in v5 format with pid_history - Update AdaptiveLearner.restore_from_dict() to handle
+  both v4 and v5 formats - Fix recursion bug in _mode_to_str() function - Update legacy save()
+  method to use backward-compatible property access - Update tests to expect v5 format and add v5
+  migration test coverage
+
+- Add PIDGains dataclass and cooling type characteristics
+  ([`513e5e0`](https://github.com/afewyards/ha-adaptive-thermostat/commit/513e5e0f255658851f34d205a7f1cc409b55fa45))
+
+Add PIDGains frozen dataclass for immutable PID parameter storage. Add COOLING_TYPE_CHARACTERISTICS
+  with forced_air, chilled_water, and mini_split cooling types. Add CONF_COOLING_TYPE constant for
+  configuration.
+
+- Pass HVAC mode to CycleMetrics in cycle tracker
+  ([`782cfdc`](https://github.com/afewyards/ha-adaptive-thermostat/commit/782cfdc9d7ca2fa4e65fe32ba54cad6c6d30837b))
+
+- Restore dual PIDGains sets with legacy migration
+  ([`d082587`](https://github.com/afewyards/ha-adaptive-thermostat/commit/d082587b598571991181803f368afacb31d8c219))
+
+- Add _heating_gains and _cooling_gains attributes to climate entity - Restore heating gains from
+  persistence pid_history['heating'][-1] - Restore cooling gains from persistence
+  pid_history['cooling'][-1] or None (lazy init) - Migrate legacy kp/ki/kd attributes to
+  _heating_gains - Migrate legacy flat pid_history arrays to heating.pid_history - Fall back to
+  physics-based initialization when no history exists - All state restorer tests pass
+
+### Testing
+
+- Add compressor min cycle protection tests
+  ([`b6fd5be`](https://github.com/afewyards/ha-adaptive-thermostat/commit/b6fd5be4a0b3454a292cae89c844bb166a09aafc))
+
+- Add cooling PID calculation tests
+  ([`b34c1a3`](https://github.com/afewyards/ha-adaptive-thermostat/commit/b34c1a300b4d150f3897ea9ea218c84d4f087f8e))
+
+Add TDD tests for new cooling PID functions: - estimate_cooling_time_constant(): calculates cooling
+  tau from heating tau using tau_ratio - calculate_initial_cooling_pid(): calculates cooling PID
+  parameters
+
+Tests verify: - Cooling tau = heating_tau × tau_ratio (forced_air=0.3, radiator=0.5, convector=0.6,
+  floor_hydronic=0.8) - Cooling Kp is 1.5-2x heating Kp for forced_air/radiator systems - Power
+  scaling support for undersized cooling systems - Proper value rounding (Kp:4 decimal, Ki:5
+  decimal, Kd:2 decimal)
+
+Tests should fail initially (TDD).
+
+- Add cycle tracker mode passing tests
+  ([`1323a90`](https://github.com/afewyards/ha-adaptive-thermostat/commit/1323a90be5ca2c5e1810a179c3e4893d1abdd141))
+
+- Add CycleMetrics mode field tests
+  ([`201fe4d`](https://github.com/afewyards/ha-adaptive-thermostat/commit/201fe4de05c26257f6cd849d10c77007e50151f0))
+
+- Add dual gain restoration and legacy migration tests
+  ([`bd7c618`](https://github.com/afewyards/ha-adaptive-thermostat/commit/bd7c6187640ec4bfe897a6d850de7ed4db5bea2c))
+
+Add comprehensive test suite for state_restorer.py changes to support dual gain sets
+  (heating/cooling):
+
+1. TestDualGainSetRestoration: Tests for restoring _heating_gains and _cooling_gains from
+  pid_history["heating"][-1] and pid_history["cooling"][-1] 2. TestLegacyGainsMigration: Tests for
+  migrating legacy kp/ki/kd attributes to _heating_gains, including precedence rules 3.
+  TestPidHistoryAttributeMigration: Tests for migrating flat pid_history arrays to nested
+  heating.pid_history structure 4. TestInitialPidCalculation: Tests for graceful handling when no
+  history exists
+
+Tests currently fail (TDD approach) - implementation will follow in next task.
+
+- Add lazy cooling PID initialization tests
+  ([`ab0eedb`](https://github.com/afewyards/ha-adaptive-thermostat/commit/ab0eedb53458c7b23b8c90384c882e188364cf2d))
+
+Add TDD tests for lazy cooling PID initialization feature: - _cooling_gains is None initially -
+  calculate_initial_cooling_pid() called on first COOL mode - Cooling tau estimated from heating_tau
+  × tau_ratio - _cooling_gains populated after first COOL activation - Subsequent COOL activations
+  reuse existing gains
+
+Tests currently fail (as expected for TDD) - implementation follows.
+
+- Add mode-specific cycle history tests
+  ([`e037a1a`](https://github.com/afewyards/ha-adaptive-thermostat/commit/e037a1a2e5abe79543ce9d488b2b24ed7a910b79))
+
+- Add per-mode convergence confidence attribute tests
+  ([`526a6a7`](https://github.com/afewyards/ha-adaptive-thermostat/commit/526a6a72a6710eda0bc817f5add0501de542cfcd))
+
+Add tests for state_attributes.py changes: - Verify kp/ki/kd removed from state attributes (moved to
+  persistence) - Test heating_convergence_confidence attribute - Test cooling_convergence_confidence
+  attribute - Verify convergence values from AdaptiveLearner.get_convergence_confidence(mode) - Test
+  proper percentage conversion and rounding - Test graceful handling of missing coordinator/learner
+  - Test both modes return different values when queried
+
+Tests follow TDD - will fail until implementation is complete.
+
+- Add PIDGains dataclass and cooling type characteristics tests
+  ([`a992aed`](https://github.com/afewyards/ha-adaptive-thermostat/commit/a992aed473b87df28bc83f205489732c221355bd))
+
+Add comprehensive tests for new cooling support: - PIDGains dataclass: immutability, equality, field
+  access - COOLING_TYPE_CHARACTERISTICS: forced_air, chilled_water, mini_split - Each cooling type:
+  pid_modifier, pwm_period, min_cycle, tau_ratio values - Validation: tau_ratio < 1.0, compressor
+  types have min_cycle protection - CONF_COOLING_TYPE config constant
+
+Tests written in TDD style - will fail until implementation added.
+
+- Add PIDGains storage and mode switching tests
+  ([`8136870`](https://github.com/afewyards/ha-adaptive-thermostat/commit/81368707ba6d4858f8d28dc406ddca17e01999c3))
+
+
 ## v0.31.2 (2026-01-26)
 
 ### Bug Fixes
