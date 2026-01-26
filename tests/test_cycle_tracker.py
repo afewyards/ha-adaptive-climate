@@ -3634,3 +3634,222 @@ class TestCycleTrackerDeadTime:
         assert cycle_tracker._transport_delay_minutes is None
 
 
+class TestCycleTrackerModePassingToCycleMetrics:
+    """Tests for passing HVAC mode to CycleMetrics during cycle recording."""
+
+    @pytest.mark.asyncio
+    async def test_heat_mode_creates_metrics_with_heating_mode(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
+    ):
+        """Test that in HEAT mode, CycleMetrics is created with mode='heating'."""
+        from datetime import timedelta
+
+        # Setup adaptive_learner
+        mock_adaptive_learner.is_in_validation_mode = MagicMock(return_value=False)
+        mock_adaptive_learner.update_convergence_confidence = MagicMock()
+        mock_adaptive_learner.to_dict = MagicMock(return_value={})
+
+        # Setup hass.data
+        mock_hass.data = {}
+
+        # Create cycle tracker with HEAT mode
+        mock_callbacks["get_hvac_mode"].return_value = "heat"
+        cycle_tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            dispatcher=dispatcher,
+            **mock_callbacks,
+        )
+        cycle_tracker.set_restoration_complete()
+
+        # Set target temperature for valid cycle
+        mock_callbacks["get_target_temp"].return_value = 20.0
+        mock_callbacks["get_in_grace_period"].return_value = False
+
+        # Start heating cycle
+        start_time = datetime(2025, 1, 14, 10, 0, 0)
+        dispatcher.emit(CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=start_time,
+            target_temp=20.0,
+            current_temp=18.0
+        ))
+
+        # Add sufficient temperature samples for valid cycle
+        for i in range(6):
+            await cycle_tracker.update_temperature(
+                timestamp=start_time + timedelta(minutes=i),
+                temperature=18.0 + (i * 0.4)
+            )
+
+        # Finalize cycle
+        await cycle_tracker._finalize_cycle()
+
+        # Verify CycleMetrics was created with mode="heating"
+        assert mock_adaptive_learner.add_cycle_metrics.called
+        metrics = mock_adaptive_learner.add_cycle_metrics.call_args[0][0]
+        assert hasattr(metrics, "mode")
+        assert metrics.mode == "heating"
+
+    @pytest.mark.asyncio
+    async def test_cool_mode_creates_metrics_with_cooling_mode(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
+    ):
+        """Test that in COOL mode, CycleMetrics is created with mode='cooling'."""
+        from datetime import timedelta
+
+        # Setup adaptive_learner
+        mock_adaptive_learner.is_in_validation_mode = MagicMock(return_value=False)
+        mock_adaptive_learner.update_convergence_confidence = MagicMock()
+        mock_adaptive_learner.to_dict = MagicMock(return_value={})
+
+        # Setup hass.data
+        mock_hass.data = {}
+
+        # Create cycle tracker with COOL mode
+        mock_callbacks["get_hvac_mode"].return_value = "cool"
+        cycle_tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            dispatcher=dispatcher,
+            **mock_callbacks,
+        )
+        cycle_tracker.set_restoration_complete()
+
+        # Set target temperature for valid cycle
+        mock_callbacks["get_target_temp"].return_value = 22.0
+        mock_callbacks["get_in_grace_period"].return_value = False
+
+        # Start cooling cycle
+        start_time = datetime(2025, 1, 14, 10, 0, 0)
+        dispatcher.emit(CycleStartedEvent(
+            hvac_mode="cool",
+            timestamp=start_time,
+            target_temp=22.0,
+            current_temp=24.0
+        ))
+
+        # Add sufficient temperature samples for valid cycle
+        for i in range(6):
+            await cycle_tracker.update_temperature(
+                timestamp=start_time + timedelta(minutes=i),
+                temperature=24.0 - (i * 0.3)
+            )
+
+        # Finalize cycle
+        await cycle_tracker._finalize_cycle()
+
+        # Verify CycleMetrics was created with mode="cooling"
+        assert mock_adaptive_learner.add_cycle_metrics.called
+        metrics = mock_adaptive_learner.add_cycle_metrics.call_args[0][0]
+        assert hasattr(metrics, "mode")
+        assert metrics.mode == "cooling"
+
+    @pytest.mark.asyncio
+    async def test_mode_determined_from_hvac_action(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
+    ):
+        """Test that mode is determined from hvac_action (HEATING vs COOLING)."""
+        from datetime import timedelta
+
+        # Setup adaptive_learner
+        mock_adaptive_learner.is_in_validation_mode = MagicMock(return_value=False)
+        mock_adaptive_learner.update_convergence_confidence = MagicMock()
+        mock_adaptive_learner.to_dict = MagicMock(return_value={})
+
+        # Setup hass.data
+        mock_hass.data = {}
+
+        # Test HEATING action
+        mock_callbacks["get_hvac_mode"].return_value = "heat"
+        cycle_tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            dispatcher=dispatcher,
+            **mock_callbacks,
+        )
+        cycle_tracker.set_restoration_complete()
+
+        # Set up for valid cycle
+        mock_callbacks["get_target_temp"].return_value = 20.0
+        mock_callbacks["get_in_grace_period"].return_value = False
+
+        # Start cycle with hvac_mode="heat" (HEATING action)
+        start_time = datetime(2025, 1, 14, 10, 0, 0)
+        dispatcher.emit(CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=start_time,
+            target_temp=20.0,
+            current_temp=18.0
+        ))
+
+        # Add temperature samples
+        for i in range(6):
+            await cycle_tracker.update_temperature(
+                timestamp=start_time + timedelta(minutes=i),
+                temperature=18.0 + (i * 0.4)
+            )
+
+        # Finalize cycle
+        await cycle_tracker._finalize_cycle()
+
+        # Verify mode="heating" for HEATING action
+        assert mock_adaptive_learner.add_cycle_metrics.called
+        metrics = mock_adaptive_learner.add_cycle_metrics.call_args[0][0]
+        assert metrics.mode == "heating"
+
+        # Reset mock for next test
+        mock_adaptive_learner.add_cycle_metrics.reset_mock()
+
+        # Test COOLING action
+        mock_callbacks["get_hvac_mode"].return_value = "cool"
+        cycle_tracker2 = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone_2",
+            adaptive_learner=mock_adaptive_learner,
+            dispatcher=CycleEventDispatcher(),
+            **mock_callbacks,
+        )
+        cycle_tracker2.set_restoration_complete()
+
+        # Start cycle with hvac_mode="cool" (COOLING action)
+        start_time2 = datetime(2025, 1, 14, 11, 0, 0)
+        dispatcher2 = CycleEventDispatcher()
+        cycle_tracker2._dispatcher = dispatcher2
+        cycle_tracker2._unsubscribe_handles.clear()
+
+        # Subscribe to events for new tracker
+        from custom_components.adaptive_thermostat.managers.events import CycleEventType
+        cycle_tracker2._unsubscribe_handles.append(
+            dispatcher2.subscribe(CycleEventType.CYCLE_STARTED, cycle_tracker2._on_cycle_started)
+        )
+        cycle_tracker2._unsubscribe_handles.append(
+            dispatcher2.subscribe(CycleEventType.TEMPERATURE_UPDATE, cycle_tracker2._on_temperature_update)
+        )
+
+        dispatcher2.emit(CycleStartedEvent(
+            hvac_mode="cool",
+            timestamp=start_time2,
+            target_temp=22.0,
+            current_temp=24.0
+        ))
+
+        # Add temperature samples
+        for i in range(6):
+            await cycle_tracker2.update_temperature(
+                timestamp=start_time2 + timedelta(minutes=i),
+                temperature=24.0 - (i * 0.3)
+            )
+
+        # Finalize cycle
+        await cycle_tracker2._finalize_cycle()
+
+        # Verify mode="cooling" for COOLING action
+        assert mock_adaptive_learner.add_cycle_metrics.called
+        metrics2 = mock_adaptive_learner.add_cycle_metrics.call_args[0][0]
+        assert metrics2.mode == "cooling"
+
+
