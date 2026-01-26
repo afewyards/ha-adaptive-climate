@@ -1,6 +1,16 @@
 # CHANGELOG
 
 
+## v0.34.1 (2026-01-26)
+
+### Bug Fixes
+
+- Correct CentralController import path
+  ([`b17df51`](https://github.com/afewyards/ha-adaptive-thermostat/commit/b17df5163164a6397fc2faf3c7127d18f4968e3b))
+
+CentralController is in central_controller.py, not coordinator.py
+
+
 ## v0.34.0 (2026-01-26)
 
 ### Documentation
