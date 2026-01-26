@@ -2328,3 +2328,231 @@ class TestSupplyTemperatureScaling:
             "forced_air", area_m2, max_power_w=None, supply_temperature=supply_temp
         )
         assert scaling_forced == pytest.approx(1.0, abs=0.01)
+
+
+class TestCoolingPIDCalculations:
+    """Tests for cooling PID calculation functions."""
+
+    def test_estimate_cooling_time_constant_forced_air(self):
+        """Test cooling tau estimation for forced_air system using tau_ratio."""
+        # Forced air cooling typically has tau_ratio = 0.3 (cools 3x faster than heats)
+        heating_tau = 1.5  # hours
+        cooling_type = "forced_air"
+
+        from custom_components.adaptive_thermostat.adaptive.physics import (
+            estimate_cooling_time_constant
+        )
+
+        cooling_tau = estimate_cooling_time_constant(heating_tau, cooling_type)
+
+        # Expected: cooling_tau = heating_tau × tau_ratio = 1.5 × 0.3 = 0.45
+        assert cooling_tau == pytest.approx(0.45, abs=0.01)
+
+    def test_estimate_cooling_time_constant_radiator(self):
+        """Test cooling tau estimation for radiator system."""
+        # Radiator cooling typically has tau_ratio = 0.5 (cools 2x faster than heats)
+        heating_tau = 4.0  # hours
+        cooling_type = "radiator"
+
+        from custom_components.adaptive_thermostat.adaptive.physics import (
+            estimate_cooling_time_constant
+        )
+
+        cooling_tau = estimate_cooling_time_constant(heating_tau, cooling_type)
+
+        # Expected: cooling_tau = heating_tau × tau_ratio = 4.0 × 0.5 = 2.0
+        assert cooling_tau == pytest.approx(2.0, abs=0.01)
+
+    def test_estimate_cooling_time_constant_floor_hydronic(self):
+        """Test cooling tau estimation for floor_hydronic system."""
+        # Floor hydronic cooling typically has tau_ratio = 0.8 (minimal difference due to thermal mass)
+        heating_tau = 8.0  # hours
+        cooling_type = "floor_hydronic"
+
+        from custom_components.adaptive_thermostat.adaptive.physics import (
+            estimate_cooling_time_constant
+        )
+
+        cooling_tau = estimate_cooling_time_constant(heating_tau, cooling_type)
+
+        # Expected: cooling_tau = heating_tau × tau_ratio = 8.0 × 0.8 = 6.4
+        assert cooling_tau == pytest.approx(6.4, abs=0.1)
+
+    def test_estimate_cooling_time_constant_convector(self):
+        """Test cooling tau estimation for convector system."""
+        # Convector cooling typically has tau_ratio = 0.6
+        heating_tau = 2.5  # hours
+        cooling_type = "convector"
+
+        from custom_components.adaptive_thermostat.adaptive.physics import (
+            estimate_cooling_time_constant
+        )
+
+        cooling_tau = estimate_cooling_time_constant(heating_tau, cooling_type)
+
+        # Expected: cooling_tau = heating_tau × tau_ratio = 2.5 × 0.6 = 1.5
+        assert cooling_tau == pytest.approx(1.5, abs=0.05)
+
+    def test_calculate_initial_cooling_pid_forced_air(self):
+        """Test cooling PID calculation for forced_air system."""
+        # Forced air cooling: faster response, needs aggressive gains
+        cooling_tau = 0.45  # hours (from heating_tau=1.5 × tau_ratio=0.3)
+        cooling_type = "forced_air"
+
+        from custom_components.adaptive_thermostat.adaptive.physics import (
+            calculate_initial_cooling_pid
+        )
+
+        kp, ki, kd = calculate_initial_cooling_pid(cooling_tau, cooling_type)
+
+        # Cooling Kp should be higher than heating for same tau
+        # For forced_air at tau=0.45, expect Kp in range 2.5-3.5
+        assert kp > 2.0, "Forced air cooling Kp should be aggressive (>2.0)"
+        assert ki > 15.0, "Forced air cooling Ki should be high for fast response"
+        assert kd > 0.3, "Forced air cooling Kd should provide some damping"
+        assert kd < 1.0, "Forced air cooling Kd should be moderate (low thermal mass)"
+
+    def test_calculate_initial_cooling_pid_radiator(self):
+        """Test cooling PID calculation for radiator system."""
+        # Radiator cooling: moderate response
+        cooling_tau = 2.0  # hours (from heating_tau=4.0 × tau_ratio=0.5)
+        cooling_type = "radiator"
+
+        from custom_components.adaptive_thermostat.adaptive.physics import (
+            calculate_initial_cooling_pid
+        )
+
+        kp, ki, kd = calculate_initial_cooling_pid(cooling_tau, cooling_type)
+
+        # For radiator at tau=2.0, expect moderate gains
+        assert kp > 0.6, "Radiator cooling Kp should be moderate"
+        assert kp < 1.5, "Radiator cooling Kp should not be too aggressive"
+        assert ki > 2.0, "Radiator cooling Ki should provide steady-state correction"
+        assert kd > 1.0, "Radiator cooling Kd should provide damping"
+        assert kd < 2.5, "Radiator cooling Kd should be moderate"
+
+    def test_calculate_initial_cooling_pid_floor_hydronic(self):
+        """Test cooling PID calculation for floor_hydronic system."""
+        # Floor hydronic cooling: slow response, conservative gains
+        cooling_tau = 6.4  # hours (from heating_tau=8.0 × tau_ratio=0.8)
+        cooling_type = "floor_hydronic"
+
+        from custom_components.adaptive_thermostat.adaptive.physics import (
+            calculate_initial_cooling_pid
+        )
+
+        kp, ki, kd = calculate_initial_cooling_pid(cooling_tau, cooling_type)
+
+        # For floor_hydronic at tau=6.4, expect conservative gains
+        assert kp < 0.4, "Floor hydronic cooling Kp should be conservative"
+        assert kp > 0.15, "Floor hydronic cooling Kp should not be too low"
+        assert ki < 1.5, "Floor hydronic cooling Ki should be moderate"
+        assert kd > 2.5, "Floor hydronic cooling Kd should be high (high thermal mass)"
+
+    def test_cooling_kp_higher_than_heating_for_same_tau(self):
+        """Test that cooling Kp is typically 1.5-2x heating Kp for forced_air/radiator."""
+        # Compare cooling vs heating PID for same tau value
+        tau = 1.5  # hours
+
+        from custom_components.adaptive_thermostat.adaptive.physics import (
+            calculate_initial_cooling_pid
+        )
+
+        # Heating PID for forced_air at tau=1.5
+        kp_heating, ki_heating, kd_heating = calculate_initial_pid(tau, "forced_air")
+
+        # Cooling PID for forced_air at tau=1.5
+        kp_cooling, ki_cooling, kd_cooling = calculate_initial_cooling_pid(tau, "forced_air")
+
+        # Cooling should need higher Kp (1.5-2x) for same tau due to different dynamics
+        kp_ratio = kp_cooling / kp_heating
+        assert kp_ratio > 1.3, f"Cooling Kp should be 1.5-2x heating Kp, got {kp_ratio:.2f}x"
+        assert kp_ratio < 2.5, f"Cooling Kp ratio should be reasonable (<2.5x), got {kp_ratio:.2f}x"
+
+    def test_cooling_kp_ratio_radiator(self):
+        """Test cooling Kp multiplier for radiator system."""
+        tau = 3.0  # hours
+
+        from custom_components.adaptive_thermostat.adaptive.physics import (
+            calculate_initial_cooling_pid
+        )
+
+        # Heating PID for radiator
+        kp_heating, _, _ = calculate_initial_pid(tau, "radiator")
+
+        # Cooling PID for radiator
+        kp_cooling, _, _ = calculate_initial_cooling_pid(tau, "radiator")
+
+        # Radiator cooling should also have higher Kp than heating
+        kp_ratio = kp_cooling / kp_heating
+        assert kp_ratio > 1.2, f"Radiator cooling Kp should be higher than heating, got {kp_ratio:.2f}x"
+        assert kp_ratio < 2.2, f"Radiator cooling Kp ratio should be reasonable, got {kp_ratio:.2f}x"
+
+    def test_cooling_tau_uses_correct_ratio_from_characteristics(self):
+        """Test that estimate_cooling_time_constant uses tau_ratio from cooling type characteristics."""
+        # This test verifies the function reads tau_ratio from COOLING_TYPE_CHARACTERISTICS
+        heating_tau = 10.0
+
+        from custom_components.adaptive_thermostat.adaptive.physics import (
+            estimate_cooling_time_constant
+        )
+
+        # Test each cooling type has appropriate tau_ratio
+        cooling_types_expected = {
+            "forced_air": (0.2, 0.4),      # Fast cooling, tau_ratio ~0.3
+            "radiator": (0.4, 0.6),        # Moderate cooling, tau_ratio ~0.5
+            "convector": (0.5, 0.7),       # Moderate cooling, tau_ratio ~0.6
+            "floor_hydronic": (0.7, 0.9),  # Slow cooling, tau_ratio ~0.8
+        }
+
+        for cooling_type, (min_ratio, max_ratio) in cooling_types_expected.items():
+            cooling_tau = estimate_cooling_time_constant(heating_tau, cooling_type)
+            actual_ratio = cooling_tau / heating_tau
+            assert min_ratio <= actual_ratio <= max_ratio, (
+                f"{cooling_type}: tau_ratio {actual_ratio:.2f} not in expected range "
+                f"[{min_ratio}, {max_ratio}]"
+            )
+
+    def test_calculate_initial_cooling_pid_with_power_scaling(self):
+        """Test that cooling PID calculation supports power scaling like heating PID."""
+        cooling_tau = 2.0
+        cooling_type = "radiator"
+        area_m2 = 50.0
+        max_power_w = 1000.0  # Undersized for 50m² (baseline 50 W/m² = 2500W)
+
+        from custom_components.adaptive_thermostat.adaptive.physics import (
+            calculate_initial_cooling_pid
+        )
+
+        # Calculate baseline (no power scaling)
+        kp_baseline, ki_baseline, kd_baseline = calculate_initial_cooling_pid(
+            cooling_tau, cooling_type
+        )
+
+        # Calculate with power scaling (undersized system needs higher gains)
+        kp_scaled, ki_scaled, kd_scaled = calculate_initial_cooling_pid(
+            cooling_tau, cooling_type, area_m2=area_m2, max_power_w=max_power_w
+        )
+
+        # Undersized system should have higher Kp and Ki
+        assert kp_scaled > kp_baseline, "Undersized cooling system should have higher Kp"
+        assert ki_scaled > ki_baseline, "Undersized cooling system should have higher Ki"
+        # Kd should remain unchanged (not scaled)
+        assert kd_scaled == pytest.approx(kd_baseline, abs=0.01)
+
+    def test_cooling_pid_returns_rounded_values(self):
+        """Test that cooling PID values are properly rounded like heating PID."""
+        cooling_tau = 3.5
+        cooling_type = "convector"
+
+        from custom_components.adaptive_thermostat.adaptive.physics import (
+            calculate_initial_cooling_pid
+        )
+
+        kp, ki, kd = calculate_initial_cooling_pid(cooling_tau, cooling_type)
+
+        # Values should be rounded as per heating PID convention
+        # Kp: 4 decimal places, Ki: 5 decimal places, Kd: 2 decimal places
+        assert kp == pytest.approx(round(kp, 4), abs=1e-4)
+        assert ki == pytest.approx(round(ki, 5), abs=1e-5)
+        assert kd == pytest.approx(round(kd, 2), abs=1e-2)
