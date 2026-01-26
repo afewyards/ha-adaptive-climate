@@ -98,7 +98,9 @@ class TestPreheatStateAttributes:
             "estimated_duration": 0,
             "active": False,
         }
-        thermostat._night_setback_calculator = calculator
+        controller = MagicMock()
+        controller.calculator = calculator
+        thermostat._night_setback_controller = controller
 
         attrs = build_state_attributes(thermostat)
 
@@ -135,7 +137,9 @@ class TestPreheatStateAttributes:
             "estimated_duration": 45,  # 45 minutes
             "active": False,
         }
-        thermostat._night_setback_calculator = calculator
+        controller = MagicMock()
+        controller.calculator = calculator
+        thermostat._night_setback_controller = controller
 
         attrs = build_state_attributes(thermostat)
 
@@ -172,7 +176,9 @@ class TestPreheatStateAttributes:
             "estimated_duration": 60,
             "active": True,
         }
-        thermostat._night_setback_calculator = calculator
+        controller = MagicMock()
+        controller.calculator = calculator
+        thermostat._night_setback_controller = controller
 
         attrs = build_state_attributes(thermostat)
 
@@ -199,7 +205,9 @@ class TestPreheatStateAttributes:
             "estimated_duration": 0,
             "active": False,
         }
-        thermostat._night_setback_calculator = calculator
+        controller = MagicMock()
+        controller.calculator = calculator
+        thermostat._night_setback_controller = controller
 
         # Test various confidence values
         for confidence in [0.0, 0.25, 0.5, 0.75, 1.0]:
@@ -224,7 +232,9 @@ class TestPreheatStateAttributes:
             "estimated_duration": 0,
             "active": False,
         }
-        thermostat._night_setback_calculator = calculator
+        controller = MagicMock()
+        controller.calculator = calculator
+        thermostat._night_setback_controller = controller
 
         attrs = build_state_attributes(thermostat)
 
@@ -279,7 +289,9 @@ class TestPreheatStateAttributes:
             "estimated_duration": 90,
             "active": False,
         }
-        thermostat._night_setback_calculator = calculator
+        controller = MagicMock()
+        controller.calculator = calculator
+        thermostat._night_setback_controller = controller
 
         attrs = build_state_attributes(thermostat)
 
@@ -304,7 +316,9 @@ class TestPreheatStateAttributes:
             "estimated_duration": 0,
             "active": False,
         }
-        thermostat._night_setback_calculator = calculator
+        controller = MagicMock()
+        controller.calculator = calculator
+        thermostat._night_setback_controller = controller
 
         attrs = build_state_attributes(thermostat)
 

@@ -397,8 +397,8 @@ def _add_preheat_attributes(
         # If anything goes wrong, just skip setting the learned rate
         pass
 
-    # Get preheat schedule info from night setback calculator
-    if thermostat._night_setback_calculator:
+    # Get preheat schedule info from night setback controller's calculator
+    if thermostat._night_setback_controller:
         try:
             # We need to call get_preheat_info with appropriate parameters
             # Need: now, current_temp, target_temp, outdoor_temp, deadline
@@ -424,7 +424,7 @@ def _add_preheat_attributes(
                 if (isinstance(current_temp, (int, float)) and
                     isinstance(target_temp, (int, float)) and
                     isinstance(outdoor_temp, (int, float))):
-                    preheat_info = thermostat._night_setback_calculator.get_preheat_info(
+                    preheat_info = thermostat._night_setback_controller.calculator.get_preheat_info(
                         now=now,
                         current_temp=current_temp,
                         target_temp=target_temp,
