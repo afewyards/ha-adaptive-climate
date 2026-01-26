@@ -99,6 +99,9 @@ def build_state_attributes(thermostat: SmartThermostat) -> dict[str, Any]:
     # Preheat status
     _add_preheat_attributes(thermostat, attrs)
 
+    # Humidity detection status
+    _add_humidity_detection_attributes(thermostat, attrs)
+
     return attrs
 
 
@@ -435,3 +438,22 @@ def _add_preheat_attributes(
         except (TypeError, AttributeError, ValueError):
             # If anything goes wrong, just skip setting schedule info
             pass
+
+
+def _add_humidity_detection_attributes(
+    thermostat: SmartThermostat, attrs: dict[str, Any]
+) -> None:
+    """Add humidity detection state attributes.
+
+    Args:
+        thermostat: The SmartThermostat instance
+        attrs: Dictionary to update with humidity detection attributes
+    """
+    # Check if humidity detector exists
+    if not thermostat._humidity_detector:
+        return
+
+    # Get detector state
+    detector = thermostat._humidity_detector
+    attrs["humidity_detection_state"] = detector.get_state()
+    attrs["humidity_resume_in"] = detector.get_time_until_resume()

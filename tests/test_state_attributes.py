@@ -1070,3 +1070,267 @@ class TestPerModeConvergenceConfidence:
         # Should be rounded to integer (0.7349 * 100 = 73.49 -> 73)
         assert attrs["heating_convergence_confidence"] == 73
         assert attrs["cooling_convergence_confidence"] == 73
+
+
+class TestHumidityDetectionAttributes:
+    """Tests for humidity detection state attributes."""
+
+    def test_humidity_detection_attributes_absent_when_no_detector(self):
+        """Test that humidity detection attributes are not added when detector is None."""
+        from custom_components.adaptive_thermostat.managers.state_attributes import (
+            build_state_attributes,
+        )
+
+        thermostat = MagicMock()
+        thermostat._away_temp = 18.0
+        thermostat._eco_temp = 19.0
+        thermostat._boost_temp = 24.0
+        thermostat._comfort_temp = 21.0
+        thermostat._home_temp = 20.0
+        thermostat._sleep_temp = 18.0
+        thermostat._activity_temp = 20.0
+        thermostat._control_output = 50.0
+        thermostat._kp = 20.0
+        thermostat._ki = 0.01
+        thermostat._kd = 100.0
+        thermostat._ke = 0.5
+        thermostat.pid_mode = "auto"
+        thermostat.pid_control_i = 5.0
+        thermostat._pid_controller = MagicMock()
+        thermostat._pid_controller.outdoor_temp_lagged = 5.0
+        thermostat._pid_controller.outdoor_temp_lag_tau = 3600.0
+        thermostat._heater_controller = MagicMock()
+        thermostat._heater_controller.heater_cycle_count = 100
+        thermostat._heater_controller.cooler_cycle_count = 50
+        thermostat._heater_controller.duty_accumulator_seconds = 120.5
+        thermostat._heater_controller.min_on_cycle_duration = 300.0
+        thermostat._transport_delay = 0
+        thermostat._night_setback = None
+        thermostat._night_setback_config = None
+        thermostat._night_setback_controller = None
+        thermostat._control_output_manager = None
+        thermostat._ke_learner = None
+        thermostat._heater_control_failed = False
+        thermostat._contact_sensor_handler = None
+        thermostat.in_learning_grace_period = False
+        thermostat._humidity_detector = None
+        thermostat.hass = MagicMock()
+        thermostat.hass.data = {}
+
+        attrs = build_state_attributes(thermostat)
+
+        # Humidity detection attributes should not be present
+        assert "humidity_detection_state" not in attrs
+        assert "humidity_resume_in" not in attrs
+
+    def test_humidity_detection_normal_state(self):
+        """Test humidity detection attributes when detector is in normal state."""
+        from custom_components.adaptive_thermostat.managers.state_attributes import (
+            build_state_attributes,
+        )
+
+        thermostat = MagicMock()
+        thermostat._away_temp = 18.0
+        thermostat._eco_temp = 19.0
+        thermostat._boost_temp = 24.0
+        thermostat._comfort_temp = 21.0
+        thermostat._home_temp = 20.0
+        thermostat._sleep_temp = 18.0
+        thermostat._activity_temp = 20.0
+        thermostat._control_output = 50.0
+        thermostat._kp = 20.0
+        thermostat._ki = 0.01
+        thermostat._kd = 100.0
+        thermostat._ke = 0.5
+        thermostat.pid_mode = "auto"
+        thermostat.pid_control_i = 5.0
+        thermostat._pid_controller = MagicMock()
+        thermostat._pid_controller.outdoor_temp_lagged = 5.0
+        thermostat._pid_controller.outdoor_temp_lag_tau = 3600.0
+        thermostat._heater_controller = MagicMock()
+        thermostat._heater_controller.heater_cycle_count = 100
+        thermostat._heater_controller.cooler_cycle_count = 50
+        thermostat._heater_controller.duty_accumulator_seconds = 120.5
+        thermostat._heater_controller.min_on_cycle_duration = 300.0
+        thermostat._transport_delay = 0
+        thermostat._night_setback = None
+        thermostat._night_setback_config = None
+        thermostat._night_setback_controller = None
+        thermostat._control_output_manager = None
+        thermostat._ke_learner = None
+        thermostat._heater_control_failed = False
+        thermostat._contact_sensor_handler = None
+        thermostat.in_learning_grace_period = False
+        thermostat.hass = MagicMock()
+        thermostat.hass.data = {}
+
+        # Setup humidity detector in normal state
+        humidity_detector = MagicMock()
+        humidity_detector.get_state.return_value = "normal"
+        humidity_detector.get_time_until_resume.return_value = None
+        thermostat._humidity_detector = humidity_detector
+
+        attrs = build_state_attributes(thermostat)
+
+        # Humidity detection attributes should be present
+        assert attrs["humidity_detection_state"] == "normal"
+        assert attrs["humidity_resume_in"] is None
+
+    def test_humidity_detection_paused_state(self):
+        """Test humidity detection attributes when detector is in paused state."""
+        from custom_components.adaptive_thermostat.managers.state_attributes import (
+            build_state_attributes,
+        )
+
+        thermostat = MagicMock()
+        thermostat._away_temp = 18.0
+        thermostat._eco_temp = 19.0
+        thermostat._boost_temp = 24.0
+        thermostat._comfort_temp = 21.0
+        thermostat._home_temp = 20.0
+        thermostat._sleep_temp = 18.0
+        thermostat._activity_temp = 20.0
+        thermostat._control_output = 50.0
+        thermostat._kp = 20.0
+        thermostat._ki = 0.01
+        thermostat._kd = 100.0
+        thermostat._ke = 0.5
+        thermostat.pid_mode = "auto"
+        thermostat.pid_control_i = 5.0
+        thermostat._pid_controller = MagicMock()
+        thermostat._pid_controller.outdoor_temp_lagged = 5.0
+        thermostat._pid_controller.outdoor_temp_lag_tau = 3600.0
+        thermostat._heater_controller = MagicMock()
+        thermostat._heater_controller.heater_cycle_count = 100
+        thermostat._heater_controller.cooler_cycle_count = 50
+        thermostat._heater_controller.duty_accumulator_seconds = 120.5
+        thermostat._heater_controller.min_on_cycle_duration = 300.0
+        thermostat._transport_delay = 0
+        thermostat._night_setback = None
+        thermostat._night_setback_config = None
+        thermostat._night_setback_controller = None
+        thermostat._control_output_manager = None
+        thermostat._ke_learner = None
+        thermostat._heater_control_failed = False
+        thermostat._contact_sensor_handler = None
+        thermostat.in_learning_grace_period = False
+        thermostat.hass = MagicMock()
+        thermostat.hass.data = {}
+
+        # Setup humidity detector in paused state
+        humidity_detector = MagicMock()
+        humidity_detector.get_state.return_value = "paused"
+        humidity_detector.get_time_until_resume.return_value = None
+        thermostat._humidity_detector = humidity_detector
+
+        attrs = build_state_attributes(thermostat)
+
+        # Humidity detection attributes should be present
+        assert attrs["humidity_detection_state"] == "paused"
+        assert attrs["humidity_resume_in"] is None
+
+    def test_humidity_detection_stabilizing_state(self):
+        """Test humidity detection attributes when detector is in stabilizing state."""
+        from custom_components.adaptive_thermostat.managers.state_attributes import (
+            build_state_attributes,
+        )
+
+        thermostat = MagicMock()
+        thermostat._away_temp = 18.0
+        thermostat._eco_temp = 19.0
+        thermostat._boost_temp = 24.0
+        thermostat._comfort_temp = 21.0
+        thermostat._home_temp = 20.0
+        thermostat._sleep_temp = 18.0
+        thermostat._activity_temp = 20.0
+        thermostat._control_output = 50.0
+        thermostat._kp = 20.0
+        thermostat._ki = 0.01
+        thermostat._kd = 100.0
+        thermostat._ke = 0.5
+        thermostat.pid_mode = "auto"
+        thermostat.pid_control_i = 5.0
+        thermostat._pid_controller = MagicMock()
+        thermostat._pid_controller.outdoor_temp_lagged = 5.0
+        thermostat._pid_controller.outdoor_temp_lag_tau = 3600.0
+        thermostat._heater_controller = MagicMock()
+        thermostat._heater_controller.heater_cycle_count = 100
+        thermostat._heater_controller.cooler_cycle_count = 50
+        thermostat._heater_controller.duty_accumulator_seconds = 120.5
+        thermostat._heater_controller.min_on_cycle_duration = 300.0
+        thermostat._transport_delay = 0
+        thermostat._night_setback = None
+        thermostat._night_setback_config = None
+        thermostat._night_setback_controller = None
+        thermostat._control_output_manager = None
+        thermostat._ke_learner = None
+        thermostat._heater_control_failed = False
+        thermostat._contact_sensor_handler = None
+        thermostat.in_learning_grace_period = False
+        thermostat.hass = MagicMock()
+        thermostat.hass.data = {}
+
+        # Setup humidity detector in stabilizing state with resume time
+        humidity_detector = MagicMock()
+        humidity_detector.get_state.return_value = "stabilizing"
+        humidity_detector.get_time_until_resume.return_value = 180  # 3 minutes
+        thermostat._humidity_detector = humidity_detector
+
+        attrs = build_state_attributes(thermostat)
+
+        # Humidity detection attributes should be present
+        assert attrs["humidity_detection_state"] == "stabilizing"
+        assert attrs["humidity_resume_in"] == 180
+
+    def test_humidity_detection_stabilizing_with_zero_resume_time(self):
+        """Test humidity detection attributes when stabilizing with 0 resume time."""
+        from custom_components.adaptive_thermostat.managers.state_attributes import (
+            build_state_attributes,
+        )
+
+        thermostat = MagicMock()
+        thermostat._away_temp = 18.0
+        thermostat._eco_temp = 19.0
+        thermostat._boost_temp = 24.0
+        thermostat._comfort_temp = 21.0
+        thermostat._home_temp = 20.0
+        thermostat._sleep_temp = 18.0
+        thermostat._activity_temp = 20.0
+        thermostat._control_output = 50.0
+        thermostat._kp = 20.0
+        thermostat._ki = 0.01
+        thermostat._kd = 100.0
+        thermostat._ke = 0.5
+        thermostat.pid_mode = "auto"
+        thermostat.pid_control_i = 5.0
+        thermostat._pid_controller = MagicMock()
+        thermostat._pid_controller.outdoor_temp_lagged = 5.0
+        thermostat._pid_controller.outdoor_temp_lag_tau = 3600.0
+        thermostat._heater_controller = MagicMock()
+        thermostat._heater_controller.heater_cycle_count = 100
+        thermostat._heater_controller.cooler_cycle_count = 50
+        thermostat._heater_controller.duty_accumulator_seconds = 120.5
+        thermostat._heater_controller.min_on_cycle_duration = 300.0
+        thermostat._transport_delay = 0
+        thermostat._night_setback = None
+        thermostat._night_setback_config = None
+        thermostat._night_setback_controller = None
+        thermostat._control_output_manager = None
+        thermostat._ke_learner = None
+        thermostat._heater_control_failed = False
+        thermostat._contact_sensor_handler = None
+        thermostat.in_learning_grace_period = False
+        thermostat.hass = MagicMock()
+        thermostat.hass.data = {}
+
+        # Setup humidity detector in stabilizing state with 0 resume time (about to exit)
+        humidity_detector = MagicMock()
+        humidity_detector.get_state.return_value = "stabilizing"
+        humidity_detector.get_time_until_resume.return_value = 0
+        thermostat._humidity_detector = humidity_detector
+
+        attrs = build_state_attributes(thermostat)
+
+        # Humidity detection attributes should be present
+        assert attrs["humidity_detection_state"] == "stabilizing"
+        assert attrs["humidity_resume_in"] == 0
