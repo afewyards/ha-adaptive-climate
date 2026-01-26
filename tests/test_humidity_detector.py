@@ -396,3 +396,39 @@ class TestHumidityDetector:
         assert detector.get_state() == "normal"
         assert detector.should_pause() is False
         assert detector.get_time_until_resume() is None
+
+    def test_max_pause_duration_forces_resume(self):
+        """Test that after 60 min in PAUSED state, auto-transition to NORMAL."""
+        detector = HumidityDetector(spike_threshold=15)
+        now = datetime(2024, 1, 1, 12, 0, 0)
+
+        # Trigger paused at 85%
+        detector.record_humidity(now, 50.0)
+        detector.record_humidity(now + timedelta(seconds=300), 85.0)
+        assert detector.get_state() == "paused"
+
+        # Still paused at 59 minutes (humidity still high)
+        detector.record_humidity(now + timedelta(seconds=300 + 59 * 60), 85.0)
+        assert detector.get_state() == "paused"
+
+        # Force resume at 61 minutes (max pause = 3600s / 60 min)
+        detector.record_humidity(now + timedelta(seconds=300 + 61 * 60), 85.0)
+        assert detector.get_state() == "normal"
+        assert detector._peak_humidity is None
+
+    def test_max_pause_logs_warning(self, caplog):
+        """Test warning logged when max pause duration reached."""
+        import logging
+        detector = HumidityDetector(spike_threshold=15)
+        now = datetime(2024, 1, 1, 12, 0, 0)
+
+        # Trigger paused
+        detector.record_humidity(now, 50.0)
+        detector.record_humidity(now + timedelta(seconds=300), 85.0)
+
+        # Force resume at 61 minutes
+        with caplog.at_level(logging.WARNING):
+            detector.record_humidity(now + timedelta(seconds=300 + 61 * 60), 85.0)
+
+        # Check warning was logged
+        assert any("max pause duration" in record.message.lower() for record in caplog.records)

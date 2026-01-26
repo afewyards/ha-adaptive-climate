@@ -4,9 +4,12 @@ Detects rapid humidity increases (e.g., from showers) and pauses heating
 to prevent unnecessary heating during temporary humidity spikes.
 """
 
+import logging
 from collections import deque
 from datetime import datetime, timedelta
 from typing import Literal, Optional
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class HumidityDetector:
@@ -30,6 +33,7 @@ class HumidityDetector:
         absolute_max: float = 80.0,
         detection_window: int = 300,
         stabilization_delay: int = 300,
+        max_pause_duration: int = 3600,
     ):
         """Initialize humidity detector.
 
@@ -38,17 +42,20 @@ class HumidityDetector:
             absolute_max: Absolute humidity % that triggers pause (default: 80%)
             detection_window: Time window in seconds for spike detection (default: 300s/5min)
             stabilization_delay: Time in seconds before resuming from stabilizing (default: 300s/5min)
+            max_pause_duration: Maximum time in seconds to stay paused (default: 3600s/60min)
         """
         self._spike_threshold = spike_threshold
         self._absolute_max = absolute_max
         self._detection_window = detection_window
         self._stabilization_delay = stabilization_delay
+        self._max_pause_duration = max_pause_duration
 
         # State tracking
         self._state: Literal["normal", "paused", "stabilizing"] = "normal"
         self._humidity_history: deque[tuple[datetime, float]] = deque()
         self._peak_humidity: Optional[float] = None
         self._stabilization_start: Optional[datetime] = None
+        self._pause_start: Optional[datetime] = None
         self._last_timestamp: Optional[datetime] = None
 
     def record_humidity(self, ts: datetime, humidity: float) -> None:
@@ -83,6 +90,19 @@ class HumidityDetector:
             self._check_triggers(current_humidity)
 
         elif self._state == "paused":
+            # Check max pause duration - force resume after 60 min
+            if self._pause_start is not None:
+                elapsed = (ts - self._pause_start).total_seconds()
+                if elapsed >= self._max_pause_duration:
+                    _LOGGER.warning(
+                        "Max pause duration (%d seconds) reached. Forcing resume to normal state.",
+                        self._max_pause_duration
+                    )
+                    self._state = "normal"
+                    self._peak_humidity = None
+                    self._pause_start = None
+                    return
+
             # Track peak humidity
             if self._peak_humidity is None or current_humidity > self._peak_humidity:
                 self._peak_humidity = current_humidity
@@ -96,6 +116,7 @@ class HumidityDetector:
                 if drop_from_peak > 10.0:
                     self._state = "stabilizing"
                     self._stabilization_start = ts
+                    self._pause_start = None
 
         elif self._state == "stabilizing":
             # Check for new spike (returns to paused)
@@ -125,6 +146,9 @@ class HumidityDetector:
             self._state = "paused"
             self._peak_humidity = current_humidity
             self._stabilization_start = None
+            # Track pause start time (or reset if already paused)
+            if self._pause_start is None:
+                self._pause_start = self._last_timestamp
             return True
 
         # Rate of change trigger
@@ -136,6 +160,9 @@ class HumidityDetector:
                 self._state = "paused"
                 self._peak_humidity = current_humidity
                 self._stabilization_start = None
+                # Track pause start time (or reset if already paused)
+                if self._pause_start is None:
+                    self._pause_start = self._last_timestamp
                 return True
 
         return False
