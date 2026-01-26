@@ -141,13 +141,19 @@ def _add_learning_status_attributes(
     - cycles_collected: number of complete cycles observed
     - convergence_confidence_pct: 0-100% confidence in convergence
     - pid_history: list of PID adjustments (if any)
+
+    Debug mode adds:
+    - current_cycle_state: current cycle tracker state
+    - cycles_required_for_learning: minimum cycles needed
     """
-    from ..const import DOMAIN
+    from ..const import DOMAIN, MIN_CYCLES_FOR_LEARNING
 
     # Get adaptive learner and cycle tracker from coordinator
     coordinator = thermostat.hass.data.get(DOMAIN, {}).get("coordinator")
     if not coordinator:
         return
+
+    debug_mode = thermostat.hass.data.get(DOMAIN, {}).get("debug", False)
 
     all_zones = coordinator.get_all_zones()
     for zone_id, zone_data in all_zones.items():
@@ -173,6 +179,11 @@ def _add_learning_status_attributes(
             attrs[ATTR_LEARNING_STATUS] = _compute_learning_status(
                 cycle_count, convergence_confidence, consecutive_converged
             )
+
+            # Debug-only attributes
+            if debug_mode:
+                attrs["current_cycle_state"] = cycle_tracker.get_state_name()
+                attrs["cycles_required_for_learning"] = MIN_CYCLES_FOR_LEARNING
 
             # Format PID history (only include if non-empty)
             pid_history = adaptive_learner.get_pid_history()
