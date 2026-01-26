@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.33.1 (2026-01-26)
+
+### Bug Fixes
+
+- **preheat**: Use _night_setback_controller.calculator instead of _night_setback_calculator
+  ([`745825c`](https://github.com/afewyards/ha-adaptive-thermostat/commit/745825ce8095f9154d3b099c85da26d935dfac44))
+
+
 ## v0.33.0 (2026-01-26)
 
 ### Documentation
