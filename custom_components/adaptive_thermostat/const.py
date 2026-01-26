@@ -489,6 +489,13 @@ CONF_CONTACT_ACTION = "contact_action"
 CONF_CONTACT_DELAY = "contact_delay"
 CONF_CONTACT_LEARNING_GRACE = "contact_learning_grace"
 
+# Humidity detection configuration
+CONF_HUMIDITY_SENSOR = "humidity_sensor"
+CONF_HUMIDITY_SPIKE_THRESHOLD = "humidity_spike_threshold"
+CONF_HUMIDITY_ABSOLUTE_MAX = "humidity_absolute_max"
+CONF_HUMIDITY_DETECTION_WINDOW = "humidity_detection_window"
+CONF_HUMIDITY_STABILIZATION_DELAY = "humidity_stabilization_delay"
+
 # Night setback configuration
 CONF_NIGHT_SETBACK = "night_setback"
 CONF_NIGHT_SETBACK_ENABLED = "enabled"
@@ -555,6 +562,15 @@ DEFAULT_SOURCE_STARTUP_DELAY = 30
 DEFAULT_CONTACT_DELAY = 120
 DEFAULT_CONTACT_LEARNING_GRACE = 300
 DEFAULT_LEARNING_WINDOW_DAYS = 7
+
+# Humidity detection defaults
+DEFAULT_HUMIDITY_SPIKE_THRESHOLD = 15  # % rise to trigger
+DEFAULT_HUMIDITY_ABSOLUTE_MAX = 80     # % absolute cap
+DEFAULT_HUMIDITY_DETECTION_WINDOW = 300  # seconds
+DEFAULT_HUMIDITY_STABILIZATION_DELAY = 300  # seconds
+DEFAULT_HUMIDITY_MAX_PAUSE = 3600  # 60 min max pause
+DEFAULT_HUMIDITY_EXIT_THRESHOLD = 70  # % to start exit
+DEFAULT_HUMIDITY_EXIT_DROP = 10  # % drop from peak to exit
 DEFAULT_MIN_LEARNING_EVENTS = 3
 DEFAULT_MIN_CYCLE_TIME_WARNING = 15
 DEFAULT_MIN_CYCLE_TIME_CRITICAL = 10

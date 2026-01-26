@@ -11,6 +11,18 @@ from custom_components.adaptive_thermostat.const import (
     PIDGains,
     COOLING_TYPE_CHARACTERISTICS,
     CONF_COOLING_TYPE,
+    CONF_HUMIDITY_SENSOR,
+    CONF_HUMIDITY_SPIKE_THRESHOLD,
+    CONF_HUMIDITY_ABSOLUTE_MAX,
+    CONF_HUMIDITY_DETECTION_WINDOW,
+    CONF_HUMIDITY_STABILIZATION_DELAY,
+    DEFAULT_HUMIDITY_SPIKE_THRESHOLD,
+    DEFAULT_HUMIDITY_ABSOLUTE_MAX,
+    DEFAULT_HUMIDITY_DETECTION_WINDOW,
+    DEFAULT_HUMIDITY_STABILIZATION_DELAY,
+    DEFAULT_HUMIDITY_MAX_PAUSE,
+    DEFAULT_HUMIDITY_EXIT_THRESHOLD,
+    DEFAULT_HUMIDITY_EXIT_DROP,
 )
 
 
@@ -288,6 +300,96 @@ class TestCoolingTypeConfig:
     def test_conf_cooling_type_value(self):
         """Verify CONF_COOLING_TYPE has expected value."""
         assert CONF_COOLING_TYPE == "cooling_type"
+
+
+class TestHumidityDetectionConstants:
+    """Test humidity detection configuration constants."""
+
+    def test_humidity_config_constants_exist(self):
+        """Verify all humidity configuration constants exist and are strings."""
+        config_constants = [
+            CONF_HUMIDITY_SENSOR,
+            CONF_HUMIDITY_SPIKE_THRESHOLD,
+            CONF_HUMIDITY_ABSOLUTE_MAX,
+            CONF_HUMIDITY_DETECTION_WINDOW,
+            CONF_HUMIDITY_STABILIZATION_DELAY,
+        ]
+
+        for constant in config_constants:
+            assert constant is not None
+            assert isinstance(constant, str)
+
+    def test_humidity_config_constant_values(self):
+        """Verify humidity configuration constants have expected values."""
+        assert CONF_HUMIDITY_SENSOR == "humidity_sensor"
+        assert CONF_HUMIDITY_SPIKE_THRESHOLD == "humidity_spike_threshold"
+        assert CONF_HUMIDITY_ABSOLUTE_MAX == "humidity_absolute_max"
+        assert CONF_HUMIDITY_DETECTION_WINDOW == "humidity_detection_window"
+        assert CONF_HUMIDITY_STABILIZATION_DELAY == "humidity_stabilization_delay"
+
+    def test_humidity_default_constants_exist(self):
+        """Verify all humidity default constants exist and are numeric."""
+        assert DEFAULT_HUMIDITY_SPIKE_THRESHOLD is not None
+        assert isinstance(DEFAULT_HUMIDITY_SPIKE_THRESHOLD, (int, float))
+
+        assert DEFAULT_HUMIDITY_ABSOLUTE_MAX is not None
+        assert isinstance(DEFAULT_HUMIDITY_ABSOLUTE_MAX, (int, float))
+
+        assert DEFAULT_HUMIDITY_DETECTION_WINDOW is not None
+        assert isinstance(DEFAULT_HUMIDITY_DETECTION_WINDOW, (int, float))
+
+        assert DEFAULT_HUMIDITY_STABILIZATION_DELAY is not None
+        assert isinstance(DEFAULT_HUMIDITY_STABILIZATION_DELAY, (int, float))
+
+        assert DEFAULT_HUMIDITY_MAX_PAUSE is not None
+        assert isinstance(DEFAULT_HUMIDITY_MAX_PAUSE, (int, float))
+
+        assert DEFAULT_HUMIDITY_EXIT_THRESHOLD is not None
+        assert isinstance(DEFAULT_HUMIDITY_EXIT_THRESHOLD, (int, float))
+
+        assert DEFAULT_HUMIDITY_EXIT_DROP is not None
+        assert isinstance(DEFAULT_HUMIDITY_EXIT_DROP, (int, float))
+
+    def test_humidity_default_values(self):
+        """Verify humidity default constants have expected values."""
+        assert DEFAULT_HUMIDITY_SPIKE_THRESHOLD == 15
+        assert DEFAULT_HUMIDITY_ABSOLUTE_MAX == 80
+        assert DEFAULT_HUMIDITY_DETECTION_WINDOW == 300
+        assert DEFAULT_HUMIDITY_STABILIZATION_DELAY == 300
+        assert DEFAULT_HUMIDITY_MAX_PAUSE == 3600
+        assert DEFAULT_HUMIDITY_EXIT_THRESHOLD == 70
+        assert DEFAULT_HUMIDITY_EXIT_DROP == 10
+
+    def test_humidity_default_values_are_positive(self):
+        """Verify all humidity default values are positive."""
+        defaults = [
+            DEFAULT_HUMIDITY_SPIKE_THRESHOLD,
+            DEFAULT_HUMIDITY_ABSOLUTE_MAX,
+            DEFAULT_HUMIDITY_DETECTION_WINDOW,
+            DEFAULT_HUMIDITY_STABILIZATION_DELAY,
+            DEFAULT_HUMIDITY_MAX_PAUSE,
+            DEFAULT_HUMIDITY_EXIT_THRESHOLD,
+            DEFAULT_HUMIDITY_EXIT_DROP,
+        ]
+
+        for default in defaults:
+            assert default > 0, f"Default value {default} must be positive"
+
+    def test_humidity_percentage_values_in_valid_range(self):
+        """Verify humidity percentage values are in valid 0-100 range."""
+        assert 0 <= DEFAULT_HUMIDITY_SPIKE_THRESHOLD <= 100
+        assert 0 <= DEFAULT_HUMIDITY_ABSOLUTE_MAX <= 100
+        assert 0 <= DEFAULT_HUMIDITY_EXIT_THRESHOLD <= 100
+        assert 0 <= DEFAULT_HUMIDITY_EXIT_DROP <= 100
+
+    def test_humidity_time_values_are_seconds(self):
+        """Verify time-based humidity values are in seconds."""
+        # Detection window: 300 seconds = 5 minutes
+        assert DEFAULT_HUMIDITY_DETECTION_WINDOW == 300
+        # Stabilization delay: 300 seconds = 5 minutes
+        assert DEFAULT_HUMIDITY_STABILIZATION_DELAY == 300
+        # Max pause: 3600 seconds = 60 minutes
+        assert DEFAULT_HUMIDITY_MAX_PAUSE == 3600
 
 
 # Marker test
