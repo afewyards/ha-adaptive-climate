@@ -68,7 +68,13 @@ class LearningDataStore:
             self._save_lock = asyncio.Lock()
 
         if self._store is None:
-            self._store = Store(self.hass, STORAGE_VERSION, STORAGE_KEY)
+            self._store = Store(
+                self.hass,
+                STORAGE_VERSION,
+                STORAGE_KEY,
+                minor_version=1,
+                migrate_func=self._async_migrate_storage,
+            )
 
         data = await self._store.async_load()
 
@@ -91,6 +97,40 @@ class LearningDataStore:
             data = self._migrate_v4_to_v5(data)
 
         self._data = data
+        return data
+
+    async def _async_migrate_storage(
+        self, old_major_version: int, old_minor_version: int, old_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Migrate storage data from older versions.
+
+        Called by HA's Store when version mismatch is detected.
+
+        Args:
+            old_major_version: Previous major version
+            old_minor_version: Previous minor version
+            old_data: Data from previous version
+
+        Returns:
+            Migrated data compatible with current version
+        """
+        _LOGGER.info(
+            "Migrating storage from v%d.%d to v%d",
+            old_major_version, old_minor_version, STORAGE_VERSION
+        )
+
+        data = old_data
+
+        # Apply migrations in sequence
+        if old_major_version <= 2:
+            data = self._migrate_v2_to_v3(data)
+
+        if data.get("version", old_major_version) <= 3:
+            data = self._migrate_v3_to_v4(data)
+
+        if data.get("version", old_major_version) <= 4:
+            data = self._migrate_v4_to_v5(data)
+
         return data
 
     def _migrate_v2_to_v3(self, v2_data: Dict[str, Any]) -> Dict[str, Any]:

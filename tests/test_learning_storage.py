@@ -336,8 +336,12 @@ async def test_learning_store_async_load_empty(mock_hass):
         store = LearningDataStore(mock_hass)
         data = await store.async_load()
 
-        # Should create Store with correct parameters
-        mock_store_class.assert_called_once_with(mock_hass, 5, "adaptive_thermostat_learning")
+        # Should create Store with correct parameters (including migrate_func)
+        mock_store_class.assert_called_once()
+        call_args = mock_store_class.call_args
+        assert call_args[0] == (mock_hass, 5, "adaptive_thermostat_learning")
+        assert call_args[1]["minor_version"] == 1
+        assert callable(call_args[1]["migrate_func"])
 
         # Should return default structure when no data
         assert data == {"version": 5, "zones": {}}
