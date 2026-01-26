@@ -760,7 +760,6 @@ class TestAsyncUnregisterServices:
         from custom_components.adaptive_thermostat.services import (
             async_unregister_services,
             SERVICE_RUN_LEARNING,
-            SERVICE_HEALTH_CHECK,
             SERVICE_WEEKLY_REPORT,
             SERVICE_COST_REPORT,
             SERVICE_SET_VACATION_MODE,
@@ -777,9 +776,9 @@ class TestAsyncUnregisterServices:
         async_unregister_services(hass)
 
         # Verify async_remove was called for each service
+        # 4 public services + 2 debug services (health_check no longer exists)
         expected_services = [
             SERVICE_RUN_LEARNING,
-            SERVICE_HEALTH_CHECK,
             SERVICE_WEEKLY_REPORT,
             SERVICE_COST_REPORT,
             SERVICE_SET_VACATION_MODE,
@@ -957,7 +956,7 @@ class TestReloadWithoutLeftoverState:
         hass.services.has_service = mock_has_service
         hass.services.async_remove = mock_async_remove
 
-        # First registration
+        # First registration with debug=True to register SERVICE_RUN_LEARNING
         async_register_services(
             hass=hass,
             coordinator=MagicMock(),
@@ -969,6 +968,7 @@ class TestReloadWithoutLeftoverState:
             vacation_schema=None,
             cost_report_schema=None,
             default_vacation_target_temp=12.0,
+            debug=True,
         )
 
         # All services should be registered once
@@ -980,7 +980,7 @@ class TestReloadWithoutLeftoverState:
         # Services should be removed
         assert f"{DOMAIN}.{SERVICE_RUN_LEARNING}" not in registered_services
 
-        # Re-register
+        # Re-register with debug=True
         async_register_services(
             hass=hass,
             coordinator=MagicMock(),
@@ -992,6 +992,7 @@ class TestReloadWithoutLeftoverState:
             vacation_schema=None,
             cost_report_schema=None,
             default_vacation_target_temp=12.0,
+            debug=True,
         )
 
         # Service should be registered exactly once again (not duplicated)
