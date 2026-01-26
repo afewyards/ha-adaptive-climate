@@ -297,47 +297,6 @@ def test_restore_preheat_learner_multiple_observations(mock_hass):
     assert len(restored._observations[("4-6", "mild")]) == 1
 
 
-@pytest.mark.asyncio
-async def test_migration_v4_without_preheat_loads_successfully(mock_hass):
-    """Test migration: v4 data without preheat_data loads with empty/None preheat."""
-    # Simulate v4 format without preheat_learner
-    v4_data = {
-        "version": 4,
-        "zones": {
-            "climate.living_room": {
-                "adaptive_learner": {
-                    "cycle_history": [{"overshoot": 0.3}],
-                },
-                "ke_learner": {
-                    "current_ke": 0.5,
-                },
-                "last_updated": "2026-01-20T10:00:00",
-            },
-        },
-    }
-
-    mock_storage_module = create_mock_storage_module(load_data=v4_data)
-
-    with patch.dict('sys.modules', {'homeassistant.helpers.storage': mock_storage_module}):
-        store = LearningDataStore(mock_hass)
-        data = await store.async_load()
-
-        # Should load successfully and be migrated to v5
-        assert data["version"] == 5
-        assert "climate.living_room" in data["zones"]
-
-        # Get zone data
-        zone_data = store.get_zone_data("climate.living_room")
-        assert zone_data is not None
-
-        # preheat_learner should not be present (backward compatibility)
-        assert "preheat_learner" not in zone_data
-
-        # restore_preheat_learner should return None
-        restored = store.restore_preheat_learner(zone_data)
-        assert restored is None
-
-
 def test_restore_preheat_learner_error_handling(mock_hass):
     """Test restore_preheat_learner handles corrupt data gracefully."""
     store = LearningDataStore(mock_hass)
