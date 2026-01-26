@@ -67,7 +67,7 @@ def coord(mock_hass):
 async def test_heater_on_when_zone_demands(mock_hass, coord):
     """Test heater turns on when a zone has demand."""
     # Create controller with zero startup delay
-    controller = coordinator.CentralController(
+    controller = central_controller.CentralController(
         mock_hass,
         coord,
         main_heater_switch=["switch.boiler"],
@@ -102,7 +102,7 @@ async def test_heater_off_when_no_demand(mock_hass, coord, monkeypatch):
     monkeypatch.setattr(central_controller, "TURN_OFF_DEBOUNCE_SECONDS", 0.1)
 
     # Create controller
-    controller = coordinator.CentralController(
+    controller = central_controller.CentralController(
         mock_hass,
         coord,
         main_heater_switch=["switch.boiler"],
@@ -137,7 +137,7 @@ async def test_heater_off_when_no_demand(mock_hass, coord, monkeypatch):
 async def test_startup_delay(mock_hass, coord):
     """Test heater respects startup delay."""
     # Create controller with 2 second startup delay
-    controller = coordinator.CentralController(
+    controller = central_controller.CentralController(
         mock_hass,
         coord,
         main_heater_switch=["switch.boiler"],
@@ -176,7 +176,7 @@ async def test_startup_delay(mock_hass, coord):
 async def test_second_zone_during_delay(mock_hass, coord):
     """Test second zone demand during startup delay doesn't restart delay."""
     # Create controller with 2 second startup delay
-    controller = coordinator.CentralController(
+    controller = central_controller.CentralController(
         mock_hass,
         coord,
         main_heater_switch=["switch.boiler"],
@@ -222,7 +222,7 @@ async def test_second_zone_during_delay(mock_hass, coord):
 async def test_heater_and_cooler_independence(mock_hass, coord):
     """Test heater and cooler operate independently."""
     # Create controller with both heater and cooler
-    controller = coordinator.CentralController(
+    controller = central_controller.CentralController(
         mock_hass,
         coord,
         main_heater_switch=["switch.boiler"],
@@ -262,7 +262,7 @@ async def test_heater_and_cooler_independence(mock_hass, coord):
 async def test_zero_startup_delay(mock_hass, coord):
     """Test controller with zero startup delay turns on immediately."""
     # Create controller with zero startup delay
-    controller = coordinator.CentralController(
+    controller = central_controller.CentralController(
         mock_hass,
         coord,
         main_heater_switch=["switch.boiler"],
@@ -297,7 +297,7 @@ async def test_zero_startup_delay(mock_hass, coord):
 async def test_demand_lost_during_delay(mock_hass, coord):
     """Test heater doesn't start if demand is lost during startup delay."""
     # Create controller with 2 second startup delay
-    controller = coordinator.CentralController(
+    controller = central_controller.CentralController(
         mock_hass,
         coord,
         main_heater_switch=["switch.boiler"],
@@ -350,7 +350,7 @@ async def test_concurrent_update_calls_during_startup_delay(mock_hass, coord):
     consistent.
     """
     # Create controller with 2 second startup delay
-    controller = coordinator.CentralController(
+    controller = central_controller.CentralController(
         mock_hass,
         coord,
         main_heater_switch=["switch.boiler"],
@@ -400,7 +400,7 @@ async def test_task_cancellation_race_condition(mock_hass, coord):
     no exceptions are raised.
     """
     # Create controller with 1 second startup delay
-    controller = coordinator.CentralController(
+    controller = central_controller.CentralController(
         mock_hass,
         coord,
         main_heater_switch=["switch.boiler"],
@@ -447,7 +447,7 @@ async def test_concurrent_heater_and_cooler_updates(mock_hass, coord):
     both heater and cooler state without causing deadlocks.
     """
     # Create controller with both heater and cooler
-    controller = coordinator.CentralController(
+    controller = central_controller.CentralController(
         mock_hass,
         coord,
         main_heater_switch=["switch.boiler"],
@@ -482,7 +482,7 @@ async def test_lock_released_after_cancellation(mock_hass, coord):
     released and subsequent operations can proceed without deadlock.
     """
     # Create controller with 2 second startup delay
-    controller = coordinator.CentralController(
+    controller = central_controller.CentralController(
         mock_hass,
         coord,
         main_heater_switch=["switch.boiler"],
@@ -525,7 +525,7 @@ async def test_lock_released_after_cancellation(mock_hass, coord):
 @pytest.mark.asyncio
 async def test_service_call_success(mock_hass, coord):
     """Test successful service call resets failure counter."""
-    controller = coordinator.CentralController(
+    controller = central_controller.CentralController(
         mock_hass,
         coord,
         main_heater_switch=["switch.boiler"],
@@ -562,7 +562,7 @@ async def test_service_call_success(mock_hass, coord):
 @pytest.mark.asyncio
 async def test_service_not_found_no_retry(mock_hass, coord):
     """Test ServiceNotFound exception does not trigger retry."""
-    controller = coordinator.CentralController(
+    controller = central_controller.CentralController(
         mock_hass,
         coord,
         main_heater_switch=["switch.boiler"],
@@ -596,7 +596,7 @@ async def test_service_not_found_no_retry(mock_hass, coord):
 @pytest.mark.asyncio
 async def test_home_assistant_error_with_retry(mock_hass, coord):
     """Test HomeAssistantError triggers retry with exponential backoff."""
-    controller = coordinator.CentralController(
+    controller = central_controller.CentralController(
         mock_hass,
         coord,
         main_heater_switch=["switch.boiler"],
@@ -636,7 +636,7 @@ async def test_home_assistant_error_with_retry(mock_hass, coord):
 @pytest.mark.asyncio
 async def test_all_retries_exhausted(mock_hass, coord):
     """Test all retries are exhausted and failure is recorded."""
-    controller = coordinator.CentralController(
+    controller = central_controller.CentralController(
         mock_hass,
         coord,
         main_heater_switch=["switch.boiler"],
@@ -661,7 +661,7 @@ async def test_all_retries_exhausted(mock_hass, coord):
     await controller.update()
 
     # Verify service was called MAX_SERVICE_CALL_RETRIES times
-    assert mock_hass.services.async_call.call_count == coordinator.MAX_SERVICE_CALL_RETRIES
+    assert mock_hass.services.async_call.call_count == central_controller.MAX_SERVICE_CALL_RETRIES
 
     # Verify failure was recorded
     assert controller.get_consecutive_failures("switch.boiler") == 1
@@ -670,7 +670,7 @@ async def test_all_retries_exhausted(mock_hass, coord):
 @pytest.mark.asyncio
 async def test_consecutive_failure_warning_threshold(mock_hass, coord):
     """Test warning is emitted when consecutive failure threshold is reached."""
-    controller = coordinator.CentralController(
+    controller = central_controller.CentralController(
         mock_hass,
         coord,
         main_heater_switch=["switch.boiler"],
@@ -692,21 +692,21 @@ async def test_consecutive_failure_warning_threshold(mock_hass, coord):
     coord.update_zone_demand("living_room", True, hvac_mode="heat")
 
     # Call update multiple times to trigger threshold
-    for i in range(coordinator.CONSECUTIVE_FAILURE_WARNING_THRESHOLD):
+    for i in range(central_controller.CONSECUTIVE_FAILURE_WARNING_THRESHOLD):
         mock_hass.services.async_call.reset_mock()
         await controller.update()
 
     # Verify consecutive failures equals threshold
     assert (
         controller.get_consecutive_failures("switch.boiler")
-        == coordinator.CONSECUTIVE_FAILURE_WARNING_THRESHOLD
+        == central_controller.CONSECUTIVE_FAILURE_WARNING_THRESHOLD
     )
 
 
 @pytest.mark.asyncio
 async def test_failure_counter_reset_on_success_after_failures(mock_hass, coord):
     """Test failure counter resets after successful call following failures."""
-    controller = coordinator.CentralController(
+    controller = central_controller.CentralController(
         mock_hass,
         coord,
         main_heater_switch=["switch.boiler"],
@@ -738,7 +738,7 @@ async def test_failure_counter_reset_on_success_after_failures(mock_hass, coord)
 @pytest.mark.asyncio
 async def test_unexpected_exception_triggers_retry(mock_hass, coord):
     """Test unexpected exceptions trigger retry with backoff."""
-    controller = coordinator.CentralController(
+    controller = central_controller.CentralController(
         mock_hass,
         coord,
         main_heater_switch=["switch.boiler"],
@@ -782,7 +782,7 @@ async def test_turn_off_also_uses_retry_logic(mock_hass, coord, monkeypatch):
     monkeypatch.setattr(central_controller, "TURN_OFF_DEBOUNCE_SECONDS", 0.1)
     monkeypatch.setattr(central_controller, "BASE_RETRY_DELAY_SECONDS", 0.05)
 
-    controller = coordinator.CentralController(
+    controller = central_controller.CentralController(
         mock_hass,
         coord,
         main_heater_switch=["switch.boiler"],
@@ -825,7 +825,7 @@ async def test_turn_off_also_uses_retry_logic(mock_hass, coord, monkeypatch):
 @pytest.mark.asyncio
 async def test_get_consecutive_failures_returns_zero_for_unknown_entity(mock_hass, coord):
     """Test get_consecutive_failures returns 0 for entities not tracked."""
-    controller = coordinator.CentralController(
+    controller = central_controller.CentralController(
         mock_hass,
         coord,
         main_heater_switch=["switch.boiler"],
@@ -839,7 +839,7 @@ async def test_get_consecutive_failures_returns_zero_for_unknown_entity(mock_has
 @pytest.mark.asyncio
 async def test_multiple_switches_independent_failure_tracking(mock_hass, coord):
     """Test heater and cooler have independent failure tracking."""
-    controller = coordinator.CentralController(
+    controller = central_controller.CentralController(
         mock_hass,
         coord,
         main_heater_switch=["switch.boiler"],
@@ -858,7 +858,7 @@ async def test_multiple_switches_independent_failure_tracking(mock_hass, coord):
 @pytest.mark.asyncio
 async def test_exponential_backoff_timing(mock_hass, coord):
     """Test exponential backoff delays are applied correctly."""
-    controller = coordinator.CentralController(
+    controller = central_controller.CentralController(
         mock_hass,
         coord,
         main_heater_switch=["switch.boiler"],
@@ -887,17 +887,17 @@ async def test_exponential_backoff_timing(mock_hass, coord):
     await controller.update()
 
     # Verify all retries were attempted
-    assert len(call_times) == coordinator.MAX_SERVICE_CALL_RETRIES
+    assert len(call_times) == central_controller.MAX_SERVICE_CALL_RETRIES
 
     # Verify delays between attempts follow exponential backoff pattern
     # Expected delays: 1s, 2s (based on BASE_RETRY_DELAY_SECONDS * 2^attempt)
     if len(call_times) >= 2:
         delay1 = call_times[1] - call_times[0]
-        assert delay1 >= coordinator.BASE_RETRY_DELAY_SECONDS * 0.9  # Allow 10% margin
+        assert delay1 >= central_controller.BASE_RETRY_DELAY_SECONDS * 0.9  # Allow 10% margin
 
     if len(call_times) >= 3:
         delay2 = call_times[2] - call_times[1]
-        expected_delay2 = coordinator.BASE_RETRY_DELAY_SECONDS * 2
+        expected_delay2 = central_controller.BASE_RETRY_DELAY_SECONDS * 2
         assert delay2 >= expected_delay2 * 0.9  # Allow 10% margin
 
 
@@ -909,7 +909,7 @@ async def test_exponential_backoff_timing(mock_hass, coord):
 @pytest.mark.asyncio
 async def test_multiple_heaters_all_turn_on(mock_hass, coord):
     """Test all heaters in a list turn on when there is demand."""
-    controller = coordinator.CentralController(
+    controller = central_controller.CentralController(
         mock_hass,
         coord,
         main_heater_switch=["switch.boiler", "switch.pump", "switch.valve"],
@@ -944,7 +944,7 @@ async def test_multiple_heaters_all_turn_off(mock_hass, coord, monkeypatch):
     # Use short debounce for test
     monkeypatch.setattr(central_controller, "TURN_OFF_DEBOUNCE_SECONDS", 0.1)
 
-    controller = coordinator.CentralController(
+    controller = central_controller.CentralController(
         mock_hass,
         coord,
         main_heater_switch=["switch.boiler", "switch.pump"],
@@ -977,7 +977,7 @@ async def test_multiple_heaters_all_turn_off(mock_hass, coord, monkeypatch):
 @pytest.mark.asyncio
 async def test_multiple_coolers_all_turn_on(mock_hass, coord):
     """Test all coolers in a list turn on when there is cooling demand."""
-    controller = coordinator.CentralController(
+    controller = central_controller.CentralController(
         mock_hass,
         coord,
         main_cooler_switch=["switch.chiller", "switch.fan"],
@@ -1007,7 +1007,7 @@ async def test_multiple_coolers_all_turn_on(mock_hass, coord):
 @pytest.mark.asyncio
 async def test_multiple_heaters_and_coolers(mock_hass, coord):
     """Test multiple heaters and coolers operate independently."""
-    controller = coordinator.CentralController(
+    controller = central_controller.CentralController(
         mock_hass,
         coord,
         main_heater_switch=["switch.boiler", "switch.pump"],
@@ -1041,7 +1041,7 @@ async def test_multiple_heaters_and_coolers(mock_hass, coord):
 @pytest.mark.asyncio
 async def test_multiple_heaters_partial_failure_continues(mock_hass, coord):
     """Test that if one heater fails, others still get controlled."""
-    controller = coordinator.CentralController(
+    controller = central_controller.CentralController(
         mock_hass,
         coord,
         main_heater_switch=["switch.boiler", "switch.pump"],
@@ -1057,7 +1057,7 @@ async def test_multiple_heaters_partial_failure_continues(mock_hass, coord):
     call_count = [0]
     async def mock_service_call(*args, **kwargs):
         call_count[0] += 1
-        if call_count[0] <= coordinator.MAX_SERVICE_CALL_RETRIES:
+        if call_count[0] <= central_controller.MAX_SERVICE_CALL_RETRIES:
             # First entity fails all retries
             raise MockHomeAssistantError("Transient error")
         # Second entity succeeds
@@ -1074,13 +1074,13 @@ async def test_multiple_heaters_partial_failure_continues(mock_hass, coord):
 
     # Verify both entities were attempted
     # First entity: 3 retries, second entity: 1 success
-    assert call_count[0] == coordinator.MAX_SERVICE_CALL_RETRIES + 1
+    assert call_count[0] == central_controller.MAX_SERVICE_CALL_RETRIES + 1
 
 
 @pytest.mark.asyncio
 async def test_is_any_switch_on_with_mixed_states(mock_hass, coord):
     """Test _is_any_switch_on returns True if any switch is on."""
-    controller = coordinator.CentralController(
+    controller = central_controller.CentralController(
         mock_hass,
         coord,
         main_heater_switch=["switch.boiler", "switch.pump", "switch.valve"],
@@ -1107,7 +1107,7 @@ async def test_is_any_switch_on_with_mixed_states(mock_hass, coord):
 @pytest.mark.asyncio
 async def test_is_any_switch_on_all_off(mock_hass, coord):
     """Test _is_any_switch_on returns False if all switches are off."""
-    controller = coordinator.CentralController(
+    controller = central_controller.CentralController(
         mock_hass,
         coord,
         main_heater_switch=["switch.boiler", "switch.pump"],
@@ -1127,7 +1127,7 @@ async def test_is_any_switch_on_all_off(mock_hass, coord):
 @pytest.mark.asyncio
 async def test_multiple_heaters_with_startup_delay(mock_hass, coord):
     """Test multiple heaters respect startup delay."""
-    controller = coordinator.CentralController(
+    controller = central_controller.CentralController(
         mock_hass,
         coord,
         main_heater_switch=["switch.boiler", "switch.pump"],
@@ -1165,7 +1165,7 @@ async def test_multiple_heaters_with_startup_delay(mock_hass, coord):
 @pytest.mark.asyncio
 async def test_are_all_switches_on_with_mixed_states(mock_hass, coord):
     """Test _are_all_switches_on returns False if any switch is off."""
-    controller = coordinator.CentralController(
+    controller = central_controller.CentralController(
         mock_hass,
         coord,
         main_heater_switch=["switch.boiler", "switch.pump"],
@@ -1192,7 +1192,7 @@ async def test_are_all_switches_on_with_mixed_states(mock_hass, coord):
 @pytest.mark.asyncio
 async def test_are_all_switches_on_when_all_on(mock_hass, coord):
     """Test _are_all_switches_on returns True when all switches are on."""
-    controller = coordinator.CentralController(
+    controller = central_controller.CentralController(
         mock_hass,
         coord,
         main_heater_switch=["switch.boiler", "switch.pump"],
@@ -1216,7 +1216,7 @@ async def test_heater_turns_on_when_one_switch_already_on(mock_hass, coord):
     This tests the fix for the bug where if one switch (e.g., boiler) was already on,
     the controller would not turn on the other switches (e.g., pump).
     """
-    controller = coordinator.CentralController(
+    controller = central_controller.CentralController(
         mock_hass,
         coord,
         main_heater_switch=["switch.boiler", "switch.pump"],
@@ -1260,7 +1260,7 @@ async def test_turnoff_debounce_cancels_on_demand_return(mock_hass, coord, monke
     # Use short debounce for test
     monkeypatch.setattr(central_controller, "TURN_OFF_DEBOUNCE_SECONDS", 0.5)
 
-    controller = coordinator.CentralController(
+    controller = central_controller.CentralController(
         mock_hass,
         coord,
         main_heater_switch=["switch.boiler"],
@@ -1304,7 +1304,7 @@ async def test_turnoff_debounce_cancels_on_demand_return(mock_hass, coord, monke
 @pytest.mark.asyncio
 async def test_get_shared_switches_no_overlap(mock_hass, coord):
     """Test shared switch detection when lists don't overlap."""
-    controller = coordinator.CentralController(
+    controller = central_controller.CentralController(
         mock_hass,
         coord,
         main_heater_switch=["switch.boiler"],
@@ -1319,7 +1319,7 @@ async def test_get_shared_switches_no_overlap(mock_hass, coord):
 @pytest.mark.asyncio
 async def test_get_shared_switches_with_overlap(mock_hass, coord):
     """Test shared switch detection when lists have common switches."""
-    controller = coordinator.CentralController(
+    controller = central_controller.CentralController(
         mock_hass,
         coord,
         main_heater_switch=["switch.boiler", "switch.pump"],
@@ -1334,7 +1334,7 @@ async def test_get_shared_switches_with_overlap(mock_hass, coord):
 @pytest.mark.asyncio
 async def test_get_shared_switches_multiple_overlap(mock_hass, coord):
     """Test shared switch detection with multiple shared switches."""
-    controller = coordinator.CentralController(
+    controller = central_controller.CentralController(
         mock_hass,
         coord,
         main_heater_switch=["switch.boiler", "switch.pump", "switch.fan"],
@@ -1349,7 +1349,7 @@ async def test_get_shared_switches_multiple_overlap(mock_hass, coord):
 @pytest.mark.asyncio
 async def test_get_shared_switches_one_list_none(mock_hass, coord):
     """Test shared switch detection when one list is None."""
-    controller = coordinator.CentralController(
+    controller = central_controller.CentralController(
         mock_hass,
         coord,
         main_heater_switch=["switch.boiler"],
@@ -1367,7 +1367,7 @@ async def test_shared_switch_stays_on_when_other_mode_active(mock_hass, coord, m
     # Use short debounce for test
     monkeypatch.setattr(central_controller, "TURN_OFF_DEBOUNCE_SECONDS", 0.1)
 
-    controller = coordinator.CentralController(
+    controller = central_controller.CentralController(
         mock_hass,
         coord,
         main_heater_switch=["switch.boiler", "switch.pump"],
@@ -1415,7 +1415,7 @@ async def test_shared_switch_turns_off_when_both_modes_stop(mock_hass, coord, mo
     # Use short debounce for test
     monkeypatch.setattr(central_controller, "TURN_OFF_DEBOUNCE_SECONDS", 0.1)
 
-    controller = coordinator.CentralController(
+    controller = central_controller.CentralController(
         mock_hass,
         coord,
         main_heater_switch=["switch.boiler", "switch.pump"],
@@ -1461,7 +1461,7 @@ async def test_cooler_shared_switch_stays_on_when_heater_active(mock_hass, coord
     # Use short debounce for test
     monkeypatch.setattr(central_controller, "TURN_OFF_DEBOUNCE_SECONDS", 0.1)
 
-    controller = coordinator.CentralController(
+    controller = central_controller.CentralController(
         mock_hass,
         coord,
         main_heater_switch=["switch.boiler", "switch.pump"],
@@ -1508,7 +1508,7 @@ async def test_no_shared_switches_normal_behavior(mock_hass, coord, monkeypatch)
     # Use short debounce for test
     monkeypatch.setattr(central_controller, "TURN_OFF_DEBOUNCE_SECONDS", 0.1)
 
-    controller = coordinator.CentralController(
+    controller = central_controller.CentralController(
         mock_hass,
         coord,
         main_heater_switch=["switch.boiler"],

@@ -103,7 +103,7 @@ def coord(mock_hass):
 @pytest.fixture
 def central_controller(mock_hass, coord):
     """Create a central controller with zero startup delay."""
-    return coordinator.CentralController(
+    return central_controller_module.CentralController(
         mock_hass,
         coord,
         main_heater_switch=["switch.main_boiler"],
@@ -386,7 +386,7 @@ async def test_startup_delay_with_demand_changes(mock_hass, state_registry, coor
     mock_hass.states.is_state = state_registry.is_state
 
     # Create controller with 1 second delay for faster testing
-    controller = coordinator.CentralController(
+    controller = central_controller_module.CentralController(
         mock_hass,
         coord,
         main_heater_switch=["switch.main_boiler"],
