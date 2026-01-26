@@ -586,29 +586,35 @@ def async_register_services(
     async def _pid_recommendations_handler(call: ServiceCall) -> dict:
         return await async_handle_pid_recommendations(hass, coordinator, call)
 
-    # Register all services
+    # Register public services (always available)
     hass.services.async_register(
-        DOMAIN, SERVICE_RUN_LEARNING, _run_learning_handler
-    )
-    hass.services.async_register(
-        DOMAIN, SERVICE_WEEKLY_REPORT, _weekly_report_handler
+        DOMAIN, SERVICE_SET_VACATION_MODE, _vacation_mode_handler,
+        schema=vacation_schema,
     )
     hass.services.async_register(
         DOMAIN, SERVICE_COST_REPORT, _cost_report_handler,
         schema=cost_report_schema,
     )
     hass.services.async_register(
-        DOMAIN, SERVICE_SET_VACATION_MODE, _vacation_mode_handler,
-        schema=vacation_schema,
-    )
-    hass.services.async_register(
         DOMAIN, SERVICE_ENERGY_STATS, _energy_stats_handler
     )
     hass.services.async_register(
-        DOMAIN, SERVICE_PID_RECOMMENDATIONS, _pid_recommendations_handler
+        DOMAIN, SERVICE_WEEKLY_REPORT, _weekly_report_handler
     )
 
-    _LOGGER.debug("Registered %d services for %s domain", 6, DOMAIN)
+    services_count = 4
+
+    # Register debug-only services
+    if debug:
+        hass.services.async_register(
+            DOMAIN, SERVICE_RUN_LEARNING, _run_learning_handler
+        )
+        hass.services.async_register(
+            DOMAIN, SERVICE_PID_RECOMMENDATIONS, _pid_recommendations_handler
+        )
+        services_count += 2
+
+    _LOGGER.debug("Registered %d services for %s domain (debug=%s)", services_count, DOMAIN, debug)
 
 
 def async_unregister_services(hass: HomeAssistant) -> None:
@@ -617,20 +623,33 @@ def async_unregister_services(hass: HomeAssistant) -> None:
     Args:
         hass: Home Assistant instance
     """
+    # Public services (always registered)
     services_to_remove = [
-        SERVICE_RUN_LEARNING,
-        SERVICE_WEEKLY_REPORT,
-        SERVICE_COST_REPORT,
         SERVICE_SET_VACATION_MODE,
+        SERVICE_COST_REPORT,
         SERVICE_ENERGY_STATS,
+        SERVICE_WEEKLY_REPORT,
+    ]
+
+    # Debug-only services (conditionally registered)
+    debug_services = [
+        SERVICE_RUN_LEARNING,
         SERVICE_PID_RECOMMENDATIONS,
     ]
 
+    services_removed = 0
     for service in services_to_remove:
         if hass.services.has_service(DOMAIN, service):
             hass.services.async_remove(DOMAIN, service)
+            services_removed += 1
 
-    _LOGGER.debug("Unregistered %d services for %s domain", len(services_to_remove), DOMAIN)
+    # Only unregister debug services if they were registered
+    for service in debug_services:
+        if hass.services.has_service(DOMAIN, service):
+            hass.services.async_remove(DOMAIN, service)
+            services_removed += 1
+
+    _LOGGER.debug("Unregistered %d services for %s domain", services_removed, DOMAIN)
 
 
 # Public API - expose everything that was previously available from services.py
