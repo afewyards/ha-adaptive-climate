@@ -134,7 +134,14 @@ def _compute_learning_status(
 def _add_learning_status_attributes(
     thermostat: SmartThermostat, attrs: dict[str, Any]
 ) -> None:
-    """Add learning/adaptation status attributes."""
+    """Add learning/adaptation status attributes.
+
+    Exposes only essential learning metrics:
+    - learning_status: overall learning state
+    - cycles_collected: number of complete cycles observed
+    - convergence_confidence_pct: 0-100% confidence in convergence
+    - pid_history: list of PID adjustments (if any)
+    """
     from ..const import DOMAIN
 
     # Get adaptive learner and cycle tracker from coordinator
@@ -167,21 +174,10 @@ def _add_learning_status_attributes(
                 cycle_count, convergence_confidence, consecutive_converged
             )
 
-            # Auto-apply status attributes
-            from ..const import (
-                ATTR_AUTO_APPLY_ENABLED,
-                ATTR_AUTO_APPLY_COUNT,
-                ATTR_VALIDATION_MODE,
-                ATTR_PID_HISTORY,
-            )
-
-            attrs[ATTR_AUTO_APPLY_ENABLED] = getattr(thermostat, "_auto_apply_pid", False)
-            attrs[ATTR_AUTO_APPLY_COUNT] = adaptive_learner.get_auto_apply_count()
-            attrs[ATTR_VALIDATION_MODE] = adaptive_learner.is_in_validation_mode()
-
             # Format PID history (only include if non-empty)
             pid_history = adaptive_learner.get_pid_history()
             if pid_history:
+                from ..const import ATTR_PID_HISTORY
                 formatted_history = [
                     {
                         "timestamp": entry["timestamp"].isoformat(),
