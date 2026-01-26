@@ -89,6 +89,37 @@ Algorithmic detection of open windows based on rapid temperature drops (Danfoss 
 
 **State attributes:** `open_window_detection_active`, `open_window_cooldown_remaining`
 
+### Humidity-Based Steam Detection
+
+Detects shower steam in bathrooms, pauses heating during shower, resumes after stabilization. Module: `adaptive/humidity_detector.py` (`HumidityDetector`).
+
+**Configuration (entity-level only):**
+```yaml
+climate:
+  - platform: adaptive_thermostat
+    humidity_sensor: sensor.bathroom_humidity
+    humidity_spike_threshold: 15       # % rise to trigger (default 15)
+    humidity_absolute_max: 80          # % absolute cap (default 80)
+    humidity_detection_window: 300     # seconds for rate calc (default 300)
+    humidity_stabilization_delay: 300  # seconds after drop (default 300)
+```
+
+**Detection algorithm:** Ring buffer tracks humidity over `detection_window`. Triggers when spike ≥ `humidity_spike_threshold`% OR absolute ≥ `humidity_absolute_max`%. Exit when humidity < 70% AND dropped >10% from peak.
+
+**State machine:**
+```
+NORMAL ──(spike)──> PAUSED ──(drop)──> STABILIZING ──(delay)──> NORMAL
+                    (off, decay)       (off)
+```
+
+**Integration:**
+- `_async_control_heating` checks pause state before PID
+- Integral decay: ~10%/min during pause (prevents stale buildup)
+- Preheat interaction: No preheat starts while paused
+- Safety: 60 min max pause duration
+
+**State attributes:** `humidity_detection_state`, `humidity_resume_in`
+
 ### Predictive Pre-Heating
 
 Learns heating rate to start early and reach target AT scheduled time. Based on Netatmo Auto-Adapt / Tado Early Start. Module: `adaptive/preheat.py` (`PreheatLearner`).
@@ -121,4 +152,4 @@ night_setback:
 
 ## Tests
 
-`test_pid_controller.py`, `test_physics.py`, `test_learning.py`, `test_cycle_tracker.py`, `test_integration_cycle_learning.py`, `test_coordinator.py`, `test_central_controller.py`, `test_thermal_groups.py`, `test_night_setback.py`, `test_contact_sensors.py`, `test_preheat_learner.py`
+`test_pid_controller.py`, `test_physics.py`, `test_learning.py`, `test_cycle_tracker.py`, `test_integration_cycle_learning.py`, `test_coordinator.py`, `test_central_controller.py`, `test_thermal_groups.py`, `test_night_setback.py`, `test_contact_sensors.py`, `test_preheat_learner.py`, `test_humidity_detector.py`
