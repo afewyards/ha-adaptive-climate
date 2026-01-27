@@ -1,6 +1,23 @@
 # CHANGELOG
 
 
+## v0.37.2 (2026-01-27)
+
+### Bug Fixes
+
+- **preheat**: Add missing metrics fields and schema keys
+  ([`420ac4d`](https://github.com/afewyards/ha-adaptive-thermostat/commit/420ac4d02322bb63c9021ee7eb76f75ebac984ec))
+
+Add start_temp, end_temp, duration_minutes, interrupted to CycleEndedEvent metrics_dict so preheat
+  learner can record observations. Add preheat_enabled and max_preheat_hours to night_setback
+  voluptuous schema and _night_setback_config dict.
+
+### Chores
+
+- Remove old plans
+  ([`38c7ed7`](https://github.com/afewyards/ha-adaptive-thermostat/commit/38c7ed7b29e940c6713e65e28341fac039922475))
+
+
 ## v0.37.1 (2026-01-27)
 
 ### Bug Fixes
