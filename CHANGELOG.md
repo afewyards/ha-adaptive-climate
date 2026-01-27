@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v0.37.1 (2026-01-27)
+
+### Bug Fixes
+
+- **climate**: Include manifold transport delay in maintenance pulse min cycle time
+  ([`dc2af45`](https://github.com/afewyards/ha-adaptive-thermostat/commit/dc2af4534657551bb93f82417ac4b8043bc1fb57))
+
+Extract _effective_min_on_seconds property so all update_cycle_durations call sites (turn_on,
+  turn_off, set_control_value, pwm_switch) consistently account for transport delay. Previously only
+  _async_heater_turn_on added it, so maintenance pulses from pwm_switch used too-short minimums for
+  manifold zones.
+
+
 ## v0.37.0 (2026-01-27)
 
 ### Bug Fixes
