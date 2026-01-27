@@ -2571,6 +2571,14 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
         self._last_heater_error = self._heater_controller.last_heater_error
         return result
 
+    @property
+    def _effective_min_on_seconds(self) -> int:
+        """Minimum on-cycle duration including manifold transport delay."""
+        base = self._min_on_cycle_duration.seconds
+        if self._transport_delay and self._transport_delay > 0:
+            base += int(self._transport_delay * 60)
+        return base
+
     async def _async_heater_turn_on(self):
         """Turn heater toggleable device on.
 
@@ -2593,13 +2601,8 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
                 )
 
         # Update cycle durations in case PID mode changed
-        # Add transport delay to min_on_cycle - no point cycling off before hot water arrives
-        effective_min_on = self._min_on_cycle_duration.seconds
-        if self._transport_delay and self._transport_delay > 0:
-            effective_min_on += self._transport_delay * 60  # minutes to seconds
-
         self._heater_controller.update_cycle_durations(
-            effective_min_on,
+            self._effective_min_on_seconds,
             self._min_off_cycle_duration.seconds,
         )
         await self._heater_controller.async_turn_on(
@@ -2622,7 +2625,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
 
         # Update cycle durations in case PID mode changed
         self._heater_controller.update_cycle_durations(
-            self._min_on_cycle_duration.seconds,
+            self._effective_min_on_seconds,
             self._min_off_cycle_duration.seconds,
         )
         await self._heater_controller.async_turn_off(
@@ -2673,7 +2676,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
 
         # Update cycle durations in case PID mode changed
         self._heater_controller.update_cycle_durations(
-            self._min_on_cycle_duration.seconds,
+            self._effective_min_on_seconds,
             self._min_off_cycle_duration.seconds,
         )
         await self._heater_controller.async_set_control_value(
@@ -2704,7 +2707,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
 
         # Update cycle durations in case PID mode changed
         self._heater_controller.update_cycle_durations(
-            self._min_on_cycle_duration.seconds,
+            self._effective_min_on_seconds,
             self._min_off_cycle_duration.seconds,
         )
         await self._heater_controller.async_pwm_switch(
