@@ -121,17 +121,21 @@ DOMAIN = "adaptive_thermostat"
 class TestHeaterStateChange:
     """Tests for HeaterStateChange dataclass."""
 
-    def test_heater_state_change_creation(self):
+    @patch('custom_components.adaptive_thermostat.sensors.performance.dt_util')
+    def test_heater_state_change_creation(self, mock_dt_util):
         """Test creating HeaterStateChange instances."""
         now = datetime.now()
+        mock_dt_util.utcnow.return_value = now
         change = HeaterStateChange(timestamp=now, is_on=True)
 
         assert change.timestamp == now
         assert change.is_on is True
 
-    def test_heater_state_change_off(self):
+    @patch('custom_components.adaptive_thermostat.sensors.performance.dt_util')
+    def test_heater_state_change_off(self, mock_dt_util):
         """Test HeaterStateChange with off state."""
         now = datetime.now()
+        mock_dt_util.utcnow.return_value = now
         change = HeaterStateChange(timestamp=now, is_on=False)
 
         assert change.is_on is False
@@ -160,9 +164,11 @@ class TestDutyCycleCalculation:
         )
         return sensor
 
-    def test_duty_cycle_50_percent(self, duty_cycle_sensor):
+    @patch('custom_components.adaptive_thermostat.sensors.performance.dt_util')
+    def test_duty_cycle_50_percent(self, mock_dt_util, duty_cycle_sensor):
         """Test duty cycle calculation with 50% on/off pattern."""
         now = datetime.now()
+        mock_dt_util.utcnow.return_value = now
         window_start = now - timedelta(hours=1)
 
         # Create state changes: 30 minutes on, 30 minutes off
@@ -177,9 +183,11 @@ class TestDutyCycleCalculation:
         # Should be approximately 50%
         assert duty_cycle == pytest.approx(50.0, rel=0.01)
 
-    def test_duty_cycle_25_percent(self, duty_cycle_sensor):
+    @patch('custom_components.adaptive_thermostat.sensors.performance.dt_util')
+    def test_duty_cycle_25_percent(self, mock_dt_util, duty_cycle_sensor):
         """Test duty cycle calculation with 25% on time."""
         now = datetime.now()
+        mock_dt_util.utcnow.return_value = now
         window_start = now - timedelta(hours=1)
 
         # Create state changes: 15 minutes on, 45 minutes off
@@ -193,9 +201,11 @@ class TestDutyCycleCalculation:
         # Should be approximately 25%
         assert duty_cycle == pytest.approx(25.0, rel=0.01)
 
-    def test_duty_cycle_75_percent(self, duty_cycle_sensor):
+    @patch('custom_components.adaptive_thermostat.sensors.performance.dt_util')
+    def test_duty_cycle_75_percent(self, mock_dt_util, duty_cycle_sensor):
         """Test duty cycle calculation with 75% on time."""
         now = datetime.now()
+        mock_dt_util.utcnow.return_value = now
         window_start = now - timedelta(hours=1)
 
         # Create state changes: 45 minutes on, 15 minutes off
@@ -209,9 +219,11 @@ class TestDutyCycleCalculation:
         # Should be approximately 75%
         assert duty_cycle == pytest.approx(75.0, rel=0.01)
 
-    def test_duty_cycle_multiple_cycles(self, duty_cycle_sensor):
+    @patch('custom_components.adaptive_thermostat.sensors.performance.dt_util')
+    def test_duty_cycle_multiple_cycles(self, mock_dt_util, duty_cycle_sensor):
         """Test duty cycle with multiple on/off cycles."""
         now = datetime.now()
+        mock_dt_util.utcnow.return_value = now
         window_start = now - timedelta(hours=1)
 
         # Create multiple cycles: 10 min on, 10 min off, 10 min on, 10 min off...
@@ -230,9 +242,11 @@ class TestDutyCycleCalculation:
         # Should be approximately 50%
         assert duty_cycle == pytest.approx(50.0, rel=0.01)
 
-    def test_duty_cycle_varied_cycle_lengths(self, duty_cycle_sensor):
+    @patch('custom_components.adaptive_thermostat.sensors.performance.dt_util')
+    def test_duty_cycle_varied_cycle_lengths(self, mock_dt_util, duty_cycle_sensor):
         """Test duty cycle with varied on/off cycle lengths."""
         now = datetime.now()
+        mock_dt_util.utcnow.return_value = now
         window_start = now - timedelta(hours=1)
 
         # Varied cycles: 5 min on, 15 min off, 20 min on, 10 min off, 5 min on, 5 min off
@@ -275,9 +289,11 @@ class TestDutyCycleEdgeCases:
         )
         return sensor
 
-    def test_duty_cycle_always_on(self, duty_cycle_sensor):
+    @patch('custom_components.adaptive_thermostat.sensors.performance.dt_util')
+    def test_duty_cycle_always_on(self, mock_dt_util, duty_cycle_sensor):
         """Test duty cycle when heater is always on (100%)."""
         now = datetime.now()
+        mock_dt_util.utcnow.return_value = now
         window_start = now - timedelta(hours=1)
 
         # Heater turned on at window start and stayed on
@@ -290,9 +306,11 @@ class TestDutyCycleEdgeCases:
         # Should be 100%
         assert duty_cycle == pytest.approx(100.0, rel=0.01)
 
-    def test_duty_cycle_always_off(self, duty_cycle_sensor):
+    @patch('custom_components.adaptive_thermostat.sensors.performance.dt_util')
+    def test_duty_cycle_always_off(self, mock_dt_util, duty_cycle_sensor):
         """Test duty cycle when heater is always off (0%)."""
         now = datetime.now()
+        mock_dt_util.utcnow.return_value = now
         window_start = now - timedelta(hours=1)
 
         # Heater turned off at window start and stayed off
@@ -333,9 +351,11 @@ class TestDutyCycleEdgeCases:
         # Should return 0%
         assert duty_cycle == pytest.approx(0.0, rel=0.01)
 
-    def test_duty_cycle_heater_on_at_end_of_window(self, duty_cycle_sensor):
+    @patch('custom_components.adaptive_thermostat.sensors.performance.dt_util')
+    def test_duty_cycle_heater_on_at_end_of_window(self, mock_dt_util, duty_cycle_sensor):
         """Test duty cycle when heater turns on near end of window."""
         now = datetime.now()
+        mock_dt_util.utcnow.return_value = now
         window_start = now - timedelta(hours=1)
 
         # Heater off for 50 minutes, then on for 10 minutes at end
@@ -349,9 +369,11 @@ class TestDutyCycleEdgeCases:
         # Should be approximately 16.67% (10/60)
         assert duty_cycle == pytest.approx(16.67, rel=0.05)
 
-    def test_duty_cycle_state_change_before_window(self, duty_cycle_sensor):
+    @patch('custom_components.adaptive_thermostat.sensors.performance.dt_util')
+    def test_duty_cycle_state_change_before_window(self, mock_dt_util, duty_cycle_sensor):
         """Test duty cycle with state change before measurement window."""
         now = datetime.now()
+        mock_dt_util.utcnow.return_value = now
         window_start = now - timedelta(hours=1)
 
         # State change happened 2 hours ago (before window), heater was on
@@ -368,9 +390,11 @@ class TestDutyCycleEdgeCases:
         # Should be approximately 50%
         assert duty_cycle == pytest.approx(50.0, rel=0.01)
 
-    def test_duty_cycle_very_short_cycles(self, duty_cycle_sensor):
+    @patch('custom_components.adaptive_thermostat.sensors.performance.dt_util')
+    def test_duty_cycle_very_short_cycles(self, mock_dt_util, duty_cycle_sensor):
         """Test duty cycle with very short on/off cycles."""
         now = datetime.now()
+        mock_dt_util.utcnow.return_value = now
         window_start = now - timedelta(hours=1)
 
         # Many short 1-minute cycles
@@ -537,9 +561,11 @@ class TestOnTimeCalculation:
         )
         return sensor
 
-    def test_calculate_on_time_simple(self, duty_cycle_sensor):
+    @patch('custom_components.adaptive_thermostat.sensors.performance.dt_util')
+    def test_calculate_on_time_simple(self, mock_dt_util, duty_cycle_sensor):
         """Test simple on-time calculation."""
         now = datetime.now()
+        mock_dt_util.utcnow.return_value = now
         window_start = now - timedelta(hours=1)
 
         duty_cycle_sensor._state_changes = deque([
@@ -552,9 +578,11 @@ class TestOnTimeCalculation:
         # Should be 30 minutes = 1800 seconds
         assert on_time == pytest.approx(1800.0, rel=0.01)
 
-    def test_calculate_on_time_with_final_on_period(self, duty_cycle_sensor):
+    @patch('custom_components.adaptive_thermostat.sensors.performance.dt_util')
+    def test_calculate_on_time_with_final_on_period(self, mock_dt_util, duty_cycle_sensor):
         """Test on-time calculation when heater is on at window end."""
         now = datetime.now()
+        mock_dt_util.utcnow.return_value = now
         window_start = now - timedelta(hours=1)
 
         # Heater turns on 10 minutes before now and stays on
@@ -592,9 +620,11 @@ class TestStateChangePruning:
         )
         return sensor
 
-    def test_prune_keeps_recent_before_window(self, duty_cycle_sensor):
+    @patch('custom_components.adaptive_thermostat.sensors.performance.dt_util')
+    def test_prune_keeps_recent_before_window(self, mock_dt_util, duty_cycle_sensor):
         """Test pruning keeps most recent state before window."""
         now = datetime.now()
+        mock_dt_util.utcnow.return_value = now
         window_start = now - timedelta(hours=1)
 
         # Add states: some before window, some within
@@ -613,9 +643,11 @@ class TestStateChangePruning:
         changes = list(duty_cycle_sensor._state_changes)
         assert changes[0].is_on is True  # The one from 2 hours ago
 
-    def test_prune_removes_all_old(self, duty_cycle_sensor):
+    @patch('custom_components.adaptive_thermostat.sensors.performance.dt_util')
+    def test_prune_removes_all_old(self, mock_dt_util, duty_cycle_sensor):
         """Test pruning when all states are before window but keeps one."""
         now = datetime.now()
+        mock_dt_util.utcnow.return_value = now
         window_start = now - timedelta(hours=1)
 
         # All states before window
@@ -632,7 +664,8 @@ class TestStateChangePruning:
         assert duty_cycle_sensor._state_changes[0].is_on is False
 
 
-def test_duty_cycle():
+@patch('custom_components.adaptive_thermostat.sensors.performance.dt_util')
+def test_duty_cycle(mock_dt_util):
     """Integration test for duty cycle calculation.
 
     This is the main test that verifies the full duty cycle calculation
@@ -653,6 +686,7 @@ def test_duty_cycle():
     )
 
     now = datetime.now()
+    mock_dt_util.utcnow.return_value = now
     window_start = now - timedelta(hours=1)
 
     # Test 1: 50% duty cycle
@@ -845,10 +879,13 @@ class TestCycleTimeStateTracking:
         )
         return sensor
 
-    def test_heater_state_change_on_to_off(self, cycle_time_sensor):
+    @patch('custom_components.adaptive_thermostat.sensors.performance.dt_util')
+    def test_heater_state_change_on_to_off(self, mock_dt_util, cycle_time_sensor):
         """Test heater state change from ON to OFF."""
+        now = datetime.now()
+        mock_dt_util.utcnow.return_value = now
         cycle_time_sensor._current_heater_state = True
-        cycle_time_sensor._last_on_timestamp = datetime.now() - timedelta(minutes=10)
+        cycle_time_sensor._last_on_timestamp = now - timedelta(minutes=10)
 
         # Simulate OFF event
         event = Mock()
@@ -861,8 +898,11 @@ class TestCycleTimeStateTracking:
         # No cycle recorded yet (need ON->OFF->ON)
         assert len(cycle_time_sensor._cycle_times) == 0
 
-    def test_heater_state_change_off_to_on_first_time(self, cycle_time_sensor):
+    @patch('custom_components.adaptive_thermostat.sensors.performance.dt_util')
+    def test_heater_state_change_off_to_on_first_time(self, mock_dt_util, cycle_time_sensor):
         """Test first heater state change from OFF to ON (no previous ON timestamp)."""
+        now = datetime.now()
+        mock_dt_util.utcnow.return_value = now
         cycle_time_sensor._current_heater_state = False
         cycle_time_sensor._last_on_timestamp = None
 
@@ -879,9 +919,11 @@ class TestCycleTimeStateTracking:
         # No cycle recorded (this is the first ON)
         assert len(cycle_time_sensor._cycle_times) == 0
 
-    def test_heater_state_change_records_cycle(self, cycle_time_sensor):
+    @patch('custom_components.adaptive_thermostat.sensors.performance.dt_util')
+    def test_heater_state_change_records_cycle(self, mock_dt_util, cycle_time_sensor):
         """Test complete cycle recording (ON->OFF->ON)."""
         now = datetime.now()
+        mock_dt_util.utcnow.return_value = now
         # Set up: heater was ON 20 minutes ago, then turned OFF, now turning ON again
         cycle_time_sensor._current_heater_state = False
         cycle_time_sensor._last_on_timestamp = now - timedelta(minutes=20)
@@ -897,9 +939,11 @@ class TestCycleTimeStateTracking:
         # Allow some tolerance for test execution time
         assert cycle_time_sensor._cycle_times[0] == pytest.approx(20.0, rel=0.1)
 
-    def test_heater_state_change_short_cycle_filtered(self, cycle_time_sensor):
+    @patch('custom_components.adaptive_thermostat.sensors.performance.dt_util')
+    def test_heater_state_change_short_cycle_filtered(self, mock_dt_util, cycle_time_sensor):
         """Test short cycles (< 1 min) are filtered out."""
         now = datetime.now()
+        mock_dt_util.utcnow.return_value = now
         # Set up: heater was ON just 30 seconds ago
         cycle_time_sensor._current_heater_state = False
         cycle_time_sensor._last_on_timestamp = now - timedelta(seconds=30)
@@ -913,10 +957,13 @@ class TestCycleTimeStateTracking:
         # Should NOT record this cycle (too short)
         assert len(cycle_time_sensor._cycle_times) == 0
 
-    def test_heater_state_no_change_ignored(self, cycle_time_sensor):
+    @patch('custom_components.adaptive_thermostat.sensors.performance.dt_util')
+    def test_heater_state_no_change_ignored(self, mock_dt_util, cycle_time_sensor):
         """Test same state events are ignored."""
+        now = datetime.now()
+        mock_dt_util.utcnow.return_value = now
         cycle_time_sensor._current_heater_state = True
-        cycle_time_sensor._last_on_timestamp = datetime.now() - timedelta(minutes=10)
+        cycle_time_sensor._last_on_timestamp = now - timedelta(minutes=10)
 
         # Simulate ON event when already ON
         event = Mock()
@@ -1035,7 +1082,8 @@ class TestCycleTimeDefaults:
         assert sensor.native_value is None
 
 
-def test_cycle_time():
+@patch('custom_components.adaptive_thermostat.sensors.performance.dt_util')
+def test_cycle_time(mock_dt_util):
     """Integration test for cycle time calculation.
 
     This is the main test that verifies the full cycle time calculation
@@ -1054,6 +1102,9 @@ def test_cycle_time():
         climate_entity_id="climate.living_room",
         rolling_average_size=5,
     )
+
+    now = datetime.now()
+    mock_dt_util.utcnow.return_value = now
 
     # Test 1: No cycles - should return None
     avg = sensor._calculate_average_cycle_time()
@@ -1083,7 +1134,7 @@ def test_cycle_time():
     # Test 5: State transition recording
     sensor._cycle_times.clear()
     sensor._current_heater_state = False
-    sensor._last_on_timestamp = datetime.now() - timedelta(minutes=25)
+    sensor._last_on_timestamp = now - timedelta(minutes=25)
 
     event = Mock()
     event.data = {"new_state": Mock(state="on")}

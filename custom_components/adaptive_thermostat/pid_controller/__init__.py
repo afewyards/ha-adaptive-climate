@@ -118,7 +118,8 @@ class PID:
 
     @mode.setter
     def mode(self, mode):
-        assert mode.upper() in ['AUTO', 'OFF']
+        if mode.upper() not in ['AUTO', 'OFF']:
+            raise ValueError(f"mode must be 'AUTO' or 'OFF', got '{mode}'")
         new_mode = mode.upper()
         # Store output before switching to OFF for bumpless transfer
         if self._mode == 'AUTO' and new_mode == 'OFF':
@@ -162,7 +163,8 @@ class PID:
 
     @integral.setter
     def integral(self, i):
-        assert isinstance(i, float), "Integral should be a float"
+        if not isinstance(i, float):
+            raise ValueError(f"Integral should be a float, got {type(i).__name__}")
         self._integral = i
 
     @property
@@ -240,28 +242,6 @@ class PID:
         this reflects the most recent reason.
         """
         return self._clamp_reason
-
-    @property
-    def _in_dead_time(self):
-        """Check if currently in dead time period.
-
-        Returns True if:
-        - _transport_delay > 0
-        - _dead_time_start is set
-        - elapsed time < _transport_delay minutes
-
-        Note: This property is evaluated during calc() when input_time is available.
-        The elapsed time calculation is done in calc() using input_time.
-
-        Returns:
-            bool: True if in dead time period, False otherwise.
-        """
-        if not self._transport_delay or self._transport_delay <= 0:
-            return False
-        if self._dead_time_start is None:
-            return False
-        # Note: Actual elapsed time check is done in calc() using input_time
-        return True  # If we have delay and start time, we're potentially in dead time
 
     def reset_clamp_state(self):
         """Reset clamping state for a new cycle.

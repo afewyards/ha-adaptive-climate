@@ -183,18 +183,25 @@ async def test_save_chart_to_www_error():
 @pytest.mark.asyncio
 async def test_cleanup_old_charts():
     """Test cleanup of old chart files."""
-    from datetime import datetime, timedelta
+    from datetime import timedelta
     from pathlib import Path
+    from homeassistant.util import dt as dt_util
 
     mock_hass = MagicMock()
     mock_hass.config.path.return_value = "/config"
 
     # Create mock files
+    # Note: datetime.fromtimestamp() in charts.py will compare to dt_util.utcnow()
+    # For this test to work, we need to create timestamps that are clearly old vs new
+    now = dt_util.utcnow()
+    old_timestamp = (now - timedelta(weeks=6)).timestamp()
+    new_timestamp = now.timestamp()
+
     old_file = MagicMock(spec=Path)
-    old_file.stat.return_value.st_mtime = (datetime.now() - timedelta(weeks=6)).timestamp()
+    old_file.stat.return_value.st_mtime = old_timestamp
 
     new_file = MagicMock(spec=Path)
-    new_file.stat.return_value.st_mtime = datetime.now().timestamp()
+    new_file.stat.return_value.st_mtime = new_timestamp
 
     mock_www_dir = MagicMock(spec=Path)
     mock_www_dir.exists.return_value = True

@@ -2,6 +2,7 @@
 
 import pytest
 from datetime import datetime, timedelta
+from unittest.mock import patch
 from custom_components.adaptive_thermostat.adaptive.learning import AdaptiveLearner
 from custom_components.adaptive_thermostat.adaptive.cycle_analysis import CycleMetrics
 from custom_components.adaptive_thermostat.const import (
@@ -235,48 +236,62 @@ class TestSeasonalShift:
     def test_no_shift_with_stable_outdoor_temp(self, learner):
         """Test that no shift is detected with stable outdoor temperature."""
         # Add 15 readings around 10°C
-        for _ in range(15):
-            assert not learner.check_seasonal_shift(outdoor_temp=10.0)
+        now = datetime.now()
+        with patch('custom_components.adaptive_thermostat.adaptive.validation.dt_util') as mock_dt_util:
+            mock_dt_util.utcnow.return_value = now
+            for _ in range(15):
+                assert not learner.check_seasonal_shift(outdoor_temp=10.0)
 
     def test_shift_detected_with_large_change(self, learner):
         """Test that shift is detected with 10°C+ change."""
-        # Add 10 readings at 5°C
-        for _ in range(10):
-            learner.check_seasonal_shift(outdoor_temp=5.0)
+        now = datetime.now()
+        with patch('custom_components.adaptive_thermostat.adaptive.validation.dt_util') as mock_dt_util:
+            mock_dt_util.utcnow.return_value = now
 
-        # Add 10 readings at 16°C (11°C shift)
-        for i in range(10):
-            result = learner.check_seasonal_shift(outdoor_temp=16.0)
-            # Should detect shift after enough new readings accumulated
-            if i >= 9:  # After we have 10 new readings
-                # But only checks daily, so may not trigger on first call
-                pass
+            # Add 10 readings at 5°C
+            for _ in range(10):
+                learner.check_seasonal_shift(outdoor_temp=5.0)
 
-        # Force a check by setting last check to past
-        learner._last_seasonal_check = datetime.now() - timedelta(days=2)
+            # Add 10 readings at 16°C (11°C shift)
+            for i in range(10):
+                result = learner.check_seasonal_shift(outdoor_temp=16.0)
+                # Should detect shift after enough new readings accumulated
+                if i >= 9:  # After we have 10 new readings
+                    # But only checks daily, so may not trigger on first call
+                    pass
 
-        # Now should detect shift
-        assert learner.check_seasonal_shift(outdoor_temp=16.0)
+            # Force a check by setting last check to past
+            learner._validation._last_seasonal_check = now - timedelta(days=2)
+
+            # Now should detect shift
+            assert learner.check_seasonal_shift(outdoor_temp=16.0)
 
     def test_no_shift_with_insufficient_data(self, learner):
         """Test that shift detection requires sufficient history."""
         # Add only 5 readings (need at least 10)
-        for _ in range(5):
-            assert not learner.check_seasonal_shift(outdoor_temp=10.0)
+        now = datetime.now()
+        with patch('custom_components.adaptive_thermostat.adaptive.validation.dt_util') as mock_dt_util:
+            mock_dt_util.utcnow.return_value = now
+            for _ in range(5):
+                assert not learner.check_seasonal_shift(outdoor_temp=10.0)
 
     def test_shift_check_rate_limited(self, learner):
         """Test that shift check is rate-limited to once per day."""
-        # Add 20 readings to build history
-        for _ in range(20):
-            learner.check_seasonal_shift(outdoor_temp=10.0)
+        now = datetime.now()
+        with patch('custom_components.adaptive_thermostat.adaptive.validation.dt_util') as mock_dt_util:
+            mock_dt_util.utcnow.return_value = now
 
-        # Check once
-        learner._last_seasonal_check = datetime.now() - timedelta(days=2)
-        learner.check_seasonal_shift(outdoor_temp=20.0)  # Should check
+            # Add 20 readings to build history
+            for _ in range(20):
+                learner.check_seasonal_shift(outdoor_temp=10.0)
 
-        # Immediately check again - should skip
-        result = learner.check_seasonal_shift(outdoor_temp=20.0)
-        # Check is skipped due to rate limiting (less than 1 day)
+            # Check once
+            learner._validation._last_seasonal_check = now - timedelta(days=2)
+            learner.check_seasonal_shift(outdoor_temp=20.0)  # Should check
+
+            # Immediately check again - should skip
+            result = learner.check_seasonal_shift(outdoor_temp=20.0)
+            # Check is skipped due to rate limiting (less than 1 day)
 
 
 class TestPIDAdjustmentScaling:

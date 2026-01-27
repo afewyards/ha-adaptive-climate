@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from ..climate import SmartThermostat
 
+from homeassistant.util import dt as dt_util
+
 
 # Learning/adaptation state attribute constants
 ATTR_LEARNING_STATUS = "learning_status"
@@ -253,7 +255,7 @@ def _add_preheat_attributes(
             # We need to call get_preheat_info with appropriate parameters
             # Need: now, current_temp, target_temp, outdoor_temp, deadline
             from datetime import datetime
-            now = datetime.now()
+            now = dt_util.utcnow()
 
             # Get deadline from night setback config
             if (thermostat._night_setback_config and

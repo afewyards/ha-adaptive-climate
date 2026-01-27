@@ -12,6 +12,7 @@ This module tests the complete auto-apply flow including:
 from __future__ import annotations
 
 import pytest
+import time
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -34,6 +35,35 @@ from custom_components.adaptive_thermostat.const import (
     VALIDATION_CYCLE_COUNT,
     HEATING_TYPE_CONVECTOR,
 )
+
+# Module-level patches for dt_util and time
+pytestmark = [
+    pytest.mark.asyncio,
+]
+
+# Global time tracking for tests
+_test_current_time = datetime(2024, 1, 1, 10, 0, 0)
+
+
+def _mock_utcnow():
+    """Return the current test time."""
+    return _test_current_time
+
+
+def _set_test_time(dt: datetime):
+    """Set the current test time."""
+    global _test_current_time
+    _test_current_time = dt
+
+
+@pytest.fixture(autouse=True)
+def mock_dt_modules():
+    """Automatically patch dt_util.utcnow for all tests in this module."""
+    with patch('custom_components.adaptive_thermostat.managers.cycle_metrics.dt_util') as mock_metrics_dt, \
+         patch('custom_components.adaptive_thermostat.adaptive.validation.dt_util') as mock_validation_dt:
+        mock_metrics_dt.utcnow = _mock_utcnow
+        mock_validation_dt.utcnow = _mock_utcnow
+        yield
 
 
 @pytest.fixture
@@ -84,6 +114,49 @@ def dispatcher():
     return CycleEventDispatcher()
 
 
+@pytest.fixture
+def mock_dt_util():
+    """Create a mock dt_util that tracks time progression."""
+    current_time = [datetime(2024, 1, 1, 10, 0, 0)]
+
+    class MockDtUtil:
+        @staticmethod
+        def utcnow():
+            return current_time[0]
+
+        @staticmethod
+        def advance(delta: timedelta):
+            current_time[0] += delta
+
+        @staticmethod
+        def set_time(time: datetime):
+            current_time[0] = time
+
+    return MockDtUtil()
+
+
+# Decorator to patch dt_util for integration tests
+def patch_dt_util(func):
+    """Decorator to patch dt_util.utcnow for cycle_metrics and validation modules."""
+    @patch('custom_components.adaptive_thermostat.managers.cycle_metrics.dt_util')
+    @patch('custom_components.adaptive_thermostat.adaptive.validation.dt_util')
+    async def wrapper(self, mock_validation_dt, mock_metrics_dt, *args, **kwargs):
+        # Set up mocked dt_util to return real datetime objects
+        current_time = [datetime(2024, 1, 1, 10, 0, 0)]
+
+        def mock_utcnow():
+            return current_time[0]
+
+        mock_metrics_dt.utcnow = mock_utcnow
+        mock_validation_dt.utcnow = mock_utcnow
+
+        # Add time tracking to kwargs so tests can advance time
+        kwargs['_current_time'] = current_time
+        return await func(self, *args, **kwargs)
+
+    return wrapper
+
+
 def create_good_cycle_metrics(overshoot: float = 0.15) -> CycleMetrics:
     """Create metrics representing a good heating cycle.
 
@@ -124,7 +197,6 @@ def create_bad_cycle_metrics(overshoot: float = 0.4) -> CycleMetrics:
 class TestFullAutoApplyFlow:
     """Test complete auto-apply flow from confidence building to validation."""
 
-    @pytest.mark.asyncio
     async def test_full_auto_apply_flow(self, mock_hass, adaptive_learner, mock_callbacks, dispatcher):
         """Test complete auto-apply flow triggered after reaching confidence threshold.
 
@@ -161,6 +233,7 @@ class TestFullAutoApplyFlow:
 
         for cycle_num in range(6):
             current_time = start_time + timedelta(hours=cycle_num * 2)
+            _set_test_time(current_time)
 
             # Start heating via event (start closer to setpoint to keep undershoot < 0.2°C)
             start_temp = 20.85  # undershoot will be 21.0 - 20.85 = 0.15°C
@@ -172,6 +245,7 @@ class TestFullAutoApplyFlow:
                 temp = start_temp + min(i * 0.01, 0.15)  # Rise gradually to 21.0°C
                 await tracker.update_temperature(current_time, temp)
                 current_time += timedelta(seconds=30)
+                _set_test_time(current_time)
 
             # Stop heating via event
             dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=current_time))
@@ -181,6 +255,7 @@ class TestFullAutoApplyFlow:
             for _ in range(10):
                 await tracker.update_temperature(current_time, 21.0)
                 current_time += timedelta(seconds=30)
+                _set_test_time(current_time)
 
             # Cycle should complete
             assert tracker.state == CycleState.IDLE
@@ -403,7 +478,6 @@ class TestValidationSuccess:
 class TestValidationFailureAndRollback:
     """Test validation failure and automatic rollback scenario."""
 
-    @pytest.mark.asyncio
     async def test_validation_failure_triggers_rollback(
         self, mock_hass, adaptive_learner, mock_callbacks, dispatcher
     ):
@@ -436,6 +510,7 @@ class TestValidationFailureAndRollback:
         for i in range(VALIDATION_CYCLE_COUNT):
             # Complete a cycle that produces the degraded metrics
             start_time = datetime(2024, 1, 1, 10 + i, 0, 0)
+            _set_test_time(start_time)
             dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=start_time, target_temp=21.0, current_temp=19.0))
 
             # Quick heating cycle
@@ -444,6 +519,7 @@ class TestValidationFailureAndRollback:
                 temp = 19.0 + min(j * 0.15, 2.0)
                 await tracker.update_temperature(current_time, temp)
                 current_time += timedelta(seconds=30)
+                _set_test_time(current_time)
 
             dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=current_time))
 
@@ -452,6 +528,7 @@ class TestValidationFailureAndRollback:
                 # Create overshoot scenario
                 await tracker.update_temperature(current_time, 21.0 + degraded_overshoot)
                 current_time += timedelta(seconds=30)
+                _set_test_time(current_time)
 
         # Await any created tasks (rollback callbacks)
         import asyncio
@@ -590,6 +667,7 @@ class TestValidationFailureAndRollback:
 
         for i in range(VALIDATION_CYCLE_COUNT):
             current_time = start_time + timedelta(hours=i * 2)
+            _set_test_time(current_time)
 
             # Start heating via event
             dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=current_time, target_temp=21.0, current_temp=19.0))
@@ -600,6 +678,7 @@ class TestValidationFailureAndRollback:
                 temp = 19.0 + min(j * 0.15, 2.0)
                 await tracker.update_temperature(current_time, temp)
                 current_time += timedelta(seconds=30)
+                _set_test_time(current_time)
 
             # Stop heating via event
             dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=current_time))
@@ -609,6 +688,7 @@ class TestValidationFailureAndRollback:
             for _ in range(10):
                 await tracker.update_temperature(current_time, 21.0 + degraded_overshoot)
                 current_time += timedelta(seconds=30)
+                _set_test_time(current_time)
 
             # Cycle should complete
             assert tracker.state == CycleState.IDLE
@@ -669,7 +749,6 @@ class TestValidationFailureAndRollback:
 class TestLimitEnforcement:
     """Test auto-apply limit enforcement."""
 
-    @pytest.mark.asyncio
     async def test_seasonal_limit_blocks_sixth_apply(self, adaptive_learner):
         """Test that 6th auto-apply within 90 days is blocked.
 
@@ -681,7 +760,8 @@ class TestLimitEnforcement:
         5. Verify log warning contains 'Seasonal limit reached'
         """
         # Step 1: Trigger 5 successful auto-applies within 90 days
-        now = datetime.now()
+        now = datetime(2024, 1, 15, 12, 0, 0)
+        _set_test_time(now)
         for i in range(5):
             adaptive_learner._pid_history.append({
                 "timestamp": now - timedelta(days=i * 10),
@@ -715,7 +795,6 @@ class TestLimitEnforcement:
 
         # Step 5: Log warning verification is implicit via check_auto_apply_limits assertion above
 
-    @pytest.mark.asyncio
     async def test_drift_limit_blocks_apply(self, adaptive_learner):
         """Test that >50% cumulative drift blocks auto-apply.
 
@@ -730,7 +809,8 @@ class TestLimitEnforcement:
 
         # Step 2: Simulate 3 auto-applies creating 55% cumulative drift
         # Start with baseline values
-        now = datetime.now()
+        now = datetime(2024, 1, 15, 12, 0, 0)
+        _set_test_time(now)
         adaptive_learner._pid_history.append({
             "timestamp": now - timedelta(days=60),
             "kp": baseline_kp,
@@ -857,11 +937,12 @@ class TestLimitEnforcement:
 class TestSeasonalShiftBlocking:
     """Test seasonal shift blocking functionality."""
 
-    @pytest.mark.asyncio
     async def test_seasonal_shift_blocks_auto_apply(self, adaptive_learner):
         """Test that seasonal shift blocks auto-apply for 7 days."""
         # Record seasonal shift 3 days ago
-        adaptive_learner._last_seasonal_shift = datetime.now() - timedelta(days=3)
+        now = datetime(2024, 1, 15, 12, 0, 0)
+        _set_test_time(now)
+        adaptive_learner._last_seasonal_shift = now - timedelta(days=3)
 
         # Check limits - should be blocked
         result = adaptive_learner.check_auto_apply_limits(100.0, 0.01, 50.0)
@@ -871,11 +952,12 @@ class TestSeasonalShiftBlocking:
         # Should show ~4 days remaining
         assert "days remaining" in result
 
-    @pytest.mark.asyncio
     async def test_seasonal_shift_unblocks_after_7_days(self, adaptive_learner):
         """Test that auto-apply is unblocked after 7 days."""
         # Record seasonal shift 8 days ago (past the 7-day block)
-        adaptive_learner._last_seasonal_shift = datetime.now() - timedelta(days=8)
+        now = datetime(2024, 1, 15, 12, 0, 0)
+        _set_test_time(now)
+        adaptive_learner._last_seasonal_shift = now - timedelta(days=8)
 
         # Check limits - should NOT be blocked by seasonal shift
         result = adaptive_learner.check_auto_apply_limits(100.0, 0.01, 50.0)
@@ -884,7 +966,6 @@ class TestSeasonalShiftBlocking:
         if result is not None:
             assert "Seasonal shift" not in result
 
-    @pytest.mark.asyncio
     async def test_seasonal_shift_blocks_auto_apply_integration(self, adaptive_learner):
         """Test complete seasonal shift detection and blocking flow.
 
@@ -907,7 +988,9 @@ class TestSeasonalShiftBlocking:
             adaptive_learner._outdoor_temp_history.append(15.0)
 
         # Set last_seasonal_check to allow check to proceed
-        adaptive_learner._last_seasonal_check = datetime.now() - timedelta(days=2)
+        now = datetime(2024, 1, 15, 12, 0, 0)
+        _set_test_time(now)
+        adaptive_learner._last_seasonal_check = now - timedelta(days=2)
 
         # Verify initial state - no seasonal shift recorded
         assert adaptive_learner._last_seasonal_shift is None
@@ -935,7 +1018,9 @@ class TestSeasonalShiftBlocking:
 
         # Step 8: Wait 8 days (mock time), attempt auto-apply again, verify unblocked
         # Mock the shift as happening 8 days ago
-        adaptive_learner._last_seasonal_shift = datetime.now() - timedelta(days=8)
+        now_plus_8 = now + timedelta(days=8)
+        _set_test_time(now_plus_8)
+        adaptive_learner._last_seasonal_shift = now
 
         # Verify seasonal shift block is no longer active
         limit_check = adaptive_learner.check_auto_apply_limits(100.0, 0.01, 50.0)
@@ -1146,6 +1231,7 @@ class TestAutoApplyDisabled:
 
         # Complete a cycle
         start_time = datetime(2024, 1, 1, 10, 0, 0)
+        _set_test_time(start_time)
         dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=start_time, target_temp=21.0, current_temp=19.0))
 
         current_time = start_time
@@ -1153,12 +1239,14 @@ class TestAutoApplyDisabled:
             temp = 19.0 + min(i * 0.15, 2.0)
             await tracker.update_temperature(current_time, temp)
             current_time += timedelta(seconds=30)
+            _set_test_time(current_time)
 
         dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=current_time))
 
         for _ in range(10):
             await tracker.update_temperature(current_time, 21.0)
             current_time += timedelta(seconds=30)
+            _set_test_time(current_time)
 
         # Cycle completes but no auto-apply callback was ever set
         assert tracker.state == CycleState.IDLE
@@ -1250,6 +1338,7 @@ class TestMultiZoneAutoApply:
         start_time = datetime(2024, 1, 1, 10, 0, 0)
         for cycle_num in range(6):
             current_time = start_time + timedelta(hours=cycle_num * 2)
+            _set_test_time(current_time)
             start_temp_z1 = 20.85  # undershoot will be 21.0 - 20.85 = 0.15°C
             zone1_dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=current_time, target_temp=21.0, current_temp=start_temp_z1))
 
@@ -1257,12 +1346,14 @@ class TestMultiZoneAutoApply:
                 temp = start_temp_z1 + min(i * 0.01, 0.15)
                 await zone1_tracker.update_temperature(current_time, temp)
                 current_time += timedelta(seconds=30)
+                _set_test_time(current_time)
 
             zone1_dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=current_time))
 
             for _ in range(10):
                 await zone1_tracker.update_temperature(current_time, 21.0)
                 current_time += timedelta(seconds=30)
+                _set_test_time(current_time)
 
         # Verify zone1 confidence reached 60%
         assert zone1_learner.get_convergence_confidence() >= 0.60
@@ -1271,6 +1362,7 @@ class TestMultiZoneAutoApply:
         start_time = datetime(2024, 1, 1, 10, 0, 0)
         for cycle_num in range(7):
             current_time = start_time + timedelta(hours=cycle_num * 2)
+            _set_test_time(current_time)
             start_temp_z2 = 19.85  # undershoot will be 20.0 - 19.85 = 0.15°C
             zone2_dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=current_time, target_temp=20.0, current_temp=start_temp_z2))
 
@@ -1278,12 +1370,14 @@ class TestMultiZoneAutoApply:
                 temp = start_temp_z2 + min(i * 0.01, 0.15)
                 await zone2_tracker.update_temperature(current_time, temp)
                 current_time += timedelta(seconds=30)
+                _set_test_time(current_time)
 
             zone2_dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=current_time))
 
             for _ in range(10):
                 await zone2_tracker.update_temperature(current_time, 20.0)
                 current_time += timedelta(seconds=30)
+                _set_test_time(current_time)
 
         # Verify zone2 confidence reached 70%
         assert zone2_learner.get_convergence_confidence() >= 0.70
@@ -1292,6 +1386,7 @@ class TestMultiZoneAutoApply:
         # Both zones complete a cycle that should trigger auto-apply check
         zone1_time = datetime(2024, 1, 2, 10, 0, 0)
         zone2_time = datetime(2024, 1, 2, 10, 0, 0)
+        _set_test_time(zone1_time)
 
         # Zone1 cycle
         start_temp_z1 = 20.85
@@ -1300,22 +1395,27 @@ class TestMultiZoneAutoApply:
             temp = start_temp_z1 + min(i * 0.01, 0.15)
             await zone1_tracker.update_temperature(zone1_time, temp)
             zone1_time += timedelta(seconds=30)
+            _set_test_time(zone1_time)
         zone1_dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=zone1_time))
         for _ in range(10):
             await zone1_tracker.update_temperature(zone1_time, 21.0)
             zone1_time += timedelta(seconds=30)
+            _set_test_time(zone1_time)
 
         # Zone2 cycle
+        _set_test_time(zone2_time)
         start_temp_z2 = 19.85
         zone2_dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=zone2_time, target_temp=20.0, current_temp=start_temp_z2))
         for i in range(20):
             temp = start_temp_z2 + min(i * 0.01, 0.15)
             await zone2_tracker.update_temperature(zone2_time, temp)
             zone2_time += timedelta(seconds=30)
+            _set_test_time(zone2_time)
         zone2_dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=zone2_time))
         for _ in range(10):
             await zone2_tracker.update_temperature(zone2_time, 20.0)
             zone2_time += timedelta(seconds=30)
+            _set_test_time(zone2_time)
 
         # Phase 4: Await all created tasks (auto-apply callbacks)
         import asyncio
@@ -1376,6 +1476,7 @@ class TestValidationModeBlocking:
 
         # Complete a cycle while in validation mode
         start_time = datetime(2024, 1, 1, 10, 0, 0)
+        _set_test_time(start_time)
         dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=start_time, target_temp=21.0, current_temp=19.0))
 
         current_time = start_time
@@ -1383,12 +1484,14 @@ class TestValidationModeBlocking:
             temp = 19.0 + min(i * 0.15, 2.0)
             await tracker.update_temperature(current_time, temp)
             current_time += timedelta(seconds=30)
+            _set_test_time(current_time)
 
         dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=current_time))
 
         for _ in range(10):
             await tracker.update_temperature(current_time, 21.0)
             current_time += timedelta(seconds=30)
+            _set_test_time(current_time)
 
         # Auto-apply should NOT be called during validation mode
         # (the callback triggers only when not in validation mode)

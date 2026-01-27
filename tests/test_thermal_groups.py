@@ -330,6 +330,8 @@ class TestCrossGroupFeedforward:
 
     def test_feedforward_calculation_with_transfer_factor(self):
         """Test heat transfer compensation calculated correctly."""
+        from unittest.mock import patch
+
         hass = MagicMock()
         config = [
             {
@@ -350,8 +352,7 @@ class TestCrossGroupFeedforward:
         manager = ThermalGroupManager(hass, config)
 
         # Simulate heat output 10 minutes ago (matching delay)
-        # Using actual current time since calculate_feedforward uses datetime.now()
-        current_time = datetime.now()
+        current_time = datetime(2024, 1, 15, 10, 0)
         with_delay = current_time - timedelta(minutes=10)
         manager._transfer_history["upstairs"].append(
             TransferHistory(
@@ -362,13 +363,17 @@ class TestCrossGroupFeedforward:
         )
 
         # Calculate feedforward for bedroom1
-        feedforward = manager.calculate_feedforward("bedroom1")
+        with patch('custom_components.adaptive_thermostat.adaptive.thermal_groups.dt_util') as mock_dt_util:
+            mock_dt_util.utcnow.return_value = current_time
+            feedforward = manager.calculate_feedforward("bedroom1")
 
         # Should be 50% * 0.3 = 15%
         assert feedforward == pytest.approx(15.0, abs=0.01)
 
     def test_feedforward_respects_delay(self):
         """Test that delay is respected - no compensation before delay elapsed."""
+        from unittest.mock import patch
+
         hass = MagicMock()
         config = [
             {
@@ -401,8 +406,10 @@ class TestCrossGroupFeedforward:
         )
 
         # Should return 0 because data is too recent (doesn't match delay)
-        feedforward = manager.calculate_feedforward("bedroom1")
-        assert feedforward == 0.0
+        with patch('custom_components.adaptive_thermostat.adaptive.thermal_groups.dt_util') as mock_dt_util:
+            mock_dt_util.utcnow.return_value = current_time
+            feedforward = manager.calculate_feedforward("bedroom1")
+            assert feedforward == 0.0
 
     def test_feedforward_no_history(self):
         """Test feedforward returns 0 when no history available."""
@@ -447,6 +454,8 @@ class TestCrossGroupFeedforward:
 
     def test_record_heat_output_updates_history(self):
         """Test that recording heat output updates transfer history."""
+        from unittest.mock import patch
+
         hass = MagicMock()
         config = [
             {
@@ -470,7 +479,10 @@ class TestCrossGroupFeedforward:
         assert len(manager._transfer_history["upstairs"]) == 0
 
         # Record heat output for living_room (in downstairs group)
-        manager.record_heat_output("living_room", 60.0)
+        current_time = datetime(2024, 1, 15, 10, 0)
+        with patch('custom_components.adaptive_thermostat.adaptive.thermal_groups.dt_util') as mock_dt_util:
+            mock_dt_util.utcnow.return_value = current_time
+            manager.record_heat_output("living_room", 60.0)
 
         # History should be updated
         assert len(manager._transfer_history["upstairs"]) == 1
@@ -479,6 +491,8 @@ class TestCrossGroupFeedforward:
 
     def test_history_limited_to_two_hours(self):
         """Test that history is pruned to last 2 hours."""
+        from unittest.mock import patch
+
         hass = MagicMock()
         config = [
             {
@@ -498,8 +512,7 @@ class TestCrossGroupFeedforward:
 
         manager = ThermalGroupManager(hass, config)
 
-        # Using actual current time since record_heat_output uses datetime.now()
-        current_time = datetime.now()
+        current_time = datetime(2024, 1, 15, 10, 0)
 
         # Add old entry (3 hours ago - should be pruned)
         old_entry = TransferHistory(
@@ -518,7 +531,9 @@ class TestCrossGroupFeedforward:
         manager._transfer_history["upstairs"].append(recent_entry)
 
         # Record new heat output (triggers pruning)
-        manager.record_heat_output("living_room", 50.0)
+        with patch('custom_components.adaptive_thermostat.adaptive.thermal_groups.dt_util') as mock_dt_util:
+            mock_dt_util.utcnow.return_value = current_time
+            manager.record_heat_output("living_room", 50.0)
 
         # Old entry should be removed, recent and new should remain
         assert len(manager._transfer_history["upstairs"]) == 2
@@ -529,6 +544,8 @@ class TestCrossGroupFeedforward:
 
     def test_feedforward_time_tolerance(self):
         """Test feedforward only uses history within 5 minutes of target time."""
+        from unittest.mock import patch
+
         hass = MagicMock()
         config = [
             {
@@ -561,8 +578,10 @@ class TestCrossGroupFeedforward:
         )
 
         # Should return 0 because entry is outside 5-minute tolerance window
-        feedforward = manager.calculate_feedforward("bedroom1")
-        assert feedforward == 0.0
+        with patch('custom_components.adaptive_thermostat.adaptive.thermal_groups.dt_util') as mock_dt_util:
+            mock_dt_util.utcnow.return_value = current_time
+            feedforward = manager.calculate_feedforward("bedroom1")
+            assert feedforward == 0.0
 
 
 class TestThermalGroupManagerIntegration:

@@ -24,6 +24,7 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.restore_state import RestoreEntity
+from homeassistant.util import dt as dt_util
 
 from ..const import (
     DOMAIN,
@@ -444,7 +445,7 @@ class WeeklyCostSensor(SensorEntity, RestoreEntity):
 
         Resets on Sunday midnight (start of new week).
         """
-        now = datetime.now()
+        now = dt_util.utcnow()
 
         if self._week_start_timestamp is None:
             # First run or no previous data - initialize
@@ -568,7 +569,7 @@ class WeeklyCostSensor(SensorEntity, RestoreEntity):
             else:
                 # First reading - initialize
                 self._week_start_reading = current_kwh
-                self._week_start_timestamp = datetime.now()
+                self._week_start_timestamp = dt_util.utcnow()
                 self._weekly_energy_kwh = 0.0
 
             self._last_meter_reading = current_kwh

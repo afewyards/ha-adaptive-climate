@@ -10,6 +10,8 @@ from datetime import datetime
 from typing import Any, TYPE_CHECKING
 import logging
 
+from homeassistant.util import dt as dt_util
+
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
@@ -81,7 +83,7 @@ class WeeklySnapshot:
             total_cost=data.get("total_cost"),
             total_energy_kwh=data.get("total_energy_kwh"),
             zones=zones,
-            timestamp=data.get("timestamp", datetime.now().isoformat()),
+            timestamp=data.get("timestamp", dt_util.utcnow().isoformat()),
         )
 
 
@@ -178,7 +180,7 @@ class HistoryStore:
         Returns:
             Previous week's snapshot or None if not available
         """
-        now = datetime.now()
+        now = dt_util.utcnow()
         current_year, current_week, _ = now.isocalendar()
 
         # Find the snapshot that's not the current week

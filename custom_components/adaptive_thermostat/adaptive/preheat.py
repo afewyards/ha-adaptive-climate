@@ -9,6 +9,8 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 import statistics
 
+from homeassistant.util import dt as dt_util
+
 from ..const import (
     HEATING_TYPE_PREHEAT_CONFIG,
     PREHEAT_OBSERVATION_WINDOW_DAYS,
@@ -112,7 +114,7 @@ class PreheatLearner:
             timestamp: Observation timestamp (defaults to now)
         """
         if timestamp is None:
-            timestamp = datetime.now()
+            timestamp = dt_util.utcnow()
 
         delta = end_temp - start_temp
         if delta <= 0 or duration_minutes <= 0:

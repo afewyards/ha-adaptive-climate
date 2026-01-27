@@ -2,11 +2,12 @@
 
 import asyncio
 from datetime import datetime
-import threading
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 import json
 import logging
 import os
+
+from homeassistant.util import dt as dt_util
 
 from ..const import MAX_CYCLE_HISTORY
 
@@ -142,7 +143,7 @@ class LearningDataStore:
                 zone_data["preheat_learner"] = preheat_data
 
             # Update timestamp
-            zone_data["last_updated"] = datetime.now().isoformat()
+            zone_data["last_updated"] = dt_util.utcnow().isoformat()
 
             # Save to disk
             await self._store.async_save(self._data)
@@ -212,102 +213,13 @@ class LearningDataStore:
             zone_data["preheat_learner"] = preheat_data
 
         # Update timestamp
-        zone_data["last_updated"] = datetime.now().isoformat()
+        zone_data["last_updated"] = dt_util.utcnow().isoformat()
 
         _LOGGER.debug(
             f"Updated zone data for '{zone_id}' in memory: "
             f"adaptive={adaptive_data is not None}, ke={ke_data is not None}, "
             f"preheat={preheat_data is not None}"
         )
-
-    def save(
-        self,
-        thermal_learner: Optional["ThermalRateLearner"] = None,
-        adaptive_learner: Optional[Any] = None,  # AdaptiveLearner
-        valve_tracker: Optional[Any] = None,  # ValveCycleTracker
-        ke_learner: Optional[Any] = None,  # KeLearner
-    ) -> bool:
-        """
-        Save learning data to storage.
-
-        Args:
-            thermal_learner: ThermalRateLearner instance to save
-            adaptive_learner: AdaptiveLearner instance to save
-            valve_tracker: ValveCycleTracker instance to save
-            ke_learner: KeLearner instance to save
-
-        Returns:
-            True if save successful, False otherwise
-        """
-        try:
-            # Ensure storage directory exists
-            os.makedirs(self.storage_path, exist_ok=True)
-
-            data: Dict[str, Any] = {
-                "version": 2,  # Incremented for Ke learner support
-                "last_updated": datetime.now().isoformat(),
-            }
-
-            # Save ThermalRateLearner data
-            if thermal_learner is not None:
-                data["thermal_learner"] = {
-                    "cooling_rates": thermal_learner._cooling_rates,
-                    "heating_rates": thermal_learner._heating_rates,
-                    "outlier_threshold": thermal_learner.outlier_threshold,
-                }
-
-            # Save AdaptiveLearner data
-            if adaptive_learner is not None:
-                cycle_history = []
-                # Use the property which defaults to heating for backward compatibility
-                for cycle in adaptive_learner.cycle_history:
-                    cycle_history.append({
-                        "overshoot": cycle.overshoot,
-                        "undershoot": cycle.undershoot,
-                        "settling_time": cycle.settling_time,
-                        "oscillations": cycle.oscillations,
-                        "rise_time": cycle.rise_time,
-                    })
-
-                data["adaptive_learner"] = {
-                    "cycle_history": cycle_history,
-                    "last_adjustment_time": (
-                        adaptive_learner._last_adjustment_time.isoformat()
-                        if adaptive_learner._last_adjustment_time is not None
-                        else None
-                    ),
-                    "max_history": adaptive_learner._max_history,
-                    "heating_type": adaptive_learner._heating_type,
-                    # Include convergence tracking state
-                    "consecutive_converged_cycles": adaptive_learner._consecutive_converged_cycles,
-                    "pid_converged_for_ke": adaptive_learner._pid_converged_for_ke,
-                }
-
-            # Save ValveCycleTracker data
-            if valve_tracker is not None:
-                data["valve_tracker"] = {
-                    "cycle_count": valve_tracker._cycle_count,
-                    "last_state": valve_tracker._last_state,
-                }
-
-            # Save KeLearner data
-            if ke_learner is not None:
-                data["ke_learner"] = ke_learner.to_dict()
-
-            # Write to file atomically
-            temp_file = f"{self.storage_file}.tmp"
-            with open(temp_file, "w") as f:
-                json.dump(data, f, indent=2)
-
-            # Atomic rename
-            os.replace(temp_file, self.storage_file)
-
-            _LOGGER.info(f"Learning data saved to {self.storage_file}")
-            return True
-
-        except Exception as e:
-            _LOGGER.error(f"Failed to save learning data: {e}")
-            return False
 
     def load(self) -> Optional[Dict[str, Any]]:
         """

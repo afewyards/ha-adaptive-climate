@@ -163,7 +163,7 @@ class ControlOutputManager:
         """
         update = False
         entity_id = self._thermostat.entity_id
-        current_time = time.time()
+        current_time = time.monotonic()
 
         # Track actual elapsed time since last PID calculation
         # This fixes the stale dt bug where external triggers used sensor-based timing
@@ -194,16 +194,16 @@ class ControlOutputManager:
         cur_temp_time = self._get_cur_temp_time()
 
         if previous_temp_time is None:
-            previous_temp_time = time.time()
+            previous_temp_time = time.monotonic()
             self._set_previous_temp_time(previous_temp_time)
         if cur_temp_time is None:
-            cur_temp_time = time.time()
+            cur_temp_time = time.monotonic()
             self._set_cur_temp_time(cur_temp_time)
 
         # Only update cur_temp_time if this is a real temperature sensor update
         # This prevents artificial tiny dt values from external sensor, contact sensor, or periodic calls
         if is_temp_sensor_update:
-            cur_temp_time = time.time()
+            cur_temp_time = time.monotonic()
             self._set_cur_temp_time(cur_temp_time)
 
         if previous_temp_time > cur_temp_time:

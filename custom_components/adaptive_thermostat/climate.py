@@ -9,43 +9,28 @@ import time
 from datetime import datetime, timedelta
 from typing import Optional
 
-import voluptuous as vol
-
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import entity_platform, discovery
-from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 from homeassistant.const import (
     ATTR_TEMPERATURE,
-    CONF_NAME,
-    CONF_UNIQUE_ID,
     EVENT_HOMEASSISTANT_START,
-    PRECISION_HALVES,
-    PRECISION_TENTHS,
-    PRECISION_WHOLE,
     SERVICE_TURN_ON,
     STATE_ON,
-    STATE_OFF,
     STATE_UNAVAILABLE,
     STATE_UNKNOWN,
 )
 from homeassistant.components.input_number import DOMAIN as INPUT_NUMBER_DOMAIN
 NUMBER_DOMAIN = "number"  # Avoid importing from number.const for HA version compatibility
-from homeassistant.components.light import (SERVICE_TURN_ON as SERVICE_TURN_LIGHT_ON,
-                                            ATTR_BRIGHTNESS_PCT)
-from homeassistant.components.valve import (SERVICE_SET_VALVE_POSITION, ATTR_POSITION)
-from homeassistant.core import DOMAIN as HA_DOMAIN, CoreState, Event, EventStateChangedData, callback
+from homeassistant.core import CoreState, Event, EventStateChangedData, callback
 from homeassistant.util import slugify
-import homeassistant.helpers.config_validation as cv
+from homeassistant.util import dt as dt_util
 from homeassistant.helpers.event import (
     async_track_state_change_event,
     async_track_time_interval,
 )
 from homeassistant.helpers.restore_state import RestoreEntity
-from homeassistant.exceptions import HomeAssistantError, ServiceNotFound
 
-from .adaptive.physics import calculate_thermal_time_constant, calculate_initial_pid, calculate_initial_ke, calculate_initial_cooling_pid
+from .adaptive.physics import calculate_thermal_time_constant, calculate_initial_pid
 from .adaptive.night_setback import NightSetback
-from .adaptive.sun_position import SunPositionCalculator
 from .adaptive.contact_sensors import ContactSensorHandler, ContactAction
 from .adaptive.humidity_detector import HumidityDetector
 from .adaptive.ke_learning import KeLearner
@@ -56,25 +41,16 @@ from homeassistant.components.climate import (
     ATTR_PRESET_MODE,
     HVACMode,
     HVACAction,
-    PRESET_AWAY,
-    PRESET_NONE,
-    PRESET_ECO,
-    PRESET_BOOST,
-    PRESET_COMFORT,
-    PRESET_HOME,
-    PRESET_SLEEP,
-    PRESET_ACTIVITY,
 )
 
-from . import DOMAIN, PLATFORMS
+from . import DOMAIN
 from . import const
 from . import pid_controller
-from .adaptive.learning import AdaptiveLearner, ThermalRateLearner
+from .adaptive.learning import AdaptiveLearner
 from .adaptive.persistence import LearningDataStore
 from .managers import ControlOutputManager, HeaterController, KeController, NightSetbackController, PIDTuningManager, StateRestorer, TemperatureManager, CycleTrackerManager
 from .managers.events import (
     CycleEventDispatcher,
-    CycleEventType,
     CycleEndedEvent,
     SetpointChangedEvent,
     ModeChangedEvent,
@@ -396,9 +372,9 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
         self._cold_tolerance = heating_type_chars['cold_tolerance']
         self._hot_tolerance = heating_type_chars['hot_tolerance']
 
-        self._time_changed = time.time()
-        self._last_sensor_update = time.time()
-        self._last_ext_sensor_update = time.time()
+        self._time_changed = time.monotonic()
+        self._last_sensor_update = time.monotonic()
+        self._last_ext_sensor_update = time.monotonic()
         _LOGGER.info("%s: Active PID values - Kp=%.4f, Ki=%.5f, Kd=%.3f, Ke=%s, D_filter_alpha=%.2f, outdoor_lag_tau=%.2f",
                      self.unique_id, self._kp, self._ki, self._kd, self._ke or 0, self._derivative_filter_alpha, self._outdoor_temp_lag_tau)
         decay_rate = const.HEATING_TYPE_INTEGRAL_DECAY.get(
@@ -891,7 +867,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
         Delegates to NightSetbackController for all calculation logic.
 
         Args:
-            current_time: Optional datetime for testing; defaults to datetime.now()
+            current_time: Optional datetime for testing; defaults to dt_util.utcnow()
 
         Returns:
             A tuple of (effective_target, in_night_period, night_setback_info) where:
@@ -1064,7 +1040,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
             if hasattr(self, "_cycle_dispatcher") and self._cycle_dispatcher:
                 self._cycle_dispatcher.emit(
                     ModeChangedEvent(
-                        timestamp=datetime.now(),
+                        timestamp=dt_util.utcnow(),
                         old_mode=old_mode_str,
                         new_mode=new_mode_str,
                     )
@@ -1336,7 +1312,6 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
         # Get default temp from super class
         return super().max_temp
 
-    @callback
     async def _async_sensor_changed(self, event: Event[EventStateChangedData]):
         """Handle temperature changes."""
         new_state = event.data["new_state"]
@@ -1344,14 +1319,13 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
             return
 
         self._previous_temp_time = self._cur_temp_time
-        self._cur_temp_time = time.time()
+        self._cur_temp_time = time.monotonic()
         self._async_update_temp(new_state)
         self._trigger_source = 'sensor'
         _LOGGER.debug("%s: Received new temperature: %s", self.entity_id, self._current_temp)
         await self._async_control_heating(calc_pid=True, is_temp_sensor_update=True)
         self.async_write_ha_state()
 
-    @callback
     async def _async_ext_sensor_changed(self, event: Event[EventStateChangedData]):
         """Handle temperature changes."""
         new_state = event.data["new_state"]
@@ -1409,7 +1383,6 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
 
         self.async_write_ha_state()
 
-    @callback
     async def _async_contact_sensor_changed(self, event: Event[EventStateChangedData]):
         """Handle contact sensor (window/door) state changes."""
         new_state = event.data["new_state"]
@@ -1428,7 +1401,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
 
         # Emit contact pause/resume events
         if self._cycle_dispatcher:
-            now = datetime.now()
+            now = dt_util.utcnow()
             if is_open:
                 # Track pause start time for this sensor
                 self._contact_pause_times[entity_id] = now
@@ -1469,7 +1442,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
 
         try:
             humidity = float(new_state.state)
-            now = datetime.now()
+            now = dt_util.utcnow()
             self._humidity_detector.record_humidity(now, humidity)
 
             _LOGGER.debug(
@@ -1550,7 +1523,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
         try:
             self._previous_temp = self._current_temp
             self._current_temp = float(state.state)
-            self._last_sensor_update = time.time()
+            self._last_sensor_update = time.monotonic()
         except ValueError as ex:
             _LOGGER.debug("%s: Unable to update from sensor %s: %s", self.entity_id,
                           self._sensor_entity_id, ex)
@@ -1564,7 +1537,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
             return
         try:
             self._ext_temp = float(state.state)
-            self._last_ext_sensor_update = time.time()
+            self._last_ext_sensor_update = time.monotonic()
         except ValueError as ex:
             _LOGGER.debug("%s: Unable to update from sensor %s: %s", self.entity_id,
                           self._ext_sensor_entity_id, ex)
@@ -1581,7 +1554,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
         if temp is not None:
             try:
                 self._ext_temp = float(temp)
-                self._last_ext_sensor_update = time.time()
+                self._last_ext_sensor_update = time.monotonic()
             except (ValueError, TypeError) as ex:
                 _LOGGER.debug("%s: Unable to get temperature from weather entity %s: %s",
                               self.entity_id, self._weather_entity_id, ex)
@@ -1655,7 +1628,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
                     self.entity_id, self._humidity_detector.get_state()
                 )
                 # Decay integral while paused (~10%/min)
-                elapsed = time.time() - self._last_control_time
+                elapsed = time.monotonic() - self._last_control_time
                 decay_factor = 0.9 ** (elapsed / 60)  # 10% decay per minute
                 self._pid_controller.decay_integral(decay_factor)
 
@@ -1693,7 +1666,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
                     self.async_write_ha_state()
                     return
 
-            if self._sensor_stall != 0 and time.time() - self._last_sensor_update > \
+            if self._sensor_stall != 0 and time.monotonic() - self._last_sensor_update > \
                     self._sensor_stall:
                 # sensor not updated for too long, considered as stall, set to safety level
                 self._control_output = self._output_safety
@@ -1705,7 +1678,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
                 if self._cycle_dispatcher and self._current_temp is not None and self._target_temp is not None:
                     self._cycle_dispatcher.emit(
                         TemperatureUpdateEvent(
-                            timestamp=datetime.now(),
+                            timestamp=dt_util.utcnow(),
                             temperature=self._current_temp,
                             setpoint=self._target_temp,
                             pid_integral=self._pid_controller.integral,
@@ -1715,7 +1688,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
 
                 # Record temperature for cycle tracking
                 if self._cycle_tracker and self._current_temp is not None:
-                    await self._cycle_tracker.update_temperature(datetime.now(), self._current_temp)
+                    await self._cycle_tracker.update_temperature(dt_util.utcnow(), self._current_temp)
             await self.set_control_value()
 
             # Update zone demand for CentralController (based on actual device state, not PID output)
@@ -1868,7 +1841,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
                 self._cycle_dispatcher.emit(
                     SetpointChangedEvent(
                         hvac_mode=str(self._hvac_mode.value) if self._hvac_mode else "off",
-                        timestamp=datetime.now(),
+                        timestamp=dt_util.utcnow(),
                         old_target=old_temp,
                         new_target=value,
                     )

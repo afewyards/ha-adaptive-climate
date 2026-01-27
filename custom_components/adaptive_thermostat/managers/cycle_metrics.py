@@ -16,6 +16,8 @@ if TYPE_CHECKING:
     from ..adaptive.cycle_analysis import CycleMetrics
     from .events import CycleEventDispatcher
 
+from homeassistant.util import dt as dt_util
+
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -253,7 +255,7 @@ class CycleMetricsRecorder:
         Args:
             cycle_start_time: When the cycle started
             temperature_history: List of (timestamp, temperature) samples
-            current_time: Current time for duration calculation (defaults to datetime.now())
+            current_time: Current time for duration calculation (defaults to dt_util.utcnow())
 
         Returns:
             Tuple of (is_valid, reason_string)
@@ -263,7 +265,7 @@ class CycleMetricsRecorder:
             return False, "No cycle start time recorded"
 
         if current_time is None:
-            current_time = datetime.now()
+            current_time = dt_util.utcnow()
         duration_minutes = (current_time - cycle_start_time).total_seconds() / 60
         if duration_minutes < self._min_cycle_duration_minutes:
             return False, f"Cycle too short ({duration_minutes:.1f} min < {self._min_cycle_duration_minutes} min)"
@@ -516,7 +518,7 @@ class CycleMetricsRecorder:
             # Compute duration for preheat observation recording
             duration_minutes = None
             if cycle_start_time is not None:
-                duration_minutes = (datetime.now() - cycle_start_time).total_seconds() / 60
+                duration_minutes = (dt_util.utcnow() - cycle_start_time).total_seconds() / 60
 
             # Create metrics dict from the CycleMetrics object
             metrics_dict = {
@@ -535,7 +537,7 @@ class CycleMetricsRecorder:
 
             cycle_ended_event = CycleEndedEvent(
                 hvac_mode=hvac_mode,
-                timestamp=datetime.now(),
+                timestamp=dt_util.utcnow(),
                 metrics=metrics_dict,
             )
             self._dispatcher.emit(cycle_ended_event)

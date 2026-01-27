@@ -48,7 +48,8 @@ class TestNightSetbackCalculatorPreheat:
             start_temp=16.0,
             end_temp=20.0,
             outdoor_temp=5.0,
-            duration_minutes=120.0
+            duration_minutes=120.0,
+            timestamp=datetime(2024, 1, 15, 0, 0)
         )
 
         calculator = self.create_calculator(
@@ -81,7 +82,8 @@ class TestNightSetbackCalculatorPreheat:
             start_temp=18.0,
             end_temp=20.0,
             outdoor_temp=8.0,
-            duration_minutes=30.0
+            duration_minutes=30.0,
+            timestamp=datetime(2024, 1, 15, 0, 0)
         )
 
         calculator = self.create_calculator(
@@ -109,7 +111,8 @@ class TestNightSetbackCalculatorPreheat:
             start_temp=10.0,
             end_temp=12.0,
             outdoor_temp=0.0,
-            duration_minutes=360.0  # 2°C in 6 hours = 0.33°C/h
+            duration_minutes=360.0,  # 2°C in 6 hours = 0.33°C/h
+            timestamp=datetime(2024, 1, 15, 0, 0)
         )
 
         calculator = self.create_calculator(
@@ -136,7 +139,7 @@ class TestNightSetbackCalculatorPreheat:
     def test_calculate_preheat_start_disabled(self):
         """Test that preheat start returns None when disabled."""
         learner = PreheatLearner(heating_type="radiator")
-        learner.add_observation(18.0, 20.0, 5.0, 60.0)
+        learner.add_observation(18.0, 20.0, 5.0, 60.0, timestamp=datetime(2024, 1, 15, 0, 0))
 
         calculator = self.create_calculator(
             preheat_learner=learner,
@@ -153,7 +156,7 @@ class TestNightSetbackCalculatorPreheat:
     def test_calculate_preheat_start_no_recovery_deadline(self):
         """Test that preheat start returns None when no recovery_deadline."""
         learner = PreheatLearner(heating_type="radiator")
-        learner.add_observation(18.0, 20.0, 5.0, 60.0)
+        learner.add_observation(18.0, 20.0, 5.0, 60.0, timestamp=datetime(2024, 1, 15, 0, 0))
 
         calculator = self.create_calculator(
             preheat_learner=learner,
@@ -197,7 +200,7 @@ class TestNightSetbackCalculatorPreheat:
     def test_get_preheat_info_with_scheduled_start(self):
         """Test get_preheat_info returns correct info dict."""
         learner = PreheatLearner(heating_type="radiator")
-        learner.add_observation(18.0, 20.0, 5.0, 60.0)
+        learner.add_observation(18.0, 20.0, 5.0, 60.0, timestamp=datetime(2024, 1, 15, 0, 0))
 
         calculator = self.create_calculator(
             preheat_learner=learner,
@@ -225,7 +228,7 @@ class TestNightSetbackCalculatorPreheat:
         """Test active status is True when past scheduled start."""
         learner = PreheatLearner(heating_type="forced_air")
         # Quick heating: 2°C in 15 minutes
-        learner.add_observation(18.0, 20.0, 10.0, 15.0)
+        learner.add_observation(18.0, 20.0, 10.0, 15.0, timestamp=datetime(2024, 1, 15, 0, 0))
 
         calculator = self.create_calculator(
             preheat_learner=learner,
@@ -272,7 +275,7 @@ class TestNightSetbackCalculatorPreheat:
         learner = PreheatLearner(heating_type="forced_air")
         # Quick heating: 2°C in 10 minutes, but with only 1 observation
         # it will use fallback rate of 4.0 C/h
-        learner.add_observation(18.0, 20.0, 10.0, 10.0)
+        learner.add_observation(18.0, 20.0, 10.0, 10.0, timestamp=datetime(2024, 1, 15, 0, 0))
 
         calculator = self.create_calculator(
             preheat_learner=learner,

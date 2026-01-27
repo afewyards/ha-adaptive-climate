@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, Callable, List, Optional
 # These imports are only needed when running in Home Assistant
 try:
     from homeassistant.core import HomeAssistant
+    from homeassistant.util import dt as dt_util
     from homeassistant.core import DOMAIN as HA_DOMAIN
     from homeassistant.const import (
         ATTR_ENTITY_ID,
@@ -536,17 +537,17 @@ class HeaterController:
                     current_temp = getattr(self._thermostat, '_current_temp', 0.0)
                     self._dispatcher.emit(CycleStartedEvent(
                         hvac_mode=hvac_mode,
-                        timestamp=datetime.now(),
+                        timestamp=dt_util.utcnow(),
                         target_temp=target_temp,
                         current_temp=current_temp,
                     ))
-        elif time.time() - get_cycle_start_time() >= self._min_off_cycle_duration:
+        elif time.monotonic() - get_cycle_start_time() >= self._min_off_cycle_duration:
             _LOGGER.info(
                 "%s: Turning ON %s",
                 thermostat_entity_id,
                 ", ".join(entities)
             )
-            set_last_heat_cycle_time(time.time())
+            set_last_heat_cycle_time(time.monotonic())
 
             # Update state tracking for cycle counting (off→on transition)
             if hvac_mode == HVACMode.COOL:
@@ -565,7 +566,7 @@ class HeaterController:
                     current_temp = getattr(self._thermostat, '_current_temp', 0.0)
                     self._dispatcher.emit(CycleStartedEvent(
                         hvac_mode=hvac_mode,
-                        timestamp=datetime.now(),
+                        timestamp=dt_util.utcnow(),
                         target_temp=target_temp,
                         current_temp=current_temp,
                     ))
@@ -574,7 +575,7 @@ class HeaterController:
             if self._dispatcher:
                 self._dispatcher.emit(HeatingStartedEvent(
                     hvac_mode=hvac_mode,
-                    timestamp=datetime.now(),
+                    timestamp=dt_util.utcnow(),
                 ))
         else:
             _LOGGER.info(
@@ -626,7 +627,7 @@ class HeaterController:
                 thermostat_entity_id,
                 ", ".join(entities)
             )
-        elif time.time() - get_cycle_start_time() >= self._min_on_cycle_duration or force:
+        elif time.monotonic() - get_cycle_start_time() >= self._min_on_cycle_duration or force:
             # Minimum cycle protection: Only turn off if min_on_cycle_duration has elapsed
             # or force=True (for emergency shutdowns). This protects compressors from
             # short-cycling which can damage equipment.
@@ -635,7 +636,7 @@ class HeaterController:
                 thermostat_entity_id,
                 ", ".join(entities)
             )
-            set_last_heat_cycle_time(time.time())
+            set_last_heat_cycle_time(time.monotonic())
 
             # Increment cycle counter for wear tracking (on→off transition)
             self._increment_cycle_count(hvac_mode, is_now_off=True)
@@ -644,14 +645,14 @@ class HeaterController:
             if self._dispatcher:
                 self._dispatcher.emit(HeatingEndedEvent(
                     hvac_mode=hvac_mode,
-                    timestamp=datetime.now(),
+                    timestamp=dt_util.utcnow(),
                 ))
 
             # Emit SETTLING_STARTED for PWM mode to complete cycle tracking
             if self._pwm and self._cycle_active and self._dispatcher:
                 self._dispatcher.emit(SettlingStartedEvent(
                     hvac_mode=hvac_mode,
-                    timestamp=datetime.now(),
+                    timestamp=dt_util.utcnow(),
                     was_clamped=self._get_pid_was_clamped(),
                 ))
                 self._cycle_active = False
@@ -741,7 +742,7 @@ class HeaterController:
                 if self._dispatcher:
                     self._dispatcher.emit(SettlingStartedEvent(
                         hvac_mode=hvac_mode,
-                        timestamp=datetime.now(),
+                        timestamp=dt_util.utcnow(),
                         was_clamped=self._get_pid_was_clamped(),
                     ))
                 self._cycle_active = False  # Reset for next cycle
@@ -764,7 +765,7 @@ class HeaterController:
                 current_temp = getattr(self._thermostat, '_current_temp', 0.0)
                 self._dispatcher.emit(CycleStartedEvent(
                     hvac_mode=hvac_mode,
-                    timestamp=datetime.now(),
+                    timestamp=dt_util.utcnow(),
                     target_temp=target_temp,
                     current_temp=current_temp,
                 ))
@@ -773,7 +774,7 @@ class HeaterController:
             if self._dispatcher:
                 self._dispatcher.emit(HeatingStartedEvent(
                     hvac_mode=hvac_mode,
-                    timestamp=datetime.now(),
+                    timestamp=dt_util.utcnow(),
                 ))
         # Detect heating stopped transition (was on, now off)
         elif old_active and not new_active:
@@ -784,7 +785,7 @@ class HeaterController:
             if self._dispatcher:
                 self._dispatcher.emit(HeatingEndedEvent(
                     hvac_mode=hvac_mode,
-                    timestamp=datetime.now(),
+                    timestamp=dt_util.utcnow(),
                 ))
 
             # Reset cycle tracking for next cycle
@@ -832,7 +833,7 @@ class HeaterController:
             if self._dispatcher:
                 self._dispatcher.emit(SettlingStartedEvent(
                     hvac_mode=hvac_mode,
-                    timestamp=datetime.now(),
+                    timestamp=dt_util.utcnow(),
                     was_clamped=self._get_pid_was_clamped(),
                 ))
             self._cycle_active = False  # Reset for next cycle
@@ -846,7 +847,7 @@ class HeaterController:
                         self._difference,
                         ", ".join(entities)
                     )
-                    set_time_changed(time.time())
+                    set_time_changed(time.monotonic())
                 await self.async_turn_on(
                     hvac_mode=hvac_mode,
                     get_cycle_start_time=get_cycle_start_time,
@@ -874,7 +875,7 @@ class HeaterController:
                         thermostat_entity_id,
                         ", ".join(entities)
                     )
-                    set_time_changed(time.time())
+                    set_time_changed(time.monotonic())
                 await self.async_turn_off(
                     hvac_mode=hvac_mode,
                     get_cycle_start_time=get_cycle_start_time,

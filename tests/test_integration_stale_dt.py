@@ -127,7 +127,7 @@ class TestIntegralAccumulationRate:
         base_time = 1000.0
 
         # First calc to initialize - this sets _last_pid_calc_time
-        with patch("time.time", return_value=base_time):
+        with patch("time.monotonic", return_value=base_time):
             await self.manager.calc_output(is_temp_sensor_update=False)
 
         # Record initial integral (should be 0 after first calc with dt=0)
@@ -138,7 +138,7 @@ class TestIntegralAccumulationRate:
         # Perform 10 calculations at 60s intervals via external sensor triggers
         for i in range(10):
             calc_time = base_time + (i + 1) * 60.0  # 60s intervals
-            with patch("time.time", return_value=calc_time):
+            with patch("time.monotonic", return_value=calc_time):
                 await self.manager.calc_output(is_temp_sensor_update=False)
 
         # Get final integral
@@ -172,7 +172,7 @@ class TestIntegralAccumulationRate:
         base_time = 1000.0
 
         # First calc to initialize
-        with patch("time.time", return_value=base_time):
+        with patch("time.monotonic", return_value=base_time):
             await self.manager.calc_output(is_temp_sensor_update=True)
 
         initial_integral = self.pid_controller.integral
@@ -189,7 +189,7 @@ class TestIntegralAccumulationRate:
         ]
 
         for offset, is_sensor in trigger_sequence:
-            with patch("time.time", return_value=base_time + offset):
+            with patch("time.monotonic", return_value=base_time + offset):
                 await self.manager.calc_output(is_temp_sensor_update=is_sensor)
 
         final_integral = self.pid_controller.integral
@@ -228,11 +228,11 @@ class TestIntegralAccumulationRate:
             **self.callbacks
         )
 
-        with patch("time.time", return_value=base_time):
+        with patch("time.monotonic", return_value=base_time):
             await manager1.calc_output(is_temp_sensor_update=False)
 
         for i in range(10):
-            with patch("time.time", return_value=base_time + (i + 1) * 60.0):
+            with patch("time.monotonic", return_value=base_time + (i + 1) * 60.0):
                 await manager1.calc_output(is_temp_sensor_update=False)
 
         integral_slow = manager1._pid_controller.integral
@@ -248,11 +248,11 @@ class TestIntegralAccumulationRate:
             **self.callbacks
         )
 
-        with patch("time.time", return_value=base_time):
+        with patch("time.monotonic", return_value=base_time):
             await manager2.calc_output(is_temp_sensor_update=False)
 
         for i in range(60):
-            with patch("time.time", return_value=base_time + (i + 1) * 10.0):
+            with patch("time.monotonic", return_value=base_time + (i + 1) * 10.0):
                 await manager2.calc_output(is_temp_sensor_update=False)
 
         integral_fast = manager2._pid_controller.integral
@@ -283,12 +283,12 @@ class TestIntegralAccumulationRate:
         base_time = 1000.0
 
         # First calc at t=1000
-        with patch("time.time", return_value=base_time):
+        with patch("time.monotonic", return_value=base_time):
             await self.manager.calc_output(is_temp_sensor_update=True)
 
         # External trigger at t=1030 (30s after last calc)
         # Note: sensor timestamps still show 1000->1060 interval, but actual dt should be 30s
-        with patch("time.time", return_value=base_time + 30.0):
+        with patch("time.monotonic", return_value=base_time + 30.0):
             await self.manager.calc_output(is_temp_sensor_update=False)
 
         # Check the dt that was set (this is what the PID controller calculated)

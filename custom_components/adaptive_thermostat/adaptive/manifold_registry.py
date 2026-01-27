@@ -17,6 +17,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
+from homeassistant.util import dt as dt_util
+
 from ..const import (
     MANIFOLD_COOLDOWN_MINUTES,
     DEFAULT_FLOW_PER_LOOP,
@@ -85,7 +87,7 @@ class ManifoldRegistry:
         """
         manifold = self.get_manifold_for_zone(zone_id)
         if manifold:
-            self._last_active_time[manifold.name] = datetime.now()
+            self._last_active_time[manifold.name] = dt_util.utcnow()
 
     def get_transport_delay(
         self,
@@ -115,7 +117,7 @@ class ManifoldRegistry:
 
         # Check if manifold is warm (active within cooldown period)
         if manifold.name in self._last_active_time:
-            time_since_active = datetime.now() - self._last_active_time[manifold.name]
+            time_since_active = dt_util.utcnow() - self._last_active_time[manifold.name]
             if time_since_active < timedelta(minutes=MANIFOLD_COOLDOWN_MINUTES):
                 return 0.0
 

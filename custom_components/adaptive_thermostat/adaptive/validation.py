@@ -5,6 +5,8 @@ from typing import Dict, List, Optional, Any
 import statistics
 import logging
 
+from homeassistant.util import dt as dt_util
+
 from .cycle_analysis import CycleMetrics
 
 from ..const import (
@@ -179,7 +181,7 @@ class ValidationManager:
             )
 
         # Check 2: Seasonal limit (auto-applies in last 90 days)
-        now = datetime.now()
+        now = dt_util.utcnow()
         cutoff = now - timedelta(days=90)
         recent_applies = [
             entry
@@ -222,7 +224,7 @@ class ValidationManager:
         This prevents auto-applying PID changes during weather regime transitions
         when system behavior may be unstable.
         """
-        self._last_seasonal_shift = datetime.now()
+        self._last_seasonal_shift = dt_util.utcnow()
         _LOGGER.warning(
             "Seasonal shift recorded - auto-apply blocked for next %d days",
             SEASONAL_SHIFT_BLOCK_DAYS,
@@ -297,7 +299,7 @@ class ValidationManager:
             return False
 
         # Check daily (avoid checking too frequently)
-        now = datetime.now()
+        now = dt_util.utcnow()
         if self._last_seasonal_check is not None:
             if now - self._last_seasonal_check < timedelta(days=1):
                 return False

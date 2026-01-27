@@ -237,14 +237,14 @@ async def test_history_store_prunes_old_data():
 
 def test_calculate_week_over_week():
     """Test week-over-week change calculation."""
-    from datetime import datetime
     from unittest.mock import patch
+    from homeassistant.util import dt as dt_util
 
     mock_hass = MagicMock()
     store = HistoryStore(mock_hass)
 
     # Get current ISO week info to properly set up test data
-    now = datetime.now()
+    now = dt_util.utcnow()
     current_year, current_week, _ = now.isocalendar()
 
     # Previous week is current_week - 1
@@ -281,13 +281,13 @@ def test_calculate_week_over_week():
 
 def test_calculate_week_over_week_no_previous():
     """Test week-over-week with no previous data."""
-    from datetime import datetime
+    from homeassistant.util import dt as dt_util
 
     mock_hass = MagicMock()
     store = HistoryStore(mock_hass)
 
     # Get current ISO week info
-    now = datetime.now()
+    now = dt_util.utcnow()
     current_year, current_week, _ = now.isocalendar()
 
     current_snapshot = WeeklySnapshot(

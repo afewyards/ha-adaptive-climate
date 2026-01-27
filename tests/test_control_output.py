@@ -106,7 +106,7 @@ class TestPIDCalcTimeTracking:
         assert self.manager._last_pid_calc_time is None
 
         # Call calc_output
-        with patch("time.time", return_value=1100.0):
+        with patch("time.monotonic", return_value=1100.0):
             await self.manager.calc_output()
 
         # After calc_output, _last_pid_calc_time should be set
@@ -116,7 +116,7 @@ class TestPIDCalcTimeTracking:
     async def test_control_output_first_calc_dt_zero(self):
         """TEST: Verify first calc returns dt=0 when _last_pid_calc_time is None."""
         # First call - _last_pid_calc_time is None, so actual_dt should be 0
-        with patch("time.time", return_value=1000.0):
+        with patch("time.monotonic", return_value=1000.0):
             await self.manager.calc_output()
 
         # The PID calc should have been called with times that result in dt=0
@@ -125,7 +125,7 @@ class TestPIDCalcTimeTracking:
         assert self.manager._last_pid_calc_time == 1000.0
 
         # Second call - actual_dt should now be calculated
-        with patch("time.time", return_value=1060.0):
+        with patch("time.monotonic", return_value=1060.0):
             await self.manager.calc_output()
 
         # Now _last_pid_calc_time should be updated
@@ -135,11 +135,11 @@ class TestPIDCalcTimeTracking:
     async def test_control_output_clamps_negative_dt(self):
         """TEST: Verify negative dt is clamped to 0."""
         # First call to establish baseline
-        with patch("time.time", return_value=1000.0):
+        with patch("time.monotonic", return_value=1000.0):
             await self.manager.calc_output()
 
         # Simulate time going backwards (shouldn't happen, but be defensive)
-        with patch("time.time", return_value=900.0):
+        with patch("time.monotonic", return_value=900.0):
             await self.manager.calc_output()
 
         # Despite time going backwards, should clamp and continue
@@ -150,11 +150,11 @@ class TestPIDCalcTimeTracking:
     async def test_control_output_clamps_huge_dt(self):
         """TEST: Verify huge dt is clamped to max_dt."""
         # First call to establish baseline
-        with patch("time.time", return_value=1000.0):
+        with patch("time.monotonic", return_value=1000.0):
             await self.manager.calc_output()
 
         # Simulate a huge gap (e.g., system was suspended)
-        with patch("time.time", return_value=10000.0):
+        with patch("time.monotonic", return_value=10000.0):
             await self.manager.calc_output()
 
         # Should clamp dt to reasonable value
@@ -243,11 +243,11 @@ class TestPIDDtCorrection:
     async def test_dt_correct_between_sensor_updates(self):
         """TEST: Verify dt correctly calculated between temperature sensor updates."""
         # First sensor update at t=1000
-        with patch("time.time", return_value=1000.0):
+        with patch("time.monotonic", return_value=1000.0):
             await self.manager.calc_output(is_temp_sensor_update=True)
 
         # Second sensor update at t=1060 (60s later)
-        with patch("time.time", return_value=1060.0):
+        with patch("time.monotonic", return_value=1060.0):
             await self.manager.calc_output(is_temp_sensor_update=True)
 
         # The dt should be 60s (actual elapsed time)
@@ -259,11 +259,11 @@ class TestPIDDtCorrection:
     async def test_non_sensor_trigger_uses_actual_elapsed_time(self):
         """TEST: Verify non-sensor triggers use actual elapsed time for dt."""
         # First sensor update at t=1000
-        with patch("time.time", return_value=1000.0):
+        with patch("time.monotonic", return_value=1000.0):
             await self.manager.calc_output(is_temp_sensor_update=True)
 
         # Non-sensor trigger (e.g., setpoint change) at t=1030 (30s later)
-        with patch("time.time", return_value=1030.0):
+        with patch("time.monotonic", return_value=1030.0):
             await self.manager.calc_output(is_temp_sensor_update=False)
 
         # Should show 30s elapsed, not sensor interval
@@ -274,11 +274,11 @@ class TestPIDDtCorrection:
     async def test_multiple_external_triggers_accumulate_correctly(self):
         """TEST: Verify multiple external triggers accumulate dt correctly."""
         # First sensor update at t=1000
-        with patch("time.time", return_value=1000.0):
+        with patch("time.monotonic", return_value=1000.0):
             await self.manager.calc_output(is_temp_sensor_update=True)
 
         # External trigger at t=1030 (30s later)
-        with patch("time.time", return_value=1030.0):
+        with patch("time.monotonic", return_value=1030.0):
             await self.manager.calc_output(is_temp_sensor_update=False)
 
         # Should show 30s elapsed, not sensor interval
@@ -286,7 +286,7 @@ class TestPIDDtCorrection:
             "External trigger should show actual elapsed time"
 
         # Another external trigger at t=1045 (15s later)
-        with patch("time.time", return_value=1045.0):
+        with patch("time.monotonic", return_value=1045.0):
             await self.manager.calc_output(is_temp_sensor_update=False)
 
         assert self._set_dt_calls[2] == pytest.approx(15.0, abs=0.1), \
@@ -375,7 +375,7 @@ class TestResetCalcTiming:
     async def test_reset_calc_timing_clears_last_pid_time(self):
         """TEST: Verify reset_calc_timing() clears _last_pid_calc_time."""
         # First establish a calc time
-        with patch("time.time", return_value=1000.0):
+        with patch("time.monotonic", return_value=1000.0):
             await self.manager.calc_output()
 
         assert self.manager._last_pid_calc_time == 1000.0
@@ -390,10 +390,10 @@ class TestResetCalcTiming:
     async def test_reset_calc_timing_causes_next_calc_dt_zero(self):
         """TEST: Verify after reset, next calc uses dt=0."""
         # Establish normal operation
-        with patch("time.time", return_value=1000.0):
+        with patch("time.monotonic", return_value=1000.0):
             await self.manager.calc_output()
 
-        with patch("time.time", return_value=1060.0):
+        with patch("time.monotonic", return_value=1060.0):
             await self.manager.calc_output()
 
         # Reset timing
@@ -401,7 +401,7 @@ class TestResetCalcTiming:
         self._set_dt_calls.clear()
 
         # Next calc should use dt=0 since we reset
-        with patch("time.time", return_value=1100.0):
+        with patch("time.monotonic", return_value=1100.0):
             await self.manager.calc_output()
 
         # First call after reset should have dt=0
@@ -491,11 +491,11 @@ class TestPidDtStateAttribute:
     async def test_pid_dt_attribute_shows_actual_calc_dt(self):
         """TEST: Verify pid_dt attribute shows actual dt used in calculation."""
         # First calc at t=1000
-        with patch("time.time", return_value=1000.0):
+        with patch("time.monotonic", return_value=1000.0):
             await self.manager.calc_output()
 
         # Second calc at t=1060 (60s later)
-        with patch("time.time", return_value=1060.0):
+        with patch("time.monotonic", return_value=1060.0):
             await self.manager.calc_output()
 
         # The set_dt callback should have been called with the actual dt
@@ -506,7 +506,7 @@ class TestPidDtStateAttribute:
     async def test_pid_dt_attribute_after_reset(self):
         """TEST: Verify pid_dt shows 0 after timing reset."""
         # Establish normal operation
-        with patch("time.time", return_value=1000.0):
+        with patch("time.monotonic", return_value=1000.0):
             await self.manager.calc_output()
 
         # Reset timing
@@ -514,7 +514,7 @@ class TestPidDtStateAttribute:
         self._set_dt_calls.clear()
 
         # Next calc should show dt=0
-        with patch("time.time", return_value=1100.0):
+        with patch("time.monotonic", return_value=1100.0):
             await self.manager.calc_output()
 
         assert self._set_dt_calls[0] == pytest.approx(0.0, abs=0.1)
@@ -523,11 +523,11 @@ class TestPidDtStateAttribute:
     async def test_pid_dt_attribute_with_external_triggers(self):
         """TEST: Verify pid_dt reflects actual elapsed time for external triggers."""
         # Sensor update at t=1000
-        with patch("time.time", return_value=1000.0):
+        with patch("time.monotonic", return_value=1000.0):
             await self.manager.calc_output(is_temp_sensor_update=True)
 
         # External trigger at t=1030 (30s later)
-        with patch("time.time", return_value=1030.0):
+        with patch("time.monotonic", return_value=1030.0):
             await self.manager.calc_output(is_temp_sensor_update=False)
 
         # Should show 30s elapsed, not sensor interval
@@ -535,7 +535,7 @@ class TestPidDtStateAttribute:
             "External trigger should show actual elapsed time"
 
         # Another external trigger at t=1045 (15s later)
-        with patch("time.time", return_value=1045.0):
+        with patch("time.monotonic", return_value=1045.0):
             await self.manager.calc_output(is_temp_sensor_update=False)
 
         assert self._set_dt_calls[2] == pytest.approx(15.0, abs=0.1), \

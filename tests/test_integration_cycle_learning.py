@@ -22,6 +22,17 @@ from custom_components.adaptive_thermostat.managers.events import (
     ContactPauseEvent,
 )
 from custom_components.adaptive_thermostat.adaptive.cycle_analysis import CycleMetrics
+from homeassistant.util import dt as dt_util
+
+
+@pytest.fixture(autouse=True)
+def mock_dt_util():
+    """Mock dt_util.utcnow() to return a dynamic datetime for duration calculations."""
+    # Set a far-future datetime to ensure all cycle durations are valid
+    # Tests use various dates, so we set utcnow to 2025-01-01 (far enough in future)
+    fixed_now = datetime(2025, 1, 1, 0, 0, 0)
+    with patch('custom_components.adaptive_thermostat.managers.cycle_metrics.dt_util.utcnow', return_value=fixed_now):
+        yield
 
 
 @pytest.fixture
@@ -196,7 +207,7 @@ class TestCycleAbortedBySetpointChange:
             current_time += timedelta(seconds=30)
 
         # Change setpoint mid-cycle
-        dispatcher.emit(SetpointChangedEvent(hvac_mode="heat", timestamp=datetime.now(), old_target=21.0, new_target=22.0))
+        dispatcher.emit(SetpointChangedEvent(hvac_mode="heat", timestamp=current_time, old_target=21.0, new_target=22.0))
 
         # Verify cycle was aborted
         assert cycle_tracker.state == CycleState.IDLE
@@ -226,7 +237,7 @@ class TestCycleAbortedByContactSensor:
             current_time += timedelta(seconds=30)
 
         # Contact sensor triggers pause (window opened)
-        dispatcher.emit(ContactPauseEvent(hvac_mode="heat", timestamp=datetime.now(), entity_id="binary_sensor.window"))
+        dispatcher.emit(ContactPauseEvent(hvac_mode="heat", timestamp=current_time, entity_id="binary_sensor.window"))
 
         # Verify cycle was aborted
         assert cycle_tracker.state == CycleState.IDLE
@@ -241,7 +252,7 @@ class TestCycleDuringVacationMode:
 
     @pytest.mark.asyncio
     async def test_cycle_during_vacation_mode(
-        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher, mock_dt_util
     ):
         """Test that cycles during vacation mode are not recorded."""
         # Set grace period to True (simulates vacation mode blocking)
@@ -359,7 +370,7 @@ class TestCycleResumedAfterSetpointChange:
 
     @pytest.mark.asyncio
     async def test_cycle_tracked_despite_setpoint_change(
-        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher, mock_dt_util
     ):
         """Test that cycle completes when setpoint changes while heater is active."""
         # Create mock for get_is_device_active returning True
@@ -393,7 +404,7 @@ class TestCycleResumedAfterSetpointChange:
             current_time += timedelta(seconds=30)
 
         # Change setpoint mid-cycle (heater still active)
-        dispatcher.emit(SetpointChangedEvent(hvac_mode="heat", timestamp=datetime.now(), old_target=21.0, new_target=22.0))
+        dispatcher.emit(SetpointChangedEvent(hvac_mode="heat", timestamp=current_time, old_target=21.0, new_target=22.0))
 
         # Assert state is still HEATING and cycle was interrupted (interruption_history not empty)
         assert tracker.state == CycleState.HEATING
@@ -429,7 +440,7 @@ class TestSetpointChangeInCoolingMode:
 
     @pytest.mark.asyncio
     async def test_setpoint_change_in_cooling_mode(
-        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher, mock_dt_util
     ):
         """Test that setpoint change while cooler is active continues tracking."""
         # Set HVAC mode to 'cool'
@@ -468,7 +479,7 @@ class TestSetpointChangeInCoolingMode:
             current_time += timedelta(seconds=30)
 
         # Change setpoint mid-cycle while cooler is active (e.g., user wants it colder)
-        dispatcher.emit(SetpointChangedEvent(hvac_mode="heat", timestamp=datetime.now(), old_target=24.0, new_target=23.0))
+        dispatcher.emit(SetpointChangedEvent(hvac_mode="heat", timestamp=current_time, old_target=24.0, new_target=23.0))
 
         # Assert state is still COOLING (same behavior as heating)
         assert tracker.state == CycleState.COOLING
@@ -668,12 +679,13 @@ class TestPersistenceRoundtrip:
         original_learner.enable()
 
         # Add observations using proper KeObservation objects
+        base_time = datetime(2024, 1, 1, 10, 0, 0)
         original_learner._observations = [
-            KeObservation(timestamp=datetime.now(), outdoor_temp=5.0, pid_output=50.0,
+            KeObservation(timestamp=base_time, outdoor_temp=5.0, pid_output=50.0,
                          indoor_temp=21.0, target_temp=21.0),
-            KeObservation(timestamp=datetime.now(), outdoor_temp=0.0, pid_output=55.0,
+            KeObservation(timestamp=base_time + timedelta(hours=1), outdoor_temp=0.0, pid_output=55.0,
                          indoor_temp=20.5, target_temp=21.0),
-            KeObservation(timestamp=datetime.now(), outdoor_temp=-5.0, pid_output=60.0,
+            KeObservation(timestamp=base_time + timedelta(hours=2), outdoor_temp=-5.0, pid_output=60.0,
                          indoor_temp=20.0, target_temp=21.0),
         ]
         original_learner._current_ke = 0.65
@@ -731,8 +743,9 @@ class TestPersistenceRoundtrip:
         ke_learner.enable()
         ke_learner._current_ke = 0.55
         # Add some observations for the count
+        base_time = datetime(2024, 1, 1, 10, 0, 0)
         ke_learner._observations = [
-            KeObservation(timestamp=datetime.now(), outdoor_temp=i * 2.0, pid_output=50.0,
+            KeObservation(timestamp=base_time + timedelta(hours=i), outdoor_temp=i * 2.0, pid_output=50.0,
                          indoor_temp=20.0, target_temp=21.0)
             for i in range(5)
         ]
@@ -995,7 +1008,7 @@ class TestEventDrivenCycleFlow:
 
     @pytest.mark.asyncio
     async def test_full_cycle_decay_tracking(
-        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher, mock_dt_util
     ):
         """Test full heating cycle with decay tracking via TemperatureUpdateEvent.
 
@@ -1179,7 +1192,7 @@ class TestEventDrivenCycleFlow:
 
     @pytest.mark.asyncio
     async def test_setpoint_change_during_cycle_via_event(
-        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher, mock_dt_util
     ):
         """Test SETPOINT_CHANGED event during cycle handled via event."""
         from custom_components.adaptive_thermostat.managers.events import (
@@ -1267,7 +1280,7 @@ class TestEventDrivenCycleFlow:
 
     @pytest.mark.asyncio
     async def test_setpoint_major_change_aborts_via_event(
-        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher, mock_dt_util
     ):
         """Test that major SETPOINT_CHANGED event (device inactive) aborts cycle."""
         from custom_components.adaptive_thermostat.managers.events import (
@@ -1625,7 +1638,7 @@ class TestSettlingTimeFromDeviceOff:
 
     @pytest.mark.asyncio
     async def test_settling_time_from_device_off(
-        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher, mock_dt_util
     ):
         """Test that settling_time is measured from device_off_time, not first temp sample.
 
@@ -1755,7 +1768,7 @@ class TestClampedCycleEndToEnd:
 
     @pytest.mark.asyncio
     async def test_integration_clamped_cycle_flow(
-        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher, mock_dt_util
     ):
         """Test clamped cycle end-to-end: PID → SettlingStartedEvent → CycleTracker → CycleMetrics.
 
@@ -1858,7 +1871,7 @@ class TestClampedCycleEndToEnd:
 
     @pytest.mark.asyncio
     async def test_unclamped_cycle_has_was_clamped_false(
-        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher, mock_dt_util
     ):
         """Test that unclamped cycles have was_clamped=False in metrics.
 

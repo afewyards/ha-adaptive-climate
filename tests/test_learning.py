@@ -2,6 +2,7 @@
 
 import pytest
 from datetime import datetime, timedelta
+from unittest.mock import patch
 
 from custom_components.adaptive_thermostat.adaptive.learning import (
     PhaseAwareOvershootTracker,
@@ -1575,35 +1576,37 @@ class TestRateLimiting:
 
     def test_rate_limited_when_too_recent(self):
         """Test that adjustment is skipped when last adjustment was too recent."""
-        from unittest.mock import patch
-
         learner = AdaptiveLearner()
 
-        # Add enough cycles
-        for _ in range(6):
-            learner.add_cycle_metrics(CycleMetrics(
-                overshoot=0.6,
-                oscillations=0,
-                settling_time=30,
-                rise_time=20,
-            ))
+        fake_now = datetime.now()
+        with patch('custom_components.adaptive_thermostat.adaptive.learning.dt_util') as mock_dt_util:
+            mock_dt_util.utcnow.return_value = fake_now
 
-        # First adjustment should work
-        result1 = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
-        assert result1 is not None
+            # Add enough cycles
+            for _ in range(6):
+                learner.add_cycle_metrics(CycleMetrics(
+                    overshoot=0.6,
+                    oscillations=0,
+                    settling_time=30,
+                    rise_time=20,
+                ))
 
-        # Add more cycles for a potential second adjustment
-        for _ in range(6):
-            learner.add_cycle_metrics(CycleMetrics(
-                overshoot=0.6,
-                oscillations=0,
-                settling_time=30,
-                rise_time=20,
-            ))
+            # First adjustment should work
+            result1 = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
+            assert result1 is not None
 
-        # Second adjustment immediately after should be rate limited
-        result2 = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
-        assert result2 is None  # Rate limited
+            # Add more cycles for a potential second adjustment
+            for _ in range(6):
+                learner.add_cycle_metrics(CycleMetrics(
+                    overshoot=0.6,
+                    oscillations=0,
+                    settling_time=30,
+                    rise_time=20,
+                ))
+
+            # Second adjustment immediately after should be rate limited
+            result2 = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
+            assert result2 is None  # Rate limited
 
     def test_adjustment_allowed_after_interval(self):
         """Test that adjustment is allowed after minimum interval has passed."""
@@ -1623,20 +1626,23 @@ class TestRateLimiting:
         assert result1 is not None
 
         # Manually set last adjustment time to 25 hours ago
-        learner._last_adjustment_time = datetime.now() - timedelta(hours=25)
+        fake_now = datetime.now()
+        with patch('custom_components.adaptive_thermostat.adaptive.learning.dt_util') as mock_dt_util:
+            mock_dt_util.utcnow.return_value = fake_now
+            learner._last_adjustment_time = fake_now - timedelta(hours=25)
 
-        # Add more cycles
-        for _ in range(6):
-            learner.add_cycle_metrics(CycleMetrics(
-                overshoot=0.6,
-                oscillations=0,
-                settling_time=30,
-                rise_time=20,
-            ))
+            # Add more cycles
+            for _ in range(6):
+                learner.add_cycle_metrics(CycleMetrics(
+                    overshoot=0.6,
+                    oscillations=0,
+                    settling_time=30,
+                    rise_time=20,
+                ))
 
-        # Should now be allowed (25h > 24h interval)
-        result2 = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
-        assert result2 is not None
+            # Should now be allowed (25h > 24h interval)
+            result2 = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
+            assert result2 is not None
 
     def test_custom_rate_limit_interval(self):
         """Test that custom min_interval_hours is respected."""
@@ -1656,41 +1662,48 @@ class TestRateLimiting:
         assert result1 is not None
 
         # Set last adjustment to 2 hours ago
-        learner._last_adjustment_time = datetime.now() - timedelta(hours=2)
+        fake_now = datetime.now()
+        with patch('custom_components.adaptive_thermostat.adaptive.learning.dt_util') as mock_dt_util:
+            mock_dt_util.utcnow.return_value = fake_now
+            learner._last_adjustment_time = fake_now - timedelta(hours=2)
 
-        # Add more cycles
-        for _ in range(6):
-            learner.add_cycle_metrics(CycleMetrics(
-                overshoot=0.6,
-                oscillations=0,
-                settling_time=30,
-                rise_time=20,
-            ))
+            # Add more cycles
+            for _ in range(6):
+                learner.add_cycle_metrics(CycleMetrics(
+                    overshoot=0.6,
+                    oscillations=0,
+                    settling_time=30,
+                    rise_time=20,
+                ))
 
-        # Should be allowed with 1h interval (2h > 1h)
-        result2 = learner.calculate_pid_adjustment(100.0, 1.0, 10.0, min_interval_hours=1)
-        assert result2 is not None
+            # Should be allowed with 1h interval (2h > 1h)
+            result2 = learner.calculate_pid_adjustment(100.0, 1.0, 10.0, min_interval_hours=1)
+            assert result2 is not None
 
     def test_rate_limit_check_boundary(self):
         """Test rate limit at exact boundary for hybrid gates."""
         learner = AdaptiveLearner()
 
-        # Set last adjustment to exactly 8 hours ago (time gate at boundary)
-        learner._last_adjustment_time = datetime.now() - timedelta(hours=8)
-        learner._cycles_since_last_adjustment = 3  # Cycle gate satisfied
+        fake_now = datetime.now()
+        with patch('custom_components.adaptive_thermostat.adaptive.learning.dt_util') as mock_dt_util:
+            mock_dt_util.utcnow.return_value = fake_now
 
-        # At exactly 8h and 3 cycles, should NOT be rate limited (>= is allowed)
-        assert learner._check_rate_limit(8, 3) is False
+            # Set last adjustment to exactly 8 hours ago (time gate at boundary)
+            learner._last_adjustment_time = fake_now - timedelta(hours=8)
+            learner._cycles_since_last_adjustment = 3  # Cycle gate satisfied
 
-        # At 7.99h with 3 cycles, should be rate limited by time gate
-        learner._last_adjustment_time = datetime.now() - timedelta(hours=7, minutes=59)
-        learner._cycles_since_last_adjustment = 3
-        assert learner._check_rate_limit(8, 3) is True
+            # At exactly 8h and 3 cycles, should NOT be rate limited (>= is allowed)
+            assert learner._check_rate_limit(8, 3) is False
 
-        # At 8h but only 2 cycles, should be rate limited by cycle gate
-        learner._last_adjustment_time = datetime.now() - timedelta(hours=8)
-        learner._cycles_since_last_adjustment = 2
-        assert learner._check_rate_limit(8, 3) is True
+            # At 7.99h with 3 cycles, should be rate limited by time gate
+            learner._last_adjustment_time = fake_now - timedelta(hours=7, minutes=59)
+            learner._cycles_since_last_adjustment = 3
+            assert learner._check_rate_limit(8, 3) is True
+
+            # At 8h but only 2 cycles, should be rate limited by cycle gate
+            learner._last_adjustment_time = fake_now - timedelta(hours=8)
+            learner._cycles_since_last_adjustment = 2
+            assert learner._check_rate_limit(8, 3) is True
 
     def test_clear_history_resets_last_adjustment_time(self):
         """Test that clear_history also resets last_adjustment_time."""
@@ -1729,14 +1742,15 @@ class TestRateLimiting:
                 rise_time=20,
             ))
 
-        before = datetime.now()
-        result = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
-        after = datetime.now()
+        fake_now = datetime.now()
+        with patch('custom_components.adaptive_thermostat.adaptive.learning.dt_util') as mock_dt_util:
+            mock_dt_util.utcnow.return_value = fake_now
+            result = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
 
-        assert result is not None
-        last_time = learner.get_last_adjustment_time()
-        assert last_time is not None
-        assert before <= last_time <= after
+            assert result is not None
+            last_time = learner.get_last_adjustment_time()
+            assert last_time is not None
+            assert last_time == fake_now
 
 
 # Marker test for Story 3.5
@@ -2121,8 +2135,11 @@ class TestAdaptiveLearnerSerialization:
                 rise_time=20,
             ))
 
-        # Trigger adjustment
-        learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
+        # Trigger adjustment with mocked time
+        fake_now = datetime.now()
+        with patch('custom_components.adaptive_thermostat.adaptive.learning.dt_util') as mock_dt_util:
+            mock_dt_util.utcnow.return_value = fake_now
+            learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
 
         result2 = learner.to_dict()
 
@@ -2130,7 +2147,6 @@ class TestAdaptiveLearnerSerialization:
         assert result2["last_adjustment_time"] is not None
         assert isinstance(result2["last_adjustment_time"], str)
         # Verify it's valid ISO format by parsing it
-        from datetime import datetime
         parsed = datetime.fromisoformat(result2["last_adjustment_time"])
         assert isinstance(parsed, datetime)
 

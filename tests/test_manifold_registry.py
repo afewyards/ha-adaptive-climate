@@ -281,6 +281,8 @@ class TestTransportDelayWarmManifold:
 
     def test_delay_recently_active_returns_zero(self):
         """Test that recently active manifold returns 0 delay."""
+        from unittest.mock import patch
+
         manifolds = [
             Manifold(
                 name="2nd Floor",
@@ -298,14 +300,19 @@ class TestTransportDelayWarmManifold:
         assert delay == 10.0  # 20L / (1 × 2) = 10 min
 
         # Mark as recently active (simulate time passing < 5 min)
-        registry.mark_manifold_active("climate.bathroom_2nd")
+        current_time = datetime(2024, 1, 15, 10, 0)
+        with patch('custom_components.adaptive_thermostat.adaptive.manifold_registry.dt_util') as mock_dt_util:
+            mock_dt_util.utcnow.return_value = current_time
+            registry.mark_manifold_active("climate.bathroom_2nd")
 
-        # Second call - manifold is warm
-        delay = registry.get_transport_delay("climate.bathroom_2nd", active_zones)
-        assert delay == 0.0
+            # Second call - manifold is warm
+            delay = registry.get_transport_delay("climate.bathroom_2nd", active_zones)
+            assert delay == 0.0
 
     def test_delay_warm_manifold_within_cooldown(self):
         """Test manifold stays warm within 5 minute cooldown period."""
+        from unittest.mock import patch
+
         manifolds = [
             Manifold(
                 name="2nd Floor",
@@ -318,25 +325,35 @@ class TestTransportDelayWarmManifold:
 
         active_zones = {"climate.bathroom_2nd": 1}
 
-        # Mark as active
-        registry.mark_manifold_active("climate.bathroom_2nd")
+        current_time = datetime(2024, 1, 15, 10, 0)
 
-        # Check at various times within cooldown
-        delay = registry.get_transport_delay("climate.bathroom_2nd", active_zones)
-        assert delay == 0.0
+        # Mark as active
+        with patch('custom_components.adaptive_thermostat.adaptive.manifold_registry.dt_util') as mock_dt_util:
+            mock_dt_util.utcnow.return_value = current_time
+            registry.mark_manifold_active("climate.bathroom_2nd")
+
+            # Check at various times within cooldown
+            delay = registry.get_transport_delay("climate.bathroom_2nd", active_zones)
+            assert delay == 0.0
 
         # Simulate 2 minutes passing (still within 5 min cooldown)
-        registry._last_active_time["2nd Floor"] = datetime.now() - timedelta(minutes=2)
-        delay = registry.get_transport_delay("climate.bathroom_2nd", active_zones)
-        assert delay == 0.0
+        with patch('custom_components.adaptive_thermostat.adaptive.manifold_registry.dt_util') as mock_dt_util:
+            mock_dt_util.utcnow.return_value = current_time
+            registry._last_active_time["2nd Floor"] = current_time - timedelta(minutes=2)
+            delay = registry.get_transport_delay("climate.bathroom_2nd", active_zones)
+            assert delay == 0.0
 
         # Simulate 4.5 minutes passing (still within cooldown)
-        registry._last_active_time["2nd Floor"] = datetime.now() - timedelta(minutes=4.5)
-        delay = registry.get_transport_delay("climate.bathroom_2nd", active_zones)
-        assert delay == 0.0
+        with patch('custom_components.adaptive_thermostat.adaptive.manifold_registry.dt_util') as mock_dt_util:
+            mock_dt_util.utcnow.return_value = current_time
+            registry._last_active_time["2nd Floor"] = current_time - timedelta(minutes=4.5)
+            delay = registry.get_transport_delay("climate.bathroom_2nd", active_zones)
+            assert delay == 0.0
 
     def test_delay_manifold_cools_after_5_minutes(self):
         """Test manifold becomes cold after 5 minute cooldown expires."""
+        from unittest.mock import patch
+
         manifolds = [
             Manifold(
                 name="2nd Floor",
@@ -349,20 +366,28 @@ class TestTransportDelayWarmManifold:
 
         active_zones = {"climate.bathroom_2nd": 1}
 
-        # Mark as active
-        registry.mark_manifold_active("climate.bathroom_2nd")
+        current_time = datetime(2024, 1, 15, 10, 0)
 
-        # Initially warm
-        delay = registry.get_transport_delay("climate.bathroom_2nd", active_zones)
-        assert delay == 0.0
+        # Mark as active
+        with patch('custom_components.adaptive_thermostat.adaptive.manifold_registry.dt_util') as mock_dt_util:
+            mock_dt_util.utcnow.return_value = current_time
+            registry.mark_manifold_active("climate.bathroom_2nd")
+
+            # Initially warm
+            delay = registry.get_transport_delay("climate.bathroom_2nd", active_zones)
+            assert delay == 0.0
 
         # Simulate 6 minutes passing (beyond cooldown)
-        registry._last_active_time["2nd Floor"] = datetime.now() - timedelta(minutes=6)
-        delay = registry.get_transport_delay("climate.bathroom_2nd", active_zones)
-        assert delay == 10.0  # Back to cold calculation
+        with patch('custom_components.adaptive_thermostat.adaptive.manifold_registry.dt_util') as mock_dt_util:
+            mock_dt_util.utcnow.return_value = current_time
+            registry._last_active_time["2nd Floor"] = current_time - timedelta(minutes=6)
+            delay = registry.get_transport_delay("climate.bathroom_2nd", active_zones)
+            assert delay == 10.0  # Back to cold calculation
 
     def test_delay_multiple_manifolds_independent_cooldown(self):
         """Test that different manifolds have independent cooldown tracking."""
+        from unittest.mock import patch
+
         manifolds = [
             Manifold(
                 name="2nd Floor",
@@ -380,12 +405,15 @@ class TestTransportDelayWarmManifold:
         registry = ManifoldRegistry(manifolds)
 
         # Mark only 2nd floor as active
-        registry.mark_manifold_active("climate.bathroom_2nd")
+        current_time = datetime(2024, 1, 15, 10, 0)
+        with patch('custom_components.adaptive_thermostat.adaptive.manifold_registry.dt_util') as mock_dt_util:
+            mock_dt_util.utcnow.return_value = current_time
+            registry.mark_manifold_active("climate.bathroom_2nd")
 
-        # 2nd floor should be warm
-        active_zones_2nd = {"climate.bathroom_2nd": 1}
-        delay = registry.get_transport_delay("climate.bathroom_2nd", active_zones_2nd)
-        assert delay == 0.0
+            # 2nd floor should be warm
+            active_zones_2nd = {"climate.bathroom_2nd": 1}
+            delay = registry.get_transport_delay("climate.bathroom_2nd", active_zones_2nd)
+            assert delay == 0.0
 
         # Ground floor should still be cold
         active_zones_ground = {"climate.living_room": 1}
@@ -449,6 +477,8 @@ class TestMarkManifoldActiveProductionScenario:
 
     def test_heater_turn_on_marks_manifold_active(self):
         """Test that marking manifold active after heater turn-on prevents delay for adjacent zones."""
+        from unittest.mock import patch
+
         manifolds = [
             Manifold(
                 name="2nd Floor",
@@ -467,24 +497,29 @@ class TestMarkManifoldActiveProductionScenario:
         assert delay == 5.0  # 20L / (2 × 2) = 5 min
 
         # Simulate production code: heater turns on → mark manifold active
-        registry.mark_manifold_active("climate.bathroom_2nd")
+        current_time = datetime(2024, 1, 15, 10, 0)
+        with patch('custom_components.adaptive_thermostat.adaptive.manifold_registry.dt_util') as mock_dt_util:
+            mock_dt_util.utcnow.return_value = current_time
+            registry.mark_manifold_active("climate.bathroom_2nd")
 
-        # Bedroom zone turns on shortly after (within 5 min)
-        active_zones_both = {
-            "climate.bathroom_2nd": 2,
-            "climate.bedroom_2nd": 1
-        }
+            # Bedroom zone turns on shortly after (within 5 min)
+            active_zones_both = {
+                "climate.bathroom_2nd": 2,
+                "climate.bedroom_2nd": 1
+            }
 
-        # Bedroom should get 0 delay because manifold is now warm
-        delay = registry.get_transport_delay("climate.bedroom_2nd", active_zones_both)
-        assert delay == 0.0  # Manifold is warm, no transport delay
+            # Bedroom should get 0 delay because manifold is now warm
+            delay = registry.get_transport_delay("climate.bedroom_2nd", active_zones_both)
+            assert delay == 0.0  # Manifold is warm, no transport delay
 
-        # Bathroom should also get 0 delay
-        delay = registry.get_transport_delay("climate.bathroom_2nd", active_zones_both)
-        assert delay == 0.0
+            # Bathroom should also get 0 delay
+            delay = registry.get_transport_delay("climate.bathroom_2nd", active_zones_both)
+            assert delay == 0.0
 
     def test_sequential_zone_activation_on_same_manifold(self):
         """Test that sequential zone activations on same manifold benefit from mark_manifold_active."""
+        from unittest.mock import patch
+
         manifolds = [
             Manifold(
                 name="Ground Floor",
@@ -501,24 +536,29 @@ class TestMarkManifoldActiveProductionScenario:
         assert delay == 7.5  # 30L / (2 × 2) = 7.5 min
 
         # Mark as active (simulating production heater turn-on)
-        registry.mark_manifold_active("climate.living_room")
+        current_time = datetime(2024, 1, 15, 10, 0)
+        with patch('custom_components.adaptive_thermostat.adaptive.manifold_registry.dt_util') as mock_dt_util:
+            mock_dt_util.utcnow.return_value = current_time
+            registry.mark_manifold_active("climate.living_room")
 
-        # Second zone activates shortly after
-        active_zones = {"climate.living_room": 2, "climate.kitchen": 1}
-        delay = registry.get_transport_delay("climate.kitchen", active_zones)
-        assert delay == 0.0  # Manifold warm
+            # Second zone activates shortly after
+            active_zones = {"climate.living_room": 2, "climate.kitchen": 1}
+            delay = registry.get_transport_delay("climate.kitchen", active_zones)
+            assert delay == 0.0  # Manifold warm
 
-        # Third zone activates
-        active_zones = {
-            "climate.living_room": 2,
-            "climate.kitchen": 1,
-            "climate.dining": 1
-        }
-        delay = registry.get_transport_delay("climate.dining", active_zones)
-        assert delay == 0.0  # Still warm
+            # Third zone activates
+            active_zones = {
+                "climate.living_room": 2,
+                "climate.kitchen": 1,
+                "climate.dining": 1
+            }
+            delay = registry.get_transport_delay("climate.dining", active_zones)
+            assert delay == 0.0  # Still warm
 
     def test_different_manifolds_independent_marking(self):
         """Test that marking one manifold active doesn't affect other manifolds."""
+        from unittest.mock import patch
+
         manifolds = [
             Manifold(
                 name="2nd Floor",
@@ -540,11 +580,14 @@ class TestMarkManifoldActiveProductionScenario:
         delay = registry.get_transport_delay("climate.bathroom_2nd", active_zones_2nd)
         assert delay == 10.0  # Cold initially
 
-        registry.mark_manifold_active("climate.bathroom_2nd")
+        current_time = datetime(2024, 1, 15, 10, 0)
+        with patch('custom_components.adaptive_thermostat.adaptive.manifold_registry.dt_util') as mock_dt_util:
+            mock_dt_util.utcnow.return_value = current_time
+            registry.mark_manifold_active("climate.bathroom_2nd")
 
-        # 2nd floor should be warm
-        delay = registry.get_transport_delay("climate.bathroom_2nd", active_zones_2nd)
-        assert delay == 0.0
+            # 2nd floor should be warm
+            delay = registry.get_transport_delay("climate.bathroom_2nd", active_zones_2nd)
+            assert delay == 0.0
 
         # Ground floor should still be cold
         active_zones_ground = {"climate.living_room": 1}

@@ -10,6 +10,8 @@ from typing import List, Optional, Dict, Any
 import logging
 import statistics
 
+from homeassistant.util import dt as dt_util
+
 from ..const import (
     KE_MIN_OBSERVATIONS,
     KE_MIN_TEMP_RANGE,
@@ -147,7 +149,7 @@ class KeLearner:
             return False
 
         if timestamp is None:
-            timestamp = datetime.now()
+            timestamp = dt_util.utcnow()
 
         observation = KeObservation(
             timestamp=timestamp,
@@ -229,7 +231,7 @@ class KeLearner:
         if self._last_adjustment_time is None:
             return False
 
-        time_since_last = datetime.now() - self._last_adjustment_time
+        time_since_last = dt_util.utcnow() - self._last_adjustment_time
         min_interval = timedelta(hours=KE_ADJUSTMENT_INTERVAL)
 
         if time_since_last < min_interval:
@@ -356,7 +358,7 @@ class KeLearner:
         """
         old_ke = self._current_ke
         self._current_ke = new_ke
-        self._last_adjustment_time = datetime.now()
+        self._last_adjustment_time = dt_util.utcnow()
 
         # Clear old observations to start fresh with new Ke
         self._observations.clear()

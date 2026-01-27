@@ -11,6 +11,8 @@ from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Awaitable, Callable
 
+from homeassistant.util import dt as dt_util
+
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
     from ..adaptive.learning import AdaptiveLearner
@@ -623,7 +625,7 @@ class CycleTrackerManager:
             return
 
         # Record interruption in metrics recorder
-        self._metrics_recorder.add_interruption(datetime.now(), interruption_type)
+        self._metrics_recorder.add_interruption(dt_util.utcnow(), interruption_type)
 
         # Map interruption type to user-friendly string for persistence
         if interruption_type in ("setpoint_major", "setpoint_minor"):
@@ -680,7 +682,7 @@ class CycleTrackerManager:
         return self._metrics_recorder._is_cycle_valid(
             cycle_start_time=self._cycle_start_time,
             temperature_history=self._temperature_history,
-            current_time=datetime.now(),
+            current_time=dt_util.utcnow(),
         )
 
     def _calculate_mad(self, values: list[float]) -> float:

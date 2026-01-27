@@ -18,6 +18,7 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.const import PERCENTAGE
 from homeassistant.core import HomeAssistant
+from homeassistant.util import dt as dt_util
 
 from ..const import DOMAIN
 from .performance import AdaptiveThermostatSensor
@@ -104,7 +105,7 @@ class TimeAtTargetSensor(AdaptiveThermostatSensor):
         """
         self._samples.append(
             TemperatureSample(
-                timestamp=datetime.now(),
+                timestamp=dt_util.utcnow(),
                 temperature=temperature,
                 setpoint=setpoint,
             )
@@ -146,7 +147,7 @@ class TimeAtTargetSensor(AdaptiveThermostatSensor):
         Returns:
             Percentage (0-100) of time at target
         """
-        now = datetime.now()
+        now = dt_util.utcnow()
         window_start = now - self._measurement_window
 
         # Filter samples within window

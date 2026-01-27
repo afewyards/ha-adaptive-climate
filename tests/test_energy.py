@@ -108,9 +108,13 @@ class TestWeeklyDeltaCalculation:
 
     def test_weekly_delta_basic(self, sensor, mock_hass):
         """Test basic weekly delta: current - week_start."""
+        # Use dt_util.utcnow() to match production code
+        from homeassistant.util import dt as dt_util
+        now = dt_util.utcnow()
+
         # Set up week start
         sensor._week_start_reading = 100.0
-        sensor._week_start_timestamp = datetime.now()
+        sensor._week_start_timestamp = now
 
         # Mock meter state at 150 kWh
         meter_state = Mock()
@@ -122,12 +126,11 @@ class TestWeeklyDeltaCalculation:
             else None
         )
 
-        # Patch datetime.now to return same week
+        # Patch dt_util.utcnow to return same week
         with patch(
-            "custom_components.adaptive_thermostat.sensors.energy.datetime"
-        ) as mock_datetime:
-            mock_datetime.now.return_value = datetime.now()
-            mock_datetime.fromisoformat = datetime.fromisoformat
+            "custom_components.adaptive_thermostat.sensors.energy.dt_util"
+        ) as mock_dt_util:
+            mock_dt_util.utcnow.return_value = datetime.now()
 
             import asyncio
 
@@ -138,8 +141,11 @@ class TestWeeklyDeltaCalculation:
 
     def test_weekly_delta_accumulates(self, sensor, mock_hass):
         """Test delta accumulates over multiple updates."""
+        from homeassistant.util import dt as dt_util
+        now = dt_util.utcnow()
+
         sensor._week_start_reading = 100.0
-        sensor._week_start_timestamp = datetime.now()
+        sensor._week_start_timestamp = now
 
         # First update at 120 kWh
         meter_state = Mock()
@@ -163,8 +169,11 @@ class TestWeeklyDeltaCalculation:
 
     def test_weekly_delta_with_unit_conversion(self, sensor, mock_hass):
         """Test delta calculation with different energy units."""
+        from homeassistant.util import dt as dt_util
+        now = dt_util.utcnow()
+
         sensor._week_start_reading = 100.0  # kWh
-        sensor._week_start_timestamp = datetime.now()
+        sensor._week_start_timestamp = now
 
         # Meter reports in GJ (1 GJ = 277.778 kWh)
         meter_state = Mock()
@@ -186,8 +195,11 @@ class TestWeeklyDeltaCalculation:
 
     def test_weekly_cost_calculation(self, sensor, mock_hass):
         """Test cost calculation based on delta and price."""
+        from homeassistant.util import dt as dt_util
+        now = dt_util.utcnow()
+
         sensor._week_start_reading = 100.0
-        sensor._week_start_timestamp = datetime.now()
+        sensor._week_start_timestamp = now
 
         meter_state = Mock()
         meter_state.state = "150.0"
@@ -295,12 +307,14 @@ class TestPersistenceAcrossRestarts:
     def test_calculation_continues_after_restart(self, sensor, mock_hass):
         """Test weekly calculation continues correctly after restart."""
         import asyncio
+        from homeassistant.util import dt as dt_util
+        now = dt_util.utcnow()
 
         # Restore state from before restart
         old_state = Mock()
         old_state.attributes = {
             "week_start_reading": 100.0,
-            "week_start_timestamp": datetime.now().isoformat(),  # Same week
+            "week_start_timestamp": now.isoformat(),  # Same week
             "last_meter_reading": 120.0,
             "weekly_energy_kwh": 20.0,
         }
@@ -380,10 +394,9 @@ class TestWeekBoundaryReset:
         week3_date = datetime(2025, 1, 20, 12, 0, 0)  # Monday of week 4
 
         with patch(
-            "custom_components.adaptive_thermostat.sensors.energy.datetime"
-        ) as mock_datetime:
-            mock_datetime.now.return_value = week3_date
-            mock_datetime.fromisoformat = datetime.fromisoformat
+            "custom_components.adaptive_thermostat.sensors.energy.dt_util"
+        ) as mock_dt_util:
+            mock_dt_util.utcnow.return_value = week3_date
 
             import asyncio
 
@@ -413,10 +426,9 @@ class TestWeekBoundaryReset:
         friday = datetime(2025, 1, 10, 18, 0, 0)
 
         with patch(
-            "custom_components.adaptive_thermostat.sensors.energy.datetime"
-        ) as mock_datetime:
-            mock_datetime.now.return_value = friday
-            mock_datetime.fromisoformat = datetime.fromisoformat
+            "custom_components.adaptive_thermostat.sensors.energy.dt_util"
+        ) as mock_dt_util:
+            mock_dt_util.utcnow.return_value = friday
 
             import asyncio
 
@@ -445,10 +457,9 @@ class TestWeekBoundaryReset:
         new_week = datetime(2025, 1, 13, 10, 0, 0)
 
         with patch(
-            "custom_components.adaptive_thermostat.sensors.energy.datetime"
-        ) as mock_datetime:
-            mock_datetime.now.return_value = new_week
-            mock_datetime.fromisoformat = datetime.fromisoformat
+            "custom_components.adaptive_thermostat.sensors.energy.dt_util"
+        ) as mock_dt_util:
+            mock_dt_util.utcnow.return_value = new_week
 
             import asyncio
 
@@ -477,10 +488,9 @@ class TestWeekBoundaryReset:
         new_year = datetime(2025, 1, 6, 10, 0, 0)
 
         with patch(
-            "custom_components.adaptive_thermostat.sensors.energy.datetime"
-        ) as mock_datetime:
-            mock_datetime.now.return_value = new_year
-            mock_datetime.fromisoformat = datetime.fromisoformat
+            "custom_components.adaptive_thermostat.sensors.energy.dt_util"
+        ) as mock_dt_util:
+            mock_dt_util.utcnow.return_value = new_year
 
             import asyncio
 

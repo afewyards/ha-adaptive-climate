@@ -7,6 +7,7 @@ from typing import Any, TYPE_CHECKING
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.util import dt as dt_util
 
 try:
     from .const import DOMAIN
@@ -231,7 +232,7 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
 
         # Use current time if not specified
         if check_time is None:
-            check_time = datetime.now()
+            check_time = dt_util.utcnow()
 
         # Get sun position at check time
         sun_pos = self._sun_position_calculator.get_position_at_time(check_time)

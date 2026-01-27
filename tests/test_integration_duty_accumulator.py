@@ -132,7 +132,7 @@ class TestAccumulatorFiresAfterMultiplePeriods:
 
         # Simulate PWM period 1: 10% output (time_on = 60s < 75s threshold)
         # With 600s elapsed and 10% duty, accumulates: 600 * 0.1 = 60s
-        with patch('time.time', return_value=600.0):  # Enough time passed for PWM
+        with patch('time.monotonic', return_value=600.0):  # Enough time passed for PWM
             await controller.async_pwm_switch(
                 control_output=10.0,  # 10% of 100 = 10, time_on = 600 * 10 / 100 = 60s
                 hvac_mode=MockHVACMode.HEAT,
@@ -155,7 +155,7 @@ class TestAccumulatorFiresAfterMultiplePeriods:
         service_calls.clear()
 
         # Simulate PWM period 2: another 10% output
-        with patch('time.time', return_value=1200.0):
+        with patch('time.monotonic', return_value=1200.0):
             await controller.async_pwm_switch(
                 control_output=10.0,
                 hvac_mode=MockHVACMode.HEAT,
@@ -178,7 +178,7 @@ class TestAccumulatorFiresAfterMultiplePeriods:
 
         # Period 3: Now 120s >= 75s at check, so it fires and subtracts 75s
         service_calls.clear()
-        with patch('time.time', return_value=1800.0):
+        with patch('time.monotonic', return_value=1800.0):
             await controller.async_pwm_switch(
                 control_output=10.0,
                 hvac_mode=MockHVACMode.HEAT,
@@ -249,7 +249,7 @@ class TestAccumulatorRestartContinuity:
         controller1._last_accumulator_calc_time = 0.0
 
         # Accumulate some duty (10% output for 600s = 60s)
-        with patch('time.time', return_value=600.0):
+        with patch('time.monotonic', return_value=600.0):
             await controller1.async_pwm_switch(
                 control_output=10.0,
                 hvac_mode=MockHVACMode.HEAT,
@@ -294,7 +294,7 @@ class TestAccumulatorRestartContinuity:
         # Set baseline calc time for time-scaled accumulation (600s ago)
         controller2._last_accumulator_calc_time = 600.0
 
-        with patch('time.time', return_value=1200.0):
+        with patch('time.monotonic', return_value=1200.0):
             await controller2.async_pwm_switch(
                 control_output=10.0,  # 10% for 600s = 60s more
                 hvac_mode=MockHVACMode.HEAT,
@@ -346,7 +346,7 @@ class TestAccumulatorWithChangingOutput:
         controller._last_accumulator_calc_time = 0.0
 
         # Period 1: 5% output for 600s = 30s accumulated
-        with patch('time.time', return_value=600.0):
+        with patch('time.monotonic', return_value=600.0):
             await controller.async_pwm_switch(
                 control_output=5.0,
                 hvac_mode=MockHVACMode.HEAT,
@@ -365,7 +365,7 @@ class TestAccumulatorWithChangingOutput:
 
         # Period 2: 8% output (time_on = 48s < 75s)
         # Check: 30s >= 75s? NO, accumulate 48s -> 78s
-        with patch('time.time', return_value=1200.0):
+        with patch('time.monotonic', return_value=1200.0):
             await controller.async_pwm_switch(
                 control_output=8.0,
                 hvac_mode=MockHVACMode.HEAT,
@@ -385,7 +385,7 @@ class TestAccumulatorWithChangingOutput:
 
         # Period 3: 12% output (time_on = 72s < 75s)
         # Check at start: 78s >= 75s? YES -> fire, subtract 75s -> 3s
-        with patch('time.time', return_value=1800.0):
+        with patch('time.monotonic', return_value=1800.0):
             await controller.async_pwm_switch(
                 control_output=12.0,
                 hvac_mode=MockHVACMode.HEAT,
@@ -407,7 +407,7 @@ class TestAccumulatorWithChangingOutput:
         # Since time_on >= threshold, this is normal firing, accumulator resets
         # But device is OFF, so it needs time_off elapsed to turn on
         controller._hass.states.is_state = MagicMock(return_value=False)
-        with patch('time.time', return_value=2400.0):
+        with patch('time.monotonic', return_value=2400.0):
             await controller.async_pwm_switch(
                 control_output=15.0,
                 hvac_mode=MockHVACMode.HEAT,
@@ -483,7 +483,7 @@ class TestAccumulatorCycleTrackingCorrect:
         controller._duty_accumulator_seconds = 80.0  # >= 75s threshold
 
         # Call with sub-threshold output to trigger accumulator fire
-        with patch('time.time', return_value=600.0):
+        with patch('time.monotonic', return_value=600.0):
             await controller.async_pwm_switch(
                 control_output=10.0,  # 60s < 75s
                 hvac_mode=MockHVACMode.HEAT,
@@ -517,7 +517,7 @@ class TestAccumulatorCycleTrackingCorrect:
         controller._hass.states.is_state = MagicMock(return_value=True)  # Device is ON
 
         # Simulate off time passed
-        with patch('time.time', return_value=700.0):  # 100s later
+        with patch('time.monotonic', return_value=700.0):  # 100s later
             await controller.async_turn_off(
                 hvac_mode=MockHVACMode.HEAT,
                 get_cycle_start_time=MagicMock(return_value=600.0),
@@ -559,7 +559,7 @@ class TestAccumulatorResetBehavior:
         controller._duty_accumulator_seconds = 50.0
 
         # Call with zero output
-        with patch('time.time', return_value=600.0):
+        with patch('time.monotonic', return_value=600.0):
             await controller.async_pwm_switch(
                 control_output=0.0,
                 hvac_mode=MockHVACMode.HEAT,
@@ -631,7 +631,7 @@ class TestAccumulatorEdgeCases:
         # Set accumulator exactly at threshold
         controller._duty_accumulator_seconds = 75.0
 
-        with patch('time.time', return_value=600.0):
+        with patch('time.monotonic', return_value=600.0):
             await controller.async_pwm_switch(
                 control_output=10.0,
                 hvac_mode=MockHVACMode.HEAT,
@@ -671,7 +671,7 @@ class TestAccumulatorEdgeCases:
 
         controller._duty_accumulator_seconds = 50.0
 
-        with patch('time.time', return_value=600.0):
+        with patch('time.monotonic', return_value=600.0):
             await controller.async_pwm_switch(
                 control_output=-5.0,  # Negative output
                 hvac_mode=MockHVACMode.HEAT,
@@ -716,7 +716,7 @@ class TestAccumulatorEdgeCases:
         controller._duty_accumulator_seconds = 160.0
 
         # First call: 160s >= 75s -> fire, 160 - 75 = 85s
-        with patch('time.time', return_value=600.0):
+        with patch('time.monotonic', return_value=600.0):
             await controller.async_pwm_switch(
                 control_output=10.0,  # 60s
                 hvac_mode=MockHVACMode.HEAT,
@@ -735,7 +735,7 @@ class TestAccumulatorEdgeCases:
         assert fire_count == 1
 
         # Second call: 85s >= 75s -> fire, 85 - 75 = 10s
-        with patch('time.time', return_value=1200.0):
+        with patch('time.monotonic', return_value=1200.0):
             await controller.async_pwm_switch(
                 control_output=10.0,
                 hvac_mode=MockHVACMode.HEAT,

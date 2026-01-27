@@ -17,7 +17,8 @@ class TestNightSetbackPreheatIntegration:
             start_temp=16.0,
             end_temp=20.0,
             outdoor_temp=5.0,
-            duration_minutes=120.0
+            duration_minutes=120.0,
+            timestamp=datetime(2024, 1, 15, 0, 0)
         )
 
         setback = NightSetback(
@@ -52,12 +53,13 @@ class TestNightSetbackPreheatIntegration:
         """Test with enough observations to use learned rate."""
         learner = PreheatLearner(heating_type="radiator")
         # Add 3 observations with consistent rate: 2.0°C/hour
-        for _ in range(3):
+        for i in range(3):
             learner.add_observation(
                 start_temp=18.0,
                 end_temp=20.0,
                 outdoor_temp=8.0,
-                duration_minutes=60.0  # 2°C in 60 min = 2.0°C/h
+                duration_minutes=60.0,  # 2°C in 60 min = 2.0°C/h
+                timestamp=datetime(2024, 1, 15, i, 0)
             )
 
         setback = NightSetback(
@@ -118,12 +120,13 @@ class TestNightSetbackPreheatIntegration:
         """Test returns True when now >= calculated preheat start time."""
         learner = PreheatLearner(heating_type="radiator")
         # Fast heating: 4°C in 60 minutes = 4.0°C/hour
-        for _ in range(3):
+        for i in range(3):
             learner.add_observation(
                 start_temp=16.0,
                 end_temp=20.0,
                 outdoor_temp=10.0,
-                duration_minutes=60.0
+                duration_minutes=60.0,
+                timestamp=datetime(2024, 1, 15, i, 0)
             )
 
         setback = NightSetback(
@@ -156,12 +159,13 @@ class TestNightSetbackPreheatIntegration:
         """Test returns False when now < calculated preheat start time."""
         learner = PreheatLearner(heating_type="forced_air")
         # Very fast heating: 4°C in 30 minutes = 8.0°C/hour
-        for _ in range(3):
+        for i in range(3):
             learner.add_observation(
                 start_temp=16.0,
                 end_temp=20.0,
                 outdoor_temp=10.0,
-                duration_minutes=30.0
+                duration_minutes=30.0,
+                timestamp=datetime(2024, 1, 15, i, 0)
             )
 
         setback = NightSetback(
@@ -199,7 +203,8 @@ class TestNightSetbackPreheatIntegration:
             start_temp=10.0,
             end_temp=12.0,
             outdoor_temp=0.0,
-            duration_minutes=360.0
+            duration_minutes=360.0,
+            timestamp=datetime(2024, 1, 15, 0, 0)
         )
 
         setback = NightSetback(
@@ -270,7 +275,7 @@ class TestNightSetbackPreheatIntegration:
     def test_should_start_recovery_no_recovery_deadline(self):
         """Test returns False when no recovery deadline set."""
         learner = PreheatLearner(heating_type="radiator")
-        learner.add_observation(18.0, 20.0, 5.0, 60.0)
+        learner.add_observation(18.0, 20.0, 5.0, 60.0, timestamp=datetime(2024, 1, 15, 0, 0))
 
         setback = NightSetback(
             start_time="22:00",
@@ -299,7 +304,8 @@ class TestNightSetbackPreheatIntegration:
             start_temp=18.0,
             end_temp=20.0,
             outdoor_temp=8.0,  # mild bin
-            duration_minutes=60.0
+            duration_minutes=60.0,
+            timestamp=datetime(2024, 1, 15, 0, 0)
         )
 
         setback = NightSetback(

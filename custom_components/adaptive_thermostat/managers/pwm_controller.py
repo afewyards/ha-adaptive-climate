@@ -142,7 +142,7 @@ class PWMController:
         entities = heater_controller.get_entities(hvac_mode)
         thermostat_entity_id = self._thermostat.entity_id
 
-        time_passed = time.time() - time_changed
+        time_passed = time.monotonic() - time_changed
 
         # Handle zero/negative output - reset accumulator and turn off
         if control_output <= 0:
@@ -250,7 +250,7 @@ class PWMController:
                 )
 
                 # Update time tracking
-                set_time_changed(time.time())
+                set_time_changed(time.monotonic())
 
                 # Subtract minimum pulse duration from accumulator
                 self._duty_accumulator_seconds -= self._min_on_cycle_duration
@@ -261,7 +261,7 @@ class PWMController:
 
             # Below threshold - accumulate duty scaled by actual elapsed time
             # time_on is for the full PWM period; scale by actual interval
-            current_time = time.time()
+            current_time = time.monotonic()
             if self._last_accumulator_calc_time is not None:
                 actual_dt = current_time - self._last_accumulator_calc_time
                 # duty_to_add = actual_dt * (time_on / pwm) = actual_dt * duty_fraction
@@ -316,7 +316,7 @@ class PWMController:
                     set_is_heating=set_is_heating,
                     set_last_heat_cycle_time=set_last_heat_cycle_time,
                 )
-                set_time_changed(time.time())
+                set_time_changed(time.monotonic())
             else:
                 _LOGGER.info(
                     "%s: Time until %s turns OFF: %s sec",
@@ -343,7 +343,7 @@ class PWMController:
                     set_is_heating=set_is_heating,
                     set_last_heat_cycle_time=set_last_heat_cycle_time,
                 )
-                set_time_changed(time.time())
+                set_time_changed(time.monotonic())
             else:
                 _LOGGER.info(
                     "%s: Time until %s turns ON: %s sec",

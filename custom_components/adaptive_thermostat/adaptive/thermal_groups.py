@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, TYPE_CHECKING
 
+from homeassistant.util import dt as dt_util
+
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
@@ -265,13 +267,13 @@ class ThermalGroupManager:
                 # Add to history
                 history_entry = TransferHistory(
                     source_group=source_group_name,
-                    timestamp=datetime.now(),
+                    timestamp=dt_util.utcnow(),
                     heat_output=heat_output
                 )
                 self._transfer_history[group.name].append(history_entry)
 
                 # Keep only last 2 hours of history
-                cutoff_time = datetime.now() - timedelta(hours=2)
+                cutoff_time = dt_util.utcnow() - timedelta(hours=2)
                 self._transfer_history[group.name] = [
                     h for h in self._transfer_history[group.name]
                     if h.timestamp > cutoff_time
@@ -300,7 +302,7 @@ class ThermalGroupManager:
             return 0.0
 
         # Find heat output at delay_minutes ago
-        target_time = datetime.now() - timedelta(minutes=group.delay_minutes)
+        target_time = dt_util.utcnow() - timedelta(minutes=group.delay_minutes)
 
         # Find closest historical entry
         closest_entry = None

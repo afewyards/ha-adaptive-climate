@@ -149,7 +149,7 @@ class KeController:
             return False
 
         # Start tracking steady state if not already
-        current_time = time.time()
+        current_time = time.monotonic()
         if self._steady_state_start is None:
             self._steady_state_start = current_time
 
@@ -199,7 +199,7 @@ class KeController:
             return
 
         # Rate limit: at least 5 minutes between observations
-        current_time = time.time()
+        current_time = time.monotonic()
         if self._last_ke_observation_time is not None:
             time_since_last = current_time - self._last_ke_observation_time
             if time_since_last < 300:  # 5 minutes

@@ -8,10 +8,12 @@ from typing import Any, TYPE_CHECKING
 # These imports are only needed when running in Home Assistant
 try:
     from homeassistant.core import HomeAssistant
+    from homeassistant.util import dt as dt_util
     HAS_HOMEASSISTANT = True
 except ImportError:
     HAS_HOMEASSISTANT = False
     HomeAssistant = Any
+    dt_util = None
 
 from ..const import DOMAIN
 
@@ -184,7 +186,7 @@ async def _run_weekly_report_core(
 
     _LOGGER.info("Generating weekly report with charts")
 
-    end_date = datetime.now()
+    end_date = dt_util.utcnow()
     start_date = end_date - timedelta(days=7)
     year, week_number, _ = end_date.isocalendar()
 
@@ -276,7 +278,7 @@ async def _run_weekly_report_core(
         total_cost=total_cost if has_energy_data else None,
         total_energy_kwh=weekly_energy,
         zones=zone_snapshots,
-        timestamp=datetime.now().isoformat(),
+        timestamp=dt_util.utcnow().isoformat(),
     )
 
     # Calculate week-over-week comparison

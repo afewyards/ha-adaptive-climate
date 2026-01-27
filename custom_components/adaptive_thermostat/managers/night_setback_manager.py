@@ -93,7 +93,7 @@ class NightSetbackController:
         """Check if learning should be paused due to recent night setback transition."""
         if self._learning_grace_until is None:
             return False
-        return datetime.now() < self._learning_grace_until
+        return dt_util.utcnow() < self._learning_grace_until
 
     @property
     def learning_grace_until(self) -> Optional[datetime]:
@@ -106,7 +106,7 @@ class NightSetbackController:
         Args:
             minutes: Number of minutes to pause learning
         """
-        self._learning_grace_until = datetime.now() + timedelta(minutes=minutes)
+        self._learning_grace_until = dt_util.utcnow() + timedelta(minutes=minutes)
         _LOGGER.info(
             "%s: Learning grace period set for %d minutes (until %s)",
             self._entity_id, minutes, self._learning_grace_until.strftime("%H:%M")
@@ -122,7 +122,7 @@ class NightSetbackController:
         (sunrise/orientation/weather-based) configurations.
 
         Args:
-            current_time: Optional datetime for testing; defaults to datetime.now()
+            current_time: Optional datetime for testing; defaults to dt_util.utcnow()
 
         Returns:
             A tuple of (effective_target, in_night_period, night_setback_info) where:
@@ -154,7 +154,7 @@ class NightSetbackController:
         This is the main interface method for getting the adjusted target temperature.
 
         Args:
-            current_time: Optional datetime for testing; defaults to datetime.now()
+            current_time: Optional datetime for testing; defaults to dt_util.utcnow()
 
         Returns:
             The effective target temperature after night setback adjustments
@@ -166,7 +166,7 @@ class NightSetbackController:
         """Get state attributes for the night setback status.
 
         Args:
-            current_time: Optional datetime for testing; defaults to datetime.now()
+            current_time: Optional datetime for testing; defaults to dt_util.utcnow()
 
         Returns:
             Dictionary of state attributes

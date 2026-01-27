@@ -19,6 +19,12 @@ mock_ha = MagicMock()
 mock_util = MagicMock()
 mock_util.slugify = lambda x: x.lower().replace(" ", "_")
 
+# Mock homeassistant.util.dt for timestamp operations
+from datetime import datetime
+mock_dt = MagicMock()
+mock_dt.utcnow = lambda: datetime.utcnow()
+mock_util.dt = mock_dt
+
 # ---- Mock homeassistant.const ----
 mock_const = MagicMock()
 mock_const.ATTR_TEMPERATURE = "temperature"
@@ -146,6 +152,7 @@ mock_components.climate = mock_climate
 
 sys.modules["homeassistant"] = mock_ha
 sys.modules["homeassistant.util"] = mock_util
+sys.modules["homeassistant.util.dt"] = mock_dt
 sys.modules["homeassistant.const"] = mock_const
 sys.modules["homeassistant.core"] = mock_core
 sys.modules["homeassistant.exceptions"] = mock_exceptions

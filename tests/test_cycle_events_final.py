@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import pytest
 import ast
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import MagicMock, AsyncMock, patch
 
 from custom_components.adaptive_thermostat.managers.cycle_tracker import (
     CycleState,
@@ -26,6 +26,16 @@ from custom_components.adaptive_thermostat.managers.events import (
     ModeChangedEvent,
     ContactPauseEvent,
 )
+from homeassistant.util import dt as dt_util
+
+
+@pytest.fixture(autouse=True)
+def mock_dt_util():
+    """Mock dt_util.utcnow() to return a fixed datetime for duration calculations."""
+    # Set a far-future datetime to ensure all cycle durations are valid
+    fixed_now = datetime(2024, 12, 31, 23, 59, 59)
+    with patch('custom_components.adaptive_thermostat.managers.cycle_metrics.dt_util.utcnow', return_value=fixed_now):
+        yield
 
 
 @pytest.fixture
@@ -92,7 +102,7 @@ class TestCycleTrackerEventOnly:
         # Emit CYCLE_STARTED event
         dispatcher.emit(CycleStartedEvent(
             hvac_mode="heat",
-            timestamp=datetime.now(),
+            timestamp=datetime(2024, 1, 1, 10, 0, 0),
             target_temp=21.0,
             current_temp=19.0,
         ))
@@ -106,7 +116,7 @@ class TestCycleTrackerEventOnly:
         # Start a cycle first
         dispatcher.emit(CycleStartedEvent(
             hvac_mode="heat",
-            timestamp=datetime.now(),
+            timestamp=datetime(2024, 1, 1, 10, 0, 0),
             target_temp=21.0,
             current_temp=19.0,
         ))
@@ -114,7 +124,7 @@ class TestCycleTrackerEventOnly:
         # Emit SETTLING_STARTED event
         dispatcher.emit(SettlingStartedEvent(
             hvac_mode="heat",
-            timestamp=datetime.now(),
+            timestamp=datetime(2024, 1, 1, 10, 0, 0),
         ))
 
         # Verify cycle state changed to SETTLING
@@ -125,7 +135,7 @@ class TestCycleTrackerEventOnly:
         # Start a cycle first
         dispatcher.emit(CycleStartedEvent(
             hvac_mode="heat",
-            timestamp=datetime.now(),
+            timestamp=datetime(2024, 1, 1, 10, 0, 0),
             target_temp=21.0,
             current_temp=19.0,
         ))
@@ -135,7 +145,7 @@ class TestCycleTrackerEventOnly:
         # Emit minor setpoint change (should continue)
         dispatcher.emit(SetpointChangedEvent(
             hvac_mode="heat",
-            timestamp=datetime.now(),
+            timestamp=datetime(2024, 1, 1, 10, 0, 0),
             old_target=21.0,
             new_target=21.3,
         ))
@@ -148,14 +158,14 @@ class TestCycleTrackerEventOnly:
         # Start a cycle first
         dispatcher.emit(CycleStartedEvent(
             hvac_mode="heat",
-            timestamp=datetime.now(),
+            timestamp=datetime(2024, 1, 1, 10, 0, 0),
             target_temp=21.0,
             current_temp=19.0,
         ))
 
         # Emit mode change event (incompatible)
         dispatcher.emit(ModeChangedEvent(
-            timestamp=datetime.now(),
+            timestamp=datetime(2024, 1, 1, 10, 0, 0),
             old_mode="heat",
             new_mode="off",
         ))
@@ -168,7 +178,7 @@ class TestCycleTrackerEventOnly:
         # Start a cycle first
         dispatcher.emit(CycleStartedEvent(
             hvac_mode="heat",
-            timestamp=datetime.now(),
+            timestamp=datetime(2024, 1, 1, 10, 0, 0),
             target_temp=21.0,
             current_temp=19.0,
         ))
@@ -176,7 +186,7 @@ class TestCycleTrackerEventOnly:
         # Emit contact pause event
         dispatcher.emit(ContactPauseEvent(
             hvac_mode="heat",
-            timestamp=datetime.now(),
+            timestamp=datetime(2024, 1, 1, 10, 0, 0),
             entity_id="binary_sensor.window",
         ))
 
@@ -256,7 +266,7 @@ class TestCycleEventIntegration:
     async def test_complete_cycle_via_events(self, cycle_tracker, dispatcher, mock_adaptive_learner):
         """Test a complete heating cycle using only events."""
         # Start cycle
-        start_time = datetime.now()
+        start_time = datetime(2024, 1, 1, 10, 0, 0)
         dispatcher.emit(CycleStartedEvent(
             hvac_mode="heat",
             timestamp=start_time,
@@ -285,7 +295,7 @@ class TestCycleEventIntegration:
         # Start cycle
         dispatcher.emit(CycleStartedEvent(
             hvac_mode="heat",
-            timestamp=datetime.now(),
+            timestamp=datetime(2024, 1, 1, 10, 0, 0),
             target_temp=21.0,
             current_temp=19.0,
         ))
@@ -295,7 +305,7 @@ class TestCycleEventIntegration:
         # Interrupt with contact sensor
         dispatcher.emit(ContactPauseEvent(
             hvac_mode="heat",
-            timestamp=datetime.now(),
+            timestamp=datetime(2024, 1, 1, 10, 0, 0),
             entity_id="binary_sensor.window",
         ))
 

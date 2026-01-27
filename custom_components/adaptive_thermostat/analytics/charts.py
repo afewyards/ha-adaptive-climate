@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
+from homeassistant.util import dt as dt_util
+
 _LOGGER = logging.getLogger(__name__)
 
 # Chart dimensions
@@ -446,7 +448,7 @@ async def cleanup_old_charts(
         if not www_dir.exists():
             return
 
-        cutoff = datetime.now() - timedelta(weeks=keep_weeks)
+        cutoff = dt_util.utcnow() - timedelta(weeks=keep_weeks)
 
         for file_path in www_dir.glob("weekly_*.png"):
             try:

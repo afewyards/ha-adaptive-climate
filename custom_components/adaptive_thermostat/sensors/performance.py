@@ -28,6 +28,7 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant, callback, Event
 from homeassistant.helpers.event import async_track_state_change_event
+from homeassistant.util import dt as dt_util
 
 from ..const import DOMAIN
 
@@ -195,7 +196,7 @@ class DutyCycleSensor(AdaptiveThermostatSensor):
             is_on: Whether the heater is now on
         """
         self._state_changes.append(
-            HeaterStateChange(timestamp=datetime.now(), is_on=is_on)
+            HeaterStateChange(timestamp=dt_util.utcnow(), is_on=is_on)
         )
 
     async def async_update(self) -> None:
@@ -209,7 +210,7 @@ class DutyCycleSensor(AdaptiveThermostatSensor):
         Returns:
             Duty cycle as percentage (0-100)
         """
-        now = datetime.now()
+        now = dt_util.utcnow()
         window_start = now - self._measurement_window
 
         # If no state changes tracked, try to use control_output from climate entity
@@ -428,7 +429,7 @@ class CycleTimeSensor(AdaptiveThermostatSensor):
                 self._current_heater_state = heater_state.state == STATE_ON
                 # If heater is currently ON, record this as the start of a cycle
                 if self._current_heater_state:
-                    self._last_on_timestamp = datetime.now()
+                    self._last_on_timestamp = dt_util.utcnow()
 
             # Set up state change listener
             self._state_listener_unsub = async_track_state_change_event(
@@ -451,7 +452,7 @@ class CycleTimeSensor(AdaptiveThermostatSensor):
             return
 
         is_on = new_state.state == STATE_ON
-        now = datetime.now()
+        now = dt_util.utcnow()
 
         # Only process if state actually changed
         if is_on == self._current_heater_state:

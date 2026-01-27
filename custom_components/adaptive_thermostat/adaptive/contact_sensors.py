@@ -7,6 +7,8 @@ from datetime import datetime, timedelta
 from enum import Enum
 from typing import Optional, List, Dict, Any
 
+from homeassistant.util import dt as dt_util
+
 
 class ContactAction(Enum):
     """Action to take when contact sensor opens."""
@@ -64,7 +66,7 @@ class ContactSensorHandler:
             current_time: Current datetime (defaults to now, used for testing)
         """
         if current_time is None:
-            current_time = datetime.now()
+            current_time = dt_util.utcnow()
 
         # Initialize created_at on first update if not set
         if self._created_at is None:
@@ -104,7 +106,7 @@ class ContactSensorHandler:
             True if action should be taken (contact open + delay elapsed)
         """
         if current_time is None:
-            current_time = datetime.now()
+            current_time = dt_util.utcnow()
 
         # Check grace period (no action during initial learning)
         if self.learning_grace_seconds > 0 and self._created_at is not None:
@@ -164,7 +166,7 @@ class ContactSensorHandler:
             Seconds until action, or None if no action pending
         """
         if current_time is None:
-            current_time = datetime.now()
+            current_time = dt_util.utcnow()
 
         if not self._any_contact_open or self._contact_opened_at is None:
             return None
@@ -185,7 +187,7 @@ class ContactSensorHandler:
             Seconds remaining in grace period (0 if expired)
         """
         if current_time is None:
-            current_time = datetime.now()
+            current_time = dt_util.utcnow()
 
         if self.learning_grace_seconds <= 0 or self._created_at is None:
             return 0

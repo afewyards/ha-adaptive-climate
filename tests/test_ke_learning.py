@@ -392,7 +392,10 @@ class TestKeLearnerRateLimiting:
         assert result1 is not None
 
         # Apply the adjustment (sets rate limit)
-        learner.apply_ke_adjustment(result1)
+        current_time = datetime(2024, 1, 15, 10, 0)
+        with patch('custom_components.adaptive_thermostat.adaptive.ke_learning.dt_util') as mock_dt_util:
+            mock_dt_util.utcnow.return_value = current_time
+            learner.apply_ke_adjustment(result1)
 
         # Add more observations
         for i in range(KE_MIN_OBSERVATIONS + 2):
@@ -404,8 +407,10 @@ class TestKeLearnerRateLimiting:
             )
 
         # Second adjustment should be rate limited
-        result2 = learner.calculate_ke_adjustment()
-        assert result2 is None  # Rate limited
+        with patch('custom_components.adaptive_thermostat.adaptive.ke_learning.dt_util') as mock_dt_util:
+            mock_dt_util.utcnow.return_value = current_time
+            result2 = learner.calculate_ke_adjustment()
+            assert result2 is None  # Rate limited
 
     def test_rate_limiting_expires(self):
         """Test that rate limiting expires after interval (v0.7.1: restored scaling)."""
@@ -425,7 +430,8 @@ class TestKeLearnerRateLimiting:
         learner.apply_ke_adjustment(result1)
 
         # Mock time to be after rate limit interval
-        past_time = datetime.now() - timedelta(hours=50)  # > KE_ADJUSTMENT_INTERVAL
+        current_time = datetime(2024, 1, 15, 10, 0)
+        past_time = current_time - timedelta(hours=50)  # > KE_ADJUSTMENT_INTERVAL
         learner._last_adjustment_time = past_time
 
         # Add more observations
@@ -438,8 +444,10 @@ class TestKeLearnerRateLimiting:
             )
 
         # Adjustment should now succeed
-        result2 = learner.calculate_ke_adjustment()
-        assert result2 is not None
+        with patch('custom_components.adaptive_thermostat.adaptive.ke_learning.dt_util') as mock_dt_util:
+            mock_dt_util.utcnow.return_value = current_time
+            result2 = learner.calculate_ke_adjustment()
+            assert result2 is not None
 
 
 class TestKeLearnerKeLimits:
@@ -536,13 +544,15 @@ class TestKeLearnerPersistence:
         original = KeLearner(initial_ke=0.35, max_observations=20)
         original.enable()
 
-        # Add observations
+        # Add observations with explicit timestamps
         for i in range(5):
+            timestamp = datetime(2024, 1, 15, 10, i)
             original.add_observation(
                 outdoor_temp=float(i),
                 pid_output=50.0 + i * 5,
                 indoor_temp=20.0,
                 target_temp=20.0,
+                timestamp=timestamp,
             )
 
         # Serialize and restore

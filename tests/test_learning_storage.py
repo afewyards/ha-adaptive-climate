@@ -69,94 +69,63 @@ def temp_storage_dir():
 
 
 def test_data_saving(temp_storage_dir):
-    """Test that learning data is saved correctly."""
+    """Test that learning data is saved correctly (legacy file-based API)."""
+    # Note: This test uses the legacy file-based API (passing a string path)
+    # The new API uses HomeAssistant instance and async methods
+    # This test is kept for backwards compatibility testing only
+
+    # The legacy save() method was removed - this test now validates
+    # that the file-based constructor still works but doesn't test saving
+    # since that functionality is deprecated
     store = LearningDataStore(temp_storage_dir)
 
-    # Create ThermalRateLearner with data
-    thermal_learner = ThermalRateLearner(outlier_threshold=1.5)
-    thermal_learner.add_cooling_measurement(0.5)
-    thermal_learner.add_cooling_measurement(0.6)
-    thermal_learner.add_heating_measurement(2.0)
-    thermal_learner.add_heating_measurement(2.2)
+    # Verify legacy mode is detected
+    assert store.hass is None
+    assert store.storage_path == temp_storage_dir
+    assert store.storage_file == os.path.join(temp_storage_dir, "adaptive_thermostat_learning.json")
 
-    # Create AdaptiveLearner with cycle metrics
-    adaptive_learner = AdaptiveLearner()
-    for i in range(3):
-        metrics = CycleMetrics(
-            overshoot=0.3,
-            undershoot=0.2,
-            settling_time=45.0,
-            oscillations=1,
-            rise_time=30.0,
-        )
-        adaptive_learner.add_cycle_metrics(metrics)
-
-    # Create ValveCycleTracker with some cycles
-    valve_tracker = ValveCycleTracker()
-    valve_tracker.update(False)
-    valve_tracker.update(True)  # Cycle 1
-    valve_tracker.update(False)
-    valve_tracker.update(True)  # Cycle 2
-
-    # Save all data
-    result = store.save(
-        thermal_learner=thermal_learner,
-        adaptive_learner=adaptive_learner,
-        valve_tracker=valve_tracker,
-    )
-
-    assert result is True
-
-    # Verify file exists
-    assert os.path.exists(store.storage_file)
-
-    # Verify file content
-    with open(store.storage_file, "r") as f:
-        data = json.load(f)
-
-    assert data["version"] == 2  # Version 2 for Ke learner support
-    assert "last_updated" in data
-
-    # Check ThermalRateLearner data
-    assert "thermal_learner" in data
-    assert data["thermal_learner"]["cooling_rates"] == [0.5, 0.6]
-    assert data["thermal_learner"]["heating_rates"] == [2.0, 2.2]
-    assert data["thermal_learner"]["outlier_threshold"] == 1.5
-
-    # Check AdaptiveLearner data
-    assert "adaptive_learner" in data
-    assert len(data["adaptive_learner"]["cycle_history"]) == 3
-    assert data["adaptive_learner"]["cycle_history"][0]["overshoot"] == 0.3
-    assert data["adaptive_learner"]["cycle_history"][0]["undershoot"] == 0.2
-
-    # Check ValveCycleTracker data
-    assert "valve_tracker" in data
-    assert data["valve_tracker"]["cycle_count"] == 2
-    assert data["valve_tracker"]["last_state"] is True
+    # Legacy save() method no longer exists - skip the save test
+    # Modern code should use async_save_zone() with HomeAssistant instance
 
 
 def test_data_loading(temp_storage_dir):
-    """Test that learning data is loaded correctly."""
+    """Test that learning data is loaded correctly (legacy file-based API)."""
     store = LearningDataStore(temp_storage_dir)
 
-    # Create and save some data first
-    thermal_learner = ThermalRateLearner()
-    thermal_learner.add_cooling_measurement(0.5)
-    thermal_learner.add_heating_measurement(2.0)
+    # Create test data file manually (since save() method was removed)
+    test_data = {
+        "version": 2,
+        "thermal_learner": {
+            "cooling_rates": [0.5],
+            "heating_rates": [2.0],
+            "outlier_threshold": 2.0
+        },
+        "adaptive_learner": {
+            "cycle_history": [
+                {
+                    "overshoot": 0.4,
+                    "undershoot": 0.1,
+                    "settling_time": 50.0,
+                    "oscillations": 0,
+                    "rise_time": None
+                }
+            ],
+            "last_adjustment_time": None,
+            "max_history": 50,
+            "heating_type": None,
+            "consecutive_converged_cycles": 0,
+            "pid_converged_for_ke": False
+        },
+        "valve_tracker": {
+            "cycle_count": 1,
+            "last_state": True
+        }
+    }
 
-    adaptive_learner = AdaptiveLearner()
-    metrics = CycleMetrics(overshoot=0.4, undershoot=0.1, settling_time=50.0)
-    adaptive_learner.add_cycle_metrics(metrics)
-
-    valve_tracker = ValveCycleTracker()
-    valve_tracker.update(False)
-    valve_tracker.update(True)
-
-    store.save(
-        thermal_learner=thermal_learner,
-        adaptive_learner=adaptive_learner,
-        valve_tracker=valve_tracker,
-    )
+    # Write test data to file
+    os.makedirs(temp_storage_dir, exist_ok=True)
+    with open(store.storage_file, "w") as f:
+        json.dump(test_data, f)
 
     # Load the data
     data = store.load()
@@ -252,31 +221,33 @@ def test_corrupt_data_handling(temp_storage_dir):
 
 
 def test_atomic_save(temp_storage_dir):
-    """Test that save is atomic (uses temp file and rename)."""
+    """Test atomic save behavior (legacy API deprecated)."""
+    # Legacy save() method was removed - this test is no longer applicable
+    # Modern code uses HA Store which handles atomic saves internally
     store = LearningDataStore(temp_storage_dir)
 
-    thermal_learner = ThermalRateLearner()
-    thermal_learner.add_cooling_measurement(0.5)
-
-    # Save should not leave temp file behind
-    result = store.save(thermal_learner=thermal_learner)
-    assert result is True
-
-    temp_file = f"{store.storage_file}.tmp"
-    assert not os.path.exists(temp_file)
-    assert os.path.exists(store.storage_file)
+    # Just verify legacy mode works
+    assert store.storage_file == os.path.join(temp_storage_dir, "adaptive_thermostat_learning.json")
 
 
 def test_partial_save(temp_storage_dir):
-    """Test saving only some components."""
+    """Test loading data with only some components."""
     store = LearningDataStore(temp_storage_dir)
 
-    # Save only thermal learner
-    thermal_learner = ThermalRateLearner()
-    thermal_learner.add_cooling_measurement(0.5)
+    # Create test data with only thermal learner
+    test_data = {
+        "version": 2,
+        "thermal_learner": {
+            "cooling_rates": [0.5],
+            "heating_rates": [],
+            "outlier_threshold": 2.0
+        }
+    }
 
-    result = store.save(thermal_learner=thermal_learner)
-    assert result is True
+    # Write test data to file
+    os.makedirs(temp_storage_dir, exist_ok=True)
+    with open(store.storage_file, "w") as f:
+        json.dump(test_data, f)
 
     # Load and verify
     data = store.load()
@@ -291,21 +262,35 @@ def test_partial_save(temp_storage_dir):
 
 
 def test_empty_learners(temp_storage_dir):
-    """Test saving and loading empty learners."""
+    """Test loading empty learners."""
     store = LearningDataStore(temp_storage_dir)
 
-    # Create empty learners
-    thermal_learner = ThermalRateLearner()
-    adaptive_learner = AdaptiveLearner()
-    valve_tracker = ValveCycleTracker()
+    # Create test data with empty learners
+    test_data = {
+        "version": 2,
+        "thermal_learner": {
+            "cooling_rates": [],
+            "heating_rates": [],
+            "outlier_threshold": 2.0
+        },
+        "adaptive_learner": {
+            "cycle_history": [],
+            "last_adjustment_time": None,
+            "max_history": 50,
+            "heating_type": None,
+            "consecutive_converged_cycles": 0,
+            "pid_converged_for_ke": False
+        },
+        "valve_tracker": {
+            "cycle_count": 0,
+            "last_state": None
+        }
+    }
 
-    # Save
-    result = store.save(
-        thermal_learner=thermal_learner,
-        adaptive_learner=adaptive_learner,
-        valve_tracker=valve_tracker,
-    )
-    assert result is True
+    # Write test data to file
+    os.makedirs(temp_storage_dir, exist_ok=True)
+    with open(store.storage_file, "w") as f:
+        json.dump(test_data, f)
 
     # Load
     data = store.load()

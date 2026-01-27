@@ -125,7 +125,8 @@ def test_time_at_target_record_sample(mock_hass):
     assert sensor._samples[0].setpoint == 21.0
 
 
-def test_time_at_target_calculation(mock_hass):
+@patch('custom_components.adaptive_thermostat.sensors.comfort.dt_util')
+def test_time_at_target_calculation(mock_dt_util, mock_hass):
     """Test time at target percentage calculation."""
     sensor = TimeAtTargetSensor(
         hass=mock_hass,
@@ -137,6 +138,7 @@ def test_time_at_target_calculation(mock_hass):
     )
 
     now = datetime.now()
+    mock_dt_util.utcnow.return_value = now
 
     # Add 10 samples: 7 within tolerance, 3 outside
     for i in range(7):
@@ -250,8 +252,12 @@ async def test_comfort_score_with_missing_data(mock_hass):
 
 
 @pytest.mark.asyncio
-async def test_time_at_target_async_update(mock_hass):
+@patch('custom_components.adaptive_thermostat.sensors.comfort.dt_util')
+async def test_time_at_target_async_update(mock_dt_util, mock_hass):
     """Test async_update records sample from climate entity."""
+    now = datetime.now()
+    mock_dt_util.utcnow.return_value = now
+
     sensor = TimeAtTargetSensor(
         hass=mock_hass,
         zone_id="living_room",
@@ -296,7 +302,8 @@ def test_comfort_score_extra_attributes(mock_hass):
     assert attrs["oscillation_score"] == 85.0
 
 
-def test_time_at_target_custom_tolerance(mock_hass):
+@patch('custom_components.adaptive_thermostat.sensors.comfort.dt_util')
+def test_time_at_target_custom_tolerance(mock_dt_util, mock_hass):
     """Test TimeAtTargetSensor with custom tolerance."""
     sensor = TimeAtTargetSensor(
         hass=mock_hass,
@@ -309,6 +316,7 @@ def test_time_at_target_custom_tolerance(mock_hass):
     assert sensor._tolerance == 1.0
 
     now = datetime.now()
+    mock_dt_util.utcnow.return_value = now
 
     # Add samples: all within 1°C of setpoint
     for i in range(5):

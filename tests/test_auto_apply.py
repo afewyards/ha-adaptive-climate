@@ -2,6 +2,7 @@
 
 import pytest
 from datetime import datetime, timedelta
+from unittest.mock import patch
 
 from custom_components.adaptive_thermostat.adaptive.learning import (
     AdaptiveLearner,
@@ -343,11 +344,13 @@ class TestAutoApplyLimits:
                 "metrics": None,
             })
 
-        result = learner.check_auto_apply_limits(100.0, 0.01, 50.0)
+        with patch('custom_components.adaptive_thermostat.adaptive.validation.dt_util') as mock_dt_util:
+            mock_dt_util.utcnow.return_value = now
+            result = learner.check_auto_apply_limits(100.0, 0.01, 50.0)
 
-        assert result is not None
-        assert "Seasonal limit reached" in result
-        assert "90 days" in result
+            assert result is not None
+            assert "Seasonal limit reached" in result
+            assert "90 days" in result
 
     def test_check_auto_apply_limits_drift(self):
         """Test drift limit blocks when >50% drift from baseline."""
@@ -366,14 +369,17 @@ class TestAutoApplyLimits:
         learner = AdaptiveLearner(heating_type="convector")
 
         # Record seasonal shift 3 days ago
-        learner._last_seasonal_shift = datetime.now() - timedelta(days=3)
+        now = datetime.now()
+        learner._last_seasonal_shift = now - timedelta(days=3)
 
-        result = learner.check_auto_apply_limits(100.0, 0.01, 50.0)
+        with patch('custom_components.adaptive_thermostat.adaptive.validation.dt_util') as mock_dt_util:
+            mock_dt_util.utcnow.return_value = now
+            result = learner.check_auto_apply_limits(100.0, 0.01, 50.0)
 
-        assert result is not None
-        assert "Seasonal shift block active" in result
-        # Should show approximately 4 days remaining (7 - 3)
-        assert "days remaining" in result
+            assert result is not None
+            assert "Seasonal shift block active" in result
+            # Should show approximately 4 days remaining (7 - 3)
+            assert "days remaining" in result
 
     def test_check_auto_apply_limits_all_pass(self):
         """Test that all checks pass when within limits."""
@@ -398,9 +404,11 @@ class TestAutoApplyLimits:
         # No seasonal shift recorded
 
         # 10% drift (within 50% limit)
-        result = learner.check_auto_apply_limits(110.0, 0.01, 50.0)
+        with patch('custom_components.adaptive_thermostat.adaptive.validation.dt_util') as mock_dt_util:
+            mock_dt_util.utcnow.return_value = now
+            result = learner.check_auto_apply_limits(110.0, 0.01, 50.0)
 
-        assert result is None  # All checks passed
+            assert result is None  # All checks passed
 
 
 # ============================================================================
@@ -417,11 +425,14 @@ class TestSeasonalShiftRecording:
 
         assert learner._last_seasonal_shift is None
 
-        learner.record_seasonal_shift()
+        now = datetime.now()
+        with patch('custom_components.adaptive_thermostat.adaptive.validation.dt_util') as mock_dt_util:
+            mock_dt_util.utcnow.return_value = now
+            learner.record_seasonal_shift()
 
-        assert learner._last_seasonal_shift is not None
-        # Should be very recent
-        assert (datetime.now() - learner._last_seasonal_shift).total_seconds() < 1
+            assert learner._last_seasonal_shift is not None
+            # Should be very recent (should be exactly now)
+            assert learner._last_seasonal_shift == now
 
     def test_get_auto_apply_count(self):
         """Test get_auto_apply_count returns correct count."""

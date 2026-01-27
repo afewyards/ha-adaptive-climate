@@ -5,6 +5,8 @@ from typing import Dict, List, Optional, Any, TYPE_CHECKING
 import statistics
 import logging
 
+from homeassistant.util import dt as dt_util
+
 if TYPE_CHECKING:
     from homeassistant.components.climate import HVACMode
 
@@ -443,7 +445,7 @@ class AdaptiveLearner:
             return False
 
         # Check time gate
-        time_since_last = datetime.now() - self._last_adjustment_time
+        time_since_last = dt_util.utcnow() - self._last_adjustment_time
         min_interval = timedelta(hours=min_interval_hours)
         time_gate_satisfied = time_since_last >= min_interval
 
@@ -835,7 +837,7 @@ class AdaptiveLearner:
         new_kd = max(PID_LIMITS["kd_min"], min(PID_LIMITS["kd_max"], new_kd))
 
         # Record adjustment time and reset cycle counter for hybrid rate limiting
-        self._last_adjustment_time = datetime.now()
+        self._last_adjustment_time = dt_util.utcnow()
         self._cycles_since_last_adjustment = 0
 
         return {
@@ -889,7 +891,7 @@ class AdaptiveLearner:
             metrics: Optional performance metrics at time of snapshot
         """
         snapshot = {
-            "timestamp": datetime.now(),
+            "timestamp": dt_util.utcnow(),
             "kp": kp,
             "ki": ki,
             "kd": kd,
