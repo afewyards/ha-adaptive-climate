@@ -67,6 +67,9 @@ from .pwm_tuning import calculate_pwm_adjustment, ValveCycleTracker
 # Import validation manager for safety checks
 from .validation import ValidationManager
 
+# Import confidence tracker for convergence tracking
+from .confidence import ConfidenceTracker
+
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -130,19 +133,17 @@ class AdaptiveLearner:
         # Convergence tracking for Ke learning activation
         self._consecutive_converged_cycles: int = 0
         self._pid_converged_for_ke: bool = False
-        # Mode-specific convergence confidence tracking
-        self._heating_convergence_confidence: float = 0.0
-        self._cooling_convergence_confidence: float = 0.0
         self._duty_cycle_history: List[float] = []
         # Hybrid rate limiting: track cycles since last adjustment
         self._cycles_since_last_adjustment: int = 0
         # Rule state tracker with hysteresis to prevent oscillation
         self._rule_state_tracker = RuleStateTracker()
 
-        # Mode-specific auto-apply tracking state
-        self._heating_auto_apply_count: int = 0
-        self._cooling_auto_apply_count: int = 0
+        # PID history for rollback and debugging
         self._pid_history: List[Dict[str, Any]] = []
+
+        # Confidence tracker for convergence confidence and auto-apply counts
+        self._confidence = ConfidenceTracker(self._convergence_thresholds)
 
         # Validation manager for safety checks and validation mode
         self._validation = ValidationManager()
@@ -168,25 +169,66 @@ class AdaptiveLearner:
         """Backward-compatible alias setter for _heating_cycle_history."""
         self._heating_cycle_history = value
 
+    # Backward-compatible aliases for confidence tracker attributes (used by tests)
+    @property
+    def _heating_convergence_confidence(self) -> float:
+        """Backward-compatible alias for confidence tracker's heating confidence."""
+        return self._confidence._heating_convergence_confidence
+
+    @_heating_convergence_confidence.setter
+    def _heating_convergence_confidence(self, value: float) -> None:
+        """Backward-compatible alias setter for confidence tracker's heating confidence."""
+        self._confidence._heating_convergence_confidence = value
+
+    @property
+    def _cooling_convergence_confidence(self) -> float:
+        """Backward-compatible alias for confidence tracker's cooling confidence."""
+        return self._confidence._cooling_convergence_confidence
+
+    @_cooling_convergence_confidence.setter
+    def _cooling_convergence_confidence(self, value: float) -> None:
+        """Backward-compatible alias setter for confidence tracker's cooling confidence."""
+        self._confidence._cooling_convergence_confidence = value
+
+    @property
+    def _heating_auto_apply_count(self) -> int:
+        """Backward-compatible alias for confidence tracker's heating auto-apply count."""
+        return self._confidence._heating_auto_apply_count
+
+    @_heating_auto_apply_count.setter
+    def _heating_auto_apply_count(self, value: int) -> None:
+        """Backward-compatible alias setter for confidence tracker's heating auto-apply count."""
+        self._confidence._heating_auto_apply_count = value
+
+    @property
+    def _cooling_auto_apply_count(self) -> int:
+        """Backward-compatible alias for confidence tracker's cooling auto-apply count."""
+        return self._confidence._cooling_auto_apply_count
+
+    @_cooling_auto_apply_count.setter
+    def _cooling_auto_apply_count(self, value: int) -> None:
+        """Backward-compatible alias setter for confidence tracker's cooling auto-apply count."""
+        self._confidence._cooling_auto_apply_count = value
+
     @property
     def _auto_apply_count(self) -> int:
         """Backward-compatible alias for _heating_auto_apply_count."""
-        return self._heating_auto_apply_count
+        return self._confidence._heating_auto_apply_count
 
     @_auto_apply_count.setter
     def _auto_apply_count(self, value: int) -> None:
         """Backward-compatible alias setter for _heating_auto_apply_count."""
-        self._heating_auto_apply_count = value
+        self._confidence._heating_auto_apply_count = value
 
     @property
     def _convergence_confidence(self) -> float:
         """Backward-compatible alias for _heating_convergence_confidence."""
-        return self._heating_convergence_confidence
+        return self._confidence._heating_convergence_confidence
 
     @_convergence_confidence.setter
     def _convergence_confidence(self, value: float) -> None:
         """Backward-compatible alias setter for _heating_convergence_confidence."""
-        self._heating_convergence_confidence = value
+        self._confidence._heating_convergence_confidence = value
 
     # Backward-compatible aliases for validation manager attributes (used by tests)
     @property
@@ -807,8 +849,7 @@ class AdaptiveLearner:
         self._cooling_cycle_history.clear()
         self._last_adjustment_time = None
         self._cycles_since_last_adjustment = 0
-        self._heating_convergence_confidence = 0.0
-        self._cooling_convergence_confidence = 0.0
+        self._confidence.reset_confidence()  # Reset both modes
         self._validation.reset_validation_state()
 
     def record_pid_snapshot(
@@ -1069,12 +1110,7 @@ class AdaptiveLearner:
         Returns:
             Confidence in range [0.0, 1.0]
         """
-        if mode is None:
-            mode = _get_hvac_heat_mode()
-        if mode == _get_hvac_cool_mode():
-            return self._cooling_convergence_confidence
-        else:
-            return self._heating_convergence_confidence
+        return self._confidence.get_convergence_confidence(mode)
 
     def get_auto_apply_count(self, mode: "HVACMode" = None) -> int:
         """Get number of times PID has been auto-applied for specified mode.
@@ -1085,12 +1121,7 @@ class AdaptiveLearner:
         Returns:
             Total count of auto-applied PID adjustments for the specified mode.
         """
-        if mode is None:
-            mode = _get_hvac_heat_mode()
-        if mode == _get_hvac_cool_mode():
-            return self._cooling_auto_apply_count
-        else:
-            return self._heating_auto_apply_count
+        return self._confidence.get_auto_apply_count(mode)
 
     def update_convergence_confidence(self, metrics: CycleMetrics, mode: "HVACMode" = None) -> None:
         """Update convergence confidence based on cycle performance.
@@ -1102,51 +1133,7 @@ class AdaptiveLearner:
             metrics: CycleMetrics from the latest completed cycle
             mode: HVACMode (HEAT or COOL) to update (defaults to HEAT)
         """
-        if mode is None:
-            mode = _get_hvac_heat_mode()
-        # Select confidence value based on mode
-        if mode == _get_hvac_cool_mode():
-            current_confidence = self._cooling_convergence_confidence
-        else:
-            current_confidence = self._heating_convergence_confidence
-
-        # Check if this cycle meets convergence criteria
-        is_good_cycle = (
-            (metrics.overshoot is None or metrics.overshoot <= self._convergence_thresholds["overshoot_max"]) and
-            (metrics.undershoot is None or metrics.undershoot <= self._convergence_thresholds.get("undershoot_max", 0.2)) and
-            metrics.oscillations <= self._convergence_thresholds["oscillations_max"] and
-            (metrics.settling_time is None or metrics.settling_time <= self._convergence_thresholds["settling_time_max"]) and
-            (metrics.rise_time is None or metrics.rise_time <= self._convergence_thresholds["rise_time_max"])
-        )
-
-        if is_good_cycle:
-            # Increase confidence, capped at maximum
-            current_confidence = min(
-                CONVERGENCE_CONFIDENCE_HIGH,
-                current_confidence + CONFIDENCE_INCREASE_PER_GOOD_CYCLE
-            )
-            _LOGGER.debug(
-                f"Convergence confidence ({_mode_to_str(mode)} mode) increased to {current_confidence:.2f} "
-                f"(good cycle: overshoot={metrics.overshoot:.2f}°C, "
-                f"oscillations={metrics.oscillations}, "
-                f"settling={metrics.settling_time:.1f}min)"
-            )
-        else:
-            # Poor cycle - reduce confidence slightly
-            current_confidence = max(
-                0.0,
-                current_confidence - CONFIDENCE_INCREASE_PER_GOOD_CYCLE * 0.5
-            )
-            _LOGGER.debug(
-                f"Convergence confidence ({_mode_to_str(mode)} mode) decreased to {current_confidence:.2f} "
-                f"(poor cycle detected)"
-            )
-
-        # Store updated confidence back
-        if mode == _get_hvac_cool_mode():
-            self._cooling_convergence_confidence = current_confidence
-        else:
-            self._heating_convergence_confidence = current_confidence
+        self._confidence.update_convergence_confidence(metrics, mode)
 
     def check_performance_degradation(self, baseline_window: int = 10, mode: "HVACMode" = None) -> bool:
         """Check if recent performance has degraded compared to baseline.
@@ -1186,16 +1173,7 @@ class AdaptiveLearner:
         Call this once per day or on each cycle with appropriate scaling.
         Decays both heating and cooling mode confidence.
         """
-        # Decay heating confidence
-        self._heating_convergence_confidence = max(
-            0.0,
-            self._heating_convergence_confidence * (1.0 - CONFIDENCE_DECAY_RATE_DAILY)
-        )
-        # Decay cooling confidence
-        self._cooling_convergence_confidence = max(
-            0.0,
-            self._cooling_convergence_confidence * (1.0 - CONFIDENCE_DECAY_RATE_DAILY)
-        )
+        self._confidence.apply_confidence_decay()
 
     def get_learning_rate_multiplier(self, confidence: Optional[float] = None) -> float:
         """Get learning rate multiplier based on convergence confidence.
@@ -1208,13 +1186,7 @@ class AdaptiveLearner:
             - Low confidence (0.0): 2.0x faster learning
             - High confidence (1.0): 0.5x slower learning
         """
-        if confidence is None:
-            confidence = self._heating_convergence_confidence
-        # Low confidence = faster learning (larger adjustments)
-        # High confidence = slower learning (smaller adjustments)
-        # Linear interpolation from 2.0 (confidence=0) to 0.5 (confidence=1)
-        multiplier = 2.0 - (confidence * 1.5)
-        return max(0.5, min(2.0, multiplier))
+        return self._confidence.get_learning_rate_multiplier(confidence)
 
     def start_validation_mode(self, baseline_overshoot: float) -> None:
         """Start validation mode after auto-applying PID changes.
