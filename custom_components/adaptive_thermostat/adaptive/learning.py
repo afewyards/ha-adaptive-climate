@@ -254,6 +254,16 @@ class AdaptiveLearner:
         return self._validation._validation_baseline_overshoot
 
     @property
+    def _last_seasonal_check(self) -> Optional[datetime]:
+        """Backward-compatible alias for validation manager's last seasonal check."""
+        return self._validation._last_seasonal_check
+
+    @_last_seasonal_check.setter
+    def _last_seasonal_check(self, value: Optional[datetime]) -> None:
+        """Backward-compatible alias setter for validation manager's last seasonal check."""
+        self._validation._last_seasonal_check = value
+
+    @property
     def _last_seasonal_shift(self) -> Optional[datetime]:
         """Backward-compatible alias for validation manager's last seasonal shift."""
         return self._validation._last_seasonal_shift
