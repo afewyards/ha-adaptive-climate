@@ -16,6 +16,16 @@ pytest --cov=custom_components/adaptive_thermostat  # coverage
 
 - **Max file length:** 800 lines - extract into modules when exceeded
 - **Documentation:** Update GitHub wiki alongside any doc changes
+- **Naming:** `*Controller` for hardware-actuating classes (HeaterController, PWMController), `*Manager` for pure-logic orchestration (CycleTrackerManager, PIDTuningManager, KeManager, NightSetbackManager)
+- **Type annotations:** Use `X | None` (PEP 604), not `Optional[X]`
+- **Heating types:** `HeatingType(StrEnum)` in `const.py` — never raw strings
+- **Timestamps:** `homeassistant.util.dt.utcnow()` for wall-clock, `time.monotonic()` for elapsed durations — never `datetime.now()` or `time.time()`
+- **Assertions:** Never use `assert` in production code — raise `ValueError`/`TypeError`
+- **Entity IDs:** Use `split_entity_id()` — never string slicing
+- **HA decorators:** `@callback` only on synchronous functions — never on `async def`
+- **Manager interfaces:** Managers receive a `ThermostatState` Protocol, not raw callbacks or thermostat references
+- **Coordinator access:** Use `self._coordinator` cached property — never inline `hass.data.get(DOMAIN, {}).get("coordinator")`
+- **Persistence:** HA Store API only (`async_save_zone`) — no legacy file-based `save()`
 
 ## Architecture
 
