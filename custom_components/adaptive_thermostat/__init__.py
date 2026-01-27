@@ -478,6 +478,10 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     hass.data[DOMAIN]["notify_service"] = notify_service
     hass.data[DOMAIN]["persistent_notification"] = persistent_notification
     hass.data[DOMAIN]["debug"] = domain_config.get(CONF_DEBUG, DEFAULT_DEBUG)
+
+    # Set logger level based on debug flag - suppresses info/debug when debug=false
+    pkg_logger = logging.getLogger("custom_components.adaptive_thermostat")
+    pkg_logger.setLevel(logging.DEBUG if hass.data[DOMAIN]["debug"] else logging.WARNING)
     hass.data[DOMAIN]["energy_meter_entity"] = energy_meter
     hass.data[DOMAIN]["energy_cost_entity"] = energy_cost
 
