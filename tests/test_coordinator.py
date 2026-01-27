@@ -525,11 +525,11 @@ def test_get_transport_delay_for_zone_with_registry(coord):
     call_args = mock_registry.get_transport_delay.call_args
     assert call_args[0][0] == "zone1"  # First positional arg is zone_id
 
-    # Second positional arg is list of active zones (zone1 and zone2)
+    # Second positional arg is dict of active zones with entity_id keys (climate.*)
     active_zones = call_args[0][1]
-    assert "zone1" in active_zones
-    assert "zone2" in active_zones
-    assert "zone3" not in active_zones
+    assert "climate.zone1" in active_zones
+    assert "climate.zone2" in active_zones
+    assert "climate.zone3" not in active_zones
 
 
 def test_get_transport_delay_for_zone_no_registry(coord):
@@ -590,12 +590,66 @@ def test_get_transport_delay_for_zone_mode_filter(coord):
     # Query delay
     delay = coord.get_transport_delay_for_zone("zone1")
 
-    # Verify only heating zones are in active list
+    # Verify only heating zones are in active list (with entity_id keys)
     call_args = mock_registry.get_transport_delay.call_args
     active_zones = call_args[0][1]
-    assert "zone1" in active_zones
-    assert "zone2" not in active_zones  # Cooling mode, not active for heating
-    assert "zone3" in active_zones
+    assert "climate.zone1" in active_zones
+    assert "climate.zone2" not in active_zones  # Cooling mode, not active for heating
+    assert "climate.zone3" in active_zones
+
+
+def test_get_transport_delay_converts_slug_to_entity_id(coord):
+    """Test that transport delay converts slug keys to entity_ids for manifold registry.
+
+    This tests the fix for the bug where _demand_states is keyed by slug
+    (e.g. 'bathroom_2nd') but _zone_loops and manifold registry expect
+    entity_ids (e.g. 'climate.bathroom_2nd').
+    """
+    # Create a mock registry
+    mock_registry = MagicMock()
+    mock_registry.get_transport_delay.return_value = 4.5
+
+    coord.set_manifold_registry(mock_registry)
+
+    # Register zones using slugs (as climate_setup.py does)
+    coord.register_zone("bathroom_2nd", {"name": "Bathroom 2nd"})
+    coord.register_zone("living_room", {"name": "Living Room"})
+
+    # Update zone loops using entity_ids (as climate.py does)
+    coord.update_zone_loops("climate.bathroom_2nd", 2)
+    coord.update_zone_loops("climate.living_room", 3)
+
+    # Set demand for zones using slugs (as they're registered)
+    coord.update_zone_demand("bathroom_2nd", True, "heat")
+    coord.update_zone_demand("living_room", True, "heat")
+
+    # Query delay for a zone using entity_id
+    delay = coord.get_transport_delay_for_zone("climate.bathroom_2nd")
+
+    # Verify delay was returned
+    assert delay == 4.5
+
+    # Verify registry was called with entity_id format
+    mock_registry.get_transport_delay.assert_called_once()
+    call_args = mock_registry.get_transport_delay.call_args
+
+    # First arg should be the entity_id
+    assert call_args[0][0] == "climate.bathroom_2nd"
+
+    # Second arg should be dict of active zones with entity_id keys, not slugs
+    active_zones = call_args[0][1]
+
+    # These should be entity_ids with "climate." prefix
+    assert "climate.bathroom_2nd" in active_zones
+    assert "climate.living_room" in active_zones
+
+    # These slug keys should NOT be present
+    assert "bathroom_2nd" not in active_zones
+    assert "living_room" not in active_zones
+
+    # Loop counts should be preserved
+    assert active_zones["climate.bathroom_2nd"] == 2
+    assert active_zones["climate.living_room"] == 3
 
 
 if __name__ == "__main__":

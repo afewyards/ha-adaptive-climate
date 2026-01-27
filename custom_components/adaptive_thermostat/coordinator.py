@@ -104,12 +104,14 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
 
         # Build active_zones dict: {zone_id: loops} for zones with heating demand
         active_zones: dict[str, int] = {}
-        for zone, demand_state in self._demand_states.items():
+        for zone_slug, demand_state in self._demand_states.items():
             # Only include zones with heating demand
             if demand_state.get("demand") and demand_state.get("mode") == "heat":
+                # Convert slug to entity_id (demand_states uses slugs, but zone_loops and registry use entity_ids)
+                zone_entity_id = f"climate.{zone_slug}"
                 # Get loop count from _zone_loops, default to 1 if not set
-                loop_count = self._zone_loops.get(zone, 1)
-                active_zones[zone] = loop_count
+                loop_count = self._zone_loops.get(zone_entity_id, 1)
+                active_zones[zone_entity_id] = loop_count
 
         # Call registry to calculate transport delay
         return self._manifold_registry.get_transport_delay(zone_id, active_zones)
