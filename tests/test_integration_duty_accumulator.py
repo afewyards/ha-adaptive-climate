@@ -52,7 +52,7 @@ def mock_thermostat():
     thermostat = MagicMock()
     thermostat.entity_id = "climate.test_thermostat"
     thermostat.target_temperature = 21.0
-    thermostat._cur_temp = 19.0
+    thermostat._current_temp = 19.0
     return thermostat
 
 

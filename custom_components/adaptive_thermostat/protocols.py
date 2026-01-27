@@ -56,13 +56,13 @@ class ThermostatState(Protocol):
         ...
 
     @property
-    def _cur_temp(self) -> float | None:
+    def _current_temp(self) -> float | None:
         """Internal current temperature storage."""
         ...
 
     @property
-    def _outdoor_temp(self) -> float | None:
-        """Return the outdoor temperature."""
+    def _ext_temp(self) -> float | None:
+        """Return the external/outdoor temperature."""
         ...
 
     @property

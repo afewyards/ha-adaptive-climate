@@ -185,8 +185,8 @@ class ControlOutputManager:
         effective_target, _, _ = self._thermostat_state._calculate_night_setback_adjustment()
 
         # Get current values
-        current_temp = self._thermostat_state._cur_temp
-        ext_temp = self._thermostat_state._outdoor_temp
+        current_temp = self._thermostat_state._current_temp
+        ext_temp = self._thermostat_state._ext_temp
         wind_speed = self._thermostat_state._wind_speed
         output_precision = self._thermostat_state._output_precision
 

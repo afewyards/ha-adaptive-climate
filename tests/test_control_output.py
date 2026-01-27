@@ -34,9 +34,9 @@ class MockThermostatState:
         """Initialize the mock thermostat state."""
         self.entity_id = "climate.living_room"
         self._zone_id = None
-        self._cur_temp = 20.0
+        self._current_temp = 20.0
         self._target_temp = 21.0
-        self._outdoor_temp = 5.0
+        self._ext_temp = 5.0
         self._wind_speed = 0.0
         self._hvac_mode = HVACMode.HEAT
         self._previous_temp_time = 1000.0

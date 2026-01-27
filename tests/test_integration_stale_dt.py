@@ -34,9 +34,9 @@ class MockThermostatState:
         """Initialize the mock thermostat state."""
         self.entity_id = "climate.test_zone"
         self._zone_id = None
-        self._cur_temp = 20.9
+        self._current_temp = 20.9
         self._target_temp = 21.0
-        self._outdoor_temp = 5.0
+        self._ext_temp = 5.0
         self._wind_speed = 0.0
         self._hvac_mode = MockHVACMode.HEAT
         self._previous_temp_time = 1000.0
@@ -170,7 +170,7 @@ class TestIntegralAccumulationRate:
         regardless of trigger frequency or type.
         """
         # Set current temp = setpoint (error = 0)
-        self.thermostat_state._cur_temp = 21.0  # equals setpoint
+        self.thermostat_state._current_temp = 21.0  # equals setpoint
 
         base_time = 1000.0
 
@@ -218,11 +218,12 @@ class TestIntegralAccumulationRate:
         error = 0.1  # 0.1°C error
 
         # Set temperature for both scenarios
-        self.thermostat_state._cur_temp = 20.9  # 0.1°C below setpoint
+        self.thermostat_state._current_temp = 20.9  # 0.1°C below setpoint
 
         # Scenario 1: Slow triggers (60s intervals)
         thermostat_state1 = MockThermostatState()
-        thermostat_state1._cur_temp = 20.9
+        thermostat_state1._current_temp = 20.9
+        thermostat_state1._coordinator = self.coordinator
         pid1 = PID(
             kp=100.0, ki=0.1, kd=50.0, ke=0,
             out_min=0, out_max=100, sampling_period=0,
@@ -246,7 +247,8 @@ class TestIntegralAccumulationRate:
 
         # Scenario 2: Fast triggers (10s intervals)
         thermostat_state2 = MockThermostatState()
-        thermostat_state2._cur_temp = 20.9
+        thermostat_state2._current_temp = 20.9
+        thermostat_state2._coordinator = self.coordinator
         pid2 = PID(
             kp=100.0, ki=0.1, kd=50.0, ke=0,
             out_min=0, out_max=100, sampling_period=0,
