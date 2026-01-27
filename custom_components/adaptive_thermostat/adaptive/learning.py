@@ -70,6 +70,13 @@ from .validation import ValidationManager
 # Import confidence tracker for convergence tracking
 from .confidence import ConfidenceTracker
 
+# Import serialization utilities for state persistence
+from .learner_serialization import (
+    serialize_cycle,
+    learner_to_dict,
+    restore_learner_from_dict,
+)
+
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -1264,80 +1271,36 @@ class AdaptiveLearner:
         """
         self._validation.record_seasonal_shift()
 
-    def _serialize_cycle(self, cycle: CycleMetrics) -> Dict[str, Any]:
-        """Convert a CycleMetrics object to a dictionary.
-
-        Args:
-            cycle: CycleMetrics object to serialize
-
-        Returns:
-            Dictionary representation of the cycle metrics
-        """
-        return {
-            "overshoot": cycle.overshoot,
-            "undershoot": cycle.undershoot,
-            "settling_time": cycle.settling_time,
-            "oscillations": cycle.oscillations,
-            "rise_time": cycle.rise_time,
-            "integral_at_tolerance_entry": cycle.integral_at_tolerance_entry,
-            "integral_at_setpoint_cross": cycle.integral_at_setpoint_cross,
-            "decay_contribution": cycle.decay_contribution,
-            "mode": cycle.mode,
-        }
-
     def to_dict(self) -> Dict[str, Any]:
         """Serialize AdaptiveLearner state to a dictionary in v5 format with v4 backward compatibility.
+
+        Delegates to learner_serialization module for actual serialization logic.
 
         Returns:
             Dictionary containing:
             - v5 mode-keyed structure (heating/cooling sub-dicts)
             - v4 backward-compatible top-level keys (cycle_history, auto_apply_count, etc.)
         """
-        # Serialize PID history with ISO timestamps
-        serialized_pid_history = []
-        for entry in self._pid_history:
-            serialized_entry = entry.copy()
-            if isinstance(entry.get("timestamp"), datetime):
-                serialized_entry["timestamp"] = entry["timestamp"].isoformat()
-            serialized_pid_history.append(serialized_entry)
-
-        # Serialize heating cycle history for both v4 and v5 formats
-        serialized_heating_cycles = [self._serialize_cycle(cycle) for cycle in self._heating_cycle_history]
-        serialized_cooling_cycles = [self._serialize_cycle(cycle) for cycle in self._cooling_cycle_history]
-
-        return {
-            # V5 mode-keyed structure
-            "heating": {
-                "cycle_history": serialized_heating_cycles,
-                "auto_apply_count": self._heating_auto_apply_count,
-                "convergence_confidence": self._heating_convergence_confidence,
-                "pid_history": serialized_pid_history,
-            },
-            "cooling": {
-                "cycle_history": serialized_cooling_cycles,
-                "auto_apply_count": self._cooling_auto_apply_count,
-                "convergence_confidence": self._cooling_convergence_confidence,
-                "pid_history": [],  # Cooling mode typically shares PID history or has separate tracking
-            },
-            # V4 backward-compatible top-level keys (for heating mode as default)
-            "cycle_history": serialized_heating_cycles,
-            "auto_apply_count": self._heating_auto_apply_count,
-            "convergence_confidence": self._heating_convergence_confidence,
-            # Shared fields
-            "last_adjustment_time": (
-                self._last_adjustment_time.isoformat()
-                if self._last_adjustment_time is not None
-                else None
-            ),
-            "consecutive_converged_cycles": self._consecutive_converged_cycles,
-            "pid_converged_for_ke": self._pid_converged_for_ke,
-        }
+        return learner_to_dict(
+            heating_cycle_history=self._heating_cycle_history,
+            cooling_cycle_history=self._cooling_cycle_history,
+            heating_auto_apply_count=self._heating_auto_apply_count,
+            cooling_auto_apply_count=self._cooling_auto_apply_count,
+            heating_convergence_confidence=self._heating_convergence_confidence,
+            cooling_convergence_confidence=self._cooling_convergence_confidence,
+            pid_history=self._pid_history,
+            last_adjustment_time=self._last_adjustment_time,
+            consecutive_converged_cycles=self._consecutive_converged_cycles,
+            pid_converged_for_ke=self._pid_converged_for_ke,
+        )
 
     def restore_from_dict(self, data: Dict[str, Any]) -> None:
         """Restore AdaptiveLearner state from a dictionary.
 
         Performs in-place restoration by clearing existing state and
         repopulating from the provided data dictionary.
+
+        Delegates to learner_serialization module for actual deserialization logic.
 
         Supports both v4 (flat) and v5 (mode-keyed) formats for backward compatibility.
 
@@ -1346,114 +1309,21 @@ class AdaptiveLearner:
                 v4 format: cycle_history, auto_apply_count, etc. at top level
                 v5 format: heating/cooling sub-dicts with mode-specific data
         """
-        # Detect format version by checking for "heating" key
-        is_v5_format = "heating" in data
+        # Delegate to serialization module for parsing
+        restored = restore_learner_from_dict(data)
 
-        if is_v5_format:
-            # V5 format: mode-keyed structure
-            # Clear existing cycle histories
-            self._heating_cycle_history.clear()
-            self._cooling_cycle_history.clear()
+        # Clear existing state
+        self._heating_cycle_history.clear()
+        self._cooling_cycle_history.clear()
 
-            # Restore heating cycle history
-            for cycle_dict in data.get("heating", {}).get("cycle_history", []):
-                cycle = CycleMetrics(
-                    overshoot=cycle_dict.get("overshoot"),
-                    undershoot=cycle_dict.get("undershoot"),
-                    settling_time=cycle_dict.get("settling_time"),
-                    oscillations=cycle_dict.get("oscillations", 0),
-                    rise_time=cycle_dict.get("rise_time"),
-                    integral_at_tolerance_entry=cycle_dict.get("integral_at_tolerance_entry"),
-                    integral_at_setpoint_cross=cycle_dict.get("integral_at_setpoint_cross"),
-                    decay_contribution=cycle_dict.get("decay_contribution"),
-                    mode=cycle_dict.get("mode"),
-                )
-                self._heating_cycle_history.append(cycle)
-
-            # Restore cooling cycle history
-            for cycle_dict in data.get("cooling", {}).get("cycle_history", []):
-                cycle = CycleMetrics(
-                    overshoot=cycle_dict.get("overshoot"),
-                    undershoot=cycle_dict.get("undershoot"),
-                    settling_time=cycle_dict.get("settling_time"),
-                    oscillations=cycle_dict.get("oscillations", 0),
-                    rise_time=cycle_dict.get("rise_time"),
-                    integral_at_tolerance_entry=cycle_dict.get("integral_at_tolerance_entry"),
-                    integral_at_setpoint_cross=cycle_dict.get("integral_at_setpoint_cross"),
-                    decay_contribution=cycle_dict.get("decay_contribution"),
-                    mode=cycle_dict.get("mode"),
-                )
-                self._cooling_cycle_history.append(cycle)
-
-            # Restore mode-specific auto_apply_counts
-            self._heating_auto_apply_count = data.get("heating", {}).get("auto_apply_count", 0)
-            self._cooling_auto_apply_count = data.get("cooling", {}).get("auto_apply_count", 0)
-
-            # Restore mode-specific convergence confidence
-            self._heating_convergence_confidence = data.get("heating", {}).get("convergence_confidence", 0.0)
-            self._cooling_convergence_confidence = data.get("cooling", {}).get("convergence_confidence", 0.0)
-
-            # Restore PID history from heating mode
-            self._pid_history = []
-            for entry in data.get("heating", {}).get("pid_history", []):
-                restored_entry = entry.copy()
-                timestamp_str = entry.get("timestamp")
-                if timestamp_str is not None and isinstance(timestamp_str, str):
-                    restored_entry["timestamp"] = datetime.fromisoformat(timestamp_str)
-                self._pid_history.append(restored_entry)
-
-            _LOGGER.info(
-                "AdaptiveLearner state restored (v5): heating=%d cycles, cooling=%d cycles, "
-                "heating_auto_apply=%d, cooling_auto_apply=%d, pid_history=%d",
-                len(self._heating_cycle_history),
-                len(self._cooling_cycle_history),
-                self._heating_auto_apply_count,
-                self._cooling_auto_apply_count,
-                len(self._pid_history),
-            )
-
-        else:
-            # V4 format: flat structure (backward compatibility)
-            # Clear existing cycle history
-            self._heating_cycle_history.clear()
-            self._cooling_cycle_history.clear()
-
-            # Restore cycle history to heating (v4 didn't have mode split)
-            for cycle_dict in data.get("cycle_history", []):
-                cycle = CycleMetrics(
-                    overshoot=cycle_dict.get("overshoot"),
-                    undershoot=cycle_dict.get("undershoot"),
-                    settling_time=cycle_dict.get("settling_time"),
-                    oscillations=cycle_dict.get("oscillations", 0),
-                    rise_time=cycle_dict.get("rise_time"),
-                    integral_at_tolerance_entry=cycle_dict.get("integral_at_tolerance_entry"),
-                    integral_at_setpoint_cross=cycle_dict.get("integral_at_setpoint_cross"),
-                    decay_contribution=cycle_dict.get("decay_contribution"),
-                    mode=cycle_dict.get("mode"),
-                )
-                self._heating_cycle_history.append(cycle)
-
-            # Restore auto_apply_count to heating mode (v4 didn't have mode split)
-            self._heating_auto_apply_count = data.get("auto_apply_count", 0)
-            self._cooling_auto_apply_count = 0
-
-            # Restore convergence_confidence if present (otherwise default to 0)
-            self._heating_convergence_confidence = data.get("convergence_confidence", 0.0)
-            self._cooling_convergence_confidence = 0.0
-
-            _LOGGER.info(
-                "AdaptiveLearner state restored (v4 compat): %d cycles, auto_apply=%d",
-                len(self._heating_cycle_history),
-                self._heating_auto_apply_count,
-            )
-
-        # Restore shared fields (present in both v4 and v5)
-        last_adj_time = data.get("last_adjustment_time")
-        if last_adj_time is not None and isinstance(last_adj_time, str):
-            self._last_adjustment_time = datetime.fromisoformat(last_adj_time)
-        else:
-            self._last_adjustment_time = None
-
-        # Restore convergence tracking fields
-        self._consecutive_converged_cycles = data.get("consecutive_converged_cycles", 0)
-        self._pid_converged_for_ke = data.get("pid_converged_for_ke", False)
+        # Apply restored state to instance attributes
+        self._heating_cycle_history = restored["heating_cycle_history"]
+        self._cooling_cycle_history = restored["cooling_cycle_history"]
+        self._heating_auto_apply_count = restored["heating_auto_apply_count"]
+        self._cooling_auto_apply_count = restored["cooling_auto_apply_count"]
+        self._heating_convergence_confidence = restored["heating_convergence_confidence"]
+        self._cooling_convergence_confidence = restored["cooling_convergence_confidence"]
+        self._pid_history = restored["pid_history"]
+        self._last_adjustment_time = restored["last_adjustment_time"]
+        self._consecutive_converged_cycles = restored["consecutive_converged_cycles"]
+        self._pid_converged_for_ke = restored["pid_converged_for_ke"]
