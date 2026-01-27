@@ -27,6 +27,7 @@ if TYPE_CHECKING:
         ContactResumeEvent,
         TemperatureUpdateEvent,
     )
+    from .cycle_metrics import CycleMetricsRecorder
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -116,10 +117,8 @@ class CycleTrackerManager:
         self._temperature_history: list[tuple[datetime, float]] = []
         self._outdoor_temp_history: list[tuple[datetime, float]] = []
         self._settling_timeout_handle = None
-        self._interruption_history: list[tuple[datetime, str]] = []
         self._last_interruption_reason: str | None = None  # Persists across cycle resets
         self._restoration_complete: bool = False  # Gate temperature updates until restoration done
-        self._was_clamped: bool = False  # Tracks if PID was clamped during current cycle
         self._finalizing: bool = False  # Guard against concurrent finalization calls
 
         # Calculate dynamic settling timeout based on thermal mass
@@ -153,23 +152,30 @@ class CycleTrackerManager:
 
         # Event subscriptions
         self._unsubscribe_handles: list[Callable[[], None]] = []
-        self._device_on_time: datetime | None = None
-        self._device_off_time: datetime | None = None
 
-        # Integral tracking for decay calculation
-        self._integral_at_tolerance_entry: float | None = None
-        self._integral_at_setpoint_cross: float | None = None
         # Initialize cold_tolerance from heating type characteristics
         if heating_type and heating_type in HEATING_TYPE_CHARACTERISTICS:
-            self._cold_tolerance: float | None = HEATING_TYPE_CHARACTERISTICS[heating_type].get("cold_tolerance")
+            cold_tolerance: float | None = HEATING_TYPE_CHARACTERISTICS[heating_type].get("cold_tolerance")
         else:
-            self._cold_tolerance: float | None = None
+            cold_tolerance: float | None = None
 
-        # Track previous cycle end temperature for inter-cycle drift calculation
-        self._prev_cycle_end_temp: float | None = None
-
-        # Transport delay tracking for dead time calculation
-        self._transport_delay_minutes: float | None = None
+        # Create metrics recorder
+        from .cycle_metrics import CycleMetricsRecorder
+        self._metrics_recorder = CycleMetricsRecorder(
+            hass=hass,
+            zone_id=zone_id,
+            adaptive_learner=adaptive_learner,
+            get_target_temp=get_target_temp,
+            get_current_temp=get_current_temp,
+            get_hvac_mode=get_hvac_mode,
+            get_in_grace_period=get_in_grace_period,
+            min_cycle_duration_minutes=self._min_cycle_duration_minutes,
+            get_outdoor_temp=get_outdoor_temp,
+            on_validation_failed=on_validation_failed,
+            on_auto_apply_check=on_auto_apply_check,
+            dispatcher=dispatcher,
+            cold_tolerance=cold_tolerance,
+        )
 
         # Subscribe to events if dispatcher provided
         if self._dispatcher is not None:
@@ -218,6 +224,46 @@ class CycleTrackerManager:
         """Return temperature history."""
         return self._temperature_history.copy()
 
+    @property
+    def _interruption_history(self) -> list[tuple[datetime, str]]:
+        """Return interruption history (for testing)."""
+        return self._metrics_recorder._interruption_history
+
+    @property
+    def _was_clamped(self) -> bool:
+        """Return clamping state (for testing)."""
+        return self._metrics_recorder._was_clamped
+
+    @property
+    def _device_on_time(self) -> datetime | None:
+        """Return device on time (for testing)."""
+        return self._metrics_recorder._device_on_time
+
+    @property
+    def _device_off_time(self) -> datetime | None:
+        """Return device off time (for testing)."""
+        return self._metrics_recorder._device_off_time
+
+    @_device_off_time.setter
+    def _device_off_time(self, value: datetime | None) -> None:
+        """Set device off time (for testing)."""
+        self._metrics_recorder._device_off_time = value
+
+    @property
+    def _integral_at_tolerance_entry(self) -> float | None:
+        """Return integral at tolerance entry (for testing)."""
+        return self._metrics_recorder._integral_at_tolerance_entry
+
+    @property
+    def _integral_at_setpoint_cross(self) -> float | None:
+        """Return integral at setpoint cross (for testing)."""
+        return self._metrics_recorder._integral_at_setpoint_cross
+
+    @property
+    def _transport_delay_minutes(self) -> float | None:
+        """Return transport delay (for testing)."""
+        return self._metrics_recorder._transport_delay_minutes
+
     def get_state_name(self) -> str:
         """Return current cycle state as lowercase string.
 
@@ -259,7 +305,7 @@ class CycleTrackerManager:
         Args:
             minutes: Transport delay in minutes (can be 0 for warm manifold)
         """
-        self._transport_delay_minutes = minutes
+        self._metrics_recorder.set_transport_delay(minutes)
         self._logger.debug(
             "Transport delay set to %.1f minutes for current cycle",
             minutes
@@ -279,12 +325,8 @@ class CycleTrackerManager:
         else:
             return
 
-        # Clear integral tracking for new cycle (must happen before idempotent check)
-        self._integral_at_tolerance_entry = None
-        self._integral_at_setpoint_cross = None
-
-        # Clear transport delay for new cycle (must happen before idempotent check)
-        self._transport_delay_minutes = None
+        # Clear metrics tracking for new cycle (must happen before idempotent check)
+        self._metrics_recorder.reset_cycle_metrics()
 
         # Idempotent: ignore if already in the target state
         if self._state == new_state:
@@ -293,7 +335,13 @@ class CycleTrackerManager:
         if self._state == CycleState.SETTLING and not self._finalizing:
             self._logger.info("Finalizing previous cycle before starting new one")
             # Record metrics synchronously before starting new cycle
-            self._record_cycle_metrics()
+            self._metrics_recorder.record_cycle_metrics(
+                cycle_start_time=self._cycle_start_time,
+                cycle_target_temp=self._cycle_target_temp,
+                cycle_state_value=self._state.value,
+                temperature_history=self._temperature_history.copy(),
+                outdoor_temp_history=self._outdoor_temp_history.copy(),
+            )
 
         # Transition to new state
         self._state = new_state
@@ -303,8 +351,7 @@ class CycleTrackerManager:
         self._outdoor_temp_history.clear()
         # Clear last interruption reason when starting a new cycle
         self._last_interruption_reason = None
-        # Clear clamping state for new cycle
-        self._was_clamped = False
+        # Note: clamping state is cleared by reset_cycle_metrics() call above
 
         current_temp = self._get_current_temp()
         self._logger.info(
@@ -332,7 +379,7 @@ class CycleTrackerManager:
             return
 
         # Capture clamping state from event
-        self._was_clamped = event.was_clamped
+        self._metrics_recorder.set_clamped(event.was_clamped)
 
         # Transition to SETTLING state
         self._state = CycleState.SETTLING
@@ -354,7 +401,7 @@ class CycleTrackerManager:
             event: HeatingStartedEvent with hvac_mode, timestamp
         """
         # Track device on time for duty cycle calculation
-        self._device_on_time = event.timestamp
+        self._metrics_recorder.set_device_on_time(event.timestamp)
 
     def _on_heating_ended(self, event: "HeatingEndedEvent") -> None:
         """Handle HEATING_ENDED event for duty cycle tracking.
@@ -363,7 +410,7 @@ class CycleTrackerManager:
             event: HeatingEndedEvent with hvac_mode, timestamp
         """
         # Track device off time for duty cycle calculation
-        self._device_off_time = event.timestamp
+        self._metrics_recorder.set_device_off_time(event.timestamp)
 
     def _on_contact_pause(self, event: "ContactPauseEvent") -> None:
         """Handle CONTACT_PAUSE event.
@@ -474,26 +521,9 @@ class CycleTrackerManager:
         if self._state not in (CycleState.HEATING, CycleState.SETTLING):
             return
 
-        # Capture integral at tolerance entry (only once per cycle)
-        if self._integral_at_tolerance_entry is None and self._cold_tolerance is not None:
-            if event.pid_error < self._cold_tolerance:
-                self._integral_at_tolerance_entry = event.pid_integral
-                self._logger.debug(
-                    "Captured integral at tolerance entry: %.2f (pid_error=%.2f < cold_tolerance=%.2f)",
-                    event.pid_integral,
-                    event.pid_error,
-                    self._cold_tolerance,
-                )
-
-        # Capture integral at setpoint crossing (only once per cycle)
-        if self._integral_at_setpoint_cross is None:
-            if event.pid_error <= 0.0:
-                self._integral_at_setpoint_cross = event.pid_integral
-                self._logger.debug(
-                    "Captured integral at setpoint cross: %.2f (pid_error=%.2f)",
-                    event.pid_integral,
-                    event.pid_error,
-                )
+        # Delegate integral tracking to metrics recorder
+        self._metrics_recorder.track_integral_at_tolerance(event.pid_error, event.pid_integral)
+        self._metrics_recorder.track_integral_at_setpoint(event.pid_error, event.pid_integral)
 
     def cleanup(self) -> None:
         """Clean up event subscriptions and timers.
@@ -592,8 +622,8 @@ class CycleTrackerManager:
         if self._state not in (CycleState.HEATING, CycleState.COOLING, CycleState.SETTLING):
             return
 
-        # Record interruption in history
-        self._interruption_history.append((datetime.now(), interruption_type))
+        # Record interruption in metrics recorder
+        self._metrics_recorder.add_interruption(datetime.now(), interruption_type)
 
         # Map interruption type to user-friendly string for persistence
         if interruption_type in ("setpoint_major", "setpoint_minor"):
@@ -626,18 +656,8 @@ class CycleTrackerManager:
         self._cycle_start_time = None
         self._cycle_target_temp = None
 
-        # Clear interruption history
-        self._interruption_history.clear()
-
-        # Clear integral tracking
-        self._integral_at_tolerance_entry = None
-        self._integral_at_setpoint_cross = None
-
-        # Clear clamping state
-        self._was_clamped = False
-
-        # Clear transport delay
-        self._transport_delay_minutes = None
+        # Clear metrics tracking state
+        self._metrics_recorder.reset_cycle_metrics()
 
         # Set state to IDLE
         self._state = CycleState.IDLE
@@ -648,41 +668,25 @@ class CycleTrackerManager:
         # Cancel settling timeout if active
         self._cancel_settling_timeout()
 
-    def _schedule_learning_save(self) -> None:
-        """Schedule a debounced save of learning data to storage.
 
-        Gets the learning store from hass.data and triggers a delayed save
-        with the current adaptive learner data. This ensures cycle metrics
-        are persisted after finalization without blocking on disk I/O.
+    def _is_cycle_valid(self) -> tuple[bool, str]:
+        """Check if the current cycle is valid for recording.
+
+        Delegates to the metrics recorder for validation logic.
+
+        Returns:
+            Tuple of (is_valid, reason_string)
         """
-        from ..const import DOMAIN
-
-        # Get learning store from hass.data
-        learning_store = self._hass.data.get(DOMAIN, {}).get("learning_store")
-        if learning_store is None:
-            self._logger.debug("No learning store available, skipping save")
-            return
-
-        # Update zone data in memory with current adaptive learner state
-        adaptive_data = self._adaptive_learner.to_dict()
-        learning_store.update_zone_data(
-            zone_id=self._zone_id,
-            adaptive_data=adaptive_data,
-        )
-
-        # Schedule debounced save (30s delay)
-        learning_store.schedule_zone_save()
-
-        self._logger.debug(
-            "Scheduled learning data save for zone %s after cycle finalization",
-            self._zone_id,
+        return self._metrics_recorder._is_cycle_valid(
+            cycle_start_time=self._cycle_start_time,
+            temperature_history=self._temperature_history,
+            current_time=datetime.now(),
         )
 
     def _calculate_mad(self, values: list[float]) -> float:
         """Calculate Median Absolute Deviation (MAD) for robust variability measure.
 
-        MAD is more robust to outliers than standard deviation/variance.
-        Formula: median(|values - median(values)|)
+        Delegates to the metrics recorder for MAD calculation.
 
         Args:
             values: List of numeric values
@@ -690,29 +694,7 @@ class CycleTrackerManager:
         Returns:
             Median absolute deviation
         """
-        if not values:
-            return 0.0
-
-        # Calculate median
-        sorted_values = sorted(values)
-        n = len(sorted_values)
-        if n % 2 == 0:
-            median = (sorted_values[n // 2 - 1] + sorted_values[n // 2]) / 2
-        else:
-            median = sorted_values[n // 2]
-
-        # Calculate absolute deviations
-        abs_deviations = [abs(v - median) for v in values]
-
-        # Return median of absolute deviations
-        sorted_devs = sorted(abs_deviations)
-        n = len(sorted_devs)
-        if n % 2 == 0:
-            mad = (sorted_devs[n // 2 - 1] + sorted_devs[n // 2]) / 2
-        else:
-            mad = sorted_devs[n // 2]
-
-        return mad
+        return self._metrics_recorder._calculate_mad(values)
 
     def _is_settling_complete(self) -> bool:
         """Check if temperature has settled after heating stopped.
@@ -762,277 +744,6 @@ class CycleTrackerManager:
         self._logger.debug("Temperature settled: MAD=%.3f°C", mad)
         return True
 
-    def _calculate_decay_metrics(self) -> tuple[float | None, float | None, float | None]:
-        """Calculate decay-related integral metrics.
-
-        Computes the decay contribution as the difference between integral values
-        at tolerance entry and setpoint crossing.
-
-        Returns:
-            Tuple of (integral_at_tolerance_entry, integral_at_setpoint_cross, decay_contribution)
-            decay_contribution is None if either integral value is missing
-        """
-        integral_at_tolerance = self._integral_at_tolerance_entry
-        integral_at_setpoint = self._integral_at_setpoint_cross
-
-        # Calculate decay contribution only if both values are captured
-        decay_contribution = None
-        if integral_at_tolerance is not None and integral_at_setpoint is not None:
-            decay_contribution = integral_at_tolerance - integral_at_setpoint
-
-        return integral_at_tolerance, integral_at_setpoint, decay_contribution
-
-    def _is_cycle_valid(self) -> tuple[bool, str]:
-        """Check if the current cycle is valid for recording.
-
-        A cycle is valid if:
-        1. Duration >= minimum cycle duration (5 minutes)
-        2. Not in learning grace period
-        3. Learning is enabled (not in vacation mode)
-        4. Sufficient temperature samples (>= 5)
-
-        Returns:
-            Tuple of (is_valid, reason_string)
-        """
-        # Check minimum duration
-        if self._cycle_start_time is None:
-            return False, "No cycle start time recorded"
-
-        duration_minutes = (datetime.now() - self._cycle_start_time).total_seconds() / 60
-        if duration_minutes < self._min_cycle_duration_minutes:
-            return False, f"Cycle too short ({duration_minutes:.1f} min < {self._min_cycle_duration_minutes} min)"
-
-        # Check learning grace period
-        if self._get_in_grace_period():
-            return False, "In learning grace period"
-
-        # Check vacation mode (learning_enabled)
-        # Note: This is checked via zone_data["learning_enabled"] which is set to False in vacation mode
-        # For now, we'll skip this check as it requires coordination with climate entity
-        # The get_in_grace_period callback handles the grace period, and vacation mode
-        # should be checked at a higher level before calling cycle tracking methods
-
-        # Check sufficient temperature samples
-        if len(self._temperature_history) < 5:
-            return False, f"Insufficient temperature samples ({len(self._temperature_history)} < 5)"
-
-        return True, "Valid"
-
-    def _record_cycle_metrics(self) -> None:
-        """Record metrics for the current cycle without resetting state.
-
-        This is a synchronous helper that validates the cycle and records metrics
-        without transitioning state. Used when a new cycle interrupts the settling phase.
-        """
-        # Validate cycle
-        is_valid, reason = self._is_cycle_valid()
-        if not is_valid:
-            self._logger.info("Cycle not recorded: %s", reason)
-            return
-
-        # Log interruption status if cycle was interrupted
-        if len(self._interruption_history) > 0:
-            self._logger.info(
-                "Cycle had %d interruptions during tracking",
-                len(self._interruption_history),
-            )
-
-        # Import cycle analysis functions
-        from ..adaptive.cycle_analysis import (
-            CycleMetrics,
-            calculate_overshoot,
-            calculate_undershoot,
-            calculate_settling_time,
-            count_oscillations,
-            calculate_rise_time,
-            calculate_settling_mae,
-        )
-        from ..adaptive.disturbance_detector import DisturbanceDetector
-
-        # Get target temperature
-        target_temp = self._cycle_target_temp
-        if target_temp is None:
-            self._logger.warning("No target temperature recorded, cannot calculate metrics")
-            return
-
-        # Get start temperature (first reading in history)
-        if len(self._temperature_history) < 1:
-            self._logger.warning("No temperature history, cannot calculate metrics")
-            return
-
-        start_temp = self._temperature_history[0][1]
-
-        # Calculate all 5 metrics
-        overshoot = calculate_overshoot(self._temperature_history, target_temp)
-        undershoot = calculate_undershoot(self._temperature_history, target_temp)
-        settling_time = calculate_settling_time(self._temperature_history, target_temp, reference_time=self._device_off_time)
-        oscillations = count_oscillations(self._temperature_history, target_temp)
-        rise_time = calculate_rise_time(self._temperature_history, start_temp, target_temp)
-
-        # Detect disturbances (requires environmental sensor data - not yet wired up)
-        # For now, heater_active_periods is estimated from cycle start/stop times
-        heater_active_periods = []
-        if self._cycle_start_time:
-            # Estimate heater was active from cycle start to first settling temp
-            heating_end = self._cycle_start_time
-            if len(self._temperature_history) > 0:
-                # Assume heating stopped sometime during the cycle
-                heating_end = self._temperature_history[len(self._temperature_history) // 2][0]
-            heater_active_periods.append((self._cycle_start_time, heating_end))
-
-        detector = DisturbanceDetector()
-        disturbances = detector.detect_disturbances(
-            temperature_history=self._temperature_history,
-            heater_active_periods=heater_active_periods,
-            outdoor_temps=None,  # TODO: Wire up outdoor sensor data
-            solar_values=None,   # TODO: Wire up solar sensor data
-            wind_speeds=None,    # TODO: Wire up wind sensor data
-        )
-
-        # Calculate outdoor temperature average if available
-        outdoor_temp_avg = None
-        if len(self._outdoor_temp_history) > 0:
-            outdoor_temp_avg = sum(temp for _, temp in self._outdoor_temp_history) / len(self._outdoor_temp_history)
-
-        # Calculate decay metrics
-        integral_at_tolerance, integral_at_setpoint, decay_contribution = self._calculate_decay_metrics()
-
-        # Calculate end_temp from last temperature in history
-        end_temp = None
-        if len(self._temperature_history) > 0:
-            end_temp = self._temperature_history[-1][1]
-
-        # Calculate inter_cycle_drift if we have previous cycle end temp
-        inter_cycle_drift = None
-        if self._prev_cycle_end_temp is not None and start_temp is not None:
-            inter_cycle_drift = start_temp - self._prev_cycle_end_temp
-
-        # Calculate settling_mae
-        settling_mae = calculate_settling_mae(
-            temperature_history=self._temperature_history,
-            target_temp=target_temp,
-            settling_start_time=self._device_off_time,
-        )
-
-        # Calculate dead_time from transport delay if set
-        dead_time = self._transport_delay_minutes
-
-        # Determine mode from current cycle state
-        mode = None
-        if self._state in (CycleState.HEATING, CycleState.SETTLING):
-            # Check if we were in a heating cycle
-            hvac_mode = self._get_hvac_mode()
-            if hvac_mode == "heat":
-                mode = "heating"
-            elif hvac_mode == "cool":
-                mode = "cooling"
-        elif self._state == CycleState.COOLING:
-            mode = "cooling"
-
-        # Create CycleMetrics object with interruption history
-        metrics = CycleMetrics(
-            overshoot=overshoot,
-            undershoot=undershoot,
-            settling_time=settling_time,
-            oscillations=oscillations,
-            rise_time=rise_time,
-            disturbances=disturbances,
-            interruption_history=self._interruption_history.copy(),
-            outdoor_temp_avg=outdoor_temp_avg,
-            integral_at_tolerance_entry=integral_at_tolerance,
-            integral_at_setpoint_cross=integral_at_setpoint,
-            decay_contribution=decay_contribution,
-            was_clamped=self._was_clamped,
-            end_temp=end_temp,
-            settling_mae=settling_mae,
-            inter_cycle_drift=inter_cycle_drift,
-            dead_time=dead_time,
-            mode=mode,
-        )
-
-        # Record metrics with adaptive learner
-        self._adaptive_learner.add_cycle_metrics(metrics)
-        self._adaptive_learner.update_convergence_tracking(metrics)
-        self._adaptive_learner.update_convergence_confidence(metrics)
-
-        # Check if we're in validation mode and handle validation
-        if self._adaptive_learner.is_in_validation_mode():
-            validation_result = self._adaptive_learner.add_validation_cycle(metrics)
-
-            if validation_result == 'rollback':
-                # Validation failed - call rollback callback if available
-                if self._on_validation_failed is not None:
-                    self._logger.warning("Validation failed, triggering rollback callback")
-                    # Schedule callback as async task
-                    self._hass.async_create_task(self._on_validation_failed())
-                else:
-                    self._logger.warning(
-                        "Validation failed but no rollback callback configured"
-                    )
-            elif validation_result == 'success':
-                self._logger.info(
-                    "Validation completed successfully - PID changes verified"
-                )
-
-        # Log cycle completion with all metrics
-        disturbance_str = f", disturbances={disturbances}" if disturbances else ""
-        clamped_str = f", was_clamped={self._was_clamped}"
-        self._logger.info(
-            "Cycle completed - overshoot=%.2f°C, undershoot=%.2f°C, "
-            "settling_time=%.1f min, oscillations=%d, rise_time=%.1f min%s%s",
-            overshoot or 0.0,
-            undershoot or 0.0,
-            settling_time or 0.0,
-            oscillations,
-            rise_time or 0.0,
-            disturbance_str,
-            clamped_str,
-        )
-
-        # Trigger auto-apply check if callback configured (and not in validation mode)
-        if self._on_auto_apply_check is not None and not self._adaptive_learner.is_in_validation_mode():
-            self._hass.async_create_task(self._on_auto_apply_check())
-
-        # Schedule debounced save of learning data
-        self._schedule_learning_save()
-
-        # Emit CYCLE_ENDED event if dispatcher is configured
-        if self._dispatcher is not None:
-            from .events import CycleEndedEvent
-
-            # Get HVAC mode from callback
-            hvac_mode = self._get_hvac_mode()
-
-            # Compute duration for preheat observation recording
-            duration_minutes = None
-            if self._cycle_start_time is not None:
-                duration_minutes = (datetime.now() - self._cycle_start_time).total_seconds() / 60
-
-            # Create metrics dict from the CycleMetrics object
-            metrics_dict = {
-                "overshoot": metrics.overshoot,
-                "undershoot": metrics.undershoot,
-                "settling_time": metrics.settling_time,
-                "oscillations": metrics.oscillations,
-                "rise_time": metrics.rise_time,
-                "disturbances": metrics.disturbances,
-                "outdoor_temp_avg": metrics.outdoor_temp_avg,
-                "start_temp": start_temp,
-                "end_temp": end_temp,
-                "duration_minutes": duration_minutes,
-                "interrupted": metrics.was_interrupted,
-            }
-
-            cycle_ended_event = CycleEndedEvent(
-                hvac_mode=hvac_mode,
-                timestamp=datetime.now(),
-                metrics=metrics_dict,
-            )
-            self._dispatcher.emit(cycle_ended_event)
-
-        # Store end_temp for next cycle's inter_cycle_drift calculation
-        if end_temp is not None:
-            self._prev_cycle_end_temp = end_temp
 
     async def _finalize_cycle(self) -> None:
         """Finalize cycle and record metrics.
@@ -1045,8 +756,14 @@ class CycleTrackerManager:
             self._settling_timeout_handle()
             self._settling_timeout_handle = None
 
-        # Record metrics using the synchronous helper
-        self._record_cycle_metrics()
+        # Record metrics using the metrics recorder
+        self._metrics_recorder.record_cycle_metrics(
+            cycle_start_time=self._cycle_start_time,
+            cycle_target_temp=self._cycle_target_temp,
+            cycle_state_value=self._state.value,
+            temperature_history=self._temperature_history.copy(),
+            outdoor_temp_history=self._outdoor_temp_history.copy(),
+        )
 
         # Reset cycle state (clears interruption flags and transitions to IDLE)
         self._reset_cycle_state()
