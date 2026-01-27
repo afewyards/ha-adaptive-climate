@@ -24,15 +24,21 @@ pytest --cov=custom_components/adaptive_thermostat  # coverage
 | Module | Purpose |
 |--------|---------|
 | `climate.py` | Main entity - orchestrates managers, presets, state |
+| `climate_setup.py` | Platform schema, setup, PWM validation |
+| `climate_init.py` | Manager initialization factory |
 | `coordinator.py` | Zone registry, CentralController, ModeSync, thermal groups |
 | `pid_controller/__init__.py` | PID with P, I, D, E (outdoor), F (feedforward) terms |
 | `adaptive/learning.py` | Cycle analysis, rule-based PID adjustments |
+| `adaptive/validation.py` | ValidationManager for auto-apply safety checks |
+| `adaptive/confidence.py` | ConfidenceTracker for convergence confidence |
+| `adaptive/learner_serialization.py` | Serialization/deserialization for AdaptiveLearner |
 | `adaptive/physics.py` | Thermal time constant, Ziegler-Nichols init |
+| `adaptive/floor_physics.py` | Floor thermal properties, slab calculations |
 | `sensor.py` | Performance/learning sensors |
 
 ### Managers (`managers/`)
 
-`HeaterController` (PWM/valve), `CycleTrackerManager` (IDLE→HEATING→SETTLING), `TemperatureManager`, `KeManager` (outdoor comp), `NightSetbackManager`, `NightSetbackCalculator` (preheat timing)
+`HeaterController` (PWM/valve), `PWMController` (duty accumulation, PWM switching), `CycleTrackerManager` (IDLE→HEATING→SETTLING), `CycleMetricsRecorder` (cycle validation, metrics), `TemperatureManager`, `KeManager` (outdoor comp), `NightSetbackManager`, `NightSetbackCalculator` (preheat timing)
 
 ### Data Flow
 
