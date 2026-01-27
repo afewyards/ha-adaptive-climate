@@ -1,6 +1,119 @@
 # CHANGELOG
 
 
+## v0.38.0 (2026-01-27)
+
+### Bug Fixes
+
+- **climate**: Call mark_manifold_active after heater turn-on
+  ([`72a8f4d`](https://github.com/afewyards/ha-adaptive-thermostat/commit/72a8f4d1ff869852b35dfcc152a56ad715cdd288))
+
+Wire up production call to ManifoldRegistry.mark_manifold_active() after heater turns on. This
+  ensures manifolds are marked warm when a zone starts heating, allowing adjacent zones on the same
+  manifold to skip transport delay calculations (get 0 delay) when they activate shortly after.
+
+Previously this method was only called in tests, so transport delays were always recalculated from
+  scratch even when a manifold had recent activity.
+
+- **coordinator**: Convert slug keys to entity_ids in transport delay calc
+  ([`84814e3`](https://github.com/afewyards/ha-adaptive-thermostat/commit/84814e3f5763f457b442e699d896859f4091b8c8))
+
+The _demand_states dict is keyed by slug (e.g. "bathroom_2nd"), but _zone_loops and the manifold
+  registry are keyed by entity_id (e.g. "climate.bathroom_2nd"). This caused active_zones passed to
+  the registry to never match any zone, and transport delay to ignore all active zones.
+
+Now converts slug keys to entity_id format (prefixing "climate.") when building active_zones dict,
+  ensuring correct loop count lookup and proper manifold registry matching.
+
+- **learning**: Add backward-compatible accessors for seasonal shift state
+  ([`845b5fb`](https://github.com/afewyards/ha-adaptive-thermostat/commit/845b5fb8f7980ac52720494c4f03bbc1626b7ea4))
+
+### Documentation
+
+- Update architecture docs after refactoring
+  ([`8828e35`](https://github.com/afewyards/ha-adaptive-thermostat/commit/8828e35012e7eddb06780284ffa6b5af7d6c09ed))
+
+### Features
+
+- Gate info/debug logs behind debug config flag
+  ([`b6c5c90`](https://github.com/afewyards/ha-adaptive-thermostat/commit/b6c5c905aab207aab3c9c88496ebdd938f4a05c2))
+
+Set parent logger level to WARNING when debug=false (default), suppressing info/debug logs from all
+  component modules.
+
+### Refactoring
+
+- **climate**: Extract manager initialization to climate_init module
+  ([`fe777df`](https://github.com/afewyards/ha-adaptive-thermostat/commit/fe777df0b8cd0265060285996fcbe9a5d3027e94))
+
+- **climate**: Extract platform setup to climate_setup module
+  ([`91cd555`](https://github.com/afewyards/ha-adaptive-thermostat/commit/91cd55560e71ef3e94e5075199af79def1b9de63))
+
+- **const**: Compact floor material dict literals to single-line entries
+  ([`c24d4fe`](https://github.com/afewyards/ha-adaptive-thermostat/commit/c24d4fe4eeaf4909caaac2181f928decfede4907))
+
+- **const**: Move get_auto_apply_thresholds to learning module
+  ([`55b31b8`](https://github.com/afewyards/ha-adaptive-thermostat/commit/55b31b8324994a8bd11178474dd9cc8003b08f51))
+
+Move get_auto_apply_thresholds() function from const.py to adaptive/learning.py where it is
+  consumed. Update all imports across the codebase and test files.
+
+- **cycle-tracker**: Extract cycle metrics recorder to dedicated module
+  ([`114d087`](https://github.com/afewyards/ha-adaptive-thermostat/commit/114d087d4fc215614f343c62cb078ad45580955b))
+
+Extract cycle metrics recording functionality from CycleTrackerManager into a new
+  CycleMetricsRecorder class in cycle_metrics.py (~545 lines). This separates concerns: cycle state
+  tracking vs metrics validation/recording.
+
+Extracted functionality: - _is_cycle_valid() - validates cycle meets minimum requirements -
+  _record_cycle_metrics() - calculates and records all cycle metrics - _calculate_decay_metrics() -
+  computes integral decay contribution - _calculate_mad() - calculates Median Absolute Deviation
+
+Extracted state: - Metrics tracking: interruption_history, was_clamped, device_on_time,
+  device_off_time - Integral tracking: integral_at_tolerance_entry, integral_at_setpoint_cross -
+  Drift tracking: prev_cycle_end_temp - Dead time: transport_delay_minutes
+
+CycleTrackerManager now delegates to CycleMetricsRecorder for all metrics operations while
+  maintaining backward compatibility through property accessors for tests.
+
+Reduced cycle_tracker.py from 1053 to 769 lines.
+
+- **heater**: Extract PWM controller to dedicated module
+  ([`d291f9a`](https://github.com/afewyards/ha-adaptive-thermostat/commit/d291f9a7b6b8696ce8d49f4057f9e148db834bc9))
+
+- **learning**: Extract confidence tracker to dedicated module
+  ([`d8b152f`](https://github.com/afewyards/ha-adaptive-thermostat/commit/d8b152f758ea0935dbcd9d6f66c5087b202ae2ec))
+
+Extract ConfidenceTracker class from AdaptiveLearner to confidence.py. Includes: - Mode-specific
+  confidence tracking (heating/cooling) - Auto-apply count tracking per mode - Learning rate
+  multiplier calculation - Confidence decay logic
+
+Maintains backward compatibility via property accessors for tests. All delegated methods preserve
+  original behavior.
+
+- **learning**: Extract serialization logic to dedicated module
+  ([`d4f64f1`](https://github.com/afewyards/ha-adaptive-thermostat/commit/d4f64f163297644a4ec040110ec0a462a24455b8))
+
+- **learning**: Extract validation manager to dedicated module
+  ([`d3ecb0c`](https://github.com/afewyards/ha-adaptive-thermostat/commit/d3ecb0c17e39dacfffd6aaf7c54f030526529d5e))
+
+- Create adaptive/validation.py with ValidationManager class - Extract validation mode methods:
+  start_validation_mode, add_validation_cycle, is_in_validation_mode - Extract safety check methods:
+  check_auto_apply_limits, check_performance_degradation, check_seasonal_shift,
+  record_seasonal_shift - Extract physics baseline methods: set_physics_baseline,
+  calculate_drift_from_baseline - Delegate all validation operations from AdaptiveLearner to
+  ValidationManager - Add backward-compatible property accessors for test compatibility - No
+  circular imports, validation.py only imports from const and cycle_analysis - All 237 tests pass
+  (test_learning.py, test_integration_auto_apply.py, test_auto_apply.py)
+
+- **physics**: Extract floor physics to dedicated module
+  ([`e0542cc`](https://github.com/afewyards/ha-adaptive-thermostat/commit/e0542cc908397c5ecfd9eef66e49e6a41cb53721))
+
+- Move validate_floor_construction and calculate_floor_thermal_properties to floor_physics.py - Add
+  re-exports in physics.py for backward compatibility - Reduce physics.py from 932 to 674 lines -
+  New floor_physics.py module is 271 lines
+
+
 ## v0.37.2 (2026-01-27)
 
 ### Bug Fixes
