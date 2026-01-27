@@ -39,7 +39,7 @@ class MockThermostatState:
         self._outdoor_temp = 5.0
         self._wind_speed = 0.0
         self._hvac_mode = MockHVACMode.HEAT
-        self._prev_temp_time = 1000.0
+        self._previous_temp_time = 1000.0
         self._cur_temp_time = 1060.0
         self._output_precision = 1
         self._control_output = 0.0

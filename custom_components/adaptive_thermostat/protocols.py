@@ -228,7 +228,7 @@ class ThermostatState(Protocol):
 
     # Timing state for PID calculation
     @property
-    def _prev_temp_time(self) -> float | None:
+    def _previous_temp_time(self) -> float | None:
         """Return the previous temperature timestamp."""
         ...
 

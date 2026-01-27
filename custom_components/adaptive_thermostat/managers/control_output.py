@@ -157,7 +157,7 @@ class ControlOutputManager:
         self._last_pid_calc_time = current_time
 
         # Ensure timing values are set
-        previous_temp_time = self._thermostat_state._prev_temp_time
+        previous_temp_time = self._thermostat_state._previous_temp_time
         cur_temp_time = self._thermostat_state._cur_temp_time
 
         if previous_temp_time is None:
