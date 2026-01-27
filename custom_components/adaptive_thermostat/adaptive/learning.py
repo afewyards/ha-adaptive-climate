@@ -64,6 +64,9 @@ from .cycle_analysis import (
 # Import and re-export PWM tuning utilities for backward compatibility
 from .pwm_tuning import calculate_pwm_adjustment, ValveCycleTracker
 
+# Import validation manager for safety checks
+from .validation import ValidationManager
+
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -130,8 +133,6 @@ class AdaptiveLearner:
         # Mode-specific convergence confidence tracking
         self._heating_convergence_confidence: float = 0.0
         self._cooling_convergence_confidence: float = 0.0
-        self._last_seasonal_check: Optional[datetime] = None
-        self._outdoor_temp_history: List[float] = []
         self._duty_cycle_history: List[float] = []
         # Hybrid rate limiting: track cycles since last adjustment
         self._cycles_since_last_adjustment: int = 0
@@ -141,18 +142,10 @@ class AdaptiveLearner:
         # Mode-specific auto-apply tracking state
         self._heating_auto_apply_count: int = 0
         self._cooling_auto_apply_count: int = 0
-        self._last_seasonal_shift: Optional[datetime] = None
         self._pid_history: List[Dict[str, Any]] = []
 
-        # Physics baseline for drift calculation
-        self._physics_baseline_kp: Optional[float] = None
-        self._physics_baseline_ki: Optional[float] = None
-        self._physics_baseline_kd: Optional[float] = None
-
-        # Validation mode state
-        self._validation_mode: bool = False
-        self._validation_baseline_overshoot: Optional[float] = None
-        self._validation_cycles: List[CycleMetrics] = []
+        # Validation manager for safety checks and validation mode
+        self._validation = ValidationManager()
 
     @property
     def cycle_history(self) -> List[CycleMetrics]:
@@ -194,6 +187,52 @@ class AdaptiveLearner:
     def _convergence_confidence(self, value: float) -> None:
         """Backward-compatible alias setter for _heating_convergence_confidence."""
         self._heating_convergence_confidence = value
+
+    # Backward-compatible aliases for validation manager attributes (used by tests)
+    @property
+    def _validation_mode(self) -> bool:
+        """Backward-compatible alias for validation manager's validation mode."""
+        return self._validation.is_in_validation_mode()
+
+    @property
+    def _validation_cycles(self) -> List[CycleMetrics]:
+        """Backward-compatible alias for validation manager's validation cycles."""
+        return self._validation._validation_cycles
+
+    @property
+    def _validation_baseline_overshoot(self) -> Optional[float]:
+        """Backward-compatible alias for validation manager's baseline overshoot."""
+        return self._validation._validation_baseline_overshoot
+
+    @property
+    def _last_seasonal_shift(self) -> Optional[datetime]:
+        """Backward-compatible alias for validation manager's last seasonal shift."""
+        return self._validation._last_seasonal_shift
+
+    @_last_seasonal_shift.setter
+    def _last_seasonal_shift(self, value: Optional[datetime]) -> None:
+        """Backward-compatible alias setter for validation manager's last seasonal shift."""
+        self._validation._last_seasonal_shift = value
+
+    @property
+    def _outdoor_temp_history(self) -> List[float]:
+        """Backward-compatible alias for validation manager's outdoor temp history."""
+        return self._validation._outdoor_temp_history
+
+    @property
+    def _physics_baseline_kp(self) -> Optional[float]:
+        """Backward-compatible alias for validation manager's physics baseline Kp."""
+        return self._validation._physics_baseline_kp
+
+    @property
+    def _physics_baseline_ki(self) -> Optional[float]:
+        """Backward-compatible alias for validation manager's physics baseline Ki."""
+        return self._validation._physics_baseline_ki
+
+    @property
+    def _physics_baseline_kd(self) -> Optional[float]:
+        """Backward-compatible alias for validation manager's physics baseline Kd."""
+        return self._validation._physics_baseline_kd
 
     def add_cycle_metrics(self, metrics: CycleMetrics, mode: "HVACMode" = None) -> None:
         """
@@ -437,7 +476,7 @@ class AdaptiveLearner:
         # Auto-apply safety gates (when called for automatic PID application)
         if check_auto_apply:
             # Check 1: Skip if in validation mode (validating previous auto-apply)
-            if self._validation_mode:
+            if self._validation.is_in_validation_mode():
                 _LOGGER.debug(
                     "Auto-apply blocked: currently in validation mode, "
                     "waiting for validation to complete"
@@ -445,14 +484,19 @@ class AdaptiveLearner:
                 return None
 
             # Check 2: Safety limits (lifetime, seasonal, drift, shift cooldown)
-            limit_msg = self.check_auto_apply_limits(current_kp, current_ki, current_kd)
+            limit_msg = self._validation.check_auto_apply_limits(
+                current_kp, current_ki, current_kd,
+                self._heating_auto_apply_count,
+                self._cooling_auto_apply_count,
+                self._pid_history
+            )
             if limit_msg:
                 _LOGGER.warning(f"Auto-apply blocked: {limit_msg}")
                 return None
 
             # Check 3: Seasonal shift detection
-            if outdoor_temp is not None and self.check_seasonal_shift(outdoor_temp):
-                self.record_seasonal_shift()
+            if outdoor_temp is not None and self._validation.check_seasonal_shift(outdoor_temp):
+                self._validation.record_seasonal_shift()
                 _LOGGER.warning(
                     "Auto-apply blocked: seasonal temperature shift detected, "
                     f"blocking for {SEASONAL_SHIFT_BLOCK_DAYS} days"
@@ -765,8 +809,7 @@ class AdaptiveLearner:
         self._cycles_since_last_adjustment = 0
         self._heating_convergence_confidence = 0.0
         self._cooling_convergence_confidence = 0.0
-        self._validation_mode = False
-        self._validation_cycles = []
+        self._validation.reset_validation_state()
 
     def record_pid_snapshot(
         self,
@@ -904,15 +947,7 @@ class AdaptiveLearner:
             ki: Physics-based integral gain
             kd: Physics-based derivative gain
         """
-        self._physics_baseline_kp = kp
-        self._physics_baseline_ki = ki
-        self._physics_baseline_kd = kd
-        _LOGGER.info(
-            "Physics baseline set: Kp=%.2f, Ki=%.4f, Kd=%.2f",
-            kp,
-            ki,
-            kd,
-        )
+        self._validation.set_physics_baseline(kp, ki, kd)
 
     def calculate_drift_from_baseline(
         self,
@@ -934,33 +969,7 @@ class AdaptiveLearner:
             Maximum drift as a decimal (e.g., 0.5 = 50% drift).
             Returns 0.0 if no baseline is set.
         """
-        if self._physics_baseline_kp is None:
-            _LOGGER.debug("No physics baseline set, drift calculation returns 0.0")
-            return 0.0
-
-        # Calculate percentage drift for each parameter
-        # Use absolute difference divided by baseline value
-        kp_drift = abs(current_kp - self._physics_baseline_kp) / self._physics_baseline_kp
-        ki_drift = (
-            abs(current_ki - self._physics_baseline_ki) / self._physics_baseline_ki
-            if self._physics_baseline_ki > 0
-            else 0.0
-        )
-        kd_drift = (
-            abs(current_kd - self._physics_baseline_kd) / self._physics_baseline_kd
-            if self._physics_baseline_kd > 0
-            else 0.0
-        )
-
-        max_drift = max(kp_drift, ki_drift, kd_drift)
-        _LOGGER.debug(
-            "PID drift from baseline: Kp=%.1f%%, Ki=%.1f%%, Kd=%.1f%%, max=%.1f%%",
-            kp_drift * 100,
-            ki_drift * 100,
-            kd_drift * 100,
-            max_drift * 100,
-        )
-        return max_drift
+        return self._validation.calculate_drift_from_baseline(current_kp, current_ki, current_kd)
 
     def update_convergence_tracking(self, metrics: CycleMetrics) -> bool:
         """Update convergence tracking based on latest cycle metrics.
@@ -1154,32 +1163,7 @@ class AdaptiveLearner:
         if mode is None:
             mode = _get_hvac_heat_mode()
         cycle_history = self._cooling_cycle_history if mode == _get_hvac_cool_mode() else self._heating_cycle_history
-
-        if len(cycle_history) < baseline_window * 2:
-            return False  # Not enough data
-
-        # Get baseline (older cycles) and recent cycles
-        baseline_cycles = cycle_history[:baseline_window]
-        recent_cycles = cycle_history[-baseline_window:]
-
-        # Calculate average overshoot for both windows
-        baseline_overshoot = statistics.mean(
-            [c.overshoot for c in baseline_cycles if c.overshoot is not None]
-        ) if any(c.overshoot is not None for c in baseline_cycles) else 0.0
-
-        recent_overshoot = statistics.mean(
-            [c.overshoot for c in recent_cycles if c.overshoot is not None]
-        ) if any(c.overshoot is not None for c in recent_cycles) else 0.0
-
-        # Check if recent performance is significantly worse (>50% increase in overshoot)
-        if recent_overshoot > baseline_overshoot * 1.5 and recent_overshoot > 0.3:
-            _LOGGER.warning(
-                f"Performance degradation detected: overshoot increased from "
-                f"{baseline_overshoot:.2f}°C to {recent_overshoot:.2f}°C"
-            )
-            return True
-
-        return False
+        return self._validation.check_performance_degradation(cycle_history, baseline_window)
 
     def check_seasonal_shift(self, outdoor_temp: Optional[float] = None) -> bool:
         """Check if outdoor temperature regime has shifted significantly.
@@ -1193,41 +1177,7 @@ class AdaptiveLearner:
         Returns:
             True if significant shift detected, False otherwise
         """
-        if outdoor_temp is None:
-            return False
-
-        # Add to history
-        self._outdoor_temp_history.append(outdoor_temp)
-
-        # Keep last 30 readings (roughly 15 hours at 30-min intervals)
-        if len(self._outdoor_temp_history) > 30:
-            self._outdoor_temp_history = self._outdoor_temp_history[-30:]
-
-        # Need at least 10 readings to detect shift
-        if len(self._outdoor_temp_history) < 10:
-            return False
-
-        # Check daily (avoid checking too frequently)
-        now = datetime.now()
-        if self._last_seasonal_check is not None:
-            if now - self._last_seasonal_check < timedelta(days=1):
-                return False
-
-        self._last_seasonal_check = now
-
-        # Calculate average of old vs new readings
-        old_avg = statistics.mean(self._outdoor_temp_history[:10])
-        new_avg = statistics.mean(self._outdoor_temp_history[-10:])
-
-        # Detect 10°C shift
-        if abs(new_avg - old_avg) >= 10.0:
-            _LOGGER.warning(
-                f"Seasonal shift detected: outdoor temp changed from "
-                f"{old_avg:.1f}°C to {new_avg:.1f}°C"
-            )
-            return True
-
-        return False
+        return self._validation.check_seasonal_shift(outdoor_temp)
 
     def apply_confidence_decay(self) -> None:
         """Apply daily confidence decay to account for drift over time.
@@ -1276,15 +1226,7 @@ class AdaptiveLearner:
             baseline_overshoot: Average overshoot from cycles before auto-apply,
                                used as reference for degradation detection.
         """
-        self._validation_mode = True
-        self._validation_baseline_overshoot = baseline_overshoot
-        self._validation_cycles = []
-        _LOGGER.info(
-            "Validation mode started: monitoring next %d cycles "
-            "(baseline overshoot: %.2f°C)",
-            VALIDATION_CYCLE_COUNT,
-            baseline_overshoot,
-        )
+        self._validation.start_validation_mode(baseline_overshoot)
 
     def add_validation_cycle(self, metrics: CycleMetrics) -> Optional[str]:
         """Add a cycle to validation tracking and check for completion.
@@ -1300,61 +1242,7 @@ class AdaptiveLearner:
             'success' if validation passed (performance maintained or improved),
             'rollback' if validation failed (significant degradation detected).
         """
-        if not self._validation_mode:
-            return None
-
-        self._validation_cycles.append(metrics)
-        _LOGGER.debug(
-            "Validation cycle %d/%d added (overshoot: %.2f°C)",
-            len(self._validation_cycles),
-            VALIDATION_CYCLE_COUNT,
-            metrics.overshoot if metrics.overshoot is not None else 0.0,
-        )
-
-        # Still collecting cycles
-        if len(self._validation_cycles) < VALIDATION_CYCLE_COUNT:
-            return None
-
-        # Validation complete - calculate average overshoot
-        overshoot_values = [
-            c.overshoot for c in self._validation_cycles if c.overshoot is not None
-        ]
-
-        if not overshoot_values:
-            _LOGGER.warning(
-                "Validation complete but no overshoot data - assuming success"
-            )
-            self._validation_mode = False
-            return "success"
-
-        avg_overshoot = statistics.mean(overshoot_values)
-        baseline = self._validation_baseline_overshoot or 0.1  # Avoid division by zero
-
-        # Calculate degradation as percentage increase from baseline
-        # Use max(baseline, 0.1) to handle very small baseline values
-        degradation_pct = (avg_overshoot - baseline) / max(baseline, 0.1)
-
-        if degradation_pct > VALIDATION_DEGRADATION_THRESHOLD:
-            _LOGGER.warning(
-                "Validation FAILED: overshoot degraded %.1f%% "
-                "(baseline: %.2f°C, validation avg: %.2f°C, threshold: %.0f%%)",
-                degradation_pct * 100,
-                baseline,
-                avg_overshoot,
-                VALIDATION_DEGRADATION_THRESHOLD * 100,
-            )
-            self._validation_mode = False
-            return "rollback"
-
-        _LOGGER.info(
-            "Validation SUCCESS: overshoot change %.1f%% within threshold "
-            "(baseline: %.2f°C, validation avg: %.2f°C)",
-            degradation_pct * 100,
-            baseline,
-            avg_overshoot,
-        )
-        self._validation_mode = False
-        return "success"
+        return self._validation.add_validation_cycle(metrics)
 
     def is_in_validation_mode(self) -> bool:
         """Check if currently in validation mode.
@@ -1362,7 +1250,7 @@ class AdaptiveLearner:
         Returns:
             True if validation mode is active, False otherwise.
         """
-        return self._validation_mode
+        return self._validation.is_in_validation_mode()
 
     def check_auto_apply_limits(
         self,
@@ -1387,49 +1275,12 @@ class AdaptiveLearner:
             None if all checks pass (OK to auto-apply),
             Error message string if any check fails (blocked).
         """
-        # Check 1: Lifetime limit (combined across all modes)
-        total_auto_apply_count = self._heating_auto_apply_count + self._cooling_auto_apply_count
-        if total_auto_apply_count >= MAX_AUTO_APPLIES_LIFETIME:
-            return (
-                f"Lifetime limit reached: {total_auto_apply_count} auto-applies "
-                f"(max {MAX_AUTO_APPLIES_LIFETIME}). Manual review required."
-            )
-
-        # Check 2: Seasonal limit (auto-applies in last 90 days)
-        now = datetime.now()
-        cutoff = now - timedelta(days=90)
-        recent_applies = [
-            entry
-            for entry in self._pid_history
-            if entry.get("reason") == "auto_apply" and entry.get("timestamp", now) > cutoff
-        ]
-        if len(recent_applies) >= MAX_AUTO_APPLIES_PER_SEASON:
-            return (
-                f"Seasonal limit reached: {len(recent_applies)} auto-applies in last 90 days "
-                f"(max {MAX_AUTO_APPLIES_PER_SEASON})."
-            )
-
-        # Check 3: Drift limit (cumulative drift from physics baseline)
-        drift_pct = self.calculate_drift_from_baseline(current_kp, current_ki, current_kd)
-        max_drift = MAX_CUMULATIVE_DRIFT_PCT / 100.0
-        if drift_pct > max_drift:
-            return (
-                f"Cumulative drift limit exceeded: {drift_pct * 100:.1f}% drift from physics baseline "
-                f"(max {MAX_CUMULATIVE_DRIFT_PCT}%). Consider reset_pid_to_physics service."
-            )
-
-        # Check 4: Seasonal shift block (cooldown after weather regime change)
-        if self._last_seasonal_shift is not None:
-            days_since_shift = (now - self._last_seasonal_shift).total_seconds() / 86400
-            if days_since_shift < SEASONAL_SHIFT_BLOCK_DAYS:
-                days_remaining = SEASONAL_SHIFT_BLOCK_DAYS - days_since_shift
-                return (
-                    f"Seasonal shift block active: {days_remaining:.1f} days remaining "
-                    f"(of {SEASONAL_SHIFT_BLOCK_DAYS} day cooldown after weather regime change)."
-                )
-
-        # All checks passed
-        return None
+        return self._validation.check_auto_apply_limits(
+            current_kp, current_ki, current_kd,
+            self._heating_auto_apply_count,
+            self._cooling_auto_apply_count,
+            self._pid_history
+        )
 
     def record_seasonal_shift(self) -> None:
         """Record that a seasonal shift has occurred.
@@ -1439,11 +1290,7 @@ class AdaptiveLearner:
         This prevents auto-applying PID changes during weather regime transitions
         when system behavior may be unstable.
         """
-        self._last_seasonal_shift = datetime.now()
-        _LOGGER.warning(
-            "Seasonal shift recorded - auto-apply blocked for next %d days",
-            SEASONAL_SHIFT_BLOCK_DAYS,
-        )
+        self._validation.record_seasonal_shift()
 
     def _serialize_cycle(self, cycle: CycleMetrics) -> Dict[str, Any]:
         """Convert a CycleMetrics object to a dictionary.
