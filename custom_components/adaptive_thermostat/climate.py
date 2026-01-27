@@ -1985,6 +1985,11 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
             set_last_heat_cycle_time=self._set_last_heat_cycle_time,
         )
 
+        # Mark manifold as active now that heater is on
+        manifold_registry = self.hass.data.get(DOMAIN, {}).get("manifold_registry")
+        if manifold_registry:
+            manifold_registry.mark_manifold_active(self.entity_id)
+
     async def _async_heater_turn_off(self, force=False):
         """Turn heater toggleable device off.
 

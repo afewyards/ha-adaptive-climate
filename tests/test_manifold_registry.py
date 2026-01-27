@@ -444,6 +444,114 @@ class TestTransportDelayUnknownZone:
         assert delay >= 0
 
 
+class TestMarkManifoldActiveProductionScenario:
+    """Test mark_manifold_active in production scenarios simulating heater turn-on."""
+
+    def test_heater_turn_on_marks_manifold_active(self):
+        """Test that marking manifold active after heater turn-on prevents delay for adjacent zones."""
+        manifolds = [
+            Manifold(
+                name="2nd Floor",
+                zones=["climate.bathroom_2nd", "climate.bedroom_2nd"],
+                pipe_volume=20.0,
+                flow_per_loop=2.0
+            )
+        ]
+        registry = ManifoldRegistry(manifolds)
+
+        # Scenario: Bathroom zone turns on heater first
+        active_zones_bathroom = {"climate.bathroom_2nd": 2}
+
+        # First heating cycle - manifold is cold, should have delay
+        delay = registry.get_transport_delay("climate.bathroom_2nd", active_zones_bathroom)
+        assert delay == 5.0  # 20L / (2 × 2) = 5 min
+
+        # Simulate production code: heater turns on → mark manifold active
+        registry.mark_manifold_active("climate.bathroom_2nd")
+
+        # Bedroom zone turns on shortly after (within 5 min)
+        active_zones_both = {
+            "climate.bathroom_2nd": 2,
+            "climate.bedroom_2nd": 1
+        }
+
+        # Bedroom should get 0 delay because manifold is now warm
+        delay = registry.get_transport_delay("climate.bedroom_2nd", active_zones_both)
+        assert delay == 0.0  # Manifold is warm, no transport delay
+
+        # Bathroom should also get 0 delay
+        delay = registry.get_transport_delay("climate.bathroom_2nd", active_zones_both)
+        assert delay == 0.0
+
+    def test_sequential_zone_activation_on_same_manifold(self):
+        """Test that sequential zone activations on same manifold benefit from mark_manifold_active."""
+        manifolds = [
+            Manifold(
+                name="Ground Floor",
+                zones=["climate.living_room", "climate.kitchen", "climate.dining"],
+                pipe_volume=30.0,
+                flow_per_loop=2.0
+            )
+        ]
+        registry = ManifoldRegistry(manifolds)
+
+        # First zone activates - manifold cold
+        active_zones = {"climate.living_room": 2}
+        delay = registry.get_transport_delay("climate.living_room", active_zones)
+        assert delay == 7.5  # 30L / (2 × 2) = 7.5 min
+
+        # Mark as active (simulating production heater turn-on)
+        registry.mark_manifold_active("climate.living_room")
+
+        # Second zone activates shortly after
+        active_zones = {"climate.living_room": 2, "climate.kitchen": 1}
+        delay = registry.get_transport_delay("climate.kitchen", active_zones)
+        assert delay == 0.0  # Manifold warm
+
+        # Third zone activates
+        active_zones = {
+            "climate.living_room": 2,
+            "climate.kitchen": 1,
+            "climate.dining": 1
+        }
+        delay = registry.get_transport_delay("climate.dining", active_zones)
+        assert delay == 0.0  # Still warm
+
+    def test_different_manifolds_independent_marking(self):
+        """Test that marking one manifold active doesn't affect other manifolds."""
+        manifolds = [
+            Manifold(
+                name="2nd Floor",
+                zones=["climate.bathroom_2nd"],
+                pipe_volume=20.0,
+                flow_per_loop=2.0
+            ),
+            Manifold(
+                name="Ground Floor",
+                zones=["climate.living_room"],
+                pipe_volume=15.0,
+                flow_per_loop=2.0
+            )
+        ]
+        registry = ManifoldRegistry(manifolds)
+
+        # Activate 2nd floor zone and mark manifold active
+        active_zones_2nd = {"climate.bathroom_2nd": 1}
+        delay = registry.get_transport_delay("climate.bathroom_2nd", active_zones_2nd)
+        assert delay == 10.0  # Cold initially
+
+        registry.mark_manifold_active("climate.bathroom_2nd")
+
+        # 2nd floor should be warm
+        delay = registry.get_transport_delay("climate.bathroom_2nd", active_zones_2nd)
+        assert delay == 0.0
+
+        # Ground floor should still be cold
+        active_zones_ground = {"climate.living_room": 1}
+        delay = registry.get_transport_delay("climate.living_room", active_zones_ground)
+        assert delay == 7.5  # 15L / (1 × 2) = 7.5 min (still cold)
+
+
 class TestMultipleZonesActiveSameManifold:
     """Test correct total flow calculation with multiple active zones."""
 
