@@ -278,28 +278,17 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
 
     # Initialize control output manager
     thermostat._control_output_manager = ControlOutputManager(
-        thermostat=thermostat,
+        thermostat_state=thermostat,
         pid_controller=thermostat._pid_controller,
         heater_controller=thermostat._heater_controller,
-        get_current_temp=lambda: thermostat._current_temp,
-        get_ext_temp=lambda: thermostat._ext_temp,
-        get_wind_speed=lambda: thermostat._wind_speed,
-        get_previous_temp_time=lambda: thermostat._previous_temp_time,
         set_previous_temp_time=thermostat._set_previous_temp_time,
-        get_cur_temp_time=lambda: thermostat._cur_temp_time,
         set_cur_temp_time=thermostat._set_cur_temp_time,
-        get_output_precision=lambda: thermostat._output_precision,
-        calculate_night_setback_adjustment=thermostat._calculate_night_setback_adjustment,
         set_control_output=thermostat._set_control_output,
         set_p=thermostat._set_p,
         set_i=thermostat._set_i,
         set_d=thermostat._set_d,
         set_e=thermostat._set_e,
         set_dt=thermostat._set_dt,
-        get_kp=lambda: thermostat._kp,
-        get_ki=lambda: thermostat._ki,
-        get_kd=lambda: thermostat._kd,
-        get_ke=lambda: thermostat._ke,
     )
     _LOGGER.info(
         "%s: Control output manager initialized",

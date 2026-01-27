@@ -27,6 +27,33 @@ class MockHVACMode:
 HVACMode = MockHVACMode
 
 
+class MockThermostatState:
+    """Mock implementation of ThermostatState Protocol for testing."""
+
+    def __init__(self):
+        """Initialize the mock thermostat state."""
+        self.entity_id = "climate.living_room"
+        self._zone_id = None
+        self._cur_temp = 20.0
+        self._target_temp = 21.0
+        self._outdoor_temp = 5.0
+        self._wind_speed = 0.0
+        self._hvac_mode = HVACMode.HEAT
+        self._prev_temp_time = 1000.0
+        self._cur_temp_time = 1060.0
+        self._output_precision = 1
+        self._control_output = 0.0
+        self._kp = 100.0
+        self._ki = 0.1
+        self._kd = 50.0
+        self._ke = 0.3
+        self._coordinator = None
+
+    def _calculate_night_setback_adjustment(self):
+        """Mock night setback calculation."""
+        return (self._target_temp, None, None)
+
+
 # ============================================================================
 # PID Calc Time Tracking Tests (Story 1.1)
 # ============================================================================
@@ -37,12 +64,8 @@ class TestPIDCalcTimeTracking:
 
     def setup_method(self):
         """Set up test fixtures."""
-        # Create mock thermostat
-        self.thermostat = Mock()
-        self.thermostat.entity_id = "climate.living_room"
-        self.thermostat.hass = Mock()
-        self.thermostat._heating_type = HEATING_TYPE_CONVECTOR
-        self.thermostat._hvac_mode = HVACMode.HEAT
+        # Create mock thermostat state
+        self.thermostat_state = MockThermostatState()
 
         # Create mock PID controller
         self.pid_controller = Mock()
@@ -55,48 +78,34 @@ class TestPIDCalcTimeTracking:
         self.pid_controller.feedforward = 0.0
         self.pid_controller.error = 1.0
         self.pid_controller.dt = 60.0
+        self.pid_controller.set_feedforward = Mock()
 
         # Create mock heater controller
         self.heater_controller = Mock()
 
         # Create mock coordinator (minimal - no coupling)
         self.coordinator = Mock()
-        self.coordinator.get_active_zones = Mock(return_value={})
-        self.thermostat.hass.data = {
-            "adaptive_thermostat": {
-                "coordinator": self.coordinator
-            }
-        }
+        self.coordinator.thermal_group_manager = None
+        self.thermostat_state._coordinator = self.coordinator
 
-        # Create callbacks
-        self.callbacks = {
-            "get_current_temp": Mock(return_value=20.0),
-            "get_ext_temp": Mock(return_value=5.0),
-            "get_wind_speed": Mock(return_value=0.0),
-            "get_previous_temp_time": Mock(return_value=1000.0),
+        # Create setter callbacks
+        self.set_callbacks = {
             "set_previous_temp_time": Mock(),
-            "get_cur_temp_time": Mock(return_value=1060.0),
             "set_cur_temp_time": Mock(),
-            "get_output_precision": Mock(return_value=1),
-            "calculate_night_setback_adjustment": Mock(return_value=(21.0, None, None)),
             "set_control_output": Mock(),
             "set_p": Mock(),
             "set_i": Mock(),
             "set_d": Mock(),
             "set_e": Mock(),
             "set_dt": Mock(),
-            "get_kp": Mock(return_value=100.0),
-            "get_ki": Mock(return_value=0.1),
-            "get_kd": Mock(return_value=50.0),
-            "get_ke": Mock(return_value=0.3),
         }
 
         # Create control output manager
         self.manager = ControlOutputManager(
-            thermostat=self.thermostat,
+            thermostat_state=self.thermostat_state,
             pid_controller=self.pid_controller,
             heater_controller=self.heater_controller,
-            **self.callbacks
+            **self.set_callbacks
         )
 
     @pytest.mark.asyncio
@@ -171,12 +180,8 @@ class TestPIDDtCorrection:
 
     def setup_method(self):
         """Set up test fixtures."""
-        # Create mock thermostat
-        self.thermostat = Mock()
-        self.thermostat.entity_id = "climate.living_room"
-        self.thermostat.hass = Mock()
-        self.thermostat._heating_type = HEATING_TYPE_CONVECTOR
-        self.thermostat._hvac_mode = HVACMode.HEAT
+        # Create mock thermostat state
+        self.thermostat_state = MockThermostatState()
 
         # Create mock PID controller with dt tracking
         self.pid_controller = Mock()
@@ -189,18 +194,15 @@ class TestPIDDtCorrection:
         self.pid_controller.feedforward = 0.0
         self.pid_controller.error = 1.0
         self.pid_controller.dt = 60.0
+        self.pid_controller.set_feedforward = Mock()
 
         # Create mock heater controller
         self.heater_controller = Mock()
 
         # Create mock coordinator
         self.coordinator = Mock()
-        self.coordinator.get_active_zones = Mock(return_value={})
-        self.thermostat.hass.data = {
-            "adaptive_thermostat": {
-                "coordinator": self.coordinator
-            }
-        }
+        self.coordinator.thermal_group_manager = None
+        self.thermostat_state._coordinator = self.coordinator
 
         # Track set_dt calls
         self._set_dt_calls = []
@@ -208,35 +210,24 @@ class TestPIDDtCorrection:
         def track_dt(value):
             self._set_dt_calls.append(value)
 
-        # Create callbacks
-        self.callbacks = {
-            "get_current_temp": Mock(return_value=20.0),
-            "get_ext_temp": Mock(return_value=5.0),
-            "get_wind_speed": Mock(return_value=0.0),
-            "get_previous_temp_time": Mock(return_value=1000.0),
+        # Create setter callbacks
+        self.set_callbacks = {
             "set_previous_temp_time": Mock(),
-            "get_cur_temp_time": Mock(return_value=1060.0),
             "set_cur_temp_time": Mock(),
-            "get_output_precision": Mock(return_value=1),
-            "calculate_night_setback_adjustment": Mock(return_value=(21.0, None, None)),
             "set_control_output": Mock(),
             "set_p": Mock(),
             "set_i": Mock(),
             "set_d": Mock(),
             "set_e": Mock(),
             "set_dt": Mock(side_effect=track_dt),
-            "get_kp": Mock(return_value=100.0),
-            "get_ki": Mock(return_value=0.1),
-            "get_kd": Mock(return_value=50.0),
-            "get_ke": Mock(return_value=0.3),
         }
 
         # Create control output manager
         self.manager = ControlOutputManager(
-            thermostat=self.thermostat,
+            thermostat_state=self.thermostat_state,
             pid_controller=self.pid_controller,
             heater_controller=self.heater_controller,
-            **self.callbacks
+            **self.set_callbacks
         )
 
     @pytest.mark.asyncio
@@ -303,12 +294,8 @@ class TestResetCalcTiming:
 
     def setup_method(self):
         """Set up test fixtures."""
-        # Create mock thermostat
-        self.thermostat = Mock()
-        self.thermostat.entity_id = "climate.living_room"
-        self.thermostat.hass = Mock()
-        self.thermostat._heating_type = HEATING_TYPE_CONVECTOR
-        self.thermostat._hvac_mode = HVACMode.HEAT
+        # Create mock thermostat state
+        self.thermostat_state = MockThermostatState()
 
         # Create mock PID controller
         self.pid_controller = Mock()
@@ -321,18 +308,15 @@ class TestResetCalcTiming:
         self.pid_controller.feedforward = 0.0
         self.pid_controller.error = 1.0
         self.pid_controller.dt = 60.0
+        self.pid_controller.set_feedforward = Mock()
 
         # Create mock heater controller
         self.heater_controller = Mock()
 
         # Create mock coordinator
         self.coordinator = Mock()
-        self.coordinator.get_active_zones = Mock(return_value={})
-        self.thermostat.hass.data = {
-            "adaptive_thermostat": {
-                "coordinator": self.coordinator
-            }
-        }
+        self.coordinator.thermal_group_manager = None
+        self.thermostat_state._coordinator = self.coordinator
 
         # Track set_dt calls
         self._set_dt_calls = []
@@ -340,35 +324,24 @@ class TestResetCalcTiming:
         def track_dt(value):
             self._set_dt_calls.append(value)
 
-        # Create callbacks
-        self.callbacks = {
-            "get_current_temp": Mock(return_value=20.0),
-            "get_ext_temp": Mock(return_value=5.0),
-            "get_wind_speed": Mock(return_value=0.0),
-            "get_previous_temp_time": Mock(return_value=1000.0),
+        # Create setter callbacks
+        self.set_callbacks = {
             "set_previous_temp_time": Mock(),
-            "get_cur_temp_time": Mock(return_value=1060.0),
             "set_cur_temp_time": Mock(),
-            "get_output_precision": Mock(return_value=1),
-            "calculate_night_setback_adjustment": Mock(return_value=(21.0, None, None)),
             "set_control_output": Mock(),
             "set_p": Mock(),
             "set_i": Mock(),
             "set_d": Mock(),
             "set_e": Mock(),
             "set_dt": Mock(side_effect=track_dt),
-            "get_kp": Mock(return_value=100.0),
-            "get_ki": Mock(return_value=0.1),
-            "get_kd": Mock(return_value=50.0),
-            "get_ke": Mock(return_value=0.3),
         }
 
         # Create control output manager
         self.manager = ControlOutputManager(
-            thermostat=self.thermostat,
+            thermostat_state=self.thermostat_state,
             pid_controller=self.pid_controller,
             heater_controller=self.heater_controller,
-            **self.callbacks
+            **self.set_callbacks
         )
 
     @pytest.mark.asyncio
@@ -419,12 +392,8 @@ class TestPidDtStateAttribute:
 
     def setup_method(self):
         """Set up test fixtures."""
-        # Create mock thermostat
-        self.thermostat = Mock()
-        self.thermostat.entity_id = "climate.living_room"
-        self.thermostat.hass = Mock()
-        self.thermostat._heating_type = HEATING_TYPE_CONVECTOR
-        self.thermostat._hvac_mode = HVACMode.HEAT
+        # Create mock thermostat state
+        self.thermostat_state = MockThermostatState()
 
         # Create mock PID controller
         self.pid_controller = Mock()
@@ -437,18 +406,15 @@ class TestPidDtStateAttribute:
         self.pid_controller.feedforward = 0.0
         self.pid_controller.error = 1.0
         self.pid_controller.dt = 60.0
+        self.pid_controller.set_feedforward = Mock()
 
         # Create mock heater controller
         self.heater_controller = Mock()
 
         # Create mock coordinator
         self.coordinator = Mock()
-        self.coordinator.get_active_zones = Mock(return_value={})
-        self.thermostat.hass.data = {
-            "adaptive_thermostat": {
-                "coordinator": self.coordinator
-            }
-        }
+        self.coordinator.thermal_group_manager = None
+        self.thermostat_state._coordinator = self.coordinator
 
         # Track set_dt calls to capture actual dt values
         self._set_dt_calls = []
@@ -456,35 +422,24 @@ class TestPidDtStateAttribute:
         def track_dt(value):
             self._set_dt_calls.append(value)
 
-        # Create callbacks
-        self.callbacks = {
-            "get_current_temp": Mock(return_value=20.0),
-            "get_ext_temp": Mock(return_value=5.0),
-            "get_wind_speed": Mock(return_value=0.0),
-            "get_previous_temp_time": Mock(return_value=1000.0),
+        # Create setter callbacks
+        self.set_callbacks = {
             "set_previous_temp_time": Mock(),
-            "get_cur_temp_time": Mock(return_value=1060.0),
             "set_cur_temp_time": Mock(),
-            "get_output_precision": Mock(return_value=1),
-            "calculate_night_setback_adjustment": Mock(return_value=(21.0, None, None)),
             "set_control_output": Mock(),
             "set_p": Mock(),
             "set_i": Mock(),
             "set_d": Mock(),
             "set_e": Mock(),
             "set_dt": Mock(side_effect=track_dt),
-            "get_kp": Mock(return_value=100.0),
-            "get_ki": Mock(return_value=0.1),
-            "get_kd": Mock(return_value=50.0),
-            "get_ke": Mock(return_value=0.3),
         }
 
         # Create control output manager
         self.manager = ControlOutputManager(
-            thermostat=self.thermostat,
+            thermostat_state=self.thermostat_state,
             pid_controller=self.pid_controller,
             heater_controller=self.heater_controller,
-            **self.callbacks
+            **self.set_callbacks
         )
 
     @pytest.mark.asyncio

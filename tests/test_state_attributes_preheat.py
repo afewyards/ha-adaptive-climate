@@ -47,6 +47,7 @@ class TestPreheatStateAttributes:
         thermostat._contact_sensor_handler = None
         thermostat._humidity_detector = None
         thermostat.in_learning_grace_period = False
+        thermostat._coordinator = None  # No coordinator for preheat tests
         thermostat.hass = MagicMock()
         # Enable debug mode for preheat attributes to be visible
         thermostat.hass.data = {"adaptive_thermostat": {"debug": True}}

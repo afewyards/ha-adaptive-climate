@@ -119,6 +119,7 @@ class TestAddLearningStatusAttributes:
     def test_no_coordinator(self):
         """Test that function handles missing coordinator gracefully."""
         thermostat = MagicMock()
+        thermostat._coordinator = None
         thermostat.hass.data.get.return_value = {}
         attrs = {}
 
@@ -131,13 +132,13 @@ class TestAddLearningStatusAttributes:
         """Test that function handles missing adaptive learner gracefully."""
         thermostat = MagicMock()
         coordinator = MagicMock()
-        coordinator.get_all_zones.return_value = {
-            "zone1": {
-                "climate_entity_id": thermostat.entity_id,
-                "adaptive_learner": None,
-                "cycle_tracker": MagicMock(),
-            }
+        zone_data = {
+            "climate_entity_id": thermostat.entity_id,
+            "adaptive_learner": None,
+            "cycle_tracker": MagicMock(),
         }
+        coordinator.get_zone_by_climate_entity.return_value = ("zone1", zone_data)
+        thermostat._coordinator = coordinator
         thermostat.hass.data.get.return_value = {"coordinator": coordinator}
         attrs = {}
 
@@ -150,13 +151,13 @@ class TestAddLearningStatusAttributes:
         """Test that function handles missing cycle tracker gracefully."""
         thermostat = MagicMock()
         coordinator = MagicMock()
-        coordinator.get_all_zones.return_value = {
-            "zone1": {
-                "climate_entity_id": thermostat.entity_id,
-                "adaptive_learner": MagicMock(),
-                "cycle_tracker": None,
-            }
+        zone_data = {
+            "climate_entity_id": thermostat.entity_id,
+            "adaptive_learner": MagicMock(),
+            "cycle_tracker": None,
         }
+        coordinator.get_zone_by_climate_entity.return_value = ("zone1", zone_data)
+        thermostat._coordinator = coordinator
         thermostat.hass.data.get.return_value = {"coordinator": coordinator}
         attrs = {}
 
@@ -173,19 +174,19 @@ class TestAddLearningStatusAttributes:
         adaptive_learner.get_convergence_confidence.return_value = 0.0
         adaptive_learner.get_consecutive_converged_cycles.return_value = 0
         adaptive_learner.get_last_adjustment_time.return_value = None
+        adaptive_learner.get_pid_history.return_value = []
 
         cycle_tracker = MagicMock()
         cycle_tracker.get_state_name.return_value = "idle"
         cycle_tracker.get_last_interruption_reason.return_value = None
 
         coordinator = MagicMock()
-        coordinator.get_all_zones.return_value = {
-            "zone1": {
-                "climate_entity_id": thermostat.entity_id,
-                "adaptive_learner": adaptive_learner,
-                "cycle_tracker": cycle_tracker,
-            }
+        zone_data = {
+            "climate_entity_id": thermostat.entity_id,
+            "adaptive_learner": adaptive_learner,
+            "cycle_tracker": cycle_tracker,
         }
+        coordinator.get_zone_by_climate_entity.return_value = ("zone1", zone_data)
         # Set _coordinator directly on mock thermostat (bypassing the @property)
         thermostat._coordinator = coordinator
         thermostat.hass.data.get.return_value = {"coordinator": coordinator}
@@ -205,19 +206,19 @@ class TestAddLearningStatusAttributes:
         adaptive_learner.get_convergence_confidence.return_value = 0.6
         adaptive_learner.get_consecutive_converged_cycles.return_value = 1
         adaptive_learner.get_last_adjustment_time.return_value = None
+        adaptive_learner.get_pid_history.return_value = []
 
         cycle_tracker = MagicMock()
         cycle_tracker.get_state_name.return_value = "heating"
         cycle_tracker.get_last_interruption_reason.return_value = None
 
         coordinator = MagicMock()
-        coordinator.get_all_zones.return_value = {
-            "zone1": {
-                "climate_entity_id": thermostat.entity_id,
-                "adaptive_learner": adaptive_learner,
-                "cycle_tracker": cycle_tracker,
-            }
+        zone_data = {
+            "climate_entity_id": thermostat.entity_id,
+            "adaptive_learner": adaptive_learner,
+            "cycle_tracker": cycle_tracker,
         }
+        coordinator.get_zone_by_climate_entity.return_value = ("zone1", zone_data)
         # Set _coordinator directly on mock thermostat (bypassing the @property)
         thermostat._coordinator = coordinator
         thermostat.hass.data.get.return_value = {"coordinator": coordinator}
@@ -240,19 +241,19 @@ class TestAddLearningStatusAttributes:
         # Set last adjustment time
         last_adjustment = datetime(2024, 1, 15, 14, 30, 0)
         adaptive_learner.get_last_adjustment_time.return_value = last_adjustment
+        adaptive_learner.get_pid_history.return_value = []
 
         cycle_tracker = MagicMock()
         cycle_tracker.get_state_name.return_value = "idle"
         cycle_tracker.get_last_interruption_reason.return_value = None
 
         coordinator = MagicMock()
-        coordinator.get_all_zones.return_value = {
-            "zone1": {
-                "climate_entity_id": thermostat.entity_id,
-                "adaptive_learner": adaptive_learner,
-                "cycle_tracker": cycle_tracker,
-            }
+        zone_data = {
+            "climate_entity_id": thermostat.entity_id,
+            "adaptive_learner": adaptive_learner,
+            "cycle_tracker": cycle_tracker,
         }
+        coordinator.get_zone_by_climate_entity.return_value = ("zone1", zone_data)
         # Set _coordinator directly on mock thermostat (bypassing the @property)
         thermostat._coordinator = coordinator
         thermostat.hass.data.get.return_value = {"coordinator": coordinator}
@@ -287,19 +288,19 @@ class TestAddLearningStatusAttributes:
         adaptive_learner.get_cycle_count.return_value = MIN_CYCLES_FOR_LEARNING
         adaptive_learner.get_consecutive_converged_cycles.return_value = 0
         adaptive_learner.get_last_adjustment_time.return_value = None
+        adaptive_learner.get_pid_history.return_value = []
 
         cycle_tracker = MagicMock()
         cycle_tracker.get_state_name.return_value = "idle"
         cycle_tracker.get_last_interruption_reason.return_value = None
 
         coordinator = MagicMock()
-        coordinator.get_all_zones.return_value = {
-            "zone1": {
-                "climate_entity_id": thermostat.entity_id,
-                "adaptive_learner": adaptive_learner,
-                "cycle_tracker": cycle_tracker,
-            }
+        zone_data = {
+            "climate_entity_id": thermostat.entity_id,
+            "adaptive_learner": adaptive_learner,
+            "cycle_tracker": cycle_tracker,
         }
+        coordinator.get_zone_by_climate_entity.return_value = ("zone1", zone_data)
         # Set _coordinator directly on mock thermostat (bypassing the @property)
         thermostat._coordinator = coordinator
         thermostat.hass.data.get.return_value = {"coordinator": coordinator}
@@ -366,6 +367,7 @@ class TestDutyAccumulatorAttributes:
         thermostat._contact_sensor_handler = None
         thermostat._humidity_detector = None
         thermostat.in_learning_grace_period = False
+        thermostat._coordinator = None  # No coordinator, so learning status won't be added
         thermostat.hass = MagicMock()
         thermostat.hass.data = {}
 
@@ -409,6 +411,7 @@ class TestDutyAccumulatorAttributes:
         thermostat._humidity_detector = None
         thermostat.in_learning_grace_period = False
         thermostat.hass = MagicMock()
+        thermostat._coordinator = None  # No coordinator
         thermostat.hass.data = {}
 
         attrs = build_state_attributes(thermostat)
@@ -456,7 +459,9 @@ class TestDutyAccumulatorAttributes:
         thermostat._humidity_detector = None
         thermostat.in_learning_grace_period = False
         thermostat.hass = MagicMock()
+        thermostat._coordinator = None  # No coordinator
         thermostat.hass.data = {}
+        thermostat._coordinator = None  # No coordinator, so learning status won't be added
 
         attrs = build_state_attributes(thermostat)
 
@@ -565,7 +570,9 @@ class TestPerModeConvergenceConfidence:
         thermostat._humidity_detector = None
         thermostat.in_learning_grace_period = False
         thermostat.hass = MagicMock()
+        thermostat._coordinator = None  # No coordinator
         thermostat.hass.data = {}
+        thermostat._coordinator = None  # No coordinator, so learning status won't be added
 
         attrs = build_state_attributes(thermostat)
 
@@ -619,7 +626,9 @@ class TestPerModeConvergenceConfidence:
         thermostat._humidity_detector = None
         thermostat.in_learning_grace_period = False
         thermostat.hass = MagicMock()
+        thermostat._coordinator = None  # No coordinator
         thermostat.hass.data = {}
+        thermostat._coordinator = None  # No coordinator, so learning status won't be added
 
         attrs = build_state_attributes(thermostat)
 
@@ -674,13 +683,13 @@ class TestPerModeConvergenceConfidence:
         adaptive_learner.get_convergence_confidence.return_value = 0.85
 
         coordinator = MagicMock()
-        coordinator.get_all_zones.return_value = {
-            "zone1": {
-                "climate_entity_id": "climate.test_zone",
-                "adaptive_learner": adaptive_learner,
-            }
+        zone_data = {
+            "climate_entity_id": "climate.test_zone",
+            "adaptive_learner": adaptive_learner,
         }
+        coordinator.get_zone_by_climate_entity.return_value = ("zone1", zone_data)
 
+        thermostat._coordinator = coordinator
         thermostat.hass = MagicMock()
         thermostat.hass.data = {}
 
@@ -744,13 +753,13 @@ class TestPerModeConvergenceConfidence:
         adaptive_learner.get_convergence_confidence.side_effect = get_confidence_by_mode
 
         coordinator = MagicMock()
-        coordinator.get_all_zones.return_value = {
-            "zone1": {
-                "climate_entity_id": "climate.test_zone",
-                "adaptive_learner": adaptive_learner,
-            }
+        zone_data = {
+            "climate_entity_id": "climate.test_zone",
+            "adaptive_learner": adaptive_learner,
         }
+        coordinator.get_zone_by_climate_entity.return_value = ("zone1", zone_data)
 
+        thermostat._coordinator = coordinator
         thermostat.hass = MagicMock()
         thermostat.hass.data = {}
 
@@ -800,7 +809,9 @@ class TestPerModeConvergenceConfidence:
         thermostat._humidity_detector = None
         thermostat.in_learning_grace_period = False
         thermostat.hass = MagicMock()
+        thermostat._coordinator = None  # No coordinator
         thermostat.hass.data = {}
+        thermostat._coordinator = None  # No coordinator, so learning status won't be added
 
         attrs = build_state_attributes(thermostat)
 
@@ -850,13 +861,13 @@ class TestPerModeConvergenceConfidence:
         thermostat.entity_id = "climate.test_zone"
 
         coordinator = MagicMock()
-        coordinator.get_all_zones.return_value = {
-            "zone1": {
-                "climate_entity_id": "climate.test_zone",
-                "adaptive_learner": None,
-            }
+        zone_data = {
+            "climate_entity_id": "climate.test_zone",
+            "adaptive_learner": None,
         }
+        coordinator.get_zone_by_climate_entity.return_value = ("zone1", zone_data)
 
+        thermostat._coordinator = coordinator
         thermostat.hass = MagicMock()
         thermostat.hass.data = {"adaptive_thermostat": {"coordinator": coordinator}}
 
@@ -914,13 +925,13 @@ class TestPerModeConvergenceConfidence:
         adaptive_learner.get_convergence_confidence.return_value = 0.7349
 
         coordinator = MagicMock()
-        coordinator.get_all_zones.return_value = {
-            "zone1": {
-                "climate_entity_id": "climate.test_zone",
-                "adaptive_learner": adaptive_learner,
-            }
+        zone_data = {
+            "climate_entity_id": "climate.test_zone",
+            "adaptive_learner": adaptive_learner,
         }
+        coordinator.get_zone_by_climate_entity.return_value = ("zone1", zone_data)
 
+        thermostat._coordinator = coordinator
         thermostat.hass = MagicMock()
         thermostat.hass.data = {}
 

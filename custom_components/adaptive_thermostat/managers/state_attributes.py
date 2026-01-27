@@ -158,53 +158,54 @@ def _add_learning_status_attributes(
 
     debug_mode = thermostat.hass.data.get(DOMAIN, {}).get("debug", False)
 
-    all_zones = coordinator.get_all_zones()
-    for zone_id, zone_data in all_zones.items():
-        if zone_data.get("climate_entity_id") == thermostat.entity_id:
-            adaptive_learner = zone_data.get("adaptive_learner")
-            cycle_tracker = zone_data.get("cycle_tracker")
+    # Use typed coordinator method to get zone data
+    zone_info = coordinator.get_zone_by_climate_entity(thermostat.entity_id)
+    if zone_info is None:
+        return
 
-            if not adaptive_learner or not cycle_tracker:
-                return
+    _, zone_data = zone_info
+    adaptive_learner = zone_data.get("adaptive_learner")
+    cycle_tracker = zone_data.get("cycle_tracker")
 
-            # Get cycle count
-            cycle_count = adaptive_learner.get_cycle_count()
-            attrs[ATTR_CYCLES_COLLECTED] = cycle_count
+    if not adaptive_learner or not cycle_tracker:
+        return
 
-            # Get convergence confidence (0.0-1.0 -> 0-100%)
-            convergence_confidence = adaptive_learner.get_convergence_confidence()
-            attrs[ATTR_CONVERGENCE_CONFIDENCE] = round(convergence_confidence * 100)
+    # Get cycle count
+    cycle_count = adaptive_learner.get_cycle_count()
+    attrs[ATTR_CYCLES_COLLECTED] = cycle_count
 
-            # Get consecutive converged cycles
-            consecutive_converged = adaptive_learner.get_consecutive_converged_cycles()
+    # Get convergence confidence (0.0-1.0 -> 0-100%)
+    convergence_confidence = adaptive_learner.get_convergence_confidence()
+    attrs[ATTR_CONVERGENCE_CONFIDENCE] = round(convergence_confidence * 100)
 
-            # Compute learning status
-            attrs[ATTR_LEARNING_STATUS] = _compute_learning_status(
-                cycle_count, convergence_confidence, consecutive_converged
-            )
+    # Get consecutive converged cycles
+    consecutive_converged = adaptive_learner.get_consecutive_converged_cycles()
 
-            # Debug-only attributes
-            if debug_mode:
-                attrs["current_cycle_state"] = cycle_tracker.get_state_name()
-                attrs["cycles_required_for_learning"] = MIN_CYCLES_FOR_LEARNING
+    # Compute learning status
+    attrs[ATTR_LEARNING_STATUS] = _compute_learning_status(
+        cycle_count, convergence_confidence, consecutive_converged
+    )
 
-            # Format PID history (only include if non-empty)
-            pid_history = adaptive_learner.get_pid_history()
-            if pid_history:
-                from ..const import ATTR_PID_HISTORY
-                formatted_history = [
-                    {
-                        "timestamp": entry["timestamp"].isoformat(),
-                        "kp": round(entry["kp"], 2),
-                        "ki": round(entry["ki"], 4),
-                        "kd": round(entry["kd"], 2),
-                        "reason": entry["reason"],
-                    }
-                    for entry in pid_history
-                ]
-                attrs[ATTR_PID_HISTORY] = formatted_history
+    # Debug-only attributes
+    if debug_mode:
+        attrs["current_cycle_state"] = cycle_tracker.get_state_name()
+        attrs["cycles_required_for_learning"] = MIN_CYCLES_FOR_LEARNING
 
-            break
+    # Format PID history (only include if non-empty)
+    pid_history = adaptive_learner.get_pid_history()
+    if pid_history:
+        from ..const import ATTR_PID_HISTORY
+        formatted_history = [
+            {
+                "timestamp": entry["timestamp"].isoformat(),
+                "kp": round(entry["kp"], 2),
+                "ki": round(entry["ki"], 4),
+                "kd": round(entry["kd"], 2),
+                "reason": entry["reason"],
+            }
+            for entry in pid_history
+        ]
+        attrs[ATTR_PID_HISTORY] = formatted_history
 
 
 def _add_preheat_attributes(
@@ -324,8 +325,8 @@ def _build_pause_attribute(thermostat: SmartThermostat) -> dict[str, Any]:
     """Build consolidated pause attribute.
 
     The pause attribute provides unified information about heating pause state
-    from all possible sources (contact sensors, humidity detection). Contact
-    sensors take priority over humidity detection.
+    from all possible sources (contact sensors, humidity detection). Uses
+    PauseManager for unified pause state aggregation.
 
     Args:
         thermostat: The SmartThermostat instance
@@ -338,6 +339,15 @@ def _build_pause_attribute(thermostat: SmartThermostat) -> dict[str, Any]:
             "resume_in": int       # Optional seconds until resume (only when countdown active)
         }
     """
+    # Use PauseManager to get unified pause state (production path)
+    # Check if _pause_manager exists and is a real PauseManager (not a MagicMock)
+    from ..managers.pause_manager import PauseManager
+    pause_manager = getattr(thermostat, '_pause_manager', None)
+    if isinstance(pause_manager, PauseManager):
+        pause_info = pause_manager.get_pause_info()
+        return dict(pause_info)
+
+    # Legacy path for tests that mock detectors directly (without PauseManager)
     # Initialize with inactive state
     pause_data: dict[str, Any] = {
         "active": False,

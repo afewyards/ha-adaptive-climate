@@ -27,17 +27,40 @@ class MockHVACMode:
     OFF = "off"
 
 
+class MockThermostatState:
+    """Mock implementation of ThermostatState Protocol for testing."""
+
+    def __init__(self):
+        """Initialize the mock thermostat state."""
+        self.entity_id = "climate.test_zone"
+        self._zone_id = None
+        self._cur_temp = 20.9
+        self._target_temp = 21.0
+        self._outdoor_temp = 5.0
+        self._wind_speed = 0.0
+        self._hvac_mode = MockHVACMode.HEAT
+        self._prev_temp_time = 1000.0
+        self._cur_temp_time = 1060.0
+        self._output_precision = 1
+        self._control_output = 0.0
+        self._kp = 100.0
+        self._ki = 0.1
+        self._kd = 50.0
+        self._ke = 0.0
+        self._coordinator = None
+
+    def _calculate_night_setback_adjustment(self):
+        """Mock night setback calculation."""
+        return (self._target_temp, None, None)
+
+
 class TestIntegralAccumulationRate:
     """Tests for verifying correct integral accumulation rate."""
 
     def setup_method(self):
         """Set up test fixtures with real PID controller."""
-        # Create mock thermostat
-        self.thermostat = Mock()
-        self.thermostat.entity_id = "climate.test_zone"
-        self.thermostat.hass = Mock()
-        self.thermostat._heating_type = HEATING_TYPE_CONVECTOR
-        self.thermostat._hvac_mode = MockHVACMode.HEAT
+        # Create mock thermostat state
+        self.thermostat_state = MockThermostatState()
 
         # Create real PID controller with known settings
         # Ki = 0.1 means 0.1% per (°C·hour)
@@ -54,56 +77,34 @@ class TestIntegralAccumulationRate:
             cold_tolerance=0.3,
             hot_tolerance=0.3,
         )
+        self.pid_controller.set_feedforward = Mock()
 
         # Create mock heater controller
         self.heater_controller = Mock()
 
         # Create mock coordinator (no coupling)
         self.coordinator = Mock()
-        self.coordinator.get_active_zones = Mock(return_value={})
         self.coordinator.thermal_group_manager = None
-        # Set _coordinator directly on mock thermostat (bypassing the @property)
-        self.thermostat._coordinator = self.coordinator
-        self.thermostat.hass.data = {
-            "adaptive_thermostat": {
-                "coordinator": self.coordinator
-            }
-        }
+        self.thermostat_state._coordinator = self.coordinator
 
-        # Sensor timestamps (fixed at 60s interval, simulating a temperature sensor
-        # that updates less frequently than external triggers)
-        self.sensor_previous_time = 1000.0
-        self.sensor_cur_time = 1060.0  # 60s interval
-
-        # Create callbacks
-        self.callbacks = {
-            "get_current_temp": Mock(return_value=20.9),  # 0.1°C below setpoint
-            "get_ext_temp": Mock(return_value=5.0),
-            "get_wind_speed": Mock(return_value=0.0),
-            "get_previous_temp_time": Mock(return_value=self.sensor_previous_time),
+        # Create setter callbacks
+        self.set_callbacks = {
             "set_previous_temp_time": Mock(),
-            "get_cur_temp_time": Mock(return_value=self.sensor_cur_time),
             "set_cur_temp_time": Mock(),
-            "get_output_precision": Mock(return_value=1),
-            "calculate_night_setback_adjustment": Mock(return_value=(21.0, None, None)),  # setpoint = 21°C
             "set_control_output": Mock(),
             "set_p": Mock(),
             "set_i": Mock(),
             "set_d": Mock(),
             "set_e": Mock(),
             "set_dt": Mock(),
-            "get_kp": Mock(return_value=100.0),
-            "get_ki": Mock(return_value=0.1),
-            "get_kd": Mock(return_value=50.0),
-            "get_ke": Mock(return_value=0.0),
         }
 
         # Create control output manager
         self.manager = ControlOutputManager(
-            thermostat=self.thermostat,
+            thermostat_state=self.thermostat_state,
             pid_controller=self.pid_controller,
             heater_controller=self.heater_controller,
-            **self.callbacks
+            **self.set_callbacks
         )
 
     @pytest.mark.asyncio
@@ -169,7 +170,7 @@ class TestIntegralAccumulationRate:
         regardless of trigger frequency or type.
         """
         # Set current temp = setpoint (error = 0)
-        self.callbacks["get_current_temp"].return_value = 21.0  # equals setpoint
+        self.thermostat_state._cur_temp = 21.0  # equals setpoint
 
         base_time = 1000.0
 
@@ -216,18 +217,22 @@ class TestIntegralAccumulationRate:
         test_duration = 600.0  # 10 minutes
         error = 0.1  # 0.1°C error
 
-        # Store callbacks to set temperature
-        self.callbacks["get_current_temp"].return_value = 20.9  # 0.1°C below setpoint
+        # Set temperature for both scenarios
+        self.thermostat_state._cur_temp = 20.9  # 0.1°C below setpoint
 
         # Scenario 1: Slow triggers (60s intervals)
+        thermostat_state1 = MockThermostatState()
+        thermostat_state1._cur_temp = 20.9
+        pid1 = PID(
+            kp=100.0, ki=0.1, kd=50.0, ke=0,
+            out_min=0, out_max=100, sampling_period=0,
+        )
+        pid1.set_feedforward = Mock()
         manager1 = ControlOutputManager(
-            thermostat=self.thermostat,
-            pid_controller=PID(
-                kp=100.0, ki=0.1, kd=50.0, ke=0,
-                out_min=0, out_max=100, sampling_period=0,
-            ),
+            thermostat_state=thermostat_state1,
+            pid_controller=pid1,
             heater_controller=self.heater_controller,
-            **self.callbacks
+            **self.set_callbacks
         )
 
         with patch("time.monotonic", return_value=base_time):
@@ -240,14 +245,18 @@ class TestIntegralAccumulationRate:
         integral_slow = manager1._pid_controller.integral
 
         # Scenario 2: Fast triggers (10s intervals)
+        thermostat_state2 = MockThermostatState()
+        thermostat_state2._cur_temp = 20.9
+        pid2 = PID(
+            kp=100.0, ki=0.1, kd=50.0, ke=0,
+            out_min=0, out_max=100, sampling_period=0,
+        )
+        pid2.set_feedforward = Mock()
         manager2 = ControlOutputManager(
-            thermostat=self.thermostat,
-            pid_controller=PID(
-                kp=100.0, ki=0.1, kd=50.0, ke=0,
-                out_min=0, out_max=100, sampling_period=0,
-            ),
+            thermostat_state=thermostat_state2,
+            pid_controller=pid2,
             heater_controller=self.heater_controller,
-            **self.callbacks
+            **self.set_callbacks
         )
 
         with patch("time.monotonic", return_value=base_time):

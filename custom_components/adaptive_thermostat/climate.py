@@ -267,6 +267,13 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
                 self._name, humidity_sensor, spike_threshold, absolute_max
             )
 
+        # Pause manager - aggregates all pause mechanisms
+        from .managers.pause_manager import PauseManager
+        self._pause_manager = PauseManager(
+            contact_sensor_handler=self._contact_sensor_handler,
+            humidity_detector=self._humidity_detector,
+        )
+
         # Heater controller (initialized in async_added_to_hass when hass is available)
         self._heater_controller: HeaterController | None = None
 
@@ -1626,50 +1633,37 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
                 self.async_write_ha_state()
                 return
 
-            # Humidity spike pause check (shower/bathroom detection)
-            if self._humidity_detector and self._humidity_detector.should_pause():
-                _LOGGER.info(
-                    "%s: Humidity spike detected - pausing heating (state=%s)",
-                    self.entity_id, self._humidity_detector.get_state()
-                )
-                # Decay integral while paused (~10%/min)
-                elapsed = time.monotonic() - self._last_control_time
-                decay_factor = 0.9 ** (elapsed / 60)  # 10% decay per minute
-                self._pid_controller.decay_integral(decay_factor)
+            # Unified pause check (contact sensors, humidity detection, etc.)
+            if self._pause_manager.is_paused():
+                pause_info = self._pause_manager.get_pause_info()
+                reason = pause_info.get("reason", "unknown")
 
+                _LOGGER.info(
+                    "%s: Heating paused (reason=%s)",
+                    self.entity_id, reason
+                )
+
+                # Decay integral for humidity pauses (~10%/min to prevent stale buildup)
+                if reason == "humidity":
+                    elapsed = time.monotonic() - self._last_control_time
+                    decay_factor = 0.9 ** (elapsed / 60)  # 10% decay per minute
+                    self._pid_controller.decay_integral(decay_factor)
+
+                # Turn off heating
                 if self._pwm:
                     await self._async_heater_turn_off(force=True)
                 else:
                     self._control_output = self._output_min
                     await self._async_set_valve_value(self._control_output)
+
                 # Update zone demand to False when paused
                 if self._zone_id:
                     coordinator = self.hass.data.get(const.DOMAIN, {}).get("coordinator")
                     if coordinator:
                         coordinator.update_zone_demand(self._zone_id, False, self._hvac_mode.value if self._hvac_mode else None)
+
                 self.async_write_ha_state()
                 return
-
-            # Contact sensor pause check (window/door open)
-            if self._contact_sensor_handler and self._contact_sensor_handler.should_take_action():
-                action = self._contact_sensor_handler.get_action()
-                if action == ContactAction.PAUSE:
-                    _LOGGER.info(
-                        "%s: Contact sensor open - pausing heating",
-                        self.entity_id
-                    )
-                    if self._pwm:
-                        await self._async_heater_turn_off(force=True)
-                    else:
-                        self._control_output = self._output_min
-                        await self._async_set_valve_value(self._control_output)
-                    # Update zone demand to False when paused
-                    if self._zone_id:
-                        coordinator = self.hass.data.get(const.DOMAIN, {}).get("coordinator")
-                        if coordinator:
-                            coordinator.update_zone_demand(self._zone_id, False, self._hvac_mode.value if self._hvac_mode else None)
-                    self.async_write_ha_state()
-                    return
 
             if self._sensor_stall != 0 and time.monotonic() - self._last_sensor_update > \
                     self._sensor_stall:

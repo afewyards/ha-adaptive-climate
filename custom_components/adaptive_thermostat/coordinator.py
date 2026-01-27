@@ -353,6 +353,43 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
 
         return temps
 
+    def get_zone_by_climate_entity(self, climate_entity_id: str) -> tuple[str, dict[str, Any]] | None:
+        """Find a zone by its climate entity ID.
+
+        Args:
+            climate_entity_id: Climate entity ID to search for
+
+        Returns:
+            Tuple of (zone_id, zone_data) if found, None otherwise.
+        """
+        for zone_id, zone_data in self._zones.items():
+            if zone_data.get("climate_entity_id") == climate_entity_id:
+                return zone_id, zone_data
+        return None
+
+    def get_adaptive_learner(self, climate_entity_id: str) -> Any | None:
+        """Get the adaptive learner for a climate entity.
+
+        Args:
+            climate_entity_id: Climate entity ID to get learner for
+
+        Returns:
+            AdaptiveLearner instance or None if not found.
+        """
+        zone_info = self.get_zone_by_climate_entity(climate_entity_id)
+        if zone_info is None:
+            return None
+        _, zone_data = zone_info
+        return zone_data.get("adaptive_learner")
+
+    def get_zone_count(self) -> int:
+        """Get the number of registered zones.
+
+        Returns:
+            Number of zones registered with the coordinator.
+        """
+        return len(self._zones)
+
     def update_zone_temp(self, zone_id: str, temperature: float) -> None:
         """Update the current temperature for a zone.
 

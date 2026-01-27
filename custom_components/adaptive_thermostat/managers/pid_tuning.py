@@ -203,22 +203,17 @@ class PIDTuningManager:
         )
 
         # Record physics baseline and PID snapshot for auto-apply tracking
-        hass = self._get_hass()
         coordinator = self._thermostat._coordinator
         if coordinator:
-            all_zones = coordinator.get_all_zones()
-            for zone_id, zone_data in all_zones.items():
-                if zone_data.get("climate_entity_id") == self._thermostat.entity_id:
-                    adaptive_learner = zone_data.get("adaptive_learner")
-                    if adaptive_learner:
-                        adaptive_learner.set_physics_baseline(kp, ki, kd)
-                        adaptive_learner.record_pid_snapshot(
-                            kp=kp,
-                            ki=ki,
-                            kd=kd,
-                            reason="physics_reset",
-                        )
-                    break
+            adaptive_learner = coordinator.get_adaptive_learner(self._thermostat.entity_id)
+            if adaptive_learner:
+                adaptive_learner.set_physics_baseline(kp, ki, kd)
+                adaptive_learner.record_pid_snapshot(
+                    kp=kp,
+                    ki=ki,
+                    kd=kd,
+                    reason="physics_reset",
+                )
 
         power_info = f", power={max_power_w}W" if max_power_w else ""
         supply_info = f", supply={supply_temperature}°C" if supply_temperature else ""
@@ -246,7 +241,6 @@ class PIDTuningManager:
         Retrieves recommendations from the AdaptiveLearner and applies
         them to the PID controller.
         """
-        hass = self._get_hass()
         coordinator = self._thermostat._coordinator
         if not coordinator:
             _LOGGER.warning(
@@ -255,14 +249,7 @@ class PIDTuningManager:
             )
             return
 
-        all_zones = coordinator.get_all_zones()
-        adaptive_learner = None
-
-        for zone_id, zone_data in all_zones.items():
-            if zone_data.get("climate_entity_id") == self._thermostat.entity_id:
-                adaptive_learner = zone_data.get("adaptive_learner")
-                break
-
+        adaptive_learner = coordinator.get_adaptive_learner(self._thermostat.entity_id)
         if not adaptive_learner:
             _LOGGER.warning(
                 "%s: Cannot apply adaptive PID - no adaptive learner "
@@ -308,22 +295,17 @@ class PIDTuningManager:
         )
 
         # Record PID snapshot and clear learning history for manual apply
-        hass = self._get_hass()
         coordinator = self._thermostat._coordinator
         if coordinator:
-            all_zones = coordinator.get_all_zones()
-            for zone_id, zone_data in all_zones.items():
-                if zone_data.get("climate_entity_id") == self._thermostat.entity_id:
-                    learner = zone_data.get("adaptive_learner")
-                    if learner:
-                        learner.record_pid_snapshot(
-                            kp=recommendation["kp"],
-                            ki=recommendation["ki"],
-                            kd=recommendation["kd"],
-                            reason="manual_apply",
-                        )
-                        learner.clear_history()
-                    break
+            learner = coordinator.get_adaptive_learner(self._thermostat.entity_id)
+            if learner:
+                learner.record_pid_snapshot(
+                    kp=recommendation["kp"],
+                    ki=recommendation["ki"],
+                    kd=recommendation["kd"],
+                    reason="manual_apply",
+                )
+                learner.clear_history()
 
         _LOGGER.info(
             "%s: Applied adaptive PID: Kp=%.4f (was %.4f), Ki=%.5f (was %.5f), "
@@ -362,7 +344,6 @@ class PIDTuningManager:
                 old_values (dict or None): Previous PID values if applied
                 new_values (dict or None): New PID values if applied
         """
-        hass = self._get_hass()
         coordinator = self._thermostat._coordinator
         if not coordinator:
             return {
@@ -371,15 +352,7 @@ class PIDTuningManager:
                 "recommendation": None,
             }
 
-        # Find adaptive learner for this thermostat
-        all_zones = coordinator.get_all_zones()
-        adaptive_learner = None
-
-        for zone_id, zone_data in all_zones.items():
-            if zone_data.get("climate_entity_id") == self._thermostat.entity_id:
-                adaptive_learner = zone_data.get("adaptive_learner")
-                break
-
+        adaptive_learner = coordinator.get_adaptive_learner(self._thermostat.entity_id)
         if not adaptive_learner:
             return {
                 "applied": False,
@@ -515,7 +488,6 @@ class PIDTuningManager:
         Returns:
             bool: True if rollback succeeded, False if no history available
         """
-        hass = self._get_hass()
         coordinator = self._thermostat._coordinator
         if not coordinator:
             _LOGGER.warning(
@@ -524,15 +496,7 @@ class PIDTuningManager:
             )
             return False
 
-        # Find adaptive learner for this thermostat
-        all_zones = coordinator.get_all_zones()
-        adaptive_learner = None
-
-        for zone_id, zone_data in all_zones.items():
-            if zone_data.get("climate_entity_id") == self._thermostat.entity_id:
-                adaptive_learner = zone_data.get("adaptive_learner")
-                break
-
+        adaptive_learner = coordinator.get_adaptive_learner(self._thermostat.entity_id)
         if not adaptive_learner:
             _LOGGER.warning(
                 "%s: Cannot rollback PID - no adaptive learner",
@@ -628,22 +592,15 @@ class PIDTuningManager:
         - Convergence state
         - Resets PID to physics-based defaults
         """
-        hass = self._get_hass()
         coordinator = self._thermostat._coordinator
-
         if coordinator:
-            all_zones = coordinator.get_all_zones()
-            for zone_id, zone_data in all_zones.items():
-                if zone_data.get("climate_entity_id") == self._thermostat.entity_id:
-                    # Clear AdaptiveLearner cycle history
-                    adaptive_learner = zone_data.get("adaptive_learner")
-                    if adaptive_learner:
-                        adaptive_learner.clear_history()
-                        _LOGGER.info(
-                            "%s: Cleared adaptive learning cycle history",
-                            self._thermostat.entity_id
-                        )
-                    break
+            adaptive_learner = coordinator.get_adaptive_learner(self._thermostat.entity_id)
+            if adaptive_learner:
+                adaptive_learner.clear_history()
+                _LOGGER.info(
+                    "%s: Cleared adaptive learning cycle history",
+                    self._thermostat.entity_id
+                )
 
         # Clear Ke learner observations
         ke_controller = getattr(self._thermostat, '_ke_controller', None)

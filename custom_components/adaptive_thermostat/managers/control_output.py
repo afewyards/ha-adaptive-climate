@@ -3,11 +3,11 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import TYPE_CHECKING, Any, Callable, Optional, Tuple
+from typing import TYPE_CHECKING, Callable
 
 if TYPE_CHECKING:
     from homeassistant.components.climate import HVACMode
-    from ..climate import AdaptiveThermostat
+    from ..protocols import ThermostatState
     from ..pid_controller import PIDController
     from .heater_controller import HeaterController
 
@@ -28,80 +28,47 @@ class ControlOutputManager:
 
     def __init__(
         self,
-        thermostat: AdaptiveThermostat,
+        thermostat_state: ThermostatState,
         pid_controller: PIDController,
         heater_controller: HeaterController | None,
         *,
-        get_current_temp: Callable[[], float | None],
-        get_ext_temp: Callable[[], float | None],
-        get_wind_speed: Callable[[], float | None],
-        get_previous_temp_time: Callable[[], float | None],
         set_previous_temp_time: Callable[[float], None],
-        get_cur_temp_time: Callable[[], float | None],
         set_cur_temp_time: Callable[[float], None],
-        get_output_precision: Callable[[], int | None],
-        calculate_night_setback_adjustment: Callable[[], Tuple[float, Any, Any]],
         set_control_output: Callable[[float], None],
         set_p: Callable[[float], None],
         set_i: Callable[[float], None],
         set_d: Callable[[float], None],
         set_e: Callable[[float], None],
         set_dt: Callable[[float], None],
-        get_kp: Callable[[], float | None],
-        get_ki: Callable[[], float | None],
-        get_kd: Callable[[], float | None],
-        get_ke: Callable[[], float | None],
     ):
         """Initialize the ControlOutputManager.
 
         Args:
-            thermostat: Reference to the parent thermostat entity
+            thermostat_state: Reference to the thermostat state (implements ThermostatState Protocol)
             pid_controller: PID controller instance
             heater_controller: Heater controller instance (may be None initially)
-            get_current_temp: Callback to get current temperature
-            get_ext_temp: Callback to get external temperature
-            get_wind_speed: Callback to get wind speed
-            get_previous_temp_time: Callback to get previous temperature time
             set_previous_temp_time: Callback to set previous temperature time
-            get_cur_temp_time: Callback to get current temperature time
             set_cur_temp_time: Callback to set current temperature time
-            get_output_precision: Callback to get output precision
-            calculate_night_setback_adjustment: Callback to calculate night setback
             set_control_output: Callback to set control output value
             set_p: Callback to set proportional component
             set_i: Callback to set integral component
             set_d: Callback to set derivative component
             set_e: Callback to set external component
             set_dt: Callback to set delta time
-            get_kp: Callback to get Kp value
-            get_ki: Callback to get Ki value
-            get_kd: Callback to get Kd value
-            get_ke: Callback to get Ke value
         """
-        self._thermostat = thermostat
+        self._thermostat_state = thermostat_state
         self._pid_controller = pid_controller
         self._heater_controller = heater_controller
 
-        # Getters/setters for thermostat state
-        self._get_current_temp = get_current_temp
-        self._get_ext_temp = get_ext_temp
-        self._get_wind_speed = get_wind_speed
-        self._get_previous_temp_time = get_previous_temp_time
+        # Setters for thermostat state (getters accessed via protocol)
         self._set_previous_temp_time = set_previous_temp_time
-        self._get_cur_temp_time = get_cur_temp_time
         self._set_cur_temp_time = set_cur_temp_time
-        self._get_output_precision = get_output_precision
-        self._calculate_night_setback_adjustment = calculate_night_setback_adjustment
         self._set_control_output = set_control_output
         self._set_p = set_p
         self._set_i = set_i
         self._set_d = set_d
         self._set_e = set_e
         self._set_dt = set_dt
-        self._get_kp = get_kp
-        self._get_ki = get_ki
-        self._get_kd = get_kd
-        self._get_ke = get_ke
 
         # Store last calculated output for access
         self._last_control_output: float = 0
@@ -162,7 +129,7 @@ class ControlOutputManager:
             The calculated control output value
         """
         update = False
-        entity_id = self._thermostat.entity_id
+        entity_id = self._thermostat_state.entity_id
         current_time = time.monotonic()
 
         # Track actual elapsed time since last PID calculation
@@ -190,8 +157,8 @@ class ControlOutputManager:
         self._last_pid_calc_time = current_time
 
         # Ensure timing values are set
-        previous_temp_time = self._get_previous_temp_time()
-        cur_temp_time = self._get_cur_temp_time()
+        previous_temp_time = self._thermostat_state._prev_temp_time
+        cur_temp_time = self._thermostat_state._cur_temp_time
 
         if previous_temp_time is None:
             previous_temp_time = time.monotonic()
@@ -215,13 +182,13 @@ class ControlOutputManager:
         sensor_dt = cur_temp_time - previous_temp_time
 
         # Apply night setback adjustment if configured
-        effective_target, _, _ = self._calculate_night_setback_adjustment()
+        effective_target, _, _ = self._thermostat_state._calculate_night_setback_adjustment()
 
         # Get current values
-        current_temp = self._get_current_temp()
-        ext_temp = self._get_ext_temp()
-        wind_speed = self._get_wind_speed()
-        output_precision = self._get_output_precision()
+        current_temp = self._thermostat_state._cur_temp
+        ext_temp = self._thermostat_state._outdoor_temp
+        wind_speed = self._thermostat_state._wind_speed
+        output_precision = self._thermostat_state._output_precision
 
         # Calculate thermal coupling feedforward compensation
         feedforward = self._calculate_coupling_compensation()
@@ -296,10 +263,10 @@ class ControlOutputManager:
                 )
 
         if update:
-            kp = self._get_kp() or 0
-            ki = self._get_ki() or 0
-            kd = self._get_kd() or 0
-            ke = self._get_ke() or 0
+            kp = self._thermostat_state._kp or 0
+            ki = self._thermostat_state._ki or 0
+            kd = self._thermostat_state._kd or 0
+            ke = self._thermostat_state._ke or 0
             _LOGGER.debug(
                 "%s: New PID control output: %s (error = %.2f, actual_dt = %.2f, sensor_dt = %.2f, "
                 "p=%.2f, i=%.2f, d=%.2f, e=%.2f) [Kp=%.4f, Ki=%.4f, Kd=%.2f, Ke=%.2f]",
@@ -357,7 +324,7 @@ class ControlOutputManager:
         if self._heater_controller is None:
             _LOGGER.warning(
                 "%s: HeaterController not initialized, cannot set control value",
-                self._thermostat.entity_id,
+                self._thermostat_state.entity_id,
             )
             return
 
@@ -420,7 +387,7 @@ class ControlOutputManager:
         if self._heater_controller is None:
             _LOGGER.warning(
                 "%s: HeaterController not initialized, cannot perform PWM switch",
-                self._thermostat.entity_id,
+                self._thermostat_state.entity_id,
             )
             return
 
@@ -449,7 +416,7 @@ class ControlOutputManager:
         from ..const import DOMAIN
 
         # Get coordinator
-        coordinator = self._thermostat._coordinator
+        coordinator = self._thermostat_state._coordinator
         if not coordinator:
             return
 
@@ -459,16 +426,16 @@ class ControlOutputManager:
             return
 
         # Get zone ID
-        zone_id = getattr(self._thermostat, "_zone_id", None)
+        zone_id = self._thermostat_state._zone_id
         if not zone_id:
             return
 
         # Only record when actively heating
-        if self._thermostat._hvac_mode != "heat":
+        if self._thermostat_state._hvac_mode != "heat":
             return
 
         # Get current control output (heat output percentage)
-        control_output = getattr(self._thermostat, "_control_output", 0.0)
+        control_output = self._thermostat_state._control_output
 
         # Record heat output
         thermal_group_manager.record_heat_output(zone_id, control_output)
@@ -487,13 +454,13 @@ class ControlOutputManager:
         from ..const import DOMAIN
 
         # Disable in cooling mode
-        if self._thermostat._hvac_mode == "cool":
+        if self._thermostat_state._hvac_mode == "cool":
             self._last_coupling_compensation_degc = 0.0
             self._last_coupling_compensation_power = 0.0
             return 0.0
 
         # Get coordinator
-        coordinator = self._thermostat._coordinator
+        coordinator = self._thermostat_state._coordinator
         if not coordinator:
             self._last_coupling_compensation_degc = 0.0
             self._last_coupling_compensation_power = 0.0
@@ -507,7 +474,7 @@ class ControlOutputManager:
             return 0.0
 
         # Get zone ID
-        zone_id = getattr(self._thermostat, "_zone_id", None)
+        zone_id = self._thermostat_state._zone_id
         if not zone_id:
             self._last_coupling_compensation_degc = 0.0
             self._last_coupling_compensation_power = 0.0

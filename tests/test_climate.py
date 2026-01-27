@@ -2447,7 +2447,9 @@ class TestPIDControllerHeatingTypeTolerance:
 
         # Create mock coordinator that returns our adaptive_learner
         mock_coordinator = Mock()
-        # Return an actual dict (not a Mock) to support iteration in async_auto_apply_adaptive_pid
+        # Mock get_adaptive_learner to return the real adaptive_learner
+        mock_coordinator.get_adaptive_learner.return_value = adaptive_learner
+        # Also mock get_all_zones for completeness
         def mock_get_all_zones():
             return {
                 "test_zone": {
