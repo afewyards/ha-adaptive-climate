@@ -1,6 +1,83 @@
 # CHANGELOG
 
 
+## v0.38.1 (2026-01-27)
+
+### Bug Fixes
+
+- Correct Protocol attr names _cur_temp→_current_temp, _outdoor_temp→_ext_temp
+  ([`d4a61c8`](https://github.com/afewyards/ha-adaptive-thermostat/commit/d4a61c84b7a368cec66d40cc6c2fd2eaf9f939bb))
+
+- Phase 1 bug fixes — datetime, time, callback, assert, dead code
+  ([`fd8312a`](https://github.com/afewyards/ha-adaptive-thermostat/commit/fd8312aafea32b8f9251aebf3407bed3cd1bda43))
+
+- Remove @callback from 3 async handlers in climate.py (unawaited coroutine risk) - Replace assert
+  with ValueError in pid_controller (stripped under -O) - Replace datetime.now() → dt_util.utcnow()
+  across 22 production files (DST safety) - Replace time.time() → time.monotonic() for elapsed
+  durations (NTP drift) - Delete legacy save() and threading import from persistence.py - Remove
+  unused imports from climate.py - Remove _in_dead_time dead code from pid_controller - Update all
+  test mocks to match new time/datetime APIs
+
+- Rename _prev_temp_time → _previous_temp_time to match thermostat attr
+  ([`564c748`](https://github.com/afewyards/ha-adaptive-thermostat/commit/564c74803cef61cb0d90ae0c72723801df578808))
+
+- **climate**: Add missing coordinator variable after manager init refactor
+  ([`f462885`](https://github.com/afewyards/ha-adaptive-thermostat/commit/f462885f317098c2c0086362990e107ac89a4474))
+
+The refactor in fe777df extracted manager initialization into climate_init.py but left dangling
+  references to a `coordinator` local variable in async_added_to_hass, causing a NameError that
+  silently prevented entity setup — leaving all zones unavailable.
+
+### Documentation
+
+- Add enforced code style rules to CLAUDE.md
+  ([`2b41024`](https://github.com/afewyards/ha-adaptive-thermostat/commit/2b41024ea45122877c894cdbb7da631221728559))
+
+Add naming conventions, type annotation rules, timestamp policies, and other patterns enforced by
+  the architecture remediation.
+
+### Refactoring
+
+- Phase 2 type safety & helpers
+  ([`42a14d4`](https://github.com/afewyards/ha-adaptive-thermostat/commit/42a14d446bedc1452d3b6bde8cf852139d1e46ea))
+
+- Create HeatingType(StrEnum) in const.py, migrate all consumer files - Extract HVAC mode helpers →
+  helpers/hvac_mode.py (deduplicate learning+confidence) - Fix entity domain detection →
+  split_entity_id() in heater_controller, climate_setup - Deduplicate has_recovery_deadline calc in
+  climate_init.py - Deduplicate CycleStartedEvent emission → _emit_cycle_started() helper - Cache
+  coordinator lookup → _coordinator property on thermostat + sensors - Update tests for new
+  coordinator property and split_entity_id patterns
+
+- Phase 3 interface refactor — Protocol, typed coordinator, PauseManager
+  ([`de4cba1`](https://github.com/afewyards/ha-adaptive-thermostat/commit/de4cba15b2462019b7b54a2210f7207eb21967d6))
+
+- Define ThermostatState Protocol in protocols.py (49 typed properties/methods) - Refactor
+  ControlOutputManager to accept Protocol instead of 20 callbacks - Add typed coordinator query
+  methods (get_zone_by_climate_entity, get_adaptive_learner) - Update PIDTuningManager to use typed
+  coordinator API - Create PauseManager aggregator — unifies contact/humidity/open_window pause
+  checks - Consolidate pause control flow in _async_control_heating - Add test_pause_manager.py with
+  12 tests
+
+- Phase 4 structural decomposition
+  ([`03ebb0a`](https://github.com/afewyards/ha-adaptive-thermostat/commit/03ebb0a1b996a47deffbb8ba9f5db5f0b874be83))
+
+- Break up climate.py (2076→1608 lines) via mixin pattern: - climate_control.py: PID control loop,
+  heating control (216 lines) - climate_handlers.py: sensor/state event handlers (307 lines) -
+  Extract auto-apply logic → adaptive/auto_apply.py (168 lines) - Rename KeController→KeManager,
+  NightSetbackController→NightSetbackManager - Add persistence load validation with schema checks in
+  async_load() - Add 8 new persistence validation tests
+
+### Testing
+
+- Phase 5 — add missing test suites
+  ([`593aea8`](https://github.com/afewyards/ha-adaptive-thermostat/commit/593aea85c71b264e449eca8013ebb4b215a4b320))
+
+- Add test_open_window_detection.py (30 tests, TDD — skipped pending impl) - Add
+  test_climate_init.py (40 tests for manager initialization factory) - Add
+  test_cross_feature_interactions.py (15 tests for humidity+learning, contact+preheat, multi-pause
+  source scenarios)
+
+
 ## v0.38.0 (2026-01-27)
 
 ### Bug Fixes
