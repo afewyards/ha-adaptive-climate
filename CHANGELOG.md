@@ -1,6 +1,55 @@
 # CHANGELOG
 
 
+## v0.37.0 (2026-01-27)
+
+### Bug Fixes
+
+- **persistence**: Persist full PID state across restarts
+  ([`0bf06f6`](https://github.com/afewyards/ha-adaptive-thermostat/commit/0bf06f6e9bc2d390e067a1818a3091bfeee73976))
+
+- Move integral from debug-only to always-saved in state_attributes - Add kp, ki, kd gains to
+  persisted state attributes - Add diagnostic logging when integral restoration fails - Fix event
+  handler to look up entities directly for set_integral event - Update test to expect kp/ki/kd in
+  state attributes
+
+- **services**: Remove health_check service registration
+  ([`c5e9b32`](https://github.com/afewyards/ha-adaptive-thermostat/commit/c5e9b32aea5edbee9f319d4c5e135e6fdb966eea))
+
+### Features
+
+- **climate**: Make entity services conditional on debug flag
+  ([`9abb7a6`](https://github.com/afewyards/ha-adaptive-thermostat/commit/9abb7a6488cfe53bb35bc77894f470cbc279e92f))
+
+- **services**: Make domain services conditional on debug flag
+  ([`a646b77`](https://github.com/afewyards/ha-adaptive-thermostat/commit/a646b7727550b2ba0d0ad65e8ec3535c3e7b9d6f))
+
+- Split service registration into public (always) and debug-only services - Public services:
+  set_vacation_mode, cost_report, energy_stats, weekly_report - Debug-only services: run_learning,
+  pid_recommendations - Update unregister function to handle conditional services - Add debug
+  parameter logging to service count
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+- **services**: Pass debug flag to service registration
+  ([`6dc7482`](https://github.com/afewyards/ha-adaptive-thermostat/commit/6dc7482a68253bd5ec0b85c92dcb91570bb6899d))
+
+### Testing
+
+- **init**: Update tests for conditional debug service registration
+  ([`edd20c9`](https://github.com/afewyards/ha-adaptive-thermostat/commit/edd20c986217a6bb191597e24a4a902f19fd6929))
+
+- Remove SERVICE_HEALTH_CHECK from test_unregister_services_removes_all_services (service deleted) -
+  Update expected service count to 6 (4 public + 2 debug) - Add debug=True to
+  test_services_not_duplicated_after_reload to register SERVICE_RUN_LEARNING - Both tests now pass
+  with conditional debug services
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+- **services**: Add tests for conditional debug service registration
+  ([`f0a25c5`](https://github.com/afewyards/ha-adaptive-thermostat/commit/f0a25c50d2ad0d985b4b199245e4d3b026bc25ad))
+
+
 ## v0.36.0 (2026-01-26)
 
 ### Documentation
