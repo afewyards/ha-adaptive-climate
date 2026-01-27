@@ -74,7 +74,7 @@ class PowerPerM2Sensor(AdaptiveThermostatSensor):
             Power in W/m², or None if insufficient data
         """
         # Get coordinator data
-        coordinator = self.hass.data.get(DOMAIN, {}).get("coordinator")
+        coordinator = self._coordinator
         if not coordinator:
             return None
 
@@ -297,6 +297,11 @@ class TotalPowerSensor(SensorEntity):
         self._zone_powers = {}
 
     @property
+    def _coordinator(self):
+        """Return the coordinator instance (cached lookup)."""
+        return self.hass.data.get(DOMAIN, {}).get("coordinator")
+
+    @property
     def native_value(self) -> float | None:
         """Return the total power in Watts."""
         return round(self._value, 1)
@@ -315,7 +320,7 @@ class TotalPowerSensor(SensorEntity):
         zone_powers = {}
 
         # Get coordinator
-        coordinator = self.hass.data.get(DOMAIN, {}).get("coordinator")
+        coordinator = self._coordinator
         if not coordinator:
             self._value = 0.0
             self._zone_powers = {}

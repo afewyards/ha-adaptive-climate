@@ -152,7 +152,7 @@ def _add_learning_status_attributes(
     from ..const import DOMAIN, MIN_CYCLES_FOR_LEARNING
 
     # Get adaptive learner and cycle tracker from coordinator
-    coordinator = thermostat.hass.data.get(DOMAIN, {}).get("coordinator")
+    coordinator = thermostat._coordinator
     if not coordinator:
         return
 

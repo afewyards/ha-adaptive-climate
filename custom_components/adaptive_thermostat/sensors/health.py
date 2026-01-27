@@ -42,6 +42,12 @@ class SystemHealthSensor(SensorEntity):
         self._warning_count = 0
 
     @property
+    def _coordinator(self):
+        """Return the coordinator instance (cached lookup)."""
+        from ..const import DOMAIN
+        return self.hass.data.get(DOMAIN, {}).get("coordinator")
+
+    @property
     def native_value(self) -> str | None:
         """Return the state of the sensor."""
         return self._state
@@ -92,7 +98,7 @@ class SystemHealthSensor(SensorEntity):
         zones_data = {}
 
         # Get coordinator
-        coordinator = self.hass.data.get(DOMAIN, {}).get("coordinator")
+        coordinator = self._coordinator
         if not coordinator:
             return zones_data
 

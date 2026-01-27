@@ -6,6 +6,12 @@ thermal properties of zones and heating system characteristics.
 
 from typing import Tuple, Optional, Dict, List
 
+try:
+    from ..const import HeatingType
+except ImportError:
+    # Fallback for test environment
+    from custom_components.adaptive_thermostat.const import HeatingType
+
 # Re-export floor physics functions for backward compatibility
 from .floor_physics import (
     validate_floor_construction,
@@ -132,7 +138,7 @@ def calculate_thermal_time_constant(
             raise ValueError("heating_type is required when floor_construction is provided")
 
         # Only apply floor construction modifier for floor hydronic heating
-        if heating_type == 'floor_hydronic':
+        if heating_type == HeatingType.FLOOR_HYDRONIC:
             # Extract layers and pipe spacing from floor_construction dict
             layers = floor_construction.get('layers')
             pipe_spacing_mm = floor_construction.get('pipe_spacing_mm', 150)
@@ -278,24 +284,24 @@ def calculate_initial_pid(
     # Each profile represents empirical data from different building types
     # Reference profiles calibrated at specific tau values
     reference_profiles = {
-        "floor_hydronic": [
+        HeatingType.FLOOR_HYDRONIC: [
             # (tau_hours, kp, ki, kd) - calibrated reference points
             (2.0, 0.45, 2.0, 1.4),     # Well-insulated floor heating, fast response
             (4.0, 0.30, 1.2, 2.5),     # Standard floor heating, moderate mass
             (6.0, 0.22, 0.8, 3.3),     # High thermal mass floor, slow response (reduced from 3.5 to fit kd_max=3.3)
             (8.0, 0.18, 0.6, 3.2),     # Very slow floor heating, high mass (reduced from 4.2 to fit kd_max=3.3)
         ],
-        "radiator": [
+        HeatingType.RADIATOR: [
             (1.5, 0.70, 3.0, 1.2),     # Fast radiator system
             (3.0, 0.50, 2.0, 2.0),     # Standard radiator
             (5.0, 0.36, 1.3, 2.8),     # Slow radiator, high mass building
         ],
-        "convector": [
+        HeatingType.CONVECTOR: [
             (1.0, 1.10, 6.0, 0.7),     # Fast convector, low mass
             (2.5, 0.80, 4.0, 1.2),     # Standard convector
             (4.0, 0.60, 2.8, 1.8),     # Slow convector, higher mass
         ],
-        "forced_air": [
+        HeatingType.FORCED_AIR: [
             (0.5, 1.80, 12.0, 0.4),    # Very fast forced air, minimal mass
             (1.5, 1.20, 8.0, 0.8),     # Standard forced air
             (3.0, 0.85, 5.5, 1.3),     # Slow forced air, higher mass building
@@ -303,7 +309,7 @@ def calculate_initial_pid(
     }
 
     # Get reference profiles for heating type, default to radiator
-    profiles = reference_profiles.get(heating_type, reference_profiles["radiator"])
+    profiles = reference_profiles.get(heating_type, reference_profiles[HeatingType.RADIATOR])
 
     # Find bracketing reference points for interpolation
     tau = thermal_time_constant if thermal_time_constant > 0 else 2.0
@@ -389,10 +395,10 @@ def calculate_initial_pwm_period(heating_type: str = "floor_hydronic") -> int:
     # Longer periods = less wear, slower response
     # Shorter periods = faster response, more wear
     pwm_periods = {
-        "floor_hydronic": 900,    # 15 minutes - minimize valve wear
-        "radiator": 600,          # 10 minutes - moderate valve cycling
-        "convector": 300,         # 5 minutes - faster response
-        "forced_air": 180,        # 3 minutes - very fast response
+        HeatingType.FLOOR_HYDRONIC: 900,    # 15 minutes - minimize valve wear
+        HeatingType.RADIATOR: 600,          # 10 minutes - moderate valve cycling
+        HeatingType.CONVECTOR: 300,         # 5 minutes - faster response
+        HeatingType.FORCED_AIR: 180,        # 3 minutes - very fast response
     }
 
     return pwm_periods.get(heating_type, 600)  # Default to 10 minutes
@@ -457,10 +463,10 @@ def calculate_initial_ke(
     # These are multiplicative factors (not absolute values), applied to base_ke
     # No scaling needed for v0.7.1 - these remain as dimensionless multipliers
     heating_type_factors = {
-        "floor_hydronic": 1.2,   # Slow response - more benefit from Ke
-        "radiator": 1.0,         # Baseline
-        "convector": 0.8,        # Faster response - less Ke needed
-        "forced_air": 0.6,       # Fast response - minimal Ke needed
+        HeatingType.FLOOR_HYDRONIC: 1.2,   # Slow response - more benefit from Ke
+        HeatingType.RADIATOR: 1.0,         # Baseline
+        HeatingType.CONVECTOR: 0.8,        # Faster response - less Ke needed
+        HeatingType.FORCED_AIR: 0.6,       # Fast response - minimal Ke needed
     }
     type_factor = heating_type_factors.get(heating_type, 1.0)
     base_ke *= type_factor

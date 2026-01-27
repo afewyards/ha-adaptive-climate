@@ -186,6 +186,8 @@ class TestAddLearningStatusAttributes:
                 "cycle_tracker": cycle_tracker,
             }
         }
+        # Set _coordinator directly on mock thermostat (bypassing the @property)
+        thermostat._coordinator = coordinator
         thermostat.hass.data.get.return_value = {"coordinator": coordinator}
         attrs = {}
 
@@ -216,6 +218,8 @@ class TestAddLearningStatusAttributes:
                 "cycle_tracker": cycle_tracker,
             }
         }
+        # Set _coordinator directly on mock thermostat (bypassing the @property)
+        thermostat._coordinator = coordinator
         thermostat.hass.data.get.return_value = {"coordinator": coordinator}
         attrs = {}
 
@@ -249,6 +253,8 @@ class TestAddLearningStatusAttributes:
                 "cycle_tracker": cycle_tracker,
             }
         }
+        # Set _coordinator directly on mock thermostat (bypassing the @property)
+        thermostat._coordinator = coordinator
         thermostat.hass.data.get.return_value = {"coordinator": coordinator}
         attrs = {}
 
@@ -294,6 +300,8 @@ class TestAddLearningStatusAttributes:
                 "cycle_tracker": cycle_tracker,
             }
         }
+        # Set _coordinator directly on mock thermostat (bypassing the @property)
+        thermostat._coordinator = coordinator
         thermostat.hass.data.get.return_value = {"coordinator": coordinator}
 
         # Test various confidence values

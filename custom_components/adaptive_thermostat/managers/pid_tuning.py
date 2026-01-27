@@ -204,7 +204,7 @@ class PIDTuningManager:
 
         # Record physics baseline and PID snapshot for auto-apply tracking
         hass = self._get_hass()
-        coordinator = hass.data.get(DOMAIN, {}).get("coordinator")
+        coordinator = self._thermostat._coordinator
         if coordinator:
             all_zones = coordinator.get_all_zones()
             for zone_id, zone_data in all_zones.items():
@@ -247,7 +247,7 @@ class PIDTuningManager:
         them to the PID controller.
         """
         hass = self._get_hass()
-        coordinator = hass.data.get(DOMAIN, {}).get("coordinator")
+        coordinator = self._thermostat._coordinator
         if not coordinator:
             _LOGGER.warning(
                 "%s: Cannot apply adaptive PID - no coordinator",
@@ -309,7 +309,7 @@ class PIDTuningManager:
 
         # Record PID snapshot and clear learning history for manual apply
         hass = self._get_hass()
-        coordinator = hass.data.get(DOMAIN, {}).get("coordinator")
+        coordinator = self._thermostat._coordinator
         if coordinator:
             all_zones = coordinator.get_all_zones()
             for zone_id, zone_data in all_zones.items():
@@ -363,7 +363,7 @@ class PIDTuningManager:
                 new_values (dict or None): New PID values if applied
         """
         hass = self._get_hass()
-        coordinator = hass.data.get(DOMAIN, {}).get("coordinator")
+        coordinator = self._thermostat._coordinator
         if not coordinator:
             return {
                 "applied": False,
@@ -516,7 +516,7 @@ class PIDTuningManager:
             bool: True if rollback succeeded, False if no history available
         """
         hass = self._get_hass()
-        coordinator = hass.data.get(DOMAIN, {}).get("coordinator")
+        coordinator = self._thermostat._coordinator
         if not coordinator:
             _LOGGER.warning(
                 "%s: Cannot rollback PID - no coordinator",
@@ -629,7 +629,7 @@ class PIDTuningManager:
         - Resets PID to physics-based defaults
         """
         hass = self._get_hass()
-        coordinator = hass.data.get(DOMAIN, {}).get("coordinator")
+        coordinator = self._thermostat._coordinator
 
         if coordinator:
             all_zones = coordinator.get_all_zones()

@@ -1,8 +1,36 @@
 """Constants for Adaptive Thermostat"""
 from dataclasses import dataclass
+from enum import Enum
 from typing import Dict, Optional
+import sys
 
 DOMAIN = "adaptive_thermostat"
+
+
+# StrEnum compatibility for Python < 3.11
+if sys.version_info >= (3, 11):
+    from enum import StrEnum
+else:
+    class StrEnum(str, Enum):
+        """Drop-in replacement for StrEnum on Python < 3.11."""
+        def __new__(cls, value):
+            if not isinstance(value, str):
+                raise TypeError(f"{value!r} is not a string")
+            return str.__new__(cls, value)
+
+        def __str__(self):
+            return self.value
+
+        def _generate_next_value_(name, start, count, last_values):
+            return name.lower()
+
+
+class HeatingType(StrEnum):
+    """Heating system types."""
+    FLOOR_HYDRONIC = "floor_hydronic"
+    RADIATOR = "radiator"
+    CONVECTOR = "convector"
+    FORCED_AIR = "forced_air"
 
 DEFAULT_NAME = "Adaptive Thermostat"
 DEFAULT_OUTPUT_PRECISION = 1
@@ -79,18 +107,18 @@ CONF_AUTO_APPLY_PID = "auto_apply_pid"
 CONF_AREA = "area"
 CONF_THERMAL_GROUPS = "thermal_groups"
 
-# Heating system types
-HEATING_TYPE_FLOOR_HYDRONIC = "floor_hydronic"
-HEATING_TYPE_RADIATOR = "radiator"
-HEATING_TYPE_CONVECTOR = "convector"
-HEATING_TYPE_FORCED_AIR = "forced_air"
+# Heating system types (legacy constants for backward compatibility)
+HEATING_TYPE_FLOOR_HYDRONIC = HeatingType.FLOOR_HYDRONIC
+HEATING_TYPE_RADIATOR = HeatingType.RADIATOR
+HEATING_TYPE_CONVECTOR = HeatingType.CONVECTOR
+HEATING_TYPE_FORCED_AIR = HeatingType.FORCED_AIR
 
 # Valid heating types
 VALID_HEATING_TYPES = [
-    HEATING_TYPE_FLOOR_HYDRONIC,
-    HEATING_TYPE_RADIATOR,
-    HEATING_TYPE_CONVECTOR,
-    HEATING_TYPE_FORCED_AIR,
+    HeatingType.FLOOR_HYDRONIC,
+    HeatingType.RADIATOR,
+    HeatingType.CONVECTOR,
+    HeatingType.FORCED_AIR,
 ]
 
 
@@ -105,7 +133,7 @@ class PIDGains:
 # Heating type characteristics lookup table
 # Used by adaptive/physics.py for PID initialization
 HEATING_TYPE_CHARACTERISTICS = {
-    HEATING_TYPE_FLOOR_HYDRONIC: {
+    HeatingType.FLOOR_HYDRONIC: {
         "pid_modifier": 0.5,      # Very conservative
         "pwm_period": 900,        # 15 minutes
         "derivative_filter_alpha": 0.05,  # Heavy filtering - high thermal mass reduces noise sensitivity
@@ -117,7 +145,7 @@ HEATING_TYPE_CHARACTERISTICS = {
         "max_settling_time": 90,  # Maximum settling time in minutes
         "description": "Floor heating with water - high thermal mass, slow response",
     },
-    HEATING_TYPE_RADIATOR: {
+    HeatingType.RADIATOR: {
         "pid_modifier": 0.7,      # Moderately conservative
         "pwm_period": 600,        # 10 minutes
         "derivative_filter_alpha": 0.10,  # Moderate filtering
@@ -129,7 +157,7 @@ HEATING_TYPE_CHARACTERISTICS = {
         "max_settling_time": 45,  # Maximum settling time in minutes
         "description": "Traditional radiators - moderate thermal mass",
     },
-    HEATING_TYPE_CONVECTOR: {
+    HeatingType.CONVECTOR: {
         "pid_modifier": 1.0,      # Standard
         "pwm_period": 300,        # 5 minutes
         "derivative_filter_alpha": 0.15,  # Light filtering - default balance
@@ -141,7 +169,7 @@ HEATING_TYPE_CHARACTERISTICS = {
         "max_settling_time": 30,  # Maximum settling time in minutes
         "description": "Convection heaters - low thermal mass, faster response",
     },
-    HEATING_TYPE_FORCED_AIR: {
+    HeatingType.FORCED_AIR: {
         "pid_modifier": 1.3,      # Aggressive
         "pwm_period": 180,        # 3 minutes
         "derivative_filter_alpha": 0.25,  # Minimal filtering - fast response needed
@@ -225,7 +253,7 @@ DEFAULT_CONVERGENCE_THRESHOLDS = {
 # Heating-type-specific convergence thresholds
 # Slow systems (high thermal mass) get relaxed criteria to avoid false negatives
 HEATING_TYPE_CONVERGENCE_THRESHOLDS = {
-    HEATING_TYPE_FLOOR_HYDRONIC: {
+    HeatingType.FLOOR_HYDRONIC: {
         "overshoot_max": 0.3,       # Relaxed from 0.2°C - high thermal mass makes precise control harder
         "undershoot_max": 0.3,      # Relaxed from 0.2°C - matches overshoot_max
         "oscillations_max": 1,      # Same as default
@@ -234,7 +262,7 @@ HEATING_TYPE_CONVERGENCE_THRESHOLDS = {
         "inter_cycle_drift_max": 0.3,  # Relaxed - high thermal mass increases variability
         "settling_mae_max": 0.3,    # Relaxed - thermal mass makes precise settling harder
     },
-    HEATING_TYPE_RADIATOR: {
+    HeatingType.RADIATOR: {
         "overshoot_max": 0.25,      # Slightly relaxed from 0.2°C
         "undershoot_max": 0.25,     # Slightly relaxed from 0.2°C - matches overshoot_max
         "oscillations_max": 1,      # Same as default
@@ -243,7 +271,7 @@ HEATING_TYPE_CONVERGENCE_THRESHOLDS = {
         "inter_cycle_drift_max": 0.25,  # Baseline - moderate thermal mass
         "settling_mae_max": 0.25,   # Baseline - moderate thermal mass
     },
-    HEATING_TYPE_CONVECTOR: {
+    HeatingType.CONVECTOR: {
         "overshoot_max": 0.2,       # Baseline (same as default)
         "undershoot_max": 0.2,      # Baseline (same as default) - matches overshoot_max
         "oscillations_max": 1,      # Same as default
@@ -252,7 +280,7 @@ HEATING_TYPE_CONVERGENCE_THRESHOLDS = {
         "inter_cycle_drift_max": 0.2,  # Baseline - low thermal mass
         "settling_mae_max": 0.2,    # Baseline - low thermal mass
     },
-    HEATING_TYPE_FORCED_AIR: {
+    HeatingType.FORCED_AIR: {
         "overshoot_max": 0.15,      # Tightened from 0.2°C - fast systems should be more precise
         "undershoot_max": 0.15,     # Tightened from 0.2°C - matches overshoot_max
         "oscillations_max": 1,      # Same as default
@@ -609,10 +637,10 @@ KE_STEADY_STATE_DURATION = 15
 DEFAULT_INTEGRAL_DECAY = 1.5
 
 HEATING_TYPE_INTEGRAL_DECAY = {
-    HEATING_TYPE_FLOOR_HYDRONIC: 3.0,  # High decay - very slow thermal response
-    HEATING_TYPE_RADIATOR: 2.0,        # Moderate decay
-    HEATING_TYPE_CONVECTOR: 1.5,       # Standard decay
-    HEATING_TYPE_FORCED_AIR: 1.2,      # Low decay - fast response can self-correct
+    HeatingType.FLOOR_HYDRONIC: 3.0,  # High decay - very slow thermal response
+    HeatingType.RADIATOR: 2.0,        # Moderate decay
+    HeatingType.CONVECTOR: 1.5,       # Standard decay
+    HeatingType.FORCED_AIR: 1.2,      # Low decay - fast response can self-correct
 }
 
 # Integral decay safety net thresholds (% of integral value)
@@ -620,10 +648,10 @@ HEATING_TYPE_INTEGRAL_DECAY = {
 # activate exponential decay to prevent prolonged overshoot.
 # Slower systems get lower thresholds to activate safety net earlier.
 INTEGRAL_DECAY_THRESHOLDS = {
-    HEATING_TYPE_FLOOR_HYDRONIC: 30.0,  # Low threshold - high thermal mass needs early intervention
-    HEATING_TYPE_RADIATOR: 40.0,        # Moderate threshold
-    HEATING_TYPE_CONVECTOR: 50.0,       # Standard threshold
-    HEATING_TYPE_FORCED_AIR: 60.0,      # High threshold - fast response can handle larger integral
+    HeatingType.FLOOR_HYDRONIC: 30.0,  # Low threshold - high thermal mass needs early intervention
+    HeatingType.RADIATOR: 40.0,        # Moderate threshold
+    HeatingType.CONVECTOR: 50.0,       # Standard threshold
+    HeatingType.FORCED_AIR: 60.0,      # High threshold - fast response can handle larger integral
 }
 
 # Clamped cycle overshoot multipliers by heating type
@@ -633,10 +661,10 @@ INTEGRAL_DECAY_THRESHOLDS = {
 # Slower systems (high thermal mass) get higher multipliers since clamping hides more
 # of the true overshoot due to delayed thermal response.
 CLAMPED_OVERSHOOT_MULTIPLIER = {
-    HEATING_TYPE_FLOOR_HYDRONIC: 1.5,   # High multiplier - thermal mass delays overshoot expression
-    HEATING_TYPE_RADIATOR: 1.35,        # Moderate-high multiplier
-    HEATING_TYPE_CONVECTOR: 1.2,        # Moderate multiplier
-    HEATING_TYPE_FORCED_AIR: 1.1,       # Low multiplier - fast response shows true overshoot quickly
+    HeatingType.FLOOR_HYDRONIC: 1.5,   # High multiplier - thermal mass delays overshoot expression
+    HeatingType.RADIATOR: 1.35,        # Moderate-high multiplier
+    HeatingType.CONVECTOR: 1.2,        # Moderate multiplier
+    HeatingType.FORCED_AIR: 1.1,       # Low multiplier - fast response shows true overshoot quickly
 }
 
 # Default clamped overshoot multiplier for unknown heating types
@@ -647,10 +675,10 @@ DEFAULT_CLAMPED_OVERSHOOT_MULTIPLIER = 1.25
 DEFAULT_EXP_DECAY_TAU = 0.12
 
 HEATING_TYPE_EXP_DECAY_TAU = {
-    HEATING_TYPE_FLOOR_HYDRONIC: 0.18,   # 7.5 min half-life (15 min cycle / 2)
-    HEATING_TYPE_RADIATOR: 0.12,         # 5 min half-life (10 min cycle / 2)
-    HEATING_TYPE_CONVECTOR: 0.06,        # 2.5 min half-life (5 min cycle / 2)
-    HEATING_TYPE_FORCED_AIR: 0.036,      # 1.5 min half-life (3 min cycle / 2)
+    HeatingType.FLOOR_HYDRONIC: 0.18,   # 7.5 min half-life (15 min cycle / 2)
+    HeatingType.RADIATOR: 0.12,         # 5 min half-life (10 min cycle / 2)
+    HeatingType.CONVECTOR: 0.06,        # 2.5 min half-life (5 min cycle / 2)
+    HeatingType.FORCED_AIR: 0.036,      # 1.5 min half-life (3 min cycle / 2)
 }
 
 # Auto-apply PID constants
@@ -682,28 +710,28 @@ SEASONAL_SHIFT_BLOCK_DAYS = 7
 #   cooldown_hours: Minimum hours between auto-applies
 #   cooldown_cycles: Minimum cycles between auto-applies
 AUTO_APPLY_THRESHOLDS = {
-    HEATING_TYPE_FLOOR_HYDRONIC: {
+    HeatingType.FLOOR_HYDRONIC: {
         "confidence_first": 0.80,        # High confidence - slow response makes mistakes costly
         "confidence_subsequent": 0.90,   # Very high - each change needs strong evidence
         "min_cycles": 8,                 # More cycles needed due to long cycle times
         "cooldown_hours": 96,            # 4 days between applies
         "cooldown_cycles": 15,           # ~1 week of normal operation
     },
-    HEATING_TYPE_RADIATOR: {
+    HeatingType.RADIATOR: {
         "confidence_first": 0.70,        # Moderate confidence
         "confidence_subsequent": 0.85,   # Higher for subsequent changes
         "min_cycles": 7,                 # Moderate cycle requirement
         "cooldown_hours": 72,            # 3 days between applies
         "cooldown_cycles": 12,           # ~5 days of normal operation
     },
-    HEATING_TYPE_CONVECTOR: {
+    HeatingType.CONVECTOR: {
         "confidence_first": 0.60,        # Standard confidence threshold
         "confidence_subsequent": 0.80,   # Higher for subsequent changes
         "min_cycles": 6,                 # Standard cycle requirement
         "cooldown_hours": 48,            # 2 days between applies
         "cooldown_cycles": 10,           # ~3-4 days of normal operation
     },
-    HEATING_TYPE_FORCED_AIR: {
+    HeatingType.FORCED_AIR: {
         "confidence_first": 0.60,        # Standard confidence (fast recovery if wrong)
         "confidence_subsequent": 0.80,   # Higher for subsequent changes
         "min_cycles": 6,                 # Standard cycle requirement

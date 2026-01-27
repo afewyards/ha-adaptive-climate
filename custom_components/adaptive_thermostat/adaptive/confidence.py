@@ -16,25 +16,9 @@ from ..const import (
     CONFIDENCE_DECAY_RATE_DAILY,
     CONFIDENCE_INCREASE_PER_GOOD_CYCLE,
 )
+from ..helpers.hvac_mode import mode_to_str, get_hvac_heat_mode, get_hvac_cool_mode
 
 _LOGGER = logging.getLogger(__name__)
-
-
-def _mode_to_str(mode):
-    """Convert mode to string (handles both enum and string)."""
-    return mode.value if hasattr(mode, 'value') else str(mode)
-
-
-def _get_hvac_heat_mode():
-    """Lazy import of HVACMode.HEAT for default parameter."""
-    from homeassistant.components.climate import HVACMode
-    return HVACMode.HEAT
-
-
-def _get_hvac_cool_mode():
-    """Lazy import of HVACMode.COOL for comparison."""
-    from homeassistant.components.climate import HVACMode
-    return HVACMode.COOL
 
 
 class ConfidenceTracker:
@@ -76,8 +60,8 @@ class ConfidenceTracker:
             Confidence in range [0.0, 1.0]
         """
         if mode is None:
-            mode = _get_hvac_heat_mode()
-        if mode == _get_hvac_cool_mode():
+            mode = get_hvac_heat_mode()
+        if mode == get_hvac_cool_mode():
             return self._cooling_convergence_confidence
         else:
             return self._heating_convergence_confidence
@@ -92,8 +76,8 @@ class ConfidenceTracker:
             Total count of auto-applied PID adjustments for the specified mode.
         """
         if mode is None:
-            mode = _get_hvac_heat_mode()
-        if mode == _get_hvac_cool_mode():
+            mode = get_hvac_heat_mode()
+        if mode == get_hvac_cool_mode():
             return self._cooling_auto_apply_count
         else:
             return self._heating_auto_apply_count
@@ -109,9 +93,9 @@ class ConfidenceTracker:
             mode: HVACMode (HEAT or COOL) to update (defaults to HEAT)
         """
         if mode is None:
-            mode = _get_hvac_heat_mode()
+            mode = get_hvac_heat_mode()
         # Select confidence value based on mode
-        if mode == _get_hvac_cool_mode():
+        if mode == get_hvac_cool_mode():
             current_confidence = self._cooling_convergence_confidence
         else:
             current_confidence = self._heating_convergence_confidence
@@ -132,7 +116,7 @@ class ConfidenceTracker:
                 current_confidence + CONFIDENCE_INCREASE_PER_GOOD_CYCLE
             )
             _LOGGER.debug(
-                f"Convergence confidence ({_mode_to_str(mode)} mode) increased to {current_confidence:.2f} "
+                f"Convergence confidence ({mode_to_str(mode)} mode) increased to {current_confidence:.2f} "
                 f"(good cycle: overshoot={metrics.overshoot:.2f}°C, "
                 f"oscillations={metrics.oscillations}, "
                 f"settling={metrics.settling_time:.1f}min)"
@@ -144,12 +128,12 @@ class ConfidenceTracker:
                 current_confidence - CONFIDENCE_INCREASE_PER_GOOD_CYCLE * 0.5
             )
             _LOGGER.debug(
-                f"Convergence confidence ({_mode_to_str(mode)} mode) decreased to {current_confidence:.2f} "
+                f"Convergence confidence ({mode_to_str(mode)} mode) decreased to {current_confidence:.2f} "
                 f"(poor cycle detected)"
             )
 
         # Store updated confidence back
-        if mode == _get_hvac_cool_mode():
+        if mode == get_hvac_cool_mode():
             self._cooling_convergence_confidence = current_confidence
         else:
             self._heating_convergence_confidence = current_confidence
@@ -198,8 +182,8 @@ class ConfidenceTracker:
             mode: HVACMode (HEAT or COOL) to increment (defaults to HEAT)
         """
         if mode is None:
-            mode = _get_hvac_heat_mode()
-        if mode == _get_hvac_cool_mode():
+            mode = get_hvac_heat_mode()
+        if mode == get_hvac_cool_mode():
             self._cooling_auto_apply_count += 1
         else:
             self._heating_auto_apply_count += 1
@@ -214,7 +198,7 @@ class ConfidenceTracker:
             # Reset both modes
             self._heating_convergence_confidence = 0.0
             self._cooling_convergence_confidence = 0.0
-        elif mode == _get_hvac_cool_mode():
+        elif mode == get_hvac_cool_mode():
             self._cooling_convergence_confidence = 0.0
         else:
             self._heating_convergence_confidence = 0.0

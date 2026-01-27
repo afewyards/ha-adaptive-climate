@@ -5,7 +5,7 @@ from datetime import timedelta
 
 import voluptuous as vol
 
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, split_entity_id
 from homeassistant.helpers import entity_platform, discovery
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.const import (
@@ -153,7 +153,8 @@ def validate_pwm_compatibility(config):
     # Check heater entity
     heater_entities = config.get(const.CONF_HEATER, [])
     for entity_id in heater_entities:
-        if entity_id.startswith("climate."):
+        domain, _ = split_entity_id(entity_id)
+        if domain == "climate":
             raise vol.Invalid(
                 f"PWM mode cannot be used with climate entity '{entity_id}'. "
                 f"Climate entities have their own PID controllers, creating nested control loops. "
@@ -163,7 +164,8 @@ def validate_pwm_compatibility(config):
     # Check cooler entity
     cooler_entities = config.get(const.CONF_COOLER, [])
     for entity_id in cooler_entities:
-        if entity_id.startswith("climate."):
+        domain, _ = split_entity_id(entity_id)
+        if domain == "climate":
             raise vol.Invalid(
                 f"PWM mode cannot be used with climate entity '{entity_id}'. "
                 f"Climate entities have their own PID controllers, creating nested control loops. "

@@ -164,7 +164,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
             self._max_out = self._output_clamp_high
         # Zone properties for physics-based initialization
         self._zone_id = kwargs.get('zone_id')
-        self._heating_type = kwargs.get('heating_type', 'floor_hydronic')
+        self._heating_type = kwargs.get('heating_type', const.HeatingType.FLOOR_HYDRONIC)
         self._area_m2 = kwargs.get('area_m2')
         self._max_power_w = kwargs.get('max_power_w')
         self._supply_temperature = kwargs.get('supply_temperature')
@@ -367,7 +367,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
         # Get tolerances from HEATING_TYPE_CHARACTERISTICS based on heating_type
         # User-configured values are overridden by heating type defaults for consistency
         heating_type_chars = const.HEATING_TYPE_CHARACTERISTICS.get(
-            self._heating_type, const.HEATING_TYPE_CHARACTERISTICS['radiator']
+            self._heating_type, const.HEATING_TYPE_CHARACTERISTICS[const.HeatingType.RADIATOR]
         )
         self._cold_tolerance = heating_type_chars['cold_tolerance']
         self._hot_tolerance = heating_type_chars['hot_tolerance']
@@ -424,7 +424,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
 
         # Set physics baseline for adaptive learning after PID values are finalized
         # (either restored from previous state or calculated from physics in __init__)
-        coordinator = self.hass.data.get(DOMAIN, {}).get("coordinator")
+        coordinator = self._coordinator
         if coordinator and self._zone_id and self._area_m2:
             zone_data = coordinator.get_zone_data(self._zone_id)
             if zone_data:
@@ -534,7 +534,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
             learning_store = self.hass.data.get(DOMAIN, {}).get("learning_store")
             if learning_store:
                 # Get adaptive_learner from coordinator zone_data
-                coordinator = self.hass.data.get(DOMAIN, {}).get("coordinator")
+                coordinator = self._coordinator
                 adaptive_data = None
                 if coordinator:
                     zone_data = coordinator.get_zone_data(self._zone_id)
@@ -565,7 +565,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
 
         # Unregister zone from coordinator
         if self._zone_id:
-            coordinator = self.hass.data.get(DOMAIN, {}).get("coordinator")
+            coordinator = self._coordinator
             if coordinator:
                 coordinator.unregister_zone(self._zone_id)
                 _LOGGER.info(
@@ -673,7 +673,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
                     self._async_humidity_sensor_changed))
 
         # Thermal groups leader tracking (follower zones track leader setpoint)
-        coordinator = self.hass.data.get(DOMAIN, {}).get("coordinator")
+        coordinator = self._coordinator
         if self._zone_id and coordinator:
             thermal_group_manager = coordinator.thermal_group_manager
             if thermal_group_manager:
@@ -773,6 +773,11 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
     def unique_id(self):
         """Return a unique ID."""
         return self._unique_id
+
+    @property
+    def _coordinator(self):
+        """Return the coordinator instance (cached lookup)."""
+        return self.hass.data.get(DOMAIN, {}).get("coordinator")
 
     @staticmethod
     def _get_number_entity_domain(entity_id):
@@ -1222,7 +1227,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
             )
 
             # Schedule persistence save
-            coordinator = self.hass.data.get(DOMAIN, {}).get("coordinator")
+            coordinator = self._coordinator
             if coordinator and self._zone_id:
                 zone_data = coordinator.get_zone_data(self._zone_id)
                 if zone_data:
@@ -1807,7 +1812,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
         Returns True if the adaptive learner reports PID convergence
         (stable performance for required number of consecutive cycles).
         """
-        coordinator = self.hass.data.get(DOMAIN, {}).get("coordinator")
+        coordinator = self._coordinator
         if not coordinator or not self._zone_id:
             return False
         zone_data = coordinator.get_zone_data(self._zone_id)
@@ -1932,7 +1937,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
         Delegates to HeaterController for the actual turn on operation.
         """
         # Query transport delay from manifold registry
-        coordinator = self.hass.data.get(DOMAIN, {}).get("coordinator")
+        coordinator = self._coordinator
         if coordinator and self._zone_id:
             delay = coordinator.get_transport_delay_for_zone(self.entity_id)
             if delay is not None and delay > 0:

@@ -449,7 +449,7 @@ class ControlOutputManager:
         from ..const import DOMAIN
 
         # Get coordinator
-        coordinator = self._thermostat.hass.data.get(DOMAIN, {}).get("coordinator")
+        coordinator = self._thermostat._coordinator
         if not coordinator:
             return
 
@@ -493,7 +493,7 @@ class ControlOutputManager:
             return 0.0
 
         # Get coordinator
-        coordinator = self._thermostat.hass.data.get(DOMAIN, {}).get("coordinator")
+        coordinator = self._thermostat._coordinator
         if not coordinator:
             self._last_coupling_compensation_degc = 0.0
             self._last_coupling_compensation_power = 0.0

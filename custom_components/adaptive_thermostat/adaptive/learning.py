@@ -32,7 +32,7 @@ from ..const import (
     DEFAULT_CLAMPED_OVERSHOOT_MULTIPLIER,
     SUBSEQUENT_LEARNING_CYCLE_MULTIPLIER,
     AUTO_APPLY_THRESHOLDS,
-    HEATING_TYPE_CONVECTOR,
+    HeatingType,
     get_convergence_thresholds,
     get_rule_thresholds,
 )
@@ -79,6 +79,9 @@ from .learner_serialization import (
     restore_learner_from_dict,
 )
 
+# Import HVAC mode helpers
+from ..helpers.hvac_mode import mode_to_str, get_hvac_heat_mode, get_hvac_cool_mode
+
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -98,25 +101,10 @@ def get_auto_apply_thresholds(heating_type: Optional[str] = None) -> Dict[str, f
     """
     if heating_type and heating_type in AUTO_APPLY_THRESHOLDS:
         return AUTO_APPLY_THRESHOLDS[heating_type]
-    return AUTO_APPLY_THRESHOLDS[HEATING_TYPE_CONVECTOR]
+    return AUTO_APPLY_THRESHOLDS[HeatingType.CONVECTOR]
 
 
 # Adaptive learning (CycleMetrics imported from cycle_analysis)
-
-def _mode_to_str(mode):
-    """Convert mode to string (handles both enum and string)."""
-    return mode.value if hasattr(mode, 'value') else str(mode)
-
-
-def _get_hvac_heat_mode():
-    """Lazy import of HVACMode.HEAT for default parameter."""
-    from homeassistant.components.climate import HVACMode
-    return HVACMode.HEAT
-
-def _get_hvac_cool_mode():
-    """Lazy import of HVACMode.COOL for comparison."""
-    from homeassistant.components.climate import HVACMode
-    return HVACMode.COOL
 
 
 class AdaptiveLearner:
@@ -307,9 +295,9 @@ class AdaptiveLearner:
             mode: HVACMode (HEAT or COOL) to route cycle to correct history (defaults to HEAT)
         """
         if mode is None:
-            mode = _get_hvac_heat_mode()
+            mode = get_hvac_heat_mode()
         # Route to correct history based on mode
-        if mode == _get_hvac_cool_mode():
+        if mode == get_hvac_cool_mode():
             cycle_history = self._cooling_cycle_history
         else:
             cycle_history = self._heating_cycle_history
@@ -323,7 +311,7 @@ class AdaptiveLearner:
             "inter_cycle_drift=%.3f, settling_mae=%.3f, "
             "integral@tolerance=%.2f, integral@setpoint=%.2f, decay=%.3f, "
             "disturbed=%s, clamped=%s",
-            _mode_to_str(mode),
+            mode_to_str(mode),
             len(cycle_history),
             self._max_history,
             metrics.overshoot or 0.0,
@@ -346,12 +334,12 @@ class AdaptiveLearner:
         # FIFO eviction: remove oldest entries when exceeding max history
         if len(cycle_history) > self._max_history:
             evicted_count = len(cycle_history) - self._max_history
-            if mode == _get_hvac_cool_mode():
+            if mode == get_hvac_cool_mode():
                 self._cooling_cycle_history = self._cooling_cycle_history[-self._max_history:]
             else:
                 self._heating_cycle_history = self._heating_cycle_history[-self._max_history:]
             _LOGGER.debug(
-                f"Cycle history ({_mode_to_str(mode)} mode) exceeded max ({self._max_history}), "
+                f"Cycle history ({mode_to_str(mode)} mode) exceeded max ({self._max_history}), "
                 f"evicted {evicted_count} oldest entries"
             )
 
@@ -366,8 +354,8 @@ class AdaptiveLearner:
             Number of cycles in history for specified mode
         """
         if mode is None:
-            mode = _get_hvac_heat_mode()
-        if mode == _get_hvac_cool_mode():
+            mode = get_hvac_heat_mode()
+        if mode == get_hvac_cool_mode():
             return len(self._cooling_cycle_history)
         else:
             return len(self._heating_cycle_history)
@@ -529,10 +517,10 @@ class AdaptiveLearner:
         """
         # Select the correct cycle history based on mode
         if mode is None:
-            mode = _get_hvac_heat_mode()
-        cycle_history = self._cooling_cycle_history if mode == _get_hvac_cool_mode() else self._heating_cycle_history
-        auto_apply_count = self._cooling_auto_apply_count if mode == _get_hvac_cool_mode() else self._heating_auto_apply_count
-        convergence_confidence = self._cooling_convergence_confidence if mode == _get_hvac_cool_mode() else self._heating_convergence_confidence
+            mode = get_hvac_heat_mode()
+        cycle_history = self._cooling_cycle_history if mode == get_hvac_cool_mode() else self._heating_cycle_history
+        auto_apply_count = self._cooling_auto_apply_count if mode == get_hvac_cool_mode() else self._heating_auto_apply_count
+        convergence_confidence = self._cooling_convergence_confidence if mode == get_hvac_cool_mode() else self._heating_convergence_confidence
 
         # Auto-apply safety gates (when called for automatic PID application)
         if check_auto_apply:
@@ -577,7 +565,7 @@ class AdaptiveLearner:
                 _LOGGER.debug(
                     f"Auto-apply blocked: confidence {convergence_confidence:.2f} "
                     f"< threshold {confidence_threshold:.2f} "
-                    f"(heating_type={self._heating_type}, mode={_mode_to_str(mode)}, "
+                    f"(heating_type={self._heating_type}, mode={mode_to_str(mode)}, "
                     f"apply_count={auto_apply_count})"
                 )
                 return None
@@ -594,7 +582,7 @@ class AdaptiveLearner:
             _LOGGER.debug(
                 f"Auto-apply checks passed: confidence={convergence_confidence:.2f}, "
                 f"threshold={confidence_threshold:.2f}, heating_type={self._heating_type}, "
-                f"mode={_mode_to_str(mode)}, min_cycles={min_cycles} (apply_count={auto_apply_count})"
+                f"mode={mode_to_str(mode)}, min_cycles={min_cycles} (apply_count={auto_apply_count})"
             )
 
         # Check hybrid rate limiting first (both time AND cycles)
@@ -603,7 +591,7 @@ class AdaptiveLearner:
 
         if len(cycle_history) < min_cycles:
             _LOGGER.debug(
-                f"Insufficient cycles for learning ({_mode_to_str(mode)} mode): {len(cycle_history)} < {min_cycles}"
+                f"Insufficient cycles for learning ({mode_to_str(mode)} mode): {len(cycle_history)} < {min_cycles}"
             )
             return None
 
@@ -795,7 +783,7 @@ class AdaptiveLearner:
         if learning_rate != 1.0:
             _LOGGER.info(
                 f"Applying learning rate multiplier: {learning_rate:.2f}x "
-                f"(confidence: {convergence_confidence:.2f}, mode: {_mode_to_str(mode)})"
+                f"(confidence: {convergence_confidence:.2f}, mode: {mode_to_str(mode)})"
             )
 
         # Apply resolved rules with learning rate scaling
@@ -1167,8 +1155,8 @@ class AdaptiveLearner:
             True if performance has degraded significantly, False otherwise
         """
         if mode is None:
-            mode = _get_hvac_heat_mode()
-        cycle_history = self._cooling_cycle_history if mode == _get_hvac_cool_mode() else self._heating_cycle_history
+            mode = get_hvac_heat_mode()
+        cycle_history = self._cooling_cycle_history if mode == get_hvac_cool_mode() else self._heating_cycle_history
         return self._validation.check_performance_degradation(cycle_history, baseline_window)
 
     def check_seasonal_shift(self, outdoor_temp: Optional[float] = None) -> bool:

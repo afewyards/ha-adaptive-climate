@@ -31,6 +31,22 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 
+def _has_recovery_deadline(night_setback_config: dict | None) -> bool:
+    """Check if night setback config has a recovery_deadline set.
+
+    Args:
+        night_setback_config: The night setback configuration dict
+
+    Returns:
+        True if recovery_deadline is configured, False otherwise
+    """
+    return (
+        night_setback_config.get("recovery_deadline") is not None
+        if night_setback_config
+        else False
+    )
+
+
 async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
     """Initialize all manager instances for the thermostat entity.
 
@@ -69,7 +85,7 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
 
     # Initialize PreheatLearner if preheat is enabled
     # Check if we have stored preheat_learner data from persistence
-    coordinator = thermostat.hass.data.get(DOMAIN, {}).get("coordinator")
+    coordinator = thermostat._coordinator
     stored_preheat_data = None
     if coordinator and thermostat._zone_id:
         zone_data = coordinator.get_zone_data(thermostat._zone_id)
@@ -77,11 +93,7 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
             stored_preheat_data = zone_data.get("stored_preheat_data")
 
     # Initialize or restore PreheatLearner (enabled by default when recovery_deadline is set)
-    has_recovery_deadline = (
-        thermostat._night_setback_config.get("recovery_deadline") is not None
-        if thermostat._night_setback_config
-        else False
-    )
+    has_recovery_deadline = _has_recovery_deadline(thermostat._night_setback_config)
     preheat_should_init = (
         thermostat._night_setback_config.get("preheat_enabled", has_recovery_deadline)
         if thermostat._night_setback_config
@@ -110,11 +122,7 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
     # Initialize night setback controller now that hass is available
     if thermostat._night_setback or thermostat._night_setback_config:
         # Preheat defaults to True when recovery_deadline is set, False otherwise
-        has_recovery_deadline = (
-            thermostat._night_setback_config.get("recovery_deadline") is not None
-            if thermostat._night_setback_config
-            else False
-        )
+        has_recovery_deadline = _has_recovery_deadline(thermostat._night_setback_config)
         preheat_enabled = (
             thermostat._night_setback_config.get("preheat_enabled", has_recovery_deadline)
             if thermostat._night_setback_config
@@ -171,7 +179,7 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
 
     # Initialize Ke learning
     # Check if we have stored ke_learner data from persistence
-    coordinator = thermostat.hass.data.get(DOMAIN, {}).get("coordinator")
+    coordinator = thermostat._coordinator
     stored_ke_data = None
     if coordinator and thermostat._zone_id:
         zone_data = coordinator.get_zone_data(thermostat._zone_id)
@@ -299,7 +307,7 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
     )
 
     # Initialize cycle tracker for adaptive learning
-    coordinator = thermostat.hass.data.get(DOMAIN, {}).get("coordinator")
+    coordinator = thermostat._coordinator
     if coordinator and thermostat._zone_id:
         zone_data = coordinator.get_zone_data(thermostat._zone_id)
         if zone_data:

@@ -68,6 +68,12 @@ class AdaptiveThermostatSensor(SensorEntity):
         self._attr_available = True
         self._attr_entity_registry_visible_default = False
 
+    @property
+    def _coordinator(self):
+        """Return the coordinator instance (cached lookup)."""
+        from ..const import DOMAIN
+        return self.hass.data.get(DOMAIN, {}).get("coordinator")
+
 
 class DutyCycleSensor(AdaptiveThermostatSensor):
     """Sensor for heating duty cycle percentage.
@@ -553,7 +559,7 @@ class OvershootSensor(AdaptiveThermostatSensor):
             Overshoot in degrees C, or None if no data available
         """
         # Get coordinator data
-        coordinator = self.hass.data.get(DOMAIN, {}).get("coordinator")
+        coordinator = self._coordinator
         if not coordinator:
             return None
 
@@ -622,7 +628,7 @@ class SettlingTimeSensor(AdaptiveThermostatSensor):
             Settling time in minutes, or None if no data available
         """
         # Get coordinator data
-        coordinator = self.hass.data.get(DOMAIN, {}).get("coordinator")
+        coordinator = self._coordinator
         if not coordinator:
             return None
 
@@ -689,7 +695,7 @@ class OscillationsSensor(AdaptiveThermostatSensor):
             Average oscillation count, or None if no data available
         """
         # Get coordinator data
-        coordinator = self.hass.data.get(DOMAIN, {}).get("coordinator")
+        coordinator = self._coordinator
         if not coordinator:
             return None
 

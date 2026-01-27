@@ -17,6 +17,13 @@ class MockHVACMode:
 import custom_components.adaptive_thermostat.managers.heater_controller as heater_controller_module
 heater_controller_module.HVACMode = MockHVACMode
 
+# Mock split_entity_id for tests
+def mock_split_entity_id(entity_id: str):
+    """Split entity_id into domain and object_id."""
+    return tuple(entity_id.split('.', 1)) if entity_id and '.' in entity_id else ()
+
+heater_controller_module.split_entity_id = mock_split_entity_id
+
 from custom_components.adaptive_thermostat.managers.heater_controller import (
     HeaterController,
 )

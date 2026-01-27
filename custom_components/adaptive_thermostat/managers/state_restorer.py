@@ -292,7 +292,7 @@ class StateRestorer:
             return
 
         # Get the adaptive learner from coordinator
-        coordinator = thermostat.hass.data.get(DOMAIN, {}).get("coordinator")
+        coordinator = thermostat._coordinator
         if not coordinator:
             _LOGGER.debug("%s: No coordinator available for PID history restoration",
                          thermostat.entity_id)

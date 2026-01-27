@@ -2447,12 +2447,18 @@ class TestPIDControllerHeatingTypeTolerance:
 
         # Create mock coordinator that returns our adaptive_learner
         mock_coordinator = Mock()
-        mock_coordinator.get_all_zones = Mock(return_value={
-            "test_zone": {
-                "climate_entity_id": "climate.test_zone",
-                "adaptive_learner": adaptive_learner,
+        # Return an actual dict (not a Mock) to support iteration in async_auto_apply_adaptive_pid
+        def mock_get_all_zones():
+            return {
+                "test_zone": {
+                    "climate_entity_id": "climate.test_zone",
+                    "adaptive_learner": adaptive_learner,
+                }
             }
-        })
+        mock_coordinator.get_all_zones = mock_get_all_zones
+
+        # Set _coordinator on mock_thermostat to bypass @property
+        mock_thermostat._coordinator = mock_coordinator
 
         # Create mock hass
         mock_hass = Mock()

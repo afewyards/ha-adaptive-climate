@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, Callable, List, Optional
 
 # These imports are only needed when running in Home Assistant
 try:
-    from homeassistant.core import HomeAssistant
+    from homeassistant.core import HomeAssistant, split_entity_id
     from homeassistant.util import dt as dt_util
     from homeassistant.core import DOMAIN as HA_DOMAIN
     from homeassistant.const import (
@@ -167,6 +167,22 @@ class HeaterController:
         pid = getattr(self._thermostat, '_pid', None)
         if pid is not None and hasattr(pid, 'reset_clamp_state'):
             pid.reset_clamp_state()
+
+    def _emit_cycle_started(self, hvac_mode: HVACMode) -> None:
+        """Emit CycleStartedEvent with current temperature state.
+
+        Args:
+            hvac_mode: Current HVAC mode
+        """
+        if self._dispatcher:
+            target_temp = getattr(self._thermostat, 'target_temperature', 0.0)
+            current_temp = getattr(self._thermostat, '_current_temp', 0.0)
+            self._dispatcher.emit(CycleStartedEvent(
+                hvac_mode=hvac_mode,
+                timestamp=dt_util.utcnow(),
+                target_temp=target_temp,
+                current_temp=current_temp,
+            ))
 
     def update_cycle_durations(
         self,
@@ -499,7 +515,8 @@ class HeaterController:
         Returns:
             Either INPUT_NUMBER_DOMAIN or NUMBER_DOMAIN
         """
-        return INPUT_NUMBER_DOMAIN if "input_number" in entity_id else NUMBER_DOMAIN
+        domain, _ = split_entity_id(entity_id)
+        return INPUT_NUMBER_DOMAIN if domain == "input_number" else NUMBER_DOMAIN
 
     async def async_turn_on(
         self,
@@ -532,15 +549,7 @@ class HeaterController:
             if not self._cycle_active and self._has_demand:
                 self._cycle_active = True
                 self._reset_pid_clamp_state()
-                if self._dispatcher:
-                    target_temp = getattr(self._thermostat, 'target_temperature', 0.0)
-                    current_temp = getattr(self._thermostat, '_current_temp', 0.0)
-                    self._dispatcher.emit(CycleStartedEvent(
-                        hvac_mode=hvac_mode,
-                        timestamp=dt_util.utcnow(),
-                        target_temp=target_temp,
-                        current_temp=current_temp,
-                    ))
+                self._emit_cycle_started(hvac_mode)
         elif time.monotonic() - get_cycle_start_time() >= self._min_off_cycle_duration:
             _LOGGER.info(
                 "%s: Turning ON %s",
@@ -561,15 +570,7 @@ class HeaterController:
             if not self._cycle_active and self._has_demand:
                 self._cycle_active = True
                 self._reset_pid_clamp_state()
-                if self._dispatcher:
-                    target_temp = getattr(self._thermostat, 'target_temperature', 0.0)
-                    current_temp = getattr(self._thermostat, '_current_temp', 0.0)
-                    self._dispatcher.emit(CycleStartedEvent(
-                        hvac_mode=hvac_mode,
-                        timestamp=dt_util.utcnow(),
-                        target_temp=target_temp,
-                        current_temp=current_temp,
-                    ))
+                self._emit_cycle_started(hvac_mode)
 
             # Emit HEATING_STARTED event
             if self._dispatcher:
@@ -705,7 +706,8 @@ class HeaterController:
         )
 
         for entity in entities:
-            if entity[0:6] == 'light.':
+            domain, _ = split_entity_id(entity)
+            if domain == 'light':
                 data = {ATTR_ENTITY_ID: entity, ATTR_BRIGHTNESS_PCT: value}
                 await self._async_call_heater_service(
                     entity,
@@ -713,7 +715,7 @@ class HeaterController:
                     SERVICE_TURN_LIGHT_ON,
                     data,
                 )
-            elif entity[0:6] == 'valve.':
+            elif domain == 'valve':
                 data = {ATTR_ENTITY_ID: entity, ATTR_POSITION: value}
                 await self._async_call_heater_service(
                     entity,
@@ -760,15 +762,7 @@ class HeaterController:
         if new_active and not self._cycle_active and self._has_demand:
             self._cycle_active = True
             self._reset_pid_clamp_state()
-            if self._dispatcher:
-                target_temp = getattr(self._thermostat, 'target_temperature', 0.0)
-                current_temp = getattr(self._thermostat, '_current_temp', 0.0)
-                self._dispatcher.emit(CycleStartedEvent(
-                    hvac_mode=hvac_mode,
-                    timestamp=dt_util.utcnow(),
-                    target_temp=target_temp,
-                    current_temp=current_temp,
-                ))
+            self._emit_cycle_started(hvac_mode)
 
             # Emit HEATING_STARTED event
             if self._dispatcher:
