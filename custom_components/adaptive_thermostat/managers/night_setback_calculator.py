@@ -1,7 +1,7 @@
 """Night setback calculator for Adaptive Thermostat integration.
 
 This module provides pure calculation logic for night setback functionality,
-separated from the state management concerns handled by NightSetbackController.
+separated from the state management concerns handled by NightSetbackManager.
 """
 from __future__ import annotations
 

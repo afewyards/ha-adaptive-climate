@@ -22,8 +22,8 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 
-class KeController:
-    """Controller for Ke (outdoor temperature compensation) learning.
+class KeManager:
+    """Manager for Ke (outdoor temperature compensation) learning.
 
     Manages the adaptive learning of the Ke parameter based on observed
     correlations between outdoor temperature and required heating effort.
@@ -51,7 +51,7 @@ class KeController:
         async_write_ha_state: callable,
         get_is_pid_converged: callable = None,
     ):
-        """Initialize the KeController.
+        """Initialize the KeManager.
 
         Args:
             thermostat: Reference to the parent thermostat entity

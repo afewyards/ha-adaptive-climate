@@ -2,7 +2,7 @@
 
 This module extracts the manager creation logic from climate.py's async_added_to_hass.
 It creates and configures all manager instances (HeaterController, CycleTrackerManager,
-TemperatureManager, KeController, etc.) with their required dependencies.
+TemperatureManager, KeManager, etc.) with their required dependencies.
 """
 import logging
 from typing import TYPE_CHECKING
@@ -13,8 +13,8 @@ from .adaptive.preheat import PreheatLearner
 from .managers import (
     ControlOutputManager,
     HeaterController,
-    KeController,
-    NightSetbackController,
+    KeManager,
+    NightSetbackManager,
     PIDTuningManager,
     TemperatureManager,
     CycleTrackerManager,
@@ -54,10 +54,10 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
     - CycleEventDispatcher for decoupled event communication
     - HeaterController for PWM/valve control
     - PreheatLearner for predictive pre-heating (if enabled)
-    - NightSetbackController for night setback management (if enabled)
+    - NightSetbackManager for night setback management (if enabled)
     - TemperatureManager for preset and temperature management
     - KeLearner for outdoor temperature compensation learning
-    - KeController for outdoor temperature compensation
+    - KeManager for outdoor temperature compensation
     - PIDTuningManager for PID parameter tuning
     - ControlOutputManager for control output calculation
     - CycleTrackerManager for adaptive learning cycle tracking (if available)
@@ -128,7 +128,7 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
             if thermostat._night_setback_config
             else False
         )
-        thermostat._night_setback_controller = NightSetbackController(
+        thermostat._night_setback_controller = NightSetbackManager(
             hass=thermostat.hass,
             entity_id=thermostat.entity_id,
             night_setback=thermostat._night_setback,
@@ -224,7 +224,7 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
         )
 
     # Initialize Ke controller (always, even without outdoor sensor)
-    thermostat._ke_controller = KeController(
+    thermostat._ke_controller = KeManager(
         thermostat=thermostat,
         ke_learner=thermostat._ke_learner,
         get_hvac_mode=lambda: thermostat._hvac_mode,

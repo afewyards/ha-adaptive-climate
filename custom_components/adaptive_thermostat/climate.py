@@ -48,7 +48,7 @@ from . import const
 from . import pid_controller
 from .adaptive.learning import AdaptiveLearner
 from .adaptive.persistence import LearningDataStore
-from .managers import ControlOutputManager, HeaterController, KeController, NightSetbackController, PIDTuningManager, StateRestorer, TemperatureManager, CycleTrackerManager
+from .managers import ControlOutputManager, HeaterController, KeManager, NightSetbackManager, PIDTuningManager, StateRestorer, TemperatureManager, CycleTrackerManager
 from .managers.events import (
     CycleEventDispatcher,
     CycleEndedEvent,
@@ -60,6 +60,8 @@ from .managers.events import (
 )
 from .managers.state_attributes import build_state_attributes
 from .climate_init import async_setup_managers
+from .climate_control import ClimateControlMixin
+from .climate_handlers import ClimateHandlersMixin
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -71,7 +73,7 @@ from .climate_setup import async_setup_platform, PLATFORM_SCHEMA, validate_pwm_c
 # These re-exports ensure existing imports continue to work
 
 
-class AdaptiveThermostat(ClimateEntity, RestoreEntity):
+class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntity, RestoreEntity):
     """Representation of an Adaptive Thermostat device."""
 
     def __init__(self, **kwargs):
@@ -278,13 +280,13 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
         self._heater_controller: HeaterController | None = None
 
         # Night setback controller (initialized in async_added_to_hass when hass is available)
-        self._night_setback_controller: NightSetbackController | None = None
+        self._night_setback_controller: NightSetbackManager | None = None
 
         # Temperature manager (initialized in async_added_to_hass when hass is available)
         self._temperature_manager: TemperatureManager | None = None
 
         # Ke learning controller (initialized in async_added_to_hass when hass is available)
-        self._ke_controller: KeController | None = None
+        self._ke_controller: KeManager | None = None
 
         # PID tuning manager (initialized in async_added_to_hass when hass is available)
         self._pid_tuning_manager: PIDTuningManager | None = None
@@ -876,7 +878,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
     def _calculate_night_setback_adjustment(self, current_time=None):
         """Calculate night setback adjustment for effective target temperature.
 
-        Delegates to NightSetbackController for all calculation logic.
+        Delegates to NightSetbackManager for all calculation logic.
 
         Args:
             current_time: Optional datetime for testing; defaults to dt_util.utcnow()
@@ -1107,7 +1109,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
     async def async_apply_adaptive_ke(self, **kwargs):
         """Apply adaptive Ke value based on learned outdoor temperature correlations.
 
-        Delegates to PIDTuningManager (which delegates to KeController) for the actual implementation.
+        Delegates to PIDTuningManager (which delegates to KeManager) for the actual implementation.
         """
         if self._ke_controller is not None:
             await self._ke_controller.async_apply_adaptive_ke(**kwargs)
@@ -1289,7 +1291,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
     def _is_at_steady_state(self) -> bool:
         """Check if the system is at steady state (maintaining target temperature).
 
-        Delegates to KeController for the actual implementation.
+        Delegates to KeManager for the actual implementation.
 
         Returns:
             True if at steady state, False otherwise
@@ -1301,7 +1303,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
     def _maybe_record_ke_observation(self) -> None:
         """Record a Ke observation if conditions are met.
 
-        Delegates to KeController for the actual implementation.
+        Delegates to KeManager for the actual implementation.
         """
         if self._ke_controller is not None:
             self._ke_controller.maybe_record_observation()
@@ -1324,409 +1326,9 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
         # Get default temp from super class
         return super().max_temp
 
-    async def _async_sensor_changed(self, event: Event[EventStateChangedData]):
-        """Handle temperature changes."""
-        new_state = event.data["new_state"]
-        if new_state is None:
-            return
+    # Event handlers and state update methods moved to ClimateHandlersMixin (climate_handlers.py)
 
-        self._previous_temp_time = self._cur_temp_time
-        self._cur_temp_time = time.monotonic()
-        self._async_update_temp(new_state)
-        self._trigger_source = 'sensor'
-        _LOGGER.debug("%s: Received new temperature: %s", self.entity_id, self._current_temp)
-        await self._async_control_heating(calc_pid=True, is_temp_sensor_update=True)
-        self.async_write_ha_state()
-
-    async def _async_ext_sensor_changed(self, event: Event[EventStateChangedData]):
-        """Handle temperature changes."""
-        new_state = event.data["new_state"]
-        if new_state is None:
-            return
-
-        self._async_update_ext_temp(new_state)
-        self._trigger_source = 'ext_sensor'
-        _LOGGER.debug("%s: Received new external temperature: %s", self.entity_id, self._ext_temp)
-        await self._async_control_heating(calc_pid=False, is_temp_sensor_update=False)
-
-    async def _async_weather_entity_changed(self, event: Event[EventStateChangedData]):
-        """Handle weather entity changes - extract temperature attribute as fallback."""
-        new_state = event.data["new_state"]
-        if new_state is None:
-            return
-
-        self._async_update_ext_temp_from_weather(new_state)
-        self._trigger_source = 'weather_entity'
-        _LOGGER.debug("%s: Received outdoor temperature from weather entity: %s", self.entity_id, self._ext_temp)
-        await self._async_control_heating(calc_pid=False, is_temp_sensor_update=False)
-
-    async def _async_wind_speed_sensor_changed(self, event: Event[EventStateChangedData]):
-        """Handle wind speed changes."""
-        new_state = event.data["new_state"]
-        if new_state is None:
-            return
-
-        self._async_update_wind_speed(new_state)
-        _LOGGER.debug("%s: Received new wind speed: %s m/s", self.entity_id, self._wind_speed)
-        # Wind speed doesn't trigger immediate control loop - it will be used in next calc
-        # No need to call _async_control_heating here
-
-    async def _async_weather_entity_wind_changed(self, event: Event[EventStateChangedData]):
-        """Handle weather entity changes - extract wind_speed attribute as fallback."""
-        new_state = event.data["new_state"]
-        if new_state is None:
-            return
-
-        self._async_update_wind_speed_from_weather(new_state)
-        _LOGGER.debug("%s: Received wind speed from weather entity: %s m/s", self.entity_id, self._wind_speed)
-
-    @callback
-    def _async_switch_changed(self, event: Event[EventStateChangedData]):
-        """Handle heater switch state changes."""
-        new_state = event.data["new_state"]
-        if new_state is None:
-            return
-
-        # Update zone demand for CentralController when valve state changes
-        if self._zone_id:
-            coordinator = self.hass.data.get(const.DOMAIN, {}).get("coordinator")
-            if coordinator:
-                coordinator.update_zone_demand(self._zone_id, self._is_device_active, self._hvac_mode.value if self._hvac_mode else None)
-
-        self.async_write_ha_state()
-
-    async def _async_contact_sensor_changed(self, event: Event[EventStateChangedData]):
-        """Handle contact sensor (window/door) state changes."""
-        new_state = event.data["new_state"]
-        if new_state is None:
-            return
-
-        # Update all contact sensor states in the handler
-        self._update_contact_sensor_states()
-
-        entity_id = event.data["entity_id"]
-        is_open = new_state.state == STATE_ON
-        _LOGGER.debug(
-            "%s: Contact sensor %s changed to %s",
-            self.entity_id, entity_id, "open" if is_open else "closed"
-        )
-
-        # Emit contact pause/resume events
-        if self._cycle_dispatcher:
-            now = dt_util.utcnow()
-            if is_open:
-                # Track pause start time for this sensor
-                self._contact_pause_times[entity_id] = now
-                self._cycle_dispatcher.emit(
-                    ContactPauseEvent(
-                        hvac_mode=str(self._hvac_mode.value) if self._hvac_mode else "off",
-                        timestamp=now,
-                        entity_id=entity_id,
-                    )
-                )
-                # Reset duty accumulator when contact opens
-                if self._heater_controller is not None:
-                    self._heater_controller.reset_duty_accumulator()
-            else:
-                # Calculate pause duration and emit resume event
-                pause_start = self._contact_pause_times.pop(entity_id, None)
-                pause_duration = (now - pause_start).total_seconds() if pause_start else 0.0
-                self._cycle_dispatcher.emit(
-                    ContactResumeEvent(
-                        hvac_mode=str(self._hvac_mode.value) if self._hvac_mode else "off",
-                        timestamp=now,
-                        entity_id=entity_id,
-                        pause_duration_seconds=pause_duration,
-                    )
-                )
-
-        # Trigger control heating to potentially pause/resume
-        await self._async_control_heating(calc_pid=False, is_temp_sensor_update=False)
-
-    async def _async_humidity_sensor_changed(self, event: Event[EventStateChangedData]):
-        """Handle humidity sensor state changes."""
-        new_state = event.data["new_state"]
-        if new_state is None or new_state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
-            return
-
-        if not self._humidity_detector:
-            return
-
-        try:
-            humidity = float(new_state.state)
-            now = dt_util.utcnow()
-            self._humidity_detector.record_humidity(now, humidity)
-
-            _LOGGER.debug(
-                "%s: Humidity sensor changed to %.1f%% (state=%s)",
-                self.entity_id, humidity, self._humidity_detector.get_state()
-            )
-
-            # Trigger control heating to potentially pause/resume
-            await self._async_control_heating(calc_pid=False, is_temp_sensor_update=False)
-
-        except (ValueError, TypeError) as e:
-            _LOGGER.warning(
-                "%s: Failed to parse humidity sensor value: %s (error: %s)",
-                self.entity_id, new_state.state, e
-            )
-
-    def _update_contact_sensor_states(self):
-        """Update contact sensor handler with current states from Home Assistant."""
-        if not self._contact_sensor_handler:
-            return
-
-        contact_states = {}
-        for sensor_id in self._contact_sensor_handler.contact_sensors:
-            state = self.hass.states.get(sensor_id)
-            if state:
-                # Contact sensors: 'on' = open, 'off' = closed
-                contact_states[sensor_id] = state.state == STATE_ON
-            else:
-                _LOGGER.warning(
-                    "%s: Contact sensor %s not found",
-                    self.entity_id, sensor_id
-                )
-        self._contact_sensor_handler.update_contact_states(contact_states)
-
-    async def _async_leader_changed(self, event: Event[EventStateChangedData]):
-        """Handle leader zone setpoint changes for follower zones.
-
-        Follower zones in open_plan thermal groups automatically track
-        their leader's target temperature.
-        """
-        new_state = event.data["new_state"]
-        if new_state is None:
-            return
-
-        # Get coordinator and thermal group manager
-        coordinator = self.hass.data.get(const.DOMAIN, {}).get("coordinator")
-        if not coordinator:
-            return
-
-        thermal_group_manager = coordinator.thermal_group_manager
-        if not thermal_group_manager:
-            return
-
-        # Check if leader's temperature attribute changed
-        leader_temp = new_state.attributes.get("temperature")
-        if leader_temp is None:
-            return
-
-        # Only sync if different from current target
-        if self._target_temp == leader_temp:
-            return
-
-        _LOGGER.info(
-            "%s: Syncing follower setpoint to leader: %.1f°C",
-            self.entity_id, leader_temp
-        )
-
-        # Update target temperature
-        await self._temperature_manager.async_set_temperature(leader_temp)
-
-    @callback
-    def _async_update_temp(self, state):
-        """Update thermostat with latest state from sensor."""
-        if state.state in (STATE_UNKNOWN, STATE_UNAVAILABLE, None):
-            _LOGGER.debug("%s: Sensor %s is %s, skipping update",
-                          self.entity_id, self._sensor_entity_id, state.state)
-            return
-        try:
-            self._previous_temp = self._current_temp
-            self._current_temp = float(state.state)
-            self._last_sensor_update = time.monotonic()
-        except ValueError as ex:
-            _LOGGER.debug("%s: Unable to update from sensor %s: %s", self.entity_id,
-                          self._sensor_entity_id, ex)
-
-    @callback
-    def _async_update_ext_temp(self, state):
-        """Update thermostat with latest state from sensor."""
-        if state.state in (STATE_UNKNOWN, STATE_UNAVAILABLE, None):
-            _LOGGER.debug("%s: External sensor %s is %s, skipping update",
-                          self.entity_id, self._ext_sensor_entity_id, state.state)
-            return
-        try:
-            self._ext_temp = float(state.state)
-            self._last_ext_sensor_update = time.monotonic()
-        except ValueError as ex:
-            _LOGGER.debug("%s: Unable to update from sensor %s: %s", self.entity_id,
-                          self._ext_sensor_entity_id, ex)
-
-    @callback
-    def _async_update_ext_temp_from_weather(self, state):
-        """Update outdoor temp from weather entity's temperature attribute."""
-        if state.state in (STATE_UNKNOWN, STATE_UNAVAILABLE, None):
-            _LOGGER.debug("%s: Weather entity %s is %s, skipping outdoor temp update",
-                          self.entity_id, self._weather_entity_id, state.state)
-            return
-
-        temp = state.attributes.get("temperature")
-        if temp is not None:
-            try:
-                self._ext_temp = float(temp)
-                self._last_ext_sensor_update = time.monotonic()
-            except (ValueError, TypeError) as ex:
-                _LOGGER.debug("%s: Unable to get temperature from weather entity %s: %s",
-                              self.entity_id, self._weather_entity_id, ex)
-
-    @callback
-    def _async_update_wind_speed(self, state):
-        """Update wind speed from sensor."""
-        if state.state in (STATE_UNKNOWN, STATE_UNAVAILABLE, None):
-            _LOGGER.debug("%s: Wind speed sensor %s is %s, treating as 0 m/s",
-                          self.entity_id, self._wind_speed_sensor_entity_id, state.state)
-            self._wind_speed = None
-            return
-        try:
-            self._wind_speed = float(state.state)
-        except ValueError as ex:
-            _LOGGER.debug("%s: Unable to update from wind speed sensor %s: %s", self.entity_id,
-                          self._wind_speed_sensor_entity_id, ex)
-            self._wind_speed = None
-
-    @callback
-    def _async_update_wind_speed_from_weather(self, state):
-        """Update wind speed from weather entity's wind_speed attribute."""
-        if state.state in (STATE_UNKNOWN, STATE_UNAVAILABLE, None):
-            self._wind_speed = None
-            return
-
-        # Try wind_speed first, then native_wind_speed
-        wind = state.attributes.get("wind_speed")
-        if wind is None:
-            wind = state.attributes.get("native_wind_speed")
-
-        if wind is not None:
-            try:
-                self._wind_speed = float(wind)
-            except (ValueError, TypeError):
-                self._wind_speed = None
-        else:
-            self._wind_speed = None
-
-    async def _async_control_heating(
-            self, time_func: object = None, calc_pid: object = False, is_temp_sensor_update: bool = False) -> object:
-        """Run PID controller, optional autotune for faster integration"""
-        async with self._temp_lock:
-            if not self._active and None not in (self._current_temp, self._target_temp):
-                self._active = True
-                _LOGGER.info("%s: Obtained temperature %s with set point %s. Activating Smart"
-                             "Thermostat.", self.entity_id, self._current_temp, self._target_temp)
-
-            if not self._active or self._hvac_mode == HVACMode.OFF:
-                if self._force_off_state and self._hvac_mode == HVACMode.OFF and \
-                        self._is_device_active:
-                    _LOGGER.debug("%s: %s is active while HVAC mode is %s. Turning it OFF.",
-                                  self.entity_id, ", ".join([entity for entity in self.heater_or_cooler_entity]), self._hvac_mode)
-                    if self._pwm:
-                        await self._async_heater_turn_off(force=True)
-                    else:
-                        self._control_output = self._output_min
-                        await self._async_set_valve_value(self._control_output)
-                # Update zone demand to False when OFF/inactive
-                if self._zone_id:
-                    coordinator = self.hass.data.get(const.DOMAIN, {}).get("coordinator")
-                    if coordinator:
-                        coordinator.update_zone_demand(self._zone_id, False, self._hvac_mode.value if self._hvac_mode else None)
-                self.async_write_ha_state()
-                return
-
-            # Unified pause check (contact sensors, humidity detection, etc.)
-            if self._pause_manager.is_paused():
-                pause_info = self._pause_manager.get_pause_info()
-                reason = pause_info.get("reason", "unknown")
-
-                _LOGGER.info(
-                    "%s: Heating paused (reason=%s)",
-                    self.entity_id, reason
-                )
-
-                # Decay integral for humidity pauses (~10%/min to prevent stale buildup)
-                if reason == "humidity":
-                    elapsed = time.monotonic() - self._last_control_time
-                    decay_factor = 0.9 ** (elapsed / 60)  # 10% decay per minute
-                    self._pid_controller.decay_integral(decay_factor)
-
-                # Turn off heating
-                if self._pwm:
-                    await self._async_heater_turn_off(force=True)
-                else:
-                    self._control_output = self._output_min
-                    await self._async_set_valve_value(self._control_output)
-
-                # Update zone demand to False when paused
-                if self._zone_id:
-                    coordinator = self.hass.data.get(const.DOMAIN, {}).get("coordinator")
-                    if coordinator:
-                        coordinator.update_zone_demand(self._zone_id, False, self._hvac_mode.value if self._hvac_mode else None)
-
-                self.async_write_ha_state()
-                return
-
-            if self._sensor_stall != 0 and time.monotonic() - self._last_sensor_update > \
-                    self._sensor_stall:
-                # sensor not updated for too long, considered as stall, set to safety level
-                self._control_output = self._output_safety
-            else:
-                # Always recalculate PID to ensure output reflects current conditions
-                await self.calc_output(is_temp_sensor_update)
-
-                # Dispatch TemperatureUpdateEvent after PID calculation
-                if self._cycle_dispatcher and self._current_temp is not None and self._target_temp is not None:
-                    self._cycle_dispatcher.emit(
-                        TemperatureUpdateEvent(
-                            timestamp=dt_util.utcnow(),
-                            temperature=self._current_temp,
-                            setpoint=self._target_temp,
-                            pid_integral=self._pid_controller.integral,
-                            pid_error=self._pid_controller.error,
-                        )
-                    )
-
-                # Record temperature for cycle tracking
-                if self._cycle_tracker and self._current_temp is not None:
-                    await self._cycle_tracker.update_temperature(dt_util.utcnow(), self._current_temp)
-            await self.set_control_value()
-
-            # Update zone demand for CentralController (based on actual device state, not PID output)
-            if self._zone_id:
-                coordinator = self.hass.data.get(const.DOMAIN, {}).get("coordinator")
-                if coordinator:
-                    coordinator.update_zone_demand(self._zone_id, self._is_device_active, self._hvac_mode.value if self._hvac_mode else None)
-
-            # Record Ke observation if at steady state
-            self._maybe_record_ke_observation()
-
-            self.async_write_ha_state()
-
-    @property
-    def _is_device_active(self) -> bool:
-        """Check if the toggleable/valve device is currently active.
-
-        Delegates to HeaterController for the actual check.
-
-        Returns:
-            True if device is active, False if no heater controller or device is inactive.
-        """
-        if self._heater_controller is None:
-            return False
-        return self._heater_controller.is_active(self.hvac_mode)
-
-    def _get_cycle_start_time(self) -> float:
-        """Get the time when the current heating/cooling cycle started.
-
-        Returns our tracked time if available. If not yet tracked (startup),
-        returns 0 to allow immediate action since we have no reliable data
-        about when the cycle actually started (HA's last_changed reflects
-        restart time, not actual device state change time).
-        """
-        if self._last_heat_cycle_time is not None:
-            return self._last_heat_cycle_time
-
-        # No tracked time yet - allow immediate action on first cycle after startup
-        return 0
+    # _async_control_heating, _is_device_active, and _get_cycle_start_time moved to ClimateControlMixin
 
     # Setter callbacks for HeaterController
     def _set_is_heating(self, value: bool) -> None:
@@ -1749,7 +1351,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
         """Set the force off flag."""
         self._force_off = value
 
-    # Setter callbacks for KeController
+    # Setter callbacks for KeManager
     def _set_ke(self, value: float) -> None:
         """Set the Ke value."""
         self._ke = value
@@ -2003,74 +1605,4 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
         self._attr_preset_mode = self._temperature_manager.preset_mode
         self._saved_target_temp = self._temperature_manager.saved_target_temp
 
-    async def calc_output(self, is_temp_sensor_update: bool = False):
-        """Calculate PID control output.
-
-        Delegates to ControlOutputManager for the actual calculation.
-
-        Args:
-            is_temp_sensor_update: True if called from temperature sensor update
-        """
-        await self._control_output_manager.calc_output(is_temp_sensor_update)
-
-    async def set_control_value(self):
-        """Set output value for heater.
-
-        Delegates to HeaterController for the actual control operation.
-        """
-        if self._heater_controller is None:
-            _LOGGER.warning(
-                "%s: HeaterController not initialized, cannot set control value",
-                self.entity_id,
-            )
-            return
-
-        # Update cycle durations in case PID mode changed
-        self._heater_controller.update_cycle_durations(
-            self._effective_min_on_seconds,
-            self._min_off_cycle_duration.seconds,
-        )
-        await self._heater_controller.async_set_control_value(
-            control_output=self._control_output,
-            hvac_mode=self.hvac_mode,
-            get_cycle_start_time=self._get_cycle_start_time,
-            set_is_heating=self._set_is_heating,
-            set_last_heat_cycle_time=self._set_last_heat_cycle_time,
-            time_changed=self._time_changed,
-            set_time_changed=self._set_time_changed,
-            force_on=self._force_on,
-            force_off=self._force_off,
-            set_force_on=self._set_force_on,
-            set_force_off=self._set_force_off,
-        )
-
-    async def pwm_switch(self):
-        """Turn off and on the heater proportionally to control_value.
-
-        Delegates to HeaterController for the PWM switching operation.
-        """
-        if self._heater_controller is None:
-            _LOGGER.warning(
-                "%s: HeaterController not initialized, cannot perform PWM switch",
-                self.entity_id,
-            )
-            return
-
-        # Update cycle durations in case PID mode changed
-        self._heater_controller.update_cycle_durations(
-            self._effective_min_on_seconds,
-            self._min_off_cycle_duration.seconds,
-        )
-        await self._heater_controller.async_pwm_switch(
-            control_output=self._control_output,
-            hvac_mode=self.hvac_mode,
-            get_cycle_start_time=self._get_cycle_start_time,
-            set_is_heating=self._set_is_heating,
-            set_last_heat_cycle_time=self._set_last_heat_cycle_time,
-            time_changed=self._time_changed,
-            set_time_changed=self._set_time_changed,
-            force_on=self._force_on,
-            force_off=self._force_off,
-            set_force_on=self._set_force_on,
-            set_force_off=self._set_force_off,
-        )
+    # calc_output, set_control_value, and pwm_switch moved to ClimateControlMixin

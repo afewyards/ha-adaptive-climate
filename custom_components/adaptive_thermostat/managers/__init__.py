@@ -18,9 +18,9 @@ from .events import (
     SettlingStartedEvent,
 )
 from .heater_controller import HeaterController
-from .ke_manager import KeController
+from .ke_manager import KeManager
 from .night_setback_calculator import NightSetbackCalculator
-from .night_setback_manager import NightSetbackController
+from .night_setback_manager import NightSetbackManager
 from .pause_manager import PauseManager
 from .pid_tuning import PIDTuningManager
 from .state_attributes import build_state_attributes
@@ -41,10 +41,10 @@ __all__ = [
     "HeaterController",
     "HeatingEndedEvent",
     "HeatingStartedEvent",
-    "KeController",
+    "KeManager",
     "ModeChangedEvent",
     "NightSetbackCalculator",
-    "NightSetbackController",
+    "NightSetbackManager",
     "PauseManager",
     "PIDTuningManager",
     "SetpointChangedEvent",

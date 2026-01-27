@@ -2247,22 +2247,23 @@ class TestClimateDispatcherIntegration:
         assert isinstance(event.timestamp, datetime)
 
     def test_climate_dispatches_temperature_update_in_code(self):
-        """Verify climate.py contains code to dispatch TemperatureUpdateEvent."""
+        """Verify climate.py or climate_control.py contains code to dispatch TemperatureUpdateEvent."""
         import os
-        climate_file = os.path.join(
+        # Check climate_control.py since _async_control_heating was moved there
+        climate_control_file = os.path.join(
             os.path.dirname(__file__),
-            "..", "custom_components", "adaptive_thermostat", "climate.py"
+            "..", "custom_components", "adaptive_thermostat", "climate_control.py"
         )
-        with open(climate_file, "r") as f:
+        with open(climate_control_file, "r") as f:
             source = f.read()
 
         # Should contain the event dispatch after PID calc
         assert "TemperatureUpdateEvent" in source, \
-            "climate.py should import and use TemperatureUpdateEvent"
+            "climate_control.py should import and use TemperatureUpdateEvent"
         assert "pid_integral=self._pid_controller.integral" in source, \
-            "climate.py should dispatch TemperatureUpdateEvent with pid_integral"
+            "climate_control.py should dispatch TemperatureUpdateEvent with pid_integral"
         assert "pid_error=self._pid_controller.error" in source, \
-            "climate.py should dispatch TemperatureUpdateEvent with pid_error"
+            "climate_control.py should dispatch TemperatureUpdateEvent with pid_error"
 
 
 class TestClimateNoDirectCTMCalls:

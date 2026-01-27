@@ -58,6 +58,61 @@ class LearningDataStore:
             self._data = {"version": 5, "zones": {}}
             self._save_lock = None  # Lazily initialized in async context
 
+    def _validate_data(self, data: Any) -> bool:
+        """
+        Validate loaded data structure.
+
+        Args:
+            data: Data loaded from storage
+
+        Returns:
+            True if data is valid, False otherwise
+        """
+        # Check that data is a dict
+        if not isinstance(data, dict):
+            _LOGGER.warning(f"Invalid data structure: expected dict, got {type(data).__name__}")
+            return False
+
+        # Check required keys exist
+        if "version" not in data:
+            _LOGGER.warning("Invalid data structure: missing 'version' key")
+            return False
+
+        if "zones" not in data:
+            _LOGGER.warning("Invalid data structure: missing 'zones' key")
+            return False
+
+        # Validate version is an integer
+        if not isinstance(data["version"], int):
+            _LOGGER.warning(
+                f"Invalid data structure: version must be int, got {type(data['version']).__name__}"
+            )
+            return False
+
+        # Check version is within supported range (1-5)
+        if data["version"] < 1 or data["version"] > STORAGE_VERSION:
+            _LOGGER.warning(
+                f"Invalid data structure: version {data['version']} outside supported range (1-{STORAGE_VERSION})"
+            )
+            return False
+
+        # Validate zones is a dict
+        if not isinstance(data["zones"], dict):
+            _LOGGER.warning(
+                f"Invalid data structure: zones must be dict, got {type(data['zones']).__name__}"
+            )
+            return False
+
+        # Validate each zone has a dict value
+        for zone_id, zone_data in data["zones"].items():
+            if not isinstance(zone_data, dict):
+                _LOGGER.warning(
+                    f"Invalid data structure: zone '{zone_id}' data must be dict, got {type(zone_data).__name__}"
+                )
+                return False
+
+        return True
+
     async def async_load(self) -> Dict[str, Any]:
         """
         Load learning data from HA Store.
@@ -79,6 +134,14 @@ class LearningDataStore:
 
         if data is None:
             # No existing data - return default structure
+            self._data = {"version": 5, "zones": {}}
+            return self._data
+
+        # Validate loaded data
+        if not self._validate_data(data):
+            _LOGGER.warning(
+                "Persisted learning data failed validation, using default structure"
+            )
             self._data = {"version": 5, "zones": {}}
             return self._data
 

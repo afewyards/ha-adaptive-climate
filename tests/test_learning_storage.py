@@ -540,3 +540,137 @@ def test_update_zone_data_with_ke_data(mock_hass):
     # Verify both were updated
     assert store._data["zones"]["test_zone"]["adaptive_learner"] == adaptive_data
     assert store._data["zones"]["test_zone"]["ke_learner"] == ke_data
+
+
+# Task #21 tests: async_load validation
+
+@pytest.mark.asyncio
+async def test_async_load_validates_not_dict(mock_hass):
+    """Test async_load returns default data when loaded data is not a dict."""
+    # Return a list instead of dict
+    mock_storage_module = create_mock_storage_module(load_data=["not", "a", "dict"])
+
+    with patch.dict('sys.modules', {'homeassistant.helpers.storage': mock_storage_module}):
+        store = LearningDataStore(mock_hass)
+        data = await store.async_load()
+
+        # Should return default structure, not the invalid data
+        assert data == {"version": 5, "zones": {}}
+
+
+@pytest.mark.asyncio
+async def test_async_load_validates_missing_version(mock_hass):
+    """Test async_load returns default data when version key is missing."""
+    # Missing version key
+    mock_storage_module = create_mock_storage_module(load_data={"zones": {}})
+
+    with patch.dict('sys.modules', {'homeassistant.helpers.storage': mock_storage_module}):
+        store = LearningDataStore(mock_hass)
+        data = await store.async_load()
+
+        assert data == {"version": 5, "zones": {}}
+
+
+@pytest.mark.asyncio
+async def test_async_load_validates_missing_zones(mock_hass):
+    """Test async_load returns default data when zones key is missing."""
+    # Missing zones key
+    mock_storage_module = create_mock_storage_module(load_data={"version": 5})
+
+    with patch.dict('sys.modules', {'homeassistant.helpers.storage': mock_storage_module}):
+        store = LearningDataStore(mock_hass)
+        data = await store.async_load()
+
+        assert data == {"version": 5, "zones": {}}
+
+
+@pytest.mark.asyncio
+async def test_async_load_validates_version_not_int(mock_hass):
+    """Test async_load returns default data when version is not an int."""
+    # Version is a string
+    mock_storage_module = create_mock_storage_module(load_data={"version": "5", "zones": {}})
+
+    with patch.dict('sys.modules', {'homeassistant.helpers.storage': mock_storage_module}):
+        store = LearningDataStore(mock_hass)
+        data = await store.async_load()
+
+        assert data == {"version": 5, "zones": {}}
+
+
+@pytest.mark.asyncio
+async def test_async_load_validates_version_out_of_range(mock_hass):
+    """Test async_load returns default data when version is outside supported range."""
+    # Version 0 (below minimum)
+    mock_storage_module = create_mock_storage_module(load_data={"version": 0, "zones": {}})
+
+    with patch.dict('sys.modules', {'homeassistant.helpers.storage': mock_storage_module}):
+        store = LearningDataStore(mock_hass)
+        data = await store.async_load()
+
+        assert data == {"version": 5, "zones": {}}
+
+    # Version 99 (above maximum)
+    mock_storage_module = create_mock_storage_module(load_data={"version": 99, "zones": {}})
+
+    with patch.dict('sys.modules', {'homeassistant.helpers.storage': mock_storage_module}):
+        store = LearningDataStore(mock_hass)
+        data = await store.async_load()
+
+        assert data == {"version": 5, "zones": {}}
+
+
+@pytest.mark.asyncio
+async def test_async_load_validates_zones_not_dict(mock_hass):
+    """Test async_load returns default data when zones is not a dict."""
+    # Zones is a list
+    mock_storage_module = create_mock_storage_module(load_data={"version": 5, "zones": []})
+
+    with patch.dict('sys.modules', {'homeassistant.helpers.storage': mock_storage_module}):
+        store = LearningDataStore(mock_hass)
+        data = await store.async_load()
+
+        assert data == {"version": 5, "zones": {}}
+
+
+@pytest.mark.asyncio
+async def test_async_load_validates_zone_data_not_dict(mock_hass):
+    """Test async_load returns default data when zone data is not a dict."""
+    # Zone data is a string
+    mock_storage_module = create_mock_storage_module(
+        load_data={"version": 5, "zones": {"living_room": "not a dict"}}
+    )
+
+    with patch.dict('sys.modules', {'homeassistant.helpers.storage': mock_storage_module}):
+        store = LearningDataStore(mock_hass)
+        data = await store.async_load()
+
+        assert data == {"version": 5, "zones": {}}
+
+
+@pytest.mark.asyncio
+async def test_async_load_accepts_valid_data(mock_hass):
+    """Test async_load accepts valid data structure."""
+    valid_data = {
+        "version": 5,
+        "zones": {
+            "living_room": {
+                "adaptive_learner": {"cycle_history": []},
+                "ke_learner": {"current_ke": 0.5},
+            },
+            "bedroom": {
+                "adaptive_learner": {"cycle_history": []},
+            },
+        },
+    }
+
+    mock_storage_module = create_mock_storage_module(load_data=valid_data)
+
+    with patch.dict('sys.modules', {'homeassistant.helpers.storage': mock_storage_module}):
+        store = LearningDataStore(mock_hass)
+        data = await store.async_load()
+
+        # Should return the actual data, not default structure
+        assert data == valid_data
+        assert data["version"] == 5
+        assert "living_room" in data["zones"]
+        assert "bedroom" in data["zones"]

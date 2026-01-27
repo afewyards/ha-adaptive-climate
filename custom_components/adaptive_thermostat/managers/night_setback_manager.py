@@ -24,8 +24,8 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 
-class NightSetbackController:
-    """Controller for night setback temperature adjustments.
+class NightSetbackManager:
+    """Manager for night setback temperature adjustments.
 
     Manages the calculation of effective setpoint temperatures based on
     night setback configuration, sunrise/sunset times, weather conditions,
@@ -45,7 +45,7 @@ class NightSetbackController:
         preheat_learner: Optional[Any] = None,
         preheat_enabled: bool = False,
     ):
-        """Initialize the NightSetbackController.
+        """Initialize the NightSetbackManager.
 
         Args:
             hass: Home Assistant instance

@@ -570,16 +570,16 @@ class PIDTuningManager:
     async def async_apply_adaptive_ke(self, **kwargs) -> None:
         """Apply adaptive Ke value based on learned outdoor temperature correlations.
 
-        Note: This method delegates to the KeController for the actual implementation.
+        Note: This method delegates to the KeManager for the actual implementation.
         It is included here for consistency with the PID tuning interface.
         """
-        # Get the KeController from the thermostat
+        # Get the KeManager from the thermostat
         ke_controller = getattr(self._thermostat, '_ke_controller', None)
         if ke_controller is not None:
             await ke_controller.async_apply_adaptive_ke(**kwargs)
         else:
             _LOGGER.warning(
-                "%s: Cannot apply adaptive Ke - no Ke controller",
+                "%s: Cannot apply adaptive Ke - no Ke manager",
                 self._thermostat.entity_id
             )
 

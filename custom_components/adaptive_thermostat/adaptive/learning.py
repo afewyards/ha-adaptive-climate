@@ -27,11 +27,8 @@ from ..const import (
     MAX_AUTO_APPLIES_PER_SEASON,
     MAX_AUTO_APPLIES_LIFETIME,
     MAX_CUMULATIVE_DRIFT_PCT,
-    SEASONAL_SHIFT_BLOCK_DAYS,
     CLAMPED_OVERSHOOT_MULTIPLIER,
     DEFAULT_CLAMPED_OVERSHOOT_MULTIPLIER,
-    SUBSEQUENT_LEARNING_CYCLE_MULTIPLIER,
-    AUTO_APPLY_THRESHOLDS,
     HeatingType,
     get_convergence_thresholds,
     get_rule_thresholds,
@@ -79,29 +76,13 @@ from .learner_serialization import (
     restore_learner_from_dict,
 )
 
+# Import auto-apply manager for safety gates and threshold management
+from .auto_apply import AutoApplyManager, get_auto_apply_thresholds
+
 # Import HVAC mode helpers
 from ..helpers.hvac_mode import mode_to_str, get_hvac_heat_mode, get_hvac_cool_mode
 
 _LOGGER = logging.getLogger(__name__)
-
-
-def get_auto_apply_thresholds(heating_type: Optional[str] = None) -> Dict[str, float]:
-    """
-    Get auto-apply thresholds for a specific heating type.
-
-    Returns heating-type-specific thresholds if available, otherwise returns
-    convector thresholds as the default baseline.
-
-    Args:
-        heating_type: One of HEATING_TYPE_* constants, or None for default
-
-    Returns:
-        Dict with auto-apply threshold values (confidence_first, confidence_subsequent,
-        min_cycles, cooldown_hours, cooldown_cycles)
-    """
-    if heating_type and heating_type in AUTO_APPLY_THRESHOLDS:
-        return AUTO_APPLY_THRESHOLDS[heating_type]
-    return AUTO_APPLY_THRESHOLDS[HeatingType.CONVECTOR]
 
 
 # Adaptive learning (CycleMetrics imported from cycle_analysis)
@@ -144,6 +125,9 @@ class AdaptiveLearner:
 
         # Validation manager for safety checks and validation mode
         self._validation = ValidationManager()
+
+        # Auto-apply manager for safety gates and threshold-based decisions
+        self._auto_apply = AutoApplyManager(heating_type)
 
     @property
     def cycle_history(self) -> List[CycleMetrics]:
@@ -524,66 +508,25 @@ class AdaptiveLearner:
 
         # Auto-apply safety gates (when called for automatic PID application)
         if check_auto_apply:
-            # Check 1: Skip if in validation mode (validating previous auto-apply)
-            if self._validation.is_in_validation_mode():
-                _LOGGER.debug(
-                    "Auto-apply blocked: currently in validation mode, "
-                    "waiting for validation to complete"
+            # Delegate to auto-apply manager for all safety gate checks
+            gates_passed, min_interval_hours, min_adjustment_cycles, min_cycles = (
+                self._auto_apply.check_auto_apply_safety_gates(
+                    validation_manager=self._validation,
+                    confidence_tracker=self._confidence,
+                    current_kp=current_kp,
+                    current_ki=current_ki,
+                    current_kd=current_kd,
+                    outdoor_temp=outdoor_temp,
+                    pid_history=self._pid_history,
+                    mode=mode,
                 )
-                return None
-
-            # Check 2: Safety limits (lifetime, seasonal, drift, shift cooldown)
-            limit_msg = self._validation.check_auto_apply_limits(
-                current_kp, current_ki, current_kd,
-                self._heating_auto_apply_count,
-                self._cooling_auto_apply_count,
-                self._pid_history
             )
-            if limit_msg:
-                _LOGGER.warning(f"Auto-apply blocked: {limit_msg}")
+
+            if not gates_passed:
                 return None
 
-            # Check 3: Seasonal shift detection
-            if outdoor_temp is not None and self._validation.check_seasonal_shift(outdoor_temp):
-                self._validation.record_seasonal_shift()
-                _LOGGER.warning(
-                    "Auto-apply blocked: seasonal temperature shift detected, "
-                    f"blocking for {SEASONAL_SHIFT_BLOCK_DAYS} days"
-                )
-                return None
-
-            # Get heating-type-specific thresholds
-            thresholds = get_auto_apply_thresholds(self._heating_type)
-
-            # Check 4: Confidence threshold (first apply vs subsequent)
-            confidence_threshold = (
-                thresholds["confidence_first"]
-                if auto_apply_count == 0
-                else thresholds["confidence_subsequent"]
-            )
-            if convergence_confidence < confidence_threshold:
-                _LOGGER.debug(
-                    f"Auto-apply blocked: confidence {convergence_confidence:.2f} "
-                    f"< threshold {confidence_threshold:.2f} "
-                    f"(heating_type={self._heating_type}, mode={mode_to_str(mode)}, "
-                    f"apply_count={auto_apply_count})"
-                )
-                return None
-
-            # Override rate limiting parameters with heating-type-specific values
-            min_interval_hours = thresholds["cooldown_hours"]
-            min_adjustment_cycles = thresholds["cooldown_cycles"]
-            min_cycles = thresholds["min_cycles"]
-
-            # Subsequent learning requires more cycles for higher confidence
-            if auto_apply_count > 0:
-                min_cycles = int(min_cycles * SUBSEQUENT_LEARNING_CYCLE_MULTIPLIER)
-
-            _LOGGER.debug(
-                f"Auto-apply checks passed: confidence={convergence_confidence:.2f}, "
-                f"threshold={confidence_threshold:.2f}, heating_type={self._heating_type}, "
-                f"mode={mode_to_str(mode)}, min_cycles={min_cycles} (apply_count={auto_apply_count})"
-            )
+            # Use the adjusted parameters from auto-apply manager
+            # (already includes heating-type-specific thresholds and subsequent learning multiplier)
 
         # Check hybrid rate limiting first (both time AND cycles)
         if self._check_rate_limit(min_interval_hours, min_adjustment_cycles):
