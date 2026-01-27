@@ -4,6 +4,8 @@ This module extracts the manager creation logic from climate.py's async_added_to
 It creates and configures all manager instances (HeaterController, CycleTrackerManager,
 TemperatureManager, KeManager, etc.) with their required dependencies.
 """
+from __future__ import annotations
+
 import logging
 from typing import TYPE_CHECKING
 
