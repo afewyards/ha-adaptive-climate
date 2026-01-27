@@ -448,6 +448,7 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
 
         # Set physics baseline for adaptive learning after PID values are finalized
         # (either restored from previous state or calculated from physics in __init__)
+        coordinator = self.hass.data.get(DOMAIN, {}).get("coordinator")
         if coordinator and self._zone_id and self._area_m2:
             zone_data = coordinator.get_zone_data(self._zone_id)
             if zone_data:
