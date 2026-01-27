@@ -162,6 +162,8 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
             vol.Optional(const.CONF_NIGHT_SETBACK_DELTA, default=const.DEFAULT_NIGHT_SETBACK_DELTA): vol.Coerce(float),
             vol.Optional(const.CONF_NIGHT_SETBACK_RECOVERY_DEADLINE): cv.string,
             vol.Optional(const.CONF_MIN_EFFECTIVE_ELEVATION, default=const.DEFAULT_MIN_EFFECTIVE_ELEVATION): vol.Coerce(float),
+            vol.Optional(const.CONF_PREHEAT_ENABLED, default=False): cv.boolean,
+            vol.Optional(const.CONF_MAX_PREHEAT_HOURS): vol.Coerce(float),
         }),
         # Floor construction (for floor_hydronic heating type)
         vol.Optional(const.CONF_FLOOR_CONSTRUCTION): vol.Schema({
@@ -577,6 +579,8 @@ class AdaptiveThermostat(ClimateEntity, RestoreEntity):
                         const.CONF_MIN_EFFECTIVE_ELEVATION,
                         const.DEFAULT_MIN_EFFECTIVE_ELEVATION
                     ),
+                    'preheat_enabled': night_setback_config.get(const.CONF_PREHEAT_ENABLED),
+                    'max_preheat_hours': night_setback_config.get(const.CONF_MAX_PREHEAT_HOURS),
                 }
                 # Only create NightSetback if end is explicitly configured
                 if end:

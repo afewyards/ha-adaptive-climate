@@ -1003,6 +1003,11 @@ class CycleTrackerManager:
             # Get HVAC mode from callback
             hvac_mode = self._get_hvac_mode()
 
+            # Compute duration for preheat observation recording
+            duration_minutes = None
+            if self._cycle_start_time is not None:
+                duration_minutes = (datetime.now() - self._cycle_start_time).total_seconds() / 60
+
             # Create metrics dict from the CycleMetrics object
             metrics_dict = {
                 "overshoot": metrics.overshoot,
@@ -1012,6 +1017,10 @@ class CycleTrackerManager:
                 "rise_time": metrics.rise_time,
                 "disturbances": metrics.disturbances,
                 "outdoor_temp_avg": metrics.outdoor_temp_avg,
+                "start_temp": start_temp,
+                "end_temp": end_temp,
+                "duration_minutes": duration_minutes,
+                "interrupted": metrics.was_interrupted,
             }
 
             cycle_ended_event = CycleEndedEvent(

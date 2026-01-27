@@ -1454,6 +1454,72 @@ class TestCycleTrackerEventSubscriptions:
         assert emitted_events[0].event_type == CycleEventType.CYCLE_ENDED
         assert emitted_events[0].hvac_mode == "heat"
 
+    @pytest.mark.asyncio
+    async def test_ctm_cycle_ended_contains_preheat_fields(self, mock_hass, mock_adaptive_learner, mock_callbacks):
+        """Test CYCLE_ENDED event metrics contain preheat-required fields."""
+        from custom_components.adaptive_thermostat.managers.events import (
+            CycleEventDispatcher,
+            CycleEventType,
+            CycleStartedEvent,
+        )
+
+        # Create dispatcher and tracker
+        dispatcher = CycleEventDispatcher()
+        tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            dispatcher=dispatcher,
+            **mock_callbacks,
+        )
+        tracker.set_restoration_complete()
+
+        # Set up listener to capture CYCLE_ENDED event
+        emitted_events = []
+
+        def capture_event(event):
+            emitted_events.append(event)
+
+        dispatcher.subscribe(CycleEventType.CYCLE_ENDED, capture_event)
+
+        # Set target temperature
+        mock_callbacks["get_target_temp"].return_value = 20.0
+
+        # Setup adaptive learner mocks
+        mock_adaptive_learner.is_in_validation_mode = MagicMock(return_value=False)
+        mock_adaptive_learner.update_convergence_confidence = MagicMock()
+
+        # Start cycle 6 minutes ago (> 5 min minimum)
+        start_time = datetime(2025, 1, 14, 10, 0, 0)
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=start_time, target_temp=20.0, current_temp=18.0))
+
+        # Add temperature samples
+        for i in range(6):
+            await tracker.update_temperature(
+                datetime(2025, 1, 14, 10, i, 0), 18.0 + i * 0.4
+            )
+
+        # Finalize cycle (simulating settling complete)
+        await tracker._finalize_cycle()
+
+        # Verify CYCLE_ENDED was emitted with preheat fields
+        assert len(emitted_events) == 1
+        event = emitted_events[0]
+        assert event.event_type == CycleEventType.CYCLE_ENDED
+
+        # Check preheat-required fields in metrics
+        metrics = event.metrics
+        assert "start_temp" in metrics, "metrics missing start_temp"
+        assert "end_temp" in metrics, "metrics missing end_temp"
+        assert "duration_minutes" in metrics, "metrics missing duration_minutes"
+        assert "interrupted" in metrics, "metrics missing interrupted"
+
+        # Verify field types
+        assert isinstance(metrics["start_temp"], (int, float))
+        assert isinstance(metrics["end_temp"], (int, float))
+        assert isinstance(metrics["duration_minutes"], (int, float))
+        assert isinstance(metrics["interrupted"], bool)
+
 
 class TestCycleTrackerSettlingTimeout:
     """Tests for dynamic settling timeout based on thermal mass."""
