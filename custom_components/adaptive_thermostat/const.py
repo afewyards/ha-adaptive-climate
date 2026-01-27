@@ -712,26 +712,6 @@ AUTO_APPLY_THRESHOLDS = {
     },
 }
 
-
-def get_auto_apply_thresholds(heating_type: Optional[str] = None) -> Dict[str, float]:
-    """
-    Get auto-apply thresholds for a specific heating type.
-
-    Returns heating-type-specific thresholds if available, otherwise returns
-    convector thresholds as the default baseline.
-
-    Args:
-        heating_type: One of HEATING_TYPE_* constants, or None for default
-
-    Returns:
-        Dict with auto-apply threshold values (confidence_first, confidence_subsequent,
-        min_cycles, cooldown_hours, cooldown_cycles)
-    """
-    if heating_type and heating_type in AUTO_APPLY_THRESHOLDS:
-        return AUTO_APPLY_THRESHOLDS[heating_type]
-    return AUTO_APPLY_THRESHOLDS[HEATING_TYPE_CONVECTOR]
-
-
 # Entity attribute constants for auto-apply status
 ATTR_AUTO_APPLY_ENABLED = "auto_apply_pid_enabled"
 ATTR_AUTO_APPLY_COUNT = "auto_apply_count"

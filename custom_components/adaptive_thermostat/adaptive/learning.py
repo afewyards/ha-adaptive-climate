@@ -29,9 +29,10 @@ from ..const import (
     CLAMPED_OVERSHOOT_MULTIPLIER,
     DEFAULT_CLAMPED_OVERSHOOT_MULTIPLIER,
     SUBSEQUENT_LEARNING_CYCLE_MULTIPLIER,
+    AUTO_APPLY_THRESHOLDS,
+    HEATING_TYPE_CONVECTOR,
     get_convergence_thresholds,
     get_rule_thresholds,
-    get_auto_apply_thresholds,
 )
 
 # Import PID rule engine components
@@ -64,6 +65,25 @@ from .cycle_analysis import (
 from .pwm_tuning import calculate_pwm_adjustment, ValveCycleTracker
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def get_auto_apply_thresholds(heating_type: Optional[str] = None) -> Dict[str, float]:
+    """
+    Get auto-apply thresholds for a specific heating type.
+
+    Returns heating-type-specific thresholds if available, otherwise returns
+    convector thresholds as the default baseline.
+
+    Args:
+        heating_type: One of HEATING_TYPE_* constants, or None for default
+
+    Returns:
+        Dict with auto-apply threshold values (confidence_first, confidence_subsequent,
+        min_cycles, cooldown_hours, cooldown_cycles)
+    """
+    if heating_type and heating_type in AUTO_APPLY_THRESHOLDS:
+        return AUTO_APPLY_THRESHOLDS[heating_type]
+    return AUTO_APPLY_THRESHOLDS[HEATING_TYPE_CONVECTOR]
 
 
 # Adaptive learning (CycleMetrics imported from cycle_analysis)

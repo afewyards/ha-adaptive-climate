@@ -24,12 +24,14 @@ from custom_components.adaptive_thermostat.managers.events import (
     CycleStartedEvent,
     SettlingStartedEvent,
 )
-from custom_components.adaptive_thermostat.adaptive.learning import AdaptiveLearner
+from custom_components.adaptive_thermostat.adaptive.learning import (
+    AdaptiveLearner,
+    get_auto_apply_thresholds,
+)
 from custom_components.adaptive_thermostat.adaptive.cycle_analysis import CycleMetrics
 from custom_components.adaptive_thermostat.const import (
     CONFIDENCE_INCREASE_PER_GOOD_CYCLE,
     VALIDATION_CYCLE_COUNT,
-    get_auto_apply_thresholds,
     HEATING_TYPE_CONVECTOR,
 )
 

@@ -6,8 +6,9 @@ import statistics
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from ..adaptive.physics import calculate_thermal_time_constant, calculate_initial_pid
+from ..adaptive.learning import get_auto_apply_thresholds
 from .. import const
-from ..const import get_auto_apply_thresholds, VALIDATION_CYCLE_COUNT
+from ..const import VALIDATION_CYCLE_COUNT
 
 if TYPE_CHECKING:
     from ..climate import AdaptiveThermostat

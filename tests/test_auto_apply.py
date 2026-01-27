@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from custom_components.adaptive_thermostat.adaptive.learning import (
     AdaptiveLearner,
     CycleMetrics,
+    get_auto_apply_thresholds,
 )
 from custom_components.adaptive_thermostat.const import (
     PID_HISTORY_SIZE,
@@ -16,7 +17,6 @@ from custom_components.adaptive_thermostat.const import (
     VALIDATION_CYCLE_COUNT,
     VALIDATION_DEGRADATION_THRESHOLD,
     AUTO_APPLY_THRESHOLDS,
-    get_auto_apply_thresholds,
     HEATING_TYPE_FLOOR_HYDRONIC,
     HEATING_TYPE_RADIATOR,
     HEATING_TYPE_CONVECTOR,
