@@ -1,6 +1,72 @@
 # CHANGELOG
 
 
+## v0.38.4 (2026-01-28)
+
+### Bug Fixes
+
+- Bound unbounded collections to prevent memory leaks
+  ([`c78dae9`](https://github.com/afewyards/ha-adaptive-thermostat/commit/c78dae9e4eedb5b71cadbcca1bcdfba8296b5d7d))
+
+- Resolve dt discrepancy and power sensor warnings
+  ([`e7a2ad5`](https://github.com/afewyards/ha-adaptive-thermostat/commit/e7a2ad5bff37354bbbd4281e256d7fbd8ef531c9))
+
+- Remove duplicate cur_temp_time update in control_output.py that caused sensor_dt to measure code
+  execution time instead of actual sensor interval - Add rate limiting (1hr) for dt discrepancy
+  warnings to reduce log spam - Remove device_class=POWER from PowerPerM2Sensor since W/m² is power
+  density, not a standard power unit recognized by HA
+
+### Documentation
+
+- Remove obsolete documentation files
+  ([`35ecf9a`](https://github.com/afewyards/ha-adaptive-thermostat/commit/35ecf9a3ca970da1d993c743254417cf873fd317))
+
+Content moved to GitHub wiki.
+
+### Performance Improvements
+
+- Optimize hot paths and reduce redundant lookups
+  ([`922a941`](https://github.com/afewyards/ha-adaptive-thermostat/commit/922a941dea8297acde2c225c22f3497d83f4c874))
+
+- climate_control.py: Cache coordinator lookup (3x per loop → 1x) - pid_controller/__init__.py: Move
+  conditional imports to module level - status_manager.py: Add 30s TTL cache with state signature
+  validation - performance.py: Optimize _prune_old_state_changes to single-pass O(n) -
+  heater_controller.py: Cache is_active() result in async_set_control_value
+
+- Skip redundant heater service calls when state unchanged
+  ([`3e0ee80`](https://github.com/afewyards/ha-adaptive-thermostat/commit/3e0ee800929e087f7dd2d3312aca7411c7c855d3))
+
+### Refactoring
+
+- Minor cleanup and optimization fixes
+  ([`2273c80`](https://github.com/afewyards/ha-adaptive-thermostat/commit/2273c80bb9c6e52376688375022df62d1c939e23))
+
+M2: Add single-flight guard to CentralController updates - Prevent fire-and-forget task pileup on
+  rapid demand changes - Use _update_pending flag to skip duplicate update scheduling
+
+M3: Prune zone from all dicts on unregister - Remove zone from _zone_loops in
+  coordinator.unregister_zone - Add unregister_zone method to ModeSync to clean _zone_modes and
+  _sync_disabled_zones - Call ModeSync.unregister_zone from coordinator when zone is removed
+
+M5: Optimize _expire_old_observations in preheat learner - Only expire old observations every 10th
+  call instead of every call - Reduces unnecessary iteration over all bins on each add_observation
+
+M6: Add TODO comment for v4 backward compatibility - Document that v4 serialization keys are still
+  needed for users upgrading from v0.36.0 and earlier - Can be removed after a few major versions
+  when all users have migrated
+
+M10: Switch list slicing to in-place deletion in learning.py
+
+- Use del list[:n] instead of list = list[-max:] for FIFO eviction - More efficient as it avoids
+  copying the entire list
+
+- Remove unused energy_stats service
+  ([`7039937`](https://github.com/afewyards/ha-adaptive-thermostat/commit/70399377dc02a3ca4c7d114440304d239fcc7c1a))
+
+Dead code that was never called internally and only duplicated data already available via existing
+  HA sensors.
+
+
 ## v0.38.3 (2026-01-28)
 
 ### Bug Fixes
