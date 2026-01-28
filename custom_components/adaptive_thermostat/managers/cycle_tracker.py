@@ -719,8 +719,8 @@ class CycleTrackerManager:
         if len(self._temperature_history) < 10:
             return False
 
-        # Get last 10 temperature samples
-        last_temps = [temp for _, temp in self._temperature_history[-10:]]
+        # Get last 10 temperature samples (convert deque to list for slicing)
+        last_temps = [temp for _, temp in list(self._temperature_history)[-10:]]
 
         # Calculate MAD (robust alternative to variance)
         mad = self._calculate_mad(last_temps)

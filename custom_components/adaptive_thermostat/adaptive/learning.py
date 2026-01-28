@@ -111,7 +111,6 @@ class AdaptiveLearner:
         # Convergence tracking for Ke learning activation
         self._consecutive_converged_cycles: int = 0
         self._pid_converged_for_ke: bool = False
-        self._duty_cycle_history: List[float] = []
         # Hybrid rate limiting: track cycles since last adjustment
         self._cycles_since_last_adjustment: int = 0
         # Rule state tracker with hysteresis to prevent oscillation

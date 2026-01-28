@@ -182,8 +182,8 @@ class ThermalRateLearner:
         if not self._cooling_rates:
             return None
 
-        # Use only recent measurements
-        recent_rates = self._cooling_rates[-max_measurements:]
+        # Use only recent measurements (deque already limits size, but respect parameter)
+        recent_rates = list(self._cooling_rates)[-max_measurements:]
 
         if reject_outliers and len(recent_rates) >= 3:
             recent_rates = self._reject_outliers(recent_rates)
@@ -209,8 +209,8 @@ class ThermalRateLearner:
         if not self._heating_rates:
             return None
 
-        # Use only recent measurements
-        recent_rates = self._heating_rates[-max_measurements:]
+        # Use only recent measurements (deque already limits size, but respect parameter)
+        recent_rates = list(self._heating_rates)[-max_measurements:]
 
         if reject_outliers and len(recent_rates) >= 3:
             recent_rates = self._reject_outliers(recent_rates)

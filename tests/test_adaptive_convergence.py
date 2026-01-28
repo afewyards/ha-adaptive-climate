@@ -375,4 +375,3 @@ def test_adaptive_convergence_module_exists():
     assert hasattr(learner, '_convergence_confidence')
     assert hasattr(learner, '_last_seasonal_check')
     assert hasattr(learner, '_outdoor_temp_history')
-    assert hasattr(learner, '_duty_cycle_history')
