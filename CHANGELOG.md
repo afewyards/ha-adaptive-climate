@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.39.1 (2026-01-28)
+
+### Bug Fixes
+
+- Update test to match DEFAULT_HUMIDITY_EXIT_DROP value of 5
+  ([`2e53e85`](https://github.com/afewyards/ha-adaptive-thermostat/commit/2e53e858ae0fd59ef258ca1a3e151daba13b79f3))
+
+
 ## v0.39.0 (2026-01-28)
 
 ### Documentation
