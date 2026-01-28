@@ -32,6 +32,25 @@ class HeatingType(StrEnum):
     CONVECTOR = "convector"
     FORCED_AIR = "forced_air"
 
+
+class ThermostatCondition(StrEnum):
+    """Thermostat condition types for status tracking."""
+    CONTACT_OPEN = "contact_open"
+    HUMIDITY_SPIKE = "humidity_spike"
+    OPEN_WINDOW = "open_window"
+    NIGHT_SETBACK = "night_setback"
+    LEARNING_GRACE = "learning_grace"
+
+
+class ThermostatState(StrEnum):
+    """Thermostat operational states."""
+    IDLE = "idle"
+    HEATING = "heating"
+    COOLING = "cooling"
+    PAUSED = "paused"
+    PREHEATING = "preheating"
+    SETTLING = "settling"
+
 DEFAULT_NAME = "Adaptive Thermostat"
 DEFAULT_OUTPUT_PRECISION = 1
 DEFAULT_OUTPUT_MIN = 0

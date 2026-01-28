@@ -53,16 +53,10 @@ class ClimateControlMixin:
 
             # Unified pause check (contact sensors, humidity detection, etc.)
             if self._status_manager.is_paused():
-                pause_info = self._status_manager.get_status_info()
-                reason = pause_info.get("reason", "unknown")
-
-                _LOGGER.info(
-                    "%s: Heating paused (reason=%s)",
-                    self.entity_id, reason
-                )
+                _LOGGER.info("%s: Heating paused", self.entity_id)
 
                 # Decay integral for humidity pauses (~10%/min to prevent stale buildup)
-                if reason == "humidity":
+                if self._humidity_detector and self._humidity_detector.should_pause():
                     elapsed = time.monotonic() - self._last_control_time
                     decay_factor = 0.9 ** (elapsed / 60)  # 10% decay per minute
                     self._pid_controller.decay_integral(decay_factor)

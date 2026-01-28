@@ -183,20 +183,21 @@ Exposed via `extra_state_attributes`. Minimized for clarity - only restoration +
     "convergence_confidence_pct", # 0-100%
     "pid_history",               # List of PID adjustments (when non-empty)
 
-    # Consolidated status (contact sensors + humidity detection + night setback)
+    # Operational status
     "status": {
-        "active": bool,          # True when status is active
-        "reason": str | None,    # "contact" | "humidity" | "night_setback" | None
-        "resume_in": int,        # Seconds until resume (optional, countdown)
-        "delta": float,          # Night setback °C (optional)
-        "end": str,              # Night setback end "HH:MM" (optional)
-        "learning_paused": bool, # Grace period active (optional)
-        "learning_resumes": str, # Grace period end "HH:MM" (optional)
+        "state": str,            # idle | heating | cooling | paused | preheating | settling
+        "conditions": list[str], # Always present, list of active conditions
+        "resume_at": str,        # ISO8601 timestamp when pause ends (optional)
+        "setback_delta": float,  # °C adjustment during night_setback (optional)
+        "setback_end": str,      # ISO8601 timestamp when night period ends (optional)
+        # Debug-only fields (when debug: true in domain config):
+        "humidity_peak": float,  # Peak humidity % during spike (optional)
+        "open_sensors": list[str], # Contact sensor entity IDs that triggered (optional)
     }
 }
 ```
 
-**Priority:** Contact sensor > humidity detection > night setback (highest priority shown)
+**Conditions:** contact_open, humidity_spike, open_window, night_setback, learning_grace
 
 **Debug-only attributes** (require `debug: true` in domain config):
 - `current_cycle_state` - Cycle tracker state (idle/heating/settling)

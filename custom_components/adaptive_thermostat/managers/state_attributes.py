@@ -310,101 +310,153 @@ def _add_humidity_detection_attributes(
 
 
 def _build_status_attribute(thermostat: SmartThermostat) -> dict[str, Any]:
-    """Build consolidated status attribute.
+    """Build consolidated status attribute using StatusManager.
 
     The status attribute provides unified information about heating status state
-    from all possible sources (contact sensors, humidity detection, night setback). Uses
-    StatusManager for unified status state aggregation.
+    from all possible sources (contact sensors, humidity detection, night setback).
 
     Args:
         thermostat: The SmartThermostat instance
 
     Returns:
-        Dictionary with structure:
+        Dictionary with structure (new format):
         {
-            "active": bool,        # Whether heating is currently paused
-            "reason": str | None,  # "contact" | "humidity" | "night_setback" | None
-            "resume_in": int,      # Optional seconds until resume (only when countdown active)
-            "delta": float,        # Optional temperature delta (night_setback only)
-            "end": str,            # Optional end time (night_setback only)
-            "learning_paused": bool,  # Optional learning pause flag (night_setback only)
-            "learning_resumes": str   # Optional learning resume time (night_setback only)
+            "state": str,              # "idle" | "heating" | "cooling" | "paused" | "preheating" | "settling"
+            "conditions": list[str],   # List of active conditions (e.g., ["contact_open", "humidity_spike"])
+            "resume_at": str,          # Optional ISO8601 timestamp when pause ends
+            "setback_delta": float,    # Optional temperature delta (night_setback only)
+            "setback_end": str,        # Optional ISO8601 timestamp when night period ends
         }
     """
-    # Use StatusManager to get unified status state (production path)
-    # Check if _status_manager exists and is a real StatusManager (not a MagicMock)
+    from ..const import DOMAIN
     from ..managers.status_manager import StatusManager
-    status_manager = getattr(thermostat, '_status_manager', None)
-    if isinstance(status_manager, StatusManager):
-        status_info = status_manager.get_status_info()
-        return dict(status_info)
 
-    # Legacy path for tests that mock detectors directly (without StatusManager)
-    # Initialize with inactive state
-    pause_data: dict[str, Any] = {
-        "active": False,
-        "reason": None,
-    }
+    # Get debug setting from domain config
+    debug = thermostat.hass.data.get(DOMAIN, {}).get("debug", False)
 
-    # Check contact sensor first (priority)
-    if thermostat._contact_sensor_handler:
-        is_open = thermostat._contact_sensor_handler.is_any_contact_open()
-        is_paused = thermostat._contact_sensor_handler.should_take_action()
+    # Create StatusManager on the fly (for test compatibility)
+    # In production, thermostat will have _status_manager already initialized
+    status_manager = StatusManager(
+        contact_sensor_handler=thermostat._contact_sensor_handler,
+        humidity_detector=thermostat._humidity_detector,
+        debug=debug,
+    )
+    if thermostat._night_setback_controller:
+        status_manager.set_night_setback_controller(thermostat._night_setback_controller)
 
-        if is_paused:
-            # Contact sensor is actively pausing
-            pause_data["active"] = True
-            pause_data["reason"] = "contact"
-            return pause_data
-        elif is_open:
-            # Contact is open but not paused yet (in delay countdown)
-            time_until_action = thermostat._contact_sensor_handler.get_time_until_action()
-            if time_until_action is not None and time_until_action > 0:
-                pause_data["resume_in"] = time_until_action
-            return pause_data
+    # Determine if heating is paused
+    is_paused = status_manager.is_paused()
 
-    # Check humidity detector (only if contact didn't trigger)
-    if thermostat._humidity_detector:
-        is_paused = thermostat._humidity_detector.should_pause()
+    # Get HVAC mode
+    hvac_mode = thermostat.hvac_mode if hasattr(thermostat, 'hvac_mode') else "off"
+    if hasattr(hvac_mode, 'value'):
+        hvac_mode = hvac_mode.value
 
-        if is_paused:
-            # Humidity detector is actively pausing
-            pause_data["active"] = True
-            pause_data["reason"] = "humidity"
+    # Get heater/cooler state
+    heater_on = False
+    cooler_on = False
+    if thermostat._heater_controller:
+        heater_on = getattr(thermostat._heater_controller, 'heater_on', False)
+        cooler_on = getattr(thermostat._heater_controller, 'cooler_on', False)
 
-            # Add countdown if available (during stabilizing state)
-            time_until_resume = thermostat._humidity_detector.get_time_until_resume()
-            if time_until_resume is not None and time_until_resume > 0:
-                pause_data["resume_in"] = time_until_resume
-
-            return pause_data
-
-    # Check night setback (legacy fallback)
-    night_setback_controller = getattr(thermostat, '_night_setback_controller', None)
-    if night_setback_controller:
+    # Get preheat state
+    preheat_active = False
+    if hasattr(thermostat, '_night_setback_controller') and thermostat._night_setback_controller:
+        # Check if preheat is currently active
         try:
-            _, in_night, info = night_setback_controller.calculate_night_setback_adjustment()
-            if in_night:
-                pause_data["active"] = True
-                pause_data["reason"] = "night_setback"
-                if "night_setback_delta" in info:
-                    pause_data["delta"] = info["night_setback_delta"]
-                if "night_setback_end" in info:
-                    pause_data["end"] = info["night_setback_end"]
-                if night_setback_controller.in_learning_grace_period:
-                    pause_data["learning_paused"] = True
-                    grace_until = night_setback_controller.learning_grace_until
-                    if grace_until:
-                        pause_data["learning_resumes"] = grace_until.strftime("%H:%M")
-                return pause_data
-            if night_setback_controller.in_learning_grace_period:
-                pause_data["learning_paused"] = True
-                grace_until = night_setback_controller.learning_grace_until
-                if grace_until:
-                    pause_data["learning_resumes"] = grace_until.strftime("%H:%M")
-                return pause_data
+            if hasattr(thermostat._night_setback_controller, 'calculator'):
+                # Get preheat info - this requires current conditions
+                # For now, just check if preheat learner exists
+                preheat_active = getattr(thermostat, '_preheat_active', False)
+        except (TypeError, AttributeError):
+            pass
+
+    # Get cycle state
+    cycle_state = None
+    if hasattr(thermostat, '_cycle_tracker') and thermostat._cycle_tracker:
+        try:
+            cycle_state = thermostat._cycle_tracker.get_state_name()
+        except (TypeError, AttributeError):
+            pass
+
+    # Determine active conditions
+    night_setback_active = False
+    if thermostat._night_setback_controller:
+        try:
+            _, in_night, _ = thermostat._night_setback_controller.calculate_night_setback_adjustment()
+            night_setback_active = in_night
         except (TypeError, AttributeError, ValueError):
             pass
 
-    # No pause detected from any source
-    return pause_data
+    open_window_detected = False
+    # TODO: Get from open window detector when implemented
+
+    humidity_spike_active = False
+    if thermostat._humidity_detector:
+        humidity_spike_active = thermostat._humidity_detector.should_pause()
+
+    contact_open = False
+    if thermostat._contact_sensor_handler:
+        contact_open = thermostat._contact_sensor_handler.is_any_contact_open()
+
+    learning_grace_active = False
+    if thermostat._night_setback_controller:
+        try:
+            learning_grace_active = thermostat._night_setback_controller.in_learning_grace_period
+        except (TypeError, AttributeError):
+            pass
+
+    # Get resume time (if any pause is active)
+    resume_in_seconds = None
+    if humidity_spike_active and thermostat._humidity_detector:
+        resume_in_seconds = thermostat._humidity_detector.get_time_until_resume()
+    elif contact_open and thermostat._contact_sensor_handler:
+        # If contact is open but not yet causing pause, get countdown
+        if not thermostat._contact_sensor_handler.should_take_action():
+            resume_in_seconds = thermostat._contact_sensor_handler.get_time_until_action()
+
+    # Get night setback info
+    setback_delta = None
+    setback_end_time = None
+    if night_setback_active and thermostat._night_setback_controller:
+        try:
+            _, _, info = thermostat._night_setback_controller.calculate_night_setback_adjustment()
+            setback_delta = info.get("night_setback_delta")
+            setback_end_time = info.get("night_setback_end")
+        except (TypeError, AttributeError, ValueError):
+            pass
+
+    # Debug fields
+    humidity_peak = None
+    open_sensors = None
+    if debug:
+        if thermostat._humidity_detector and humidity_spike_active:
+            try:
+                humidity_peak = getattr(thermostat._humidity_detector, '_peak_humidity', None)
+            except (TypeError, AttributeError):
+                pass
+        if thermostat._contact_sensor_handler and contact_open:
+            try:
+                open_sensors = thermostat._contact_sensor_handler.get_open_sensor_ids()
+            except (TypeError, AttributeError):
+                pass
+
+    # Build status using StatusManager
+    return status_manager.build_status(
+        hvac_mode=hvac_mode,
+        heater_on=heater_on,
+        cooler_on=cooler_on,
+        is_paused=is_paused,
+        preheat_active=preheat_active,
+        cycle_state=cycle_state,
+        night_setback_active=night_setback_active,
+        open_window_detected=open_window_detected,
+        humidity_spike_active=humidity_spike_active,
+        contact_open=contact_open,
+        learning_grace_active=learning_grace_active,
+        resume_in_seconds=resume_in_seconds,
+        setback_delta=setback_delta,
+        setback_end_time=setback_end_time,
+        humidity_peak=humidity_peak,
+        open_sensors=open_sensors,
+    )

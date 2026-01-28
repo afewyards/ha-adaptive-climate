@@ -955,12 +955,13 @@ class TestHumidityDetectionAttributes:
         thermostat._contact_sensor_handler = None
         thermostat._humidity_detector = None
         thermostat._night_setback_controller = None
+        thermostat.hvac_mode = "off"
 
         status_attr = _build_status_attribute(thermostat)
 
-        # Status should be inactive
-        assert status_attr["active"] is False
-        assert status_attr["reason"] is None
+        # Status should be idle with no conditions
+        assert status_attr["state"] == "idle"
+        assert status_attr["conditions"] == []
         # humidity_detection_state and humidity_resume_in should not be in status attribute
         assert "humidity_detection_state" not in status_attr
         assert "humidity_resume_in" not in status_attr
@@ -981,12 +982,16 @@ class TestHumidityDetectionAttributes:
         humidity_detector.get_state.return_value = "normal"
         humidity_detector.get_time_until_resume.return_value = None
         thermostat._humidity_detector = humidity_detector
+        thermostat._heater_controller = None
+        thermostat.hvac_mode = "off"
+        thermostat.hass = MagicMock()
+        thermostat.hass.data = {}
 
         status_attr = _build_status_attribute(thermostat)
 
-        # Status should be inactive
-        assert status_attr["active"] is False
-        assert status_attr["reason"] is None
+        # Status should be idle with no conditions
+        assert status_attr["state"] == "idle"
+        assert status_attr["conditions"] == []
 
     def test_status_active_humidity_paused_state(self):
         """Test status attribute when humidity detector is in paused state."""
@@ -1003,13 +1008,18 @@ class TestHumidityDetectionAttributes:
         humidity_detector.get_state.return_value = "paused"
         humidity_detector.get_time_until_resume.return_value = None
         thermostat._humidity_detector = humidity_detector
+        thermostat._night_setback_controller = None
+        thermostat._heater_controller = None
+        thermostat.hvac_mode = "heat"
+        thermostat.hass = MagicMock()
+        thermostat.hass.data = {}
 
         status_attr = _build_status_attribute(thermostat)
 
-        # Status should be active with humidity reason
-        assert status_attr["active"] is True
-        assert status_attr["reason"] == "humidity"
-        assert "resume_in" not in status_attr
+        # Status should be paused with humidity_spike condition
+        assert status_attr["state"] == "paused"
+        assert "humidity_spike" in status_attr["conditions"]
+        assert "resume_at" not in status_attr
 
     def test_status_active_humidity_stabilizing_with_countdown(self):
         """Test status attribute when humidity detector is in stabilizing state with countdown."""
@@ -1026,13 +1036,18 @@ class TestHumidityDetectionAttributes:
         humidity_detector.get_state.return_value = "stabilizing"
         humidity_detector.get_time_until_resume.return_value = 180  # 3 minutes
         thermostat._humidity_detector = humidity_detector
+        thermostat._night_setback_controller = None
+        thermostat._heater_controller = None
+        thermostat.hvac_mode = "heat"
+        thermostat.hass = MagicMock()
+        thermostat.hass.data = {}
 
         status_attr = _build_status_attribute(thermostat)
 
-        # Status should be active with humidity reason and countdown
-        assert status_attr["active"] is True
-        assert status_attr["reason"] == "humidity"
-        assert status_attr["resume_in"] == 180
+        # Status should be paused with humidity_spike condition and resume_at
+        assert status_attr["state"] == "paused"
+        assert "humidity_spike" in status_attr["conditions"]
+        assert "resume_at" in status_attr
 
     def test_status_active_humidity_stabilizing_with_zero_resume_time(self):
         """Test status attribute when humidity is stabilizing with 0 resume time (about to exit)."""
@@ -1049,14 +1064,19 @@ class TestHumidityDetectionAttributes:
         humidity_detector.get_state.return_value = "stabilizing"
         humidity_detector.get_time_until_resume.return_value = 0
         thermostat._humidity_detector = humidity_detector
+        thermostat._night_setback_controller = None
+        thermostat._heater_controller = None
+        thermostat.hvac_mode = "heat"
+        thermostat.hass = MagicMock()
+        thermostat.hass.data = {}
 
         status_attr = _build_status_attribute(thermostat)
 
-        # Status should be active with humidity reason, but no resume_in since it's 0
-        assert status_attr["active"] is True
-        assert status_attr["reason"] == "humidity"
-        # 0 should not be included in resume_in
-        assert "resume_in" not in status_attr or status_attr.get("resume_in") == 0
+        # Status should be paused with humidity_spike condition, but no resume_at since it's 0
+        assert status_attr["state"] == "paused"
+        assert "humidity_spike" in status_attr["conditions"]
+        # 0 should not be included in resume_at
+        assert "resume_at" not in status_attr
 
     def test_debug_attributes_still_present(self):
         """Test that humidity_detection_state and humidity_resume_in are still available for debugging."""
@@ -1093,10 +1113,14 @@ class TestStatusAttribute:
         thermostat._contact_sensor_handler = None
         thermostat._humidity_detector = None
         thermostat._night_setback_controller = None
+        thermostat._heater_controller = None
+        thermostat.hvac_mode = "off"
+        thermostat.hass = MagicMock()
+        thermostat.hass.data = {}
 
         status_attr = _build_status_attribute(thermostat)
 
-        assert status_attr == {"active": False, "reason": None}
+        assert status_attr == {"state": "idle", "conditions": []}
 
     def test_status_not_active_contact_closed(self):
         """Test status attribute when contact sensor exists but is closed."""
@@ -1114,16 +1138,21 @@ class TestStatusAttribute:
         thermostat._contact_sensor_handler = contact_handler
         thermostat._humidity_detector = None
         thermostat._night_setback_controller = None
+        thermostat._heater_controller = None
+        thermostat.hvac_mode = "off"
+        thermostat.hass = MagicMock()
+        thermostat.hass.data = {}
 
         status_attr = _build_status_attribute(thermostat)
 
-        assert status_attr == {"active": False, "reason": None}
+        assert status_attr == {"state": "idle", "conditions": []}
 
     def test_status_active_contact(self):
         """Test status attribute when contact sensor status is active."""
         from custom_components.adaptive_thermostat.managers.state_attributes import (
             _build_status_attribute,
         )
+        from custom_components.adaptive_thermostat.adaptive.contact_sensors import ContactAction
 
         thermostat = MagicMock()
 
@@ -1131,13 +1160,20 @@ class TestStatusAttribute:
         contact_handler = MagicMock()
         contact_handler.is_any_contact_open.return_value = True
         contact_handler.should_take_action.return_value = True
+        contact_handler.get_action.return_value = ContactAction.PAUSE
         contact_handler.get_time_until_action.return_value = None
         thermostat._contact_sensor_handler = contact_handler
         thermostat._humidity_detector = None
+        thermostat._night_setback_controller = None
+        thermostat._heater_controller = None
+        thermostat._preheat_active = False
+        thermostat.hvac_mode = "heat"
+        thermostat.hass = MagicMock()
+        thermostat.hass.data = {}
 
         status_attr = _build_status_attribute(thermostat)
 
-        assert status_attr == {"active": True, "reason": "contact"}
+        assert status_attr == {"state": "paused", "conditions": ["contact_open"]}
 
     def test_status_pending_contact(self):
         """Test status attribute when contact is open but not paused yet (in delay)."""
@@ -1154,10 +1190,19 @@ class TestStatusAttribute:
         contact_handler.get_time_until_action.return_value = 120  # 2 minutes remaining
         thermostat._contact_sensor_handler = contact_handler
         thermostat._humidity_detector = None
+        thermostat._night_setback_controller = None
+        thermostat._heater_controller = None
+        thermostat.hvac_mode = "heat"
+        thermostat.hass = MagicMock()
+        thermostat.hass.data = {}
 
         status_attr = _build_status_attribute(thermostat)
 
-        assert status_attr == {"active": False, "reason": None, "resume_in": 120}
+        # Contact is open but not paused yet - should show contact_open condition but idle state
+        # Resume_at should be in ISO8601 format
+        assert status_attr["state"] == "idle"
+        assert "contact_open" in status_attr["conditions"]
+        assert "resume_at" in status_attr
 
     def test_status_active_humidity(self):
         """Test status attribute when humidity status is active."""
@@ -1174,10 +1219,15 @@ class TestStatusAttribute:
         humidity_detector.get_state.return_value = "paused"
         humidity_detector.get_time_until_resume.return_value = None
         thermostat._humidity_detector = humidity_detector
+        thermostat._night_setback_controller = None
+        thermostat._heater_controller = None
+        thermostat.hvac_mode = "heat"
+        thermostat.hass = MagicMock()
+        thermostat.hass.data = {}
 
         status_attr = _build_status_attribute(thermostat)
 
-        assert status_attr == {"active": True, "reason": "humidity"}
+        assert status_attr == {"state": "paused", "conditions": ["humidity_spike"]}
 
     def test_status_humidity_stabilizing_with_countdown(self):
         """Test status attribute when humidity is stabilizing with countdown."""
@@ -1194,16 +1244,24 @@ class TestStatusAttribute:
         humidity_detector.get_state.return_value = "stabilizing"
         humidity_detector.get_time_until_resume.return_value = 180  # 3 minutes
         thermostat._humidity_detector = humidity_detector
+        thermostat._night_setback_controller = None
+        thermostat._heater_controller = None
+        thermostat.hvac_mode = "heat"
+        thermostat.hass = MagicMock()
+        thermostat.hass.data = {}
 
         status_attr = _build_status_attribute(thermostat)
 
-        assert status_attr == {"active": True, "reason": "humidity", "resume_in": 180}
+        assert status_attr["state"] == "paused"
+        assert "humidity_spike" in status_attr["conditions"]
+        assert "resume_at" in status_attr
 
     def test_status_contact_priority_over_humidity(self):
         """Test that contact sensor takes priority over humidity when both active."""
         from custom_components.adaptive_thermostat.managers.state_attributes import (
             _build_status_attribute,
         )
+        from custom_components.adaptive_thermostat.adaptive.contact_sensors import ContactAction
 
         thermostat = MagicMock()
 
@@ -1211,6 +1269,7 @@ class TestStatusAttribute:
         contact_handler = MagicMock()
         contact_handler.is_any_contact_open.return_value = True
         contact_handler.should_take_action.return_value = True
+        contact_handler.get_action.return_value = ContactAction.PAUSE
         contact_handler.get_time_until_action.return_value = None
         thermostat._contact_sensor_handler = contact_handler
 
@@ -1220,11 +1279,17 @@ class TestStatusAttribute:
         humidity_detector.get_state.return_value = "paused"
         humidity_detector.get_time_until_resume.return_value = None
         thermostat._humidity_detector = humidity_detector
+        thermostat._night_setback_controller = None
+        thermostat._heater_controller = None
+        thermostat.hvac_mode = "heat"
+        thermostat.hass = MagicMock()
+        thermostat.hass.data = {}
 
         status_attr = _build_status_attribute(thermostat)
 
-        # Contact should take priority
-        assert status_attr == {"active": True, "reason": "contact"}
+        # Contact should take priority - both conditions shown but contact first
+        assert status_attr["state"] == "paused"
+        assert status_attr["conditions"] == ["contact_open", "humidity_spike"]
 
     def test_status_humidity_only_when_no_contact(self):
         """Test humidity detector works when no contact sensor configured."""
@@ -1241,7 +1306,557 @@ class TestStatusAttribute:
         humidity_detector.get_state.return_value = "stabilizing"
         humidity_detector.get_time_until_resume.return_value = 240  # 4 minutes
         thermostat._humidity_detector = humidity_detector
+        thermostat._night_setback_controller = None
+        thermostat._heater_controller = None
+        thermostat.hvac_mode = "heat"
+        thermostat.hass = MagicMock()
+        thermostat.hass.data = {}
 
         status_attr = _build_status_attribute(thermostat)
 
-        assert status_attr == {"active": True, "reason": "humidity", "resume_in": 240}
+        assert status_attr["state"] == "paused"
+        assert "humidity_spike" in status_attr["conditions"]
+        assert "resume_at" in status_attr
+
+
+class TestStatusAttributeIntegration:
+    """Integration tests for status attribute with full thermostat scenarios."""
+
+    def test_idle_thermostat_status(self):
+        """Test status when thermostat is idle (at setpoint, not heating)."""
+        from custom_components.adaptive_thermostat.managers.state_attributes import (
+            build_state_attributes,
+        )
+
+        thermostat = MagicMock()
+        # Setup minimal thermostat in idle state
+        thermostat._away_temp = 18.0
+        thermostat._eco_temp = 19.0
+        thermostat._boost_temp = 24.0
+        thermostat._comfort_temp = 21.0
+        thermostat._home_temp = 20.0
+        thermostat._sleep_temp = 18.0
+        thermostat._activity_temp = 20.0
+        thermostat._control_output = 0.0  # Not calling for heat
+        thermostat._kp = 20.0
+        thermostat._ki = 0.01
+        thermostat._kd = 100.0
+        thermostat._ke = 0.5
+        thermostat.pid_mode = "auto"
+        thermostat.pid_control_i = 0.0
+        thermostat._pid_controller = MagicMock()
+        thermostat._pid_controller.outdoor_temp_lagged = 5.0
+        thermostat._heater_controller = MagicMock()
+        thermostat._heater_controller.heater_cycle_count = 10
+        thermostat._heater_controller.cooler_cycle_count = 0
+        thermostat._heater_controller.duty_accumulator_seconds = 0.0
+        thermostat._heater_controller.min_on_cycle_duration = 300.0
+        thermostat._heater_controller.heater_on = False
+        thermostat._heater_controller.cooler_on = False
+        thermostat._night_setback = None
+        thermostat._night_setback_config = None
+        thermostat._night_setback_controller = None
+        thermostat._contact_sensor_handler = None
+        thermostat._humidity_detector = None
+        thermostat._coordinator = None
+        thermostat.hvac_mode = "heat"  # Mode is heat but not actively heating
+        thermostat.hass = MagicMock()
+        thermostat.hass.data = {}
+
+        attrs = build_state_attributes(thermostat)
+
+        assert "status" in attrs
+        assert attrs["status"]["state"] == "idle"
+        assert attrs["status"]["conditions"] == []
+
+    def test_heating_thermostat_status(self):
+        """Test status when thermostat is actively heating."""
+        from custom_components.adaptive_thermostat.managers.state_attributes import (
+            build_state_attributes,
+        )
+
+        thermostat = MagicMock()
+        # Setup thermostat actively heating
+        thermostat._away_temp = 18.0
+        thermostat._eco_temp = 19.0
+        thermostat._boost_temp = 24.0
+        thermostat._comfort_temp = 21.0
+        thermostat._home_temp = 20.0
+        thermostat._sleep_temp = 18.0
+        thermostat._activity_temp = 20.0
+        thermostat._control_output = 75.0  # Calling for heat
+        thermostat._kp = 20.0
+        thermostat._ki = 0.01
+        thermostat._kd = 100.0
+        thermostat._ke = 0.5
+        thermostat.pid_mode = "auto"
+        thermostat.pid_control_i = 5.0
+        thermostat._pid_controller = MagicMock()
+        thermostat._pid_controller.outdoor_temp_lagged = 5.0
+        thermostat._heater_controller = MagicMock()
+        thermostat._heater_controller.heater_cycle_count = 10
+        thermostat._heater_controller.cooler_cycle_count = 0
+        thermostat._heater_controller.duty_accumulator_seconds = 150.0
+        thermostat._heater_controller.min_on_cycle_duration = 300.0
+        thermostat._heater_controller.heater_on = True  # Heater actively on
+        thermostat._heater_controller.cooler_on = False
+        thermostat._night_setback = None
+        thermostat._night_setback_config = None
+        thermostat._night_setback_controller = None
+        thermostat._contact_sensor_handler = None
+        thermostat._humidity_detector = None
+        thermostat._coordinator = None
+        thermostat.hvac_mode = "heat"
+        thermostat.hass = MagicMock()
+        thermostat.hass.data = {}
+
+        attrs = build_state_attributes(thermostat)
+
+        assert "status" in attrs
+        assert attrs["status"]["state"] == "heating"
+        assert attrs["status"]["conditions"] == []
+
+    def test_paused_by_contact_sensor_status(self):
+        """Test status when paused by open contact sensor."""
+        from custom_components.adaptive_thermostat.managers.state_attributes import (
+            build_state_attributes,
+        )
+        from custom_components.adaptive_thermostat.adaptive.contact_sensors import ContactAction
+
+        thermostat = MagicMock()
+        # Setup thermostat paused by contact sensor
+        thermostat._away_temp = 18.0
+        thermostat._eco_temp = 19.0
+        thermostat._boost_temp = 24.0
+        thermostat._comfort_temp = 21.0
+        thermostat._home_temp = 20.0
+        thermostat._sleep_temp = 18.0
+        thermostat._activity_temp = 20.0
+        thermostat._control_output = 50.0
+        thermostat._kp = 20.0
+        thermostat._ki = 0.01
+        thermostat._kd = 100.0
+        thermostat._ke = 0.5
+        thermostat.pid_mode = "auto"
+        thermostat.pid_control_i = 5.0
+        thermostat._pid_controller = MagicMock()
+        thermostat._pid_controller.outdoor_temp_lagged = 5.0
+        thermostat._heater_controller = MagicMock()
+        thermostat._heater_controller.heater_cycle_count = 10
+        thermostat._heater_controller.cooler_cycle_count = 0
+        thermostat._heater_controller.duty_accumulator_seconds = 0.0
+        thermostat._heater_controller.min_on_cycle_duration = 300.0
+        thermostat._heater_controller.heater_on = False  # Paused, so not heating
+        thermostat._heater_controller.cooler_on = False
+
+        # Contact sensor open and pausing
+        contact_handler = MagicMock()
+        contact_handler.is_any_contact_open.return_value = True
+        contact_handler.should_take_action.return_value = True
+        contact_handler.get_action.return_value = ContactAction.PAUSE
+        contact_handler.get_time_until_action.return_value = None
+        thermostat._contact_sensor_handler = contact_handler
+
+        thermostat._humidity_detector = None
+        thermostat._night_setback = None
+        thermostat._night_setback_config = None
+        thermostat._night_setback_controller = None
+        thermostat._coordinator = None
+        thermostat.hvac_mode = "heat"
+        thermostat.hass = MagicMock()
+        thermostat.hass.data = {}
+
+        attrs = build_state_attributes(thermostat)
+
+        assert "status" in attrs
+        assert attrs["status"]["state"] == "paused"
+        assert "contact_open" in attrs["status"]["conditions"]
+        # No resume_at since contact sensors don't have timed resume
+        assert "resume_at" not in attrs["status"]
+
+    def test_paused_by_humidity_status(self):
+        """Test status when paused by humidity spike."""
+        from custom_components.adaptive_thermostat.managers.state_attributes import (
+            build_state_attributes,
+        )
+
+        thermostat = MagicMock()
+        # Setup thermostat paused by humidity
+        thermostat._away_temp = 18.0
+        thermostat._eco_temp = 19.0
+        thermostat._boost_temp = 24.0
+        thermostat._comfort_temp = 21.0
+        thermostat._home_temp = 20.0
+        thermostat._sleep_temp = 18.0
+        thermostat._activity_temp = 20.0
+        thermostat._control_output = 50.0
+        thermostat._kp = 20.0
+        thermostat._ki = 0.01
+        thermostat._kd = 100.0
+        thermostat._ke = 0.5
+        thermostat.pid_mode = "auto"
+        thermostat.pid_control_i = 5.0
+        thermostat._pid_controller = MagicMock()
+        thermostat._pid_controller.outdoor_temp_lagged = 5.0
+        thermostat._heater_controller = MagicMock()
+        thermostat._heater_controller.heater_cycle_count = 10
+        thermostat._heater_controller.cooler_cycle_count = 0
+        thermostat._heater_controller.duty_accumulator_seconds = 0.0
+        thermostat._heater_controller.min_on_cycle_duration = 300.0
+        thermostat._heater_controller.heater_on = False
+        thermostat._heater_controller.cooler_on = False
+
+        # Humidity detector paused
+        humidity_detector = MagicMock()
+        humidity_detector.should_pause.return_value = True
+        humidity_detector.get_state.return_value = "paused"
+        humidity_detector.get_time_until_resume.return_value = None
+        thermostat._humidity_detector = humidity_detector
+
+        thermostat._contact_sensor_handler = None
+        thermostat._night_setback = None
+        thermostat._night_setback_config = None
+        thermostat._night_setback_controller = None
+        thermostat._coordinator = None
+        thermostat.hvac_mode = "heat"
+        thermostat.hass = MagicMock()
+        thermostat.hass.data = {}
+
+        attrs = build_state_attributes(thermostat)
+
+        assert "status" in attrs
+        assert attrs["status"]["state"] == "paused"
+        assert "humidity_spike" in attrs["status"]["conditions"]
+
+    def test_night_setback_status(self):
+        """Test status during night setback period."""
+        from custom_components.adaptive_thermostat.managers.state_attributes import (
+            build_state_attributes,
+        )
+
+        thermostat = MagicMock()
+        # Setup thermostat in night setback
+        thermostat._away_temp = 18.0
+        thermostat._eco_temp = 19.0
+        thermostat._boost_temp = 24.0
+        thermostat._comfort_temp = 21.0
+        thermostat._home_temp = 20.0
+        thermostat._sleep_temp = 18.0
+        thermostat._activity_temp = 20.0
+        thermostat._control_output = 20.0
+        thermostat._kp = 20.0
+        thermostat._ki = 0.01
+        thermostat._kd = 100.0
+        thermostat._ke = 0.5
+        thermostat.pid_mode = "auto"
+        thermostat.pid_control_i = 2.0
+        thermostat._pid_controller = MagicMock()
+        thermostat._pid_controller.outdoor_temp_lagged = 5.0
+        thermostat._heater_controller = MagicMock()
+        thermostat._heater_controller.heater_cycle_count = 10
+        thermostat._heater_controller.cooler_cycle_count = 0
+        thermostat._heater_controller.duty_accumulator_seconds = 50.0
+        thermostat._heater_controller.min_on_cycle_duration = 300.0
+        thermostat._heater_controller.heater_on = False
+        thermostat._heater_controller.cooler_on = False
+
+        # Night setback controller active
+        night_setback_controller = MagicMock()
+        night_setback_controller.calculate_night_setback_adjustment.return_value = (
+            -3.0,  # adjustment
+            True,   # in_night_period
+            {"night_setback_delta": 3.0, "night_setback_end": "07:00"}
+        )
+        night_setback_controller.in_learning_grace_period = False
+        thermostat._night_setback_controller = night_setback_controller
+
+        thermostat._contact_sensor_handler = None
+        thermostat._humidity_detector = None
+        thermostat._coordinator = None
+        thermostat.hvac_mode = "heat"
+        thermostat.hass = MagicMock()
+        thermostat.hass.data = {}
+
+        attrs = build_state_attributes(thermostat)
+
+        assert "status" in attrs
+        assert "night_setback" in attrs["status"]["conditions"]
+        assert attrs["status"]["setback_delta"] == 3.0
+        # setback_end should be ISO8601 format
+        assert "setback_end" in attrs["status"]
+        assert "T" in attrs["status"]["setback_end"]  # ISO8601 has T separator
+
+    def test_multiple_conditions_status(self):
+        """Test status with multiple active conditions."""
+        from custom_components.adaptive_thermostat.managers.state_attributes import (
+            build_state_attributes,
+        )
+
+        thermostat = MagicMock()
+        # Setup thermostat with multiple conditions
+        thermostat._away_temp = 18.0
+        thermostat._eco_temp = 19.0
+        thermostat._boost_temp = 24.0
+        thermostat._comfort_temp = 21.0
+        thermostat._home_temp = 20.0
+        thermostat._sleep_temp = 18.0
+        thermostat._activity_temp = 20.0
+        thermostat._control_output = 20.0
+        thermostat._kp = 20.0
+        thermostat._ki = 0.01
+        thermostat._kd = 100.0
+        thermostat._ke = 0.5
+        thermostat.pid_mode = "auto"
+        thermostat.pid_control_i = 2.0
+        thermostat._pid_controller = MagicMock()
+        thermostat._pid_controller.outdoor_temp_lagged = 5.0
+        thermostat._heater_controller = MagicMock()
+        thermostat._heater_controller.heater_cycle_count = 10
+        thermostat._heater_controller.cooler_cycle_count = 0
+        thermostat._heater_controller.duty_accumulator_seconds = 0.0
+        thermostat._heater_controller.min_on_cycle_duration = 300.0
+        thermostat._heater_controller.heater_on = False
+        thermostat._heater_controller.cooler_on = False
+
+        # Night setback AND learning grace period active
+        night_setback_controller = MagicMock()
+        night_setback_controller.calculate_night_setback_adjustment.return_value = (
+            -3.0,
+            True,
+            {"night_setback_delta": 3.0, "night_setback_end": "07:00"}
+        )
+        night_setback_controller.in_learning_grace_period = True
+        thermostat._night_setback_controller = night_setback_controller
+
+        thermostat._contact_sensor_handler = None
+        thermostat._humidity_detector = None
+        thermostat._coordinator = None
+        thermostat.hvac_mode = "heat"
+        thermostat.hass = MagicMock()
+        thermostat.hass.data = {}
+
+        attrs = build_state_attributes(thermostat)
+
+        assert "status" in attrs
+        assert "night_setback" in attrs["status"]["conditions"]
+        assert "learning_grace" in attrs["status"]["conditions"]
+        # Both conditions should be present
+        assert len(attrs["status"]["conditions"]) == 2
+
+    def test_preheating_status(self):
+        """Test status when preheating before night setback ends."""
+        from custom_components.adaptive_thermostat.managers.state_attributes import (
+            build_state_attributes,
+        )
+
+        thermostat = MagicMock()
+        # Setup thermostat in preheat mode
+        thermostat._away_temp = 18.0
+        thermostat._eco_temp = 19.0
+        thermostat._boost_temp = 24.0
+        thermostat._comfort_temp = 21.0
+        thermostat._home_temp = 20.0
+        thermostat._sleep_temp = 18.0
+        thermostat._activity_temp = 20.0
+        thermostat._control_output = 60.0
+        thermostat._kp = 20.0
+        thermostat._ki = 0.01
+        thermostat._kd = 100.0
+        thermostat._ke = 0.5
+        thermostat.pid_mode = "auto"
+        thermostat.pid_control_i = 3.0
+        thermostat._pid_controller = MagicMock()
+        thermostat._pid_controller.outdoor_temp_lagged = 5.0
+        thermostat._heater_controller = MagicMock()
+        thermostat._heater_controller.heater_cycle_count = 10
+        thermostat._heater_controller.cooler_cycle_count = 0
+        thermostat._heater_controller.duty_accumulator_seconds = 100.0
+        thermostat._heater_controller.min_on_cycle_duration = 300.0
+        thermostat._heater_controller.heater_on = True
+        thermostat._heater_controller.cooler_on = False
+
+        # Preheat active
+        thermostat._preheat_active = True
+
+        # Night setback controller with preheat
+        night_setback_controller = MagicMock()
+        night_setback_controller.calculate_night_setback_adjustment.return_value = (
+            -2.0,  # Still in setback but preheating
+            True,
+            {"night_setback_delta": 2.0, "night_setback_end": "07:00"}
+        )
+        night_setback_controller.in_learning_grace_period = False
+        thermostat._night_setback_controller = night_setback_controller
+
+        thermostat._contact_sensor_handler = None
+        thermostat._humidity_detector = None
+        thermostat._coordinator = None
+        thermostat.hvac_mode = "heat"
+        thermostat.hass = MagicMock()
+        thermostat.hass.data = {}
+
+        attrs = build_state_attributes(thermostat)
+
+        assert "status" in attrs
+        assert attrs["status"]["state"] == "preheating"
+        # Night setback condition should still be present
+        assert "night_setback" in attrs["status"]["conditions"]
+
+    def test_settling_status(self):
+        """Test status during settling phase after heating cycle."""
+        from custom_components.adaptive_thermostat.managers.state_attributes import (
+            build_state_attributes,
+        )
+
+        thermostat = MagicMock()
+        # Setup thermostat in settling phase
+        thermostat._away_temp = 18.0
+        thermostat._eco_temp = 19.0
+        thermostat._boost_temp = 24.0
+        thermostat._comfort_temp = 21.0
+        thermostat._home_temp = 20.0
+        thermostat._sleep_temp = 18.0
+        thermostat._activity_temp = 20.0
+        thermostat._control_output = 0.0  # No longer calling for heat
+        thermostat._kp = 20.0
+        thermostat._ki = 0.01
+        thermostat._kd = 100.0
+        thermostat._ke = 0.5
+        thermostat.pid_mode = "auto"
+        thermostat.pid_control_i = 0.0
+        thermostat._pid_controller = MagicMock()
+        thermostat._pid_controller.outdoor_temp_lagged = 5.0
+        thermostat._heater_controller = MagicMock()
+        thermostat._heater_controller.heater_cycle_count = 10
+        thermostat._heater_controller.cooler_cycle_count = 0
+        thermostat._heater_controller.duty_accumulator_seconds = 0.0
+        thermostat._heater_controller.min_on_cycle_duration = 300.0
+        thermostat._heater_controller.heater_on = False
+        thermostat._heater_controller.cooler_on = False
+
+        # Cycle tracker in settling state
+        thermostat._cycle_tracker = MagicMock()
+        thermostat._cycle_tracker.get_state_name.return_value = "settling"
+
+        thermostat._contact_sensor_handler = None
+        thermostat._humidity_detector = None
+        thermostat._night_setback_controller = None
+        thermostat._coordinator = None
+        thermostat.hvac_mode = "heat"
+        thermostat.hass = MagicMock()
+        thermostat.hass.data = {}
+
+        attrs = build_state_attributes(thermostat)
+
+        assert "status" in attrs
+        assert attrs["status"]["state"] == "settling"
+        assert attrs["status"]["conditions"] == []
+
+    def test_status_in_extra_state_attributes(self):
+        """Test that status appears correctly in build_state_attributes."""
+        from custom_components.adaptive_thermostat.managers.state_attributes import (
+            build_state_attributes,
+        )
+
+        thermostat = MagicMock()
+        # Setup minimal thermostat
+        thermostat._away_temp = 18.0
+        thermostat._eco_temp = 19.0
+        thermostat._boost_temp = 24.0
+        thermostat._comfort_temp = 21.0
+        thermostat._home_temp = 20.0
+        thermostat._sleep_temp = 18.0
+        thermostat._activity_temp = 20.0
+        thermostat._control_output = 50.0
+        thermostat._kp = 20.0
+        thermostat._ki = 0.01
+        thermostat._kd = 100.0
+        thermostat._ke = 0.5
+        thermostat.pid_mode = "auto"
+        thermostat.pid_control_i = 5.0
+        thermostat._pid_controller = MagicMock()
+        thermostat._pid_controller.outdoor_temp_lagged = 5.0
+        thermostat._heater_controller = MagicMock()
+        thermostat._heater_controller.heater_cycle_count = 10
+        thermostat._heater_controller.cooler_cycle_count = 0
+        thermostat._heater_controller.duty_accumulator_seconds = 0.0
+        thermostat._heater_controller.min_on_cycle_duration = 300.0
+        thermostat._heater_controller.heater_on = True
+        thermostat._heater_controller.cooler_on = False
+        thermostat._contact_sensor_handler = None
+        thermostat._humidity_detector = None
+        thermostat._night_setback_controller = None
+        thermostat._coordinator = None
+        thermostat.hvac_mode = "heat"
+        thermostat.hass = MagicMock()
+        thermostat.hass.data = {}
+
+        attrs = build_state_attributes(thermostat)
+
+        # Verify status key exists and has correct structure
+        assert "status" in attrs
+        assert isinstance(attrs["status"], dict)
+        assert "state" in attrs["status"]
+        assert "conditions" in attrs["status"]
+        assert isinstance(attrs["status"]["conditions"], list)
+
+    def test_resume_at_is_iso8601_format(self):
+        """Test that resume_at timestamps are in ISO8601 format."""
+        from custom_components.adaptive_thermostat.managers.state_attributes import (
+            build_state_attributes,
+        )
+
+        thermostat = MagicMock()
+        # Setup thermostat with humidity pause and resume time
+        thermostat._away_temp = 18.0
+        thermostat._eco_temp = 19.0
+        thermostat._boost_temp = 24.0
+        thermostat._comfort_temp = 21.0
+        thermostat._home_temp = 20.0
+        thermostat._sleep_temp = 18.0
+        thermostat._activity_temp = 20.0
+        thermostat._control_output = 0.0
+        thermostat._kp = 20.0
+        thermostat._ki = 0.01
+        thermostat._kd = 100.0
+        thermostat._ke = 0.5
+        thermostat.pid_mode = "auto"
+        thermostat.pid_control_i = 0.0
+        thermostat._pid_controller = MagicMock()
+        thermostat._pid_controller.outdoor_temp_lagged = 5.0
+        thermostat._heater_controller = MagicMock()
+        thermostat._heater_controller.heater_cycle_count = 10
+        thermostat._heater_controller.cooler_cycle_count = 0
+        thermostat._heater_controller.duty_accumulator_seconds = 0.0
+        thermostat._heater_controller.min_on_cycle_duration = 300.0
+        thermostat._heater_controller.heater_on = False
+        thermostat._heater_controller.cooler_on = False
+
+        # Humidity detector with resume time
+        humidity_detector = MagicMock()
+        humidity_detector.should_pause.return_value = True
+        humidity_detector.get_state.return_value = "stabilizing"
+        humidity_detector.get_time_until_resume.return_value = 300  # 5 minutes
+        thermostat._humidity_detector = humidity_detector
+
+        thermostat._contact_sensor_handler = None
+        thermostat._night_setback_controller = None
+        thermostat._coordinator = None
+        thermostat.hvac_mode = "heat"
+        thermostat.hass = MagicMock()
+        thermostat.hass.data = {}
+
+        attrs = build_state_attributes(thermostat)
+
+        assert "status" in attrs
+        assert "resume_at" in attrs["status"]
+        # Verify ISO8601 format (contains T separator)
+        resume_at = attrs["status"]["resume_at"]
+        assert "T" in resume_at
+        # Verify it's a valid timestamp format (YYYY-MM-DDTHH:MM:SS)
+        from datetime import datetime
+        try:
+            # Try parsing as ISO8601
+            datetime.fromisoformat(resume_at)
+        except ValueError:
+            pytest.fail(f"resume_at is not valid ISO8601: {resume_at}")
