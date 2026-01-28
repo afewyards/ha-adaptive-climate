@@ -1,6 +1,20 @@
 # CHANGELOG
 
 
+## v0.38.3 (2026-01-28)
+
+### Bug Fixes
+
+- Use timezone-aware datetimes in recovery deadline checks
+  ([`67fcee4`](https://github.com/afewyards/ha-adaptive-thermostat/commit/67fcee47b868b91f0c0dfe61c47ccfcac896632b))
+
+Replace naive datetime.combine() with current_time.replace() to preserve timezone information when
+  calculating recovery deadlines. Prevents TypeError when comparing timezone-aware and naive
+  datetimes.
+
+Also remove unused variable in should_start_recovery() line 256.
+
+
 ## v0.38.2 (2026-01-28)
 
 ### Bug Fixes
