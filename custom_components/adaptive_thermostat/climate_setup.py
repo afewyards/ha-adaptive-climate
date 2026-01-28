@@ -96,6 +96,8 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Optional(const.CONF_HUMIDITY_ABSOLUTE_MAX, default=const.DEFAULT_HUMIDITY_ABSOLUTE_MAX): vol.Coerce(float),
         vol.Optional(const.CONF_HUMIDITY_DETECTION_WINDOW, default=const.DEFAULT_HUMIDITY_DETECTION_WINDOW): vol.Coerce(int),
         vol.Optional(const.CONF_HUMIDITY_STABILIZATION_DELAY, default=const.DEFAULT_HUMIDITY_STABILIZATION_DELAY): vol.Coerce(int),
+        vol.Optional(const.CONF_HUMIDITY_EXIT_THRESHOLD, default=const.DEFAULT_HUMIDITY_EXIT_THRESHOLD): vol.Coerce(float),
+        vol.Optional(const.CONF_HUMIDITY_EXIT_DROP, default=const.DEFAULT_HUMIDITY_EXIT_DROP): vol.Coerce(float),
         # Night setback
         vol.Optional(const.CONF_NIGHT_SETBACK): vol.Schema({
             vol.Optional(const.CONF_NIGHT_SETBACK_START): cv.string,

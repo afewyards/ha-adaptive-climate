@@ -34,6 +34,8 @@ class HumidityDetector:
         detection_window: int = 300,
         stabilization_delay: int = 300,
         max_pause_duration: int = 3600,
+        exit_humidity_threshold: float = 70.0,
+        exit_humidity_drop: float = 5.0,
     ):
         """Initialize humidity detector.
 
@@ -43,12 +45,16 @@ class HumidityDetector:
             detection_window: Time window in seconds for spike detection (default: 300s/5min)
             stabilization_delay: Time in seconds before resuming from stabilizing (default: 300s/5min)
             max_pause_duration: Maximum time in seconds to stay paused (default: 3600s/60min)
+            exit_humidity_threshold: Humidity % below which exit can occur (default: 70%)
+            exit_humidity_drop: Drop % from peak required for exit (default: 5%)
         """
         self._spike_threshold = spike_threshold
         self._absolute_max = absolute_max
         self._detection_window = detection_window
         self._stabilization_delay = stabilization_delay
         self._max_pause_duration = max_pause_duration
+        self._exit_humidity_threshold = exit_humidity_threshold
+        self._exit_humidity_drop = exit_humidity_drop
 
         # State tracking
         self._state: Literal["normal", "paused", "stabilizing"] = "normal"
@@ -110,10 +116,10 @@ class HumidityDetector:
             # Check for new spike (re-triggers paused)
             self._check_triggers(current_humidity)
 
-            # Check exit condition: <70% AND >10% drop from peak
-            if current_humidity < 70.0 and self._peak_humidity is not None:
+            # Check exit condition: below threshold AND sufficient drop from peak
+            if current_humidity < self._exit_humidity_threshold and self._peak_humidity is not None:
                 drop_from_peak = self._peak_humidity - current_humidity
-                if drop_from_peak > 10.0:
+                if drop_from_peak > self._exit_humidity_drop:
                     self._state = "stabilizing"
                     self._stabilization_start = ts
                     self._pause_start = None
