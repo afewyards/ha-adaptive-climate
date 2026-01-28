@@ -1,6 +1,35 @@
 # CHANGELOG
 
 
+## v0.38.2 (2026-01-28)
+
+### Bug Fixes
+
+- Use local time for night setback period checks
+  ([`b4362e8`](https://github.com/afewyards/ha-adaptive-thermostat/commit/b4362e805dea68f4a019cefc4c90868ac641b930))
+
+Bug: NightSetbackCalculator was using dt_util.utcnow() and extracting
+
+.time() to compare against local time strings like "08:57". This caused incorrect period detection
+  when UTC time-of-day differed from local time-of-day.
+
+Fix: Changed line 259 to use dt_util.as_local(dt_util.utcnow()) so that .time() extraction yields
+  local time-of-day for correct comparison.
+
+Added comprehensive timezone-aware test cases covering: - UTC vs local edge cases (10:00 AM local vs
+  08:00 AM UTC) - Multiple timezone verification (Amsterdam, New York, Tokyo, Sydney) - Both
+  NightSetback.is_night_period() and NightSetbackCalculator
+
+### Refactoring
+
+- Consolidate pause + night_setback attrs into unified status object
+  ([`a15392d`](https://github.com/afewyards/ha-adaptive-thermostat/commit/a15392d438bef4b88f9821f3796a4fc077812de4))
+
+Rename PauseManager → StatusManager, consolidate top-level pause and night_setback_* attributes into
+  a single attrs["status"] object with priority: contact > humidity > night_setback. Learning grace
+  period fields (learning_paused, learning_resumes) also moved into status.
+
+
 ## v0.38.1 (2026-01-27)
 
 ### Bug Fixes
