@@ -218,7 +218,7 @@ def convert_setback_end(end_time: str | None, now: datetime | None = None) -> st
         return None
 
     if now is None:
-        now = dt_util.utcnow()
+        now = dt_util.now()
 
     try:
         hour, minute = map(int, end_time.split(":"))

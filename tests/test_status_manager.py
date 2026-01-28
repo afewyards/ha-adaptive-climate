@@ -222,11 +222,13 @@ class TestConvertSetbackEnd:
         # Expected: 2024-02-01T07:00:00+00:00 (next month)
         assert result == "2024-02-01T07:00:00+00:00"
 
-    def test_uses_utcnow_when_now_not_provided(self):
-        """Test that function uses dt_util.utcnow() when now parameter is None."""
-        # Don't provide now parameter - should use dt_util.utcnow()
-        # We can't easily test the exact output, but we can verify it doesn't crash
-        result = convert_setback_end("07:00")
+    def test_uses_now_when_now_not_provided(self):
+        """Test that function uses dt_util.now() when now parameter is None."""
+        # Don't provide now parameter - should use dt_util.now()
+        fixed_now = datetime(2024, 1, 15, 6, 0, 0, tzinfo=timezone.utc)
+
+        with patch('custom_components.adaptive_thermostat.managers.status_manager.dt_util.now', return_value=fixed_now):
+            result = convert_setback_end("07:00")
 
         assert result is not None
         assert "T07:00:00" in result  # Should contain the time we specified
@@ -659,7 +661,7 @@ class TestStatusManagerBuildStatus:
         manager = StatusManager()
 
         fixed_now = datetime(2024, 1, 15, 6, 0, 0, tzinfo=timezone.utc)
-        with patch('custom_components.adaptive_thermostat.managers.status_manager.dt_util.utcnow', return_value=fixed_now):
+        with patch('custom_components.adaptive_thermostat.managers.status_manager.dt_util.now', return_value=fixed_now):
             result = manager.build_status(
                 hvac_mode="heat",
                 night_setback_active=True,
@@ -690,16 +692,17 @@ class TestStatusManagerBuildStatus:
 
         fixed_now = datetime(2024, 1, 15, 6, 0, 0, tzinfo=timezone.utc)
         with patch('custom_components.adaptive_thermostat.managers.status_manager.dt_util.utcnow', return_value=fixed_now):
-            result = manager.build_status(
-                hvac_mode="heat",
-                heater_on=True,
-                is_paused=True,
-                night_setback_active=True,
-                contact_open=True,
-                resume_in_seconds=180,
-                setback_delta=-2.5,
-                setback_end_time="07:00"
-            )
+            with patch('custom_components.adaptive_thermostat.managers.status_manager.dt_util.now', return_value=fixed_now):
+                result = manager.build_status(
+                    hvac_mode="heat",
+                    heater_on=True,
+                    is_paused=True,
+                    night_setback_active=True,
+                    contact_open=True,
+                    resume_in_seconds=180,
+                    setback_delta=-2.5,
+                    setback_end_time="07:00"
+                )
 
         assert result["state"] == "paused"  # Paused takes priority
         assert "contact_open" in result["conditions"]
