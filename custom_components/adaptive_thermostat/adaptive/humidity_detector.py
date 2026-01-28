@@ -109,12 +109,13 @@ class HumidityDetector:
                     self._pause_start = None
                     return
 
-            # Track peak humidity
+            # Track peak humidity - only update if humidity is rising
             if self._peak_humidity is None or current_humidity > self._peak_humidity:
                 self._peak_humidity = current_humidity
 
-            # Check for new spike (re-triggers paused)
-            self._check_triggers(current_humidity)
+            # Note: Don't call _check_triggers() here. The absolute_max check is only
+            # for initial shower detection. Once paused, we just track peak and wait
+            # for exit conditions. A new shower during stabilizing will re-trigger.
 
             # Check exit condition: below threshold AND sufficient drop from peak
             if current_humidity < self._exit_humidity_threshold and self._peak_humidity is not None:
