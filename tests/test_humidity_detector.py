@@ -513,3 +513,66 @@ class TestHumidityDetector:
         # Finally drop to 64% (below 65% and 85 - 64 = 21% drop, which is >8%)
         detector.record_humidity(now + timedelta(seconds=700), 64.0)
         assert detector.get_state() == "stabilizing"  # Now transitions
+
+    def test_peak_not_reset_when_humidity_above_absolute_max(self):
+        """Test that peak humidity is preserved when humidity stays above absolute_max.
+
+        Regression test: Previously, when humidity stayed above absolute_max during
+        the paused state, each humidity reading would reset the peak to the current
+        value, preventing the exit condition (drop from peak) from ever being met.
+        """
+        # Bathroom scenario: absolute_max=65, humidity hovers around 69%
+        detector = HumidityDetector(
+            spike_threshold=15,
+            absolute_max=65.0,
+            exit_humidity_threshold=70.0,
+            exit_humidity_drop=5.0
+        )
+        now = datetime(2024, 1, 1, 12, 0, 0)
+
+        # Initial humidity at 50%
+        detector.record_humidity(now, 50.0)
+
+        # Shower starts, humidity spikes to 80% (above absolute_max of 65%)
+        detector.record_humidity(now + timedelta(seconds=60), 80.0)
+        assert detector.get_state() == "paused"
+        assert detector._peak_humidity == 80.0
+
+        # Humidity drops to 75% (still above absolute_max of 65%)
+        # Peak should remain at 80%, not reset to 75%
+        detector.record_humidity(now + timedelta(seconds=120), 75.0)
+        assert detector.get_state() == "paused"
+        assert detector._peak_humidity == 80.0  # Peak preserved!
+
+        # Humidity drops to 69% (still above absolute_max of 65%, below exit_threshold of 70%)
+        # Peak should still be 80%, drop = 80 - 69 = 11% > 5%, should exit
+        detector.record_humidity(now + timedelta(seconds=180), 69.0)
+        assert detector._peak_humidity == 80.0  # Peak preserved!
+        assert detector.get_state() == "stabilizing"  # Can now exit!
+
+    def test_peak_updates_on_new_high_above_absolute_max(self):
+        """Test that peak does update when humidity rises to a new high."""
+        detector = HumidityDetector(
+            spike_threshold=15,
+            absolute_max=65.0,
+            exit_humidity_threshold=70.0,
+            exit_humidity_drop=5.0
+        )
+        now = datetime(2024, 1, 1, 12, 0, 0)
+
+        # Trigger pause at 70%
+        detector.record_humidity(now, 50.0)
+        detector.record_humidity(now + timedelta(seconds=60), 70.0)
+        assert detector._peak_humidity == 70.0
+
+        # Humidity rises to 75% - peak should update
+        detector.record_humidity(now + timedelta(seconds=120), 75.0)
+        assert detector._peak_humidity == 75.0
+
+        # Humidity drops to 72% - peak should remain 75%
+        detector.record_humidity(now + timedelta(seconds=180), 72.0)
+        assert detector._peak_humidity == 75.0
+
+        # Humidity rises to 78% - peak should update
+        detector.record_humidity(now + timedelta(seconds=240), 78.0)
+        assert detector._peak_humidity == 78.0

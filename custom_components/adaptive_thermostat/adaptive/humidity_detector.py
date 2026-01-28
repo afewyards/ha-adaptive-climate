@@ -150,7 +150,9 @@ class HumidityDetector:
         # Absolute threshold trigger
         if current_humidity > self._absolute_max:
             self._state = "paused"
-            self._peak_humidity = current_humidity
+            # Only update peak if it's a new high (don't reset on re-trigger)
+            if self._peak_humidity is None or current_humidity > self._peak_humidity:
+                self._peak_humidity = current_humidity
             self._stabilization_start = None
             # Track pause start time (or reset if already paused)
             if self._pause_start is None:
@@ -164,7 +166,9 @@ class HumidityDetector:
 
             if humidity_rise > self._spike_threshold:
                 self._state = "paused"
-                self._peak_humidity = current_humidity
+                # Only update peak if it's a new high (don't reset on re-trigger)
+                if self._peak_humidity is None or current_humidity > self._peak_humidity:
+                    self._peak_humidity = current_humidity
                 self._stabilization_start = None
                 # Track pause start time (or reset if already paused)
                 if self._pause_start is None:
