@@ -118,9 +118,11 @@ climate:
     humidity_absolute_max: 80          # % absolute cap (default 80)
     humidity_detection_window: 300     # seconds for rate calc (default 300)
     humidity_stabilization_delay: 300  # seconds after drop (default 300)
+    humidity_exit_threshold: 70        # % absolute for exit (default 70)
+    humidity_exit_drop: 5              # % drop from peak for exit (default 5)
 ```
 
-**Detection algorithm:** Ring buffer tracks humidity over `detection_window`. Triggers when spike ≥ `humidity_spike_threshold`% OR absolute ≥ `humidity_absolute_max`%. Exit when humidity < 70% AND dropped >10% from peak.
+**Detection algorithm:** Ring buffer tracks humidity over `detection_window`. Triggers when spike ≥ `humidity_spike_threshold`% OR absolute ≥ `humidity_absolute_max`%. Exit when humidity < `humidity_exit_threshold`% AND dropped ≥ `humidity_exit_drop`% from peak.
 
 **State machine:**
 ```
