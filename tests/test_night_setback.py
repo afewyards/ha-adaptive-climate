@@ -732,3 +732,84 @@ class TestNightSetbackTimezone:
             # Local time 23:00 (11 PM) - during night in all zones
             local_time = datetime(2024, 1, 15, 23, 0, tzinfo=tz)
             assert setback.is_night_period(local_time) is True, f"Failed for {tz_name}"
+
+    def test_get_adjusted_setpoint_timezone_aware(self):
+        """Test get_adjusted_setpoint with timezone-aware datetime doesn't crash."""
+        from datetime import timezone, timedelta as td
+
+        setback = NightSetback(
+            start_time="22:00",
+            end_time="06:00",
+            setback_delta=2.0,
+            recovery_deadline="06:00"
+        )
+
+        base_setpoint = 20.0
+
+        # Create timezone-aware datetime (UTC+2)
+        tz = timezone(td(hours=2))
+
+        # Test during night, more than 2 hours before recovery deadline
+        # 02:00 is 4 hours before 06:00 - should be in setback
+        current = datetime(2024, 1, 15, 2, 0, tzinfo=tz)
+        adjusted = setback.get_adjusted_setpoint(base_setpoint, current)
+        assert adjusted == 18.0  # Still in setback
+
+        # Test during night, within 2 hours of recovery deadline
+        # 04:30 is 1.5 hours before 06:00 - should restore setpoint
+        current = datetime(2024, 1, 15, 4, 30, tzinfo=tz)
+        adjusted = setback.get_adjusted_setpoint(base_setpoint, current)
+        assert adjusted == 20.0  # Recovery mode
+
+    def test_should_start_recovery_timezone_aware(self):
+        """Test should_start_recovery with timezone-aware datetime doesn't crash."""
+        from datetime import timezone, timedelta as td
+
+        setback = NightSetback(
+            start_time="22:00",
+            end_time="06:00",
+            setback_delta=2.0,
+            recovery_deadline="06:00"
+        )
+
+        base_setpoint = 20.0
+
+        # Create timezone-aware datetime (UTC-5)
+        tz = timezone(td(hours=-5))
+
+        # Large deficit, close to deadline (need to start recovery)
+        current = datetime(2024, 1, 15, 4, 0, tzinfo=tz)  # 2 hours before deadline
+        current_temp = 16.0  # 4°C below setpoint
+        assert setback.should_start_recovery(current, current_temp, base_setpoint) is True
+
+        # Small deficit, plenty of time (no recovery needed)
+        current = datetime(2024, 1, 15, 2, 0, tzinfo=tz)  # 4 hours before deadline
+        current_temp = 19.0  # 1°C below setpoint
+        assert setback.should_start_recovery(current, current_temp, base_setpoint) is False
+
+    def test_recovery_deadline_crosses_midnight_timezone_aware(self):
+        """Test recovery deadline calculations when deadline is next day."""
+        from datetime import timezone, timedelta as td
+
+        setback = NightSetback(
+            start_time="22:00",
+            end_time="06:00",
+            setback_delta=2.0,
+            recovery_deadline="06:00"
+        )
+
+        base_setpoint = 20.0
+
+        # Create timezone-aware datetime (UTC+1)
+        tz = timezone(td(hours=1))
+
+        # Test at 23:00 (11 PM) - deadline is "tomorrow" at 06:00 (7 hours away)
+        current = datetime(2024, 1, 15, 23, 0, tzinfo=tz)
+        current_temp = 15.0  # 5°C deficit
+
+        # With default heating rate (1.0°C/h) and default margin (1.25x):
+        # estimated_recovery = (5 / 1.0) * 1.25 = 6.25 hours
+        # time_until_deadline = 7 hours
+        # Should NOT start recovery (6.25 < 7)
+        should_recover = setback.should_start_recovery(current, current_temp, base_setpoint)
+        assert should_recover is False

@@ -211,10 +211,14 @@ class NightSetback:
         """
         # Check if recovery deadline is approaching
         if self.recovery_deadline and not force_recovery:
-            current_time_only = current_time.time()
             # If we're within 2 hours of recovery deadline, restore setpoint
             from datetime import timedelta
-            recovery_threshold = datetime.combine(current_time.date(), self.recovery_deadline)
+            recovery_threshold = current_time.replace(
+                hour=self.recovery_deadline.hour,
+                minute=self.recovery_deadline.minute,
+                second=0,
+                microsecond=0
+            )
             two_hours_before = recovery_threshold - timedelta(hours=2)
 
             if current_time >= two_hours_before:
@@ -253,10 +257,13 @@ class NightSetback:
         if not self.recovery_deadline:
             return False
 
-        current_time_only = current_time.time()
-
         # Calculate time until deadline
-        recovery_dt = datetime.combine(current_time.date(), self.recovery_deadline)
+        recovery_dt = current_time.replace(
+            hour=self.recovery_deadline.hour,
+            minute=self.recovery_deadline.minute,
+            second=0,
+            microsecond=0
+        )
         if recovery_dt < current_time:
             # Deadline is tomorrow
             from datetime import timedelta
