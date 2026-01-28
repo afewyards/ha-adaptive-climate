@@ -1,6 +1,44 @@
 # CHANGELOG
 
 
+## v0.39.0 (2026-01-28)
+
+### Documentation
+
+- Document humidity exit config options
+  ([`501fcdc`](https://github.com/afewyards/ha-adaptive-thermostat/commit/501fcdc9acc59d7698e5367771354691d9f031e4))
+
+### Features
+
+- Add humidity exit config constants
+  ([`824a821`](https://github.com/afewyards/ha-adaptive-thermostat/commit/824a82117fceaeb267df948099a97c8553ddc5dc))
+
+- Add humidity exit schema entries
+  ([`8f6bc32`](https://github.com/afewyards/ha-adaptive-thermostat/commit/8f6bc32b1a40983ea443857eb2060cdd7c00189c))
+
+- Wire humidity exit config to detector
+  ([`7b03f62`](https://github.com/afewyards/ha-adaptive-thermostat/commit/7b03f62c5d1ed5032dd39c0f054b91c488a79c78))
+
+### Refactoring
+
+- Redesign status attribute with state/conditions structure
+  ([`75026ad`](https://github.com/afewyards/ha-adaptive-thermostat/commit/75026ad8b11071e168fd953c9b454ece6bd2fe9b))
+
+Replace old status dict with uniform structure: - state:
+  idle|heating|cooling|paused|preheating|settling - conditions: list of active conditions (always
+  present) - resume_at/setback_end: ISO8601 timestamps - Debug fields: humidity_peak, open_sensors
+
+Add ThermostatState and ThermostatCondition enums to const.py. Create StatusManager with
+  derive_state(), build_conditions(), and build_status() for centralized status construction.
+
+Clean break from old format - no backward compatibility shims.
+
+### Testing
+
+- Update humidity exit tests for configurable thresholds
+  ([`5514179`](https://github.com/afewyards/ha-adaptive-thermostat/commit/5514179042bf3b0d3520ff323f4ebaefe4876d04))
+
+
 ## v0.38.4 (2026-01-28)
 
 ### Bug Fixes
