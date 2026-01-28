@@ -1,6 +1,34 @@
 # CHANGELOG
 
 
+## v0.40.1 (2026-01-28)
+
+### Bug Fixes
+
+- Use local time for setback_end timestamp conversion
+  ([`df94b46`](https://github.com/afewyards/ha-adaptive-thermostat/commit/df94b46ea4c6d990a5b8c901780f2e212e0c4352))
+
+The convert_setback_end function was using dt_util.utcnow() but the end_time parameter (HH:MM
+  format) is in local time from sunrise calculations or user config. This caused timestamps to be
+  wrong by the timezone offset.
+
+Changed to dt_util.now() on line 221 to correctly handle local time. Updated tests to mock
+  dt_util.now() instead of dt_util.utcnow().
+
+### Documentation
+
+- Add companion lovelace card section
+  ([`c936e86`](https://github.com/afewyards/ha-adaptive-thermostat/commit/c936e866612c17522d9acbc7a4e02fa15349a80b))
+
+### Refactoring
+
+- Remove preset temp attributes from state attributes
+  ([`e6b4b0f`](https://github.com/afewyards/ha-adaptive-thermostat/commit/e6b4b0f609c6a6bdd530ab50879229b684cf6d19))
+
+Remove away_temp, eco_temp, boost_temp, comfort_temp, home_temp, sleep_temp, activity_temp - these
+  are already accessible via climate entity's preset modes.
+
+
 ## v0.40.0 (2026-01-28)
 
 ### Features
