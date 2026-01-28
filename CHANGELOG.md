@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.40.0 (2026-01-28)
+
+### Features
+
+- Add integration attribute to state attributes
+  ([`30fbc8d`](https://github.com/afewyards/ha-adaptive-thermostat/commit/30fbc8dab1860b1509176143d16e60919f56c176))
+
+
 ## v0.39.3 (2026-01-28)
 
 ### Bug Fixes
