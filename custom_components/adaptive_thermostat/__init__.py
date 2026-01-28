@@ -99,7 +99,6 @@ from .services import (
     SERVICE_WEEKLY_REPORT,
     SERVICE_COST_REPORT,
     SERVICE_SET_VACATION_MODE,
-    SERVICE_ENERGY_STATS,
     SERVICE_PID_RECOMMENDATIONS,
     async_register_services,
     async_unregister_services,

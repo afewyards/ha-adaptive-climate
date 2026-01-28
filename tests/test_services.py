@@ -90,7 +90,6 @@ class TestServiceRegistration:
             SERVICE_WEEKLY_REPORT,
             SERVICE_COST_REPORT,
             SERVICE_SET_VACATION_MODE,
-            SERVICE_ENERGY_STATS,
         )
 
         # Register services with debug=False (default)
@@ -108,8 +107,8 @@ class TestServiceRegistration:
             debug=False,
         )
 
-        # Verify only 4 public services were registered
-        assert mock_hass.services.async_register.call_count == 4
+        # Verify only 3 public services were registered
+        assert mock_hass.services.async_register.call_count == 3
 
         # Get all registered service names
         registered_services = [
@@ -120,7 +119,6 @@ class TestServiceRegistration:
         expected_services = [
             SERVICE_SET_VACATION_MODE,
             SERVICE_COST_REPORT,
-            SERVICE_ENERGY_STATS,
             SERVICE_WEEKLY_REPORT,
         ]
         for service in expected_services:
@@ -134,7 +132,6 @@ class TestServiceRegistration:
             SERVICE_WEEKLY_REPORT,
             SERVICE_COST_REPORT,
             SERVICE_SET_VACATION_MODE,
-            SERVICE_ENERGY_STATS,
             SERVICE_PID_RECOMMENDATIONS,
         )
 
@@ -153,8 +150,8 @@ class TestServiceRegistration:
             debug=True,
         )
 
-        # Verify all 6 services were registered (4 public + 2 debug)
-        assert mock_hass.services.async_register.call_count == 6
+        # Verify all 5 services were registered (3 public + 2 debug)
+        assert mock_hass.services.async_register.call_count == 5
 
         # Get all registered service names
         registered_services = [
@@ -165,7 +162,6 @@ class TestServiceRegistration:
         expected_services = [
             SERVICE_SET_VACATION_MODE,
             SERVICE_COST_REPORT,
-            SERVICE_ENERGY_STATS,
             SERVICE_WEEKLY_REPORT,
             SERVICE_RUN_LEARNING,
             SERVICE_PID_RECOMMENDATIONS,
@@ -409,56 +405,6 @@ class TestWeeklyReportDeduplication:
 # =============================================================================
 
 
-class TestEnergyStatsHandler:
-    """Tests for energy_stats service handler."""
-
-    def test_energy_stats_returns_expected_structure(self, mock_hass, mock_coordinator):
-        """Verify energy_stats returns expected data structure."""
-        from custom_components.adaptive_thermostat.services import async_handle_energy_stats
-
-        call = MockServiceCall()
-        result = _run_async(async_handle_energy_stats(mock_hass, mock_coordinator, call))
-
-        # Verify expected keys in result
-        assert "total_power_w" in result
-        assert "zone_powers" in result
-        assert "energy_today_kwh" in result
-        assert "cost_today" in result
-        assert "weekly_energy_kwh" in result
-        assert "weekly_cost" in result
-        assert "zone_duty_cycles" in result
-
-    def test_energy_stats_with_sensor_data(self, mock_hass, mock_coordinator):
-        """Verify energy_stats retrieves sensor data correctly."""
-        from custom_components.adaptive_thermostat.services import async_handle_energy_stats
-
-        # Set up mock sensor states
-        mock_power_state = Mock()
-        mock_power_state.state = "1500"
-        mock_power_state.attributes = {"zone_powers": {"living_room": 800, "bedroom": 700}}
-
-        mock_cost_state = Mock()
-        mock_cost_state.state = "25.50"
-        mock_cost_state.attributes = {"weekly_energy_kwh": 150}
-
-        def get_state(entity_id):
-            if entity_id == "sensor.heating_total_power":
-                return mock_power_state
-            elif entity_id == "sensor.heating_weekly_cost":
-                return mock_cost_state
-            return None
-
-        mock_hass.states.get = Mock(side_effect=get_state)
-
-        call = MockServiceCall()
-        result = _run_async(async_handle_energy_stats(mock_hass, mock_coordinator, call))
-
-        assert result["total_power_w"] == 1500.0
-        assert result["zone_powers"] == {"living_room": 800, "bedroom": 700}
-        assert result["weekly_cost"] == 25.50
-        assert result["weekly_energy_kwh"] == 150
-
-
 class TestPIDRecommendationsHandler:
     """Tests for pid_recommendations service handler."""
 
@@ -647,7 +593,6 @@ class TestServiceConstants:
             SERVICE_WEEKLY_REPORT,
             SERVICE_COST_REPORT,
             SERVICE_SET_VACATION_MODE,
-            SERVICE_ENERGY_STATS,
             SERVICE_PID_RECOMMENDATIONS,
         )
 
@@ -655,7 +600,6 @@ class TestServiceConstants:
         assert SERVICE_WEEKLY_REPORT == "weekly_report"
         assert SERVICE_COST_REPORT == "cost_report"
         assert SERVICE_SET_VACATION_MODE == "set_vacation_mode"
-        assert SERVICE_ENERGY_STATS == "energy_stats"
         assert SERVICE_PID_RECOMMENDATIONS == "pid_recommendations"
 
 
@@ -674,7 +618,6 @@ def test_services_module_exists():
     assert hasattr(services, "async_handle_cost_report")
     assert hasattr(services, "async_handle_run_learning")
     assert hasattr(services, "async_handle_set_vacation_mode")
-    assert hasattr(services, "async_handle_energy_stats")
     assert hasattr(services, "async_handle_pid_recommendations")
     assert hasattr(services, "async_scheduled_health_check")
     assert hasattr(services, "async_scheduled_weekly_report")

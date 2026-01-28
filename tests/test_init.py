@@ -763,7 +763,6 @@ class TestAsyncUnregisterServices:
             SERVICE_WEEKLY_REPORT,
             SERVICE_COST_REPORT,
             SERVICE_SET_VACATION_MODE,
-            SERVICE_ENERGY_STATS,
             SERVICE_PID_RECOMMENDATIONS,
         )
         from custom_components.adaptive_thermostat.const import DOMAIN
@@ -776,13 +775,12 @@ class TestAsyncUnregisterServices:
         async_unregister_services(hass)
 
         # Verify async_remove was called for each service
-        # 4 public services + 2 debug services (health_check no longer exists)
+        # 3 public services + 2 debug services (health_check no longer exists)
         expected_services = [
             SERVICE_RUN_LEARNING,
             SERVICE_WEEKLY_REPORT,
             SERVICE_COST_REPORT,
             SERVICE_SET_VACATION_MODE,
-            SERVICE_ENERGY_STATS,
             SERVICE_PID_RECOMMENDATIONS,
         ]
 

@@ -37,7 +37,6 @@ SERVICE_HEALTH_CHECK = "health_check"
 SERVICE_WEEKLY_REPORT = "weekly_report"
 SERVICE_COST_REPORT = "cost_report"
 SERVICE_SET_VACATION_MODE = "set_vacation_mode"
-SERVICE_ENERGY_STATS = "energy_stats"
 SERVICE_PID_RECOMMENDATIONS = "pid_recommendations"
 
 
@@ -347,74 +346,6 @@ async def async_handle_set_vacation_mode(
         await vacation_mode.async_disable()
 
 
-async def async_handle_energy_stats(
-    hass: HomeAssistant,
-    coordinator: AdaptiveThermostatCoordinator,
-    call: ServiceCall,
-) -> dict:
-    """Handle the energy_stats service call.
-
-    Returns dictionary with:
-    - total_power_w: Current total power
-    - zone_powers: Dict of zone power values
-    - energy_today_kwh: Today's energy if available
-    - cost_today: Today's cost if available
-    """
-    _LOGGER.info("Getting energy statistics")
-
-    result = {
-        "total_power_w": None,
-        "zone_powers": {},
-        "energy_today_kwh": None,
-        "cost_today": None,
-        "weekly_energy_kwh": None,
-        "weekly_cost": None,
-    }
-
-    # Get total power
-    total_power_state = hass.states.get("sensor.heating_total_power")
-    if total_power_state and total_power_state.state not in ("unknown", "unavailable"):
-        try:
-            result["total_power_w"] = float(total_power_state.state)
-            result["zone_powers"] = total_power_state.attributes.get("zone_powers", {})
-        except (ValueError, TypeError):
-            pass
-
-    # Get weekly cost/energy data
-    weekly_cost_state = hass.states.get("sensor.heating_weekly_cost")
-    if weekly_cost_state and weekly_cost_state.state not in ("unknown", "unavailable"):
-        try:
-            result["weekly_cost"] = float(weekly_cost_state.state)
-            result["weekly_energy_kwh"] = weekly_cost_state.attributes.get("weekly_energy_kwh")
-        except (ValueError, TypeError):
-            pass
-
-    # Estimate today's values from weekly if available
-    if result["weekly_energy_kwh"] is not None:
-        # Rough estimate: divide weekly by 7
-        result["energy_today_kwh"] = result["weekly_energy_kwh"] / 7
-    if result["weekly_cost"] is not None:
-        result["cost_today"] = result["weekly_cost"] / 7
-
-    # Get per-zone duty cycles
-    all_zones = coordinator.get_all_zones()
-    zone_duty_cycles = {}
-    for zone_id in all_zones:
-        duty_sensor_id = f"sensor.{zone_id}_duty_cycle"
-        duty_state = hass.states.get(duty_sensor_id)
-        if duty_state and duty_state.state not in ("unknown", "unavailable"):
-            try:
-                zone_duty_cycles[zone_id] = float(duty_state.state)
-            except (ValueError, TypeError):
-                pass
-    result["zone_duty_cycles"] = zone_duty_cycles
-
-    _LOGGER.info("Energy stats: total_power=%s W, zones=%d",
-                 result["total_power_w"], len(zone_duty_cycles))
-
-    return result
-
-
 async def async_handle_pid_recommendations(
     hass: HomeAssistant,
     coordinator: AdaptiveThermostatCoordinator,
@@ -580,9 +511,6 @@ def async_register_services(
             hass, vacation_mode, call, default_vacation_target_temp,
         )
 
-    async def _energy_stats_handler(call: ServiceCall) -> dict:
-        return await async_handle_energy_stats(hass, coordinator, call)
-
     async def _pid_recommendations_handler(call: ServiceCall) -> dict:
         return await async_handle_pid_recommendations(hass, coordinator, call)
 
@@ -596,13 +524,10 @@ def async_register_services(
         schema=cost_report_schema,
     )
     hass.services.async_register(
-        DOMAIN, SERVICE_ENERGY_STATS, _energy_stats_handler
-    )
-    hass.services.async_register(
         DOMAIN, SERVICE_WEEKLY_REPORT, _weekly_report_handler
     )
 
-    services_count = 4
+    services_count = 3
 
     # Register debug-only services
     if debug:
@@ -627,7 +552,6 @@ def async_unregister_services(hass: HomeAssistant) -> None:
     services_to_remove = [
         SERVICE_SET_VACATION_MODE,
         SERVICE_COST_REPORT,
-        SERVICE_ENERGY_STATS,
         SERVICE_WEEKLY_REPORT,
     ]
 
@@ -660,7 +584,6 @@ __all__ = [
     "SERVICE_WEEKLY_REPORT",
     "SERVICE_COST_REPORT",
     "SERVICE_SET_VACATION_MODE",
-    "SERVICE_ENERGY_STATS",
     "SERVICE_PID_RECOMMENDATIONS",
     # Service handlers
     "async_handle_run_learning",
@@ -668,7 +591,6 @@ __all__ = [
     "async_handle_weekly_report",
     "async_handle_cost_report",
     "async_handle_set_vacation_mode",
-    "async_handle_energy_stats",
     "async_handle_pid_recommendations",
     # Registration functions
     "async_register_services",

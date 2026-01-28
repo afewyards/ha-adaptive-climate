@@ -239,7 +239,6 @@ Tracks on→off cycles and fires maintenance alerts at 80% and 90% wear. [Learn 
 - `adaptive_thermostat.weekly_report` - Generate performance report
 - `adaptive_thermostat.cost_report` - Energy cost analysis (daily/weekly/monthly)
 - `adaptive_thermostat.set_vacation_mode` - Enable frost protection mode
-- `adaptive_thermostat.energy_stats` - Current energy statistics
 - `adaptive_thermostat.pid_recommendations` - Preview recommended PID values
 
 [Full service documentation →](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Services)
