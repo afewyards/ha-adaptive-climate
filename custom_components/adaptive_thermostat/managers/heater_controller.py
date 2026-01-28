@@ -550,6 +550,8 @@ class HeaterController:
                 self._cycle_active = True
                 self._reset_pid_clamp_state()
                 self._emit_cycle_started(hvac_mode)
+            # Device already in correct state - skip redundant service call
+            return
         elif time.monotonic() - get_cycle_start_time() >= self._min_off_cycle_duration:
             _LOGGER.info(
                 "%s: Turning ON %s",
@@ -628,6 +630,8 @@ class HeaterController:
                 thermostat_entity_id,
                 ", ".join(entities)
             )
+            # Device already in correct state - skip redundant service call
+            return
         elif time.monotonic() - get_cycle_start_time() >= self._min_on_cycle_duration or force:
             # Minimum cycle protection: Only turn off if min_on_cycle_duration has elapsed
             # or force=True (for emergency shutdowns). This protects compressors from

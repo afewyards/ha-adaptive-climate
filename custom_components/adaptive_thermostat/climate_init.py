@@ -327,9 +327,9 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
                     thermostat.entity_id
                 )
 
-    # Subscribe to CYCLE_ENDED events for preheat learning
+    # Subscribe to CYCLE_ENDED events for preheat learning (H7 fix - store unsub handle)
     if thermostat._preheat_learner and thermostat._cycle_dispatcher:
-        thermostat._cycle_dispatcher.subscribe(
+        thermostat._preheat_cycle_unsub = thermostat._cycle_dispatcher.subscribe(
             CycleEventType.CYCLE_ENDED,
             thermostat._handle_cycle_ended_for_preheat,
         )

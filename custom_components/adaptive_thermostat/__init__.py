@@ -681,7 +681,9 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             else:
                 _LOGGER.warning("set_integral: Entity not found or no PID controller: %s", entity_id)
 
-    hass.bus.async_listen("adaptive_thermostat_set_integral", _handle_set_integral_event)
+    # Store unsub handle for cleanup during unload (C3 fix)
+    set_integral_unsub = hass.bus.async_listen("adaptive_thermostat_set_integral", _handle_set_integral_event)
+    hass.data[DOMAIN]["set_integral_unsub"] = set_integral_unsub
 
     # Store cancel callbacks for scheduled tasks (needed for unload)
     unsub_callbacks = []
@@ -761,6 +763,25 @@ async def async_unload(hass: HomeAssistant) -> bool:
             except Exception as e:
                 _LOGGER.warning("Error cancelling scheduled task: %s", e)
     _LOGGER.debug("Cancelled %d scheduled tasks", len(unsub_callbacks))
+
+    # Cancel sensor timers (C2/H8 fix)
+    sensor_timer_unsubs = hass.data[DOMAIN].get("sensor_timer_unsubs", [])
+    for unsub in sensor_timer_unsubs:
+        if unsub is not None:
+            try:
+                unsub()
+            except Exception as e:
+                _LOGGER.warning("Error cancelling sensor timer: %s", e)
+    _LOGGER.debug("Cancelled %d sensor timers", len(sensor_timer_unsubs))
+
+    # Cancel set_integral event listener (C3 fix)
+    set_integral_unsub = hass.data[DOMAIN].get("set_integral_unsub")
+    if set_integral_unsub is not None:
+        try:
+            set_integral_unsub()
+        except Exception as e:
+            _LOGGER.warning("Error cancelling set_integral listener: %s", e)
+        _LOGGER.debug("Cancelled set_integral event listener")
 
     # Unregister all services
     async_unregister_services(hass)

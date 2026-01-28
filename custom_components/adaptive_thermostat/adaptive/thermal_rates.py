@@ -4,8 +4,9 @@ This module provides the ThermalRateLearner class for learning thermal heating
 and cooling rates from observed temperature history.
 """
 
+from collections import deque
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Deque
 import statistics
 import logging
 
@@ -25,6 +26,7 @@ class ThermalRateLearner:
         self,
         outlier_threshold: float = 2.0,
         noise_tolerance: float = SEGMENT_NOISE_TOLERANCE,
+        max_measurements: int = 50,
     ):
         """
         Initialize the ThermalRateLearner.
@@ -32,11 +34,13 @@ class ThermalRateLearner:
         Args:
             outlier_threshold: Number of standard deviations for outlier rejection
             noise_tolerance: Temperature changes below this threshold are ignored as noise (default 0.05C)
+            max_measurements: Maximum number of measurements to keep (FIFO eviction, default 50)
         """
         self.outlier_threshold = outlier_threshold
         self.noise_tolerance = noise_tolerance
-        self._cooling_rates: List[float] = []
-        self._heating_rates: List[float] = []
+        self.max_measurements = max_measurements
+        self._cooling_rates: Deque[float] = deque(maxlen=max_measurements)
+        self._heating_rates: Deque[float] = deque(maxlen=max_measurements)
 
     def calculate_cooling_rate(
         self,

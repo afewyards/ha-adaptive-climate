@@ -5,9 +5,10 @@ including overshoot detection, undershoot calculation, oscillation counting,
 and settling time analysis.
 """
 
+from collections import deque
 from datetime import datetime
 from enum import Enum
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Deque
 import logging
 
 _LOGGER = logging.getLogger(__name__)
@@ -143,7 +144,7 @@ class PhaseAwareOvershootTracker:
         self._setpoint_crossed = False
         self._crossing_timestamp: Optional[datetime] = None
         self._max_settling_temp: Optional[float] = None
-        self._settling_temps: List[Tuple[datetime, float]] = []
+        self._settling_temps: Deque[Tuple[datetime, float]] = deque(maxlen=1500)
         self._heater_stop_time: Optional[datetime] = None
         self._peak_window_closed = False
 

@@ -155,4 +155,8 @@ async def async_setup_platform(
             await sensor.async_update()
             sensor.async_write_ha_state()
 
-    async_track_time_interval(hass, async_update_sensors, UPDATE_INTERVAL)
+    # Store unsub handle for cleanup during unload (C2 fix)
+    unsub = async_track_time_interval(hass, async_update_sensors, UPDATE_INTERVAL)
+    if "sensor_timer_unsubs" not in hass.data[DOMAIN]:
+        hass.data[DOMAIN]["sensor_timer_unsubs"] = []
+    hass.data[DOMAIN]["sensor_timer_unsubs"].append(unsub)

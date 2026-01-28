@@ -365,6 +365,7 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
 
         # Initialize PreheatLearner (will be configured properly in async_added_to_hass)
         self._preheat_learner: Optional[PreheatLearner] = None
+        self._preheat_cycle_unsub = None  # H7 fix - store unsub handle
 
         self._pwm = kwargs.get('pwm').seconds
         self._p = self._i = self._d = self._e = self._dt = 0
@@ -384,6 +385,7 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
         self._time_changed = time.monotonic()
         self._last_sensor_update = time.monotonic()
         self._last_ext_sensor_update = time.monotonic()
+        self._last_control_time = time.monotonic()
         _LOGGER.info("%s: Active PID values - Kp=%.4f, Ki=%.5f, Kd=%.3f, Ke=%s, D_filter_alpha=%.2f, outdoor_lag_tau=%.2f",
                      self.unique_id, self._kp, self._ki, self._kd, self._ke or 0, self._derivative_filter_alpha, self._outdoor_temp_lag_tau)
         decay_rate = const.HEATING_TYPE_INTEGRAL_DECAY.get(
@@ -537,6 +539,11 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
         coordinator to ensure clean removal and prevent stale zone data.
         """
         await super().async_will_remove_from_hass()
+
+        # Clean up preheat cycle dispatcher subscription (H7 fix)
+        if self._preheat_cycle_unsub:
+            self._preheat_cycle_unsub()
+            self._preheat_cycle_unsub = None
 
         # Clean up cycle tracker subscriptions and timers
         if self._cycle_tracker:
@@ -749,7 +756,10 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
         if self.hass.state == CoreState.running:
             _async_startup()
         else:
-            self.hass.bus.async_listen_once(EVENT_HOMEASSISTANT_START, _async_startup)
+            # H1 fix - wrap async_listen_once with async_on_remove
+            self.async_on_remove(
+                self.hass.bus.async_listen_once(EVENT_HOMEASSISTANT_START, _async_startup)
+            )
 
     def _restore_state(self, old_state) -> None:
         """Restore climate entity state from Home Assistant's state restoration.

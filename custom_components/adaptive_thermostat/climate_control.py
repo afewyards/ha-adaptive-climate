@@ -114,6 +114,9 @@ class ClimateControlMixin:
             # Record Ke observation if at steady state
             self._maybe_record_ke_observation()
 
+            # Update control time for humidity integral decay calculation
+            self._last_control_time = time.monotonic()
+
             self.async_write_ha_state()
 
     @property

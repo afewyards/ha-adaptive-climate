@@ -75,6 +75,7 @@ class ActuatorWearSensor(SensorEntity):
         self._current_cycles: int = 0
         self._wear_percentage: float = 0.0
         self._maintenance_status: str = "ok"  # ok, maintenance_soon, maintenance_due
+        self._state_listener_unsub = None
 
     @property
     def native_value(self) -> float | None:
@@ -106,12 +107,18 @@ class ActuatorWearSensor(SensorEntity):
         # Initial state update
         await self._async_update_from_climate_state()
 
-        # Listen to climate entity state changes
-        async_track_state_change_event(
+        # Listen to climate entity state changes (C4 fix - store unsub handle)
+        self._state_listener_unsub = async_track_state_change_event(
             self.hass,
             [self._climate_entity_id],
             self._async_climate_state_changed,
         )
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Clean up when removed from hass (C4 fix)."""
+        if self._state_listener_unsub:
+            self._state_listener_unsub()
+            self._state_listener_unsub = None
 
     @callback
     def _async_climate_state_changed(self, event) -> None:

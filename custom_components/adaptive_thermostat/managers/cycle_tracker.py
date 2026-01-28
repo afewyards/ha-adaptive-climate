@@ -6,10 +6,11 @@ collects temperature data, and calculates metrics for adaptive PID tuning.
 
 from __future__ import annotations
 
+from collections import deque
 import logging
 from datetime import datetime
 from enum import Enum
-from typing import TYPE_CHECKING, Awaitable, Callable
+from typing import TYPE_CHECKING, Awaitable, Callable, Deque
 
 from homeassistant.util import dt as dt_util
 
@@ -116,7 +117,7 @@ class CycleTrackerManager:
         self._state: CycleState = CycleState.IDLE
         self._cycle_start_time: datetime | None = None
         self._cycle_target_temp: float | None = None
-        self._temperature_history: list[tuple[datetime, float]] = []
+        self._temperature_history: Deque[tuple[datetime, float]] = deque(maxlen=2000)
         self._outdoor_temp_history: list[tuple[datetime, float]] = []
         self._settling_timeout_handle = None
         self._last_interruption_reason: str | None = None  # Persists across cycle resets
@@ -224,7 +225,7 @@ class CycleTrackerManager:
     @property
     def temperature_history(self) -> list[tuple[datetime, float]]:
         """Return temperature history."""
-        return self._temperature_history.copy()
+        return list(self._temperature_history)
 
     @property
     def _interruption_history(self) -> list[tuple[datetime, str]]:
@@ -341,7 +342,7 @@ class CycleTrackerManager:
                 cycle_start_time=self._cycle_start_time,
                 cycle_target_temp=self._cycle_target_temp,
                 cycle_state_value=self._state.value,
-                temperature_history=self._temperature_history.copy(),
+                temperature_history=list(self._temperature_history),
                 outdoor_temp_history=self._outdoor_temp_history.copy(),
             )
 
@@ -681,7 +682,7 @@ class CycleTrackerManager:
         """
         return self._metrics_recorder._is_cycle_valid(
             cycle_start_time=self._cycle_start_time,
-            temperature_history=self._temperature_history,
+            temperature_history=list(self._temperature_history),
             current_time=dt_util.utcnow(),
         )
 
@@ -763,7 +764,7 @@ class CycleTrackerManager:
             cycle_start_time=self._cycle_start_time,
             cycle_target_temp=self._cycle_target_temp,
             cycle_state_value=self._state.value,
-            temperature_history=self._temperature_history.copy(),
+            temperature_history=list(self._temperature_history),
             outdoor_temp_history=self._outdoor_temp_history.copy(),
         )
 
