@@ -28,6 +28,7 @@ def build_state_attributes(thermostat: SmartThermostat) -> dict[str, Any]:
 
     # Core attributes - always present
     attrs: dict[str, Any] = {
+        "integration": DOMAIN,
         "away_temp": thermostat._away_temp,
         "eco_temp": thermostat._eco_temp,
         "boost_temp": thermostat._boost_temp,
