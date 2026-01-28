@@ -132,8 +132,8 @@ class TestHumidityDetector:
         detector.record_humidity(now, 50.0)
         detector.record_humidity(now + timedelta(seconds=300), 66.0)
 
-        # Drop below 70% and >10% from peak (66.0) -> transitions to stabilizing
-        detector.record_humidity(now + timedelta(seconds=400), 55.0)
+        # Drop below 70% and >5% from peak (66.0) -> transitions to stabilizing
+        detector.record_humidity(now + timedelta(seconds=400), 60.0)
 
         assert detector.get_state() == "stabilizing"
         assert detector.should_pause() is True
@@ -179,7 +179,7 @@ class TestHumidityDetector:
         assert detector.get_state() == "paused"  # Still paused
 
     def test_no_exit_to_stabilizing_if_insufficient_drop(self):
-        """Test no transition to STABILIZING if drop <5% from peak."""
+        """Test no transition to STABILIZING if drop <=5% from peak."""
         detector = HumidityDetector(spike_threshold=15)
         now = datetime(2024, 1, 1, 12, 0, 0)
 
@@ -188,11 +188,10 @@ class TestHumidityDetector:
         detector.record_humidity(now + timedelta(seconds=300), 75.0)
         assert detector.get_state() == "paused"
 
-        # Drop to 68% (below 70% but only 7% drop which is >5%, so this should actually transition)
-        # For the test to work with new default (5%), we need a smaller drop
-        # Drop to 71% (below threshold but only 4% drop from 75%)
+        # Drop to 69.5% (below 70% but only 5.5% drop - need >5% so 5.5% should trigger)
+        # For insufficient drop, use 4% drop: 75 - 4 = 71
         detector.record_humidity(now + timedelta(seconds=400), 71.0)
-        assert detector.get_state() == "paused"  # Still paused
+        assert detector.get_state() == "paused"  # Still paused (4% drop is not >5%)
 
     def test_stabilization_timer_to_normal(self):
         """Test transition from STABILIZING to NORMAL after stabilization_delay."""
@@ -434,3 +433,83 @@ class TestHumidityDetector:
 
         # Check warning was logged
         assert any("max pause duration" in record.message.lower() for record in caplog.records)
+
+    def test_custom_exit_humidity_threshold(self):
+        """Test custom exit_humidity_threshold parameter."""
+        # Use lower exit threshold of 65% instead of default 70%
+        detector = HumidityDetector(
+            spike_threshold=15,
+            exit_humidity_threshold=65.0,
+            exit_humidity_drop=5.0
+        )
+        now = datetime(2024, 1, 1, 12, 0, 0)
+
+        # Trigger paused at 80%
+        detector.record_humidity(now, 50.0)
+        detector.record_humidity(now + timedelta(seconds=300), 80.0)
+        assert detector.get_state() == "paused"
+
+        # Drop to 68% (below default 70% but above custom 65%, with >5% drop)
+        detector.record_humidity(now + timedelta(seconds=400), 68.0)
+        assert detector.get_state() == "paused"  # Still paused (above 65%)
+
+        # Drop to 64% (below custom 65% and >5% drop from 80%)
+        detector.record_humidity(now + timedelta(seconds=500), 64.0)
+        assert detector.get_state() == "stabilizing"  # Now stabilizing
+
+    def test_custom_exit_humidity_drop(self):
+        """Test custom exit_humidity_drop parameter."""
+        # Use larger exit drop of 10% instead of default 5%
+        detector = HumidityDetector(
+            spike_threshold=15,
+            exit_humidity_threshold=70.0,
+            exit_humidity_drop=10.0
+        )
+        now = datetime(2024, 1, 1, 12, 0, 0)
+
+        # Trigger paused at 80%
+        detector.record_humidity(now, 50.0)
+        detector.record_humidity(now + timedelta(seconds=300), 80.0)
+        assert detector.get_state() == "paused"
+
+        # Drop to 67% (below 70% and 13% drop, which is >10%)
+        detector.record_humidity(now + timedelta(seconds=400), 67.0)
+        assert detector.get_state() == "stabilizing"  # Transitions (13% > 10%)
+
+    def test_custom_exit_both_thresholds(self):
+        """Test custom exit_humidity_threshold and exit_humidity_drop together."""
+        # Use 65% threshold and 8% drop
+        detector = HumidityDetector(
+            spike_threshold=15,
+            exit_humidity_threshold=65.0,
+            exit_humidity_drop=8.0
+        )
+        now = datetime(2024, 1, 1, 12, 0, 0)
+
+        # Trigger paused at 85%
+        detector.record_humidity(now, 50.0)
+        detector.record_humidity(now + timedelta(seconds=300), 85.0)
+        assert detector.get_state() == "paused"
+
+        # Drop to 64% (below 65% but only 21% drop total, need to check math)
+        # 85 - 64 = 21%, which is >8%, so should transition
+        detector.record_humidity(now + timedelta(seconds=400), 64.0)
+        assert detector.get_state() == "stabilizing"
+
+        # Reset and test insufficient drop
+        detector._state = "paused"
+        detector._peak_humidity = 85.0
+        detector._stabilization_start = None
+
+        # Drop to 64.5% (below 65% but only 20.5% drop - wait, this is still >8%)
+        # Let's use 78% instead: 85 - 78 = 7% drop, which is <8%
+        detector.record_humidity(now + timedelta(seconds=500), 78.0)
+        assert detector.get_state() == "paused"  # Still paused (7% < 8%)
+
+        # Now drop to 76% (below 65% and 85 - 76 = 9% drop, which is >8%)
+        detector.record_humidity(now + timedelta(seconds=600), 76.0)
+        assert detector.get_state() == "paused"  # Still paused (76% is above 65%)
+
+        # Finally drop to 64% (below 65% and 85 - 64 = 21% drop, which is >8%)
+        detector.record_humidity(now + timedelta(seconds=700), 64.0)
+        assert detector.get_state() == "stabilizing"  # Now transitions
