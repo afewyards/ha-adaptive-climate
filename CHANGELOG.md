@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v0.39.3 (2026-01-28)
+
+### Bug Fixes
+
+- Don't re-check absolute_max while paused and dropping
+  ([`766ae53`](https://github.com/afewyards/ha-adaptive-thermostat/commit/766ae53619b058f5bff72114afdb5e39fcb3add4))
+
+The absolute_max threshold is only for initial shower detection. Once paused, just track peak (if
+  rising) and check exit conditions. A new shower during stabilizing phase will still re-trigger.
+
+
 ## v0.39.2 (2026-01-28)
 
 ### Bug Fixes
