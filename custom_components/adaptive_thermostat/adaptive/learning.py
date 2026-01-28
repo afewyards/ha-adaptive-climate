@@ -314,13 +314,13 @@ class AdaptiveLearner:
         # Increment cycle counter for hybrid rate limiting
         self._cycles_since_last_adjustment += 1
 
-        # FIFO eviction: remove oldest entries when exceeding max history
+        # FIFO eviction: remove oldest entries when exceeding max history (in-place for efficiency)
         if len(cycle_history) > self._max_history:
             evicted_count = len(cycle_history) - self._max_history
             if mode == get_hvac_cool_mode():
-                self._cooling_cycle_history = self._cooling_cycle_history[-self._max_history:]
+                del self._cooling_cycle_history[:evicted_count]
             else:
-                self._heating_cycle_history = self._heating_cycle_history[-self._max_history:]
+                del self._heating_cycle_history[:evicted_count]
             _LOGGER.debug(
                 f"Cycle history ({mode_to_str(mode)} mode) exceeded max ({self._max_history}), "
                 f"evicted {evicted_count} oldest entries"

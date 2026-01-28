@@ -62,6 +62,9 @@ class PreheatLearner:
         # Observations keyed by (delta_bin, outdoor_bin)
         self._observations: Dict[Tuple[str, str], List[HeatingObservation]] = {}
 
+        # Counter for optimization: expire old observations every 10 calls
+        self._add_observation_counter = 0
+
     def get_delta_bin(self, delta: float) -> str:
         """Get temperature delta bin.
 
@@ -148,8 +151,11 @@ class PreheatLearner:
             # Remove oldest
             self._observations[bin_key].pop(0)
 
-        # Expire old observations across all bins
-        self._expire_old_observations(timestamp)
+        # Expire old observations across all bins (optimization: only every 10th call)
+        self._add_observation_counter += 1
+        if self._add_observation_counter >= 10:
+            self._expire_old_observations(timestamp)
+            self._add_observation_counter = 0
 
     def _expire_old_observations(self, current_time: datetime) -> None:
         """Remove observations older than 90 days.

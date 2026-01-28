@@ -41,6 +41,7 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
         self._thermal_group_manager: Any = None  # ThermalGroupManager or None
         self._manifold_registry: "ManifoldRegistry | None" = None
         self._zone_loops: dict[str, int] = {}
+        self._update_pending: bool = False
 
     def set_central_controller(self, controller: "CentralController") -> None:
         """Set the central controller reference for push-based updates."""
@@ -165,7 +166,8 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
     def unregister_zone(self, zone_id: str) -> None:
         """Unregister a zone from the coordinator.
 
-        Removes the zone from both the zones dict and demand states dict.
+        Removes the zone from all tracking dicts (zones, demand states, zone loops).
+        Also unregisters from ModeSync if available.
         This should be called when a climate entity is being removed.
 
         Args:
@@ -184,6 +186,16 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
         # Remove from demand states dict
         if zone_id in self._demand_states:
             del self._demand_states[zone_id]
+
+        # Remove from zone loops dict
+        if zone_id in self._zone_loops:
+            del self._zone_loops[zone_id]
+
+        # Unregister from ModeSync if available
+        domain_data = self.hass.data.get(DOMAIN, {})
+        mode_sync = domain_data.get("mode_sync")
+        if mode_sync is not None:
+            mode_sync.unregister_zone(zone_id)
 
         _LOGGER.info("Unregistered zone: %s", zone_id)
 
@@ -208,10 +220,11 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
                     has_demand, hvac_mode
                 )
 
-                # Trigger central controller
-                if self._central_controller:
+                # Trigger central controller with single-flight guard
+                if self._central_controller and not self._update_pending:
                     _LOGGER.info("Triggering CentralController update")
-                    self.hass.async_create_task(self._central_controller.update())
+                    self._update_pending = True
+                    self.hass.async_create_task(self._update_with_guard())
 
     def _is_high_solar_gain(self, check_time: datetime | None = None) -> bool:
         """Check if high solar gain is currently detected.
@@ -399,6 +412,14 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
         """
         if zone_id in self._zones:
             self._zones[zone_id]["current_temp"] = temperature
+
+    async def _update_with_guard(self) -> None:
+        """Update central controller with guard to prevent duplicate tasks."""
+        try:
+            if self._central_controller:
+                await self._central_controller.update()
+        finally:
+            self._update_pending = False
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch data from all zones.
@@ -650,5 +671,23 @@ class ModeSync:
             True if sync is in progress
         """
         return self._sync_in_progress
+
+    def unregister_zone(self, zone_id: str) -> None:
+        """Unregister a zone from mode synchronization.
+
+        Removes the zone from all tracking dicts (zone modes, sync disabled zones).
+        This should be called when a climate entity is being removed.
+
+        Args:
+            zone_id: Zone identifier to unregister
+        """
+        # Remove from zone modes dict
+        if zone_id in self._zone_modes:
+            del self._zone_modes[zone_id]
+
+        # Remove from sync disabled zones set
+        self._sync_disabled_zones.discard(zone_id)
+
+        _LOGGER.debug("Unregistered zone from ModeSync: %s", zone_id)
 
 

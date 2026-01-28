@@ -107,6 +107,9 @@ def learner_to_dict(
             "convergence_confidence": cooling_convergence_confidence,
             "pid_history": [],  # Cooling mode typically shares PID history or has separate tracking
         },
+        # TODO: V4 backward-compatible top-level keys are still needed for users upgrading
+        # from versions prior to v5 format (v0.36.0 and earlier). Consider removing after
+        # a few major versions when all users have migrated to v5.
         # V4 backward-compatible top-level keys (for heating mode as default)
         "cycle_history": serialized_heating_cycles,
         "auto_apply_count": heating_auto_apply_count,

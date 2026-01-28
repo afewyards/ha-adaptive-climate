@@ -105,13 +105,14 @@ class TestPreheatLearner:
         fresh_time = now - timedelta(days=10)
         learner.add_observation(18.0, 20.0, 10.0, 60, fresh_time)
 
-        # Add current observation - should trigger expiry
-        learner.add_observation(18.0, 20.0, 10.0, 60, now)
+        # Add enough observations to trigger expiry (expiry runs every 10th call)
+        for i in range(9):
+            learner.add_observation(18.0, 20.0, 10.0, 60, now)
 
-        # Only 2 observations should remain (old one expired)
+        # Only 10 observations should remain (old one expired)
         # Delta = 2.0 -> "2-4" bin, outdoor = 10.0 -> "mild" bin
         observations = learner._observations.get(("2-4", "mild"), [])
-        assert len(observations) == 2
+        assert len(observations) == 10
         assert all(obs.timestamp >= old_time + timedelta(days=1) for obs in observations)
 
     def test_estimate_time_to_target_with_insufficient_data(self):
