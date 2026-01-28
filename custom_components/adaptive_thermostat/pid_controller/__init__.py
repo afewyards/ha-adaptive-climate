@@ -5,6 +5,24 @@ from time import time
 
 _LOGGER = logging.getLogger(__name__)
 
+# Import constants with fallback for test environment
+try:
+    from ..const import INTEGRAL_DECAY_THRESHOLDS, HEATING_TYPE_CHARACTERISTICS
+except (ImportError, ValueError):
+    # Fallback for test environment or standalone usage
+    INTEGRAL_DECAY_THRESHOLDS = {
+        "floor_hydronic": 30.0,
+        "radiator": 40.0,
+        "convector": 50.0,
+        "forced_air": 60.0,
+    }
+    HEATING_TYPE_CHARACTERISTICS = {
+        "floor_hydronic": {"decay_exponent": 2.0},
+        "radiator": {"decay_exponent": 1.0},
+        "convector": {"decay_exponent": 1.0},
+        "forced_air": {"decay_exponent": 0.5},
+    }
+
 # Minimum time delta (seconds) required for integral/derivative updates
 # Rationale: 5s allows 5s sensor intervals, provides 5:1 SNR for 0.1°C noise, 102x safety margin vs 0.049s spike
 # Balances responsiveness with noise rejection for fast sensor update rates
@@ -380,18 +398,6 @@ class PID:
         Returns:
             True if decay should be applied, False otherwise.
         """
-        # Import here to avoid circular dependency
-        try:
-            from ..const import INTEGRAL_DECAY_THRESHOLDS
-        except ImportError:
-            # Fallback for test environment
-            INTEGRAL_DECAY_THRESHOLDS = {
-                "floor_hydronic": 30.0,
-                "radiator": 40.0,
-                "convector": 50.0,
-                "forced_air": 60.0,
-            }
-
         # Safety net disabled after first auto-apply
         if self._auto_apply_count > 0:
             return False
@@ -565,17 +571,6 @@ class PID:
                     # Track safety net activation for learning feedback
                     self._was_clamped = True
                     self._clamp_reason = 'safety_net'
-                    # Import here to avoid circular dependency
-                    try:
-                        from ..const import HEATING_TYPE_CHARACTERISTICS
-                    except ImportError:
-                        # Fallback for test environment
-                        HEATING_TYPE_CHARACTERISTICS = {
-                            "floor_hydronic": {"decay_exponent": 2.0},
-                            "radiator": {"decay_exponent": 1.0},
-                            "convector": {"decay_exponent": 1.0},
-                            "forced_air": {"decay_exponent": 0.5},
-                        }
 
                     # Calculate progress through tolerance zone (0 at edge, 1 at setpoint)
                     # For heating (positive integral), use cold_tolerance

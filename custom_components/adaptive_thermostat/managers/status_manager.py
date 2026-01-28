@@ -6,6 +6,7 @@ for checking status state and retrieving detailed status information.
 """
 from __future__ import annotations
 
+import time
 from typing import TYPE_CHECKING, TypedDict
 
 if TYPE_CHECKING:
@@ -59,6 +60,10 @@ class StatusManager:
         self._contact_sensor_handler = contact_sensor_handler
         self._humidity_detector = humidity_detector
         self._night_setback_controller: NightSetbackManager | None = None
+        # Cache for get_status_info with 30s TTL
+        self._cached_status: StatusInfo | None = None
+        self._cache_timestamp: float = 0.0
+        self._cache_ttl: float = 30.0
 
     def set_night_setback_controller(self, controller: NightSetbackManager | None):
         """Set night setback controller (late binding).
@@ -101,6 +106,64 @@ class StatusManager:
           returns resume_in showing time until pause activates.
         - Night setback is reported when active, even though it's not a pause.
         - Learning grace period is reported via learning_paused field.
+
+        Returns:
+            Dictionary with active, reason, and optional additional fields
+        """
+        # Check cache validity (30s TTL) and basic state signature
+        now = time.monotonic()
+        cache_valid = (
+            self._cached_status is not None
+            and (now - self._cache_timestamp) < self._cache_ttl
+            and self._check_state_signature_unchanged()
+        )
+
+        if cache_valid:
+            return self._cached_status
+
+        # Cache miss or expired - recalculate
+        status = self._calculate_status_info()
+        self._cached_status = status
+        self._cache_timestamp = now
+        self._update_state_signature()
+        return status
+
+    def _check_state_signature_unchanged(self) -> bool:
+        """Check if state has changed since last cache update.
+
+        Returns:
+            True if state unchanged, False if state changed
+        """
+        # Quick state signature: check if pause sources are still in same state
+        contact_paused = (
+            self._contact_sensor_handler
+            and self._contact_sensor_handler.should_take_action()
+        )
+        humidity_state = (
+            self._humidity_detector.get_state()
+            if self._humidity_detector
+            else "normal"
+        )
+
+        return (
+            getattr(self, '_last_contact_paused', None) == contact_paused
+            and getattr(self, '_last_humidity_state', None) == humidity_state
+        )
+
+    def _update_state_signature(self) -> None:
+        """Update state signature for cache validation."""
+        self._last_contact_paused = (
+            self._contact_sensor_handler
+            and self._contact_sensor_handler.should_take_action()
+        )
+        self._last_humidity_state = (
+            self._humidity_detector.get_state()
+            if self._humidity_detector
+            else "normal"
+        )
+
+    def _calculate_status_info(self) -> StatusInfo:
+        """Calculate status information (uncached).
 
         Returns:
             Dictionary with active, reason, and optional additional fields

@@ -48,6 +48,9 @@ class ClimateControlMixin:
                 self.async_write_ha_state()
                 return
 
+            # Cache coordinator lookup for hot path optimization
+            coordinator = self.hass.data.get("adaptive_thermostat", {}).get("coordinator") if self._zone_id else None
+
             # Unified pause check (contact sensors, humidity detection, etc.)
             if self._status_manager.is_paused():
                 pause_info = self._status_manager.get_status_info()
@@ -72,10 +75,8 @@ class ClimateControlMixin:
                     await self._async_set_valve_value(self._control_output)
 
                 # Update zone demand to False when paused
-                if self._zone_id:
-                    coordinator = self.hass.data.get("adaptive_thermostat", {}).get("coordinator")
-                    if coordinator:
-                        coordinator.update_zone_demand(self._zone_id, False, self._hvac_mode.value if self._hvac_mode else None)
+                if coordinator:
+                    coordinator.update_zone_demand(self._zone_id, False, self._hvac_mode.value if self._hvac_mode else None)
 
                 self.async_write_ha_state()
                 return
@@ -106,10 +107,8 @@ class ClimateControlMixin:
             await self.set_control_value()
 
             # Update zone demand for CentralController (based on actual device state, not PID output)
-            if self._zone_id:
-                coordinator = self.hass.data.get("adaptive_thermostat", {}).get("coordinator")
-                if coordinator:
-                    coordinator.update_zone_demand(self._zone_id, self._is_device_active, self._hvac_mode.value if self._hvac_mode else None)
+            if coordinator:
+                coordinator.update_zone_demand(self._zone_id, self._is_device_active, self._hvac_mode.value if self._hvac_mode else None)
 
             # Record Ke observation if at steady state
             self._maybe_record_ke_observation()

@@ -821,6 +821,9 @@ class HeaterController:
         entities = self.get_entities(hvac_mode)
         thermostat_entity_id = self._thermostat.entity_id
 
+        # Cache is_active() result to avoid redundant HA state queries
+        device_is_active = self.is_active(hvac_mode)
+
         # Track demand state for cycle tracking
         old_has_demand = self._has_demand
         new_has_demand = abs(control_output) > 0
@@ -838,7 +841,7 @@ class HeaterController:
 
         if self._pwm:
             if abs(control_output) == self._difference:
-                if not self.is_active(hvac_mode):
+                if not device_is_active:
                     _LOGGER.info(
                         "%s: Output is %s. Request turning ON %s",
                         thermostat_entity_id,
@@ -867,7 +870,7 @@ class HeaterController:
                     set_force_off=set_force_off,
                 )
             else:
-                if self.is_active(hvac_mode):
+                if device_is_active:
                     _LOGGER.info(
                         "%s: Output is 0. Request turning OFF %s",
                         thermostat_entity_id,

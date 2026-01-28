@@ -257,27 +257,21 @@ class DutyCycleSensor(AdaptiveThermostatSensor):
         Args:
             window_start: Start of the measurement window
         """
-        # Find state changes within the window
-        changes_in_window = [
-            sc for sc in self._state_changes if sc.timestamp >= window_start
-        ]
+        # Single-pass approach: find last_before and collect changes_in_window in one loop
+        last_before = None
+        changes_in_window = []
 
-        # Find the most recent state change before window_start
-        changes_before_window = [
-            sc for sc in self._state_changes if sc.timestamp < window_start
-        ]
-
-        if changes_before_window:
-            # Keep only the most recent one before window
-            last_before = max(changes_before_window, key=lambda sc: sc.timestamp)
-            new_changes = [last_before] + changes_in_window
-        else:
-            new_changes = changes_in_window
+        for sc in self._state_changes:
+            if sc.timestamp >= window_start:
+                changes_in_window.append(sc)
+            elif last_before is None or sc.timestamp > last_before.timestamp:
+                last_before = sc
 
         # Replace with pruned list
         self._state_changes.clear()
-        for change in new_changes:
-            self._state_changes.append(change)
+        if last_before is not None:
+            self._state_changes.append(last_before)
+        self._state_changes.extend(changes_in_window)
 
     def _calculate_on_time(self, window_start: datetime, window_end: datetime) -> float:
         """Calculate total on-time within the measurement window.
