@@ -358,7 +358,7 @@ class TestHumidityDetectionConstants:
         assert DEFAULT_HUMIDITY_STABILIZATION_DELAY == 300
         assert DEFAULT_HUMIDITY_MAX_PAUSE == 3600
         assert DEFAULT_HUMIDITY_EXIT_THRESHOLD == 70
-        assert DEFAULT_HUMIDITY_EXIT_DROP == 10
+        assert DEFAULT_HUMIDITY_EXIT_DROP == 5
 
     def test_humidity_default_values_are_positive(self):
         """Verify all humidity default values are positive."""
