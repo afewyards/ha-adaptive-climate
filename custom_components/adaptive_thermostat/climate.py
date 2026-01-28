@@ -255,6 +255,8 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
             detection_window = kwargs.get('humidity_detection_window', const.DEFAULT_HUMIDITY_DETECTION_WINDOW)
             stabilization_delay = kwargs.get('humidity_stabilization_delay', const.DEFAULT_HUMIDITY_STABILIZATION_DELAY)
             max_pause_duration = kwargs.get('humidity_max_pause_duration', const.DEFAULT_HUMIDITY_MAX_PAUSE)
+            exit_threshold = kwargs.get('humidity_exit_threshold', const.DEFAULT_HUMIDITY_EXIT_THRESHOLD)
+            exit_drop = kwargs.get('humidity_exit_drop', const.DEFAULT_HUMIDITY_EXIT_DROP)
 
             self._humidity_sensor_entity_id = humidity_sensor
             self._humidity_detector = HumidityDetector(
@@ -263,6 +265,8 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
                 detection_window=detection_window,
                 stabilization_delay=stabilization_delay,
                 max_pause_duration=max_pause_duration,
+                exit_humidity_threshold=exit_threshold,
+                exit_humidity_drop=exit_drop,
             )
             _LOGGER.info(
                 "%s: Humidity detection configured: sensor=%s (spike_threshold=%.1f%%, absolute_max=%.1f%%)",
