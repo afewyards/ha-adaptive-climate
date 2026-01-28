@@ -18,6 +18,12 @@ _LOGGER = logging.getLogger(__name__)
 # and should be clamped to avoid integral windup or erratic behavior
 MAX_REASONABLE_DT = 3600
 
+# Rate limit for dt discrepancy warnings (1 hour between warnings per entity)
+DT_DISCREPANCY_WARN_INTERVAL = 3600
+
+# Track last warning time per entity to avoid log spam
+_dt_discrepancy_last_warned: dict[str, float] = {}
+
 
 class ControlOutputManager:
     """Manager for PID control output calculation and heater control delegation.
@@ -167,11 +173,9 @@ class ControlOutputManager:
             cur_temp_time = time.monotonic()
             self._set_cur_temp_time(cur_temp_time)
 
-        # Only update cur_temp_time if this is a real temperature sensor update
-        # This prevents artificial tiny dt values from external sensor, contact sensor, or periodic calls
-        if is_temp_sensor_update:
-            cur_temp_time = time.monotonic()
-            self._set_cur_temp_time(cur_temp_time)
+        # Note: cur_temp_time is already updated by _async_sensor_changed handler
+        # when is_temp_sensor_update=True, so we don't update it again here.
+        # This ensures sensor_dt reflects actual time between sensor updates.
 
         if previous_temp_time > cur_temp_time:
             previous_temp_time = cur_temp_time
@@ -250,17 +254,21 @@ class ControlOutputManager:
 
         # Warn when actual_dt differs significantly from sensor_dt (ratio > 10x)
         # This indicates the thermostat is being triggered by non-temperature events
+        # Rate-limited to once per hour per entity to avoid log spam
         if actual_dt > 0 and sensor_dt > 0:
             dt_ratio = actual_dt / sensor_dt if actual_dt > sensor_dt else sensor_dt / actual_dt
             if dt_ratio > 10:
-                _LOGGER.warning(
-                    "%s: Large dt discrepancy - actual_dt=%.2f, sensor_dt=%.2f (ratio %.1fx). "
-                    "External trigger timing differs significantly from sensor updates.",
-                    entity_id,
-                    actual_dt,
-                    sensor_dt,
-                    dt_ratio,
-                )
+                last_warned = _dt_discrepancy_last_warned.get(entity_id, 0)
+                if current_time - last_warned >= DT_DISCREPANCY_WARN_INTERVAL:
+                    _dt_discrepancy_last_warned[entity_id] = current_time
+                    _LOGGER.warning(
+                        "%s: Large dt discrepancy - actual_dt=%.2f, sensor_dt=%.2f (ratio %.1fx). "
+                        "External trigger timing differs significantly from sensor updates.",
+                        entity_id,
+                        actual_dt,
+                        sensor_dt,
+                        dt_ratio,
+                    )
 
         if update:
             kp = self._thermostat_state._kp or 0

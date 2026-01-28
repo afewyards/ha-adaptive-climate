@@ -51,7 +51,8 @@ class PowerPerM2Sensor(AdaptiveThermostatSensor):
         self._attr_name = f"{zone_name} Power per m²"
         self._attr_unique_id = f"{zone_id}_power_m2"
         self._attr_native_unit_of_measurement = f"{UnitOfPower.WATT}/m²"
-        self._attr_device_class = SensorDeviceClass.POWER
+        # Note: device_class=POWER expects W/kW/MW units, but W/m² is power density
+        # Leaving device_class unset to avoid HA validation warnings
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_icon = "mdi:lightning-bolt"
         self._state = 0.0
