@@ -523,6 +523,8 @@ CONF_HUMIDITY_SPIKE_THRESHOLD = "humidity_spike_threshold"
 CONF_HUMIDITY_ABSOLUTE_MAX = "humidity_absolute_max"
 CONF_HUMIDITY_DETECTION_WINDOW = "humidity_detection_window"
 CONF_HUMIDITY_STABILIZATION_DELAY = "humidity_stabilization_delay"
+CONF_HUMIDITY_EXIT_THRESHOLD = "humidity_exit_threshold"
+CONF_HUMIDITY_EXIT_DROP = "humidity_exit_drop"
 
 # Night setback configuration
 CONF_NIGHT_SETBACK = "night_setback"
@@ -598,7 +600,7 @@ DEFAULT_HUMIDITY_DETECTION_WINDOW = 300  # seconds
 DEFAULT_HUMIDITY_STABILIZATION_DELAY = 300  # seconds
 DEFAULT_HUMIDITY_MAX_PAUSE = 3600  # 60 min max pause
 DEFAULT_HUMIDITY_EXIT_THRESHOLD = 70  # % to start exit
-DEFAULT_HUMIDITY_EXIT_DROP = 10  # % drop from peak to exit
+DEFAULT_HUMIDITY_EXIT_DROP = 5  # % drop from peak to exit
 DEFAULT_MIN_LEARNING_EVENTS = 3
 DEFAULT_MIN_CYCLE_TIME_WARNING = 15
 DEFAULT_MIN_CYCLE_TIME_CRITICAL = 10
