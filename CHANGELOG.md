@@ -1,6 +1,23 @@
 # CHANGELOG
 
 
+## v0.39.2 (2026-01-28)
+
+### Bug Fixes
+
+- Preserve peak humidity when re-triggered above absolute_max
+  ([`034ea1e`](https://github.com/afewyards/ha-adaptive-thermostat/commit/034ea1e2b2dbfe15fc98ddbed2a9599b5bddb609))
+
+Bug: When humidity stayed above absolute_max during pause, each reading reset peak_humidity to
+  current value, preventing exit condition (drop from peak > threshold) from ever being met.
+
+Fix: Only update peak_humidity if current reading is higher than existing peak. This allows exit
+  when humidity drops below exit_threshold AND has dropped sufficiently from the true peak.
+
+Adds regression tests for bathroom scenario where humidity hovers above absolute_max but gradually
+  drops.
+
+
 ## v0.39.1 (2026-01-28)
 
 ### Bug Fixes
