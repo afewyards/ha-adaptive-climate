@@ -60,11 +60,8 @@ def build_state_attributes(thermostat: SmartThermostat) -> dict[str, Any]:
         "integral": thermostat.pid_control_i,
     }
 
-    # Night setback attributes
-    _add_night_setback_attributes(thermostat, attrs)
-
-    # Consolidated pause attribute
-    attrs["pause"] = _build_pause_attribute(thermostat)
+    # Consolidated status attribute
+    attrs["status"] = _build_status_attribute(thermostat)
 
     # Learning/adaptation status
     _add_learning_status_attributes(thermostat, attrs)
@@ -96,15 +93,6 @@ def _compute_duty_accumulator_pct(thermostat: SmartThermostat) -> float:
 
     accumulator = thermostat._heater_controller.duty_accumulator_seconds
     return round(100.0 * accumulator / min_on, 1)
-
-
-def _add_night_setback_attributes(
-    thermostat: SmartThermostat, attrs: dict[str, Any]
-) -> None:
-    """Add night setback related attributes."""
-    if thermostat._night_setback or thermostat._night_setback_config:
-        _, _, night_info = thermostat._calculate_night_setback_adjustment()
-        attrs.update(night_info)
 
 
 def _compute_learning_status(
@@ -321,12 +309,12 @@ def _add_humidity_detection_attributes(
     attrs["humidity_resume_in"] = detector.get_time_until_resume()
 
 
-def _build_pause_attribute(thermostat: SmartThermostat) -> dict[str, Any]:
-    """Build consolidated pause attribute.
+def _build_status_attribute(thermostat: SmartThermostat) -> dict[str, Any]:
+    """Build consolidated status attribute.
 
-    The pause attribute provides unified information about heating pause state
-    from all possible sources (contact sensors, humidity detection). Uses
-    PauseManager for unified pause state aggregation.
+    The status attribute provides unified information about heating status state
+    from all possible sources (contact sensors, humidity detection, night setback). Uses
+    StatusManager for unified status state aggregation.
 
     Args:
         thermostat: The SmartThermostat instance
@@ -335,19 +323,23 @@ def _build_pause_attribute(thermostat: SmartThermostat) -> dict[str, Any]:
         Dictionary with structure:
         {
             "active": bool,        # Whether heating is currently paused
-            "reason": str | None,  # "contact" | "humidity" | None
-            "resume_in": int       # Optional seconds until resume (only when countdown active)
+            "reason": str | None,  # "contact" | "humidity" | "night_setback" | None
+            "resume_in": int,      # Optional seconds until resume (only when countdown active)
+            "delta": float,        # Optional temperature delta (night_setback only)
+            "end": str,            # Optional end time (night_setback only)
+            "learning_paused": bool,  # Optional learning pause flag (night_setback only)
+            "learning_resumes": str   # Optional learning resume time (night_setback only)
         }
     """
-    # Use PauseManager to get unified pause state (production path)
-    # Check if _pause_manager exists and is a real PauseManager (not a MagicMock)
-    from ..managers.pause_manager import PauseManager
-    pause_manager = getattr(thermostat, '_pause_manager', None)
-    if isinstance(pause_manager, PauseManager):
-        pause_info = pause_manager.get_pause_info()
-        return dict(pause_info)
+    # Use StatusManager to get unified status state (production path)
+    # Check if _status_manager exists and is a real StatusManager (not a MagicMock)
+    from ..managers.status_manager import StatusManager
+    status_manager = getattr(thermostat, '_status_manager', None)
+    if isinstance(status_manager, StatusManager):
+        status_info = status_manager.get_status_info()
+        return dict(status_info)
 
-    # Legacy path for tests that mock detectors directly (without PauseManager)
+    # Legacy path for tests that mock detectors directly (without StatusManager)
     # Initialize with inactive state
     pause_data: dict[str, Any] = {
         "active": False,
@@ -386,6 +378,33 @@ def _build_pause_attribute(thermostat: SmartThermostat) -> dict[str, Any]:
                 pause_data["resume_in"] = time_until_resume
 
             return pause_data
+
+    # Check night setback (legacy fallback)
+    night_setback_controller = getattr(thermostat, '_night_setback_controller', None)
+    if night_setback_controller:
+        try:
+            _, in_night, info = night_setback_controller.calculate_night_setback_adjustment()
+            if in_night:
+                pause_data["active"] = True
+                pause_data["reason"] = "night_setback"
+                if "night_setback_delta" in info:
+                    pause_data["delta"] = info["night_setback_delta"]
+                if "night_setback_end" in info:
+                    pause_data["end"] = info["night_setback_end"]
+                if night_setback_controller.in_learning_grace_period:
+                    pause_data["learning_paused"] = True
+                    grace_until = night_setback_controller.learning_grace_until
+                    if grace_until:
+                        pause_data["learning_resumes"] = grace_until.strftime("%H:%M")
+                return pause_data
+            if night_setback_controller.in_learning_grace_period:
+                pause_data["learning_paused"] = True
+                grace_until = night_setback_controller.learning_grace_until
+                if grace_until:
+                    pause_data["learning_resumes"] = grace_until.strftime("%H:%M")
+                return pause_data
+        except (TypeError, AttributeError, ValueError):
+            pass
 
     # No pause detected from any source
     return pause_data

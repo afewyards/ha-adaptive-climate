@@ -49,8 +49,8 @@ class ClimateControlMixin:
                 return
 
             # Unified pause check (contact sensors, humidity detection, etc.)
-            if self._pause_manager.is_paused():
-                pause_info = self._pause_manager.get_pause_info()
+            if self._status_manager.is_paused():
+                pause_info = self._status_manager.get_status_info()
                 reason = pause_info.get("reason", "unknown")
 
                 _LOGGER.info(

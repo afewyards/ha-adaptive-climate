@@ -103,7 +103,7 @@ Algorithmic detection of open windows based on rapid temperature drops (Danfoss 
 - `_async_control_heating` checks pause state
 - Suppression on setpoint decrease and night setback transitions
 
-**Pause attribute:** See consolidated `pause` attribute below.
+**Status attribute:** See consolidated `status` attribute below.
 
 ### Humidity-Based Steam Detection
 
@@ -134,7 +134,7 @@ NORMAL ──(spike)──> PAUSED ──(drop)──> STABILIZING ──(delay)
 - Preheat interaction: No preheat starts while paused
 - Safety: 60 min max pause duration
 
-**Pause attribute:** See consolidated `pause` attribute below.
+**Status attribute:** See consolidated `status` attribute below.
 
 ### Predictive Pre-Heating
 
@@ -181,16 +181,20 @@ Exposed via `extra_state_attributes`. Minimized for clarity - only restoration +
     "convergence_confidence_pct", # 0-100%
     "pid_history",               # List of PID adjustments (when non-empty)
 
-    # Consolidated pause (contact sensors + humidity detection)
-    "pause": {
-        "active": bool,          # True when heating is paused
-        "reason": str | None,    # "contact" | "humidity" | None
-        "resume_in": int         # Seconds until resume (optional, only when countdown active)
+    # Consolidated status (contact sensors + humidity detection + night setback)
+    "status": {
+        "active": bool,          # True when status is active
+        "reason": str | None,    # "contact" | "humidity" | "night_setback" | None
+        "resume_in": int,        # Seconds until resume (optional, countdown)
+        "delta": float,          # Night setback °C (optional)
+        "end": str,              # Night setback end "HH:MM" (optional)
+        "learning_paused": bool, # Grace period active (optional)
+        "learning_resumes": str, # Grace period end "HH:MM" (optional)
     }
 }
 ```
 
-**Priority:** Contact sensor pause > humidity detection pause (if both active, contact shown)
+**Priority:** Contact sensor > humidity detection > night setback (highest priority shown)
 
 **Debug-only attributes** (require `debug: true` in domain config):
 - `current_cycle_state` - Cycle tracker state (idle/heating/settling)

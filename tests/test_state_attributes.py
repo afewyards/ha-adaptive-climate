@@ -17,7 +17,7 @@ sys.modules['homeassistant.components.climate'] = mock_ha_climate
 from custom_components.adaptive_thermostat.managers.state_attributes import (
     _compute_learning_status,
     _add_learning_status_attributes,
-    _build_pause_attribute,
+    _build_status_attribute,
     ATTR_LEARNING_STATUS,
     ATTR_CYCLES_COLLECTED,
     ATTR_CONVERGENCE_CONFIDENCE,
@@ -945,33 +945,35 @@ class TestPerModeConvergenceConfidence:
 class TestHumidityDetectionAttributes:
     """Tests for humidity detection state attributes."""
 
-    def test_pause_not_active_when_no_detector(self):
-        """Test that pause attribute shows inactive when detector is None."""
+    def test_status_not_active_when_no_detector(self):
+        """Test that status attribute shows inactive when detector is None."""
         from custom_components.adaptive_thermostat.managers.state_attributes import (
-            _build_pause_attribute,
+            _build_status_attribute,
         )
 
         thermostat = MagicMock()
         thermostat._contact_sensor_handler = None
         thermostat._humidity_detector = None
+        thermostat._night_setback_controller = None
 
-        pause_attr = _build_pause_attribute(thermostat)
+        status_attr = _build_status_attribute(thermostat)
 
-        # Pause should be inactive
-        assert pause_attr["active"] is False
-        assert pause_attr["reason"] is None
-        # humidity_detection_state and humidity_resume_in should not be in pause attribute
-        assert "humidity_detection_state" not in pause_attr
-        assert "humidity_resume_in" not in pause_attr
+        # Status should be inactive
+        assert status_attr["active"] is False
+        assert status_attr["reason"] is None
+        # humidity_detection_state and humidity_resume_in should not be in status attribute
+        assert "humidity_detection_state" not in status_attr
+        assert "humidity_resume_in" not in status_attr
 
-    def test_pause_not_active_humidity_normal_state(self):
-        """Test pause attribute when humidity detector is in normal state."""
+    def test_status_not_active_humidity_normal_state(self):
+        """Test status attribute when humidity detector is in normal state."""
         from custom_components.adaptive_thermostat.managers.state_attributes import (
-            _build_pause_attribute,
+            _build_status_attribute,
         )
 
         thermostat = MagicMock()
         thermostat._contact_sensor_handler = None
+        thermostat._night_setback_controller = None
 
         # Setup humidity detector in normal state
         humidity_detector = MagicMock()
@@ -980,16 +982,16 @@ class TestHumidityDetectionAttributes:
         humidity_detector.get_time_until_resume.return_value = None
         thermostat._humidity_detector = humidity_detector
 
-        pause_attr = _build_pause_attribute(thermostat)
+        status_attr = _build_status_attribute(thermostat)
 
-        # Pause should be inactive
-        assert pause_attr["active"] is False
-        assert pause_attr["reason"] is None
+        # Status should be inactive
+        assert status_attr["active"] is False
+        assert status_attr["reason"] is None
 
-    def test_pause_active_humidity_paused_state(self):
-        """Test pause attribute when humidity detector is in paused state."""
+    def test_status_active_humidity_paused_state(self):
+        """Test status attribute when humidity detector is in paused state."""
         from custom_components.adaptive_thermostat.managers.state_attributes import (
-            _build_pause_attribute,
+            _build_status_attribute,
         )
 
         thermostat = MagicMock()
@@ -1002,17 +1004,17 @@ class TestHumidityDetectionAttributes:
         humidity_detector.get_time_until_resume.return_value = None
         thermostat._humidity_detector = humidity_detector
 
-        pause_attr = _build_pause_attribute(thermostat)
+        status_attr = _build_status_attribute(thermostat)
 
-        # Pause should be active with humidity reason
-        assert pause_attr["active"] is True
-        assert pause_attr["reason"] == "humidity"
-        assert "resume_in" not in pause_attr
+        # Status should be active with humidity reason
+        assert status_attr["active"] is True
+        assert status_attr["reason"] == "humidity"
+        assert "resume_in" not in status_attr
 
-    def test_pause_active_humidity_stabilizing_with_countdown(self):
-        """Test pause attribute when humidity detector is in stabilizing state with countdown."""
+    def test_status_active_humidity_stabilizing_with_countdown(self):
+        """Test status attribute when humidity detector is in stabilizing state with countdown."""
         from custom_components.adaptive_thermostat.managers.state_attributes import (
-            _build_pause_attribute,
+            _build_status_attribute,
         )
 
         thermostat = MagicMock()
@@ -1025,17 +1027,17 @@ class TestHumidityDetectionAttributes:
         humidity_detector.get_time_until_resume.return_value = 180  # 3 minutes
         thermostat._humidity_detector = humidity_detector
 
-        pause_attr = _build_pause_attribute(thermostat)
+        status_attr = _build_status_attribute(thermostat)
 
-        # Pause should be active with humidity reason and countdown
-        assert pause_attr["active"] is True
-        assert pause_attr["reason"] == "humidity"
-        assert pause_attr["resume_in"] == 180
+        # Status should be active with humidity reason and countdown
+        assert status_attr["active"] is True
+        assert status_attr["reason"] == "humidity"
+        assert status_attr["resume_in"] == 180
 
-    def test_pause_active_humidity_stabilizing_with_zero_resume_time(self):
-        """Test pause attribute when humidity is stabilizing with 0 resume time (about to exit)."""
+    def test_status_active_humidity_stabilizing_with_zero_resume_time(self):
+        """Test status attribute when humidity is stabilizing with 0 resume time (about to exit)."""
         from custom_components.adaptive_thermostat.managers.state_attributes import (
-            _build_pause_attribute,
+            _build_status_attribute,
         )
 
         thermostat = MagicMock()
@@ -1048,13 +1050,13 @@ class TestHumidityDetectionAttributes:
         humidity_detector.get_time_until_resume.return_value = 0
         thermostat._humidity_detector = humidity_detector
 
-        pause_attr = _build_pause_attribute(thermostat)
+        status_attr = _build_status_attribute(thermostat)
 
-        # Pause should be active with humidity reason, but no resume_in since it's 0
-        assert pause_attr["active"] is True
-        assert pause_attr["reason"] == "humidity"
+        # Status should be active with humidity reason, but no resume_in since it's 0
+        assert status_attr["active"] is True
+        assert status_attr["reason"] == "humidity"
         # 0 should not be included in resume_in
-        assert "resume_in" not in pause_attr or pause_attr.get("resume_in") == 0
+        assert "resume_in" not in status_attr or status_attr.get("resume_in") == 0
 
     def test_debug_attributes_still_present(self):
         """Test that humidity_detection_state and humidity_resume_in are still available for debugging."""
@@ -1078,27 +1080,28 @@ class TestHumidityDetectionAttributes:
         assert attrs["humidity_resume_in"] == 180
 
 
-class TestPauseAttribute:
-    """Tests for consolidated pause attribute."""
+class TestStatusAttribute:
+    """Tests for consolidated status attribute."""
 
-    def test_pause_not_active_no_detectors(self):
-        """Test pause attribute when no detectors configured."""
+    def test_status_not_active_no_detectors(self):
+        """Test status attribute when no detectors configured."""
         from custom_components.adaptive_thermostat.managers.state_attributes import (
-            _build_pause_attribute,
+            _build_status_attribute,
         )
 
         thermostat = MagicMock()
         thermostat._contact_sensor_handler = None
         thermostat._humidity_detector = None
+        thermostat._night_setback_controller = None
 
-        pause_attr = _build_pause_attribute(thermostat)
+        status_attr = _build_status_attribute(thermostat)
 
-        assert pause_attr == {"active": False, "reason": None}
+        assert status_attr == {"active": False, "reason": None}
 
-    def test_pause_not_active_contact_closed(self):
-        """Test pause attribute when contact sensor exists but is closed."""
+    def test_status_not_active_contact_closed(self):
+        """Test status attribute when contact sensor exists but is closed."""
         from custom_components.adaptive_thermostat.managers.state_attributes import (
-            _build_pause_attribute,
+            _build_status_attribute,
         )
 
         thermostat = MagicMock()
@@ -1110,15 +1113,16 @@ class TestPauseAttribute:
         contact_handler.get_time_until_action.return_value = None
         thermostat._contact_sensor_handler = contact_handler
         thermostat._humidity_detector = None
+        thermostat._night_setback_controller = None
 
-        pause_attr = _build_pause_attribute(thermostat)
+        status_attr = _build_status_attribute(thermostat)
 
-        assert pause_attr == {"active": False, "reason": None}
+        assert status_attr == {"active": False, "reason": None}
 
-    def test_pause_active_contact(self):
-        """Test pause attribute when contact sensor pause is active."""
+    def test_status_active_contact(self):
+        """Test status attribute when contact sensor status is active."""
         from custom_components.adaptive_thermostat.managers.state_attributes import (
-            _build_pause_attribute,
+            _build_status_attribute,
         )
 
         thermostat = MagicMock()
@@ -1131,14 +1135,14 @@ class TestPauseAttribute:
         thermostat._contact_sensor_handler = contact_handler
         thermostat._humidity_detector = None
 
-        pause_attr = _build_pause_attribute(thermostat)
+        status_attr = _build_status_attribute(thermostat)
 
-        assert pause_attr == {"active": True, "reason": "contact"}
+        assert status_attr == {"active": True, "reason": "contact"}
 
-    def test_pause_pending_contact(self):
-        """Test pause attribute when contact is open but not paused yet (in delay)."""
+    def test_status_pending_contact(self):
+        """Test status attribute when contact is open but not paused yet (in delay)."""
         from custom_components.adaptive_thermostat.managers.state_attributes import (
-            _build_pause_attribute,
+            _build_status_attribute,
         )
 
         thermostat = MagicMock()
@@ -1151,14 +1155,14 @@ class TestPauseAttribute:
         thermostat._contact_sensor_handler = contact_handler
         thermostat._humidity_detector = None
 
-        pause_attr = _build_pause_attribute(thermostat)
+        status_attr = _build_status_attribute(thermostat)
 
-        assert pause_attr == {"active": False, "reason": None, "resume_in": 120}
+        assert status_attr == {"active": False, "reason": None, "resume_in": 120}
 
-    def test_pause_active_humidity(self):
-        """Test pause attribute when humidity pause is active."""
+    def test_status_active_humidity(self):
+        """Test status attribute when humidity status is active."""
         from custom_components.adaptive_thermostat.managers.state_attributes import (
-            _build_pause_attribute,
+            _build_status_attribute,
         )
 
         thermostat = MagicMock()
@@ -1171,14 +1175,14 @@ class TestPauseAttribute:
         humidity_detector.get_time_until_resume.return_value = None
         thermostat._humidity_detector = humidity_detector
 
-        pause_attr = _build_pause_attribute(thermostat)
+        status_attr = _build_status_attribute(thermostat)
 
-        assert pause_attr == {"active": True, "reason": "humidity"}
+        assert status_attr == {"active": True, "reason": "humidity"}
 
-    def test_pause_humidity_stabilizing_with_countdown(self):
-        """Test pause attribute when humidity is stabilizing with countdown."""
+    def test_status_humidity_stabilizing_with_countdown(self):
+        """Test status attribute when humidity is stabilizing with countdown."""
         from custom_components.adaptive_thermostat.managers.state_attributes import (
-            _build_pause_attribute,
+            _build_status_attribute,
         )
 
         thermostat = MagicMock()
@@ -1191,14 +1195,14 @@ class TestPauseAttribute:
         humidity_detector.get_time_until_resume.return_value = 180  # 3 minutes
         thermostat._humidity_detector = humidity_detector
 
-        pause_attr = _build_pause_attribute(thermostat)
+        status_attr = _build_status_attribute(thermostat)
 
-        assert pause_attr == {"active": True, "reason": "humidity", "resume_in": 180}
+        assert status_attr == {"active": True, "reason": "humidity", "resume_in": 180}
 
-    def test_pause_contact_priority_over_humidity(self):
+    def test_status_contact_priority_over_humidity(self):
         """Test that contact sensor takes priority over humidity when both active."""
         from custom_components.adaptive_thermostat.managers.state_attributes import (
-            _build_pause_attribute,
+            _build_status_attribute,
         )
 
         thermostat = MagicMock()
@@ -1217,15 +1221,15 @@ class TestPauseAttribute:
         humidity_detector.get_time_until_resume.return_value = None
         thermostat._humidity_detector = humidity_detector
 
-        pause_attr = _build_pause_attribute(thermostat)
+        status_attr = _build_status_attribute(thermostat)
 
         # Contact should take priority
-        assert pause_attr == {"active": True, "reason": "contact"}
+        assert status_attr == {"active": True, "reason": "contact"}
 
-    def test_pause_humidity_only_when_no_contact(self):
+    def test_status_humidity_only_when_no_contact(self):
         """Test humidity detector works when no contact sensor configured."""
         from custom_components.adaptive_thermostat.managers.state_attributes import (
-            _build_pause_attribute,
+            _build_status_attribute,
         )
 
         thermostat = MagicMock()
@@ -1238,6 +1242,6 @@ class TestPauseAttribute:
         humidity_detector.get_time_until_resume.return_value = 240  # 4 minutes
         thermostat._humidity_detector = humidity_detector
 
-        pause_attr = _build_pause_attribute(thermostat)
+        status_attr = _build_status_attribute(thermostat)
 
-        assert pause_attr == {"active": True, "reason": "humidity", "resume_in": 240}
+        assert status_attr == {"active": True, "reason": "humidity", "resume_in": 240}

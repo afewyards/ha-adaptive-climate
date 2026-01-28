@@ -4,7 +4,7 @@ Verifies that different features work correctly when active simultaneously,
 covering interactions between:
 - Humidity detection + Learning
 - Contact sensors + Preheat
-- Multiple pause sources (PauseManager)
+- Multiple status sources (StatusManager)
 """
 
 import pytest
@@ -25,8 +25,8 @@ from custom_components.adaptive_thermostat.adaptive.learning import (
     AdaptiveLearner,
     CycleMetrics,
 )
-from custom_components.adaptive_thermostat.managers.pause_manager import (
-    PauseManager,
+from custom_components.adaptive_thermostat.managers.status_manager import (
+    StatusManager,
 )
 from custom_components.adaptive_thermostat.const import (
     HEATING_TYPE_CONVECTOR,
@@ -305,17 +305,17 @@ class TestContactPreheatInteraction:
 
 
 class TestMultiplePauseSources:
-    """Test PauseManager with multiple pause sources active."""
+    """Test StatusManager with multiple pause sources active."""
 
     def test_pause_manager_prioritizes_contact_over_humidity(self):
-        """Test that PauseManager correctly prioritizes contact > humidity."""
+        """Test that StatusManager correctly prioritizes contact > humidity."""
         handler = ContactSensorHandler(
             contact_sensors=["binary_sensor.window"],
             contact_delay_seconds=0,
             action=ContactAction.PAUSE,
         )
         detector = HumidityDetector()
-        manager = PauseManager(
+        manager = StatusManager(
             contact_sensor_handler=handler,
             humidity_detector=detector,
         )
@@ -324,7 +324,7 @@ class TestMultiplePauseSources:
 
         # Both inactive initially
         assert manager.is_paused() is False
-        pause_info = manager.get_pause_info()
+        pause_info = manager.get_status_info()
         assert pause_info["active"] is False
         assert pause_info["reason"] is None
 
@@ -334,7 +334,7 @@ class TestMultiplePauseSources:
         assert detector.should_pause() is True
 
         assert manager.is_paused() is True
-        pause_info = manager.get_pause_info()
+        pause_info = manager.get_status_info()
         assert pause_info["active"] is True
         assert pause_info["reason"] == "humidity"
 
@@ -343,7 +343,7 @@ class TestMultiplePauseSources:
         assert handler.should_take_action(now) is True
 
         assert manager.is_paused() is True
-        pause_info = manager.get_pause_info()
+        pause_info = manager.get_status_info()
         assert pause_info["active"] is True
         assert pause_info["reason"] == "contact"  # Contact takes priority
 
@@ -355,7 +355,7 @@ class TestMultiplePauseSources:
             action=ContactAction.PAUSE,
         )
         detector = HumidityDetector()
-        manager = PauseManager(
+        manager = StatusManager(
             contact_sensor_handler=handler,
             humidity_detector=detector,
         )
@@ -375,7 +375,7 @@ class TestMultiplePauseSources:
 
         # Manager should show contact (higher priority)
         assert manager.is_paused() is True
-        pause_info = manager.get_pause_info()
+        pause_info = manager.get_status_info()
         assert pause_info["active"] is True
         assert pause_info["reason"] == "contact"
 
@@ -387,7 +387,7 @@ class TestMultiplePauseSources:
             action=ContactAction.PAUSE,
         )
         detector = HumidityDetector(stabilization_delay=300)
-        manager = PauseManager(
+        manager = StatusManager(
             contact_sensor_handler=handler,
             humidity_detector=detector,
         )
@@ -398,7 +398,7 @@ class TestMultiplePauseSources:
         detector.record_humidity(now, 50.0)
         detector.record_humidity(now + timedelta(minutes=5), 75.0)
 
-        pause_info = manager.get_pause_info()
+        pause_info = manager.get_status_info()
         assert pause_info["active"] is True
         assert pause_info["reason"] == "humidity"
 
@@ -406,7 +406,7 @@ class TestMultiplePauseSources:
         time_1 = now + timedelta(minutes=10)
         handler.update_contact_states({"binary_sensor.window": True}, time_1)
 
-        pause_info = manager.get_pause_info()
+        pause_info = manager.get_status_info()
         assert pause_info["active"] is True
         assert pause_info["reason"] == "contact"
 
@@ -416,7 +416,7 @@ class TestMultiplePauseSources:
 
         # Should fall back to humidity (still active)
         detector.record_humidity(time_2, 72.0)  # Still high
-        pause_info = manager.get_pause_info()
+        pause_info = manager.get_status_info()
         assert pause_info["active"] is True
         assert pause_info["reason"] == "humidity"
 
@@ -426,7 +426,7 @@ class TestMultiplePauseSources:
         assert detector.get_state() == "stabilizing"
 
         # Still paused but in stabilizing
-        pause_info = manager.get_pause_info()
+        pause_info = manager.get_status_info()
         assert pause_info["active"] is True
         assert pause_info["reason"] == "humidity"
         assert "resume_in" in pause_info  # Countdown present
@@ -435,18 +435,18 @@ class TestMultiplePauseSources:
         time_4 = time_3 + timedelta(seconds=301)
         detector.record_humidity(time_4, 63.0)
 
-        pause_info = manager.get_pause_info()
+        pause_info = manager.get_status_info()
         assert pause_info["active"] is False
         assert pause_info["reason"] is None
 
     def test_pause_manager_with_only_contact_sensor(self):
-        """Test PauseManager with only contact sensor configured."""
+        """Test StatusManager with only contact sensor configured."""
         handler = ContactSensorHandler(
             contact_sensors=["binary_sensor.window"],
             contact_delay_seconds=0,
             action=ContactAction.PAUSE,
         )
-        manager = PauseManager(contact_sensor_handler=handler)
+        manager = StatusManager(contact_sensor_handler=handler)
 
         now = datetime(2024, 1, 1, 12, 0, 0)
 
@@ -457,14 +457,14 @@ class TestMultiplePauseSources:
         handler.update_contact_states({"binary_sensor.window": True}, now)
 
         assert manager.is_paused() is True
-        pause_info = manager.get_pause_info()
+        pause_info = manager.get_status_info()
         assert pause_info["active"] is True
         assert pause_info["reason"] == "contact"
 
     def test_pause_manager_with_only_humidity_detector(self):
-        """Test PauseManager with only humidity detector configured."""
+        """Test StatusManager with only humidity detector configured."""
         detector = HumidityDetector()
-        manager = PauseManager(humidity_detector=detector)
+        manager = StatusManager(humidity_detector=detector)
 
         now = datetime(2024, 1, 1, 12, 0, 0)
 
@@ -476,7 +476,7 @@ class TestMultiplePauseSources:
         detector.record_humidity(now + timedelta(minutes=5), 75.0)
 
         assert manager.is_paused() is True
-        pause_info = manager.get_pause_info()
+        pause_info = manager.get_status_info()
         assert pause_info["active"] is True
         assert pause_info["reason"] == "humidity"
 
@@ -513,9 +513,9 @@ class TestMultiplePauseSources:
         time_until = handler.get_time_until_action(time_6min)
         assert time_until == 0  # Action should be taken now
 
-        # Verify PauseManager would correctly aggregate this
+        # Verify StatusManager would correctly aggregate this
         # (Handler integration is tested separately, here we verify delay logic)
-        manager = PauseManager(contact_sensor_handler=handler)
+        manager = StatusManager(contact_sensor_handler=handler)
         # At time_6min, should be paused
         is_paused = handler.should_take_action(time_6min) and handler.get_action() == ContactAction.PAUSE
         assert is_paused is True
@@ -632,7 +632,7 @@ class TestComplexScenarios:
             action=ContactAction.PAUSE,
         )
         detector = HumidityDetector(stabilization_delay=300)
-        manager = PauseManager(
+        manager = StatusManager(
             contact_sensor_handler=handler,
             humidity_detector=detector,
         )
@@ -656,6 +656,6 @@ class TestComplexScenarios:
         detector.record_humidity(time_final, 58.0)
 
         # All should be resolved
-        pause_info = manager.get_pause_info()
+        pause_info = manager.get_status_info()
         assert pause_info["active"] is False
         assert pause_info["reason"] is None

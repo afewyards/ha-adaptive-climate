@@ -269,9 +269,9 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
                 self._name, humidity_sensor, spike_threshold, absolute_max
             )
 
-        # Pause manager - aggregates all pause mechanisms
-        from .managers.pause_manager import PauseManager
-        self._pause_manager = PauseManager(
+        # Status manager - aggregates all pause mechanisms
+        from .managers.status_manager import StatusManager
+        self._status_manager = StatusManager(
             contact_sensor_handler=self._contact_sensor_handler,
             humidity_detector=self._humidity_detector,
         )
@@ -417,6 +417,10 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
 
         # Initialize all manager instances (HeaterController, CycleTrackerManager, etc.)
         await async_setup_managers(self)
+
+        # Set night setback controller in status manager after managers are initialized
+        if self._night_setback_controller:
+            self._status_manager.set_night_setback_controller(self._night_setback_controller)
 
         # Set up state change listeners
         self._setup_state_listeners()
