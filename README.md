@@ -60,6 +60,12 @@ An advanced thermostat integration featuring PID control with automatic tuning, 
 1. Copy the `custom_components/adaptive_thermostat` folder to your `<config>/custom_components/` directory
 2. Restart Home Assistant
 
+## Companion Lovelace Card
+
+For the best experience, use the [Adaptive Thermostat Card](https://github.com/afewyards/adaptive-thermostat-card) — a custom Lovelace card designed specifically for this integration.
+
+[![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/afewyards/adaptive-thermostat-card)
+
 ## Quick Start
 
 ### Basic Configuration
