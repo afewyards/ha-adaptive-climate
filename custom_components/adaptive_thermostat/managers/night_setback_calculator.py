@@ -247,7 +247,7 @@ class NightSetbackCalculator:
         (sunrise/orientation/weather-based) configurations.
 
         Args:
-            current_time: Optional datetime for testing; defaults to dt_util.utcnow()
+            current_time: Optional datetime for testing; defaults to local time
 
         Returns:
             A tuple of (effective_target, in_night_period, night_setback_info) where:
@@ -256,7 +256,7 @@ class NightSetbackCalculator:
             - night_setback_info: Dict with additional info for state attributes
         """
         if current_time is None:
-            current_time = dt_util.utcnow()
+            current_time = dt_util.as_local(dt_util.utcnow())
 
         target_temp = self._get_target_temp()
         current_temp = self._get_current_temp()

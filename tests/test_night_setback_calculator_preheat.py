@@ -296,3 +296,139 @@ class TestNightSetbackCalculatorPreheat:
         assert preheat_start is not None
         # Allow tolerance for calculation differences
         assert abs((preheat_start - expected_start).total_seconds()) < 300
+
+
+class TestNightSetbackCalculatorTimezone:
+    """Test NightSetbackCalculator with timezone-aware datetimes."""
+
+    def create_calculator_with_config(self, night_setback_config=None):
+        """Helper to create NightSetbackCalculator."""
+        hass = Mock()
+        hass.states = Mock()
+        hass.states.get = Mock(return_value=None)  # Mock sun.sun state
+        hass.data = {}
+
+        entity_id = "climate.test"
+        get_target_temp = Mock(return_value=20.0)
+        get_current_temp = Mock(return_value=18.0)
+
+        calculator = NightSetbackCalculator(
+            hass=hass,
+            entity_id=entity_id,
+            night_setback=None,
+            night_setback_config=night_setback_config or {
+                "start": "22:00",
+                "delta": 3.0,
+                "recovery_deadline": "08:57"
+            },
+            window_orientation=None,
+            get_target_temp=get_target_temp,
+            get_current_temp=get_current_temp,
+        )
+
+        return calculator
+
+    def test_local_time_used_not_utc_in_calculator(self):
+        """Test that calculator uses local time for period checks, not UTC.
+
+        This is a regression test for the timezone bug where:
+        - Local time is 10:00 AM (past the 08:57 end time)
+        - UTC time is 08:00 AM (before the 08:57 end time)
+        - Bug: Comparing UTC time against local config would keep setback active
+        - Fix: Using local time correctly makes setback inactive
+        """
+        from zoneinfo import ZoneInfo
+
+        calculator = self.create_calculator_with_config({
+            "start": "22:00",
+            "delta": 3.0,
+            "recovery_deadline": "08:57"
+        })
+
+        # Amsterdam timezone (UTC+1 in winter)
+        tz = ZoneInfo("Europe/Amsterdam")
+
+        # Local time: 10:00 AM (past end time 08:57)
+        # UTC time would be: 09:00 AM
+        local_time = datetime(2024, 1, 15, 10, 0, tzinfo=tz)
+
+        effective_target, in_night_period, info = calculator.calculate_night_setback_adjustment(local_time)
+
+        # Night setback should NOT be active (local time 10:00 > end time 08:57)
+        assert in_night_period is False
+        assert effective_target == 20.0  # Target not reduced
+
+    def test_calculator_edge_case_past_end_time(self):
+        """Test edge case where local time just passes end time.
+
+        Scenario: Local time is 09:01 AM (1 minute past 09:00 end time)
+        Result: Night setback should NOT be active
+        """
+        from zoneinfo import ZoneInfo
+
+        calculator = self.create_calculator_with_config({
+            "start": "23:00",
+            "delta": 3.0,
+            "recovery_deadline": "09:00"
+        })
+
+        tz = ZoneInfo("America/New_York")
+
+        # Local time: 09:01 AM (1 minute past end time)
+        local_time = datetime(2024, 1, 15, 9, 1, tzinfo=tz)
+
+        effective_target, in_night_period, info = calculator.calculate_night_setback_adjustment(local_time)
+
+        # Night setback should NOT be active
+        assert in_night_period is False
+        assert effective_target == 20.0
+
+    def test_calculator_during_night_with_timezone(self):
+        """Test calculator correctly identifies night period with timezone."""
+        from zoneinfo import ZoneInfo
+
+        calculator = self.create_calculator_with_config({
+            "start": "22:00",
+            "delta": 3.0,
+            "recovery_deadline": "07:00"
+        })
+
+        tz = ZoneInfo("Europe/Amsterdam")
+
+        # Local time: 23:00 (11 PM) - clearly during night
+        local_time = datetime(2024, 1, 15, 23, 0, tzinfo=tz)
+
+        effective_target, in_night_period, info = calculator.calculate_night_setback_adjustment(local_time)
+
+        # Night setback SHOULD be active
+        assert in_night_period is True
+        assert effective_target == 17.0  # 20.0 - 3.0
+
+    def test_calculator_multiple_timezones(self):
+        """Test calculator works correctly across different timezones."""
+        from zoneinfo import ZoneInfo
+
+        timezones = [
+            "Europe/Amsterdam",
+            "America/New_York",
+            "Asia/Tokyo",
+        ]
+
+        for tz_name in timezones:
+            tz = ZoneInfo(tz_name)
+            calculator = self.create_calculator_with_config({
+                "start": "22:00",
+                "delta": 2.5,
+                "recovery_deadline": "07:00"
+            })
+
+            # Local time 10:00 AM - past end time
+            local_time = datetime(2024, 1, 15, 10, 0, tzinfo=tz)
+            effective_target, in_night_period, info = calculator.calculate_night_setback_adjustment(local_time)
+            assert in_night_period is False, f"Failed for {tz_name} at 10:00 AM"
+
+            # Local time 23:00 (11 PM) - during night
+            local_time = datetime(2024, 1, 15, 23, 0, tzinfo=tz)
+            effective_target, in_night_period, info = calculator.calculate_night_setback_adjustment(local_time)
+            assert in_night_period is True, f"Failed for {tz_name} at 11:00 PM"
+            assert effective_target == 17.5, f"Failed for {tz_name} - wrong effective_target"

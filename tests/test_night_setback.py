@@ -620,3 +620,115 @@ def test_night_setback_learned_rate_module_exists():
     assert hasattr(setback, 'heating_type')
     assert hasattr(setback, '_get_heating_rate')
     assert hasattr(setback, '_get_cold_soak_margin')
+
+
+class TestNightSetbackTimezone:
+    """Test NightSetback with timezone-aware datetimes."""
+
+    def test_local_time_used_not_utc(self):
+        """Test that local time is used for period checks, not UTC.
+
+        Scenario: Local time is 10:00 AM (past the 08:57 end time)
+                  UTC time is 08:00 AM (before the 08:57 end time)
+        Result: Night setback should NOT be active (local time is used correctly)
+        """
+        from zoneinfo import ZoneInfo
+
+        setback = NightSetback(
+            start_time="22:00",
+            end_time="08:57",
+            setback_delta=2.0
+        )
+
+        # Create timezone-aware datetime
+        # Amsterdam timezone (UTC+1 or UTC+2 depending on DST)
+        # Using winter time: UTC+1
+        tz = ZoneInfo("Europe/Amsterdam")
+
+        # Local time: 10:00 AM (past end time 08:57)
+        # UTC time: 09:00 AM (also past 08:57, but that's not the point)
+        # The bug would manifest if we were comparing UTC time against local config
+        local_time = datetime(2024, 1, 15, 10, 0, tzinfo=tz)
+
+        # Night setback should NOT be active (local time 10:00 > end time 08:57)
+        assert setback.is_night_period(local_time) is False
+
+    def test_utc_vs_local_edge_case(self):
+        """Test edge case where UTC and local times span the end boundary.
+
+        Scenario: Local time is 09:30 AM (past the 09:00 end time)
+                  UTC time is 08:30 AM (before the 09:00 end time)
+        Result: Night setback should NOT be active
+        """
+        from zoneinfo import ZoneInfo
+
+        setback = NightSetback(
+            start_time="23:00",
+            end_time="09:00",
+            setback_delta=3.0
+        )
+
+        # New York timezone (UTC-5)
+        tz = ZoneInfo("America/New_York")
+
+        # Local time: 09:30 AM EST (past end time 09:00)
+        # UTC time would be: 14:30 (2:30 PM)
+        local_time = datetime(2024, 1, 15, 9, 30, tzinfo=tz)
+
+        # Night setback should NOT be active
+        assert setback.is_night_period(local_time) is False
+
+        # Local time: 08:45 AM EST (before end time 09:00)
+        # UTC time would be: 13:45 (1:45 PM)
+        local_time = datetime(2024, 1, 15, 8, 45, tzinfo=tz)
+
+        # Night setback SHOULD be active
+        assert setback.is_night_period(local_time) is True
+
+    def test_timezone_aware_during_night(self):
+        """Test timezone-aware datetime during night period."""
+        from zoneinfo import ZoneInfo
+
+        setback = NightSetback(
+            start_time="22:00",
+            end_time="06:00",
+            setback_delta=2.0
+        )
+
+        tz = ZoneInfo("Europe/Amsterdam")
+
+        # Local time: 23:00 (11 PM) - clearly during night
+        local_time = datetime(2024, 1, 15, 23, 0, tzinfo=tz)
+        assert setback.is_night_period(local_time) is True
+
+        # Local time: 02:00 (2 AM) - during night (crosses midnight)
+        local_time = datetime(2024, 1, 15, 2, 0, tzinfo=tz)
+        assert setback.is_night_period(local_time) is True
+
+    def test_multiple_timezones(self):
+        """Test that the same config works correctly across different timezones."""
+        from zoneinfo import ZoneInfo
+
+        setback = NightSetback(
+            start_time="22:00",
+            end_time="07:00",
+            setback_delta=2.0
+        )
+
+        # Test with multiple timezones - all at local 10:00 AM
+        timezones = [
+            "Europe/Amsterdam",
+            "America/New_York",
+            "Asia/Tokyo",
+            "Australia/Sydney",
+        ]
+
+        for tz_name in timezones:
+            tz = ZoneInfo(tz_name)
+            # Local time 10:00 AM - past end time in all zones
+            local_time = datetime(2024, 1, 15, 10, 0, tzinfo=tz)
+            assert setback.is_night_period(local_time) is False, f"Failed for {tz_name}"
+
+            # Local time 23:00 (11 PM) - during night in all zones
+            local_time = datetime(2024, 1, 15, 23, 0, tzinfo=tz)
+            assert setback.is_night_period(local_time) is True, f"Failed for {tz_name}"
