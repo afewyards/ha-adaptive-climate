@@ -66,8 +66,9 @@ def learner_to_dict(
     last_adjustment_time: Optional[datetime],
     consecutive_converged_cycles: int,
     pid_converged_for_ke: bool,
+    undershoot_detector: Optional[Any] = None,
 ) -> Dict[str, Any]:
-    """Serialize AdaptiveLearner state to a dictionary in v5 format with v4 backward compatibility.
+    """Serialize AdaptiveLearner state to a dictionary in v6 format with backward compatibility.
 
     Args:
         heating_cycle_history: List of heating cycle metrics
@@ -80,9 +81,11 @@ def learner_to_dict(
         last_adjustment_time: Timestamp of last PID adjustment
         consecutive_converged_cycles: Number of consecutive converged cycles
         pid_converged_for_ke: Whether PID has converged for Ke learning
+        undershoot_detector: UndershootDetector instance for state serialization
 
     Returns:
         Dictionary containing:
+        - v6 structure with undershoot detector state
         - v5 mode-keyed structure (heating/cooling sub-dicts)
         - v4 backward-compatible top-level keys (cycle_history, auto_apply_count, etc.)
     """
@@ -93,7 +96,19 @@ def learner_to_dict(
     serialized_heating_cycles = [serialize_cycle(cycle) for cycle in heating_cycle_history]
     serialized_cooling_cycles = [serialize_cycle(cycle) for cycle in cooling_cycle_history]
 
+    # Serialize undershoot detector state
+    undershoot_state = {}
+    if undershoot_detector is not None:
+        undershoot_state = {
+            "time_below_target": undershoot_detector.time_below_target,
+            "thermal_debt": undershoot_detector.thermal_debt,
+            "cumulative_ki_multiplier": undershoot_detector.cumulative_ki_multiplier,
+            # Note: last_adjustment_time uses monotonic, not persisted
+        }
+
     return {
+        # V6 undershoot detector state
+        "undershoot_detector": undershoot_state,
         # V5 mode-keyed structure
         "heating": {
             "cycle_history": serialized_heating_cycles,
@@ -173,12 +188,13 @@ def _deserialize_pid_history(pid_history_data: List[Dict[str, Any]]) -> List[Dic
 def restore_learner_from_dict(data: Dict[str, Any]) -> Dict[str, Any]:
     """Restore AdaptiveLearner state from a dictionary.
 
-    Supports both v4 (flat) and v5 (mode-keyed) formats for backward compatibility.
+    Supports v4 (flat), v5 (mode-keyed), and v6 (undershoot detector) formats.
 
     Args:
         data: Dictionary containing either:
             v4 format: cycle_history, auto_apply_count, etc. at top level
             v5 format: heating/cooling sub-dicts with mode-specific data
+            v6 format: v5 + undershoot_detector state
 
     Returns:
         Dictionary with restored state containing:
@@ -192,13 +208,15 @@ def restore_learner_from_dict(data: Dict[str, Any]) -> Dict[str, Any]:
         - last_adjustment_time: Timestamp of last PID adjustment (datetime or None)
         - consecutive_converged_cycles: Number of consecutive converged cycles
         - pid_converged_for_ke: Whether PID has converged for Ke learning
-        - format_version: 'v5' or 'v4' to indicate which format was detected
+        - undershoot_detector_state: Dict with detector state (time_below_target, etc.)
+        - format_version: 'v6', 'v5', or 'v4' to indicate which format was detected
     """
-    # Detect format version by checking for "heating" key
+    # Detect format version by checking for version-specific keys
+    is_v6_format = "undershoot_detector" in data
     is_v5_format = "heating" in data
 
-    if is_v5_format:
-        # V5 format: mode-keyed structure
+    if is_v6_format or is_v5_format:
+        # V6/V5 format: mode-keyed structure
         heating_cycle_history = [
             _deserialize_cycle(cycle_dict)
             for cycle_dict in data.get("heating", {}).get("cycle_history", [])
@@ -219,17 +237,29 @@ def restore_learner_from_dict(data: Dict[str, Any]) -> Dict[str, Any]:
         # Restore PID history from heating mode
         pid_history = _deserialize_pid_history(data.get("heating", {}).get("pid_history", []))
 
+        # Restore undershoot detector state (v6 only)
+        if is_v6_format:
+            undershoot_detector_state = data.get("undershoot_detector", {})
+            format_version = 'v6'
+        else:
+            # Migration from v5: initialize with defaults
+            undershoot_detector_state = {
+                "time_below_target": 0.0,
+                "thermal_debt": 0.0,
+                "cumulative_ki_multiplier": 1.0,
+            }
+            format_version = 'v5'
+
         _LOGGER.info(
-            "AdaptiveLearner state restored (v5): heating=%d cycles, cooling=%d cycles, "
+            "AdaptiveLearner state restored (%s): heating=%d cycles, cooling=%d cycles, "
             "heating_auto_apply=%d, cooling_auto_apply=%d, pid_history=%d",
+            format_version,
             len(heating_cycle_history),
             len(cooling_cycle_history),
             heating_auto_apply_count,
             cooling_auto_apply_count,
             len(pid_history),
         )
-
-        format_version = 'v5'
 
     else:
         # V4 format: flat structure (backward compatibility)
@@ -247,8 +277,13 @@ def restore_learner_from_dict(data: Dict[str, Any]) -> Dict[str, Any]:
         heating_convergence_confidence = data.get("convergence_confidence", 0.0)
         cooling_convergence_confidence = 0.0
 
-        # V4 didn't store PID history
+        # V4 didn't store PID history or undershoot detector state
         pid_history = []
+        undershoot_detector_state = {
+            "time_below_target": 0.0,
+            "thermal_debt": 0.0,
+            "cumulative_ki_multiplier": 1.0,
+        }
 
         _LOGGER.info(
             "AdaptiveLearner state restored (v4 compat): %d cycles, auto_apply=%d",
@@ -258,7 +293,7 @@ def restore_learner_from_dict(data: Dict[str, Any]) -> Dict[str, Any]:
 
         format_version = 'v4'
 
-    # Restore shared fields (present in both v4 and v5)
+    # Restore shared fields (present in all versions)
     last_adj_time = data.get("last_adjustment_time")
     if last_adj_time is not None and isinstance(last_adj_time, str):
         last_adjustment_time = datetime.fromisoformat(last_adj_time)
@@ -280,5 +315,6 @@ def restore_learner_from_dict(data: Dict[str, Any]) -> Dict[str, Any]:
         "last_adjustment_time": last_adjustment_time,
         "consecutive_converged_cycles": consecutive_converged_cycles,
         "pid_converged_for_ke": pid_converged_for_ke,
+        "undershoot_detector_state": undershoot_detector_state,
         "format_version": format_version,
     }
