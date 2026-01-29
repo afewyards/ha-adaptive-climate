@@ -1,6 +1,87 @@
 # CHANGELOG
 
 
+## v0.42.0 (2026-01-29)
+
+### Bug Fixes
+
+- Properly mock datetime in state attribute tests
+  ([`e4ada4a`](https://github.com/afewyards/ha-adaptive-thermostat/commit/e4ada4a4acfbd7639ee94cff226ab2970d1221b9))
+
+Fixed 3 failing tests that were comparing MagicMock instances: - test_night_setback_status -
+  test_multiple_conditions_status - test_preheating_status
+
+The issue was that convert_setback_end() in status_manager.py defaults to dt_util.now() when
+  now=None, but in tests thermostat.hass is mocked. This caused now.replace() to return MagicMock,
+  leading to comparison failures.
+
+Solution: Mock dt_util.now() in the affected tests to return a real datetime object, allowing the
+  time comparison logic to work correctly.
+
+### Features
+
+- Add ki property and integration tests for undershoot detection
+  ([`af97917`](https://github.com/afewyards/ha-adaptive-thermostat/commit/af979172410fa6eaf96781c9b5e1018d2c5adec1))
+
+Add ki getter/setter property to PID controller to enable direct Ki manipulation needed for
+  undershoot detection. Create comprehensive integration tests verifying undershoot detector
+  behavior within the full climate control loop context.
+
+Changes: - Add ki property (getter/setter) to PIDController - Fix climate_control.py to pass
+  current_ki to check_undershoot_adjustment() - Add 11 integration tests covering: - Detector update
+  on each control loop iteration - Ki adjustment with proper integral scaling - Blocking adjustments
+  after cycles complete - Cumulative cap enforcement - Temperature recovery reset behavior -
+  Tolerance band state holding - Heating-type-specific thresholds - Cooldown enforcement between
+  adjustments
+
+All tests passing (11/11).
+
+- Add scale_integral method to PIDController
+  ([`5d24c28`](https://github.com/afewyards/ha-adaptive-thermostat/commit/5d24c289493cf6387ec77d306382f6b5d5b6972b))
+
+- Add undershoot detection thresholds to const.py
+  ([`ff8d1ce`](https://github.com/afewyards/ha-adaptive-thermostat/commit/ff8d1ce973bf71d0b1d641a8274eeecf56ec289d))
+
+- Add undershoot detector debug attributes
+  ([`05e9a79`](https://github.com/afewyards/ha-adaptive-thermostat/commit/05e9a7932aedfea76ab08caf895b3c7a9ddbf66e))
+
+Add debug-only state attributes for undershoot detector: - undershoot_time_hours: time below target
+  in hours - undershoot_thermal_debt: accumulated °C·hours - undershoot_ki_multiplier: cumulative
+  multiplier
+
+These attributes only appear when debug mode is enabled, following the existing pattern for debug
+  attributes in state_attributes.py.
+
+- Add UndershootDetector for persistent undershoot detection
+  ([`8899934`](https://github.com/afewyards/ha-adaptive-thermostat/commit/88999344d9aa591b75efe2d54c2b2cf80f014000))
+
+- Integrate undershoot detector calls in climate control loop
+  ([`79cfec1`](https://github.com/afewyards/ha-adaptive-thermostat/commit/79cfec1963da8e565dc91d44e94fdc7920040dbc))
+
+Add undershoot detection to the main control loop in climate_control.py. The detector monitors
+  temperature deficit and triggers Ki adjustments when: - System has not completed any cycles yet
+  (normal learning hasn't started) - Temperature remains below setpoint - cold_tolerance for
+  extended periods - Thermal debt accumulation exceeds thresholds
+
+Changes: - Call update_undershoot_detector() after PID calculation in _async_control_heating() -
+  Check check_undershoot_adjustment() to get recommended Ki changes - Scale integral when Ki changes
+  to prevent output spike - Only run in HEAT mode when adaptive learner is available
+
+Also fix test cases to properly isolate time and debt threshold triggers by using appropriate
+  temperature errors and time periods.
+
+- Integrate UndershootDetector into AdaptiveLearner
+  ([`dc27749`](https://github.com/afewyards/ha-adaptive-thermostat/commit/dc27749df0a44167e29130db3d879737d43b4d13))
+
+- Update learner serialization to v6 for undershoot detector
+  ([`a983cfd`](https://github.com/afewyards/ha-adaptive-thermostat/commit/a983cfd6a5b09ca7ad33c16558d770123db71bc4))
+
+### Testing
+
+- Add comprehensive tests for UndershootDetector
+  ([`cb518c5`](https://github.com/afewyards/ha-adaptive-thermostat/commit/cb518c572a8121fa24ec867902ffc447055fca1b))
+
+
 ## v0.41.0 (2026-01-29)
 
 ### Features
