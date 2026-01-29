@@ -312,6 +312,14 @@ class PID:
         """
         self._integral *= factor
 
+    def scale_integral(self, factor: float) -> None:
+        """Scale the integral term by a factor.
+
+        Used when adjusting Ki to prevent output spikes.
+        When Ki increases, scale integral down: integral *= old_ki / new_ki
+        """
+        self._integral *= factor
+
     def prepare_bumpless_transfer(self):
         """Prepare for bumpless transfer by setting integral to maintain continuity.
 
