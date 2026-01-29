@@ -133,6 +133,16 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
         return self._manifold_registry.get_worst_case_transport_delay(zone_id, zone_loops)
 
     @property
+    def weather_entity(self) -> str | None:
+        """Get the configured weather entity ID.
+
+        Returns:
+            Weather entity ID or None if not configured.
+        """
+        domain_data = self.hass.data.get(DOMAIN, {})
+        return domain_data.get("weather_entity")
+
+    @property
     def outdoor_temp(self) -> float | None:
         """Get the current outdoor temperature from the weather entity.
 
@@ -140,8 +150,7 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
             Outdoor temperature in °C, or None if unavailable.
         """
         # Get weather entity from hass.data
-        domain_data = self.hass.data.get(DOMAIN, {})
-        weather_entity_id = domain_data.get("weather_entity")
+        weather_entity_id = self.weather_entity
 
         if not weather_entity_id:
             return None
@@ -379,6 +388,22 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
                 temps[zone_id] = temp
 
         return temps
+
+    def get_active_zone_setpoints(self) -> list[float]:
+        """Return setpoints of all non-OFF zones.
+
+        Returns:
+            List of target temperatures from zones not in OFF mode.
+        """
+        from homeassistant.components.climate import HVACMode
+
+        setpoints = []
+        for zone_id, zone in self._zones.items():
+            if zone.get("hvac_mode") != HVACMode.OFF:
+                target = zone.get("target_temp")
+                if target is not None:
+                    setpoints.append(target)
+        return setpoints
 
     def get_zone_by_climate_entity(self, climate_entity_id: str) -> tuple[str, dict[str, Any]] | None:
         """Find a zone by its climate entity ID.

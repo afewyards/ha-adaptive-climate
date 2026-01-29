@@ -116,14 +116,8 @@ class TestAutoModeSwitchingManager:
         """Test that placeholder methods raise NotImplementedError."""
         manager = AutoModeSwitchingManager(mock_hass, default_config, mock_coordinator)
 
-        with pytest.raises(NotImplementedError, match="Implemented in task 20"):
-            manager.get_median_setpoint()
-
         with pytest.raises(NotImplementedError, match="Implemented in task 21"):
             manager.get_season()
-
-        with pytest.raises(NotImplementedError, match="Implemented in task 20"):
-            manager._get_forecast_median()
 
     @pytest.mark.asyncio
     async def test_async_placeholder_methods_raise_not_implemented(
@@ -174,3 +168,142 @@ class TestAutoModeSwitchingManager:
 
         assert manager._winter_below == 12.0  # default
         assert manager._summer_above == 18.0  # default
+
+
+class TestGetMedianSetpoint:
+    """Tests for get_median_setpoint method."""
+
+    def test_returns_median_of_zone_setpoints(self, mock_hass, mock_coordinator, default_config):
+        """Test returns correct median from zone setpoints."""
+        mock_coordinator.get_active_zone_setpoints.return_value = [20.0, 21.0, 22.0]
+        manager = AutoModeSwitchingManager(mock_hass, default_config, mock_coordinator)
+
+        result = manager.get_median_setpoint()
+
+        assert result == 21.0
+
+    def test_returns_none_when_no_active_zones(self, mock_hass, mock_coordinator, default_config):
+        """Test returns None when no active zones."""
+        mock_coordinator.get_active_zone_setpoints.return_value = []
+        manager = AutoModeSwitchingManager(mock_hass, default_config, mock_coordinator)
+
+        result = manager.get_median_setpoint()
+
+        assert result is None
+
+    def test_returns_median_with_even_number_of_zones(self, mock_hass, mock_coordinator, default_config):
+        """Test median calculation with even number of zones."""
+        mock_coordinator.get_active_zone_setpoints.return_value = [20.0, 22.0]
+        manager = AutoModeSwitchingManager(mock_hass, default_config, mock_coordinator)
+
+        result = manager.get_median_setpoint()
+
+        assert result == 21.0  # (20 + 22) / 2
+
+    def test_returns_single_setpoint(self, mock_hass, mock_coordinator, default_config):
+        """Test with single zone."""
+        mock_coordinator.get_active_zone_setpoints.return_value = [19.5]
+        manager = AutoModeSwitchingManager(mock_hass, default_config, mock_coordinator)
+
+        result = manager.get_median_setpoint()
+
+        assert result == 19.5
+
+
+class TestGetForecastMedian:
+    """Tests for _get_forecast_median method."""
+
+    def test_returns_median_from_forecast(self, mock_hass, mock_coordinator, default_config):
+        """Test returns correct median from forecast."""
+        mock_state = MagicMock()
+        mock_state.attributes = {
+            "forecast": [
+                {"temperature": 10.0},
+                {"temperature": 12.0},
+                {"temperature": 8.0},
+                {"temperature": 15.0},
+                {"temperature": 11.0},
+            ]
+        }
+        mock_hass.states.get.return_value = mock_state
+        mock_coordinator.weather_entity = "weather.home"
+        manager = AutoModeSwitchingManager(mock_hass, default_config, mock_coordinator)
+
+        result = manager._get_forecast_median()
+
+        assert result == 11.0  # median of [8, 10, 11, 12, 15]
+
+    def test_returns_none_when_no_weather_entity(self, mock_hass, mock_coordinator, default_config):
+        """Test returns None when no weather entity configured."""
+        mock_coordinator.weather_entity = None
+        manager = AutoModeSwitchingManager(mock_hass, default_config, mock_coordinator)
+
+        result = manager._get_forecast_median()
+
+        assert result is None
+
+    def test_returns_none_when_weather_entity_not_found(self, mock_hass, mock_coordinator, default_config):
+        """Test returns None when weather entity doesn't exist."""
+        mock_hass.states.get.return_value = None
+        mock_coordinator.weather_entity = "weather.nonexistent"
+        manager = AutoModeSwitchingManager(mock_hass, default_config, mock_coordinator)
+
+        result = manager._get_forecast_median()
+
+        assert result is None
+
+    def test_returns_none_when_no_forecast(self, mock_hass, mock_coordinator, default_config):
+        """Test returns None when forecast is empty."""
+        mock_state = MagicMock()
+        mock_state.attributes = {"forecast": []}
+        mock_hass.states.get.return_value = mock_state
+        mock_coordinator.weather_entity = "weather.home"
+        manager = AutoModeSwitchingManager(mock_hass, default_config, mock_coordinator)
+
+        result = manager._get_forecast_median()
+
+        assert result is None
+
+    def test_uses_up_to_7_forecast_entries(self, mock_hass, mock_coordinator, default_config):
+        """Test only uses first 7 forecast entries."""
+        mock_state = MagicMock()
+        # 10 entries, but should only use first 7
+        mock_state.attributes = {
+            "forecast": [
+                {"temperature": 10.0},
+                {"temperature": 11.0},
+                {"temperature": 12.0},
+                {"temperature": 13.0},
+                {"temperature": 14.0},
+                {"temperature": 15.0},
+                {"temperature": 16.0},
+                {"temperature": 100.0},  # Entry 8 - should be ignored
+                {"temperature": 100.0},  # Entry 9 - should be ignored
+                {"temperature": 100.0},  # Entry 10 - should be ignored
+            ]
+        }
+        mock_hass.states.get.return_value = mock_state
+        mock_coordinator.weather_entity = "weather.home"
+        manager = AutoModeSwitchingManager(mock_hass, default_config, mock_coordinator)
+
+        result = manager._get_forecast_median()
+
+        assert result == 13.0  # median of [10, 11, 12, 13, 14, 15, 16]
+
+    def test_skips_entries_without_temperature(self, mock_hass, mock_coordinator, default_config):
+        """Test skips forecast entries without temperature."""
+        mock_state = MagicMock()
+        mock_state.attributes = {
+            "forecast": [
+                {"temperature": 10.0},
+                {"condition": "sunny"},  # No temperature
+                {"temperature": 12.0},
+            ]
+        }
+        mock_hass.states.get.return_value = mock_state
+        mock_coordinator.weather_entity = "weather.home"
+        manager = AutoModeSwitchingManager(mock_hass, default_config, mock_coordinator)
+
+        result = manager._get_forecast_median()
+
+        assert result == 11.0  # median of [10, 12]

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import statistics
 from typing import TYPE_CHECKING
 
 from homeassistant.core import HomeAssistant
@@ -63,9 +64,16 @@ class AutoModeSwitchingManager:
         return self._last_switch
 
     def get_median_setpoint(self) -> float | None:
-        """Get median setpoint from all active zones."""
-        # Placeholder - will be implemented in task 20
-        raise NotImplementedError("Implemented in task 20")
+        """Get median setpoint from all active zones.
+
+        Returns:
+            Median setpoint temperature, or None if no active zones.
+        """
+        setpoints = self._coordinator.get_active_zone_setpoints()
+        if not setpoints:
+            _LOGGER.debug("No active zones for median setpoint calculation")
+            return None
+        return statistics.median(setpoints)
 
     def get_season(self) -> str:
         """Get current season based on forecast median temp."""
@@ -73,9 +81,42 @@ class AutoModeSwitchingManager:
         raise NotImplementedError("Implemented in task 21")
 
     def _get_forecast_median(self) -> float | None:
-        """Get median temperature from weather forecast."""
-        # Placeholder - will be implemented in task 20
-        raise NotImplementedError("Implemented in task 20")
+        """Get median temperature from weather forecast.
+
+        Uses the weather entity configured in coordinator to get forecast
+        and calculates median of high temperatures over the next 7 days.
+
+        Returns:
+            Median forecast temperature, or None if forecast unavailable.
+        """
+        weather_entity = self._coordinator.weather_entity
+        if not weather_entity:
+            _LOGGER.debug("No weather entity configured for forecast")
+            return None
+
+        state = self._hass.states.get(weather_entity)
+        if state is None:
+            _LOGGER.warning("Weather entity %s not found", weather_entity)
+            return None
+
+        forecast = state.attributes.get("forecast", [])
+        if not forecast:
+            _LOGGER.debug("No forecast data available from %s", weather_entity)
+            return None
+
+        # Get temps from forecast (up to 7 days/entries)
+        temps = []
+        for entry in forecast[:7]:
+            # Try 'temperature' (daily high) first, then 'templow' fallback
+            temp = entry.get("temperature")
+            if temp is not None:
+                temps.append(temp)
+
+        if not temps:
+            _LOGGER.debug("No temperature data in forecast")
+            return None
+
+        return statistics.median(temps)
 
     async def _check_forecast(self) -> str | None:
         """Check if forecast suggests proactive mode switch."""
