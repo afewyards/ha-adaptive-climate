@@ -1,6 +1,23 @@
 # CHANGELOG
 
 
+## v0.44.3 (2026-01-29)
+
+### Bug Fixes
+
+- Enable persistent undershoot detection beyond bootstrap phase
+  ([`1876c5e`](https://github.com/afewyards/ha-adaptive-thermostat/commit/1876c5e1887bebd29cb76e9b8a30da11e44e3479))
+
+Addresses catch-22 where systems with inadequate heating never converge: - Normal learning requires
+  confidence to auto-apply PID changes - Confidence only builds when cycles converge - Undershooting
+  systems never converge → stuck at 0% confidence
+
+Solution: UndershootDetector stays active when thermal_debt >= 2x threshold (severe undershoot) even
+  after MIN_CYCLES_FOR_LEARNING cycles complete.
+
+All safety mechanisms preserved (cooldown, cumulative Ki cap 2.0x).
+
+
 ## v0.44.2 (2026-01-29)
 
 ### Bug Fixes
