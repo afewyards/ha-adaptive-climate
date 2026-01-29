@@ -10,6 +10,9 @@ from custom_components.adaptive_thermostat.adaptive.learning import (
     AdaptiveLearner,
     CycleMetrics,
 )
+from custom_components.adaptive_thermostat.adaptive.cycle_analysis import (
+    calculate_rise_time,
+)
 
 
 # ============================================================================
@@ -2121,11 +2124,12 @@ class TestCalculateRiseTime:
         ]
 
         # With 3 minute (180 second) transport delay
-        # Rise time should be from t=5 to t=15 = 10 minutes, not 15
+        # Rise time should be (15min - 3min) = 12 minutes (excludes dead time)
+        # Without delay it would be 15 minutes
         rise_time = calculate_rise_time(
             history, start_temp=18.0, target_temp=21.0, skip_seconds=180
         )
-        assert rise_time == pytest.approx(10.0, abs=0.01)
+        assert rise_time == pytest.approx(12.0, abs=0.01)
 
     def test_calculate_rise_time_with_zero_transport_delay(self):
         """Test rise_time works normally when transport delay is zero."""
@@ -2151,14 +2155,12 @@ class TestCalculateRiseTime:
             (base_time + timedelta(minutes=5), 21.5),       # t=5: dead time ends
         ]
 
-        # With 3 minute transport delay, first valid sample is at t=5
-        # But target was already reached at t=1 (during dead time)
-        # Since we skip dead time samples, we'll never see the target crossing
+        # With 3 minute (180s) transport delay, first valid sample is at t=5min (300s)
+        # Rise time = (300s - 180s) / 60 = 120s / 60 = 2 minutes
         rise_time = calculate_rise_time(
             history, start_temp=18.0, target_temp=21.0, skip_seconds=180
         )
-        # Should return 0 because first sample after dead time is already at target
-        assert rise_time == pytest.approx(0.0, abs=0.01)
+        assert rise_time == pytest.approx(2.0, abs=0.01)
 
 
 # Marker test for rise time function
