@@ -593,6 +593,7 @@ class TestAsyncUnload:
         # Create mock hass without domain data
         hass = MagicMock()
         hass.data = {}
+        hass.services.has_service.return_value = False
 
         # Run unload
         result = asyncio.get_event_loop().run_until_complete(async_unload(hass))
@@ -612,12 +613,16 @@ class TestAsyncUnload:
         mock_unsub_2 = MagicMock()
         mock_unsub_3 = MagicMock()
 
+        # Create mock coordinator with async_cleanup
+        mock_coordinator = MagicMock()
+        mock_coordinator.async_cleanup = AsyncMock()
+
         # Create mock hass with domain data
         hass = MagicMock()
         hass.data = {
             DOMAIN: {
                 "unsub_callbacks": [mock_unsub_1, mock_unsub_2, mock_unsub_3],
-                "coordinator": MagicMock(),
+                "coordinator": mock_coordinator,
             }
         }
         hass.services.has_service.return_value = False
@@ -642,12 +647,16 @@ class TestAsyncUnload:
         mock_unsub_1 = MagicMock(side_effect=Exception("Test error"))
         mock_unsub_2 = MagicMock()
 
+        # Create mock coordinator with async_cleanup
+        mock_coordinator = MagicMock()
+        mock_coordinator.async_cleanup = AsyncMock()
+
         # Create mock hass with domain data
         hass = MagicMock()
         hass.data = {
             DOMAIN: {
                 "unsub_callbacks": [mock_unsub_1, mock_unsub_2],
-                "coordinator": MagicMock(),
+                "coordinator": mock_coordinator,
             }
         }
         hass.services.has_service.return_value = False
@@ -670,12 +679,16 @@ class TestAsyncUnload:
         # Create mock callbacks with None
         mock_unsub = MagicMock()
 
+        # Create mock coordinator with async_cleanup
+        mock_coordinator = MagicMock()
+        mock_coordinator.async_cleanup = AsyncMock()
+
         # Create mock hass with domain data
         hass = MagicMock()
         hass.data = {
             DOMAIN: {
                 "unsub_callbacks": [None, mock_unsub, None],
-                "coordinator": MagicMock(),
+                "coordinator": mock_coordinator,
             }
         }
         hass.services.has_service.return_value = False
@@ -694,11 +707,15 @@ class TestAsyncUnload:
         from custom_components.adaptive_thermostat.const import DOMAIN
         import asyncio
 
+        # Create mock coordinator with async_cleanup
+        mock_coordinator = MagicMock()
+        mock_coordinator.async_cleanup = AsyncMock()
+
         # Create mock hass with domain data
         hass = MagicMock()
         hass.data = {
             DOMAIN: {
-                "coordinator": MagicMock(),
+                "coordinator": mock_coordinator,
                 "vacation_mode": MagicMock(),
                 "central_controller": None,
                 "mode_sync": MagicMock(),
@@ -727,6 +744,7 @@ class TestAsyncUnload:
 
         # Create mock coordinator and central controller
         mock_coordinator = MagicMock()
+        mock_coordinator.async_cleanup = AsyncMock()
         mock_central_controller = MagicMock()
         # Make async_cleanup awaitable
         mock_central_controller.async_cleanup = AsyncMock()
@@ -819,11 +837,13 @@ class TestReloadWithoutLeftoverState:
 
         # Simulate first setup by populating hass.data
         hass = MagicMock()
+        mock_coordinator = MagicMock()
+        mock_coordinator.async_cleanup = AsyncMock()
         mock_central_controller = MagicMock()
         mock_central_controller.async_cleanup = AsyncMock()
         hass.data = {
             DOMAIN: {
-                "coordinator": MagicMock(),
+                "coordinator": mock_coordinator,
                 "vacation_mode": MagicMock(),
                 "central_controller": mock_central_controller,
                 "mode_sync": MagicMock(),
@@ -885,6 +905,8 @@ class TestReloadWithoutLeftoverState:
         # Create mock hass with all keys populated
         hass = MagicMock()
         domain_data = {key: MagicMock() for key in expected_keys}
+        # Make coordinator.async_cleanup awaitable
+        domain_data["coordinator"].async_cleanup = AsyncMock()
         # Make central_controller.async_cleanup awaitable
         domain_data["central_controller"].async_cleanup = AsyncMock()
         hass.data = {DOMAIN: domain_data}
@@ -906,9 +928,11 @@ class TestReloadWithoutLeftoverState:
 
         # Create mock hass with domain data (no central_controller)
         hass = MagicMock()
+        mock_coordinator = MagicMock()
+        mock_coordinator.async_cleanup = AsyncMock()
         hass.data = {
             DOMAIN: {
-                "coordinator": MagicMock(),
+                "coordinator": mock_coordinator,
                 "unsub_callbacks": [],
             }
         }
