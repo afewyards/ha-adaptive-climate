@@ -173,6 +173,13 @@ def _add_learning_status_attributes(
         attrs["current_cycle_state"] = cycle_tracker.get_state_name()
         attrs["cycles_required_for_learning"] = MIN_CYCLES_FOR_LEARNING
 
+        # Undershoot detector debug attributes
+        if hasattr(adaptive_learner, '_undershoot_detector') and adaptive_learner._undershoot_detector:
+            detector = adaptive_learner._undershoot_detector
+            attrs["undershoot_time_hours"] = round(detector.time_below_target / 3600.0, 2)
+            attrs["undershoot_thermal_debt"] = round(detector.thermal_debt, 2)
+            attrs["undershoot_ki_multiplier"] = round(detector.cumulative_ki_multiplier, 3)
+
     # Format PID history (only include if non-empty)
     pid_history = adaptive_learner.get_pid_history()
     if pid_history:

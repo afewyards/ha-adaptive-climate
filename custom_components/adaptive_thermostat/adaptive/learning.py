@@ -79,6 +79,9 @@ from .learner_serialization import (
 # Import auto-apply manager for safety gates and threshold management
 from .auto_apply import AutoApplyManager, get_auto_apply_thresholds
 
+# Import undershoot detector for persistent temperature deficit detection
+from .undershoot_detector import UndershootDetector
+
 # Import HVAC mode helpers
 from ..helpers.hvac_mode import mode_to_str, get_hvac_heat_mode, get_hvac_cool_mode
 
@@ -127,6 +130,9 @@ class AdaptiveLearner:
 
         # Auto-apply manager for safety gates and threshold-based decisions
         self._auto_apply = AutoApplyManager(heating_type)
+
+        # Undershoot detector for persistent temperature deficit detection
+        self._undershoot_detector = UndershootDetector(heating_type)
 
     @property
     def cycle_history(self) -> List[CycleMetrics]:
@@ -1212,6 +1218,76 @@ class AdaptiveLearner:
         when system behavior may be unstable.
         """
         self._validation.record_seasonal_shift()
+
+    def update_undershoot_detector(
+        self,
+        temp: float,
+        setpoint: float,
+        dt_seconds: float,
+        cold_tolerance: float,
+    ) -> None:
+        """Update undershoot detector with current temperature reading.
+
+        Delegates to the UndershootDetector to track time below target
+        and thermal debt accumulation. Call this on each temperature update.
+
+        Args:
+            temp: Current temperature in °C
+            setpoint: Target temperature in °C
+            dt_seconds: Time elapsed since last update in seconds
+            cold_tolerance: Acceptable temperature deficit in °C
+        """
+        self._undershoot_detector.update(temp, setpoint, dt_seconds, cold_tolerance)
+
+    def check_undershoot_adjustment(
+        self,
+        cycles_completed: int,
+        current_ki: float,
+        current_integral: float,
+    ) -> Optional[float]:
+        """Check if Ki adjustment is needed for persistent undershoot.
+
+        Checks if the undershoot detector has identified persistent temperature
+        deficit conditions requiring Ki increase. If adjustment is needed, applies
+        the multiplier to Ki and scales the integral proportionally to prevent
+        sudden control output changes.
+
+        Args:
+            cycles_completed: Number of complete heating cycles observed
+            current_ki: Current integral gain value
+            current_integral: Current integral term value
+
+        Returns:
+            New Ki value if adjustment was applied, None otherwise
+        """
+        if not self._undershoot_detector.should_adjust_ki(cycles_completed):
+            return None
+
+        # Get and apply the adjustment
+        multiplier = self._undershoot_detector.apply_adjustment()
+        new_ki = current_ki * multiplier
+
+        _LOGGER.info(
+            "Undershoot detected: increasing Ki from %.4f to %.4f (%.1f%% increase, "
+            "time_below=%.1fh, thermal_debt=%.2f°C·h, cumulative=%.2fx)",
+            current_ki,
+            new_ki,
+            (multiplier - 1.0) * 100,
+            self._undershoot_detector.time_below_target / 3600.0,
+            self._undershoot_detector.thermal_debt,
+            self._undershoot_detector.cumulative_ki_multiplier,
+        )
+
+        return new_ki
+
+    @property
+    def undershoot_detector(self) -> UndershootDetector:
+        """Expose undershoot detector for serialization access.
+
+        Returns:
+            The UndershootDetector instance
+        """
+        return self._undershoot_detector
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize AdaptiveLearner state to a dictionary in v5 format with v4 backward compatibility.
