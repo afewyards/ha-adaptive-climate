@@ -56,10 +56,16 @@ def _setup_mocks():
     mock_event.async_track_time_interval = Mock()
     mock_event.async_track_state_change_event = Mock()
 
+    # Event needs to support subscripting for type hints like Event[EventStateChangedData]
+    class MockEvent:
+        """Mock Event class that supports generic subscripting."""
+        def __class_getitem__(cls, item):
+            return cls
+
     mock_core = Mock()
     mock_core.HomeAssistant = Mock
     mock_core.callback = lambda f: f
-    mock_core.Event = Mock
+    mock_core.Event = MockEvent
 
     mock_restore_state = Mock()
     mock_restore_state.RestoreEntity = MockRestoreEntity

@@ -3,14 +3,27 @@
 import sys
 import pytest
 from unittest.mock import MagicMock, Mock
+from abc import ABC
+from enum import IntFlag
 
 # Mock homeassistant modules before importing StateRestorer
 mock_ha_const = MagicMock()
 mock_ha_const.ATTR_TEMPERATURE = "temperature"
 sys.modules['homeassistant.const'] = mock_ha_const
 
+# ClimateEntity must use ABC to be compatible with RestoreEntity's ABCMeta
+class MockClimateEntity(ABC):
+    """Mock ClimateEntity base class."""
+    pass
+
+class MockClimateEntityFeature(IntFlag):
+    """Mock ClimateEntityFeature enum."""
+    TARGET_TEMPERATURE = 1
+
 mock_ha_climate = MagicMock()
 mock_ha_climate.ATTR_PRESET_MODE = "preset_mode"
+mock_ha_climate.ClimateEntity = MockClimateEntity
+mock_ha_climate.ClimateEntityFeature = MockClimateEntityFeature
 sys.modules['homeassistant.components.climate'] = mock_ha_climate
 
 from custom_components.adaptive_thermostat.managers.state_restorer import StateRestorer

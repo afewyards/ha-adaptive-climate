@@ -53,7 +53,14 @@ mock_const.STATE_UNKNOWN = "unknown"
 mock_core = MagicMock()
 mock_core.DOMAIN = "homeassistant"
 mock_core.CoreState = MagicMock()
-mock_core.Event = MagicMock()
+
+# Event needs to support subscripting for type hints like Event[EventStateChangedData]
+class MockEvent:
+    """Mock Event class that supports generic subscripting."""
+    def __class_getitem__(cls, item):
+        return cls
+
+mock_core.Event = MockEvent
 mock_core.EventStateChangedData = MagicMock()
 mock_core.callback = lambda f: f
 mock_core.HomeAssistant = MagicMock

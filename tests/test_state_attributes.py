@@ -3,6 +3,17 @@ import sys
 import pytest
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, Mock, patch
+from abc import ABC
+from enum import IntFlag
+
+# ClimateEntity must use ABC to be compatible with RestoreEntity's ABCMeta
+class MockClimateEntity(ABC):
+    """Mock ClimateEntity base class."""
+    pass
+
+class MockClimateEntityFeature(IntFlag):
+    """Mock ClimateEntityFeature enum."""
+    TARGET_TEMPERATURE = 1
 
 # Mock homeassistant.components.climate for HVACMode
 mock_ha_climate = MagicMock()
@@ -11,6 +22,8 @@ mock_hvac_mode = MagicMock()
 mock_hvac_mode.HEAT = "heat"
 mock_hvac_mode.COOL = "cool"
 mock_ha_climate.HVACMode = mock_hvac_mode
+mock_ha_climate.ClimateEntity = MockClimateEntity
+mock_ha_climate.ClimateEntityFeature = MockClimateEntityFeature
 sys.modules['homeassistant.components'] = MagicMock()
 sys.modules['homeassistant.components.climate'] = mock_ha_climate
 

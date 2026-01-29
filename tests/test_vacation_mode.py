@@ -10,7 +10,16 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "custom_components" / "ada
 
 # Mock homeassistant modules before importing
 sys.modules['homeassistant'] = Mock()
-sys.modules['homeassistant.core'] = Mock()
+
+# Event needs to support subscripting for type hints like Event[EventStateChangedData]
+class MockEvent:
+    """Mock Event class that supports generic subscripting."""
+    def __class_getitem__(cls, item):
+        return cls
+
+mock_core = Mock()
+mock_core.Event = MockEvent
+sys.modules['homeassistant.core'] = mock_core
 sys.modules['homeassistant.const'] = Mock()
 sys.modules['homeassistant.const'].SERVICE_SET_TEMPERATURE = "set_temperature"
 sys.modules['homeassistant.helpers'] = Mock()

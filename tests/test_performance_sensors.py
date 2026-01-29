@@ -15,10 +15,18 @@ def test_duty_cycle_calculation():
     # Import with minimal mocking
     import sys
     from unittest.mock import Mock
+    from abc import ABC
+
+    # Create mock base classes that work together
+    class MockSensorEntity:
+        pass
+
+    class MockRestoreEntity(ABC):
+        pass
 
     # Create mock modules
     mock_sensor_module = Mock()
-    mock_sensor_module.SensorEntity = object
+    mock_sensor_module.SensorEntity = MockSensorEntity
     mock_sensor_module.SensorDeviceClass = Mock()
     mock_sensor_module.SensorStateClass = Mock()
     mock_sensor_module.SensorStateClass.MEASUREMENT = "measurement"
@@ -37,10 +45,19 @@ def test_duty_cycle_calculation():
     mock_event.async_track_time_interval = Mock()
     mock_event.async_track_state_change_event = Mock()
 
+    # Event needs to support subscripting for type hints like Event[EventStateChangedData]
+    class MockEvent:
+        """Mock Event class that supports generic subscripting."""
+        def __class_getitem__(cls, item):
+            return cls
+
     mock_core = Mock()
     mock_core.HomeAssistant = Mock
     mock_core.callback = lambda f: f
-    mock_core.Event = Mock
+    mock_core.Event = MockEvent
+
+    mock_restore_state = Mock()
+    mock_restore_state.RestoreEntity = MockRestoreEntity
 
     sys.modules['homeassistant'] = Mock()
     sys.modules['homeassistant.core'] = mock_core
@@ -51,6 +68,7 @@ def test_duty_cycle_calculation():
     sys.modules['homeassistant.helpers.entity_platform'] = Mock()
     sys.modules['homeassistant.helpers.typing'] = Mock()
     sys.modules['homeassistant.helpers.event'] = mock_event
+    sys.modules['homeassistant.helpers.restore_state'] = mock_restore_state
 
     from custom_components.adaptive_thermostat.sensor import DutyCycleSensor
 
@@ -96,17 +114,37 @@ def test_power_m2_estimation():
     """Test power per m2 estimation from duty cycle and zone area."""
     import sys
     from unittest.mock import Mock
+    from abc import ABC
+
+    # Create mock base classes that work together
+    class MockSensorEntity:
+        pass
+
+    class MockRestoreEntity(ABC):
+        pass
 
     # Create mock modules
     mock_sensor_module = Mock()
-    mock_sensor_module.SensorEntity = object
+    mock_sensor_module.SensorEntity = MockSensorEntity
     mock_sensor_module.SensorDeviceClass = Mock()
     mock_sensor_module.SensorDeviceClass.POWER = "power"
     mock_sensor_module.SensorStateClass = Mock()
     mock_sensor_module.SensorStateClass.MEASUREMENT = "measurement"
 
+    # Event needs to support subscripting for type hints like Event[EventStateChangedData]
+    class MockEvent:
+        """Mock Event class that supports generic subscripting."""
+        def __class_getitem__(cls, item):
+            return cls
+
+    mock_core = Mock()
+    mock_core.Event = MockEvent
+
+    mock_restore_state = Mock()
+    mock_restore_state.RestoreEntity = MockRestoreEntity
+
     sys.modules['homeassistant'] = Mock()
-    sys.modules['homeassistant.core'] = Mock()
+    sys.modules['homeassistant.core'] = mock_core
     sys.modules['homeassistant.components'] = Mock()
     sys.modules['homeassistant.components.sensor'] = mock_sensor_module
     sys.modules['homeassistant.const'] = Mock()
@@ -114,6 +152,7 @@ def test_power_m2_estimation():
     sys.modules['homeassistant.helpers.entity_platform'] = Mock()
     sys.modules['homeassistant.helpers.typing'] = Mock()
     sys.modules['homeassistant.helpers.event'] = Mock()
+    sys.modules['homeassistant.helpers.restore_state'] = mock_restore_state
 
     from custom_components.adaptive_thermostat.sensor import PowerPerM2Sensor
 
@@ -172,19 +211,36 @@ def test_average_cycle_time():
     import sys
     from unittest.mock import Mock
     from collections import deque
+    from abc import ABC
+
+    # Create mock base classes that work together
+    class MockSensorEntity:
+        pass
+
+    class MockRestoreEntity(ABC):
+        pass
 
     # Create mock modules
     mock_sensor_module = Mock()
-    mock_sensor_module.SensorEntity = object
+    mock_sensor_module.SensorEntity = MockSensorEntity
     mock_sensor_module.SensorDeviceClass = Mock()
     mock_sensor_module.SensorDeviceClass.DURATION = "duration"
     mock_sensor_module.SensorStateClass = Mock()
     mock_sensor_module.SensorStateClass.MEASUREMENT = "measurement"
 
+    # Event needs to support subscripting for type hints like Event[EventStateChangedData]
+    class MockEvent:
+        """Mock Event class that supports generic subscripting."""
+        def __class_getitem__(cls, item):
+            return cls
+
     mock_core = Mock()
     mock_core.HomeAssistant = Mock
     mock_core.callback = lambda f: f
-    mock_core.Event = Mock
+    mock_core.Event = MockEvent
+
+    mock_restore_state = Mock()
+    mock_restore_state.RestoreEntity = MockRestoreEntity
 
     sys.modules['homeassistant'] = Mock()
     sys.modules['homeassistant.core'] = mock_core
@@ -196,6 +252,7 @@ def test_average_cycle_time():
     sys.modules['homeassistant.helpers.entity_platform'] = Mock()
     sys.modules['homeassistant.helpers.typing'] = Mock()
     sys.modules['homeassistant.helpers.event'] = Mock()
+    sys.modules['homeassistant.helpers.restore_state'] = mock_restore_state
 
     from custom_components.adaptive_thermostat.sensor import CycleTimeSensor
 
