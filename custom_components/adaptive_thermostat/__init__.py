@@ -568,6 +568,16 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             manifold_registry = ManifoldRegistry(manifolds)
             hass.data[DOMAIN]["manifold_registry"] = manifold_registry
             _LOGGER.info("Manifold registry enabled with %d manifolds", len(manifolds))
+
+            # Restore manifold state from storage if available
+            # Note: LearningDataStore is created later in climate_setup.py
+            # We'll check for it and restore state if it exists
+            learning_store = hass.data.get(DOMAIN, {}).get("learning_store")
+            if learning_store:
+                manifold_state = await learning_store.async_load_manifold_state()
+                if manifold_state:
+                    manifold_registry.restore_state(manifold_state)
+                    _LOGGER.info("Restored manifold state for %d manifolds", len(manifold_state))
         except (ValueError, ImportError) as e:
             _LOGGER.error("Failed to initialize manifold registry: %s", e)
             # Don't fail setup, just disable manifold registry
@@ -729,6 +739,24 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     # Store unsubscribe callbacks for cleanup during unload
     hass.data[DOMAIN]["unsub_callbacks"] = unsub_callbacks
 
+    # Register shutdown handler for manifold state persistence
+    async def _async_save_manifold_state_on_shutdown(event):
+        """Save manifold state on Home Assistant shutdown."""
+        manifold_registry = hass.data.get(DOMAIN, {}).get("manifold_registry")
+        learning_store = hass.data.get(DOMAIN, {}).get("learning_store")
+
+        if manifold_registry and learning_store:
+            try:
+                manifold_state = manifold_registry.get_state_for_persistence()
+                await learning_store.async_save_manifold_state(manifold_state)
+                _LOGGER.info("Saved manifold state on shutdown: %d manifolds", len(manifold_state))
+            except Exception as e:
+                _LOGGER.error("Failed to save manifold state on shutdown: %s", e)
+
+    # Listen for HA stop event
+    shutdown_unsub = hass.bus.async_listen_once("homeassistant_stop", _async_save_manifold_state_on_shutdown)
+    hass.data[DOMAIN]["shutdown_unsub"] = shutdown_unsub
+
     _LOGGER.info("Adaptive Thermostat integration setup complete")
     return True
 
@@ -782,6 +810,25 @@ async def async_unload(hass: HomeAssistant) -> bool:
         except Exception as e:
             _LOGGER.warning("Error cancelling set_integral listener: %s", e)
         _LOGGER.debug("Cancelled set_integral event listener")
+
+    # Cancel shutdown listener and save manifold state
+    shutdown_unsub = hass.data[DOMAIN].get("shutdown_unsub")
+    if shutdown_unsub is not None:
+        try:
+            shutdown_unsub()
+        except Exception as e:
+            _LOGGER.warning("Error cancelling shutdown listener: %s", e)
+
+    # Save manifold state on unload
+    manifold_registry = hass.data[DOMAIN].get("manifold_registry")
+    learning_store = hass.data[DOMAIN].get("learning_store")
+    if manifold_registry and learning_store:
+        try:
+            manifold_state = manifold_registry.get_state_for_persistence()
+            await learning_store.async_save_manifold_state(manifold_state)
+            _LOGGER.info("Saved manifold state on unload: %d manifolds", len(manifold_state))
+        except Exception as e:
+            _LOGGER.error("Failed to save manifold state on unload: %s", e)
 
     # Unregister all services
     async_unregister_services(hass)

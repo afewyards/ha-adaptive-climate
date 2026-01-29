@@ -128,7 +128,13 @@ class PhaseAwareOvershootTracker:
     PHASE_RISE = "rise"
     PHASE_SETTLING = "settling"
 
-    def __init__(self, setpoint: float, tolerance: float = 0.05, peak_tracking_window_minutes: int = 45):
+    def __init__(
+        self,
+        setpoint: float,
+        tolerance: float = 0.05,
+        peak_tracking_window_minutes: int = 45,
+        transport_delay_seconds: float = 0.0,
+    ):
         """
         Initialize the phase-aware overshoot tracker.
 
@@ -136,10 +142,12 @@ class PhaseAwareOvershootTracker:
             setpoint: Target temperature in degrees C
             tolerance: Small tolerance band for detecting setpoint crossing (default 0.05C)
             peak_tracking_window_minutes: Time window after heater stops to track peaks (default 45 min)
+            transport_delay_seconds: Transport delay to skip at start (dead time)
         """
         self._setpoint = setpoint
         self._tolerance = tolerance
         self._peak_tracking_window_minutes = peak_tracking_window_minutes
+        self._transport_delay_seconds = transport_delay_seconds
         self._phase = self.PHASE_RISE
         self._setpoint_crossed = False
         self._crossing_timestamp: Optional[datetime] = None
@@ -147,6 +155,7 @@ class PhaseAwareOvershootTracker:
         self._settling_temps: Deque[Tuple[datetime, float]] = deque(maxlen=1500)
         self._heater_stop_time: Optional[datetime] = None
         self._peak_window_closed = False
+        self._tracking_start_time: Optional[datetime] = None
 
     @property
     def setpoint(self) -> float:
@@ -184,6 +193,7 @@ class PhaseAwareOvershootTracker:
         self._settling_temps.clear()
         self._heater_stop_time = None
         self._peak_window_closed = False
+        self._tracking_start_time = None
         _LOGGER.debug(f"Overshoot tracker reset, setpoint: {self._setpoint}°C")
 
     def on_heater_stopped(self, timestamp: datetime) -> None:
@@ -207,6 +217,15 @@ class PhaseAwareOvershootTracker:
             timestamp: Time of the reading
             temperature: Current temperature in degrees C
         """
+        # Set tracking start time on first sample
+        if self._tracking_start_time is None:
+            self._tracking_start_time = timestamp
+
+        # Skip samples during transport delay (dead time)
+        elapsed = (timestamp - self._tracking_start_time).total_seconds()
+        if elapsed < self._transport_delay_seconds:
+            return  # Still in dead time, ignore sample
+
         # Check for setpoint crossing (rise phase -> settling phase)
         if self._phase == self.PHASE_RISE:
             # Temperature has crossed or reached setpoint (with tolerance)
@@ -368,7 +387,8 @@ class CycleMetrics:
 def calculate_overshoot(
     temperature_history: List[Tuple[datetime, float]],
     target_temp: float,
-    phase_aware: bool = True
+    phase_aware: bool = True,
+    transport_delay_seconds: float = 0.0,
 ) -> Optional[float]:
     """
     Calculate maximum overshoot beyond target temperature.
@@ -378,6 +398,7 @@ def calculate_overshoot(
         target_temp: Target temperature in °C
         phase_aware: If True, only calculate overshoot from settling phase
                     (after setpoint is first crossed). Default True.
+        transport_delay_seconds: Transport delay to skip at start (dead time)
 
     Returns:
         Overshoot in °C (positive values only), or None if:
@@ -394,7 +415,10 @@ def calculate_overshoot(
         return max(0.0, overshoot)
 
     # Phase-aware calculation: only consider temps after setpoint crossing
-    tracker = PhaseAwareOvershootTracker(target_temp)
+    tracker = PhaseAwareOvershootTracker(
+        target_temp,
+        transport_delay_seconds=transport_delay_seconds
+    )
 
     for timestamp, temp in temperature_history:
         tracker.update(timestamp, temp)
@@ -548,6 +572,7 @@ def calculate_rise_time(
     start_temp: float,
     target_temp: float,
     threshold: float = 0.05,
+    skip_seconds: float = 0.0,
 ) -> Optional[float]:
     """
     Calculate time required for temperature to rise from start to target.
@@ -561,9 +586,10 @@ def calculate_rise_time(
         start_temp: Starting temperature in °C
         target_temp: Target temperature in °C
         threshold: Tolerance for detecting target (default 0.05°C)
+        skip_seconds: Initial seconds to skip (transport delay dead time)
 
     Returns:
-        Rise time in minutes from first reading to reaching target,
+        Rise time in minutes from first reading (after skip) to reaching target,
         or None if:
         - Insufficient data (< 2 samples)
         - Target temperature never reached
@@ -589,8 +615,14 @@ def calculate_rise_time(
 
     # Find first temperature reading that reaches target
     for timestamp, temp in temperature_history:
+        # Skip samples during transport delay
+        elapsed = (timestamp - start_time).total_seconds()
+        if elapsed < skip_seconds:
+            continue
+
         if temp >= target_temp - threshold:
-            rise_minutes = (timestamp - start_time).total_seconds() / 60
+            # Calculate rise time excluding the skipped dead time
+            rise_minutes = (elapsed - skip_seconds) / 60
             return rise_minutes
 
     # Target never reached

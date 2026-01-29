@@ -16,6 +16,7 @@ Once the manifold is warm (active within 5 minutes), delay is zero.
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
+import logging
 
 from homeassistant.util import dt as dt_util
 
@@ -23,6 +24,8 @@ from ..const import (
     MANIFOLD_COOLDOWN_MINUTES,
     DEFAULT_FLOW_PER_LOOP,
 )
+
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass
@@ -137,3 +140,46 @@ class ManifoldRegistry:
         delay = manifold.pipe_volume / total_flow_rate
 
         return delay
+
+    def get_worst_case_transport_delay(self, zone_id: str, zone_loops: int = 1) -> float:
+        """Get worst-case transport delay in minutes for a zone.
+
+        Worst case = only this zone active, so delay = pipe_volume / (zone_loops × flow_per_loop).
+
+        Args:
+            zone_id: The zone entity_id
+            zone_loops: Number of loops for this zone (defaults to 1 for worst case)
+
+        Returns:
+            Transport delay in minutes, or 0.0 if zone not in any manifold.
+        """
+        manifold = self.get_manifold_for_zone(zone_id)
+        if not manifold:
+            return 0.0
+        return manifold.pipe_volume / (zone_loops * manifold.flow_per_loop)
+
+    def get_state_for_persistence(self) -> Dict[str, str]:
+        """Return last_active_time as ISO strings for storage.
+
+        Returns:
+            Dict mapping manifold names to ISO datetime strings.
+        """
+        return {
+            name: ts.isoformat()
+            for name, ts in self._last_active_time.items()
+            if ts is not None
+        }
+
+    def restore_state(self, state: Dict[str, str]) -> None:
+        """Restore last_active_time from stored ISO strings.
+
+        Args:
+            state: Dict mapping manifold names to ISO datetime strings.
+        """
+        for name, ts_str in state.items():
+            try:
+                parsed = dt_util.parse_datetime(ts_str)
+                if parsed:
+                    self._last_active_time[name] = parsed
+            except (ValueError, TypeError):
+                _LOGGER.warning("Failed to parse manifold timestamp for '%s': %s", name, ts_str)

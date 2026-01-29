@@ -182,6 +182,37 @@ class CycleMetricsRecorder:
             minutes
         )
 
+    def _get_temperature_history_excluding_dead_time(
+        self, temperature_history: list[tuple[datetime, float]]
+    ) -> list[tuple[datetime, float]]:
+        """Return temperature history with dead time samples removed.
+
+        Dead time is the transport delay period at the start of heating
+        where water is traveling through pipes. This period should be
+        excluded from rise time and overshoot metrics calculations.
+
+        Args:
+            temperature_history: List of (timestamp, temperature) tuples
+
+        Returns:
+            List of (timestamp, temperature) tuples with dead time excluded.
+        """
+        if not temperature_history:
+            return []
+
+        # Check if transport delay is set
+        transport_delay = self._transport_delay_minutes or 0
+        if transport_delay <= 0:
+            return list(temperature_history)
+
+        dead_time_seconds = transport_delay * 60
+        start_time = temperature_history[0][0]
+
+        return [
+            (t, temp) for t, temp in temperature_history
+            if (t - start_time).total_seconds() >= dead_time_seconds
+        ]
+
     def _calculate_mad(self, values: list[float]) -> float:
         """Calculate Median Absolute Deviation (MAD) for robust variability measure.
 
@@ -374,12 +405,26 @@ class CycleMetricsRecorder:
 
         start_temp = temperature_history[0][1]
 
+        # Calculate transport delay in seconds for metric calculations
+        transport_delay_seconds = (self._transport_delay_minutes or 0) * 60
+
         # Calculate all 5 metrics
-        overshoot = calculate_overshoot(temperature_history, target_temp)
+        # Overshoot: use filtered history to exclude dead time
+        filtered_history = self._get_temperature_history_excluding_dead_time(temperature_history)
+        overshoot = calculate_overshoot(
+            filtered_history if filtered_history else temperature_history,
+            target_temp,
+            transport_delay_seconds=transport_delay_seconds
+        )
         undershoot = calculate_undershoot(temperature_history, target_temp)
         settling_time = calculate_settling_time(temperature_history, target_temp, reference_time=self._device_off_time)
         oscillations = count_oscillations(temperature_history, target_temp)
-        rise_time = calculate_rise_time(temperature_history, start_temp, target_temp)
+        rise_time = calculate_rise_time(
+            temperature_history,
+            start_temp,
+            target_temp,
+            skip_seconds=transport_delay_seconds
+        )
 
         # Detect disturbances (requires environmental sensor data - not yet wired up)
         # For now, heater_active_periods is estimated from cycle start/stop times

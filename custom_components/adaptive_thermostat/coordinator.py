@@ -118,6 +118,20 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
         # Call registry to calculate transport delay
         return self._manifold_registry.get_transport_delay(zone_id, active_zones)
 
+    def get_worst_case_transport_delay_for_zone(self, zone_id: str, zone_loops: int = 1) -> float:
+        """Get worst-case transport delay for preheat scheduling.
+
+        Args:
+            zone_id: The zone entity_id
+            zone_loops: Number of loops for this zone
+
+        Returns:
+            Transport delay in minutes, or 0.0 if no manifold.
+        """
+        if not self._manifold_registry:
+            return 0.0
+        return self._manifold_registry.get_worst_case_transport_delay(zone_id, zone_loops)
+
     @property
     def outdoor_temp(self) -> float | None:
         """Get the current outdoor temperature from the weather entity.

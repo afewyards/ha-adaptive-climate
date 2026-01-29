@@ -513,3 +513,51 @@ class LearningDataStore:
         except Exception as e:
             _LOGGER.error(f"Failed to restore PreheatLearner: {e}")
             return None
+
+    async def async_load_manifold_state(self) -> Optional[Dict[str, str]]:
+        """
+        Load manifold state from HA Store.
+
+        Returns:
+            Dictionary mapping manifold names to ISO datetime strings, or None if not found.
+        """
+        if self.hass is None:
+            raise RuntimeError("async_load_manifold_state requires HomeAssistant instance")
+
+        if self._store is None:
+            raise RuntimeError("Store not initialized - call async_load() first")
+
+        # Manifold state is stored at top level in the data structure
+        manifold_state = self._data.get("manifold_state")
+        if manifold_state is None:
+            _LOGGER.debug("No manifold state found in storage")
+            return None
+
+        _LOGGER.info("Loaded manifold state: %d manifolds", len(manifold_state))
+        return manifold_state
+
+    async def async_save_manifold_state(self, state: Dict[str, str]) -> None:
+        """
+        Save manifold state to HA Store.
+
+        Args:
+            state: Dict mapping manifold names to ISO datetime strings.
+        """
+        if self.hass is None:
+            raise RuntimeError("async_save_manifold_state requires HomeAssistant instance")
+
+        if self._store is None:
+            raise RuntimeError("Store not initialized - call async_load() first")
+
+        # Lazily initialize lock if needed
+        if self._save_lock is None:
+            self._save_lock = asyncio.Lock()
+
+        async with self._save_lock:
+            # Store manifold state at top level
+            self._data["manifold_state"] = state
+
+            # Save to disk
+            await self._store.async_save(self._data)
+
+            _LOGGER.debug("Saved manifold state: %d manifolds", len(state))

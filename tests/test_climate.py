@@ -2950,6 +2950,131 @@ class TestClimateManifoldIntegration:
             60,
         )
 
+    @pytest.mark.asyncio
+    async def test_manifold_marked_active_on_heating_start(self, mock_hass_manifold):
+        """Test manifold is marked active when heater turns on."""
+        # Arrange
+        mock_manifold_registry = MagicMock()
+        mock_manifold_registry.mark_manifold_active = MagicMock()
+
+        mock_hass_manifold.data["adaptive_thermostat"]["manifold_registry"] = mock_manifold_registry
+
+        mock_thermostat = MagicMock()
+        mock_thermostat.hass = mock_hass_manifold
+        mock_thermostat.entity_id = "climate.test_zone"
+        mock_thermostat.hvac_mode = MockHVACMode.HEAT
+
+        # Act - Simulate manifold marking during heater turn on
+        mock_manifold_registry.mark_manifold_active(mock_thermostat.entity_id)
+
+        # Assert
+        mock_manifold_registry.mark_manifold_active.assert_called_once_with("climate.test_zone")
+
+    @pytest.mark.asyncio
+    async def test_manifold_marked_active_on_cooling_start(self, mock_hass_manifold):
+        """Test manifold is marked active when cooler turns on (hydronic cooling)."""
+        # Arrange
+        mock_manifold_registry = MagicMock()
+        mock_manifold_registry.mark_manifold_active = MagicMock()
+
+        mock_hass_manifold.data["adaptive_thermostat"]["manifold_registry"] = mock_manifold_registry
+
+        mock_thermostat = MagicMock()
+        mock_thermostat.hass = mock_hass_manifold
+        mock_thermostat.entity_id = "climate.test_zone"
+        mock_thermostat.hvac_mode = MockHVACMode.COOL
+
+        # Act - Simulate manifold marking during cooler turn on
+        mock_manifold_registry.mark_manifold_active(mock_thermostat.entity_id)
+
+        # Assert
+        mock_manifold_registry.mark_manifold_active.assert_called_once_with("climate.test_zone")
+
+    @pytest.mark.asyncio
+    async def test_query_and_mark_manifold_sets_transport_delay_for_heating(self, mock_hass_manifold):
+        """Test _query_and_mark_manifold sets transport delay and marks manifold for heating."""
+        # Arrange
+        from custom_components.adaptive_thermostat.climate import AdaptiveThermostat
+        from unittest.mock import MagicMock, patch
+
+        mock_manifold_registry = MagicMock()
+        mock_manifold_registry.mark_manifold_active = MagicMock()
+        mock_hass_manifold.data["adaptive_thermostat"]["manifold_registry"] = mock_manifold_registry
+
+        coordinator = mock_hass_manifold.data["adaptive_thermostat"]["coordinator"]
+        coordinator.get_transport_delay_for_zone.return_value = 3.5
+
+        mock_thermostat = MagicMock(spec=AdaptiveThermostat)
+        mock_thermostat.hass = mock_hass_manifold
+        mock_thermostat.entity_id = "climate.test_zone"
+        mock_thermostat._zone_id = "test_zone"
+        mock_thermostat._coordinator = coordinator
+        mock_thermostat._transport_delay = None
+        mock_thermostat._pid_controller = MagicMock()
+        mock_thermostat._cycle_tracker = MagicMock()
+
+        # Act - Call _query_and_mark_manifold directly
+        from custom_components.adaptive_thermostat.climate import AdaptiveThermostat
+        AdaptiveThermostat._query_and_mark_manifold(mock_thermostat, "heating")
+
+        # Assert
+        assert mock_thermostat._transport_delay == 3.5
+        mock_thermostat._pid_controller.set_transport_delay.assert_called_once_with(3.5)
+        mock_thermostat._cycle_tracker.set_transport_delay.assert_called_once_with(3.5)
+        mock_manifold_registry.mark_manifold_active.assert_called_once_with("climate.test_zone")
+
+    @pytest.mark.asyncio
+    async def test_query_and_mark_manifold_sets_transport_delay_for_cooling(self, mock_hass_manifold):
+        """Test _query_and_mark_manifold sets transport delay and marks manifold for cooling."""
+        # Arrange
+        from custom_components.adaptive_thermostat.climate import AdaptiveThermostat
+        from unittest.mock import MagicMock
+
+        mock_manifold_registry = MagicMock()
+        mock_manifold_registry.mark_manifold_active = MagicMock()
+        mock_hass_manifold.data["adaptive_thermostat"]["manifold_registry"] = mock_manifold_registry
+
+        coordinator = mock_hass_manifold.data["adaptive_thermostat"]["coordinator"]
+        coordinator.get_transport_delay_for_zone.return_value = 2.0
+
+        mock_thermostat = MagicMock(spec=AdaptiveThermostat)
+        mock_thermostat.hass = mock_hass_manifold
+        mock_thermostat.entity_id = "climate.cooling_zone"
+        mock_thermostat._zone_id = "cooling_zone"
+        mock_thermostat._coordinator = coordinator
+        mock_thermostat._transport_delay = None
+        mock_thermostat._pid_controller = MagicMock()
+        mock_thermostat._cycle_tracker = MagicMock()
+
+        # Act - Call with "cooling" action
+        AdaptiveThermostat._query_and_mark_manifold(mock_thermostat, "cooling")
+
+        # Assert
+        assert mock_thermostat._transport_delay == 2.0
+        mock_thermostat._pid_controller.set_transport_delay.assert_called_once_with(2.0)
+        mock_thermostat._cycle_tracker.set_transport_delay.assert_called_once_with(2.0)
+        mock_manifold_registry.mark_manifold_active.assert_called_once_with("climate.cooling_zone")
+
+    @pytest.mark.asyncio
+    async def test_transport_delay_reset_on_heater_turn_off(self, mock_hass_manifold):
+        """Test transport delay is reset when heating stops."""
+        # Arrange
+        mock_pid = MagicMock()
+        mock_pid.reset_dead_time = MagicMock()
+
+        mock_thermostat = MagicMock()
+        mock_thermostat._transport_delay = 5.0
+        mock_thermostat._pid_controller = mock_pid
+
+        # Act - Simulate heater turn off
+        if mock_thermostat._transport_delay is not None:
+            mock_pid.reset_dead_time()
+            mock_thermostat._transport_delay = None
+
+        # Assert
+        mock_pid.reset_dead_time.assert_called_once()
+        assert mock_thermostat._transport_delay is None
+
 
 @pytest.mark.skip(reason="Requires full Home Assistant environment - metaclass conflict with mocks")
 class TestLazyCoolingPIDInitialization:

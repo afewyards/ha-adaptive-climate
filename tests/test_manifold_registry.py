@@ -729,3 +729,261 @@ class TestMultipleZonesActiveSameManifold:
 
         delay = registry.get_transport_delay("climate.living_room", active_zones)
         assert delay == 2.5
+
+
+class TestManifoldPersistence:
+    """Test manifold state persistence methods."""
+
+    def test_get_state_for_persistence_empty(self):
+        """Test get_state_for_persistence with no active manifolds."""
+        manifolds = [
+            Manifold(
+                name="2nd Floor",
+                zones=["climate.bathroom_2nd"],
+                pipe_volume=20.0,
+                flow_per_loop=2.0
+            )
+        ]
+        registry = ManifoldRegistry(manifolds)
+
+        state = registry.get_state_for_persistence()
+        assert state == {}
+
+    def test_get_state_for_persistence_single_manifold(self):
+        """Test get_state_for_persistence with one active manifold."""
+        from unittest.mock import patch
+
+        manifolds = [
+            Manifold(
+                name="2nd Floor",
+                zones=["climate.bathroom_2nd"],
+                pipe_volume=20.0,
+                flow_per_loop=2.0
+            )
+        ]
+        registry = ManifoldRegistry(manifolds)
+
+        # Mark manifold as active
+        current_time = datetime(2024, 1, 15, 10, 30, 0)
+        with patch('custom_components.adaptive_thermostat.adaptive.manifold_registry.dt_util') as mock_dt_util:
+            mock_dt_util.utcnow.return_value = current_time
+            registry.mark_manifold_active("climate.bathroom_2nd")
+
+        # Get state for persistence
+        state = registry.get_state_for_persistence()
+
+        assert len(state) == 1
+        assert "2nd Floor" in state
+        assert state["2nd Floor"] == "2024-01-15T10:30:00"
+
+    def test_get_state_for_persistence_multiple_manifolds(self):
+        """Test get_state_for_persistence with multiple active manifolds."""
+        from unittest.mock import patch
+
+        manifolds = [
+            Manifold(
+                name="2nd Floor",
+                zones=["climate.bathroom_2nd"],
+                pipe_volume=20.0,
+                flow_per_loop=2.0
+            ),
+            Manifold(
+                name="Ground Floor",
+                zones=["climate.living_room"],
+                pipe_volume=15.0,
+                flow_per_loop=2.0
+            )
+        ]
+        registry = ManifoldRegistry(manifolds)
+
+        # Mark both manifolds as active at different times
+        time_2nd = datetime(2024, 1, 15, 10, 30, 0)
+        time_ground = datetime(2024, 1, 15, 10, 45, 0)
+
+        with patch('custom_components.adaptive_thermostat.adaptive.manifold_registry.dt_util') as mock_dt_util:
+            mock_dt_util.utcnow.return_value = time_2nd
+            registry.mark_manifold_active("climate.bathroom_2nd")
+
+            mock_dt_util.utcnow.return_value = time_ground
+            registry.mark_manifold_active("climate.living_room")
+
+        # Get state for persistence
+        state = registry.get_state_for_persistence()
+
+        assert len(state) == 2
+        assert state["2nd Floor"] == "2024-01-15T10:30:00"
+        assert state["Ground Floor"] == "2024-01-15T10:45:00"
+
+    def test_restore_state_empty(self):
+        """Test restore_state with empty state dict."""
+        manifolds = [
+            Manifold(
+                name="2nd Floor",
+                zones=["climate.bathroom_2nd"],
+                pipe_volume=20.0,
+                flow_per_loop=2.0
+            )
+        ]
+        registry = ManifoldRegistry(manifolds)
+
+        # Restore empty state
+        registry.restore_state({})
+
+        # Should have no active manifolds
+        assert len(registry._last_active_time) == 0
+
+    def test_restore_state_single_manifold(self):
+        """Test restore_state with one manifold."""
+        manifolds = [
+            Manifold(
+                name="2nd Floor",
+                zones=["climate.bathroom_2nd"],
+                pipe_volume=20.0,
+                flow_per_loop=2.0
+            )
+        ]
+        registry = ManifoldRegistry(manifolds)
+
+        # Restore state (use UTC timezone-aware datetime)
+        state = {"2nd Floor": "2024-01-15T10:30:00+00:00"}
+        registry.restore_state(state)
+
+        # Check restored timestamp
+        assert "2nd Floor" in registry._last_active_time
+        restored_time = registry._last_active_time["2nd Floor"]
+        assert restored_time.year == 2024
+        assert restored_time.month == 1
+        assert restored_time.day == 15
+        assert restored_time.hour == 10
+        assert restored_time.minute == 30
+
+    def test_restore_state_multiple_manifolds(self):
+        """Test restore_state with multiple manifolds."""
+        manifolds = [
+            Manifold(
+                name="2nd Floor",
+                zones=["climate.bathroom_2nd"],
+                pipe_volume=20.0,
+                flow_per_loop=2.0
+            ),
+            Manifold(
+                name="Ground Floor",
+                zones=["climate.living_room"],
+                pipe_volume=15.0,
+                flow_per_loop=2.0
+            )
+        ]
+        registry = ManifoldRegistry(manifolds)
+
+        # Restore state (use UTC timezone-aware datetimes)
+        state = {
+            "2nd Floor": "2024-01-15T10:30:00+00:00",
+            "Ground Floor": "2024-01-15T10:45:00+00:00"
+        }
+        registry.restore_state(state)
+
+        # Check restored timestamps
+        assert len(registry._last_active_time) == 2
+
+        time_2nd = registry._last_active_time["2nd Floor"]
+        assert time_2nd.hour == 10
+        assert time_2nd.minute == 30
+
+        time_ground = registry._last_active_time["Ground Floor"]
+        assert time_ground.hour == 10
+        assert time_ground.minute == 45
+
+    def test_restore_state_invalid_timestamp(self):
+        """Test restore_state handles invalid timestamp gracefully."""
+        manifolds = [
+            Manifold(
+                name="2nd Floor",
+                zones=["climate.bathroom_2nd"],
+                pipe_volume=20.0,
+                flow_per_loop=2.0
+            )
+        ]
+        registry = ManifoldRegistry(manifolds)
+
+        # Restore with invalid timestamp - should skip silently
+        state = {"2nd Floor": "invalid-timestamp"}
+        registry.restore_state(state)
+
+        # Should not have any restored manifolds (parse_datetime returns None for invalid)
+        assert len(registry._last_active_time) == 0
+
+    def test_restore_state_mixed_valid_invalid(self):
+        """Test restore_state with mix of valid and invalid timestamps."""
+        manifolds = [
+            Manifold(
+                name="2nd Floor",
+                zones=["climate.bathroom_2nd"],
+                pipe_volume=20.0,
+                flow_per_loop=2.0
+            ),
+            Manifold(
+                name="Ground Floor",
+                zones=["climate.living_room"],
+                pipe_volume=15.0,
+                flow_per_loop=2.0
+            )
+        ]
+        registry = ManifoldRegistry(manifolds)
+
+        # Restore with one valid and one invalid timestamp (use UTC timezone-aware)
+        state = {
+            "2nd Floor": "2024-01-15T10:30:00+00:00",
+            "Ground Floor": "invalid-timestamp"
+        }
+        registry.restore_state(state)
+
+        # Should only have the valid one
+        assert len(registry._last_active_time) == 1
+        assert "2nd Floor" in registry._last_active_time
+        assert "Ground Floor" not in registry._last_active_time
+
+    def test_persistence_roundtrip(self):
+        """Test full persistence roundtrip: save state and restore it."""
+        from unittest.mock import patch
+
+        manifolds = [
+            Manifold(
+                name="2nd Floor",
+                zones=["climate.bathroom_2nd"],
+                pipe_volume=20.0,
+                flow_per_loop=2.0
+            ),
+            Manifold(
+                name="Ground Floor",
+                zones=["climate.living_room"],
+                pipe_volume=15.0,
+                flow_per_loop=2.0
+            )
+        ]
+
+        # First registry - mark manifolds active
+        registry1 = ManifoldRegistry(manifolds)
+
+        time_2nd = datetime(2024, 1, 15, 10, 30, 0)
+        time_ground = datetime(2024, 1, 15, 10, 45, 0)
+
+        with patch('custom_components.adaptive_thermostat.adaptive.manifold_registry.dt_util') as mock_dt_util:
+            mock_dt_util.utcnow.return_value = time_2nd
+            registry1.mark_manifold_active("climate.bathroom_2nd")
+
+            mock_dt_util.utcnow.return_value = time_ground
+            registry1.mark_manifold_active("climate.living_room")
+
+        # Save state
+        state = registry1.get_state_for_persistence()
+
+        # Second registry - restore state
+        registry2 = ManifoldRegistry(manifolds)
+        registry2.restore_state(state)
+
+        # Verify state is identical
+        assert len(registry2._last_active_time) == 2
+        assert registry2._last_active_time["2nd Floor"].hour == 10
+        assert registry2._last_active_time["2nd Floor"].minute == 30
+        assert registry2._last_active_time["Ground Floor"].hour == 10
+        assert registry2._last_active_time["Ground Floor"].minute == 45

@@ -103,6 +103,77 @@ class TestPhaseAwareOvershootTracker:
         assert settling_temps[1][1] == 21.5
         assert settling_temps[2][1] == 21.2
 
+    def test_transport_delay_skips_initial_samples(self):
+        """Test that samples during transport delay are skipped."""
+        tracker = PhaseAwareOvershootTracker(setpoint=21.0, transport_delay_seconds=180)  # 3 min
+        base_time = datetime(2024, 1, 1, 12, 0, 0)
+
+        # Samples during dead time (first 3 minutes) should be ignored
+        tracker.update(base_time, 18.0)                              # t=0: ignored
+        tracker.update(base_time + timedelta(minutes=1), 18.2)       # t=1: ignored
+        tracker.update(base_time + timedelta(minutes=2), 18.5)       # t=2: ignored
+
+        # Should still be in rise phase, no crossing detected
+        assert tracker.phase == PhaseAwareOvershootTracker.PHASE_RISE
+        assert tracker.setpoint_crossed is False
+
+        # After dead time, samples are processed
+        tracker.update(base_time + timedelta(minutes=4), 21.5)       # t=4: processed
+
+        # Should now detect settling phase
+        assert tracker.phase == PhaseAwareOvershootTracker.PHASE_SETTLING
+        assert tracker.setpoint_crossed is True
+
+    def test_transport_delay_overshoot_calculation(self):
+        """Test overshoot excludes samples during transport delay."""
+        tracker = PhaseAwareOvershootTracker(setpoint=21.0, transport_delay_seconds=120)  # 2 min
+        base_time = datetime(2024, 1, 1, 12, 0, 0)
+
+        # High temps during dead time should be ignored
+        tracker.update(base_time, 22.0)                              # t=0: ignored (would be overshoot)
+        tracker.update(base_time + timedelta(minutes=1), 22.5)       # t=1: ignored
+
+        # After dead time
+        tracker.update(base_time + timedelta(minutes=3), 21.0)       # t=3: cross setpoint
+        tracker.update(base_time + timedelta(minutes=5), 21.3)       # t=5: actual overshoot
+        tracker.update(base_time + timedelta(minutes=7), 21.0)       # t=7: settle
+
+        # Overshoot should be 0.3, not 1.5 (from dead time samples)
+        overshoot = tracker.get_overshoot()
+        assert overshoot is not None
+        assert overshoot == pytest.approx(0.3, abs=0.01)
+
+    def test_transport_delay_zero(self):
+        """Test tracker works normally when transport delay is zero."""
+        tracker = PhaseAwareOvershootTracker(setpoint=21.0, transport_delay_seconds=0.0)
+        base_time = datetime(2024, 1, 1, 12, 0, 0)
+
+        # All samples should be processed immediately
+        tracker.update(base_time, 18.0)
+        tracker.update(base_time + timedelta(minutes=5), 21.5)
+
+        assert tracker.phase == PhaseAwareOvershootTracker.PHASE_SETTLING
+        assert tracker.setpoint_crossed is True
+        assert tracker.get_overshoot() == pytest.approx(0.5, abs=0.01)
+
+    def test_transport_delay_reset_clears_tracking_start_time(self):
+        """Test reset() clears tracking start time for transport delay."""
+        tracker = PhaseAwareOvershootTracker(setpoint=21.0, transport_delay_seconds=180)
+        base_time = datetime(2024, 1, 1, 12, 0, 0)
+
+        # Start tracking
+        tracker.update(base_time, 18.0)
+        assert tracker._tracking_start_time == base_time
+
+        # Reset
+        tracker.reset()
+        assert tracker._tracking_start_time is None
+
+        # Next update should set new tracking start time
+        new_time = base_time + timedelta(minutes=10)
+        tracker.update(new_time, 18.0)
+        assert tracker._tracking_start_time == new_time
+
 
 class TestOvershootWithSetpointChanges:
     """Test overshoot detection with setpoint changes."""
@@ -2037,6 +2108,57 @@ class TestCalculateRiseTime:
         # No rise needed when starting above target
         rise_time = calculate_rise_time(history, start_temp=22.0, target_temp=21.0)
         assert rise_time is None
+
+    def test_calculate_rise_time_with_transport_delay(self):
+        """Test rise_time excludes transport delay dead time."""
+        base_time = datetime(2024, 1, 1, 10, 0, 0)
+        history = [
+            (base_time, 18.0),                              # t=0: dead time starts
+            (base_time + timedelta(minutes=2), 18.1),       # t=2: still in dead time
+            (base_time + timedelta(minutes=5), 18.5),       # t=5: dead time ends (3min delay)
+            (base_time + timedelta(minutes=10), 19.5),      # t=10
+            (base_time + timedelta(minutes=15), 21.0),      # t=15: reaches target
+        ]
+
+        # With 3 minute (180 second) transport delay
+        # Rise time should be from t=5 to t=15 = 10 minutes, not 15
+        rise_time = calculate_rise_time(
+            history, start_temp=18.0, target_temp=21.0, skip_seconds=180
+        )
+        assert rise_time == pytest.approx(10.0, abs=0.01)
+
+    def test_calculate_rise_time_with_zero_transport_delay(self):
+        """Test rise_time works normally when transport delay is zero."""
+        base_time = datetime(2024, 1, 1, 10, 0, 0)
+        history = [
+            (base_time, 18.0),
+            (base_time + timedelta(minutes=15), 19.5),
+            (base_time + timedelta(minutes=30), 21.0),
+        ]
+
+        # With zero transport delay, should behave as before
+        rise_time = calculate_rise_time(
+            history, start_temp=18.0, target_temp=21.0, skip_seconds=0.0
+        )
+        assert rise_time == pytest.approx(30.0, abs=0.01)
+
+    def test_calculate_rise_time_target_reached_during_dead_time(self):
+        """Test rise_time when target is reached during dead time (unrealistic but edge case)."""
+        base_time = datetime(2024, 1, 1, 10, 0, 0)
+        history = [
+            (base_time, 18.0),                              # t=0
+            (base_time + timedelta(minutes=1), 21.0),       # t=1: reaches target (during dead time)
+            (base_time + timedelta(minutes=5), 21.5),       # t=5: dead time ends
+        ]
+
+        # With 3 minute transport delay, first valid sample is at t=5
+        # But target was already reached at t=1 (during dead time)
+        # Since we skip dead time samples, we'll never see the target crossing
+        rise_time = calculate_rise_time(
+            history, start_temp=18.0, target_temp=21.0, skip_seconds=180
+        )
+        # Should return 0 because first sample after dead time is already at target
+        assert rise_time == pytest.approx(0.0, abs=0.01)
 
 
 # Marker test for rise time function

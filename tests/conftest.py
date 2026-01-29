@@ -23,6 +23,15 @@ mock_util.slugify = lambda x: x.lower().replace(" ", "_")
 from datetime import datetime
 mock_dt = MagicMock()
 mock_dt.utcnow = lambda: datetime.utcnow()
+# Add parse_datetime for manifold persistence
+def _parse_datetime(s):
+    """Parse ISO 8601 datetime string."""
+    try:
+        # Try parsing with timezone
+        return datetime.fromisoformat(s.replace('Z', '+00:00'))
+    except (ValueError, AttributeError):
+        return None
+mock_dt.parse_datetime = _parse_datetime
 mock_util.dt = mock_dt
 
 # ---- Mock homeassistant.const ----

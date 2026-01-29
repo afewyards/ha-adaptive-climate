@@ -1561,12 +1561,12 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
             base += int(self._transport_delay * 60)
         return base
 
-    async def _async_heater_turn_on(self):
-        """Turn heater toggleable device on.
+    def _query_and_mark_manifold(self, action: str = "heating") -> None:
+        """Query transport delay from coordinator and mark manifold active.
 
-        Delegates to HeaterController for the actual turn on operation.
+        Args:
+            action: "heating" or "cooling" for logging purposes.
         """
-        # Query transport delay from manifold registry
         coordinator = self._coordinator
         if coordinator and self._zone_id:
             delay = coordinator.get_transport_delay_for_zone(self.entity_id)
@@ -1578,9 +1578,22 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
                 if self._cycle_tracker:
                     self._cycle_tracker.set_transport_delay(delay)
                 _LOGGER.debug(
-                    "%s: Set transport delay %.1f minutes for heating start",
-                    self.entity_id, delay
+                    "%s: Set transport delay %.1f minutes for %s start",
+                    self.entity_id, delay, action
                 )
+
+        manifold_registry = self.hass.data.get(DOMAIN, {}).get("manifold_registry")
+        if manifold_registry:
+            manifold_registry.mark_manifold_active(self.entity_id)
+
+    async def _async_heater_turn_on(self):
+        """Turn heater toggleable device on.
+
+        Delegates to HeaterController for the actual turn on operation.
+        """
+        # Query transport delay and mark manifold active
+        action = "cooling" if self.hvac_mode == HVACMode.COOL else "heating"
+        self._query_and_mark_manifold(action)
 
         # Update cycle durations in case PID mode changed
         self._heater_controller.update_cycle_durations(
@@ -1593,11 +1606,6 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
             set_is_heating=self._set_is_heating,
             set_last_heat_cycle_time=self._set_last_heat_cycle_time,
         )
-
-        # Mark manifold as active now that heater is on
-        manifold_registry = self.hass.data.get(DOMAIN, {}).get("manifold_registry")
-        if manifold_registry:
-            manifold_registry.mark_manifold_active(self.entity_id)
 
     async def _async_heater_turn_off(self, force=False):
         """Turn heater toggleable device off.
