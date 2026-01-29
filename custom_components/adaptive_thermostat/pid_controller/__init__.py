@@ -186,6 +186,18 @@ class PID:
         self._integral = i
 
     @property
+    def ki(self):
+        """Get the integral gain coefficient."""
+        return self._Ki
+
+    @ki.setter
+    def ki(self, value):
+        """Set the integral gain coefficient."""
+        if not isinstance(value, (int, float)):
+            raise ValueError(f"Ki should be a number, got {type(value).__name__}")
+        self._Ki = value
+
+    @property
     def derivative(self):
         return self._derivative
 

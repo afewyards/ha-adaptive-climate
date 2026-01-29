@@ -121,7 +121,8 @@ class ClimateControlMixin:
 
                             # Check if Ki adjustment is needed
                             cycles_completed = adaptive_learner.get_cycle_count()
-                            new_ki = adaptive_learner.check_undershoot_adjustment(cycles_completed)
+                            current_ki = self._pid_controller.ki
+                            new_ki = adaptive_learner.check_undershoot_adjustment(cycles_completed, current_ki)
 
                             if new_ki is not None:
                                 # Scale integral to prevent output spike
