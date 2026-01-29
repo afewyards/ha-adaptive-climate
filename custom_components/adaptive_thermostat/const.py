@@ -881,3 +881,19 @@ HEATING_TYPE_BOOST_FACTORS: dict[HeatingType, tuple[float, float]] = {
     HeatingType.CONVECTOR: (12.0, 0.25),
     HeatingType.FORCED_AIR: (8.0, 0.30),
 }
+
+# Auto mode switching
+CONF_AUTO_MODE_SWITCHING = "auto_mode_switching"
+CONF_AUTO_MODE_THRESHOLD = "threshold"
+CONF_MIN_SWITCH_INTERVAL = "min_switch_interval"
+CONF_FORECAST_HOURS = "forecast_hours"
+CONF_SEASON_THRESHOLDS = "season_thresholds"
+CONF_WINTER_BELOW = "winter_below"
+CONF_SUMMER_ABOVE = "summer_above"
+
+# Auto mode switching defaults
+DEFAULT_AUTO_MODE_THRESHOLD = 2.0
+DEFAULT_MIN_SWITCH_INTERVAL = 3600  # seconds (1 hour)
+DEFAULT_FORECAST_HOURS = 6
+DEFAULT_WINTER_BELOW = 12.0  # °C
+DEFAULT_SUMMER_ABOVE = 18.0  # °C
