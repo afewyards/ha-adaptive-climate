@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.44.1 (2026-01-29)
+
+### Bug Fixes
+
+- Add missing mocks to test_central_controller.py
+  ([`aeda817`](https://github.com/afewyards/ha-adaptive-thermostat/commit/aeda817200ffad6f6b3266027b1d1e1d02b42aa6))
+
+
 ## v0.44.0 (2026-01-29)
 
 ### Bug Fixes
