@@ -51,6 +51,22 @@ class MockDataUpdateCoordinator:
 
 sys.modules['homeassistant.helpers.update_coordinator'].DataUpdateCoordinator = MockDataUpdateCoordinator
 
+# Mock homeassistant.helpers.event for async_track_state_change_event
+sys.modules['homeassistant.helpers.event'] = Mock()
+
+# Mock homeassistant.components.climate for HVACMode
+mock_climate = Mock()
+mock_climate.HVACMode = Mock()
+mock_climate.HVACMode.HEAT = "heat"
+mock_climate.HVACMode.COOL = "cool"
+mock_climate.HVACMode.OFF = "off"
+sys.modules['homeassistant.components'] = Mock()
+sys.modules['homeassistant.components.climate'] = mock_climate
+
+# Mock managers.auto_mode_switching
+sys.modules['managers'] = Mock()
+sys.modules['managers.auto_mode_switching'] = Mock()
+
 # Import coordinator module
 import coordinator
 import central_controller
