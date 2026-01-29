@@ -654,3 +654,74 @@ def test_get_transport_delay_converts_slug_to_entity_id(coord):
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+# =============================================================================
+# Worst-Case Transport Delay Tests (for preheat scheduling)
+# =============================================================================
+
+
+def test_get_worst_case_transport_delay_for_zone_with_registry(hass):
+    """Test get_worst_case_transport_delay_for_zone wrapper works."""
+    coord = coordinator.AdaptiveThermostatCoordinator(hass)
+
+    # Create mock manifold registry
+    mock_registry = MagicMock()
+    mock_registry.get_worst_case_transport_delay.return_value = 5.0
+    coord.set_manifold_registry(mock_registry)
+
+    # Test wrapper method
+    delay = coord.get_worst_case_transport_delay_for_zone("climate.bathroom_2nd", zone_loops=2)
+
+    # Expected: 20L / (2 loops × 2 L/min) = 5 min
+    assert delay == 5.0
+    mock_registry.get_worst_case_transport_delay.assert_called_once_with("climate.bathroom_2nd", 2)
+
+
+def test_get_worst_case_transport_delay_for_zone_no_registry(hass):
+    """Test get_worst_case_transport_delay_for_zone returns 0.0 when no manifold registry."""
+    coord = coordinator.AdaptiveThermostatCoordinator(hass)
+
+    # No manifold registry set
+    delay = coord.get_worst_case_transport_delay_for_zone("climate.test", zone_loops=1)
+
+    # Should return 0.0
+    assert delay == 0.0
+
+
+def test_get_worst_case_transport_delay_for_zone_default_loops(hass):
+    """Test get_worst_case_transport_delay_for_zone uses default zone_loops=1."""
+    coord = coordinator.AdaptiveThermostatCoordinator(hass)
+
+    # Create mock manifold registry
+    mock_registry = MagicMock()
+    mock_registry.get_worst_case_transport_delay.return_value = 15.0
+    coord.set_manifold_registry(mock_registry)
+
+    # Test without specifying zone_loops (should default to 1)
+    delay = coord.get_worst_case_transport_delay_for_zone("climate.living_room")
+
+    # Expected: 30L / (1 loop × 2 L/min) = 15 min
+    assert delay == 15.0
+    mock_registry.get_worst_case_transport_delay.assert_called_once_with("climate.living_room", 1)
+
+
+def test_get_worst_case_transport_delay_for_zone_unknown_zone(hass):
+    """Test get_worst_case_transport_delay_for_zone returns 0.0 for unknown zone."""
+    coord = coordinator.AdaptiveThermostatCoordinator(hass)
+
+    # Create mock manifold registry that returns 0.0 for unknown zone
+    mock_registry = MagicMock()
+    mock_registry.get_worst_case_transport_delay.return_value = 0.0
+    coord.set_manifold_registry(mock_registry)
+
+    # Test with zone not in any manifold
+    delay = coord.get_worst_case_transport_delay_for_zone("climate.unknown_zone", zone_loops=1)
+
+    # Should return 0.0
+    assert delay == 0.0
+    mock_registry.get_worst_case_transport_delay.assert_called_once_with("climate.unknown_zone", 1)
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

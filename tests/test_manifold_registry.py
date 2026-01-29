@@ -987,3 +987,158 @@ class TestManifoldPersistence:
         assert registry2._last_active_time["2nd Floor"].minute == 30
         assert registry2._last_active_time["Ground Floor"].hour == 10
         assert registry2._last_active_time["Ground Floor"].minute == 45
+
+
+class TestWorstCaseTransportDelay:
+    """Test get_worst_case_transport_delay for preheat scheduling."""
+
+    def test_worst_case_single_loop(self):
+        """Test worst-case delay calculation with single loop (worst case)."""
+        manifolds = [
+            Manifold(
+                name="2nd Floor",
+                zones=["climate.bathroom_2nd"],
+                pipe_volume=20.0,
+                flow_per_loop=2.0
+            )
+        ]
+        registry = ManifoldRegistry(manifolds)
+
+        # Worst case: 1 loop × 2 L/min = 2 L/min total flow
+        # 20L / 2 L/min = 10 min delay
+        delay = registry.get_worst_case_transport_delay("climate.bathroom_2nd", zone_loops=1)
+        assert delay == 10.0
+
+    def test_worst_case_multiple_loops_in_zone(self):
+        """Test worst-case delay with multiple loops in same zone."""
+        manifolds = [
+            Manifold(
+                name="2nd Floor",
+                zones=["climate.bathroom_2nd"],
+                pipe_volume=20.0,
+                flow_per_loop=2.0
+            )
+        ]
+        registry = ManifoldRegistry(manifolds)
+
+        # 2 loops × 2 L/min = 4 L/min total flow
+        # 20L / 4 L/min = 5 min delay
+        delay = registry.get_worst_case_transport_delay("climate.bathroom_2nd", zone_loops=2)
+        assert delay == 5.0
+
+    def test_worst_case_large_zone(self):
+        """Test worst-case delay with large zone (many loops)."""
+        manifolds = [
+            Manifold(
+                name="Living Room",
+                zones=["climate.living_room"],
+                pipe_volume=30.0,
+                flow_per_loop=2.0
+            )
+        ]
+        registry = ManifoldRegistry(manifolds)
+
+        # 6 loops × 2 L/min = 12 L/min total flow
+        # 30L / 12 L/min = 2.5 min delay
+        delay = registry.get_worst_case_transport_delay("climate.living_room", zone_loops=6)
+        assert delay == 2.5
+
+    def test_worst_case_zone_not_in_manifold(self):
+        """Test worst-case delay returns 0.0 for zone not in manifold."""
+        manifolds = [
+            Manifold(
+                name="2nd Floor",
+                zones=["climate.bathroom_2nd"],
+                pipe_volume=20.0,
+                flow_per_loop=2.0
+            )
+        ]
+        registry = ManifoldRegistry(manifolds)
+
+        # Unknown zone should return 0.0
+        delay = registry.get_worst_case_transport_delay("climate.unknown_zone", zone_loops=1)
+        assert delay == 0.0
+
+    def test_worst_case_empty_registry(self):
+        """Test worst-case delay with empty registry."""
+        registry = ManifoldRegistry([])
+
+        # Empty registry should return 0.0
+        delay = registry.get_worst_case_transport_delay("climate.test", zone_loops=1)
+        assert delay == 0.0
+
+    def test_worst_case_default_zone_loops(self):
+        """Test worst-case delay uses default zone_loops=1 when not specified."""
+        manifolds = [
+            Manifold(
+                name="2nd Floor",
+                zones=["climate.bathroom_2nd"],
+                pipe_volume=20.0,
+                flow_per_loop=2.0
+            )
+        ]
+        registry = ManifoldRegistry(manifolds)
+
+        # Default zone_loops=1: 1 loop × 2 L/min = 2 L/min
+        # 20L / 2 L/min = 10 min delay
+        delay = registry.get_worst_case_transport_delay("climate.bathroom_2nd")
+        assert delay == 10.0
+
+    def test_worst_case_comparison_with_dynamic_delay(self):
+        """Test that worst-case delay is always >= dynamic delay (more conservative)."""
+        from unittest.mock import patch
+
+        manifolds = [
+            Manifold(
+                name="2nd Floor",
+                zones=["climate.bathroom_2nd", "climate.bedroom_2nd"],
+                pipe_volume=20.0,
+                flow_per_loop=2.0
+            )
+        ]
+        registry = ManifoldRegistry(manifolds)
+
+        # Worst-case delay for bathroom (alone, 2 loops)
+        worst_case = registry.get_worst_case_transport_delay("climate.bathroom_2nd", zone_loops=2)
+        assert worst_case == 5.0  # 20L / (2 × 2) = 5 min
+
+        # Dynamic delay when both zones active (bathroom: 2 loops, bedroom: 3 loops)
+        # Total: 5 loops × 2 L/min = 10 L/min
+        # Delay: 20L / 10 L/min = 2 min
+        active_zones = {
+            "climate.bathroom_2nd": 2,
+            "climate.bedroom_2nd": 3
+        }
+        dynamic_delay = registry.get_transport_delay("climate.bathroom_2nd", active_zones)
+        assert dynamic_delay == 2.0
+
+        # Worst-case should be >= dynamic delay (more conservative for preheat)
+        assert worst_case >= dynamic_delay
+
+    def test_worst_case_different_flow_rates(self):
+        """Test worst-case delay with different flow_per_loop values."""
+        manifolds = [
+            Manifold(
+                name="High Flow",
+                zones=["climate.zone1"],
+                pipe_volume=20.0,
+                flow_per_loop=4.0  # High flow
+            ),
+            Manifold(
+                name="Low Flow",
+                zones=["climate.zone2"],
+                pipe_volume=20.0,
+                flow_per_loop=1.0  # Low flow
+            )
+        ]
+        registry = ManifoldRegistry(manifolds)
+
+        # High flow zone: 1 loop × 4 L/min = 4 L/min
+        # 20L / 4 L/min = 5 min
+        delay_high = registry.get_worst_case_transport_delay("climate.zone1", zone_loops=1)
+        assert delay_high == 5.0
+
+        # Low flow zone: 1 loop × 1 L/min = 1 L/min
+        # 20L / 1 L/min = 20 min
+        delay_low = registry.get_worst_case_transport_delay("climate.zone2", zone_loops=1)
+        assert delay_low == 20.0
