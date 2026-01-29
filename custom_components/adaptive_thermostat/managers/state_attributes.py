@@ -66,6 +66,9 @@ def build_state_attributes(thermostat: SmartThermostat) -> dict[str, Any]:
     # Humidity detection status
     _add_humidity_detection_attributes(thermostat, attrs)
 
+    # Auto mode switching status (coordinator-level)
+    _add_auto_mode_switching_attributes(thermostat, attrs)
+
     return attrs
 
 
@@ -308,6 +311,29 @@ def _add_humidity_detection_attributes(
     detector = thermostat._humidity_detector
     attrs["humidity_detection_state"] = detector.get_state()
     attrs["humidity_resume_in"] = detector.get_time_until_resume()
+
+
+def _add_auto_mode_switching_attributes(
+    thermostat: SmartThermostat, attrs: dict[str, Any]
+) -> None:
+    """Add auto mode switching state attributes from coordinator.
+
+    Args:
+        thermostat: The SmartThermostat instance
+        attrs: Dictionary to update with auto mode switching attributes
+    """
+    from ..const import DOMAIN
+
+    coordinator = thermostat._coordinator
+    if not coordinator or not coordinator.auto_mode_switching_enabled:
+        return
+
+    auto_mode_mgr = coordinator.auto_mode_switching
+    if not auto_mode_mgr:
+        return
+
+    debug = thermostat.hass.data.get(DOMAIN, {}).get("debug", False)
+    attrs.update(auto_mode_mgr.get_state_attributes(debug=debug))
 
 
 def _build_status_attribute(thermostat: SmartThermostat) -> dict[str, Any]:
