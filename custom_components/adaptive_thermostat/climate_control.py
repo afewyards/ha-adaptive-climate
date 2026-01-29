@@ -95,6 +95,62 @@ class ClimateControlMixin:
                         )
                     )
 
+                # Update undershoot detector and check for Ki adjustment
+                if (
+                    self._hvac_mode == HVACMode.HEAT
+                    and coordinator
+                    and self._zone_id
+                    and self._current_temp is not None
+                    and self._target_temp is not None
+                ):
+                    zone_data = coordinator.get_zone_data(self._zone_id)
+                    if zone_data:
+                        adaptive_learner = zone_data.get("adaptive_learner")
+                        if adaptive_learner:
+                            # Calculate dt since last control update
+                            current_time = time.monotonic()
+                            dt_seconds = current_time - self._last_control_time if self._last_control_time > 0 else 0.0
+
+                            # Update undershoot detector
+                            adaptive_learner.update_undershoot_detector(
+                                self._current_temp,
+                                self._target_temp,
+                                dt_seconds,
+                                self._cold_tolerance,
+                            )
+
+                            # Check if Ki adjustment is needed
+                            cycles_completed = adaptive_learner.get_cycle_count()
+                            new_ki = adaptive_learner.check_undershoot_adjustment(cycles_completed)
+
+                            if new_ki is not None:
+                                # Scale integral to prevent output spike
+                                old_ki = self._pid_controller.ki
+                                if old_ki > 0:
+                                    scale_factor = old_ki / new_ki
+                                    self._pid_controller.scale_integral(scale_factor)
+                                    _LOGGER.info(
+                                        "%s: Scaled integral by %.3f to prevent output spike (Ki: %.5f -> %.5f)",
+                                        self.entity_id,
+                                        scale_factor,
+                                        old_ki,
+                                        new_ki,
+                                    )
+
+                                # Update PID controller Ki
+                                self._pid_controller.ki = new_ki
+                                self._ki = new_ki
+
+                                # Trigger state save
+                                self.async_write_ha_state()
+
+                                _LOGGER.info(
+                                    "%s: Undershoot detector adjusted Ki: %.5f -> %.5f",
+                                    self.entity_id,
+                                    old_ki,
+                                    new_ki,
+                                )
+
                 # Record temperature for cycle tracking
                 if self._cycle_tracker and self._current_temp is not None:
                     await self._cycle_tracker.update_temperature(dt_util.utcnow(), self._current_temp)

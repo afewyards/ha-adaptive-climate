@@ -227,9 +227,12 @@ class TestCumulativeKiCap:
         detector.cumulative_ki_multiplier = 1.8
 
         # Trigger adjustment conditions
-        detector.update(temp=18.0, setpoint=20.0, dt_seconds=14400.0, cold_tolerance=0.5)
+        # Use small error (0.6) to accumulate time but not debt
+        # 0.6 °C * 4 hours = 2.4 °C·h (exceeds debt threshold of 2.0)
+        # So use 1 hour instead: 0.6 * 1 = 0.6 (below debt threshold)
+        detector.update(temp=18.9, setpoint=20.0, dt_seconds=3600.0, cold_tolerance=0.5)
 
-        # Should not adjust - too close to cap
+        # Should not adjust - cumulative multiplier approaching cap (1.8 * 1.15 = 2.07 > 2.0)
         assert detector.should_adjust_ki(cycles_completed=0) is False
 
     def test_blocks_adjustment_at_cap(self, detector):
@@ -267,13 +270,22 @@ class TestShouldAdjustTimeThreshold:
         # Floor hydronic threshold: 4.0 hours = 14400 seconds
         thresholds = UNDERSHOOT_THRESHOLDS[HeatingType.FLOOR_HYDRONIC]
         time_threshold = thresholds["time_threshold_hours"] * 3600.0
+        debt_threshold = thresholds["debt_threshold"]
 
-        # Just below threshold
-        detector.update(temp=18.0, setpoint=20.0, dt_seconds=time_threshold - 60, cold_tolerance=0.5)
+        # Use small error to avoid triggering debt threshold
+        # Need: error * (time_hours) < debt_threshold
+        # For 4 hours: error < 2.0 / 4 = 0.5
+        # But error must be > cold_tolerance to accumulate
+        # So use error slightly > 0.5 for just under 4 hours
+        # error = 0.51, time = 3.9 hours -> debt = 0.51 * 3.9 = 1.99 (just below 2.0)
+        temp = 20.0 - 0.51  # setpoint - error = temp
+
+        # Just below threshold (3.9 hours)
+        detector.update(temp=temp, setpoint=20.0, dt_seconds=time_threshold - 360, cold_tolerance=0.5)
         assert detector.should_adjust_ki(cycles_completed=0) is False
 
-        # Exceed threshold
-        detector.update(temp=18.0, setpoint=20.0, dt_seconds=120.0, cold_tolerance=0.5)
+        # Exceed threshold (add 6 more minutes to reach 4 hours)
+        detector.update(temp=temp, setpoint=20.0, dt_seconds=360.0, cold_tolerance=0.5)
         assert detector.should_adjust_ki(cycles_completed=0) is True
 
     def test_forced_air_has_shorter_threshold(self, forced_air_detector):
