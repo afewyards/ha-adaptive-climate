@@ -361,6 +361,7 @@ class TestAsyncSetupManagers:
         mock_coordinator.get_zone_data = Mock(return_value={
             "stored_preheat_data": stored_preheat_data,
         })
+        mock_coordinator.get_worst_case_transport_delay_for_zone = Mock(return_value=0.0)
 
         thermostat = MockThermostat({
             "_night_setback_config": {

@@ -2701,6 +2701,7 @@ class TestClimateManifoldIntegration:
         # Create mock coordinator with manifold support
         mock_coordinator = MagicMock()
         mock_coordinator.get_transport_delay_for_zone = MagicMock(return_value=2.5)
+        mock_coordinator.get_worst_case_transport_delay_for_zone = MagicMock(return_value=0.0)
         mock_coordinator.register_zone = MagicMock()
 
         hass.data = {
