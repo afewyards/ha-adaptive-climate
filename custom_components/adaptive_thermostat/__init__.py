@@ -64,6 +64,19 @@ from .const import (
     CONF_MANIFOLDS,
     CONF_PIPE_VOLUME,
     CONF_FLOW_PER_LOOP,
+    # Auto mode switching
+    CONF_AUTO_MODE_SWITCHING,
+    CONF_AUTO_MODE_THRESHOLD,
+    CONF_MIN_SWITCH_INTERVAL,
+    CONF_FORECAST_HOURS,
+    CONF_SEASON_THRESHOLDS,
+    CONF_WINTER_BELOW,
+    CONF_SUMMER_ABOVE,
+    DEFAULT_AUTO_MODE_THRESHOLD,
+    DEFAULT_MIN_SWITCH_INTERVAL,
+    DEFAULT_FORECAST_HOURS,
+    DEFAULT_WINTER_BELOW,
+    DEFAULT_SUMMER_ABOVE,
     # Climate settings (domain-level defaults with per-entity override)
     CONF_MIN_TEMP,
     CONF_MAX_TEMP,
@@ -179,6 +192,18 @@ if HAS_HOMEASSISTANT:
         vol.Optional(CONF_FLOW_PER_LOOP, default=DEFAULT_FLOW_PER_LOOP): vol.All(
             vol.Coerce(float), vol.Range(min=0.1)
         ),
+    })
+
+    # Auto mode switching schema
+    AUTO_MODE_SWITCHING_SCHEMA = vol.Schema({
+        vol.Required("enabled"): cv.boolean,
+        vol.Optional(CONF_AUTO_MODE_THRESHOLD, default=DEFAULT_AUTO_MODE_THRESHOLD): vol.Coerce(float),
+        vol.Optional(CONF_MIN_SWITCH_INTERVAL, default=DEFAULT_MIN_SWITCH_INTERVAL): cv.positive_int,
+        vol.Optional(CONF_FORECAST_HOURS, default=DEFAULT_FORECAST_HOURS): cv.positive_int,
+        vol.Optional(CONF_SEASON_THRESHOLDS): vol.Schema({
+            vol.Optional(CONF_WINTER_BELOW, default=DEFAULT_WINTER_BELOW): vol.Coerce(float),
+            vol.Optional(CONF_SUMMER_ABOVE, default=DEFAULT_SUMMER_ABOVE): vol.Coerce(float),
+        }),
     })
 
     CONFIG_SCHEMA = vol.Schema(
@@ -305,6 +330,9 @@ if HAS_HOMEASSISTANT:
 
                 # Manifolds for hydraulic transport delay tracking
                 vol.Optional(CONF_MANIFOLDS): vol.All(cv.ensure_list, [MANIFOLD_SCHEMA]),
+
+                # Auto mode switching for heat/cool based on outdoor temperature
+                vol.Optional(CONF_AUTO_MODE_SWITCHING): AUTO_MODE_SWITCHING_SCHEMA,
             })
         },
         extra=vol.ALLOW_EXTRA,  # Allow other domains in config
