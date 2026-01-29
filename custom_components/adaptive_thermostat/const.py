@@ -702,6 +702,39 @@ HEATING_TYPE_EXP_DECAY_TAU = {
     HeatingType.FORCED_AIR: 0.036,      # 1.5 min half-life (3 min cycle / 2)
 }
 
+# Undershoot detection thresholds by heating type
+# Detects persistent undershoot (temperature debt accumulation) and adjusts Ki to improve response
+# Slower systems (high thermal mass) get longer time thresholds and higher debt thresholds
+UNDERSHOOT_THRESHOLDS: dict[HeatingType, dict[str, float]] = {
+    HeatingType.FLOOR_HYDRONIC: {
+        "time_threshold_hours": 4.0,    # Hours below setpoint before triggering
+        "debt_threshold": 2.0,          # Temperature debt (°C·h) threshold
+        "ki_multiplier": 1.15,          # Ki boost per detection (15% increase)
+        "cooldown_hours": 24.0,         # Hours between adjustments
+    },
+    HeatingType.RADIATOR: {
+        "time_threshold_hours": 2.0,
+        "debt_threshold": 1.0,
+        "ki_multiplier": 1.20,
+        "cooldown_hours": 8.0,
+    },
+    HeatingType.CONVECTOR: {
+        "time_threshold_hours": 1.5,
+        "debt_threshold": 0.75,
+        "ki_multiplier": 1.25,
+        "cooldown_hours": 4.0,
+    },
+    HeatingType.FORCED_AIR: {
+        "time_threshold_hours": 0.75,
+        "debt_threshold": 0.5,
+        "ki_multiplier": 1.30,
+        "cooldown_hours": 2.0,
+    },
+}
+
+# Maximum cumulative Ki multiplier from undershoot detection (safety cap)
+MAX_UNDERSHOOT_KI_MULTIPLIER = 2.0
+
 # Auto-apply PID constants
 # Maximum auto-applies per season (90 days) to prevent runaway tuning
 MAX_AUTO_APPLIES_PER_SEASON = 5
