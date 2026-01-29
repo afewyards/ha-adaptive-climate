@@ -2,7 +2,7 @@
 import sys
 import pytest
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, Mock
+from unittest.mock import MagicMock, Mock, patch
 
 # Mock homeassistant.components.climate for HVACMode
 mock_ha_climate = MagicMock()
@@ -1534,57 +1534,60 @@ class TestStatusAttributeIntegration:
             build_state_attributes,
         )
 
-        thermostat = MagicMock()
-        # Setup thermostat in night setback
-        thermostat._away_temp = 18.0
-        thermostat._eco_temp = 19.0
-        thermostat._boost_temp = 24.0
-        thermostat._comfort_temp = 21.0
-        thermostat._home_temp = 20.0
-        thermostat._sleep_temp = 18.0
-        thermostat._activity_temp = 20.0
-        thermostat._control_output = 20.0
-        thermostat._kp = 20.0
-        thermostat._ki = 0.01
-        thermostat._kd = 100.0
-        thermostat._ke = 0.5
-        thermostat.pid_mode = "auto"
-        thermostat.pid_control_i = 2.0
-        thermostat._pid_controller = MagicMock()
-        thermostat._pid_controller.outdoor_temp_lagged = 5.0
-        thermostat._heater_controller = MagicMock()
-        thermostat._heater_controller.heater_cycle_count = 10
-        thermostat._heater_controller.cooler_cycle_count = 0
-        thermostat._heater_controller.duty_accumulator_seconds = 50.0
-        thermostat._heater_controller.min_on_cycle_duration = 300.0
-        thermostat._heater_controller.heater_on = False
-        thermostat._heater_controller.cooler_on = False
+        # Mock dt_util.now() to return a real datetime
+        mock_now = datetime(2024, 1, 15, 6, 30, 0)
+        with patch('custom_components.adaptive_thermostat.managers.status_manager.dt_util.now', return_value=mock_now):
+            thermostat = MagicMock()
+            # Setup thermostat in night setback
+            thermostat._away_temp = 18.0
+            thermostat._eco_temp = 19.0
+            thermostat._boost_temp = 24.0
+            thermostat._comfort_temp = 21.0
+            thermostat._home_temp = 20.0
+            thermostat._sleep_temp = 18.0
+            thermostat._activity_temp = 20.0
+            thermostat._control_output = 20.0
+            thermostat._kp = 20.0
+            thermostat._ki = 0.01
+            thermostat._kd = 100.0
+            thermostat._ke = 0.5
+            thermostat.pid_mode = "auto"
+            thermostat.pid_control_i = 2.0
+            thermostat._pid_controller = MagicMock()
+            thermostat._pid_controller.outdoor_temp_lagged = 5.0
+            thermostat._heater_controller = MagicMock()
+            thermostat._heater_controller.heater_cycle_count = 10
+            thermostat._heater_controller.cooler_cycle_count = 0
+            thermostat._heater_controller.duty_accumulator_seconds = 50.0
+            thermostat._heater_controller.min_on_cycle_duration = 300.0
+            thermostat._heater_controller.heater_on = False
+            thermostat._heater_controller.cooler_on = False
 
-        # Night setback controller active
-        night_setback_controller = MagicMock()
-        night_setback_controller.calculate_night_setback_adjustment.return_value = (
-            -3.0,  # adjustment
-            True,   # in_night_period
-            {"night_setback_delta": 3.0, "night_setback_end": "07:00"}
-        )
-        night_setback_controller.in_learning_grace_period = False
-        thermostat._night_setback_controller = night_setback_controller
+            # Night setback controller active
+            night_setback_controller = MagicMock()
+            night_setback_controller.calculate_night_setback_adjustment.return_value = (
+                -3.0,  # adjustment
+                True,   # in_night_period
+                {"night_setback_delta": 3.0, "night_setback_end": "07:00"}
+            )
+            night_setback_controller.in_learning_grace_period = False
+            thermostat._night_setback_controller = night_setback_controller
 
-        thermostat._contact_sensor_handler = None
-        thermostat._humidity_detector = None
-        thermostat._coordinator = None
-        thermostat.hvac_mode = "heat"
-        thermostat.hass = MagicMock()
-        thermostat.hass.data = {}
+            thermostat._contact_sensor_handler = None
+            thermostat._humidity_detector = None
+            thermostat._coordinator = None
+            thermostat.hvac_mode = "heat"
+            thermostat.hass = MagicMock()
+            thermostat.hass.data = {}
 
-        attrs = build_state_attributes(thermostat)
+            attrs = build_state_attributes(thermostat)
 
-        assert "status" in attrs
-        assert "night_setback" in attrs["status"]["conditions"]
-        assert attrs["status"]["setback_delta"] == 3.0
-        # setback_end should be ISO8601 format
-        assert "setback_end" in attrs["status"]
-        assert "T" in attrs["status"]["setback_end"]  # ISO8601 has T separator
+            assert "status" in attrs
+            assert "night_setback" in attrs["status"]["conditions"]
+            assert attrs["status"]["setback_delta"] == 3.0
+            # setback_end should be ISO8601 format
+            assert "setback_end" in attrs["status"]
+            assert "T" in attrs["status"]["setback_end"]  # ISO8601 has T separator
 
     def test_multiple_conditions_status(self):
         """Test status with multiple active conditions."""
@@ -1592,56 +1595,59 @@ class TestStatusAttributeIntegration:
             build_state_attributes,
         )
 
-        thermostat = MagicMock()
-        # Setup thermostat with multiple conditions
-        thermostat._away_temp = 18.0
-        thermostat._eco_temp = 19.0
-        thermostat._boost_temp = 24.0
-        thermostat._comfort_temp = 21.0
-        thermostat._home_temp = 20.0
-        thermostat._sleep_temp = 18.0
-        thermostat._activity_temp = 20.0
-        thermostat._control_output = 20.0
-        thermostat._kp = 20.0
-        thermostat._ki = 0.01
-        thermostat._kd = 100.0
-        thermostat._ke = 0.5
-        thermostat.pid_mode = "auto"
-        thermostat.pid_control_i = 2.0
-        thermostat._pid_controller = MagicMock()
-        thermostat._pid_controller.outdoor_temp_lagged = 5.0
-        thermostat._heater_controller = MagicMock()
-        thermostat._heater_controller.heater_cycle_count = 10
-        thermostat._heater_controller.cooler_cycle_count = 0
-        thermostat._heater_controller.duty_accumulator_seconds = 0.0
-        thermostat._heater_controller.min_on_cycle_duration = 300.0
-        thermostat._heater_controller.heater_on = False
-        thermostat._heater_controller.cooler_on = False
+        # Mock dt_util.now() to return a real datetime
+        mock_now = datetime(2024, 1, 15, 6, 30, 0)
+        with patch('custom_components.adaptive_thermostat.managers.status_manager.dt_util.now', return_value=mock_now):
+            thermostat = MagicMock()
+            # Setup thermostat with multiple conditions
+            thermostat._away_temp = 18.0
+            thermostat._eco_temp = 19.0
+            thermostat._boost_temp = 24.0
+            thermostat._comfort_temp = 21.0
+            thermostat._home_temp = 20.0
+            thermostat._sleep_temp = 18.0
+            thermostat._activity_temp = 20.0
+            thermostat._control_output = 20.0
+            thermostat._kp = 20.0
+            thermostat._ki = 0.01
+            thermostat._kd = 100.0
+            thermostat._ke = 0.5
+            thermostat.pid_mode = "auto"
+            thermostat.pid_control_i = 2.0
+            thermostat._pid_controller = MagicMock()
+            thermostat._pid_controller.outdoor_temp_lagged = 5.0
+            thermostat._heater_controller = MagicMock()
+            thermostat._heater_controller.heater_cycle_count = 10
+            thermostat._heater_controller.cooler_cycle_count = 0
+            thermostat._heater_controller.duty_accumulator_seconds = 0.0
+            thermostat._heater_controller.min_on_cycle_duration = 300.0
+            thermostat._heater_controller.heater_on = False
+            thermostat._heater_controller.cooler_on = False
 
-        # Night setback AND learning grace period active
-        night_setback_controller = MagicMock()
-        night_setback_controller.calculate_night_setback_adjustment.return_value = (
-            -3.0,
-            True,
-            {"night_setback_delta": 3.0, "night_setback_end": "07:00"}
-        )
-        night_setback_controller.in_learning_grace_period = True
-        thermostat._night_setback_controller = night_setback_controller
+            # Night setback AND learning grace period active
+            night_setback_controller = MagicMock()
+            night_setback_controller.calculate_night_setback_adjustment.return_value = (
+                -3.0,
+                True,
+                {"night_setback_delta": 3.0, "night_setback_end": "07:00"}
+            )
+            night_setback_controller.in_learning_grace_period = True
+            thermostat._night_setback_controller = night_setback_controller
 
-        thermostat._contact_sensor_handler = None
-        thermostat._humidity_detector = None
-        thermostat._coordinator = None
-        thermostat.hvac_mode = "heat"
-        thermostat.hass = MagicMock()
-        thermostat.hass.data = {}
+            thermostat._contact_sensor_handler = None
+            thermostat._humidity_detector = None
+            thermostat._coordinator = None
+            thermostat.hvac_mode = "heat"
+            thermostat.hass = MagicMock()
+            thermostat.hass.data = {}
 
-        attrs = build_state_attributes(thermostat)
+            attrs = build_state_attributes(thermostat)
 
-        assert "status" in attrs
-        assert "night_setback" in attrs["status"]["conditions"]
-        assert "learning_grace" in attrs["status"]["conditions"]
-        # Both conditions should be present
-        assert len(attrs["status"]["conditions"]) == 2
+            assert "status" in attrs
+            assert "night_setback" in attrs["status"]["conditions"]
+            assert "learning_grace" in attrs["status"]["conditions"]
+            # Both conditions should be present
+            assert len(attrs["status"]["conditions"]) == 2
 
     def test_preheating_status(self):
         """Test status when preheating before night setback ends."""
@@ -1649,58 +1655,61 @@ class TestStatusAttributeIntegration:
             build_state_attributes,
         )
 
-        thermostat = MagicMock()
-        # Setup thermostat in preheat mode
-        thermostat._away_temp = 18.0
-        thermostat._eco_temp = 19.0
-        thermostat._boost_temp = 24.0
-        thermostat._comfort_temp = 21.0
-        thermostat._home_temp = 20.0
-        thermostat._sleep_temp = 18.0
-        thermostat._activity_temp = 20.0
-        thermostat._control_output = 60.0
-        thermostat._kp = 20.0
-        thermostat._ki = 0.01
-        thermostat._kd = 100.0
-        thermostat._ke = 0.5
-        thermostat.pid_mode = "auto"
-        thermostat.pid_control_i = 3.0
-        thermostat._pid_controller = MagicMock()
-        thermostat._pid_controller.outdoor_temp_lagged = 5.0
-        thermostat._heater_controller = MagicMock()
-        thermostat._heater_controller.heater_cycle_count = 10
-        thermostat._heater_controller.cooler_cycle_count = 0
-        thermostat._heater_controller.duty_accumulator_seconds = 100.0
-        thermostat._heater_controller.min_on_cycle_duration = 300.0
-        thermostat._heater_controller.heater_on = True
-        thermostat._heater_controller.cooler_on = False
+        # Mock dt_util.now() to return a real datetime
+        mock_now = datetime(2024, 1, 15, 6, 30, 0)
+        with patch('custom_components.adaptive_thermostat.managers.status_manager.dt_util.now', return_value=mock_now):
+            thermostat = MagicMock()
+            # Setup thermostat in preheat mode
+            thermostat._away_temp = 18.0
+            thermostat._eco_temp = 19.0
+            thermostat._boost_temp = 24.0
+            thermostat._comfort_temp = 21.0
+            thermostat._home_temp = 20.0
+            thermostat._sleep_temp = 18.0
+            thermostat._activity_temp = 20.0
+            thermostat._control_output = 60.0
+            thermostat._kp = 20.0
+            thermostat._ki = 0.01
+            thermostat._kd = 100.0
+            thermostat._ke = 0.5
+            thermostat.pid_mode = "auto"
+            thermostat.pid_control_i = 3.0
+            thermostat._pid_controller = MagicMock()
+            thermostat._pid_controller.outdoor_temp_lagged = 5.0
+            thermostat._heater_controller = MagicMock()
+            thermostat._heater_controller.heater_cycle_count = 10
+            thermostat._heater_controller.cooler_cycle_count = 0
+            thermostat._heater_controller.duty_accumulator_seconds = 100.0
+            thermostat._heater_controller.min_on_cycle_duration = 300.0
+            thermostat._heater_controller.heater_on = True
+            thermostat._heater_controller.cooler_on = False
 
-        # Preheat active
-        thermostat._preheat_active = True
+            # Preheat active
+            thermostat._preheat_active = True
 
-        # Night setback controller with preheat
-        night_setback_controller = MagicMock()
-        night_setback_controller.calculate_night_setback_adjustment.return_value = (
-            -2.0,  # Still in setback but preheating
-            True,
-            {"night_setback_delta": 2.0, "night_setback_end": "07:00"}
-        )
-        night_setback_controller.in_learning_grace_period = False
-        thermostat._night_setback_controller = night_setback_controller
+            # Night setback controller with preheat
+            night_setback_controller = MagicMock()
+            night_setback_controller.calculate_night_setback_adjustment.return_value = (
+                -2.0,  # Still in setback but preheating
+                True,
+                {"night_setback_delta": 2.0, "night_setback_end": "07:00"}
+            )
+            night_setback_controller.in_learning_grace_period = False
+            thermostat._night_setback_controller = night_setback_controller
 
-        thermostat._contact_sensor_handler = None
-        thermostat._humidity_detector = None
-        thermostat._coordinator = None
-        thermostat.hvac_mode = "heat"
-        thermostat.hass = MagicMock()
-        thermostat.hass.data = {}
+            thermostat._contact_sensor_handler = None
+            thermostat._humidity_detector = None
+            thermostat._coordinator = None
+            thermostat.hvac_mode = "heat"
+            thermostat.hass = MagicMock()
+            thermostat.hass.data = {}
 
-        attrs = build_state_attributes(thermostat)
+            attrs = build_state_attributes(thermostat)
 
-        assert "status" in attrs
-        assert attrs["status"]["state"] == "preheating"
-        # Night setback condition should still be present
-        assert "night_setback" in attrs["status"]["conditions"]
+            assert "status" in attrs
+            assert attrs["status"]["state"] == "preheating"
+            # Night setback condition should still be present
+            assert "night_setback" in attrs["status"]["conditions"]
 
     def test_settling_status(self):
         """Test status during settling phase after heating cycle."""
