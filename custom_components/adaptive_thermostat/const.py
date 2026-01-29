@@ -829,3 +829,22 @@ DEFAULT_FLOW_PER_LOOP = 2.0
 PREHEAT_OBSERVATION_WINDOW_DAYS = 90  # Rolling window for observations
 PREHEAT_MAX_OBSERVATIONS_PER_BIN = 100  # Limit observations per bin to prevent unbounded growth
 PREHEAT_MIN_OBSERVATIONS_FOR_LEARNING = 3  # Minimum observations before using learned rates
+
+# Setpoint boost configuration
+CONF_SETPOINT_BOOST = "setpoint_boost"
+CONF_SETPOINT_BOOST_FACTOR = "setpoint_boost_factor"
+CONF_SETPOINT_DEBOUNCE = "setpoint_debounce"
+
+# Setpoint boost defaults
+DEFAULT_SETPOINT_DEBOUNCE = 5  # seconds
+
+# Heating type boost factors
+# Maps heating type to (boost_factor, decay_rate) tuples
+# boost_factor: Percentage multiplier applied to control output during boost
+# decay_rate: Exponential decay rate per minute for returning to normal setpoint
+HEATING_TYPE_BOOST_FACTORS: dict[HeatingType, tuple[float, float]] = {
+    HeatingType.FLOOR_HYDRONIC: (25.0, 0.15),  # (boost_factor, decay_rate)
+    HeatingType.RADIATOR: (18.0, 0.20),
+    HeatingType.CONVECTOR: (12.0, 0.25),
+    HeatingType.FORCED_AIR: (8.0, 0.30),
+}

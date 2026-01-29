@@ -18,6 +18,7 @@ from .managers import (
     KeManager,
     NightSetbackManager,
     PIDTuningManager,
+    SetpointBoostManager,
     TemperatureManager,
     CycleTrackerManager,
 )
@@ -295,6 +296,29 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
     _LOGGER.info(
         "%s: Control output manager initialized",
         thermostat.entity_id
+    )
+
+    # Initialize setpoint boost manager
+    # Create callback to check if night setback is active
+    def is_night_period() -> bool:
+        """Check if currently in night setback period."""
+        if not thermostat._night_setback_controller:
+            return False
+        _, in_night_period, _ = thermostat._night_setback_controller.calculate_night_setback_adjustment()
+        return in_night_period
+
+    thermostat._setpoint_boost_manager = SetpointBoostManager(
+        hass=thermostat.hass,
+        heating_type=thermostat._heating_type,
+        pid_controller=thermostat._pid_controller,
+        is_night_period_cb=is_night_period,
+        enabled=thermostat._setpoint_boost,
+        boost_factor=thermostat._setpoint_boost_factor,
+        debounce_seconds=thermostat._setpoint_debounce,
+    )
+    _LOGGER.info(
+        "%s: Setpoint boost manager initialized (enabled=%s, debounce=%ds)",
+        thermostat.entity_id, thermostat._setpoint_boost, thermostat._setpoint_debounce
     )
 
     # Initialize cycle tracker for adaptive learning

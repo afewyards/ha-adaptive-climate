@@ -125,6 +125,10 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
             vol.Coerce(int),
             vol.Range(min=1, max=10)
         ),
+        # Setpoint boost
+        vol.Optional(const.CONF_SETPOINT_BOOST, default=True): cv.boolean,
+        vol.Optional(const.CONF_SETPOINT_BOOST_FACTOR): vol.Coerce(float),
+        vol.Optional(const.CONF_SETPOINT_DEBOUNCE, default=const.DEFAULT_SETPOINT_DEBOUNCE): cv.positive_int,
     }
 )
 
@@ -294,6 +298,9 @@ async def async_setup_platform(hass: HomeAssistant, config: ConfigType, async_ad
         'supply_temperature': hass.data.get(DOMAIN, {}).get("supply_temperature"),
         'ha_area': config.get(const.CONF_AREA),  # Home Assistant area to assign entity to
         'loops': config.get(const.CONF_LOOPS),
+        'setpoint_boost': config.get(const.CONF_SETPOINT_BOOST),
+        'setpoint_boost_factor': config.get(const.CONF_SETPOINT_BOOST_FACTOR),
+        'setpoint_debounce': config.get(const.CONF_SETPOINT_DEBOUNCE),
     }
 
     thermostat = AdaptiveThermostat(**parameters)

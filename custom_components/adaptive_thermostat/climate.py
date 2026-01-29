@@ -48,7 +48,7 @@ from . import const
 from . import pid_controller
 from .adaptive.learning import AdaptiveLearner
 from .adaptive.persistence import LearningDataStore
-from .managers import ControlOutputManager, HeaterController, KeManager, NightSetbackManager, PIDTuningManager, StateRestorer, TemperatureManager, CycleTrackerManager
+from .managers import ControlOutputManager, HeaterController, KeManager, NightSetbackManager, PIDTuningManager, SetpointBoostManager, StateRestorer, TemperatureManager, CycleTrackerManager
 from .managers.events import (
     CycleEventDispatcher,
     CycleEndedEvent,
@@ -178,6 +178,11 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
         self._ha_area = kwargs.get('ha_area')  # Home Assistant area to assign entity to
         self._loops = kwargs.get('loops', const.DEFAULT_LOOPS)
 
+        # Setpoint boost configuration
+        self._setpoint_boost = kwargs.get('setpoint_boost', True)
+        self._setpoint_boost_factor = kwargs.get('setpoint_boost_factor')
+        self._setpoint_debounce = kwargs.get('setpoint_debounce', const.DEFAULT_SETPOINT_DEBOUNCE)
+
         # Derivative filter alpha - get from config or use heating-type-specific default
         self._derivative_filter_alpha = kwargs.get('derivative_filter_alpha')
         if self._derivative_filter_alpha is None:
@@ -306,6 +311,9 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
 
         # Control output manager (initialized in async_added_to_hass when hass is available)
         self._control_output_manager: ControlOutputManager | None = None
+
+        # Setpoint boost manager (initialized in async_added_to_hass when hass is available)
+        self._setpoint_boost_manager: SetpointBoostManager | None = None
 
         # Heater control failure tracking (managed by HeaterController when available)
         self._heater_control_failed = False
@@ -552,6 +560,10 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
         # Clean up cycle tracker subscriptions and timers
         if self._cycle_tracker:
             self._cycle_tracker.cleanup()
+
+        # Clean up setpoint boost manager timers
+        if hasattr(self, "_setpoint_boost_manager") and self._setpoint_boost_manager:
+            self._setpoint_boost_manager.cancel()
 
         # Save learning data before removal
         if self._zone_id:
@@ -1465,6 +1477,10 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
                         new_target=value,
                     )
                 )
+
+            # Notify setpoint boost manager
+            if hasattr(self, "_setpoint_boost_manager") and self._setpoint_boost_manager:
+                self._setpoint_boost_manager.on_setpoint_change(old_temp, value)
 
     async def _async_set_pid_mode_internal(self, mode: str) -> None:
         """Internal callback to set PID mode from TemperatureManager."""

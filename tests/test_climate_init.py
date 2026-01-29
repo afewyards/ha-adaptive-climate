@@ -97,6 +97,11 @@ class MockThermostat:
         self._coordinator = None
         self._zone_id = None
 
+        # Setpoint boost configuration
+        self._setpoint_boost = True
+        self._setpoint_boost_factor = None
+        self._setpoint_debounce = 5
+
         # Manager instances (will be initialized by async_setup_managers)
         self._cycle_dispatcher = None
         self._heater_controller = None
@@ -108,6 +113,7 @@ class MockThermostat:
         self._pid_tuning_manager = None
         self._control_output_manager = None
         self._cycle_tracker = None
+        self._setpoint_boost_manager = None
 
         # Apply overrides
         if config_overrides:

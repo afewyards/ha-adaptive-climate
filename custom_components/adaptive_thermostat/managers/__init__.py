@@ -23,6 +23,7 @@ from .night_setback_calculator import NightSetbackCalculator
 from .night_setback_manager import NightSetbackManager
 from .status_manager import StatusManager
 from .pid_tuning import PIDTuningManager
+from .setpoint_boost import SetpointBoostManager
 from .state_attributes import build_state_attributes
 from .state_restorer import StateRestorer
 from .temperature_manager import TemperatureManager
@@ -47,6 +48,7 @@ __all__ = [
     "NightSetbackManager",
     "StatusManager",
     "PIDTuningManager",
+    "SetpointBoostManager",
     "SetpointChangedEvent",
     "SettlingStartedEvent",
     "StateRestorer",
