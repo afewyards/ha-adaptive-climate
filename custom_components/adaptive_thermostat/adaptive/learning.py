@@ -1243,19 +1243,17 @@ class AdaptiveLearner:
         self,
         cycles_completed: int,
         current_ki: float,
-        current_integral: float,
     ) -> Optional[float]:
         """Check if Ki adjustment is needed for persistent undershoot.
 
         Checks if the undershoot detector has identified persistent temperature
         deficit conditions requiring Ki increase. If adjustment is needed, applies
-        the multiplier to Ki and scales the integral proportionally to prevent
-        sudden control output changes.
+        the multiplier to Ki. The caller should scale the integral proportionally
+        using PIDController.scale_integral() to prevent sudden control output changes.
 
         Args:
             cycles_completed: Number of complete heating cycles observed
             current_ki: Current integral gain value
-            current_integral: Current integral term value
 
         Returns:
             New Ki value if adjustment was applied, None otherwise
