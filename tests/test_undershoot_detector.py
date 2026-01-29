@@ -10,6 +10,8 @@ from custom_components.adaptive_thermostat.adaptive.undershoot_detector import (
 from custom_components.adaptive_thermostat.const import (
     HeatingType,
     MAX_UNDERSHOOT_KI_MULTIPLIER,
+    MIN_CYCLES_FOR_LEARNING,
+    SEVERE_UNDERSHOOT_MULTIPLIER,
     UNDERSHOOT_THRESHOLDS,
 )
 
@@ -247,19 +249,25 @@ class TestCumulativeKiCap:
 
 
 class TestShouldAdjustWithCompletedCycles:
-    """Test that adjustment is blocked when cycles have completed."""
+    """Test that adjustment is blocked when cycles have completed (without severe undershoot)."""
 
-    def test_returns_false_when_cycles_completed(self, detector):
-        """Test that adjustment is blocked after first cycle completes."""
-        # Trigger adjustment conditions
-        detector.update(temp=18.0, setpoint=20.0, dt_seconds=14400.0, cold_tolerance=0.5)
+    def test_returns_false_when_enough_cycles_completed(self, detector):
+        """Test that adjustment is blocked after MIN_CYCLES_FOR_LEARNING without severe undershoot."""
+        # Trigger adjustment conditions (but NOT severe undershoot)
+        # debt_threshold for floor_hydronic is 2.0, so severe is 4.0
+        # Use small error to hit time threshold without hitting severe debt
+        detector.update(temp=19.4, setpoint=20.0, dt_seconds=14400.0, cold_tolerance=0.5)
 
         # Should adjust with no completed cycles
         assert detector.should_adjust_ki(cycles_completed=0) is True
 
-        # Should not adjust with completed cycles
-        assert detector.should_adjust_ki(cycles_completed=1) is False
-        assert detector.should_adjust_ki(cycles_completed=5) is False
+        # Should still adjust with cycles < MIN_CYCLES_FOR_LEARNING
+        assert detector.should_adjust_ki(cycles_completed=1) is True
+        assert detector.should_adjust_ki(cycles_completed=5) is True
+
+        # Should NOT adjust with cycles >= MIN_CYCLES_FOR_LEARNING (normal learning takes over)
+        assert detector.should_adjust_ki(cycles_completed=MIN_CYCLES_FOR_LEARNING) is False
+        assert detector.should_adjust_ki(cycles_completed=15) is False
 
 
 class TestShouldAdjustTimeThreshold:
@@ -527,3 +535,127 @@ class TestEdgeCases:
 
         assert detector.time_below_target == 0.0
         assert detector.thermal_debt == 0.0
+
+
+class TestPersistentUndershootMode:
+    """Test persistent undershoot detection beyond bootstrap phase."""
+
+    def test_severe_undershoot_allows_adjustment_after_min_cycles(self, detector):
+        """Test that severe undershoot (2x threshold) enables adjustment after MIN_CYCLES."""
+        # Floor hydronic debt threshold is 2.0, so severe is 4.0
+        # Accumulate severe undershoot: error=4.0°C for 1h -> 4.0 °C·h
+        detector.update(temp=16.0, setpoint=20.0, dt_seconds=3600.0, cold_tolerance=0.5)
+
+        # Verify we have severe undershoot
+        thresholds = UNDERSHOOT_THRESHOLDS[HeatingType.FLOOR_HYDRONIC]
+        severe_threshold = thresholds["debt_threshold"] * SEVERE_UNDERSHOOT_MULTIPLIER
+        assert detector.thermal_debt >= severe_threshold
+
+        # Should adjust even with many cycles completed (persistent mode)
+        assert detector.should_adjust_ki(cycles_completed=MIN_CYCLES_FOR_LEARNING) is True
+        assert detector.should_adjust_ki(cycles_completed=15) is True
+        assert detector.should_adjust_ki(cycles_completed=100) is True
+
+    def test_moderate_undershoot_blocked_after_min_cycles(self, detector):
+        """Test that moderate undershoot (< 2x threshold) is blocked after MIN_CYCLES."""
+        # Accumulate moderate undershoot: error=2.0°C for 0.9h -> 1.8 °C·h (< 2.0 threshold)
+        # But add time to trigger time threshold
+        detector.update(temp=19.4, setpoint=20.0, dt_seconds=14400.0, cold_tolerance=0.5)
+
+        # Verify undershoot is NOT severe (debt < 2x threshold = 4.0)
+        thresholds = UNDERSHOOT_THRESHOLDS[HeatingType.FLOOR_HYDRONIC]
+        severe_threshold = thresholds["debt_threshold"] * SEVERE_UNDERSHOOT_MULTIPLIER
+        assert detector.thermal_debt < severe_threshold
+
+        # Should adjust with fewer cycles
+        assert detector.should_adjust_ki(cycles_completed=0) is True
+        assert detector.should_adjust_ki(cycles_completed=5) is True
+
+        # Should NOT adjust after MIN_CYCLES - normal learning takes over
+        assert detector.should_adjust_ki(cycles_completed=MIN_CYCLES_FOR_LEARNING) is False
+
+    def test_severe_undershoot_boundary(self, detector):
+        """Test behavior at exact severe undershoot boundary."""
+        # Floor hydronic: debt threshold 2.0, severe = 4.0
+        thresholds = UNDERSHOOT_THRESHOLDS[HeatingType.FLOOR_HYDRONIC]
+        severe_threshold = thresholds["debt_threshold"] * SEVERE_UNDERSHOOT_MULTIPLIER
+
+        # Just below severe threshold: 3.9 °C·h
+        detector.thermal_debt = severe_threshold - 0.1
+        detector.time_below_target = 14400.0  # 4h - meets time threshold
+
+        # Should NOT adjust at MIN_CYCLES (not severe enough)
+        assert detector.should_adjust_ki(cycles_completed=MIN_CYCLES_FOR_LEARNING) is False
+
+        # Reach severe threshold
+        detector.thermal_debt = severe_threshold
+
+        # Should adjust now
+        assert detector.should_adjust_ki(cycles_completed=MIN_CYCLES_FOR_LEARNING) is True
+
+    def test_severe_undershoot_respects_cooldown(self, detector):
+        """Test that severe undershoot still respects cooldown period."""
+        # Accumulate severe undershoot
+        detector.update(temp=16.0, setpoint=20.0, dt_seconds=3600.0, cold_tolerance=0.5)
+
+        # Apply first adjustment
+        assert detector.should_adjust_ki(cycles_completed=15) is True
+        detector.apply_adjustment()
+
+        # Should be in cooldown now
+        assert detector.should_adjust_ki(cycles_completed=15) is False
+
+    def test_severe_undershoot_respects_cumulative_cap(self, detector):
+        """Test that severe undershoot still respects cumulative Ki cap."""
+        # Accumulate severe undershoot
+        detector.update(temp=16.0, setpoint=20.0, dt_seconds=3600.0, cold_tolerance=0.5)
+
+        # Set cumulative multiplier at cap
+        detector.cumulative_ki_multiplier = MAX_UNDERSHOOT_KI_MULTIPLIER
+
+        # Should NOT adjust - at cap even with severe undershoot
+        assert detector.should_adjust_ki(cycles_completed=15) is False
+
+    def test_catch22_scenario(self, detector):
+        """Test the catch-22 scenario: many cycles, 0% confidence, severe undershoot.
+
+        This is the real-world failure case:
+        - 15 cycles completed
+        - 0% confidence (cycles never converge)
+        - 18% output, 0.6°C below setpoint persistently
+        - Ki boost should be applied despite cycles_completed > 0
+        """
+        # Simulate persistent undershoot: 0.6°C error for 8 hours -> 4.8 °C·h
+        # This represents a system stuck below setpoint
+        for _ in range(8):  # 8 hours of updates
+            detector.update(temp=19.4, setpoint=20.0, dt_seconds=3600.0, cold_tolerance=0.3)
+
+        # Verify severe undershoot
+        thresholds = UNDERSHOOT_THRESHOLDS[HeatingType.FLOOR_HYDRONIC]
+        severe_threshold = thresholds["debt_threshold"] * SEVERE_UNDERSHOOT_MULTIPLIER
+        assert detector.thermal_debt >= severe_threshold, (
+            f"Expected severe undershoot >= {severe_threshold}, got {detector.thermal_debt}"
+        )
+
+        # With 15 completed cycles (like the real case), should still adjust
+        assert detector.should_adjust_ki(cycles_completed=15) is True
+
+        # Apply adjustment and verify multiplier
+        multiplier = detector.apply_adjustment()
+        assert multiplier == thresholds["ki_multiplier"]  # 1.15 for floor_hydronic
+
+    def test_forced_air_severe_threshold(self):
+        """Test severe undershoot threshold for forced_air (faster system)."""
+        detector = UndershootDetector(HeatingType.FORCED_AIR)
+
+        # Forced air: debt threshold 0.5, severe = 1.0
+        thresholds = UNDERSHOOT_THRESHOLDS[HeatingType.FORCED_AIR]
+        severe_threshold = thresholds["debt_threshold"] * SEVERE_UNDERSHOOT_MULTIPLIER
+
+        assert severe_threshold == 1.0
+
+        # Accumulate severe undershoot: error=2.0°C for 0.5h -> 1.0 °C·h
+        detector.update(temp=18.0, setpoint=20.0, dt_seconds=1800.0, cold_tolerance=0.5)
+
+        # Should trigger persistent mode
+        assert detector.should_adjust_ki(cycles_completed=15) is True

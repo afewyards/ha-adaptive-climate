@@ -10,6 +10,8 @@ from typing import Optional
 from ..const import (
     HeatingType,
     MAX_UNDERSHOOT_KI_MULTIPLIER,
+    MIN_CYCLES_FOR_LEARNING,
+    SEVERE_UNDERSHOOT_MULTIPLIER,
     UNDERSHOOT_THRESHOLDS,
 )
 
@@ -79,10 +81,15 @@ class UndershootDetector:
         """Check if Ki adjustment should be triggered.
 
         Adjustment is triggered when:
-        1. No complete cycles yet (normal learning hasn't started)
+        1. Either no complete cycles yet (bootstrap), OR severe undershoot detected
+           (thermal_debt >= 2x threshold) after MIN_CYCLES_FOR_LEARNING
         2. Not in cooldown period
         3. Cumulative multiplier below safety cap
         4. Either time or debt threshold exceeded
+
+        The severe undershoot check allows the detector to stay active beyond
+        bootstrap when the system is stuck undershooting and normal learning
+        cannot build confidence (catch-22 scenario).
 
         Args:
             cycles_completed: Number of complete heating cycles observed.
@@ -90,8 +97,15 @@ class UndershootDetector:
         Returns:
             True if Ki adjustment should be applied.
         """
-        # Normal learning handles adjustments after first cycle completes
-        if cycles_completed > 0:
+        thresholds = UNDERSHOOT_THRESHOLDS[self.heating_type]
+        debt_threshold = thresholds["debt_threshold"]
+
+        # Check for severe undershoot (2x threshold) - allows persistent mode
+        severe_undershoot = self.thermal_debt >= debt_threshold * SEVERE_UNDERSHOOT_MULTIPLIER
+
+        # Let normal learning handle if it has enough cycles AND undershoot is not severe
+        # Stay active if: no cycles yet OR severe undershoot after min learning cycles
+        if cycles_completed >= MIN_CYCLES_FOR_LEARNING and not severe_undershoot:
             return False
 
         # Enforce cooldown between adjustments
@@ -103,9 +117,7 @@ class UndershootDetector:
             return False
 
         # Check thresholds
-        thresholds = UNDERSHOOT_THRESHOLDS[self.heating_type]
         time_threshold_seconds = thresholds["time_threshold_hours"] * 3600.0
-        debt_threshold = thresholds["debt_threshold"]
 
         return (
             self.time_below_target >= time_threshold_seconds

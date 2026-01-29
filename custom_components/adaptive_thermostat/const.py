@@ -735,6 +735,10 @@ UNDERSHOOT_THRESHOLDS: dict[HeatingType, dict[str, float]] = {
 # Maximum cumulative Ki multiplier from undershoot detection (safety cap)
 MAX_UNDERSHOOT_KI_MULTIPLIER = 2.0
 
+# Severe undershoot multiplier - thermal debt must exceed this multiple of threshold
+# for persistent undershoot detection to stay active beyond bootstrap phase
+SEVERE_UNDERSHOOT_MULTIPLIER = 2.0
+
 # Auto-apply PID constants
 # Maximum auto-applies per season (90 days) to prevent runaway tuning
 MAX_AUTO_APPLIES_PER_SEASON = 5

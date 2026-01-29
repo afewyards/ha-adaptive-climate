@@ -12,7 +12,12 @@ import time
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
 
-from custom_components.adaptive_thermostat.const import HeatingType
+from custom_components.adaptive_thermostat.const import (
+    HeatingType,
+    MIN_CYCLES_FOR_LEARNING,
+    SEVERE_UNDERSHOOT_MULTIPLIER,
+    UNDERSHOOT_THRESHOLDS,
+)
 from custom_components.adaptive_thermostat.adaptive.learning import AdaptiveLearner
 from custom_components.adaptive_thermostat.pid_controller import PID
 from homeassistant.components.climate import HVACMode
@@ -140,26 +145,37 @@ class TestUndershootDetectionIntegration:
         # Verify Ki was updated
         assert pid_controller.ki == new_ki
 
-    def test_no_adjustment_when_cycles_completed(self, mock_thermostat, adaptive_learner):
-        """Test that detector does not trigger adjustments after first cycle completes."""
-        # Set up conditions for Ki adjustment
+    def test_no_adjustment_when_enough_cycles_completed_without_severe_undershoot(self, mock_thermostat, adaptive_learner):
+        """Test that detector does not trigger adjustments after MIN_CYCLES when undershoot is not severe."""
+        # Set up conditions for Ki adjustment - but NOT severe undershoot
         detector = adaptive_learner.undershoot_detector
-        detector.time_below_target = 4.0 * 3600.0  # 4 hours
-        detector.thermal_debt = 2.4  # Above threshold
+        detector.time_below_target = 4.0 * 3600.0  # 4 hours - meets time threshold
+        detector.thermal_debt = 2.4  # Above threshold but < severe (4.0)
 
         # Check with no completed cycles - should adjust
         new_ki = adaptive_learner.check_undershoot_adjustment(cycles_completed=0, current_ki=10.0)
         assert new_ki is not None
 
-        # Apply the adjustment
-        adaptive_learner.check_undershoot_adjustment(cycles_completed=0, current_ki=10.0)
+        # Reset for next test
+        detector.last_adjustment_time = None
+        detector.cumulative_ki_multiplier = 1.0
 
-        # Accumulate more debt
+        # Check with few cycles - should still adjust (< MIN_CYCLES_FOR_LEARNING)
+        new_ki = adaptive_learner.check_undershoot_adjustment(cycles_completed=3, current_ki=10.0)
+        assert new_ki is not None
+
+        # Reset for next test
+        detector.last_adjustment_time = None
+        detector.cumulative_ki_multiplier = 1.0
+
+        # Accumulate moderate debt (not severe)
         detector.time_below_target = 8.0 * 3600.0  # 8 hours
-        detector.thermal_debt = 4.8  # Well above threshold
+        detector.thermal_debt = 3.5  # Above threshold but < severe (4.0)
 
-        # Check with completed cycles - should not adjust (normal learning handles it)
-        new_ki = adaptive_learner.check_undershoot_adjustment(cycles_completed=1, current_ki=10.0)
+        # Check with MIN_CYCLES completed - should NOT adjust (normal learning handles it)
+        new_ki = adaptive_learner.check_undershoot_adjustment(
+            cycles_completed=MIN_CYCLES_FOR_LEARNING, current_ki=10.0
+        )
         assert new_ki is None
 
     def test_adjustment_respects_cumulative_cap(self, mock_thermostat, adaptive_learner):
@@ -298,3 +314,134 @@ class TestUndershootDetectionCooldown:
 
         # Should be allowed now
         assert detector.should_adjust_ki(cycles_completed=0)
+
+
+class TestPersistentUndershootCatch22:
+    """Test the catch-22 scenario where normal learning cannot progress.
+
+    This tests the real-world failure case:
+    - Many cycles completed (15+)
+    - 0% confidence (cycles never converge because system undershoots)
+    - Low output (18%), consistently below setpoint (0.6°C)
+    - Ki boost should be applied despite cycles_completed > 0
+    """
+
+    def test_catch22_severe_undershoot_enables_adjustment(self):
+        """Test that severe undershoot enables Ki adjustment after many cycles."""
+        learner = AdaptiveLearner(heating_type=HeatingType.FLOOR_HYDRONIC)
+        detector = learner.undershoot_detector
+
+        # Simulate the real-world scenario:
+        # - System stuck 0.6°C below setpoint for 8 hours
+        # - 15 cycles completed but none converge
+        for _ in range(8):  # 8 hours of updates
+            learner.update_undershoot_detector(
+                temp=19.4,  # 0.6°C below setpoint
+                setpoint=20.0,
+                dt_seconds=3600.0,  # 1 hour
+                cold_tolerance=0.3,  # Typical tolerance
+            )
+
+        # Verify severe undershoot condition is met
+        thresholds = UNDERSHOOT_THRESHOLDS[HeatingType.FLOOR_HYDRONIC]
+        severe_threshold = thresholds["debt_threshold"] * SEVERE_UNDERSHOOT_MULTIPLIER
+        assert detector.thermal_debt >= severe_threshold, (
+            f"Expected severe undershoot >= {severe_threshold}, got {detector.thermal_debt}"
+        )
+
+        # With 15 completed cycles (like the real case), should still allow adjustment
+        new_ki = learner.check_undershoot_adjustment(cycles_completed=15, current_ki=10.0)
+
+        # Verify adjustment is recommended
+        assert new_ki is not None, "Expected Ki adjustment recommendation for severe undershoot"
+        expected_multiplier = thresholds["ki_multiplier"]  # 1.15 for floor_hydronic
+        assert new_ki == pytest.approx(10.0 * expected_multiplier, rel=0.01)
+
+    def test_moderate_undershoot_blocked_after_min_cycles(self):
+        """Test that moderate undershoot is blocked once normal learning can handle it."""
+        learner = AdaptiveLearner(heating_type=HeatingType.FLOOR_HYDRONIC)
+        detector = learner.undershoot_detector
+
+        # Accumulate moderate undershoot (not severe)
+        # 4 hours at 0.4°C error = 1.6 °C·h (< severe threshold of 4.0)
+        for _ in range(4):
+            learner.update_undershoot_detector(
+                temp=19.6,  # 0.4°C below setpoint
+                setpoint=20.0,
+                dt_seconds=3600.0,
+                cold_tolerance=0.3,
+            )
+
+        # Verify NOT severe
+        thresholds = UNDERSHOOT_THRESHOLDS[HeatingType.FLOOR_HYDRONIC]
+        severe_threshold = thresholds["debt_threshold"] * SEVERE_UNDERSHOOT_MULTIPLIER
+        assert detector.thermal_debt < severe_threshold
+
+        # Add time to meet time threshold
+        detector.time_below_target = 5.0 * 3600.0  # 5 hours (> 4 hour threshold)
+
+        # With MIN_CYCLES completed, should NOT adjust (normal learning takes over)
+        new_ki = learner.check_undershoot_adjustment(
+            cycles_completed=MIN_CYCLES_FOR_LEARNING, current_ki=10.0
+        )
+        assert new_ki is None, "Expected no adjustment for moderate undershoot after min cycles"
+
+    def test_catch22_multiple_adjustments_with_cooldown(self):
+        """Test that multiple adjustments are possible with cooldown enforcement."""
+        learner = AdaptiveLearner(heating_type=HeatingType.FLOOR_HYDRONIC)
+        detector = learner.undershoot_detector
+
+        # First adjustment
+        detector.thermal_debt = 5.0  # Severe (>= 4.0)
+        detector.time_below_target = 8.0 * 3600.0
+
+        new_ki = learner.check_undershoot_adjustment(cycles_completed=15, current_ki=10.0)
+        assert new_ki is not None
+
+        # Immediate second adjustment blocked by cooldown
+        detector.thermal_debt = 6.0  # Still severe
+        new_ki = learner.check_undershoot_adjustment(cycles_completed=15, current_ki=11.5)
+        assert new_ki is None, "Expected cooldown to block immediate second adjustment"
+
+        # Fast-forward past cooldown (24 hours for floor_hydronic)
+        detector.last_adjustment_time = time.monotonic() - (25 * 3600.0)
+
+        # Now should allow adjustment
+        new_ki = learner.check_undershoot_adjustment(cycles_completed=15, current_ki=11.5)
+        assert new_ki is not None
+
+    def test_catch22_respects_cumulative_cap(self):
+        """Test that severe undershoot still respects cumulative Ki cap."""
+        learner = AdaptiveLearner(heating_type=HeatingType.FLOOR_HYDRONIC)
+        detector = learner.undershoot_detector
+
+        # Set cumulative multiplier at cap
+        detector.cumulative_ki_multiplier = 2.0  # At cap
+
+        # Severe undershoot
+        detector.thermal_debt = 5.0
+        detector.time_below_target = 8.0 * 3600.0
+
+        # Should NOT adjust - at cap
+        new_ki = learner.check_undershoot_adjustment(cycles_completed=15, current_ki=10.0)
+        assert new_ki is None, "Expected cumulative cap to block adjustment"
+
+    def test_catch22_different_heating_types(self):
+        """Test catch-22 resolution works for different heating types."""
+        for heating_type in [HeatingType.RADIATOR, HeatingType.CONVECTOR, HeatingType.FORCED_AIR]:
+            learner = AdaptiveLearner(heating_type=heating_type)
+            detector = learner.undershoot_detector
+
+            # Get severe threshold for this heating type
+            thresholds = UNDERSHOOT_THRESHOLDS[heating_type]
+            severe_threshold = thresholds["debt_threshold"] * SEVERE_UNDERSHOOT_MULTIPLIER
+
+            # Accumulate severe undershoot
+            detector.thermal_debt = severe_threshold + 0.5
+            detector.time_below_target = thresholds["time_threshold_hours"] * 3600.0
+
+            # Should allow adjustment even with many cycles
+            new_ki = learner.check_undershoot_adjustment(cycles_completed=20, current_ki=10.0)
+            assert new_ki is not None, (
+                f"Expected Ki adjustment for {heating_type} with severe undershoot"
+            )
