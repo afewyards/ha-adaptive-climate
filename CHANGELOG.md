@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v0.44.2 (2026-01-29)
+
+### Bug Fixes
+
+- Expose auto_mode_switching attributes in climate entity
+  ([`81d112f`](https://github.com/afewyards/ha-adaptive-thermostat/commit/81d112f1573abd86d8a6f863871a65587b7f3353))
+
+The AutoModeSwitchingManager.get_state_attributes() was implemented but never called from
+  build_state_attributes(), so auto_mode_switching_enabled was not visible in HA.
+
+
 ## v0.44.1 (2026-01-29)
 
 ### Bug Fixes
