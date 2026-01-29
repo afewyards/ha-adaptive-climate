@@ -110,24 +110,12 @@ class TestAutoModeSwitchingManager:
         assert manager.current_mode == HVACMode.HEAT
         assert manager.last_switch_time == 12345.0
 
-    def test_placeholder_methods_raise_not_implemented(
-        self, mock_hass, mock_coordinator, default_config
-    ):
-        """Test that placeholder methods raise NotImplementedError."""
-        manager = AutoModeSwitchingManager(mock_hass, default_config, mock_coordinator)
-
-        with pytest.raises(NotImplementedError, match="Implemented in task 21"):
-            manager.get_season()
-
     @pytest.mark.asyncio
     async def test_async_placeholder_methods_raise_not_implemented(
         self, mock_hass, mock_coordinator, default_config
     ):
         """Test that async placeholder methods raise NotImplementedError."""
         manager = AutoModeSwitchingManager(mock_hass, default_config, mock_coordinator)
-
-        with pytest.raises(NotImplementedError, match="Implemented in task 21"):
-            await manager._check_forecast()
 
         with pytest.raises(NotImplementedError, match="Implemented in task 22"):
             await manager.async_evaluate()
@@ -307,3 +295,198 @@ class TestGetForecastMedian:
         result = manager._get_forecast_median()
 
         assert result == 11.0  # median of [10, 12]
+
+
+class TestGetSeason:
+    """Tests for get_season method."""
+
+    def test_returns_winter_when_cold(self, mock_hass, mock_coordinator, default_config):
+        """Test returns winter when forecast median is below winter_below."""
+        mock_state = MagicMock()
+        mock_state.attributes = {
+            "forecast": [
+                {"temperature": 5.0},
+                {"temperature": 7.0},
+                {"temperature": 8.0},
+            ]
+        }
+        mock_hass.states.get.return_value = mock_state
+        mock_coordinator.weather_entity = "weather.home"
+        manager = AutoModeSwitchingManager(mock_hass, default_config, mock_coordinator)
+
+        result = manager.get_season()
+
+        assert result == "winter"  # median 7.0 < 12.0
+
+    def test_returns_summer_when_hot(self, mock_hass, mock_coordinator, default_config):
+        """Test returns summer when forecast median is above summer_above."""
+        mock_state = MagicMock()
+        mock_state.attributes = {
+            "forecast": [
+                {"temperature": 25.0},
+                {"temperature": 28.0},
+                {"temperature": 22.0},
+            ]
+        }
+        mock_hass.states.get.return_value = mock_state
+        mock_coordinator.weather_entity = "weather.home"
+        manager = AutoModeSwitchingManager(mock_hass, default_config, mock_coordinator)
+
+        result = manager.get_season()
+
+        assert result == "summer"  # median 25.0 > 18.0
+
+    def test_returns_shoulder_when_moderate(self, mock_hass, mock_coordinator, default_config):
+        """Test returns shoulder when forecast median is between thresholds."""
+        mock_state = MagicMock()
+        mock_state.attributes = {
+            "forecast": [
+                {"temperature": 14.0},
+                {"temperature": 15.0},
+                {"temperature": 16.0},
+            ]
+        }
+        mock_hass.states.get.return_value = mock_state
+        mock_coordinator.weather_entity = "weather.home"
+        manager = AutoModeSwitchingManager(mock_hass, default_config, mock_coordinator)
+
+        result = manager.get_season()
+
+        assert result == "shoulder"  # median 15.0 is between 12.0 and 18.0
+
+    def test_returns_shoulder_when_no_forecast(self, mock_hass, mock_coordinator, default_config):
+        """Test returns shoulder when no forecast available."""
+        mock_coordinator.weather_entity = None
+        manager = AutoModeSwitchingManager(mock_hass, default_config, mock_coordinator)
+
+        result = manager.get_season()
+
+        assert result == "shoulder"
+
+    def test_uses_custom_thresholds(self, mock_hass, mock_coordinator):
+        """Test uses custom season thresholds."""
+        config = {
+            CONF_SEASON_THRESHOLDS: {
+                CONF_WINTER_BELOW: 10.0,
+                CONF_SUMMER_ABOVE: 20.0,
+            },
+        }
+        mock_state = MagicMock()
+        mock_state.attributes = {
+            "forecast": [{"temperature": 15.0}]
+        }
+        mock_hass.states.get.return_value = mock_state
+        mock_coordinator.weather_entity = "weather.home"
+        manager = AutoModeSwitchingManager(mock_hass, config, mock_coordinator)
+
+        result = manager.get_season()
+
+        assert result == "shoulder"  # 15.0 is between 10.0 and 20.0
+
+
+class TestCheckForecast:
+    """Tests for _check_forecast method."""
+
+    @pytest.mark.asyncio
+    async def test_returns_cool_when_hot_weather_coming(self, mock_hass, mock_coordinator, default_config):
+        """Test returns COOL when forecast shows hot weather."""
+        mock_state = MagicMock()
+        mock_state.attributes = {
+            "forecast": [
+                {"temperature": 25.0},  # > 21.0 + 2.0
+            ]
+        }
+        mock_hass.states.get.return_value = mock_state
+        mock_coordinator.weather_entity = "weather.home"
+        mock_coordinator.get_active_zone_setpoints.return_value = [21.0]
+        manager = AutoModeSwitchingManager(mock_hass, default_config, mock_coordinator)
+
+        result = await manager._check_forecast()
+
+        assert result == HVACMode.COOL
+
+    @pytest.mark.asyncio
+    async def test_returns_heat_when_cold_weather_coming(self, mock_hass, mock_coordinator, default_config):
+        """Test returns HEAT when forecast shows cold weather."""
+        mock_state = MagicMock()
+        mock_state.attributes = {
+            "forecast": [
+                {"temperature": 5.0},  # < 21.0 - 2.0
+            ]
+        }
+        mock_hass.states.get.return_value = mock_state
+        mock_coordinator.weather_entity = "weather.home"
+        mock_coordinator.get_active_zone_setpoints.return_value = [21.0]
+        manager = AutoModeSwitchingManager(mock_hass, default_config, mock_coordinator)
+
+        result = await manager._check_forecast()
+
+        assert result == HVACMode.HEAT
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_weather_moderate(self, mock_hass, mock_coordinator, default_config):
+        """Test returns None when forecast within threshold."""
+        mock_state = MagicMock()
+        mock_state.attributes = {
+            "forecast": [
+                {"temperature": 20.0},  # within 21.0 ± 2.0
+            ]
+        }
+        mock_hass.states.get.return_value = mock_state
+        mock_coordinator.weather_entity = "weather.home"
+        mock_coordinator.get_active_zone_setpoints.return_value = [21.0]
+        manager = AutoModeSwitchingManager(mock_hass, default_config, mock_coordinator)
+
+        result = await manager._check_forecast()
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_no_weather_entity(self, mock_hass, mock_coordinator, default_config):
+        """Test returns None when no weather entity configured."""
+        mock_coordinator.weather_entity = None
+        manager = AutoModeSwitchingManager(mock_hass, default_config, mock_coordinator)
+
+        result = await manager._check_forecast()
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_no_zones(self, mock_hass, mock_coordinator, default_config):
+        """Test returns None when no active zones."""
+        mock_state = MagicMock()
+        mock_state.attributes = {
+            "forecast": [{"temperature": 25.0}]
+        }
+        mock_hass.states.get.return_value = mock_state
+        mock_coordinator.weather_entity = "weather.home"
+        mock_coordinator.get_active_zone_setpoints.return_value = []
+        manager = AutoModeSwitchingManager(mock_hass, default_config, mock_coordinator)
+
+        result = await manager._check_forecast()
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_respects_forecast_hours_config(self, mock_hass, mock_coordinator):
+        """Test only checks entries within forecast_hours window."""
+        config = {
+            CONF_AUTO_MODE_THRESHOLD: 2.0,
+            CONF_FORECAST_HOURS: 2,  # Only check first 2 entries
+        }
+        mock_state = MagicMock()
+        mock_state.attributes = {
+            "forecast": [
+                {"temperature": 20.0},  # Entry 1 - moderate
+                {"temperature": 21.0},  # Entry 2 - moderate
+                {"temperature": 30.0},  # Entry 3 - hot but outside window
+            ]
+        }
+        mock_hass.states.get.return_value = mock_state
+        mock_coordinator.weather_entity = "weather.home"
+        mock_coordinator.get_active_zone_setpoints.return_value = [21.0]
+        manager = AutoModeSwitchingManager(mock_hass, config, mock_coordinator)
+
+        result = await manager._check_forecast()
+
+        assert result is None  # Hot weather in entry 3 is outside window

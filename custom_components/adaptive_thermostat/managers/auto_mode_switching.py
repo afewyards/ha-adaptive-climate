@@ -5,6 +5,7 @@ import logging
 import statistics
 from typing import TYPE_CHECKING
 
+from homeassistant.components.climate import HVACMode
 from homeassistant.core import HomeAssistant
 
 from ..const import (
@@ -76,9 +77,27 @@ class AutoModeSwitchingManager:
         return statistics.median(setpoints)
 
     def get_season(self) -> str:
-        """Get current season based on forecast median temp."""
-        # Placeholder - will be implemented in task 21
-        raise NotImplementedError("Implemented in task 21")
+        """Get current season based on forecast median temperature.
+
+        Returns:
+            Season string: "winter", "summer", or "shoulder"
+            - winter: forecast median < winter_below threshold
+            - summer: forecast median > summer_above threshold
+            - shoulder: in between (both modes allowed)
+        """
+        forecast_median = self._get_forecast_median()
+
+        if forecast_median is None:
+            # No forecast available, assume shoulder season (both modes allowed)
+            _LOGGER.debug("No forecast available, assuming shoulder season")
+            return "shoulder"
+
+        if forecast_median < self._winter_below:
+            return "winter"
+        elif forecast_median > self._summer_above:
+            return "summer"
+        else:
+            return "shoulder"
 
     def _get_forecast_median(self) -> float | None:
         """Get median temperature from weather forecast.
@@ -119,9 +138,54 @@ class AutoModeSwitchingManager:
         return statistics.median(temps)
 
     async def _check_forecast(self) -> str | None:
-        """Check if forecast suggests proactive mode switch."""
-        # Placeholder - will be implemented in task 21
-        raise NotImplementedError("Implemented in task 21")
+        """Check if forecast suggests proactive mode switch.
+
+        Looks at forecast for the next N hours (configured by forecast_hours)
+        and returns a mode if weather is trending past the threshold.
+
+        Returns:
+            HVACMode.HEAT if cold weather coming,
+            HVACMode.COOL if hot weather coming,
+            None if no proactive switch needed.
+        """
+        weather_entity = self._coordinator.weather_entity
+        if not weather_entity:
+            return None
+
+        state = self._hass.states.get(weather_entity)
+        if state is None:
+            return None
+
+        forecast = state.attributes.get("forecast", [])
+        if not forecast:
+            return None
+
+        median_setpoint = self.get_median_setpoint()
+        if median_setpoint is None:
+            return None
+
+        # Check forecast entries within forecast_hours window
+        # Home Assistant forecasts may be hourly or daily, check timestamp if available
+        for entry in forecast[:self._forecast_hours]:
+            temp = entry.get("temperature")
+            if temp is None:
+                continue
+
+            # Check if forecast temp crosses thresholds
+            if temp > median_setpoint + self._threshold:
+                _LOGGER.debug(
+                    "Forecast shows hot weather (%.1f°C > %.1f°C + %.1f°C), suggesting COOL",
+                    temp, median_setpoint, self._threshold
+                )
+                return HVACMode.COOL
+            if temp < median_setpoint - self._threshold:
+                _LOGGER.debug(
+                    "Forecast shows cold weather (%.1f°C < %.1f°C - %.1f°C), suggesting HEAT",
+                    temp, median_setpoint, self._threshold
+                )
+                return HVACMode.HEAT
+
+        return None
 
     async def async_evaluate(self) -> str | None:
         """Evaluate and return new mode if switch needed, None otherwise."""
