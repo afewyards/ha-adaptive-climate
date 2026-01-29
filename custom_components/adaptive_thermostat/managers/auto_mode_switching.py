@@ -4,10 +4,12 @@ from __future__ import annotations
 import logging
 import statistics
 import time
+from datetime import timedelta
 from typing import TYPE_CHECKING
 
 from homeassistant.components.climate import HVACMode
 from homeassistant.core import HomeAssistant
+from homeassistant.util import dt as dt_util
 
 from ..const import (
     CONF_AUTO_MODE_THRESHOLD,
@@ -279,3 +281,43 @@ class AutoModeSwitchingManager:
         self._last_switch = now
 
         return target_mode
+
+    def get_state_attributes(self, debug: bool = False) -> dict:
+        """Get state attributes for this manager.
+
+        Args:
+            debug: If True, include detailed debug attributes.
+
+        Returns:
+            Dictionary of state attributes.
+        """
+        attrs = {}
+
+        # Always include enabled status
+        attrs["auto_mode_switching_enabled"] = True
+
+        if not debug:
+            return attrs
+
+        # Debug-only attributes
+        season = self.get_season()
+        forecast_median = self._get_forecast_median()
+        median_setpoint = self.get_median_setpoint()
+
+        attrs["auto_mode_switching"] = {
+            "current_season": season,
+            "forecast_median_temp": forecast_median,
+            "median_setpoint": median_setpoint,
+        }
+
+        # Include last switch time if we've switched
+        if self._last_switch > 0:
+            # Convert monotonic to datetime for readability
+            elapsed = time.monotonic() - self._last_switch
+            last_switch_dt = dt_util.utcnow() - timedelta(seconds=elapsed)
+            next_allowed = last_switch_dt + timedelta(seconds=self._min_switch_interval)
+
+            attrs["auto_mode_switching"]["last_switch"] = last_switch_dt.isoformat()
+            attrs["auto_mode_switching"]["next_allowed_switch"] = next_allowed.isoformat()
+
+        return attrs

@@ -189,6 +189,38 @@ climate:
 
 Module: `managers/setpoint_boost.py` (`SetpointBoostManager`).
 
+### Auto Mode Switching
+
+House-wide automatic HVAC mode switching based on outdoor temp vs zone setpoints, with seasonal locking and forecast lookahead. Module: `managers/auto_mode_switching.py` (`AutoModeSwitchingManager`).
+
+**Configuration (domain-level):**
+```yaml
+adaptive_thermostat:
+  weather_entity: weather.home
+  auto_mode_switching:
+    enabled: true
+    threshold: 2.0              # °C delta from median setpoint (default: 2.0)
+    min_switch_interval: 3600   # seconds between switches (default: 1 hour)
+    forecast_hours: 6           # lookahead for proactive switching (default: 6)
+    season_thresholds:
+      winter_below: 12.0        # forecast median < this = winter
+      summer_above: 18.0        # forecast median > this = summer
+```
+
+**Logic:**
+- Outdoor temp < median setpoint - threshold → HEAT
+- Outdoor temp > median setpoint + threshold → COOL
+- In between → stay in current mode (hysteresis)
+
+**Season locking:**
+- Winter (forecast median < 12°C) → only HEAT allowed
+- Summer (forecast median > 18°C) → only COOL allowed
+- Shoulder (12-18°C) → both allowed
+
+**Forecast override:** When in hysteresis zone, checks forecast for next N hours to proactively switch if weather is trending past threshold.
+
+**Integration:** Coordinator initializes manager, listens to outdoor temp changes from weather entity, and propagates mode to all non-OFF zones via service calls.
+
 ### State Attributes
 
 Exposed via `extra_state_attributes`. Minimized for clarity - only restoration + critical diagnostics.
@@ -250,4 +282,4 @@ Exposed via `extra_state_attributes`. Minimized for clarity - only restoration +
 
 ## Tests
 
-`test_pid_controller.py`, `test_physics.py`, `test_learning.py`, `test_cycle_tracker.py`, `test_integration_cycle_learning.py`, `test_coordinator.py`, `test_central_controller.py`, `test_thermal_groups.py`, `test_night_setback.py`, `test_contact_sensors.py`, `test_preheat_learner.py`, `test_humidity_detector.py`, `test_setpoint_boost.py`
+`test_pid_controller.py`, `test_physics.py`, `test_learning.py`, `test_cycle_tracker.py`, `test_integration_cycle_learning.py`, `test_coordinator.py`, `test_central_controller.py`, `test_thermal_groups.py`, `test_night_setback.py`, `test_contact_sensors.py`, `test_preheat_learner.py`, `test_humidity_detector.py`, `test_setpoint_boost.py`, `test_auto_mode_switching.py`

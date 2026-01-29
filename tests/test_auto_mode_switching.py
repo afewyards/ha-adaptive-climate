@@ -689,3 +689,126 @@ class TestAsyncEvaluate:
         assert result == HVACMode.HEAT
         assert manager.current_mode == HVACMode.HEAT
         assert manager.last_switch_time > 0.0
+
+
+class TestEdgeCases:
+    """Tests for edge case handling."""
+
+    @pytest.mark.asyncio
+    async def test_all_zones_off_returns_none(self, mock_hass, mock_coordinator, default_config):
+        """Test returns None when all zones are OFF."""
+        mock_coordinator.outdoor_temp = 15.0
+        mock_coordinator.get_active_zone_setpoints.return_value = []
+        manager = AutoModeSwitchingManager(mock_hass, default_config, mock_coordinator)
+
+        result = await manager.async_evaluate()
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_no_weather_entity_returns_none_for_forecast(self, mock_hass, mock_coordinator, default_config):
+        """Test _get_forecast_median returns None when no weather entity."""
+        mock_coordinator.weather_entity = None
+        manager = AutoModeSwitchingManager(mock_hass, default_config, mock_coordinator)
+
+        result = manager._get_forecast_median()
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_weather_entity_not_found_returns_none(self, mock_hass, mock_coordinator, default_config):
+        """Test _get_forecast_median handles missing weather entity."""
+        mock_hass.states.get.return_value = None
+        mock_coordinator.weather_entity = "weather.nonexistent"
+        manager = AutoModeSwitchingManager(mock_hass, default_config, mock_coordinator)
+
+        result = manager._get_forecast_median()
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_empty_forecast_returns_none(self, mock_hass, mock_coordinator, default_config):
+        """Test _get_forecast_median handles empty forecast."""
+        mock_state = MagicMock()
+        mock_state.attributes = {"forecast": []}
+        mock_hass.states.get.return_value = mock_state
+        mock_coordinator.weather_entity = "weather.home"
+        manager = AutoModeSwitchingManager(mock_hass, default_config, mock_coordinator)
+
+        result = manager._get_forecast_median()
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_short_forecast_uses_available_entries(self, mock_hass, mock_coordinator, default_config):
+        """Test handles forecast with fewer than 7 entries."""
+        mock_state = MagicMock()
+        mock_state.attributes = {
+            "forecast": [
+                {"temperature": 10.0},
+                {"temperature": 12.0},
+            ]
+        }
+        mock_hass.states.get.return_value = mock_state
+        mock_coordinator.weather_entity = "weather.home"
+        manager = AutoModeSwitchingManager(mock_hass, default_config, mock_coordinator)
+
+        result = manager._get_forecast_median()
+
+        assert result == 11.0  # median of [10, 12]
+
+
+class TestGetStateAttributes:
+    """Tests for get_state_attributes method."""
+
+    def test_basic_attributes_always_included(self, mock_hass, mock_coordinator, default_config):
+        """Test basic attributes are always included."""
+        manager = AutoModeSwitchingManager(mock_hass, default_config, mock_coordinator)
+
+        attrs = manager.get_state_attributes(debug=False)
+
+        assert "auto_mode_switching_enabled" in attrs
+        assert attrs["auto_mode_switching_enabled"] is True
+
+    def test_debug_attributes_included_when_debug(self, mock_hass, mock_coordinator, default_config):
+        """Test debug attributes included when debug=True."""
+        mock_state = MagicMock()
+        mock_state.attributes = {"forecast": [{"temperature": 15.0}]}
+        mock_hass.states.get.return_value = mock_state
+        mock_coordinator.weather_entity = "weather.home"
+        mock_coordinator.get_active_zone_setpoints.return_value = [20.0, 22.0]
+        manager = AutoModeSwitchingManager(mock_hass, default_config, mock_coordinator)
+
+        attrs = manager.get_state_attributes(debug=True)
+
+        assert "auto_mode_switching" in attrs
+        assert attrs["auto_mode_switching"]["current_season"] == "shoulder"
+        assert attrs["auto_mode_switching"]["forecast_median_temp"] == 15.0
+        assert attrs["auto_mode_switching"]["median_setpoint"] == 21.0
+
+    def test_debug_attributes_excluded_when_not_debug(self, mock_hass, mock_coordinator, default_config):
+        """Test debug attributes excluded when debug=False."""
+        manager = AutoModeSwitchingManager(mock_hass, default_config, mock_coordinator)
+
+        attrs = manager.get_state_attributes(debug=False)
+
+        assert "auto_mode_switching" not in attrs
+
+    @pytest.mark.asyncio
+    async def test_debug_attributes_include_switch_times(self, mock_hass, mock_coordinator, default_config):
+        """Test debug attributes include switch times after a switch."""
+        mock_coordinator.outdoor_temp = 15.0
+        mock_coordinator.get_active_zone_setpoints.return_value = [21.0]
+        mock_coordinator.weather_entity = "weather.home"
+        mock_state = MagicMock()
+        mock_state.attributes = {"forecast": [{"temperature": 15.0}]}
+        mock_hass.states.get.return_value = mock_state
+        manager = AutoModeSwitchingManager(mock_hass, default_config, mock_coordinator)
+
+        # Trigger a switch
+        await manager.async_evaluate()
+
+        attrs = manager.get_state_attributes(debug=True)
+
+        assert "last_switch" in attrs["auto_mode_switching"]
+        assert "next_allowed_switch" in attrs["auto_mode_switching"]
