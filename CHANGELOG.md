@@ -1,6 +1,82 @@
 # CHANGELOG
 
 
+## v0.43.0 (2026-01-29)
+
+### Bug Fixes
+
+- Configure coordinator mock for worst-case transport delay method
+  ([`27b8d47`](https://github.com/afewyards/ha-adaptive-thermostat/commit/27b8d470aae3727762db0eb8d7d6d7d5850c737c))
+
+- Resolve test isolation issues with homeassistant mock setup
+  ([`3fcb876`](https://github.com/afewyards/ha-adaptive-thermostat/commit/3fcb8765dada46051c90e2fa53b3751bd3e5eb2f))
+
+- Add MockEvent class with __class_getitem__ support for Event[T] type hints - Add ABC-based
+  MockClimateEntity and MockRestoreEntity to avoid metaclass conflicts - Add MockSensorEntity class
+  instead of using plain `object` - Fix mock setup in 14 test files to ensure consistent mock state
+  across test suite
+
+### Features
+
+- Add manifold state persistence via HA Store API
+  ([`4965f5d`](https://github.com/afewyards/ha-adaptive-thermostat/commit/4965f5debf5b5f8c861288af052de92dc8942b19))
+
+Manifold transport delay tracking uses _last_active_time dict to know when manifolds were last
+  active. This is lost on restart, causing inaccurate delay calculations. Now persists via HA Store
+  API.
+
+Changes: - Add get_state_for_persistence() and restore_state() to ManifoldRegistry - Add
+  async_load_manifold_state() and async_save_manifold_state() to LearningDataStore - Integrate
+  restoration in __init__.py after registry creation - Add shutdown handler and unload save to
+  persist state on HA stop/reload - Add 9 comprehensive persistence tests to
+  test_manifold_registry.py - Update conftest.py to mock parse_datetime for tests
+
+- Add worst-case transport delay methods for preheat scheduling
+  ([`c6a0ef7`](https://github.com/afewyards/ha-adaptive-thermostat/commit/c6a0ef78dab2d1f50da107050beaf278d2966ff1))
+
+Add worst-case transport delay calculation to manifold registry and coordinator for use in preheat
+  scheduling. Worst-case assumes only the target zone is active (most conservative estimate).
+
+Changes: - ManifoldRegistry.get_worst_case_transport_delay(): Calculate delay for single zone with
+  specified loop count - Coordinator.get_worst_case_transport_delay_for_zone(): Wrapper method for
+  preheat integration - Add 12 comprehensive tests (8 registry + 4 coordinator)
+
+Formula: delay = pipe_volume / (zone_loops × flow_per_loop)
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+- Integrate manifold transport delay into preheat scheduling
+  ([`cddc023`](https://github.com/afewyards/ha-adaptive-thermostat/commit/cddc0232d2617a847163f43d7a3b81b5a0c52309))
+
+Add manifold_transport_delay parameter to NightSetbackCalculator and NightSetbackManager. The delay
+  is calculated at setup in climate_init.py using the worst-case transport delay from the manifold
+  registry, and is added to the total preheat time calculation.
+
+This ensures zones on manifolds start heating earlier to account for the time it takes heated water
+  to reach the zone.
+
+Changes: - NightSetbackCalculator: Accept manifold_transport_delay parameter, add it to
+  total_minutes in calculate_preheat_start() - NightSetbackManager: Pass through
+  manifold_transport_delay parameter - climate_init.py: Calculate worst-case transport delay for
+  zone and inject into NightSetbackManager - Tests: Add 3 new tests for manifold delay integration
+  (zero delay, 5 min delay, 10 min delay)
+
+All 58 night setback tests pass.
+
+### Testing
+
+- Add missing import and fix transport delay test expectations
+  ([`4f503a7`](https://github.com/afewyards/ha-adaptive-thermostat/commit/4f503a714abc9ff2ac039800da48fc745e935a3e))
+
+Adds calculate_rise_time import and corrects test expectations for transport delay edge cases.
+
+Changes: - Import calculate_rise_time from cycle_analysis module - Fix
+  test_calculate_rise_time_with_transport_delay: expected 12.0 min (not 10.0) - Fix
+  test_calculate_rise_time_target_reached_during_dead_time: expected 2.0 min (not 0.0)
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+
 ## v0.42.0 (2026-01-29)
 
 ### Bug Fixes
