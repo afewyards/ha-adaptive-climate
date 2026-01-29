@@ -44,6 +44,7 @@ class NightSetbackManager:
         get_current_temp: Callable[[], Optional[float]],
         preheat_learner: Optional[Any] = None,
         preheat_enabled: bool = False,
+        manifold_transport_delay: float = 0.0,
     ):
         """Initialize the NightSetbackManager.
 
@@ -58,6 +59,7 @@ class NightSetbackManager:
             get_current_temp: Callback to get current temperature
             preheat_learner: Optional PreheatLearner instance for time estimation
             preheat_enabled: Whether preheat functionality is enabled
+            manifold_transport_delay: Manifold transport delay in minutes (default: 0.0)
         """
         self._entity_id = entity_id
 
@@ -72,6 +74,7 @@ class NightSetbackManager:
             get_current_temp=get_current_temp,
             preheat_learner=preheat_learner,
             preheat_enabled=preheat_enabled,
+            manifold_transport_delay=manifold_transport_delay,
         )
 
         # Grace period tracking state variables (state management, not calculation)

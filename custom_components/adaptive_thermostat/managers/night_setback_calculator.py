@@ -47,6 +47,7 @@ class NightSetbackCalculator:
         get_current_temp: Callable[[], Optional[float]],
         preheat_learner: Optional[Any] = None,
         preheat_enabled: bool = False,
+        manifold_transport_delay: float = 0.0,
     ):
         """Initialize the NightSetbackCalculator.
 
@@ -60,6 +61,7 @@ class NightSetbackCalculator:
             get_current_temp: Callback to get current temperature
             preheat_learner: Optional PreheatLearner instance for time estimation
             preheat_enabled: Whether preheat functionality is enabled
+            manifold_transport_delay: Manifold transport delay in minutes (default: 0.0)
         """
         self._hass = hass
         self._entity_id = entity_id
@@ -70,6 +72,7 @@ class NightSetbackCalculator:
         self._get_current_temp = get_current_temp
         self._preheat_learner = preheat_learner
         self._preheat_enabled = preheat_enabled
+        self._manifold_transport_delay = manifold_transport_delay
 
     @property
     def is_configured(self) -> bool:
@@ -381,7 +384,8 @@ class NightSetbackCalculator:
 
         # Add 10% buffer (minimum 15 minutes)
         buffer_minutes = max(estimated_minutes * 0.1, 15.0)
-        total_minutes = estimated_minutes + buffer_minutes
+        # Add manifold transport delay to total time needed
+        total_minutes = estimated_minutes + buffer_minutes + self._manifold_transport_delay
 
         # Clamp to max_preheat_hours
         max_minutes = self._preheat_learner.max_hours * 60.0

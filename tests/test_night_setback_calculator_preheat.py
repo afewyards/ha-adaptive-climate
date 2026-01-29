@@ -13,7 +13,8 @@ class TestNightSetbackCalculatorPreheat:
         self,
         preheat_learner=None,
         preheat_enabled=False,
-        night_setback_config=None
+        night_setback_config=None,
+        manifold_transport_delay=0.0
     ):
         """Helper to create NightSetbackCalculator with preheat support."""
         hass = Mock()
@@ -35,6 +36,7 @@ class TestNightSetbackCalculatorPreheat:
             get_current_temp=get_current_temp,
             preheat_learner=preheat_learner,
             preheat_enabled=preheat_enabled,
+            manifold_transport_delay=manifold_transport_delay,
         )
 
         return calculator
@@ -296,6 +298,101 @@ class TestNightSetbackCalculatorPreheat:
         assert preheat_start is not None
         # Allow tolerance for calculation differences
         assert abs((preheat_start - expected_start).total_seconds()) < 300
+
+    def test_calculate_preheat_start_with_zero_manifold_delay(self):
+        """Test that preheat works correctly with zero manifold delay (no change)."""
+        learner = PreheatLearner(heating_type="radiator")
+        learner.add_observation(18.0, 20.0, 5.0, 60.0, timestamp=datetime(2024, 1, 15, 0, 0))
+
+        calculator = self.create_calculator(
+            preheat_learner=learner,
+            preheat_enabled=True,
+            manifold_transport_delay=0.0  # No manifold delay
+        )
+
+        deadline = datetime(2024, 1, 15, 7, 0)
+        preheat_start = calculator.calculate_preheat_start(
+            deadline, 18.0, 20.0, 5.0
+        )
+
+        # Should return a datetime before the deadline
+        assert preheat_start is not None
+        assert preheat_start < deadline
+        # With 0 manifold delay, timing should be unchanged from basic case
+
+    def test_calculate_preheat_start_with_manifold_delay(self):
+        """Test that manifold delay is correctly added to preheat start time."""
+        learner = PreheatLearner(heating_type="radiator")
+        # Add observation: 2°C rise in 60 minutes
+        learner.add_observation(18.0, 20.0, 5.0, 60.0, timestamp=datetime(2024, 1, 15, 0, 0))
+
+        # Create calculator with 5 minutes manifold delay
+        manifold_delay_min = 5.0
+        calculator = self.create_calculator(
+            preheat_learner=learner,
+            preheat_enabled=True,
+            manifold_transport_delay=manifold_delay_min
+        )
+
+        deadline = datetime(2024, 1, 15, 7, 0)
+        preheat_start = calculator.calculate_preheat_start(
+            deadline, 18.0, 20.0, 5.0
+        )
+
+        # Create a calculator without manifold delay for comparison
+        calculator_no_delay = self.create_calculator(
+            preheat_learner=learner,
+            preheat_enabled=True,
+            manifold_transport_delay=0.0
+        )
+
+        preheat_start_no_delay = calculator_no_delay.calculate_preheat_start(
+            deadline, 18.0, 20.0, 5.0
+        )
+
+        # With manifold delay, should start earlier by the delay amount
+        assert preheat_start is not None
+        assert preheat_start_no_delay is not None
+        time_diff_minutes = (preheat_start_no_delay - preheat_start).total_seconds() / 60
+        # Should be approximately 5 minutes earlier
+        assert abs(time_diff_minutes - manifold_delay_min) < 0.1
+
+    def test_calculate_preheat_start_with_large_manifold_delay(self):
+        """Test preheat with significant manifold transport delay (10 minutes)."""
+        # Use forced_air for faster heating to avoid max_hours cap
+        learner = PreheatLearner(heating_type="forced_air")
+        # Add observation: 2°C rise in 30 minutes (4°C/hour)
+        learner.add_observation(18.0, 20.0, 5.0, 30.0, timestamp=datetime(2024, 1, 15, 0, 0))
+
+        # 10 minute manifold delay (e.g., large manifold with low flow)
+        manifold_delay_min = 10.0
+        calculator = self.create_calculator(
+            preheat_learner=learner,
+            preheat_enabled=True,
+            manifold_transport_delay=manifold_delay_min
+        )
+
+        deadline = datetime(2024, 1, 15, 7, 0)
+        preheat_start = calculator.calculate_preheat_start(
+            deadline, 18.0, 20.0, 5.0
+        )
+
+        # Compare with no delay version
+        calculator_no_delay = self.create_calculator(
+            preheat_learner=learner,
+            preheat_enabled=True,
+            manifold_transport_delay=0.0
+        )
+
+        preheat_start_no_delay = calculator_no_delay.calculate_preheat_start(
+            deadline, 18.0, 20.0, 5.0
+        )
+
+        # Should start 10 minutes earlier
+        assert preheat_start is not None
+        assert preheat_start_no_delay is not None
+        time_diff_minutes = (preheat_start_no_delay - preheat_start).total_seconds() / 60
+        assert abs(time_diff_minutes - manifold_delay_min) < 0.1
 
 
 class TestNightSetbackCalculatorTimezone:

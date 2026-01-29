@@ -131,6 +131,20 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
             if thermostat._night_setback_config
             else False
         )
+
+        # Get manifold transport delay for this zone
+        manifold_transport_delay = 0.0
+        if coordinator and thermostat._zone_id:
+            manifold_transport_delay = coordinator.get_worst_case_transport_delay_for_zone(
+                thermostat._zone_id,
+                zone_loops=1  # Conservative estimate: assume 1 loop active
+            )
+            if manifold_transport_delay > 0:
+                _LOGGER.info(
+                    "%s: Using manifold transport delay of %.1f minutes for preheat scheduling",
+                    thermostat.entity_id, manifold_transport_delay
+                )
+
         thermostat._night_setback_controller = NightSetbackManager(
             hass=thermostat.hass,
             entity_id=thermostat.entity_id,
@@ -142,6 +156,7 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
             get_current_temp=lambda: thermostat._current_temp,
             preheat_learner=thermostat._preheat_learner,
             preheat_enabled=preheat_enabled,
+            manifold_transport_delay=manifold_transport_delay,
         )
         _LOGGER.info(
             "%s: Night setback controller initialized (preheat=%s)",
