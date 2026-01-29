@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import statistics
+import time
 from typing import TYPE_CHECKING
 
 from homeassistant.components.climate import HVACMode
@@ -188,6 +189,93 @@ class AutoModeSwitchingManager:
         return None
 
     async def async_evaluate(self) -> str | None:
-        """Evaluate and return new mode if switch needed, None otherwise."""
-        # Placeholder - will be implemented in task 22
-        raise NotImplementedError("Implemented in task 22")
+        """Evaluate and return new mode if switch needed.
+
+        Logic:
+        1. Check min_switch_interval
+        2. Get outdoor temp, median setpoint, season
+        3. Apply season locking (winter = only HEAT, summer = only COOL)
+        4. Check forecast for proactive switching
+        5. Apply hysteresis logic (outdoor vs median setpoint)
+
+        Returns:
+            HVACMode.HEAT or HVACMode.COOL if switch needed,
+            None if no change needed.
+        """
+        now = time.monotonic()
+
+        # Check min_switch_interval (skip on first evaluation)
+        if self._last_switch > 0:
+            elapsed = now - self._last_switch
+            if elapsed < self._min_switch_interval:
+                _LOGGER.debug(
+                    "Min switch interval not met (%.0fs < %ds)",
+                    elapsed, self._min_switch_interval
+                )
+                return None
+
+        # Get outdoor temperature from coordinator
+        outdoor_temp = self._coordinator.outdoor_temp
+        if outdoor_temp is None:
+            _LOGGER.debug("No outdoor temperature available")
+            return None
+
+        # Get median setpoint from active zones
+        median_setpoint = self.get_median_setpoint()
+        if median_setpoint is None:
+            _LOGGER.debug("No active zones, skipping evaluation")
+            return None
+
+        # Get current season for locking
+        season = self.get_season()
+
+        # Determine target mode based on outdoor temp vs setpoint
+        target_mode: str | None = None
+
+        if outdoor_temp < median_setpoint - self._threshold:
+            target_mode = HVACMode.HEAT
+        elif outdoor_temp > median_setpoint + self._threshold:
+            target_mode = HVACMode.COOL
+        else:
+            # In hysteresis zone - check forecast for proactive switching
+            forecast_mode = await self._check_forecast()
+            if forecast_mode:
+                target_mode = forecast_mode
+                _LOGGER.debug(
+                    "Forecast suggests proactive switch to %s",
+                    target_mode
+                )
+
+        # If no mode determined (in hysteresis with no forecast), keep current
+        if target_mode is None:
+            _LOGGER.debug(
+                "Outdoor temp %.1f°C in hysteresis zone (%.1f°C ± %.1f°C), keeping current mode",
+                outdoor_temp, median_setpoint, self._threshold
+            )
+            return None
+
+        # Apply season locking
+        if season == "winter" and target_mode == HVACMode.COOL:
+            _LOGGER.debug(
+                "Season locking: winter prevents switching to COOL"
+            )
+            return None
+        if season == "summer" and target_mode == HVACMode.HEAT:
+            _LOGGER.debug(
+                "Season locking: summer prevents switching to HEAT"
+            )
+            return None
+
+        # Check if mode actually changed
+        if target_mode == self._current_mode:
+            return None
+
+        # Update state and return new mode
+        _LOGGER.info(
+            "Auto mode switching: %s -> %s (outdoor=%.1f°C, setpoint=%.1f°C, season=%s)",
+            self._current_mode, target_mode, outdoor_temp, median_setpoint, season
+        )
+        self._current_mode = target_mode
+        self._last_switch = now
+
+        return target_mode
