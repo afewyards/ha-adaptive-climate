@@ -5,16 +5,20 @@ from datetime import datetime, timedelta
 import logging
 from typing import Any, TYPE_CHECKING
 
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, Event, callback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
+from homeassistant.components.climate import HVACMode
+from homeassistant.helpers.event import async_track_state_change_event
 
 try:
     from .const import DOMAIN
     from .adaptive.sun_position import SunPositionCalculator, ORIENTATION_AZIMUTH
+    from .managers.auto_mode_switching import AutoModeSwitchingManager
 except ImportError:
     from const import DOMAIN
     from adaptive.sun_position import SunPositionCalculator, ORIENTATION_AZIMUTH
+    from managers.auto_mode_switching import AutoModeSwitchingManager
 
 if TYPE_CHECKING:
     from .adaptive.manifold_registry import ManifoldRegistry
@@ -26,7 +30,7 @@ _LOGGER = logging.getLogger(__name__)
 class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
     """Class to manage fetching data from thermostats and coordinating cross-zone state."""
 
-    def __init__(self, hass: HomeAssistant) -> None:
+    def __init__(self, hass: HomeAssistant, config: dict[str, Any] | None = None) -> None:
         """Initialize the coordinator."""
         super().__init__(
             hass,
@@ -42,6 +46,19 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
         self._manifold_registry: "ManifoldRegistry | None" = None
         self._zone_loops: dict[str, int] = {}
         self._update_pending: bool = False
+        self._config = config or {}
+        self._outdoor_temp_unsub = None
+
+        # Auto mode switching (if configured)
+        auto_mode_config = self._config.get("auto_mode_switching")
+        if auto_mode_config and auto_mode_config.get("enabled", False):
+            self._auto_mode_switching = AutoModeSwitchingManager(
+                hass, auto_mode_config, self
+            )
+            # Set up outdoor temperature listener
+            self._setup_outdoor_temp_listener()
+        else:
+            self._auto_mode_switching: AutoModeSwitchingManager | None = None
 
     def set_central_controller(self, controller: "CentralController") -> None:
         """Set the central controller reference for push-based updates."""
@@ -169,6 +186,16 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
             return float(temp)
         except (ValueError, TypeError):
             return None
+
+    @property
+    def auto_mode_switching_enabled(self) -> bool:
+        """Return whether auto mode switching is enabled."""
+        return self._auto_mode_switching is not None
+
+    @property
+    def auto_mode_switching(self) -> AutoModeSwitchingManager | None:
+        """Return the auto mode switching manager."""
+        return self._auto_mode_switching
 
     def register_zone(self, zone_id: str, zone_data: dict[str, Any]) -> None:
         """Register a zone with the coordinator.
@@ -460,6 +487,59 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
         finally:
             self._update_pending = False
 
+    def _setup_outdoor_temp_listener(self) -> None:
+        """Set up listener for outdoor temperature changes."""
+        weather_entity_id = self.weather_entity
+        if not weather_entity_id:
+            _LOGGER.debug("No weather entity configured for auto mode switching")
+            return
+
+        @callback
+        def _async_outdoor_temp_changed(event: Event) -> None:
+            """Handle outdoor temperature change."""
+            # Schedule async evaluation
+            self.hass.async_create_task(self._async_evaluate_auto_mode())
+
+        # Track state changes for weather entity
+        self._outdoor_temp_unsub = async_track_state_change_event(
+            self.hass,
+            weather_entity_id,
+            _async_outdoor_temp_changed,
+        )
+        _LOGGER.debug(
+            "Auto mode switching: tracking outdoor temp from %s",
+            weather_entity_id,
+        )
+
+    async def _async_evaluate_auto_mode(self) -> None:
+        """Evaluate and apply auto mode switching if needed."""
+        if not self._auto_mode_switching:
+            return
+
+        new_mode = await self._auto_mode_switching.async_evaluate()
+        if new_mode:
+            await self._apply_house_mode(new_mode)
+
+    async def _apply_house_mode(self, mode: str) -> None:
+        """Apply HVAC mode to all non-OFF zones.
+
+        Args:
+            mode: HVACMode to apply (HEAT or COOL)
+        """
+        for zone_id, zone in self._zones.items():
+            if zone.get("hvac_mode") != HVACMode.OFF:
+                try:
+                    await self.hass.services.async_call(
+                        "climate",
+                        "set_hvac_mode",
+                        {"entity_id": zone_id, "hvac_mode": mode},
+                        blocking=False,
+                    )
+                except Exception:
+                    _LOGGER.exception(
+                        "Failed to set mode %s for zone %s", mode, zone_id
+                    )
+
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch data from all zones.
 
@@ -476,6 +556,14 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
             "demand": self._demand_states,
             "aggregate_demand": self.get_aggregate_demand(),
         }
+
+    async def async_cleanup(self) -> None:
+        """Clean up coordinator resources."""
+        # Cancel outdoor temperature listener
+        if self._outdoor_temp_unsub is not None:
+            self._outdoor_temp_unsub()
+            self._outdoor_temp_unsub = None
+            _LOGGER.debug("Cancelled outdoor temperature listener")
 
 
 class ModeSync:

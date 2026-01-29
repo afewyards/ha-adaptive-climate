@@ -19,10 +19,26 @@ class MockEvent:
 
 mock_core = Mock()
 mock_core.Event = MockEvent
+mock_core.callback = lambda f: f  # Mock the callback decorator
 sys.modules['homeassistant.core'] = mock_core
 sys.modules['homeassistant.helpers'] = Mock()
 sys.modules['homeassistant.helpers.update_coordinator'] = Mock()
+sys.modules['homeassistant.helpers.event'] = Mock()
 sys.modules['homeassistant.exceptions'] = Mock()
+sys.modules['homeassistant.components'] = Mock()
+sys.modules['homeassistant.components.climate'] = Mock()
+
+# Mock HVACMode
+mock_climate = Mock()
+mock_climate.HVACMode = Mock()
+mock_climate.HVACMode.HEAT = "heat"
+mock_climate.HVACMode.COOL = "cool"
+mock_climate.HVACMode.OFF = "off"
+sys.modules['homeassistant.components.climate'] = mock_climate
+
+# Mock managers.auto_mode_switching
+sys.modules['managers'] = Mock()
+sys.modules['managers.auto_mode_switching'] = Mock()
 
 # Create mock base class
 class MockDataUpdateCoordinator:
@@ -659,6 +675,89 @@ def test_get_transport_delay_converts_slug_to_entity_id(coord):
     # Loop counts should be preserved
     assert active_zones["climate.bathroom_2nd"] == 2
     assert active_zones["climate.living_room"] == 3
+
+
+class TestCoordinatorAutoModeSwitching:
+    """Tests for coordinator auto mode switching integration."""
+
+    def test_coordinator_initializes_auto_mode_switching_when_enabled(self, hass):
+        """Test coordinator initializes AutoModeSwitchingManager when config has enabled=true."""
+        config = {
+            "auto_mode_switching": {
+                "enabled": True,
+                "auto_mode_threshold": 2.0,
+            }
+        }
+
+        # Mock weather entity in hass.data
+        hass.data = {const.DOMAIN: {"weather_entity": "weather.home"}}
+
+        coord = coordinator.AdaptiveThermostatCoordinator(hass, config)
+
+        assert coord.auto_mode_switching_enabled is True
+        assert coord.auto_mode_switching is not None
+
+    def test_coordinator_does_not_initialize_auto_mode_switching_when_disabled(self, hass):
+        """Test coordinator does not initialize AutoModeSwitchingManager when disabled."""
+        config = {
+            "auto_mode_switching": {
+                "enabled": False,
+            }
+        }
+
+        coord = coordinator.AdaptiveThermostatCoordinator(hass, config)
+
+        assert coord.auto_mode_switching_enabled is False
+        assert coord.auto_mode_switching is None
+
+    def test_coordinator_does_not_initialize_auto_mode_switching_when_not_configured(self, hass):
+        """Test coordinator does not initialize AutoModeSwitchingManager when not configured."""
+        config = {}
+
+        coord = coordinator.AdaptiveThermostatCoordinator(hass, config)
+
+        assert coord.auto_mode_switching_enabled is False
+        assert coord.auto_mode_switching is None
+
+    @pytest.mark.asyncio
+    async def test_apply_house_mode_calls_service_for_non_off_zones(self, hass):
+        """Test _apply_house_mode calls set_hvac_mode service for non-OFF zones."""
+        from unittest.mock import AsyncMock
+
+        coord = coordinator.AdaptiveThermostatCoordinator(hass, {})
+
+        # Mock async_call to be an async function
+        hass.services.async_call = AsyncMock()
+
+        # Register zones with different modes
+        coord.register_zone("climate.zone1", {"hvac_mode": "heat"})
+        coord.register_zone("climate.zone2", {"hvac_mode": "cool"})
+        coord.register_zone("climate.zone3", {"hvac_mode": "off"})
+
+        # Apply COOL mode
+        await coord._apply_house_mode("cool")
+
+        # Verify service was called for zone1 and zone2, but not zone3
+        assert hass.services.async_call.call_count == 2
+
+        # Get call args
+        calls = hass.services.async_call.call_args_list
+
+        # Check that zone1 and zone2 were called
+        # Call args format: call[0] is positional args, call[1] is kwargs
+        entity_ids = []
+        for call in calls:
+            # The call format is: async_call("climate", "set_hvac_mode", {...}, blocking=False)
+            # So args[2] contains the service data dict
+            entity_ids.append(call[0][2]["entity_id"])
+
+        assert "climate.zone1" in entity_ids
+        assert "climate.zone2" in entity_ids
+        assert "climate.zone3" not in entity_ids
+
+        # Check that the mode was set to COOL
+        for call in calls:
+            assert call[0][2]["hvac_mode"] == "cool"
 
 
 if __name__ == "__main__":

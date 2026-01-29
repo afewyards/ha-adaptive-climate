@@ -483,16 +483,16 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     except (OSError, IOError) as e:
         _LOGGER.warning("Could not create chart directory: %s", e)
 
-    # Create coordinator
-    coordinator = AdaptiveThermostatCoordinator(hass)
+    # Get configuration options from domain config
+    domain_config = config.get(DOMAIN, {})
+
+    # Create coordinator with domain config for auto mode switching
+    coordinator = AdaptiveThermostatCoordinator(hass, domain_config)
     hass.data[DOMAIN]["coordinator"] = coordinator
 
     # Create vacation mode handler
     vacation_mode = VacationMode(hass, coordinator)
     hass.data[DOMAIN]["vacation_mode"] = vacation_mode
-
-    # Get configuration options from domain config
-    domain_config = config.get(DOMAIN, {})
 
     # Notification and energy tracking
     notify_service = domain_config.get(CONF_NOTIFY_SERVICE)
@@ -861,13 +861,19 @@ async def async_unload(hass: HomeAssistant) -> bool:
     # Unregister all services
     async_unregister_services(hass)
 
+    # Clean up coordinator if it exists
+    coordinator = hass.data[DOMAIN].get("coordinator")
+    if coordinator is not None:
+        # Clean up coordinator resources (outdoor temp listener, etc.)
+        await coordinator.async_cleanup()
+        _LOGGER.debug("Cleaned up coordinator")
+
     # Clean up central controller if it exists
     central_controller = hass.data[DOMAIN].get("central_controller")
     if central_controller is not None:
         # Cancel all pending async tasks
         await central_controller.async_cleanup()
         # Clear reference to coordinator
-        coordinator = hass.data[DOMAIN].get("coordinator")
         if coordinator is not None:
             coordinator.set_central_controller(None)
         _LOGGER.debug("Cleaned up central controller")
