@@ -1,6 +1,23 @@
 # CHANGELOG
 
 
+## v0.41.0 (2026-01-29)
+
+### Features
+
+- Add setpoint feedforward with integral boost/decay
+  ([`2d08f78`](https://github.com/afewyards/ha-adaptive-thermostat/commit/2d08f78b467ab8d7941d3af40e7e50d49db586d9))
+
+Add SetpointBoostManager to accelerate PID response on setpoint changes. P-on-M eliminates setpoint
+  kicks but causes sluggish response - this compensates by pre-loading the integral term after
+  debouncing rapid clicks.
+
+- Debounce rapid setpoint changes (default 5s window) - Boost integral on setpoint increase (capped
+  at 50% of current integral) - Decay integral on setpoint decrease (floor at 0.3x) - Skip when
+  delta < 0.3°C or night setback active - Heating type-specific factors (floor: 25.0 → forced_air:
+  8.0)
+
+
 ## v0.40.1 (2026-01-28)
 
 ### Bug Fixes
