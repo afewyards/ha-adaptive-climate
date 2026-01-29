@@ -1,6 +1,79 @@
 # CHANGELOG
 
 
+## v0.44.0 (2026-01-29)
+
+### Bug Fixes
+
+- Mock async_cleanup in init tests
+  ([`374ec8b`](https://github.com/afewyards/ha-adaptive-thermostat/commit/374ec8b193f0104aff52471f89232b17b0013297))
+
+### Features
+
+- Add auto mode switching constants
+  ([`48a90ae`](https://github.com/afewyards/ha-adaptive-thermostat/commit/48a90ae22872147a393f84b918795573381a9d71))
+
+- Add auto mode switching state attributes and edge case handling
+  ([`e126152`](https://github.com/afewyards/ha-adaptive-thermostat/commit/e12615251c27ebeb57f27d6dc8b6053eb934c076))
+
+- Add get_state_attributes method to AutoModeSwitchingManager - Always expose
+  auto_mode_switching_enabled flag - Debug-only: current_season, forecast_median_temp,
+  median_setpoint - Debug-only: last_switch and next_allowed_switch timestamps - Add edge case tests
+  for missing weather entity, empty forecast, short forecast - Add tests for get_state_attributes
+  method - Update CLAUDE.md with auto mode switching documentation
+
+- Add auto_mode_switching config schema
+  ([`85f6d51`](https://github.com/afewyards/ha-adaptive-thermostat/commit/85f6d51bea761f1b5a6faf98e61bd0db87bc65d7))
+
+- Add AutoModeSwitchingManager core class structure
+  ([`2b2865a`](https://github.com/afewyards/ha-adaptive-thermostat/commit/2b2865a2d900cc0ff1f7fdbc47aa9816db4a0e61))
+
+Create AutoModeSwitchingManager for house-wide HVAC mode switching with: - Configuration loading
+  (threshold, intervals, season temps) - State tracking (current mode, last switch timestamp) -
+  Placeholder methods for implementation in tasks 20-22 - Comprehensive test coverage (10 tests, all
+  passing)
+
+- Implement async_evaluate with hysteresis and season locking
+  ([`6a49fa3`](https://github.com/afewyards/ha-adaptive-thermostat/commit/6a49fa338a009492dc8c3491896d9f2b11fd697a))
+
+Add comprehensive evaluation logic for auto mode switching: - Hysteresis zone prevents mode
+  oscillation (outdoor vs setpoint ± threshold) - Season locking prevents inappropriate switches
+  (winter blocks COOL, summer blocks HEAT) - Min switch interval rate limiting - Proactive
+  forecast-based switching in hysteresis zone - State tracking for current mode and last switch time
+
+Add 12 comprehensive tests covering: - Basic mode switching (cold->HEAT, hot->COOL) - Hysteresis
+  zone behavior - Min switch interval enforcement - Season locking (winter/summer) - Edge cases (no
+  outdoor temp, no zones, mode unchanged) - Forecast-based proactive switching - State management
+
+- Implement get_median_setpoint and _get_forecast_median
+  ([`ab49a27`](https://github.com/afewyards/ha-adaptive-thermostat/commit/ab49a279ca20cc12b397105f18b6fe93da3b5685))
+
+- Implement get_season and _check_forecast methods
+  ([`909ba75`](https://github.com/afewyards/ha-adaptive-thermostat/commit/909ba7521fdf5b2ec1e2f5e2fd24a7ce1f13620a))
+
+- Implement get_season() to classify weather as winter/summer/shoulder based on forecast median
+  temperature vs configured thresholds - Implement _check_forecast() to detect incoming weather
+  extremes and suggest proactive mode switches (HEAT/COOL) based on forecast temps exceeding median
+  setpoint ± threshold - Add comprehensive test coverage for both methods including edge cases for
+  missing forecasts, custom thresholds, and forecast_hours window - Add HVACMode import to support
+  mode recommendations
+
+Both methods support graceful degradation when weather data unavailable and respect user-configured
+  season and threshold settings.
+
+- Integrate auto mode switching into coordinator
+  ([`8eca5b8`](https://github.com/afewyards/ha-adaptive-thermostat/commit/8eca5b83254c35b608f4e5d997ae4ab14b3dc471))
+
+- Initialize AutoModeSwitchingManager in coordinator when enabled in config - Add outdoor
+  temperature listener to trigger auto mode evaluation - Implement _apply_house_mode to propagate
+  HVAC mode to non-OFF zones - Add coordinator cleanup for outdoor temp listener - Add properties to
+  check if auto mode switching is enabled - Update __init__.py to pass domain config to coordinator
+  - Add cleanup in async_unload to cancel outdoor temp listener - Add comprehensive tests for
+  coordinator integration
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+
 ## v0.43.0 (2026-01-29)
 
 ### Bug Fixes
