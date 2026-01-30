@@ -123,7 +123,10 @@ class ClimateControlMixin:
                             # Check if Ki adjustment is needed
                             cycles_completed = adaptive_learner.get_cycle_count()
                             current_ki = self._pid_controller.ki
-                            new_ki = adaptive_learner.check_undershoot_adjustment(cycles_completed, current_ki)
+                            pid_history = self._gains_manager.get_history()
+                            new_ki = adaptive_learner.check_undershoot_adjustment(
+                                cycles_completed, current_ki, pid_history
+                            )
 
                             if new_ki is not None:
                                 # Scale integral to prevent output spike
@@ -162,6 +165,7 @@ class ClimateControlMixin:
                             new_ki_chronic = adaptive_learner.check_chronic_approach_adjustment(
                                 current_ki,
                                 zone_name=self._name or self.entity_id,
+                                pid_history=pid_history,
                             )
 
                             if new_ki_chronic is not None:
