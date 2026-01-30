@@ -503,7 +503,7 @@ class TestHistorySizeLimits:
 
         old_state = Mock()
         old_state.attributes = {
-            "kp": 2.0,
+            "kp": 2.0,  # Ignored - history is authoritative
             "ki": 0.02,
             "kd": 12.0,
             "ke": 0.6,
@@ -513,10 +513,14 @@ class TestHistorySizeLimits:
         manager.restore_from_state(old_state)
 
         history = manager.get_history(HVACMode.HEAT)
-        # Should be trimmed to PID_HISTORY_SIZE (10 old + 1 restore = 11, trimmed to 10)
+        # Should be trimmed to PID_HISTORY_SIZE (only 10 most recent entries kept)
+        # No RESTORE entry added since gains match last history entry
         assert len(history) == PID_HISTORY_SIZE
-        # Should keep the most recent ones (indices 6-14 from old + restore)
-        assert history[0]["kp"] == pytest.approx(1.5 + 6 * 0.1, rel=1e-5)
+        # Should keep the most recent ones (indices 5-14 from old history)
+        # index 5 = kp 1.5 + 5 * 0.1 = 2.0
+        assert history[0]["kp"] == pytest.approx(1.5 + 5 * 0.1, rel=1e-5)
+        # Last entry should be index 14 = kp 1.5 + 14 * 0.1 = 2.9
+        assert history[-1]["kp"] == pytest.approx(1.5 + 14 * 0.1, rel=1e-5)
 
 
 # =============================================================================
@@ -729,11 +733,15 @@ class TestRestoreDeduplication:
         # Last entry should still be adaptive_apply, not restore
         assert history[-1]["reason"] == "adaptive_apply"
 
-    def test_restore_changed_gains_adds_restore_entry(self, manager):
-        """Restore with changed gains should add one RESTORE entry."""
+    def test_restore_with_history_uses_history_values(self, manager):
+        """Restore with history should use last history entry, not top-level attrs.
+
+        Even when top-level attrs differ from history, history is authoritative.
+        No RESTORE entry added since gains match last history entry.
+        """
         old_state = Mock()
         old_state.attributes = {
-            "kp": 2.0,  # Different from last history entry
+            "kp": 2.0,  # Different from last history entry (ignored)
             "ki": 0.02,
             "kd": 15.0,
             "ke": 0.7,
@@ -752,11 +760,17 @@ class TestRestoreDeduplication:
 
         manager.restore_from_state(old_state)
 
+        # Gains should match last history entry
+        gains = manager.get_gains(HVACMode.HEAT)
+        assert gains.kp == 1.5
+        assert gains.ki == 0.01
+        assert gains.kd == 10.0
+        assert gains.ke == 0.5
+
+        # Should have only 1 entry (no RESTORE added since gains match history)
         history = manager.get_history(HVACMode.HEAT)
-        # Should have 1 old + 1 RESTORE
-        assert len(history) == 2
-        assert history[-1]["reason"] == "restore"
-        assert history[-1]["kp"] == 2.0
+        assert len(history) == 1
+        assert history[0]["reason"] == "physics_init"
 
     def test_restore_empty_history_adds_restore_entry(self, manager):
         """Restore with empty history should add RESTORE entry."""
@@ -883,6 +897,53 @@ class TestRestoreDeduplication:
         # Should NOT add a RESTORE entry since gains match when rounded to 2 decimals
         assert len(history) == 1
         assert history[0]["reason"] == "adaptive_apply"
+
+    def test_restore_uses_last_history_entry_not_top_level_attrs(self, manager):
+        """Restore should use gains from last history entry, ignoring top-level attrs.
+
+        This ensures the actual learned/tuned values from history are restored,
+        not potentially stale top-level attributes.
+        """
+        old_state = Mock()
+        old_state.attributes = {
+            # Top-level attrs have DIFFERENT values (these should be IGNORED)
+            "kp": 999.0,
+            "ki": 999.0,
+            "kd": 999.0,
+            "ke": 999.0,
+            "pid_history": [
+                {
+                    "timestamp": "2024-01-15T10:00:00",
+                    "kp": 1.0,
+                    "ki": 0.01,
+                    "kd": 10.0,
+                    "ke": 0.0,
+                    "reason": "physics_init",
+                },
+                {
+                    "timestamp": "2024-01-15T11:00:00",
+                    # These are the values that SHOULD be restored
+                    "kp": 2.5,
+                    "ki": 0.025,
+                    "kd": 18.0,
+                    "ke": 0.8,
+                    "reason": "adaptive_apply",
+                },
+            ],
+        }
+
+        manager.restore_from_state(old_state)
+
+        # Gains should match LAST history entry, NOT top-level attrs
+        gains = manager.get_gains(HVACMode.HEAT)
+        assert gains.kp == 2.5
+        assert gains.ki == 0.025
+        assert gains.kd == 18.0
+        assert gains.ke == 0.8
+
+        # History should have 2 entries (no RESTORE added since gains match last entry)
+        history = manager.get_history(HVACMode.HEAT)
+        assert len(history) == 2
 
 
 # =============================================================================

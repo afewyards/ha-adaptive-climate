@@ -225,19 +225,28 @@ class PIDGainsManager:
         if not attrs:
             return
 
-        # Restore gains with defaults for missing fields
-        kp = attrs.get("kp", self._heating_gains.kp)
-        ki = attrs.get("ki", self._heating_gains.ki)
-        kd = attrs.get("kd", self._heating_gains.kd)
-        ke = attrs.get("ke", 0.0)  # Default ke to 0 for backward compat
-
         # 1. Restore history FIRST (before set_gains)
         # This allows set_gains to deduplicate if gains match last entry
         old_history = attrs.get("pid_history", [])
         if old_history:
             self._restore_history(old_history)
 
-        # 2. Set gains (will skip recording if unchanged from last entry)
+        # 2. Get gains from LAST history entry if available, else fall back to attrs
+        mode_key = "heating"
+        if self._pid_history[mode_key]:
+            last_entry = self._pid_history[mode_key][-1]
+            kp = last_entry.get("kp", self._heating_gains.kp)
+            ki = last_entry.get("ki", self._heating_gains.ki)
+            kd = last_entry.get("kd", self._heating_gains.kd)
+            ke = last_entry.get("ke", 0.0)
+        else:
+            # Fallback to top-level attrs (backward compat)
+            kp = attrs.get("kp", self._heating_gains.kp)
+            ki = attrs.get("ki", self._heating_gains.ki)
+            kd = attrs.get("kd", self._heating_gains.kd)
+            ke = attrs.get("ke", 0.0)
+
+        # 3. Set gains (will skip recording if unchanged from last entry)
         self.set_gains(
             PIDChangeReason.RESTORE,
             kp=kp,
