@@ -14,6 +14,9 @@ ATTR_LEARNING_STATUS = "learning_status"
 ATTR_CYCLES_COLLECTED = "cycles_collected"
 ATTR_CONVERGENCE_CONFIDENCE = "convergence_confidence_pct"
 
+# Optimized status threshold - 95% confidence
+OPTIMIZED_CONFIDENCE_THRESHOLD = 0.95
+
 
 def build_state_attributes(thermostat: SmartThermostat) -> dict[str, Any]:
     """Build the extra state attributes dictionary for a thermostat entity.
@@ -100,7 +103,7 @@ def _compute_learning_status(
         heating_type: HeatingType value (e.g., "floor_hydronic", "radiator")
 
     Returns:
-        Learning status string: "collecting" | "stable"
+        Learning status string: "collecting" | "stable" | "optimized"
     """
     from ..const import (
         MIN_CYCLES_FOR_LEARNING,
@@ -116,9 +119,12 @@ def _compute_learning_status(
     confidence_threshold = thresholds["confidence_first"]
 
     # Collecting: not enough cycles OR confidence below threshold
-    # Stable: confidence at or above threshold for the heating type
+    # Stable: confidence at or above threshold but below optimized threshold
+    # Optimized: confidence at or above 95%
     if cycle_count < MIN_CYCLES_FOR_LEARNING or convergence_confidence < confidence_threshold:
         return "collecting"
+    elif convergence_confidence >= OPTIMIZED_CONFIDENCE_THRESHOLD:
+        return "optimized"
     else:
         return "stable"
 

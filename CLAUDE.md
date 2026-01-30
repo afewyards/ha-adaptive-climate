@@ -349,7 +349,7 @@ Exposed via `extra_state_attributes`. Minimized for clarity - only restoration +
     "duty_accumulator_pct",  # PWM accumulation as % of threshold
 
     # Learning status
-    "learning_status",           # "collecting" | "stable"
+    "learning_status",           # "collecting" | "stable" | "optimized"
     "cycles_collected",          # Count of complete cycles
     "convergence_confidence_pct", # 0-100%
     "pid_history",               # List of PID adjustments (when non-empty)
@@ -372,7 +372,8 @@ Exposed via `extra_state_attributes`. Minimized for clarity - only restoration +
 
 **Learning status states:**
 - `collecting` - Gathering data (< 6 cycles OR confidence below heating-type threshold)
-- `stable` - System stable (confidence ≥ heating-type threshold)
+- `stable` - System stable (confidence ≥ heating-type threshold AND < 95%)
+- `optimized` - Very high confidence (confidence ≥ 95%)
 
 **Heating-type confidence thresholds for "stable" state:**
 - floor_hydronic: 80%
