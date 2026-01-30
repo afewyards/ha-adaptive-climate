@@ -1,6 +1,39 @@
 # CHANGELOG
 
 
+## v0.46.1 (2026-01-30)
+
+### Bug Fixes
+
+- Restore PID gains from last pid_history entry instead of top-level attrs
+  ([`7917ae9`](https://github.com/afewyards/ha-adaptive-thermostat/commit/7917ae9ef857d6631a702d2adb256e7a7047f791))
+
+This ensures learned/tuned PID values from history are restored on restart, not potentially stale
+  top-level state attributes.
+
+- Use keyword args in _sync_gains_to_controller
+  ([`3284cf7`](https://github.com/afewyards/ha-adaptive-thermostat/commit/3284cf7ed848f380e84a0562330370aef37cf7d4))
+
+The bug: set_pid_param("kp", value) was passing "kp" as positional arg, meaning kp="kp" (string,
+  fails isinstance) and ki=value. After 4 calls with positional args, Ki ended up as gains.ke
+  (usually 0.0).
+
+Now uses keyword args: set_pid_param(kp=..., ki=..., kd=..., ke=...)
+
+### Refactoring
+
+- Make PIDGainsManager single source of truth for gains
+  ([`7e497c4`](https://github.com/afewyards/ha-adaptive-thermostat/commit/7e497c4e2018a7c5adac65d5fbefd1c76f2face1))
+
+- Add staging dict for pre-gains-manager initialization - Convert _kp/_ki/_kd/_ke to read-only
+  properties delegating to gains_manager - Remove redundant legacy Ki writes in climate_control.py -
+  Remove legacy gain sync from state_restorer.py - Update KeManager to use gains_manager for Ke
+  writes - Add integration tests verifying single source of truth
+
+This fixes the Ki=0 bug where different code paths read/wrote gains from different sources (legacy
+  attrs vs gains_manager vs pid_controller), causing divergence.
+
+
 ## v0.46.0 (2026-01-30)
 
 ### Bug Fixes
