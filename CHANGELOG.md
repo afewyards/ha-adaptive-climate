@@ -1,6 +1,26 @@
 # CHANGELOG
 
 
+## v0.47.0 (2026-01-30)
+
+### Features
+
+- **gains**: Record initial physics gains to pid_history
+  ([`5a3200a`](https://github.com/afewyards/ha-adaptive-thermostat/commit/5a3200a5e131a3a3b8a508bbc608ce37c8873dbf))
+
+When thermostat starts fresh with no saved state (or saved state has no pid_history), record the
+  physics-calculated gains as first history entry with PHYSICS_INIT reason. Ensures pid_history
+  always has a baseline.
+
+### Refactoring
+
+- **state**: Remove redundant PID gain attributes
+  ([`261d2aa`](https://github.com/afewyards/ha-adaptive-thermostat/commit/261d2aa0a3ecdebde61721bef5858fff290f4613))
+
+kp, ki, kd, ke, pid_mode no longer exposed as top-level state attributes. Gains are now stored
+  authoritatively in pid_history and restored via gains_manager.restore_from_state().
+
+
 ## v0.46.2 (2026-01-30)
 
 ### Bug Fixes
