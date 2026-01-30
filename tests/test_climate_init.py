@@ -16,7 +16,9 @@ from custom_components.adaptive_thermostat.const import (
     HEATING_TYPE_FLOOR_HYDRONIC,
     HEATING_TYPE_RADIATOR,
     HEATING_TYPE_FORCED_AIR,
+    PIDGains,
 )
+from custom_components.adaptive_thermostat.managers.pid_gains_manager import PIDGainsManager
 
 
 class MockThermostat:
@@ -73,16 +75,13 @@ class MockThermostat:
         self._pid_controller = Mock()
         self._pid_controller.set_pid_param = Mock()
 
-        # Staging dict for pre-gains-manager initialization
-        self._initial_gains_staging = {
-            "kp": 100.0,
-            "ki": 0.01,
-            "kd": 5000.0,
-            "ke": 0.0,
-        }
-
-        # Gains manager (will be initialized by async_setup_managers)
-        self._gains_manager = None
+        # Initialize gains manager immediately (matches real implementation)
+        initial_heating_gains = PIDGains(kp=100.0, ki=0.01, kd=5000.0, ke=0.0)
+        self._gains_manager = PIDGainsManager(
+            pid_controller=self._pid_controller,
+            initial_heating_gains=initial_heating_gains,
+            get_hvac_mode=lambda: self._hvac_mode,
+        )
 
         # Control state
         self._hvac_mode = "heat"
@@ -127,34 +126,26 @@ class MockThermostat:
             for key, value in config_overrides.items():
                 setattr(self, key, value)
 
-    # PID gain properties (read-only, delegating to gains_manager or staging)
+    # PID gain properties (read-only, delegating to gains_manager)
     @property
     def _kp(self) -> float:
-        """Get proportional gain from gains manager or staging."""
-        if self._gains_manager is not None:
-            return self._gains_manager.get_gains().kp
-        return self._initial_gains_staging["kp"]
+        """Get proportional gain from gains manager."""
+        return self._gains_manager.get_gains().kp
 
     @property
     def _ki(self) -> float:
-        """Get integral gain from gains manager or staging."""
-        if self._gains_manager is not None:
-            return self._gains_manager.get_gains().ki
-        return self._initial_gains_staging["ki"]
+        """Get integral gain from gains manager."""
+        return self._gains_manager.get_gains().ki
 
     @property
     def _kd(self) -> float:
-        """Get derivative gain from gains manager or staging."""
-        if self._gains_manager is not None:
-            return self._gains_manager.get_gains().kd
-        return self._initial_gains_staging["kd"]
+        """Get derivative gain from gains manager."""
+        return self._gains_manager.get_gains().kd
 
     @property
     def _ke(self) -> float:
-        """Get external temperature compensation gain from gains manager or staging."""
-        if self._gains_manager is not None:
-            return self._gains_manager.get_gains().ke
-        return self._initial_gains_staging["ke"]
+        """Get external temperature compensation gain from gains manager."""
+        return self._gains_manager.get_gains().ke
 
     # Callback setters
     def _set_target_temp(self, temp: float) -> None:
@@ -175,17 +166,9 @@ class MockThermostat:
     async def _async_write_ha_state_internal(self) -> None:
         pass
 
-    def _set_ke(self, ke: float) -> None:
-        self._initial_gains_staging["ke"] = ke
-
-    def _set_kp(self, kp: float) -> None:
-        self._initial_gains_staging["kp"] = kp
-
-    def _set_ki(self, ki: float) -> None:
-        self._initial_gains_staging["ki"] = ki
-
-    def _set_kd(self, kd: float) -> None:
-        self._initial_gains_staging["kd"] = kd
+    def _set_ke(self, value: float) -> None:
+        """Legacy callback for KeManager backward compatibility."""
+        pass
 
     def _set_previous_temp_time(self, value: Any) -> None:
         pass

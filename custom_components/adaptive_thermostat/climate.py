@@ -46,9 +46,11 @@ from homeassistant.components.climate import (
 from . import DOMAIN
 from . import const
 from . import pid_controller
+from .const import PIDGains
 from .adaptive.learning import AdaptiveLearner
 from .adaptive.persistence import LearningDataStore
 from .managers import ControlOutputManager, HeaterController, KeManager, NightSetbackManager, PIDTuningManager, SetpointBoostManager, StateRestorer, TemperatureManager, CycleTrackerManager
+from .managers.pid_gains_manager import PIDGainsManager
 from .managers.events import (
     CycleEventDispatcher,
     CycleEndedEvent,
@@ -348,32 +350,21 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
             # This models the thermal inertia of the building envelope
             self._outdoor_temp_lag_tau = 2.0 * self._thermal_time_constant
 
-            # Stage gains for gains manager initialization
-            self._initial_gains_staging = {
-                "kp": kp,
-                "ki": ki,
-                "kd": kd,
-                "ke": const.DEFAULT_KE,
-            }
-
             # Log power and supply temp scaling info if configured
             power_info = f", power={self._max_power_w}W" if self._max_power_w else ""
             supply_info = f", supply={self._supply_temperature}°C" if self._supply_temperature else ""
             _LOGGER.info("%s: Physics-based PID init (tau=%.2f, type=%s, window=%s%s%s): Kp=%.4f, Ki=%.5f, Kd=%.3f, outdoor_lag_tau=%.2f",
                          self.unique_id, self._thermal_time_constant, self._heating_type, self._window_rating, power_info, supply_info,
-                         self._initial_gains_staging["kp"], self._initial_gains_staging["ki"], self._initial_gains_staging["kd"], self._outdoor_temp_lag_tau)
+                         kp, ki, kd, self._outdoor_temp_lag_tau)
         else:
             # Fallback defaults if no zone properties
             self._thermal_time_constant = None
             self._outdoor_temp_lag_tau = 4.0  # Default 4 hours if no tau available
 
-            # Stage gains for gains manager initialization
-            self._initial_gains_staging = {
-                "kp": 0.5,
-                "ki": 0.01,
-                "kd": 5.0,
-                "ke": const.DEFAULT_KE,
-            }
+            # Use fallback defaults
+            kp = 0.5
+            ki = 0.01
+            kd = 5.0
             _LOGGER.warning("%s: No area_m2 configured, using default PID values and outdoor_lag_tau=%.2f",
                           self.unique_id, self._outdoor_temp_lag_tau)
 
@@ -414,10 +405,10 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
             self._heating_type, const.DEFAULT_EXP_DECAY_TAU
         )
         self._pid_controller = pid_controller.PID(
-            self._initial_gains_staging["kp"],
-            self._initial_gains_staging["ki"],
-            self._initial_gains_staging["kd"],
-            self._initial_gains_staging["ke"],
+            kp,
+            ki,
+            kd,
+            const.DEFAULT_KE,
             out_min=self._min_out, out_max=self._max_out,
             sampling_period=self._sampling_period,
             cold_tolerance=self._cold_tolerance,
@@ -428,6 +419,15 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
             integral_exp_decay_tau=exp_decay_tau,
             heating_type=self._heating_type)
         self._pid_controller.mode = "AUTO"
+
+        # Initialize PID gains manager immediately after PID controller
+        # This replaces the staging dict pattern with direct manager creation
+        initial_heating_gains = PIDGains(kp=kp, ki=ki, kd=kd, ke=const.DEFAULT_KE)
+        self._gains_manager = PIDGainsManager(
+            pid_controller=self._pid_controller,
+            initial_heating_gains=initial_heating_gains,
+            get_hvac_mode=lambda: self._hvac_mode,
+        )
 
     async def async_added_to_hass(self):
         """Run when entity about to be added."""
@@ -952,31 +952,23 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
 
     @property
     def _kp(self) -> float:
-        """Get proportional gain from gains manager or staging."""
-        if self._gains_manager is not None:
-            return self._gains_manager.get_gains().kp
-        return self._initial_gains_staging["kp"]
+        """Get proportional gain from gains manager."""
+        return self._gains_manager.get_gains().kp
 
     @property
     def _ki(self) -> float:
-        """Get integral gain from gains manager or staging."""
-        if self._gains_manager is not None:
-            return self._gains_manager.get_gains().ki
-        return self._initial_gains_staging["ki"]
+        """Get integral gain from gains manager."""
+        return self._gains_manager.get_gains().ki
 
     @property
     def _kd(self) -> float:
-        """Get derivative gain from gains manager or staging."""
-        if self._gains_manager is not None:
-            return self._gains_manager.get_gains().kd
-        return self._initial_gains_staging["kd"]
+        """Get derivative gain from gains manager."""
+        return self._gains_manager.get_gains().kd
 
     @property
     def _ke(self) -> float:
-        """Get external temperature compensation gain from gains manager or staging."""
-        if self._gains_manager is not None:
-            return self._gains_manager.get_gains().ke
-        return self._initial_gains_staging["ke"]
+        """Get external temperature compensation gain from gains manager."""
+        return self._gains_manager.get_gains().ke
 
     @property
     def pid_parm(self):
@@ -1452,10 +1444,11 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
         """Set the force off flag."""
         self._force_off = value
 
-    # Setter callbacks for KeManager
+    # Setter callbacks for KeManager (kept for backward compatibility, unused)
     def _set_ke(self, value: float) -> None:
-        """Set the Ke value."""
-        self._ke = value
+        """Set Ke value - legacy callback, now handled by gains_manager."""
+        # No-op: KeManager now uses gains_manager directly
+        pass
 
     # Setter callbacks for ControlOutputManager
     def _set_control_output(self, value: float) -> None:
