@@ -4,8 +4,12 @@ Detects when the heating system is too weak to complete heating cycles,
 resulting in persistent undershoot. Tracks time below target and thermal
 debt accumulation, recommending Ki increases to improve integral response.
 """
+import logging
 import time
+from datetime import datetime
 from typing import Optional
+
+_LOGGER = logging.getLogger(__name__)
 
 from ..const import (
     HeatingType,
@@ -77,7 +81,11 @@ class UndershootDetector:
             self.reset()
         # else: within tolerance band (0 <= error <= cold_tolerance) - hold state
 
-    def should_adjust_ki(self, cycles_completed: int) -> bool:
+    def should_adjust_ki(
+        self,
+        cycles_completed: int,
+        last_history_adjustment_utc: Optional[datetime] = None,
+    ) -> bool:
         """Check if Ki adjustment should be triggered.
 
         Adjustment is triggered when:
@@ -93,6 +101,7 @@ class UndershootDetector:
 
         Args:
             cycles_completed: Number of complete heating cycles observed.
+            last_history_adjustment_utc: Timestamp of last Ki adjustment from PID history.
 
         Returns:
             True if Ki adjustment should be applied.
@@ -109,7 +118,7 @@ class UndershootDetector:
             return False
 
         # Enforce cooldown between adjustments
-        if self._in_cooldown():
+        if self._in_cooldown(last_history_adjustment_utc):
             return False
 
         # Respect cumulative safety cap
@@ -163,23 +172,46 @@ class UndershootDetector:
 
         return multiplier
 
-    def _in_cooldown(self) -> bool:
+    def _in_cooldown(
+        self,
+        last_history_adjustment_utc: Optional[datetime] = None,
+    ) -> bool:
         """Check if detector is in cooldown period.
 
         Cooldown prevents rapid-fire adjustments by enforcing a minimum time
-        interval between Ki increases.
+        interval between Ki increases. Checks both monotonic time (within-session)
+        and history datetime (cross-restart).
+
+        Args:
+            last_history_adjustment_utc: Timestamp of last Ki adjustment from PID history.
 
         Returns:
             True if in cooldown period, False otherwise.
         """
-        if self.last_adjustment_time is None:
-            return False
-
         thresholds = UNDERSHOOT_THRESHOLDS[self.heating_type]
         cooldown_seconds = thresholds["cooldown_hours"] * 3600.0
-        elapsed = time.monotonic() - self.last_adjustment_time
 
-        return elapsed < cooldown_seconds
+        # Check monotonic (within-session)
+        if self.last_adjustment_time is not None:
+            elapsed = time.monotonic() - self.last_adjustment_time
+            if elapsed < cooldown_seconds:
+                return True
+
+        # Check history datetime (cross-restart)
+        if last_history_adjustment_utc is not None:
+            from datetime import timezone
+            elapsed = (datetime.now(timezone.utc) - last_history_adjustment_utc).total_seconds()
+            if elapsed < cooldown_seconds:
+                remaining_hours = (cooldown_seconds - elapsed) / 3600.0
+                _LOGGER.debug(
+                    "Undershoot Ki boost blocked by history cooldown: "
+                    "last boost was %.1fh ago, %.1fh remaining",
+                    elapsed / 3600.0,
+                    remaining_hours,
+                )
+                return True
+
+        return False
 
     def reset(self) -> None:
         """Perform full reset of time and debt counters.
