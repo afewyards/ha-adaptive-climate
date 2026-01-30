@@ -42,6 +42,7 @@ from .const import (
     CONF_SOURCE_STARTUP_DELAY,
     CONF_SYNC_MODES,
     CONF_LEARNING_WINDOW_DAYS,
+    CONF_CHRONIC_APPROACH_HISTORIC_SCAN,
     CONF_WEATHER_ENTITY,
     CONF_OUTDOOR_SENSOR,
     CONF_WIND_SPEED_SENSOR,
@@ -266,6 +267,10 @@ if HAS_HOMEASSISTANT:
                         msg="learning_window_days must be between 1 and 30 days"
                     )
                 ),
+                vol.Optional(
+                    CONF_CHRONIC_APPROACH_HISTORIC_SCAN,
+                    default=False
+                ): cv.boolean,
 
                 # Weather and physics
                 vol.Optional(CONF_WEATHER_ENTITY): cv.entity_id,
@@ -616,6 +621,12 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         CONF_LEARNING_WINDOW_DAYS, DEFAULT_LEARNING_WINDOW_DAYS
     )
     hass.data[DOMAIN]["learning_window_days"] = learning_window_days
+
+    # Chronic approach historic scan flag
+    chronic_approach_historic_scan = domain_config.get(CONF_CHRONIC_APPROACH_HISTORIC_SCAN, False)
+    hass.data[DOMAIN]["chronic_approach_historic_scan"] = chronic_approach_historic_scan
+    if chronic_approach_historic_scan:
+        _LOGGER.info("Chronic approach historic scan enabled")
 
     # Weather entity for solar gain prediction
     weather_entity = domain_config.get(CONF_WEATHER_ENTITY)

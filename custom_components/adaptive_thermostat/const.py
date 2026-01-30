@@ -69,7 +69,7 @@ class PIDChangeReason(StrEnum):
     KE_PHYSICS = "ke_physics_enable"
     KE_LEARNING = "ke_learning_apply"
     UNDERSHOOT_BOOST = "undershoot_ki_boost"
-    CHRONIC_APPROACH = "chronic_approach_ki_boost"  # Future
+    CHRONIC_APPROACH_BOOST = "chronic_approach_ki_boost"
     SERVICE_CALL = "service_call"          # Manual set_pid service
     RESTORE = "restore"
 
@@ -84,7 +84,7 @@ REASON_TO_ACTOR: dict[PIDChangeReason, PIDChangeActor] = {
     PIDChangeReason.KE_PHYSICS: PIDChangeActor.SYSTEM,
     PIDChangeReason.KE_LEARNING: PIDChangeActor.LEARNING,
     PIDChangeReason.UNDERSHOOT_BOOST: PIDChangeActor.LEARNING,
-    PIDChangeReason.CHRONIC_APPROACH: PIDChangeActor.LEARNING,
+    PIDChangeReason.CHRONIC_APPROACH_BOOST: PIDChangeActor.LEARNING,
     PIDChangeReason.SERVICE_CALL: PIDChangeActor.USER,
     PIDChangeReason.RESTORE: PIDChangeActor.SYSTEM,
 }
@@ -161,6 +161,7 @@ CONF_DERIVATIVE_FILTER = "derivative_filter_alpha"
 CONF_DISTURBANCE_REJECTION_ENABLED = "disturbance_rejection_enabled"
 CONF_KE_LEARNING_FIRST = "ke_learning_first"
 CONF_AUTO_APPLY_PID = "auto_apply_pid"
+CONF_CHRONIC_APPROACH_HISTORIC_SCAN = "chronic_approach_historic_scan"
 CONF_AREA = "area"
 CONF_THERMAL_GROUPS = "thermal_groups"
 
@@ -777,6 +778,36 @@ MAX_UNDERSHOOT_KI_MULTIPLIER = 2.0
 # Severe undershoot multiplier - thermal debt must exceed this multiple of threshold
 # for persistent undershoot detection to stay active beyond bootstrap phase
 SEVERE_UNDERSHOOT_MULTIPLIER = 2.0
+
+# Chronic approach failure thresholds by heating type
+# Detects persistent inability to reach setpoint across multiple cycles
+# Slower systems (high thermal mass) require longer cycle durations and more cycles
+CHRONIC_APPROACH_THRESHOLDS: dict[HeatingType, dict[str, float]] = {
+    HeatingType.FLOOR_HYDRONIC: {
+        "min_cycles": 4,                # Minimum consecutive approach failures
+        "undershoot_threshold": 0.4,    # Temperature gap threshold (°C)
+        "min_cycle_duration": 60.0,     # Minimum cycle duration (minutes)
+        "ki_multiplier": 1.20,          # Ki boost per detection (20% increase)
+    },
+    HeatingType.RADIATOR: {
+        "min_cycles": 3,
+        "undershoot_threshold": 0.35,
+        "min_cycle_duration": 30.0,
+        "ki_multiplier": 1.25,
+    },
+    HeatingType.CONVECTOR: {
+        "min_cycles": 3,
+        "undershoot_threshold": 0.30,
+        "min_cycle_duration": 20.0,
+        "ki_multiplier": 1.30,
+    },
+    HeatingType.FORCED_AIR: {
+        "min_cycles": 2,
+        "undershoot_threshold": 0.25,
+        "min_cycle_duration": 10.0,
+        "ki_multiplier": 1.35,
+    },
+}
 
 # Auto-apply PID constants
 # Maximum auto-applies per season (90 days) to prevent runaway tuning

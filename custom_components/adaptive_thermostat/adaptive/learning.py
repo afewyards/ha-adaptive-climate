@@ -82,6 +82,9 @@ from .auto_apply import AutoApplyManager, get_auto_apply_thresholds
 # Import undershoot detector for persistent temperature deficit detection
 from .undershoot_detector import UndershootDetector
 
+# Import chronic approach detector for persistent inability to reach setpoint
+from .chronic_approach_detector import ChronicApproachDetector
+
 # Import HVAC mode helpers
 from ..helpers.hvac_mode import mode_to_str, get_hvac_heat_mode, get_hvac_cool_mode
 
@@ -94,7 +97,12 @@ _LOGGER = logging.getLogger(__name__)
 class AdaptiveLearner:
     """Adaptive PID tuning based on observed heating cycle performance."""
 
-    def __init__(self, max_history: int = MAX_CYCLE_HISTORY, heating_type: Optional[str] = None):
+    def __init__(
+        self,
+        max_history: int = MAX_CYCLE_HISTORY,
+        heating_type: Optional[str] = None,
+        chronic_approach_historic_scan: bool = False,
+    ):
         """
         Initialize the AdaptiveLearner.
 
@@ -102,6 +110,8 @@ class AdaptiveLearner:
             max_history: Maximum number of cycles to retain in history (FIFO eviction)
             heating_type: Heating system type (floor_hydronic, radiator, convector, forced_air)
                          Used to select appropriate convergence thresholds
+            chronic_approach_historic_scan: If True, scan existing cycle history on init for
+                                           chronic approach patterns
         """
         # Mode-specific cycle histories
         self._heating_cycle_history: List[CycleMetrics] = []
@@ -130,6 +140,20 @@ class AdaptiveLearner:
 
         # Undershoot detector for persistent temperature deficit detection
         self._undershoot_detector = UndershootDetector(heating_type)
+
+        # Chronic approach detector for persistent inability to reach setpoint
+        # Convert string to HeatingType enum if needed (default to RADIATOR if None)
+        from ..const import HeatingType as HeatingTypeEnum
+        if heating_type is None:
+            chronic_heating_type = HeatingTypeEnum.RADIATOR
+        elif isinstance(heating_type, str):
+            chronic_heating_type = HeatingTypeEnum(heating_type)
+        else:
+            chronic_heating_type = heating_type
+        self._chronic_approach_detector = ChronicApproachDetector(chronic_heating_type)
+
+        # Store chronic approach historic scan flag
+        self._chronic_approach_historic_scan = chronic_approach_historic_scan
 
     @property
     def cycle_history(self) -> List[CycleMetrics]:
@@ -316,6 +340,17 @@ class AdaptiveLearner:
 
         # Increment cycle counter for hybrid rate limiting
         self._cycles_since_last_adjustment += 1
+
+        # Feed cycle to chronic approach detector
+        # Calculate cycle duration if timestamps available
+        cycle_duration_minutes = None
+        if metrics.rise_time is not None or metrics.settling_time is not None:
+            # If we have timing metrics, approximate total cycle duration
+            # rise_time + settling_time gives us a reasonable cycle duration
+            rise = metrics.rise_time or 0.0
+            settling = metrics.settling_time or 0.0
+            cycle_duration_minutes = rise + settling
+        self._chronic_approach_detector.add_cycle(metrics, cycle_duration_minutes)
 
         # FIFO eviction: remove oldest entries when exceeding max history (in-place for efficiency)
         if len(cycle_history) > self._max_history:
@@ -1174,13 +1209,93 @@ class AdaptiveLearner:
         """
         return self._undershoot_detector
 
+    def check_chronic_approach_adjustment(
+        self,
+        current_ki: float,
+        zone_name: str = "zone",
+        mode: "HVACMode" = None,
+    ) -> Optional[float]:
+        """Check if Ki adjustment is needed for chronic approach failure.
+
+        Checks if the chronic approach detector has identified a persistent pattern
+        of failing to reach setpoint across multiple cycles, indicating insufficient
+        heating capacity or integral gain. If adjustment is needed, applies the
+        multiplier to Ki and updates convergence confidence.
+
+        Args:
+            current_ki: Current integral gain value
+            zone_name: Name of the zone for logging (optional)
+            mode: HVACMode (HEAT or COOL) to update confidence for (defaults to HEAT)
+
+        Returns:
+            New Ki value if adjustment was applied, None otherwise
+        """
+        if not self._chronic_approach_detector.should_adjust_ki():
+            return None
+
+        # Get and apply the adjustment
+        multiplier = self._chronic_approach_detector.apply_adjustment()
+        new_ki = current_ki * multiplier
+
+        # Get detector state for logging
+        consecutive_failures = self._chronic_approach_detector._consecutive_failures
+        cumulative_multiplier = self._chronic_approach_detector.cumulative_ki_multiplier
+
+        _LOGGER.warning(
+            "Chronic approach failure detected in %s: zone consistently failing to reach setpoint "
+            "across %d consecutive cycles. This may indicate undersized heating system. "
+            "Increasing Ki from %.4f to %.4f (%.1f%% increase, cumulative: %.2fx)",
+            zone_name,
+            consecutive_failures,
+            current_ki,
+            new_ki,
+            (multiplier - 1.0) * 100,
+            cumulative_multiplier,
+        )
+
+        # Update convergence confidence - decrease due to poor performance
+        # Chronic approach failure indicates persistent poor tuning, similar to poor cycles
+        if mode is None:
+            mode = get_hvac_heat_mode()
+
+        if mode == get_hvac_cool_mode():
+            current_confidence = self._confidence._cooling_convergence_confidence
+        else:
+            current_confidence = self._confidence._heating_convergence_confidence
+
+        # Decrease confidence by same amount as poor cycles (CONFIDENCE_INCREASE_PER_GOOD_CYCLE * 0.5)
+        new_confidence = max(0.0, current_confidence - CONFIDENCE_INCREASE_PER_GOOD_CYCLE * 0.5)
+
+        if mode == get_hvac_cool_mode():
+            self._confidence._cooling_convergence_confidence = new_confidence
+        else:
+            self._confidence._heating_convergence_confidence = new_confidence
+
+        _LOGGER.debug(
+            "Convergence confidence (%s mode) decreased to %.2f due to chronic approach failure",
+            mode_to_str(mode),
+            new_confidence,
+        )
+
+        return new_ki
+
+    @property
+    def chronic_approach_detector(self) -> ChronicApproachDetector:
+        """Expose chronic approach detector for serialization access.
+
+        Returns:
+            The ChronicApproachDetector instance
+        """
+        return self._chronic_approach_detector
+
     def to_dict(self) -> Dict[str, Any]:
-        """Serialize AdaptiveLearner state to a dictionary in v6 format with backward compatibility.
+        """Serialize AdaptiveLearner state to a dictionary in v7 format with backward compatibility.
 
         Delegates to learner_serialization module for actual serialization logic.
 
         Returns:
             Dictionary containing:
+            - v7 structure with undershoot and chronic approach detector states
             - v6 structure with undershoot detector state
             - v5 mode-keyed structure (heating/cooling sub-dicts)
             - v4 backward-compatible top-level keys (cycle_history, auto_apply_count, etc.)
@@ -1199,6 +1314,7 @@ class AdaptiveLearner:
             consecutive_converged_cycles=self._consecutive_converged_cycles,
             pid_converged_for_ke=self._pid_converged_for_ke,
             undershoot_detector=self._undershoot_detector,
+            chronic_approach_detector=self._chronic_approach_detector,
         )
 
     def restore_from_dict(self, data: Dict[str, Any]) -> None:
@@ -1209,12 +1325,14 @@ class AdaptiveLearner:
 
         Delegates to learner_serialization module for actual deserialization logic.
 
-        Supports both v4 (flat) and v5 (mode-keyed) formats for backward compatibility.
+        Supports v4 (flat), v5 (mode-keyed), v6 (undershoot detector), and v7 (chronic approach detector) formats.
 
         Args:
             data: Dictionary containing either:
                 v4 format: cycle_history, auto_apply_count, etc. at top level
                 v5 format: heating/cooling sub-dicts with mode-specific data
+                v6 format: v5 + undershoot_detector state
+                v7 format: v6 + chronic_approach_detector state
         """
         # Delegate to serialization module for parsing
         restored = restore_learner_from_dict(data)
@@ -1234,3 +1352,55 @@ class AdaptiveLearner:
         self._last_adjustment_time = restored["last_adjustment_time"]
         self._consecutive_converged_cycles = restored["consecutive_converged_cycles"]
         self._pid_converged_for_ke = restored["pid_converged_for_ke"]
+
+        # Restore undershoot detector state
+        undershoot_state = restored.get("undershoot_detector_state", {})
+        if undershoot_state:
+            self._undershoot_detector.time_below_target = undershoot_state.get("time_below_target", 0.0)
+            self._undershoot_detector.thermal_debt = undershoot_state.get("thermal_debt", 0.0)
+            self._undershoot_detector.cumulative_ki_multiplier = undershoot_state.get("cumulative_ki_multiplier", 1.0)
+
+        # Restore chronic approach detector state
+        chronic_approach_state = restored.get("chronic_approach_detector_state", {})
+        if chronic_approach_state:
+            self._chronic_approach_detector._consecutive_failures = chronic_approach_state.get("consecutive_failures", 0)
+            self._chronic_approach_detector.cumulative_ki_multiplier = chronic_approach_state.get("cumulative_multiplier", 1.0)
+
+        # Perform historic scan if enabled
+        if self._chronic_approach_historic_scan:
+            self._perform_historic_scan()
+
+    def _perform_historic_scan(self) -> None:
+        """Scan existing cycle history for chronic approach patterns.
+
+        Called during restoration if chronic_approach_historic_scan flag is enabled.
+        Feeds all existing cycles to the chronic approach detector in order.
+        If a pattern is detected, logs the finding (adjustment will be applied
+        by the normal learning flow).
+        """
+        if not self._heating_cycle_history:
+            _LOGGER.debug("No cycle history to scan for chronic approach patterns")
+            return
+
+        _LOGGER.info(
+            "Performing historic scan of %d cycles for chronic approach patterns",
+            len(self._heating_cycle_history)
+        )
+
+        # Feed all cycles to detector in order
+        for cycle in self._heating_cycle_history:
+            # Add cycle to detector (this will track consecutive failures)
+            self._chronic_approach_detector.add_cycle(cycle)
+
+        # Check if pattern detected
+        if self._chronic_approach_detector.should_adjust_ki():
+            _LOGGER.warning(
+                "Historic scan detected chronic approach pattern: %d consecutive failures",
+                self._chronic_approach_detector._consecutive_failures
+            )
+            _LOGGER.info(
+                "Chronic approach Ki adjustment will be recommended: %.3fx multiplier",
+                self._chronic_approach_detector.get_adjustment()
+            )
+        else:
+            _LOGGER.debug("No chronic approach pattern detected in historic scan")

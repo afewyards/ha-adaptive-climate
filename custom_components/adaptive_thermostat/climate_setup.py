@@ -309,8 +309,16 @@ async def async_setup_platform(hass: HomeAssistant, config: ConfigType, async_ad
     # This ensures zone_data is available when async_added_to_hass runs
     coordinator = hass.data.get(DOMAIN, {}).get("coordinator")
     if coordinator:
+        # Get domain-level chronic approach historic scan flag
+        chronic_approach_historic_scan = hass.data.get(DOMAIN, {}).get(
+            "chronic_approach_historic_scan", False
+        )
+
         # Create AdaptiveLearner and restore from storage if data exists
-        adaptive_learner = AdaptiveLearner(heating_type=config.get(const.CONF_HEATING_TYPE))
+        adaptive_learner = AdaptiveLearner(
+            heating_type=config.get(const.CONF_HEATING_TYPE),
+            chronic_approach_historic_scan=chronic_approach_historic_scan,
+        )
 
         # Get stored zone data from LearningDataStore
         stored_zone_data = learning_store.get_zone_data(zone_id)

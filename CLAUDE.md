@@ -42,6 +42,7 @@ pytest --cov=custom_components/adaptive_thermostat  # coverage
 | `adaptive/validation.py` | ValidationManager for auto-apply safety checks |
 | `adaptive/confidence.py` | ConfidenceTracker for convergence confidence |
 | `adaptive/learner_serialization.py` | Serialization/deserialization for AdaptiveLearner |
+| `adaptive/chronic_approach_detector.py` | Detects persistent inability to reach setpoint |
 | `adaptive/physics.py` | Thermal time constant, Ziegler-Nichols init |
 | `adaptive/floor_physics.py` | Floor thermal properties, slab calculations |
 | `sensor.py` | Performance/learning sensors |
@@ -199,6 +200,50 @@ climate:
 
 Module: `managers/setpoint_boost.py` (`SetpointBoostManager`).
 
+### Chronic Approach Detection
+
+Detects persistent inability to reach setpoint across multiple consecutive cycles, indicating insufficient heating capacity or integral gain. Module: `adaptive/chronic_approach_detector.py` (`ChronicApproachDetector`).
+
+**Pattern:**
+- `rise_time = None` (never reached setpoint during rise)
+- `undershoot >= threshold` (significant gap remains)
+- `cycle_duration >= min_duration` (avoid short transient cycles)
+- Consecutive across N cycles (not isolated events)
+
+**Configuration (domain-level):**
+```yaml
+adaptive_thermostat:
+  chronic_approach_historic_scan: false  # Enable scan of existing cycles on startup
+```
+
+**Thresholds by heating type:**
+| Type | min_cycles | undershoot | min_duration | ki_multiplier |
+|------|------------|------------|--------------|---------------|
+| floor_hydronic | 4 | 0.4°C | 60 min | 1.20 |
+| radiator | 3 | 0.35°C | 30 min | 1.25 |
+| convector | 3 | 0.30°C | 20 min | 1.30 |
+| forced_air | 2 | 0.25°C | 10 min | 1.35 |
+
+**Behavior:**
+- Tracks consecutive cycles that fail to reach setpoint
+- Resets counter when any cycle successfully reaches setpoint
+- Applies Ki boost when pattern detected (respects cooldown and cumulative cap)
+- Cooldown scales with thermal mass (floor: 24h, radiator: 12h, convector: 6h, forced_air: 3h)
+- Cumulative multiplier capped at 2.0x to prevent runaway integral gain
+
+**Historic scan:**
+- When `chronic_approach_historic_scan: true`, scans existing cycle history on init
+- Feeds all restored cycles to detector in order
+- Detects patterns that may have developed while system was offline
+- User should set flag to `false` after initial scan to prevent re-scanning on every restart
+
+**Integration:**
+- Detector initialized in `AdaptiveLearner.__init__`
+- Receives cycles via `add_cycle_metrics`
+- `check_chronic_approach_adjustment` checks pattern and applies Ki boost
+- Decreases convergence confidence on adjustment (similar to poor cycles)
+- Serialized/restored via `learner_serialization.py` (v7 format)
+
 ### PID Gains Manager
 
 Centralized manager for all PID gain mutations (kp/ki/kd/ke). Single entry point for gain changes with automatic history recording. Module: `managers/pid_gains_manager.py` (`PIDGainsManager`).
@@ -236,6 +281,7 @@ history = gains_manager.get_history(HVACMode.HEAT)
 | `KE_PHYSICS` | system | Ke enabled via physics |
 | `KE_LEARNING` | learning | Ke adjusted via learning |
 | `UNDERSHOOT_BOOST` | learning | Ki boost for undershoot |
+| `CHRONIC_APPROACH_BOOST` | learning | Ki boost for chronic approach failure |
 | `SERVICE_CALL` | user | Manual set via service |
 | `RESTORE` | system | State restoration |
 
@@ -343,4 +389,4 @@ Exposed via `extra_state_attributes`. Minimized for clarity - only restoration +
 
 ## Tests
 
-`test_pid_controller.py`, `test_physics.py`, `test_learning.py`, `test_cycle_tracker.py`, `test_integration_cycle_learning.py`, `test_coordinator.py`, `test_central_controller.py`, `test_thermal_groups.py`, `test_night_setback.py`, `test_contact_sensors.py`, `test_preheat_learner.py`, `test_humidity_detector.py`, `test_setpoint_boost.py`, `test_auto_mode_switching.py`
+`test_pid_controller.py`, `test_physics.py`, `test_learning.py`, `test_cycle_tracker.py`, `test_integration_cycle_learning.py`, `test_coordinator.py`, `test_central_controller.py`, `test_thermal_groups.py`, `test_night_setback.py`, `test_contact_sensors.py`, `test_preheat_learner.py`, `test_humidity_detector.py`, `test_setpoint_boost.py`, `test_auto_mode_switching.py`, `test_chronic_approach_detector.py`

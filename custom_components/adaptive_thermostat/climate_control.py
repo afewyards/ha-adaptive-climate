@@ -160,6 +160,51 @@ class ClimateControlMixin:
                                     new_ki,
                                 )
 
+                            # Check if Ki adjustment is needed for chronic approach failure
+                            current_ki = self._pid_controller.ki
+                            new_ki_chronic = adaptive_learner.check_chronic_approach_adjustment(
+                                current_ki,
+                                zone_name=self._name or self.entity_id,
+                            )
+
+                            if new_ki_chronic is not None:
+                                # Scale integral to prevent output spike
+                                old_ki = self._pid_controller.ki
+                                if old_ki > 0:
+                                    scale_factor = old_ki / new_ki_chronic
+                                    self._pid_controller.scale_integral(scale_factor)
+                                    _LOGGER.info(
+                                        "%s: Scaled integral by %.3f to prevent output spike (Ki: %.5f -> %.5f)",
+                                        self.entity_id,
+                                        scale_factor,
+                                        old_ki,
+                                        new_ki_chronic,
+                                    )
+
+                                # Update Ki via PIDGainsManager
+                                undershoot_amount = self._target_temp - self._current_temp if self._target_temp and self._current_temp else 0.0
+                                self._gains_manager.set_gains(
+                                    PIDChangeReason.CHRONIC_APPROACH_BOOST,
+                                    ki=new_ki_chronic,
+                                    metrics={
+                                        "undershoot_amount": undershoot_amount,
+                                        "consecutive_failures": adaptive_learner.chronic_approach_detector._consecutive_failures,
+                                    },
+                                )
+
+                                # Update legacy attribute for backward compatibility
+                                self._ki = new_ki_chronic
+
+                                # Trigger state save
+                                self.async_write_ha_state()
+
+                                _LOGGER.info(
+                                    "%s: Chronic approach detector adjusted Ki: %.5f -> %.5f",
+                                    self.entity_id,
+                                    old_ki,
+                                    new_ki_chronic,
+                                )
+
                 # Record temperature for cycle tracking
                 if self._cycle_tracker and self._current_temp is not None:
                     await self._cycle_tracker.update_temperature(dt_util.utcnow(), self._current_temp)
