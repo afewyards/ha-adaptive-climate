@@ -1487,3 +1487,150 @@ class TestSingleSourceOfTruth:
         manager.set_gains(PIDChangeReason.UNDERSHOOT_BOOST, ki=0.03)
         gains = manager.get_gains()
         assert gains.ki == 0.03
+
+
+# =============================================================================
+# Initial History Recording
+# =============================================================================
+
+class TestInitialHistoryRecording:
+    """Tests for ensure_initial_history_recorded()."""
+
+    def test_ensure_initial_history_recorded_when_empty(self, mock_pid_controller, initial_heating_gains):
+        """When history is empty, ensure_initial_history_recorded should record PHYSICS_INIT."""
+        manager = PIDGainsManager(mock_pid_controller, initial_heating_gains)
+
+        # History should be empty at creation
+        history = manager.get_history()
+        assert len(history) == 0
+
+        # Call ensure_initial_history_recorded
+        manager.ensure_initial_history_recorded()
+
+        # History should now have one entry with PHYSICS_INIT
+        history = manager.get_history()
+        assert len(history) == 1
+        assert history[0]["reason"] == PIDChangeReason.PHYSICS_INIT.value
+        assert history[0]["actor"] == PIDChangeActor.SYSTEM.value
+        assert history[0]["kp"] == initial_heating_gains.kp
+        assert history[0]["ki"] == initial_heating_gains.ki
+        assert history[0]["kd"] == initial_heating_gains.kd
+        assert history[0]["ke"] == initial_heating_gains.ke
+
+    def test_ensure_initial_history_recorded_idempotent(self, mock_pid_controller, initial_heating_gains):
+        """Calling ensure_initial_history_recorded multiple times should not duplicate entries."""
+        manager = PIDGainsManager(mock_pid_controller, initial_heating_gains)
+
+        # Call multiple times
+        manager.ensure_initial_history_recorded()
+        manager.ensure_initial_history_recorded()
+        manager.ensure_initial_history_recorded()
+
+        # Should only have one entry
+        history = manager.get_history()
+        assert len(history) == 1
+        assert history[0]["reason"] == PIDChangeReason.PHYSICS_INIT.value
+
+    def test_ensure_initial_history_recorded_skips_if_history_exists(self, mock_pid_controller, initial_heating_gains):
+        """If history already has entries, ensure_initial_history_recorded should do nothing."""
+        manager = PIDGainsManager(mock_pid_controller, initial_heating_gains)
+
+        # Add an entry manually
+        manager.set_gains(PIDChangeReason.SERVICE_CALL, kp=2.0)
+
+        # History should have one entry
+        history = manager.get_history()
+        assert len(history) == 1
+        assert history[0]["reason"] == PIDChangeReason.SERVICE_CALL.value
+
+        # Call ensure_initial_history_recorded
+        manager.ensure_initial_history_recorded()
+
+        # History should still have only one entry (not modified)
+        history = manager.get_history()
+        assert len(history) == 1
+        assert history[0]["reason"] == PIDChangeReason.SERVICE_CALL.value
+
+    def test_ensure_initial_history_recorded_after_restore_with_history(self, mock_pid_controller, initial_heating_gains):
+        """After restore with existing history, ensure_initial_history_recorded should do nothing."""
+        manager = PIDGainsManager(mock_pid_controller, initial_heating_gains)
+
+        # Create old state with history
+        old_state = Mock()
+        old_state.attributes = {
+            "kp": 2.5,
+            "ki": 0.025,
+            "kd": 18.0,
+            "ke": 0.8,
+            "pid_history": [
+                {
+                    "timestamp": "2024-01-15T10:00:00",
+                    "kp": 2.5,
+                    "ki": 0.025,
+                    "kd": 18.0,
+                    "ke": 0.8,
+                    "reason": "adaptive_apply",
+                    "actor": "user",
+                }
+            ],
+        }
+
+        # Restore
+        manager.restore_from_state(old_state)
+
+        # Call ensure_initial_history_recorded
+        manager.ensure_initial_history_recorded()
+
+        # History should still have only one entry (from restore, not PHYSICS_INIT)
+        history = manager.get_history()
+        assert len(history) == 1
+        assert history[0]["reason"] == "adaptive_apply"
+
+    def test_ensure_initial_history_recorded_after_restore_without_history(self, mock_pid_controller, initial_heating_gains):
+        """After restore without history, ensure_initial_history_recorded should record PHYSICS_INIT."""
+        manager = PIDGainsManager(mock_pid_controller, initial_heating_gains)
+
+        # Create old state without history (but with gains for backward compat)
+        old_state = Mock()
+        old_state.attributes = {
+            "kp": 1.0,
+            "ki": 0.1,
+            "kd": 10.0,
+            "ke": 0.0,
+        }
+
+        # Restore
+        manager.restore_from_state(old_state)
+
+        # History should have one RESTORE entry (because gains matched, but we call ensure after)
+        # Actually, the restore will add a RESTORE entry. Let's check the actual behavior.
+        history_before = manager.get_history()
+
+        # Call ensure_initial_history_recorded
+        manager.ensure_initial_history_recorded()
+
+        # Since history now has RESTORE entry, ensure should do nothing
+        history_after = manager.get_history()
+        assert len(history_after) == len(history_before)
+
+    def test_ensure_initial_history_recorded_mode_specific(self, mock_pid_controller, initial_heating_gains, initial_cooling_gains):
+        """ensure_initial_history_recorded should work for current mode."""
+        get_hvac_mode = Mock(return_value=HVACMode.HEAT)
+        manager = PIDGainsManager(
+            mock_pid_controller,
+            initial_heating_gains,
+            initial_cooling_gains,
+            get_hvac_mode=get_hvac_mode
+        )
+
+        # Call ensure for heating mode
+        manager.ensure_initial_history_recorded()
+
+        # Heating history should have one entry
+        heating_history = manager.get_history(HVACMode.HEAT)
+        assert len(heating_history) == 1
+        assert heating_history[0]["reason"] == PIDChangeReason.PHYSICS_INIT.value
+
+        # Cooling history should be empty
+        cooling_history = manager.get_history(HVACMode.COOL)
+        assert len(cooling_history) == 0

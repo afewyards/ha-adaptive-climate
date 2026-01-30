@@ -376,6 +376,27 @@ class PIDGainsManager:
 
         return entry
 
+    def ensure_initial_history_recorded(self) -> None:
+        """Ensure initial physics-calculated gains are recorded to history.
+
+        Called after state restoration completes. If history is empty for the
+        current mode, records the current gains with PHYSICS_INIT reason.
+
+        This is idempotent - safe to call multiple times.
+        """
+        mode = self._resolve_mode(None)
+        mode_key = self._mode_key(mode)
+
+        # Only record if history is empty (fresh start, no saved state)
+        if not self._pid_history[mode_key]:
+            current_gains = self._get_gains_for_mode(mode)
+            self._record_snapshot(
+                current_gains,
+                PIDChangeReason.PHYSICS_INIT,
+                mode,
+                metrics=None,
+            )
+
     def get_state_for_persistence(self) -> dict[str, Any]:
         """Get state dict for persistence.
 

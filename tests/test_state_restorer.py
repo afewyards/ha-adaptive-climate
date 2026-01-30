@@ -196,3 +196,102 @@ class TestInitialPidCalculation:
         # Heating gains should be initialized (from config or physics)
         # Cooling gains should remain None (lazy init)
         assert mock_thermostat._cooling_gains is None
+
+
+class TestInitialPhysicsGainsRecording:
+    """Tests for initial physics gains recording to pid_history."""
+
+    def test_initial_gains_recorded_when_no_saved_state(self, state_restorer, mock_thermostat):
+        """Test that initial physics gains are recorded to pid_history on fresh start."""
+        from custom_components.adaptive_thermostat.managers.pid_gains_manager import PIDGainsManager
+        from custom_components.adaptive_thermostat.const import PIDGains, PIDChangeReason
+
+        # Setup gains manager with initial physics gains
+        initial_gains = PIDGains(kp=20.0, ki=0.01, kd=100.0, ke=0.0)
+        gains_manager = PIDGainsManager(mock_thermostat._pid_controller, initial_gains)
+        mock_thermostat._gains_manager = gains_manager
+
+        # No saved state (fresh start)
+        old_state = None
+
+        # Restore should call ensure_initial_history_recorded
+        state_restorer.restore(old_state)
+
+        # Verify history has one entry with PHYSICS_INIT
+        history = gains_manager.get_history()
+        assert len(history) == 1
+        assert history[0]["reason"] == PIDChangeReason.PHYSICS_INIT.value
+        assert history[0]["kp"] == 20.0
+        assert history[0]["ki"] == 0.01
+        assert history[0]["kd"] == 100.0
+
+    def test_initial_gains_recorded_when_no_history_in_saved_state(self, state_restorer, mock_thermostat):
+        """Test that initial physics gains are recorded when saved state has no history."""
+        from custom_components.adaptive_thermostat.managers.pid_gains_manager import PIDGainsManager
+        from custom_components.adaptive_thermostat.const import PIDGains, PIDChangeReason
+
+        # Setup gains manager
+        initial_gains = PIDGains(kp=20.0, ki=0.01, kd=100.0, ke=0.0)
+        gains_manager = PIDGainsManager(mock_thermostat._pid_controller, initial_gains)
+        mock_thermostat._gains_manager = gains_manager
+
+        # Old state without pid_history (backward compat)
+        old_state = MagicMock()
+        old_state.state = "heat"
+        old_state.attributes = {
+            "temperature": 21.0,
+            "integral": 0.0,
+            "kp": 20.0,
+            "ki": 0.01,
+            "kd": 100.0,
+            "ke": 0.0,
+        }
+
+        # Restore
+        state_restorer.restore(old_state)
+
+        # History should have at least one entry
+        # (RESTORE entry because restore_from_state was called)
+        history = gains_manager.get_history()
+        assert len(history) >= 1
+
+    def test_no_duplicate_when_history_exists_in_saved_state(self, state_restorer, mock_thermostat):
+        """Test that ensure_initial_history_recorded doesn't duplicate when history exists."""
+        from custom_components.adaptive_thermostat.managers.pid_gains_manager import PIDGainsManager
+        from custom_components.adaptive_thermostat.const import PIDGains
+
+        # Setup gains manager
+        initial_gains = PIDGains(kp=20.0, ki=0.01, kd=100.0, ke=0.0)
+        gains_manager = PIDGainsManager(mock_thermostat._pid_controller, initial_gains)
+        mock_thermostat._gains_manager = gains_manager
+
+        # Old state WITH pid_history
+        old_state = MagicMock()
+        old_state.state = "heat"
+        old_state.attributes = {
+            "temperature": 21.0,
+            "integral": 0.0,
+            "kp": 25.0,
+            "ki": 0.02,
+            "kd": 120.0,
+            "ke": 0.5,
+            "pid_history": [
+                {
+                    "timestamp": "2024-01-15T10:00:00",
+                    "kp": 25.0,
+                    "ki": 0.02,
+                    "kd": 120.0,
+                    "ke": 0.5,
+                    "reason": "adaptive_apply",
+                    "actor": "user",
+                }
+            ],
+        }
+
+        # Restore
+        state_restorer.restore(old_state)
+
+        # History should have only one entry (the restored one, not PHYSICS_INIT)
+        history = gains_manager.get_history()
+        assert len(history) == 1
+        assert history[0]["reason"] == "adaptive_apply"

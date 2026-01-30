@@ -45,6 +45,9 @@ class StateRestorer:
         self._restore_state(old_state)
         if old_state is not None:
             self._restore_pid_values(old_state)
+        else:
+            # No saved state (fresh start) - ensure initial physics gains are recorded
+            self._ensure_initial_gains_recorded()
 
     def _restore_state(self, old_state: Optional[State]) -> None:
         """Restore climate entity state from Home Assistant's state restoration.
@@ -143,6 +146,10 @@ class StateRestorer:
             # - Migrating old history format
             thermostat._gains_manager.restore_from_state(old_state)
 
+            # Ensure initial physics gains are recorded if history is empty
+            # This handles fresh starts where no saved state exists
+            thermostat._gains_manager.ensure_initial_history_recorded()
+
             # Log restored values (access via properties which read from gains_manager)
             _LOGGER.info("%s: Restored PID values via gains_manager - Kp=%.4f, Ki=%.5f, Kd=%.3f, Ke=%s",
                         thermostat.entity_id, thermostat._kp, thermostat._ki, thermostat._kd, thermostat._ke or 0)
@@ -180,3 +187,15 @@ class StateRestorer:
 
         # Note: PID history restoration is now handled by gains_manager.restore_from_state()
         # called earlier in this method (line 150)
+
+    def _ensure_initial_gains_recorded(self) -> None:
+        """Ensure initial physics-calculated gains are recorded to history.
+
+        Called when no saved state exists (fresh start). Records the initial
+        physics-calculated gains to pid_history with PHYSICS_INIT reason.
+        """
+        thermostat = self._thermostat
+
+        if thermostat._gains_manager:
+            thermostat._gains_manager.ensure_initial_history_recorded()
+            _LOGGER.info("%s: Recorded initial physics gains to history", thermostat.entity_id)
