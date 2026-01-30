@@ -182,6 +182,16 @@ class KeManager:
                     pid_controller = self._get_pid_controller()
                     if pid_controller:
                         pid_controller.set_pid_param(ke=physics_ke)
+                        # Record to pid_history
+                        adaptive_learner = getattr(self._thermostat, "_adaptive_learner", None)
+                        if adaptive_learner:
+                            adaptive_learner.record_pid_snapshot(
+                                kp=pid_controller.kp,
+                                ki=pid_controller.ki,
+                                kd=pid_controller.kd,
+                                ke=physics_ke,
+                                reason="ke_physics_enable",
+                            )
                     _LOGGER.info(
                         "%s: PID converged - enabled Ke learning and applied physics-based Ke=%.3f",
                         self._thermostat.entity_id,
@@ -265,6 +275,17 @@ class KeManager:
         # Update PID controller
         pid_controller = self._get_pid_controller()
         pid_controller.set_pid_param(ke=recommendation)
+
+        # Record to pid_history
+        adaptive_learner = getattr(self._thermostat, "_adaptive_learner", None)
+        if adaptive_learner:
+            adaptive_learner.record_pid_snapshot(
+                kp=pid_controller.kp,
+                ki=pid_controller.ki,
+                kd=pid_controller.kd,
+                ke=recommendation,
+                reason="ke_learning_apply",
+            )
 
         _LOGGER.info(
             "%s: Applied adaptive Ke: %.2f (was %.2f)",
