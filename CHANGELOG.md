@@ -1,6 +1,39 @@
 # CHANGELOG
 
 
+## v0.46.0 (2026-01-30)
+
+### Bug Fixes
+
+- Update precision test to use 2 decimal rounding
+  ([`838660b`](https://github.com/afewyards/ha-adaptive-thermostat/commit/838660bd6c104f293b3142915e8a25df97ee29a7))
+
+Update test_restore_with_precision_mismatch_no_duplicate to use values that correctly demonstrate 2
+  decimal place rounding (matching HA state serialization) instead of approximate tolerance
+  comparison.
+
+### Features
+
+- Add chronic approach failure detection for Ki starvation
+  ([`e92e34c`](https://github.com/afewyards/ha-adaptive-thermostat/commit/e92e34cd464042dfc4fc329a4af2dc53271d3546))
+
+Detects zones stuck below setpoint that never cross it (rise_time=None + consistent undershoot).
+  Indicates integral starvation - Ki too weak.
+
+- New ChronicApproachDetector with heating-type-specific thresholds -
+  PIDRule.CHRONIC_APPROACH_FAILURE + PIDChangeReason.CHRONIC_APPROACH_BOOST - Integrated into
+  AdaptiveLearner with confidence tracking - Serialization support (v7 format) with backward
+  compatibility - Optional historic scan via chronic_approach_historic_scan domain config
+
+- Add delete_pid_history and restore_pid_history services
+  ([`98de4c7`](https://github.com/afewyards/ha-adaptive-thermostat/commit/98de4c75531102234f7c477b42e97e61fb2a997c))
+
+Add two new services for managing PID history entries: - delete_pid_history: remove specific entries
+  by index - restore_pid_history: restore PID gains from a history entry
+
+Both services are always available (not debug-only) and support mode-specific history (heat/cool).
+
+
 ## v0.45.0 (2026-01-30)
 
 ### Bug Fixes
