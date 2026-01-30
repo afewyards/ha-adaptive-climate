@@ -90,6 +90,29 @@ class PIDGainsManager:
         self._pid_controller.set_pid_param("kd", gains.kd)
         self._pid_controller.set_pid_param("ke", gains.ke)
 
+    def _gains_match_last_entry(self, gains: PIDGains, mode: HVACMode) -> bool:
+        """Check if gains match the last history entry.
+
+        Used to avoid duplicate RESTORE entries when gains unchanged.
+        Rounds to 2 decimal places to match HA state serialization precision.
+        """
+        mode_key = self._mode_key(mode)
+        history = self._pid_history.get(mode_key, [])
+        if not history:
+            return False
+        last = history[-1]
+
+        # Round to 2 decimals to match HA state serialization
+        def r2(x: float) -> float:
+            return round(x, 2)
+
+        return (
+            r2(gains.kp) == r2(last.get("kp", 0.0))
+            and r2(gains.ki) == r2(last.get("ki", 0.0))
+            and r2(gains.kd) == r2(last.get("kd", 0.0))
+            and r2(gains.ke) == r2(last.get("ke", 0.0))
+        )
+
     def set_gains(
         self,
         reason: PIDChangeReason,
@@ -130,8 +153,9 @@ class PIDGainsManager:
         # Sync to PID controller
         self._sync_gains_to_controller(new_gains)
 
-        # Record snapshot
-        self._record_snapshot(new_gains, reason, resolved_mode, metrics)
+        # Record snapshot only if gains differ from last entry (dedup)
+        if not self._gains_match_last_entry(new_gains, resolved_mode):
+            self._record_snapshot(new_gains, reason, resolved_mode, metrics)
 
     def _record_snapshot(
         self,
@@ -207,7 +231,13 @@ class PIDGainsManager:
         kd = attrs.get("kd", self._heating_gains.kd)
         ke = attrs.get("ke", 0.0)  # Default ke to 0 for backward compat
 
-        # Use set_gains with RESTORE reason
+        # 1. Restore history FIRST (before set_gains)
+        # This allows set_gains to deduplicate if gains match last entry
+        old_history = attrs.get("pid_history", [])
+        if old_history:
+            self._restore_history(old_history)
+
+        # 2. Set gains (will skip recording if unchanged from last entry)
         self.set_gains(
             PIDChangeReason.RESTORE,
             kp=kp,
@@ -217,26 +247,24 @@ class PIDGainsManager:
             mode=HVACMode.HEAT,
         )
 
-        # Restore history (prepend to current, since set_gains just added one entry)
-        old_history = attrs.get("pid_history", [])
-        if old_history:
-            self._restore_history(old_history)
-
     def _restore_history(self, old_history: list[dict] | dict) -> None:
-        """Restore history from old format, handling migration."""
+        """Restore history from old format, handling migration.
+
+        Called BEFORE set_gains() during restore, so history is populated
+        before deduplication check runs.
+        """
         # Handle mode-keyed format: {"heating": [...], "cooling": [...]}
         if isinstance(old_history, dict):
             for mode_key in ["heating", "cooling"]:
                 if mode_key in old_history:
                     entries = old_history[mode_key]
                     if isinstance(entries, list):
-                        # Prepend old history before the restore entry
                         migrated = [self._migrate_history_entry(e) for e in entries]
-                        self._pid_history[mode_key] = migrated + self._pid_history[mode_key]
+                        self._pid_history[mode_key] = migrated
         # Handle flat list format (old AdaptiveLearner format) - migrate to heating
         elif isinstance(old_history, list):
             migrated = [self._migrate_history_entry(e) for e in old_history]
-            self._pid_history["heating"] = migrated + self._pid_history["heating"]
+            self._pid_history["heating"] = migrated
 
         # Enforce size limits
         for mode_key in ["heating", "cooling"]:
@@ -271,6 +299,76 @@ class PIDGainsManager:
             migrated["metrics"] = entry["metrics"]
 
         return migrated
+
+    def delete_history_entries(self, indices: list[int], mode: HVACMode = HVACMode.HEAT) -> int:
+        """Delete specific entries from PID history by index.
+
+        Args:
+            indices: List of 0-based indices to delete (0 = oldest entry).
+            mode: Which mode's history to modify.
+
+        Returns:
+            Number of entries actually deleted.
+
+        Raises:
+            ValueError: If any index is out of range.
+        """
+        if not indices:
+            return 0
+
+        mode_key = self._mode_key(mode)
+        history = self._pid_history[mode_key]
+
+        if not history:
+            return 0
+
+        # Validate all indices before deleting any
+        for idx in indices:
+            if idx < 0 or idx >= len(history):
+                raise ValueError(f"Invalid history index {idx} (history has {len(history)} entries)")
+
+        # Delete in reverse order to preserve indices during deletion
+        for idx in sorted(indices, reverse=True):
+            del history[idx]
+
+        return len(indices)
+
+    def restore_from_history(self, index: int, mode: HVACMode = HVACMode.HEAT) -> dict:
+        """Restore PID gains from a specific history entry.
+
+        Args:
+            index: 0-based index of history entry (0 = oldest).
+            mode: Which mode's history to restore from.
+
+        Returns:
+            The restored history entry dict.
+
+        Raises:
+            ValueError: If index is out of range or history is empty.
+        """
+        mode_key = self._mode_key(mode)
+        history = self._pid_history[mode_key]
+
+        if not history:
+            raise ValueError(f"Invalid history index {index} (history is empty)")
+
+        if index < 0 or index >= len(history):
+            raise ValueError(f"Invalid history index {index} (history has {len(history)} entries)")
+
+        # Get the entry at the specified index
+        entry = history[index]
+
+        # Restore gains from the entry
+        self.set_gains(
+            reason=PIDChangeReason.HISTORY_RESTORE,
+            kp=entry.get("kp"),
+            ki=entry.get("ki"),
+            kd=entry.get("kd"),
+            ke=entry.get("ke"),
+            mode=mode,
+        )
+
+        return entry
 
     def get_state_for_persistence(self) -> dict[str, Any]:
         """Get state dict for persistence.

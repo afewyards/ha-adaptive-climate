@@ -275,8 +275,8 @@ class TestRestoreFromState:
         assert gains.ke == 0.6
 
         history = manager.get_history(HVACMode.HEAT)
-        # Should have 2 old entries + 1 restore entry
-        assert len(history) == 3
+        # Should have 2 old entries (no RESTORE added since gains match last entry)
+        assert len(history) == 2
 
     def test_restore_from_state_applies_to_pid_controller(self, mock_pid_controller, initial_heating_gains):
         """Restored gains should be applied to PIDController."""
@@ -681,3 +681,521 @@ class TestHistoryMigrationFromAdaptiveLearner:
         assert "metrics" in history[0]
         assert history[0]["metrics"]["overshoot"] == 0.5
         assert history[0]["metrics"]["settling_time"] == 120
+
+
+# =============================================================================
+# Restore Deduplication
+# =============================================================================
+
+class TestRestoreDeduplication:
+    """Tests for deduplicating RESTORE entries when gains unchanged."""
+
+    def test_restore_unchanged_gains_no_new_entry(self, manager):
+        """Restore with unchanged gains should NOT add a RESTORE entry."""
+        # History with last entry matching gains we'll restore
+        old_state = Mock()
+        old_state.attributes = {
+            "kp": 1.8,
+            "ki": 0.015,
+            "kd": 12.0,
+            "ke": 0.6,
+            "pid_history": [
+                {
+                    "timestamp": "2024-01-15T10:00:00",
+                    "kp": 1.5,
+                    "ki": 0.01,
+                    "kd": 10.0,
+                    "ke": 0.5,
+                    "reason": "physics_init",
+                    "actor": "system",
+                },
+                {
+                    "timestamp": "2024-01-15T11:00:00",
+                    "kp": 1.8,
+                    "ki": 0.015,
+                    "kd": 12.0,
+                    "ke": 0.6,
+                    "reason": "adaptive_apply",
+                    "actor": "user",
+                },
+            ],
+        }
+
+        manager.restore_from_state(old_state)
+
+        # Should have exactly 2 entries (no RESTORE added)
+        history = manager.get_history(HVACMode.HEAT)
+        assert len(history) == 2
+        # Last entry should still be adaptive_apply, not restore
+        assert history[-1]["reason"] == "adaptive_apply"
+
+    def test_restore_changed_gains_adds_restore_entry(self, manager):
+        """Restore with changed gains should add one RESTORE entry."""
+        old_state = Mock()
+        old_state.attributes = {
+            "kp": 2.0,  # Different from last history entry
+            "ki": 0.02,
+            "kd": 15.0,
+            "ke": 0.7,
+            "pid_history": [
+                {
+                    "timestamp": "2024-01-15T10:00:00",
+                    "kp": 1.5,
+                    "ki": 0.01,
+                    "kd": 10.0,
+                    "ke": 0.5,
+                    "reason": "physics_init",
+                    "actor": "system",
+                },
+            ],
+        }
+
+        manager.restore_from_state(old_state)
+
+        history = manager.get_history(HVACMode.HEAT)
+        # Should have 1 old + 1 RESTORE
+        assert len(history) == 2
+        assert history[-1]["reason"] == "restore"
+        assert history[-1]["kp"] == 2.0
+
+    def test_restore_empty_history_adds_restore_entry(self, manager):
+        """Restore with empty history should add RESTORE entry."""
+        old_state = Mock()
+        old_state.attributes = {
+            "kp": 1.8,
+            "ki": 0.015,
+            "kd": 12.0,
+            "ke": 0.6,
+            "pid_history": [],  # Empty history
+        }
+
+        manager.restore_from_state(old_state)
+
+        history = manager.get_history(HVACMode.HEAT)
+        # Should have 1 RESTORE entry
+        assert len(history) == 1
+        assert history[0]["reason"] == "restore"
+
+    def test_restore_preserves_history_order(self, manager):
+        """Restore should preserve old entries in correct order."""
+        old_state = Mock()
+        old_state.attributes = {
+            "kp": 1.8,
+            "ki": 0.015,
+            "kd": 12.0,
+            "ke": 0.6,
+            "pid_history": [
+                {
+                    "timestamp": "2024-01-15T09:00:00",
+                    "kp": 1.0,
+                    "ki": 0.01,
+                    "kd": 10.0,
+                    "ke": 0.0,
+                    "reason": "physics_init",
+                },
+                {
+                    "timestamp": "2024-01-15T10:00:00",
+                    "kp": 1.5,
+                    "ki": 0.01,
+                    "kd": 10.0,
+                    "ke": 0.5,
+                    "reason": "ke_learning",
+                },
+                {
+                    "timestamp": "2024-01-15T11:00:00",
+                    "kp": 1.8,
+                    "ki": 0.015,
+                    "kd": 12.0,
+                    "ke": 0.6,
+                    "reason": "adaptive_apply",
+                },
+            ],
+        }
+
+        manager.restore_from_state(old_state)
+
+        history = manager.get_history(HVACMode.HEAT)
+        # Should have exactly 3 entries (gains match last, no RESTORE added)
+        assert len(history) == 3
+        assert history[0]["reason"] == "physics_init"
+        assert history[1]["reason"] == "ke_learning"
+        assert history[2]["reason"] == "adaptive_apply"
+
+    def test_multiple_restarts_no_duplicate_entries(self, manager):
+        """Multiple restarts with same gains should not accumulate RESTORE entries."""
+        old_state = Mock()
+        old_state.attributes = {
+            "kp": 1.8,
+            "ki": 0.015,
+            "kd": 12.0,
+            "ke": 0.6,
+            "pid_history": [
+                {
+                    "timestamp": "2024-01-15T11:00:00",
+                    "kp": 1.8,
+                    "ki": 0.015,
+                    "kd": 12.0,
+                    "ke": 0.6,
+                    "reason": "adaptive_apply",
+                },
+            ],
+        }
+
+        # Simulate multiple restarts
+        manager.restore_from_state(old_state)
+        manager.restore_from_state(old_state)
+        manager.restore_from_state(old_state)
+
+        history = manager.get_history(HVACMode.HEAT)
+        # Should still have just 1 entry
+        assert len(history) == 1
+        assert history[0]["reason"] == "adaptive_apply"
+
+    def test_restore_with_precision_mismatch_no_duplicate(self, manager):
+        """Restore should handle float precision differences from JSON serialization."""
+        old_state = Mock()
+        old_state.attributes = {
+            # Full precision values (as stored in state attributes)
+            "kp": 0.4926,
+            "ki": 2.389662,
+            "kd": 1.52,
+            "ke": 0.0,
+            "pid_history": [
+                {
+                    "timestamp": "2024-01-15T11:00:00",
+                    # Rounded values (as might be stored in history)
+                    "kp": 0.49,
+                    "ki": 2.3897,
+                    "kd": 1.52,
+                    "ke": 0.0,
+                    "reason": "adaptive_apply",
+                },
+            ],
+        }
+
+        manager.restore_from_state(old_state)
+
+        history = manager.get_history(HVACMode.HEAT)
+        # Should NOT add a RESTORE entry since gains are approximately equal
+        assert len(history) == 1
+        assert history[0]["reason"] == "adaptive_apply"
+
+
+# =============================================================================
+# History Deletion
+# =============================================================================
+
+class TestHistoryDeletion:
+    """Tests for delete_history_entries() method."""
+
+    def test_delete_single_entry_from_middle(self, manager):
+        """Test deleting a single entry from the middle of history."""
+        # Build a history with 3 entries
+        manager.set_gains(PIDChangeReason.PHYSICS_INIT, kp=1.0)
+        manager.set_gains(PIDChangeReason.ADAPTIVE_APPLY, kp=1.5)
+        manager.set_gains(PIDChangeReason.AUTO_APPLY, kp=2.0)
+
+        # Delete middle entry (index 1)
+        deleted_count = manager.delete_history_entries([1], mode=HVACMode.HEAT)
+
+        assert deleted_count == 1
+        history = manager.get_history(HVACMode.HEAT)
+        assert len(history) == 2
+        assert history[0]["kp"] == 1.0
+        assert history[1]["kp"] == 2.0
+
+    def test_delete_multiple_entries(self, manager):
+        """Test deleting multiple entries."""
+        # Build a history with 5 entries
+        for i in range(5):
+            manager.set_gains(PIDChangeReason.AUTO_APPLY, kp=1.0 + i * 0.5)
+
+        # Delete indices 1 and 3
+        deleted_count = manager.delete_history_entries([1, 3], mode=HVACMode.HEAT)
+
+        assert deleted_count == 2
+        history = manager.get_history(HVACMode.HEAT)
+        assert len(history) == 3
+        assert history[0]["kp"] == 1.0  # index 0
+        assert history[1]["kp"] == 2.0  # index 2 (was 2 before deletion)
+        assert history[2]["kp"] == 3.0  # index 4 (was 4 before deletion)
+
+    def test_delete_with_invalid_index_raises_value_error(self, manager):
+        """Test that invalid index raises ValueError."""
+        # Build a history with 3 entries
+        for i in range(3):
+            manager.set_gains(PIDChangeReason.AUTO_APPLY, kp=1.0 + i * 0.5)
+
+        # Try to delete out-of-range index
+        with pytest.raises(ValueError, match="Invalid history index"):
+            manager.delete_history_entries([5], mode=HVACMode.HEAT)
+
+        # History should be unchanged
+        history = manager.get_history(HVACMode.HEAT)
+        assert len(history) == 3
+
+    def test_delete_negative_index_raises_value_error(self, manager):
+        """Test that negative index raises ValueError."""
+        manager.set_gains(PIDChangeReason.PHYSICS_INIT, kp=1.0)
+
+        with pytest.raises(ValueError, match="Invalid history index"):
+            manager.delete_history_entries([-1], mode=HVACMode.HEAT)
+
+    def test_delete_from_empty_history_returns_zero(self, manager):
+        """Test deleting from empty history returns 0."""
+        # No entries in history
+        deleted_count = manager.delete_history_entries([0], mode=HVACMode.HEAT)
+
+        assert deleted_count == 0
+
+    def test_delete_preserves_remaining_entries_order(self, manager):
+        """Test that deletion preserves the order of remaining entries."""
+        # Build a history with entries that have different reasons
+        manager.set_gains(PIDChangeReason.PHYSICS_INIT, kp=1.0)
+        manager.set_gains(PIDChangeReason.ADAPTIVE_APPLY, kp=1.5)
+        manager.set_gains(PIDChangeReason.AUTO_APPLY, kp=2.0)
+        manager.set_gains(PIDChangeReason.ROLLBACK, kp=1.8)
+
+        # Delete indices 0 and 2
+        manager.delete_history_entries([0, 2], mode=HVACMode.HEAT)
+
+        history = manager.get_history(HVACMode.HEAT)
+        assert len(history) == 2
+        assert history[0]["reason"] == "adaptive_apply"
+        assert history[0]["kp"] == 1.5
+        assert history[1]["reason"] == "rollback"
+        assert history[1]["kp"] == 1.8
+
+    def test_delete_all_entries(self, manager):
+        """Test deleting all entries."""
+        # Build a history with 3 entries
+        for i in range(3):
+            manager.set_gains(PIDChangeReason.AUTO_APPLY, kp=1.0 + i * 0.5)
+
+        # Delete all indices
+        deleted_count = manager.delete_history_entries([0, 1, 2], mode=HVACMode.HEAT)
+
+        assert deleted_count == 3
+        history = manager.get_history(HVACMode.HEAT)
+        assert len(history) == 0
+
+    def test_delete_mode_specific_history(
+        self, mock_pid_controller, initial_heating_gains, initial_cooling_gains
+    ):
+        """Test that deletion only affects the specified mode."""
+        manager = PIDGainsManager(
+            pid_controller=mock_pid_controller,
+            initial_heating_gains=initial_heating_gains,
+            initial_cooling_gains=initial_cooling_gains,
+        )
+
+        # Add entries to both modes
+        manager.set_gains(PIDChangeReason.PHYSICS_INIT, kp=1.0, mode=HVACMode.HEAT)
+        manager.set_gains(PIDChangeReason.PHYSICS_INIT, kp=2.0, mode=HVACMode.COOL)
+        manager.set_gains(PIDChangeReason.AUTO_APPLY, kp=1.5, mode=HVACMode.HEAT)
+        manager.set_gains(PIDChangeReason.AUTO_APPLY, kp=2.5, mode=HVACMode.COOL)
+
+        # Delete from heating mode only
+        deleted_count = manager.delete_history_entries([0], mode=HVACMode.HEAT)
+
+        assert deleted_count == 1
+        heating_history = manager.get_history(HVACMode.HEAT)
+        cooling_history = manager.get_history(HVACMode.COOL)
+
+        assert len(heating_history) == 1
+        assert len(cooling_history) == 2  # Unchanged
+        assert heating_history[0]["kp"] == 1.5
+        assert cooling_history[0]["kp"] == 2.0
+
+    def test_delete_partial_failure_no_deletion(self, manager):
+        """Test that if any index is invalid, no deletions occur."""
+        # Build a history with 3 entries
+        for i in range(3):
+            manager.set_gains(PIDChangeReason.AUTO_APPLY, kp=1.0 + i * 0.5)
+
+        # Try to delete with one valid and one invalid index
+        with pytest.raises(ValueError, match="Invalid history index"):
+            manager.delete_history_entries([1, 10], mode=HVACMode.HEAT)
+
+        # History should be completely unchanged
+        history = manager.get_history(HVACMode.HEAT)
+        assert len(history) == 3
+
+    def test_delete_empty_indices_list(self, manager):
+        """Test that empty indices list returns 0 without errors."""
+        manager.set_gains(PIDChangeReason.PHYSICS_INIT, kp=1.0)
+
+        deleted_count = manager.delete_history_entries([], mode=HVACMode.HEAT)
+
+        assert deleted_count == 0
+        history = manager.get_history(HVACMode.HEAT)
+        assert len(history) == 1
+
+
+# =============================================================================
+# History Restore
+# =============================================================================
+
+class TestRestoreFromHistory:
+    """Tests for restore_from_history() method."""
+
+    def test_restore_from_valid_index(self, manager):
+        """Test restoring gains from a valid history index."""
+        # Build a history with 3 entries
+        manager.set_gains(PIDChangeReason.PHYSICS_INIT, kp=1.0, ki=0.01, kd=10.0, ke=0.0)
+        manager.set_gains(PIDChangeReason.ADAPTIVE_APPLY, kp=1.5, ki=0.015, kd=12.0, ke=0.5)
+        manager.set_gains(PIDChangeReason.AUTO_APPLY, kp=2.0, ki=0.02, kd=15.0, ke=0.7)
+
+        # Restore from index 1 (middle entry)
+        entry = manager.restore_from_history(1, mode=HVACMode.HEAT)
+
+        assert entry is not None
+        assert entry["kp"] == 1.5
+        assert entry["ki"] == 0.015
+        assert entry["kd"] == 12.0
+        assert entry["ke"] == 0.5
+
+        # Verify gains were applied
+        gains = manager.get_gains(HVACMode.HEAT)
+        assert gains.kp == 1.5
+        assert gains.ki == 0.015
+        assert gains.kd == 12.0
+        assert gains.ke == 0.5
+
+    def test_restore_creates_new_history_entry(self, manager):
+        """Test that restore creates a new history entry with HISTORY_RESTORE reason."""
+        manager.set_gains(PIDChangeReason.PHYSICS_INIT, kp=1.0, ki=0.01, kd=10.0, ke=0.0)
+        manager.set_gains(PIDChangeReason.ADAPTIVE_APPLY, kp=1.5, ki=0.015, kd=12.0, ke=0.5)
+
+        # Restore from index 0
+        manager.restore_from_history(0, mode=HVACMode.HEAT)
+
+        history = manager.get_history(HVACMode.HEAT)
+        # Should have 2 old + 1 new HISTORY_RESTORE entry
+        assert len(history) == 3
+        assert history[-1]["reason"] == PIDChangeReason.HISTORY_RESTORE.value
+        assert history[-1]["actor"] == PIDChangeActor.USER.value
+        assert history[-1]["kp"] == 1.0
+        assert history[-1]["ki"] == 0.01
+        assert history[-1]["kd"] == 10.0
+        assert history[-1]["ke"] == 0.0
+
+    def test_restore_from_oldest_entry(self, manager):
+        """Test restoring from index 0 (oldest entry)."""
+        manager.set_gains(PIDChangeReason.PHYSICS_INIT, kp=1.0, ki=0.01, kd=10.0, ke=0.0)
+        manager.set_gains(PIDChangeReason.ADAPTIVE_APPLY, kp=1.5, ki=0.015, kd=12.0, ke=0.5)
+        manager.set_gains(PIDChangeReason.AUTO_APPLY, kp=2.0, ki=0.02, kd=15.0, ke=0.7)
+
+        entry = manager.restore_from_history(0, mode=HVACMode.HEAT)
+
+        assert entry["kp"] == 1.0
+        gains = manager.get_gains(HVACMode.HEAT)
+        assert gains.kp == 1.0
+
+    def test_restore_from_newest_entry(self, manager):
+        """Test restoring from the newest entry (last index)."""
+        manager.set_gains(PIDChangeReason.PHYSICS_INIT, kp=1.0, ki=0.01, kd=10.0, ke=0.0)
+        manager.set_gains(PIDChangeReason.ADAPTIVE_APPLY, kp=1.5, ki=0.015, kd=12.0, ke=0.5)
+        manager.set_gains(PIDChangeReason.AUTO_APPLY, kp=2.0, ki=0.02, kd=15.0, ke=0.7)
+
+        # Restore from index 2 (last entry)
+        entry = manager.restore_from_history(2, mode=HVACMode.HEAT)
+
+        assert entry["kp"] == 2.0
+        gains = manager.get_gains(HVACMode.HEAT)
+        assert gains.kp == 2.0
+
+    def test_restore_from_invalid_index_raises_value_error(self, manager):
+        """Test that invalid index raises ValueError."""
+        manager.set_gains(PIDChangeReason.PHYSICS_INIT, kp=1.0, ki=0.01, kd=10.0, ke=0.0)
+        manager.set_gains(PIDChangeReason.ADAPTIVE_APPLY, kp=1.5, ki=0.015, kd=12.0, ke=0.5)
+
+        # Try to restore from out-of-range index
+        with pytest.raises(ValueError, match="Invalid history index"):
+            manager.restore_from_history(5, mode=HVACMode.HEAT)
+
+        # Gains should be unchanged
+        gains = manager.get_gains(HVACMode.HEAT)
+        assert gains.kp == 1.5
+
+    def test_restore_from_negative_index_raises_value_error(self, manager):
+        """Test that negative index raises ValueError."""
+        manager.set_gains(PIDChangeReason.PHYSICS_INIT, kp=1.0, ki=0.01, kd=10.0, ke=0.0)
+
+        with pytest.raises(ValueError, match="Invalid history index"):
+            manager.restore_from_history(-1, mode=HVACMode.HEAT)
+
+    def test_restore_from_empty_history_raises_value_error(self, manager):
+        """Test that restoring from empty history raises ValueError."""
+        # No entries in history
+        with pytest.raises(ValueError, match="Invalid history index"):
+            manager.restore_from_history(0, mode=HVACMode.HEAT)
+
+    def test_restore_mode_specific(
+        self, mock_pid_controller, initial_heating_gains, initial_cooling_gains
+    ):
+        """Test that restore only affects the specified mode."""
+        manager = PIDGainsManager(
+            pid_controller=mock_pid_controller,
+            initial_heating_gains=initial_heating_gains,
+            initial_cooling_gains=initial_cooling_gains,
+        )
+
+        # Add entries to both modes
+        manager.set_gains(PIDChangeReason.PHYSICS_INIT, kp=1.0, mode=HVACMode.HEAT)
+        manager.set_gains(PIDChangeReason.PHYSICS_INIT, kp=2.0, mode=HVACMode.COOL)
+        manager.set_gains(PIDChangeReason.AUTO_APPLY, kp=1.5, mode=HVACMode.HEAT)
+        manager.set_gains(PIDChangeReason.AUTO_APPLY, kp=2.5, mode=HVACMode.COOL)
+
+        # Restore heating from index 0
+        manager.restore_from_history(0, mode=HVACMode.HEAT)
+
+        heating_gains = manager.get_gains(HVACMode.HEAT)
+        cooling_gains = manager.get_gains(HVACMode.COOL)
+
+        assert heating_gains.kp == 1.0  # Restored
+        assert cooling_gains.kp == 2.5  # Unchanged
+
+    def test_restore_returns_correct_entry(self, manager):
+        """Test that restore returns the exact entry that was restored."""
+        manager.set_gains(
+            PIDChangeReason.PHYSICS_INIT,
+            kp=1.0,
+            ki=0.01,
+            kd=10.0,
+            ke=0.0,
+            metrics={"test": "value"}
+        )
+        manager.set_gains(PIDChangeReason.ADAPTIVE_APPLY, kp=1.5, ki=0.015, kd=12.0, ke=0.5)
+
+        entry = manager.restore_from_history(0, mode=HVACMode.HEAT)
+
+        # Entry should match the stored history entry
+        history = manager.get_history(HVACMode.HEAT)
+        # First entry should be physics_init (the one we restored from)
+        assert entry["timestamp"] == history[0]["timestamp"]
+        assert entry["kp"] == history[0]["kp"]
+        assert entry["ki"] == history[0]["ki"]
+        assert entry["kd"] == history[0]["kd"]
+        assert entry["ke"] == history[0]["ke"]
+        assert entry["reason"] == history[0]["reason"]
+        assert entry.get("metrics") == history[0].get("metrics")
+
+    def test_restore_applied_to_pid_controller(self, mock_pid_controller, initial_heating_gains):
+        """Test that restored gains are applied to PIDController."""
+        manager = PIDGainsManager(mock_pid_controller, initial_heating_gains)
+
+        manager.set_gains(PIDChangeReason.PHYSICS_INIT, kp=1.5, ki=0.015, kd=12.0, ke=0.5)
+        manager.set_gains(PIDChangeReason.ADAPTIVE_APPLY, kp=2.0, ki=0.02, kd=15.0, ke=0.7)
+
+        # Clear mock calls
+        mock_pid_controller.set_pid_param.reset_mock()
+
+        # Restore from index 0
+        manager.restore_from_history(0, mode=HVACMode.HEAT)
+
+        # Verify PIDController received the restored gains
+        assert mock_pid_controller.set_pid_param.called
+        calls = mock_pid_controller.set_pid_param.call_args_list
+        # Should have 4 calls (kp, ki, kd, ke)
+        assert len(calls) >= 4

@@ -32,6 +32,61 @@ rollback_pid:
       integration: adaptive_thermostat
       domain: climate
 
+delete_pid_history:
+  name: Delete PID History
+  description: Delete specific entries from PID history for the zone.
+  target:
+    entity:
+      integration: adaptive_thermostat
+      domain: climate
+  fields:
+    indices:
+      name: Indices
+      description: List of indices to delete (0-based, 0 = oldest entry)
+      required: true
+      example: [0, 1]
+      selector:
+        object:
+    mode:
+      name: Mode
+      description: Which mode's history to modify
+      required: false
+      default: heat
+      selector:
+        select:
+          options:
+            - heat
+            - cool
+
+restore_pid_history:
+  name: Restore PID History
+  description: Restore PID gains from a specific history entry.
+  target:
+    entity:
+      integration: adaptive_thermostat
+      domain: climate
+  fields:
+    index:
+      name: Index
+      description: History index to restore from (0-based, 0 = oldest entry)
+      required: true
+      example: 0
+      selector:
+        number:
+          min: 0
+          max: 9
+          mode: box
+    mode:
+      name: Mode
+      description: Which mode's history to restore from
+      required: false
+      default: heat
+      selector:
+        select:
+          options:
+            - heat
+            - cool
+
 clear_learning:
   name: Clear Learning
   description: >-

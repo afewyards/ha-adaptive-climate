@@ -66,6 +66,7 @@ class PIDChangeReason(StrEnum):
     ADAPTIVE_APPLY = "adaptive_apply"      # Manual apply
     AUTO_APPLY = "auto_apply"              # Validation manager
     ROLLBACK = "rollback"
+    HISTORY_RESTORE = "history_restore"    # User restore from history
     KE_PHYSICS = "ke_physics_enable"
     KE_LEARNING = "ke_learning_apply"
     UNDERSHOOT_BOOST = "undershoot_ki_boost"
@@ -81,6 +82,7 @@ REASON_TO_ACTOR: dict[PIDChangeReason, PIDChangeActor] = {
     PIDChangeReason.ADAPTIVE_APPLY: PIDChangeActor.USER,
     PIDChangeReason.AUTO_APPLY: PIDChangeActor.LEARNING,
     PIDChangeReason.ROLLBACK: PIDChangeActor.USER,
+    PIDChangeReason.HISTORY_RESTORE: PIDChangeActor.USER,
     PIDChangeReason.KE_PHYSICS: PIDChangeActor.SYSTEM,
     PIDChangeReason.KE_LEARNING: PIDChangeActor.LEARNING,
     PIDChangeReason.UNDERSHOOT_BOOST: PIDChangeActor.LEARNING,

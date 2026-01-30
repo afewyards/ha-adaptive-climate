@@ -400,3 +400,21 @@ async def async_setup_platform(hass: HomeAssistant, config: ConfigType, async_ad
             {},
             "async_rollback_pid",
         )
+
+    # Register public entity services (always available)
+    platform.async_register_entity_service(  # type: ignore
+        "delete_pid_history",
+        {
+            vol.Required("indices"): [cv.positive_int],
+            vol.Optional("mode", default="heat"): vol.In(["heat", "cool"]),
+        },
+        "async_delete_pid_history",
+    )
+    platform.async_register_entity_service(  # type: ignore
+        "restore_pid_history",
+        {
+            vol.Required("index"): cv.positive_int,
+            vol.Optional("mode", default="heat"): vol.In(["heat", "cool"]),
+        },
+        "async_restore_pid_history",
+    )

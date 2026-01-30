@@ -1155,6 +1155,38 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
         """
         await self._pid_tuning_manager.async_rollback_pid()
 
+    async def async_delete_pid_history(self, indices: list[int], mode: str = "heat") -> None:
+        """Delete specific entries from PID history.
+
+        Args:
+            indices: List of 0-based indices to delete
+            mode: "heat" or "cool"
+        """
+        # Convert mode string to HVACMode enum
+        hvac_mode = HVACMode.COOL if mode.lower() == "cool" else HVACMode.HEAT
+
+        # Delete the entries
+        self._gains_manager.delete_history_entries(indices, hvac_mode)
+
+        # Persist the updated state
+        self.async_write_ha_state()
+
+    async def async_restore_pid_history(self, index: int, mode: str = "heat") -> None:
+        """Restore PID gains from a specific history entry.
+
+        Args:
+            index: 0-based index of history entry
+            mode: "heat" or "cool"
+        """
+        # Convert mode string to HVACMode enum
+        hvac_mode = HVACMode.COOL if mode.lower() == "cool" else HVACMode.HEAT
+
+        # Restore from history
+        self._gains_manager.restore_from_history(index, hvac_mode)
+
+        # Persist the updated state
+        self.async_write_ha_state()
+
     async def _check_auto_apply_pid(self) -> None:
         """Check and potentially auto-apply adaptive PID recommendations.
 
