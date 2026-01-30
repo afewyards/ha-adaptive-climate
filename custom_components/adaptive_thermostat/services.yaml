@@ -4,6 +4,7 @@ reset_pid_to_physics:
     Recalculates PID values from the zone's physical properties (area_m2,
     ceiling_height, heating_type) using physics-based initialization. Also
     clears the integral term to avoid wind-up from previous tuning.
+    Requires debug: true in domain configuration.
   target:
     entity:
       integration: adaptive_thermostat
@@ -16,6 +17,18 @@ apply_adaptive_pid:
     (overshoot, undershoot, settling time, oscillations). Requires at least
     3 analyzed heating cycles. Also clears the integral term to avoid
     wind-up from previous tuning.
+    Requires debug: true in domain configuration.
+  target:
+    entity:
+      integration: adaptive_thermostat
+      domain: climate
+
+apply_adaptive_ke:
+  name: Apply Adaptive Ke
+  description: >-
+    Applies learned outdoor temperature compensation (Ke) adjustments based
+    on observed correlations between outdoor temperature and heating demand.
+    Requires debug: true in domain configuration.
   target:
     entity:
       integration: adaptive_thermostat
@@ -27,6 +40,7 @@ rollback_pid:
     Rolls back to the previous PID configuration, clears validation history,
     and exits validation mode. Use this if newly applied PID values are
     performing worse than the previous configuration.
+    Requires debug: true in domain configuration.
   target:
     entity:
       integration: adaptive_thermostat
@@ -93,6 +107,7 @@ clear_learning:
     Clears all adaptive learning data for the zone and resets PID to physics
     defaults. Use this to start fresh if learned values are not working well.
     Clears cycle history, Ke observations, and resets PID gains.
+    Requires debug: true in domain configuration.
   target:
     entity:
       integration: adaptive_thermostat
@@ -106,6 +121,15 @@ run_learning:
     and calculates recommended PID adjustments based on observed performance
     metrics (overshoot, undershoot, settling time, oscillations). Results are
     returned and also logged for review.
+    Requires debug: true in domain configuration.
+
+pid_recommendations:
+  name: PID Recommendations
+  description: >-
+    Returns current and recommended PID values for all zones based on physics
+    and adaptive learning. This is a read-only service - it does not apply
+    any changes. Use this to preview what apply_adaptive_pid would do.
+    Requires debug: true in domain configuration.
 
 weekly_report:
   name: Weekly Report
