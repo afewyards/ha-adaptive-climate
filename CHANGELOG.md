@@ -1,6 +1,36 @@
 # CHANGELOG
 
 
+## v0.45.0 (2026-01-30)
+
+### Bug Fixes
+
+- Record Ke changes to pid_history
+  ([`58759ef`](https://github.com/afewyards/ha-adaptive-thermostat/commit/58759ef551e51800e9caacb5a3de08082527a5a8))
+
+Add record_pid_snapshot() calls for two Ke change scenarios: - Physics-based Ke enable when PID
+  converges (ke_physics_enable) - Learned Ke application via async_apply_adaptive_ke
+  (ke_learning_apply)
+
+- Timestamp already ISO string in pid_history formatting
+  ([`7a52296`](https://github.com/afewyards/ha-adaptive-thermostat/commit/7a52296649215adeb69d517a09d3eda28a47cd20))
+
+### Features
+
+- Add PIDGainsManager for centralized PID gain mutations
+  ([`bfa0bb4`](https://github.com/afewyards/ha-adaptive-thermostat/commit/bfa0bb4ad787ea1283f102b225c4048e731c1999))
+
+Introduce PIDGainsManager as single entry point for all PID gain changes (kp/ki/kd/ke) with
+  automatic history recording. This provides better attribution of changes via reason/actor tracking
+  and includes Ke in history.
+
+- Add PIDGainsManager class with set_gains/get_gains/get_history methods - Add PIDChangeReason and
+  PIDChangeActor enums to const.py - Migrate pid_tuning.py, ke_manager.py, climate_control.py to use
+  manager - Move pid_history ownership from AdaptiveLearner to PIDGainsManager - Update
+  state_restorer.py to use manager.restore_from_state() - Remove old _set_kp/ki/kd callbacks from
+  climate.py - Add backward compatibility for old state formats without ke field
+
+
 ## v0.44.3 (2026-01-29)
 
 ### Bug Fixes
