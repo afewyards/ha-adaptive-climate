@@ -1,6 +1,6 @@
 """Thermal rate learning and adaptive PID adjustments for Adaptive Thermostat."""
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Any, TYPE_CHECKING
 import statistics
 import logging
@@ -89,6 +89,32 @@ from .chronic_approach_detector import ChronicApproachDetector
 from ..helpers.hvac_mode import mode_to_str, get_hvac_heat_mode, get_hvac_cool_mode
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _get_last_adjustment_time_from_history(
+    pid_history: list[dict],
+    reason: str,
+) -> Optional[datetime]:
+    """Get the timestamp of the last Ki adjustment for a given reason.
+
+    Args:
+        pid_history: List of PID history entries from PIDGainsManager
+        reason: The reason string to filter by (e.g., "undershoot_ki_boost")
+
+    Returns:
+        datetime in UTC if found, None otherwise
+    """
+    for entry in reversed(pid_history):
+        if entry.get("reason") == reason:
+            timestamp_str = entry.get("timestamp")
+            if timestamp_str:
+                # PID history uses ISO format from dt_util.utcnow().isoformat()
+                dt = datetime.fromisoformat(timestamp_str)
+                # Ensure timezone-aware (dt_util.utcnow() is UTC)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                return dt
+    return None
 
 
 # Adaptive learning (CycleMetrics imported from cycle_analysis)
@@ -1165,6 +1191,7 @@ class AdaptiveLearner:
         self,
         cycles_completed: int,
         current_ki: float,
+        pid_history: Optional[list[dict]] = None,
     ) -> Optional[float]:
         """Check if Ki adjustment is needed for persistent undershoot.
 
@@ -1176,11 +1203,19 @@ class AdaptiveLearner:
         Args:
             cycles_completed: Number of complete heating cycles observed
             current_ki: Current integral gain value
+            pid_history: Optional list of PID history entries from PIDGainsManager
 
         Returns:
             New Ki value if adjustment was applied, None otherwise
         """
-        if not self._undershoot_detector.should_adjust_ki(cycles_completed):
+        # Extract last boost time from PID history
+        last_boost_utc = None
+        if pid_history:
+            last_boost_utc = _get_last_adjustment_time_from_history(
+                pid_history, "undershoot_ki_boost"
+            )
+
+        if not self._undershoot_detector.should_adjust_ki(cycles_completed, last_boost_utc):
             return None
 
         # Get and apply the adjustment
@@ -1214,6 +1249,7 @@ class AdaptiveLearner:
         current_ki: float,
         zone_name: str = "zone",
         mode: "HVACMode" = None,
+        pid_history: Optional[list[dict]] = None,
     ) -> Optional[float]:
         """Check if Ki adjustment is needed for chronic approach failure.
 
@@ -1226,11 +1262,19 @@ class AdaptiveLearner:
             current_ki: Current integral gain value
             zone_name: Name of the zone for logging (optional)
             mode: HVACMode (HEAT or COOL) to update confidence for (defaults to HEAT)
+            pid_history: Optional list of PID history entries from PIDGainsManager
 
         Returns:
             New Ki value if adjustment was applied, None otherwise
         """
-        if not self._chronic_approach_detector.should_adjust_ki():
+        # Extract last boost time from PID history
+        last_boost_utc = None
+        if pid_history:
+            last_boost_utc = _get_last_adjustment_time_from_history(
+                pid_history, "chronic_approach_ki_boost"
+            )
+
+        if not self._chronic_approach_detector.should_adjust_ki(last_boost_utc):
             return None
 
         # Get and apply the adjustment
