@@ -38,18 +38,20 @@ from custom_components.adaptive_thermostat.managers.state_attributes import (
 from custom_components.adaptive_thermostat.const import (
     MIN_CYCLES_FOR_LEARNING,
     MIN_CONVERGENCE_CYCLES_FOR_KE,
+    HeatingType,
+    AUTO_APPLY_THRESHOLDS,
 )
 
 
 class TestComputeLearningStatus:
     """Test _compute_learning_status helper function."""
 
-    def test_collecting_status(self):
+    def test_collecting_status_insufficient_cycles(self):
         """Test collecting status when cycle count < MIN_CYCLES_FOR_LEARNING."""
         status = _compute_learning_status(
             cycle_count=3,
             convergence_confidence=0.0,
-            consecutive_converged=0,
+            heating_type=HeatingType.CONVECTOR,
         )
         assert status == "collecting"
 
@@ -58,72 +60,128 @@ class TestComputeLearningStatus:
         status = _compute_learning_status(
             cycle_count=MIN_CYCLES_FOR_LEARNING - 1,
             convergence_confidence=0.8,
-            consecutive_converged=0,
+            heating_type=HeatingType.CONVECTOR,
         )
         assert status == "collecting"
 
-    def test_converged_status(self):
-        """Test converged status when consecutive_converged >= MIN_CONVERGENCE_CYCLES_FOR_KE."""
-        status = _compute_learning_status(
-            cycle_count=10,
-            convergence_confidence=0.9,
-            consecutive_converged=MIN_CONVERGENCE_CYCLES_FOR_KE,
-        )
-        assert status == "converged"
-
-    def test_converged_status_high_consecutive(self):
-        """Test converged status with more consecutive cycles."""
-        status = _compute_learning_status(
-            cycle_count=20,
-            convergence_confidence=0.95,
-            consecutive_converged=10,
-        )
-        assert status == "converged"
-
-    def test_active_status(self):
-        """Test active status when confidence >= 0.5 but not converged."""
-        status = _compute_learning_status(
-            cycle_count=MIN_CYCLES_FOR_LEARNING,
-            convergence_confidence=0.7,
-            consecutive_converged=1,
-        )
-        assert status == "active"
-
-    def test_active_status_at_boundary(self):
-        """Test active status at confidence == 0.5."""
-        status = _compute_learning_status(
-            cycle_count=MIN_CYCLES_FOR_LEARNING + 1,
-            convergence_confidence=0.5,
-            consecutive_converged=0,
-        )
-        assert status == "active"
-
-    def test_ready_status(self):
-        """Test ready status when cycles >= MIN but confidence < 0.5."""
+    def test_collecting_status_low_confidence(self):
+        """Test collecting status when cycles >= MIN but confidence < threshold."""
+        # CONVECTOR threshold is 0.60
         status = _compute_learning_status(
             cycle_count=MIN_CYCLES_FOR_LEARNING,
             convergence_confidence=0.3,
-            consecutive_converged=0,
+            heating_type=HeatingType.CONVECTOR,
         )
-        assert status == "ready"
+        assert status == "collecting"
 
-    def test_ready_status_zero_confidence(self):
-        """Test ready status with zero confidence."""
+    def test_collecting_status_zero_confidence(self):
+        """Test collecting status with zero confidence."""
         status = _compute_learning_status(
             cycle_count=MIN_CYCLES_FOR_LEARNING + 5,
             convergence_confidence=0.0,
-            consecutive_converged=0,
+            heating_type=HeatingType.CONVECTOR,
         )
-        assert status == "ready"
+        assert status == "collecting"
 
-    def test_converged_priority_over_active(self):
-        """Test that converged status takes priority over active."""
+    def test_stable_status(self):
+        """Test stable status when confidence >= heating-type threshold."""
+        # CONVECTOR threshold is 0.60
+        status = _compute_learning_status(
+            cycle_count=MIN_CYCLES_FOR_LEARNING,
+            convergence_confidence=0.7,
+            heating_type=HeatingType.CONVECTOR,
+        )
+        assert status == "stable"
+
+    def test_stable_status_at_boundary(self):
+        """Test stable status at confidence == heating-type threshold."""
+        # CONVECTOR threshold is 0.60
+        status = _compute_learning_status(
+            cycle_count=MIN_CYCLES_FOR_LEARNING + 1,
+            convergence_confidence=0.6,
+            heating_type=HeatingType.CONVECTOR,
+        )
+        assert status == "stable"
+
+    def test_stable_status_high_confidence(self):
+        """Test stable status with high confidence."""
         status = _compute_learning_status(
             cycle_count=15,
-            convergence_confidence=0.9,  # Would be "active"
-            consecutive_converged=MIN_CONVERGENCE_CYCLES_FOR_KE,  # But converged
+            convergence_confidence=0.95,
+            heating_type=HeatingType.CONVECTOR,
         )
-        assert status == "converged"
+        assert status == "stable"
+
+    def test_floor_hydronic_threshold(self):
+        """Test that floor_hydronic uses higher threshold (0.80)."""
+        # Below floor_hydronic threshold (0.80) but above convector threshold (0.60)
+        status = _compute_learning_status(
+            cycle_count=MIN_CYCLES_FOR_LEARNING,
+            convergence_confidence=0.70,
+            heating_type=HeatingType.FLOOR_HYDRONIC,
+        )
+        assert status == "collecting"
+
+        # At floor_hydronic threshold (0.80)
+        status = _compute_learning_status(
+            cycle_count=MIN_CYCLES_FOR_LEARNING,
+            convergence_confidence=0.80,
+            heating_type=HeatingType.FLOOR_HYDRONIC,
+        )
+        assert status == "stable"
+
+    def test_radiator_threshold(self):
+        """Test that radiator uses threshold (0.70)."""
+        # Below radiator threshold
+        status = _compute_learning_status(
+            cycle_count=MIN_CYCLES_FOR_LEARNING,
+            convergence_confidence=0.65,
+            heating_type=HeatingType.RADIATOR,
+        )
+        assert status == "collecting"
+
+        # At radiator threshold
+        status = _compute_learning_status(
+            cycle_count=MIN_CYCLES_FOR_LEARNING,
+            convergence_confidence=0.70,
+            heating_type=HeatingType.RADIATOR,
+        )
+        assert status == "stable"
+
+    def test_forced_air_threshold(self):
+        """Test that forced_air uses threshold (0.60)."""
+        # Below forced_air threshold
+        status = _compute_learning_status(
+            cycle_count=MIN_CYCLES_FOR_LEARNING,
+            convergence_confidence=0.55,
+            heating_type=HeatingType.FORCED_AIR,
+        )
+        assert status == "collecting"
+
+        # At forced_air threshold
+        status = _compute_learning_status(
+            cycle_count=MIN_CYCLES_FOR_LEARNING,
+            convergence_confidence=0.60,
+            heating_type=HeatingType.FORCED_AIR,
+        )
+        assert status == "stable"
+
+    def test_unknown_heating_type_uses_convector_default(self):
+        """Test that unknown heating type defaults to convector threshold."""
+        # Unknown heating type should use convector threshold (0.60)
+        status = _compute_learning_status(
+            cycle_count=MIN_CYCLES_FOR_LEARNING,
+            convergence_confidence=0.60,
+            heating_type="unknown_type",
+        )
+        assert status == "stable"
+
+        status = _compute_learning_status(
+            cycle_count=MIN_CYCLES_FOR_LEARNING,
+            convergence_confidence=0.55,
+            heating_type="unknown_type",
+        )
+        assert status == "collecting"
 
 
 class TestAddLearningStatusAttributes:
@@ -182,10 +240,10 @@ class TestAddLearningStatusAttributes:
     def test_collecting_state(self):
         """Test attributes in collecting state."""
         thermostat = MagicMock()
+        thermostat._heating_type = HeatingType.CONVECTOR
         adaptive_learner = MagicMock()
         adaptive_learner.get_cycle_count.return_value = 2
         adaptive_learner.get_convergence_confidence.return_value = 0.0
-        adaptive_learner.get_consecutive_converged_cycles.return_value = 0
         adaptive_learner.get_last_adjustment_time.return_value = None
         adaptive_learner.get_pid_history.return_value = []
 
@@ -211,13 +269,13 @@ class TestAddLearningStatusAttributes:
         assert attrs[ATTR_CYCLES_COLLECTED] == 2
         assert attrs[ATTR_CONVERGENCE_CONFIDENCE] == 0
 
-    def test_active_state_with_heating_cycle(self):
-        """Test attributes in active state with heating cycle."""
+    def test_stable_state_with_heating_cycle(self):
+        """Test attributes in stable state with heating cycle."""
         thermostat = MagicMock()
+        thermostat._heating_type = HeatingType.CONVECTOR
         adaptive_learner = MagicMock()
         adaptive_learner.get_cycle_count.return_value = 8
         adaptive_learner.get_convergence_confidence.return_value = 0.6
-        adaptive_learner.get_consecutive_converged_cycles.return_value = 1
         adaptive_learner.get_last_adjustment_time.return_value = None
         adaptive_learner.get_pid_history.return_value = []
 
@@ -239,17 +297,17 @@ class TestAddLearningStatusAttributes:
 
         _add_learning_status_attributes(thermostat, attrs)
 
-        assert attrs[ATTR_LEARNING_STATUS] == "active"
+        assert attrs[ATTR_LEARNING_STATUS] == "stable"
         assert attrs[ATTR_CYCLES_COLLECTED] == 8
         assert attrs[ATTR_CONVERGENCE_CONFIDENCE] == 60  # 0.6 * 100
 
-    def test_converged_state(self):
-        """Test attributes in converged state."""
+    def test_stable_state_high_confidence(self):
+        """Test attributes in stable state with high confidence."""
         thermostat = MagicMock()
+        thermostat._heating_type = HeatingType.CONVECTOR
         adaptive_learner = MagicMock()
         adaptive_learner.get_cycle_count.return_value = 15
         adaptive_learner.get_convergence_confidence.return_value = 0.95
-        adaptive_learner.get_consecutive_converged_cycles.return_value = MIN_CONVERGENCE_CYCLES_FOR_KE
 
         # Set last adjustment time
         last_adjustment = datetime(2024, 1, 15, 14, 30, 0)
@@ -274,7 +332,7 @@ class TestAddLearningStatusAttributes:
 
         _add_learning_status_attributes(thermostat, attrs)
 
-        assert attrs[ATTR_LEARNING_STATUS] == "converged"
+        assert attrs[ATTR_LEARNING_STATUS] == "stable"
         assert attrs[ATTR_CYCLES_COLLECTED] == 15
         assert attrs[ATTR_CONVERGENCE_CONFIDENCE] == 95  # 0.95 * 100
 
@@ -297,6 +355,7 @@ class TestAddLearningStatusAttributes:
     def test_convergence_confidence_percentage_conversion(self):
         """Test that convergence confidence is correctly converted to percentage."""
         thermostat = MagicMock()
+        thermostat._heating_type = HeatingType.CONVECTOR
         adaptive_learner = MagicMock()
         adaptive_learner.get_cycle_count.return_value = MIN_CYCLES_FOR_LEARNING
         adaptive_learner.get_consecutive_converged_cycles.return_value = 0

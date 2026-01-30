@@ -90,28 +90,37 @@ def _compute_duty_accumulator_pct(thermostat: SmartThermostat) -> float:
 def _compute_learning_status(
     cycle_count: int,
     convergence_confidence: float,
-    consecutive_converged: int,
+    heating_type: str,
 ) -> str:
     """Compute learning status based on cycle metrics.
 
     Args:
         cycle_count: Number of cycles collected
         convergence_confidence: Convergence confidence (0.0-1.0)
-        consecutive_converged: Number of consecutive converged cycles
+        heating_type: HeatingType value (e.g., "floor_hydronic", "radiator")
 
     Returns:
-        Learning status string: "collecting" | "ready" | "active" | "converged"
+        Learning status string: "collecting" | "stable"
     """
-    from ..const import MIN_CYCLES_FOR_LEARNING, MIN_CONVERGENCE_CYCLES_FOR_KE
+    from ..const import (
+        MIN_CYCLES_FOR_LEARNING,
+        AUTO_APPLY_THRESHOLDS,
+        HeatingType,
+    )
 
-    if cycle_count < MIN_CYCLES_FOR_LEARNING:
+    # Use heating-type-specific confidence threshold
+    # Default to CONVECTOR if heating_type not recognized
+    thresholds = AUTO_APPLY_THRESHOLDS.get(
+        heating_type, AUTO_APPLY_THRESHOLDS[HeatingType.CONVECTOR]
+    )
+    confidence_threshold = thresholds["confidence_first"]
+
+    # Collecting: not enough cycles OR confidence below threshold
+    # Stable: confidence at or above threshold for the heating type
+    if cycle_count < MIN_CYCLES_FOR_LEARNING or convergence_confidence < confidence_threshold:
         return "collecting"
-    elif consecutive_converged >= MIN_CONVERGENCE_CYCLES_FOR_KE:
-        return "converged"
-    elif convergence_confidence >= 0.5:
-        return "active"
     else:
-        return "ready"
+        return "stable"
 
 
 def _add_learning_status_attributes(
@@ -158,12 +167,12 @@ def _add_learning_status_attributes(
     convergence_confidence = adaptive_learner.get_convergence_confidence()
     attrs[ATTR_CONVERGENCE_CONFIDENCE] = round(convergence_confidence * 100)
 
-    # Get consecutive converged cycles
-    consecutive_converged = adaptive_learner.get_consecutive_converged_cycles()
+    # Get heating type from thermostat
+    heating_type = thermostat._heating_type if hasattr(thermostat, '_heating_type') else None
 
     # Compute learning status
     attrs[ATTR_LEARNING_STATUS] = _compute_learning_status(
-        cycle_count, convergence_confidence, consecutive_converged
+        cycle_count, convergence_confidence, heating_type
     )
 
     # Debug-only attributes
