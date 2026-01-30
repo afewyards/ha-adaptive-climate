@@ -1,6 +1,26 @@
 # CHANGELOG
 
 
+## v0.48.0 (2026-01-30)
+
+### Features
+
+- **state**: Add optimized learning_status for 95%+ confidence
+  ([`ee3c28c`](https://github.com/afewyards/ha-adaptive-thermostat/commit/ee3c28cf92d69c0f50fcb0f48b97ce3c6815ba6d))
+
+Three states: collecting (gathering data), stable (at threshold), optimized (95%+ confidence, system
+  dialed in).
+
+### Refactoring
+
+- **state**: Simplify learning_status to collecting/stable
+  ([`1a31416`](https://github.com/afewyards/ha-adaptive-thermostat/commit/1a31416ca73fc4bc3274558c357875bcc48d9fa3))
+
+- Remove "ready" and "converged" states - Rename "active" to "stable" - Use heating-type-specific
+  confidence thresholds - Two states: collecting (<6 cycles or below threshold), stable (at
+  threshold)
+
+
 ## v0.47.0 (2026-01-30)
 
 ### Features
