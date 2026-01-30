@@ -190,11 +190,11 @@ def _add_learning_status_attributes(
         from ..const import ATTR_PID_HISTORY
         formatted_history = [
             {
-                "timestamp": entry["timestamp"].isoformat(),
+                "timestamp": entry["timestamp"],  # Already ISO string from PIDGainsManager
                 "kp": round(entry["kp"], 2),
                 "ki": round(entry["ki"], 4),
                 "kd": round(entry["kd"], 2),
-                "ke": round(entry["ke"], 2),
+                "ke": round(entry.get("ke", 0.0), 2),
                 "reason": entry["reason"],
             }
             for entry in pid_history
