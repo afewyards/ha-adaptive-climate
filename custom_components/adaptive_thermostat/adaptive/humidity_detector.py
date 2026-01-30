@@ -124,10 +124,14 @@ class HumidityDetector:
                     self._state = "stabilizing"
                     self._stabilization_start = ts
                     self._pause_start = None
+                    # Reset history for fresh rate-of-change detection in stabilizing
+                    self._humidity_history.clear()
+                    self._humidity_history.append((ts, current_humidity))
 
         elif self._state == "stabilizing":
-            # Check for new spike (returns to paused)
-            if self._check_triggers(current_humidity):
+            # Check for NEW spike only (rate-of-change, not absolute threshold)
+            # Lingering high humidity after a shower is not a new shower
+            if self._check_triggers(current_humidity, check_absolute=False):
                 self._stabilization_start = None
                 return
 
@@ -139,17 +143,19 @@ class HumidityDetector:
                     self._peak_humidity = None
                     self._stabilization_start = None
 
-    def _check_triggers(self, current_humidity: float) -> bool:
+    def _check_triggers(self, current_humidity: float, *, check_absolute: bool = True) -> bool:
         """Check if humidity conditions trigger pause state.
 
         Args:
             current_humidity: Current humidity reading
+            check_absolute: Whether to check absolute threshold (False during stabilizing
+                to avoid re-triggering on lingering post-shower humidity)
 
         Returns:
             True if triggered, False otherwise
         """
-        # Absolute threshold trigger
-        if current_humidity > self._absolute_max:
+        # Absolute threshold trigger (only for initial detection, not during stabilizing)
+        if check_absolute and current_humidity > self._absolute_max:
             self._state = "paused"
             # Only update peak if it's a new high (don't reset on re-trigger)
             if self._peak_humidity is None or current_humidity > self._peak_humidity:
