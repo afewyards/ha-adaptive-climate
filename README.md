@@ -28,24 +28,26 @@ An advanced thermostat integration featuring PID control with automatic tuning, 
 
 ### Key Features
 
-- **PID Control** - Four-term PID controller (P+I+D+E) with proportional-on-measurement for smooth operation
-- **Adaptive Learning** - Automatically learns thermal characteristics and optimizes PID parameters from real heating cycles, with automatic application and validation
-- **Physics-Based Initialization** - Initial PID values calculated from zone properties using empirical HVAC data
-- **Multi-Zone Coordination** - Central heat source control, mode synchronization, and thermal group coordination for connected spaces
-- **Energy Optimization** - Night setback with dynamic sunrise timing, solar gain prediction, contact sensors, outdoor compensation
+- **5-Term PID Control** - Advanced PID controller (P+I+D+E+F) with proportional-on-measurement, outdoor compensation, and thermal coupling feedforward
+- **Adaptive Learning** - Automatically learns thermal characteristics, optimizes PID parameters, and detects chronic approach failures
+- **Physics-Based Initialization** - Initial PID values calculated from zone properties, floor construction, and empirical HVAC data
+- **Multi-Zone Coordination** - Central heat source control, mode synchronization, thermal groups, and automatic HVAC mode switching
+- **Disturbance Handling** - Contact sensors, algorithmic open window detection, humidity-based steam detection (bathrooms)
+- **Energy Optimization** - Night setback with predictive pre-heating, outdoor compensation (Ke), setpoint feedforward
 - **Actuator Wear Tracking** - Cycle counting with predictive maintenance alerts
-- **Comprehensive Monitoring** - Performance sensors, health warnings, energy tracking, and automated reports
+- **Comprehensive Monitoring** - Performance sensors, comfort scores, energy tracking, and automated reports
 
 ## 📚 Full Documentation
 
 **[Visit the Wiki](https://github.com/afewyards/ha-adaptive-thermostat/wiki)** for comprehensive documentation including:
 
 - [Installation & Setup](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Installation-&-Setup) - Detailed installation guide and first-time configuration
-- [Configuration Reference](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Configuration-Reference) - Complete parameter reference with 60+ parameters
-- [PID Control](https://github.com/afewyards/ha-adaptive-thermostat/wiki/PID-Control) - How PID works, PWM vs valve control
-- [Adaptive Learning](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Adaptive-Learning) - Cycle tracking, learning rules, Ke-First process
-- [Multi-Zone Coordination](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Multi-Zone-Coordination) - Architecture and configuration
-- [Energy Optimization](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Energy-Optimization) - Night setback, outdoor compensation
+- [Configuration Reference](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Configuration-Reference) - Complete parameter reference
+- [PID Control](https://github.com/afewyards/ha-adaptive-thermostat/wiki/PID-Control) - 5-term PID (P/I/D/E/F), PWM vs valve control
+- [Adaptive Learning](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Adaptive-Learning) - Cycle tracking, learning rules, chronic approach detection
+- [Multi-Zone Coordination](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Multi-Zone-Coordination) - Central controller, thermal groups, auto mode switching
+- [Energy Optimization](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Energy-Optimization) - Night setback, predictive preheat, outdoor compensation
+- [Humidity Detection](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Humidity-Detection) - Bathroom steam detection
 - [Troubleshooting](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Troubleshooting) - Diagnostic checklist and common issues
 
 ## Installation
@@ -92,7 +94,14 @@ adaptive_thermostat:
   house_energy_rating: A+++
   main_heater_switch: switch.boiler
   outdoor_sensor: sensor.outdoor_temp
+  weather_entity: weather.home
   sync_modes: true
+
+  # Automatic HVAC mode switching based on outdoor temp
+  auto_mode_switching:
+    enabled: true
+    threshold: 2.0
+    forecast_hours: 6
 
   # Thermal groups define how heat transfers between zones
   thermal_groups:
@@ -133,7 +142,7 @@ climate:
     area_m2: 15
 ```
 
-### Night Setback
+### Night Setback with Predictive Pre-Heating
 ```yaml
 climate:
   - platform: adaptive_thermostat
@@ -147,10 +156,26 @@ climate:
     night_setback:
       start: "22:00"
       delta: 2.0
-      recovery_deadline: "08:00"
+      recovery_deadline: "07:00"
+      preheat_enabled: true  # Learn heating rate and start early
 ```
 
-When `end` is omitted, wake time is calculated from sunrise and window orientation. [Learn more →](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Energy-Optimization#night-setback)
+With `preheat_enabled`, the system learns your heating rate and starts recovery early to reach target AT the deadline. [Learn more →](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Energy-Optimization#predictive-pre-heating)
+
+### Bathroom with Humidity Detection
+```yaml
+climate:
+  - platform: adaptive_thermostat
+    name: Bathroom
+    heater: switch.heating_bathroom
+    target_sensor: sensor.temp_bathroom
+    humidity_sensor: sensor.humidity_bathroom
+    heating_type: radiator
+    area_m2: 6
+    humidity_spike_threshold: 15  # Pause heating on 15% spike (shower)
+```
+
+Detects shower steam and pauses heating to prevent wasted energy. Resumes after humidity stabilizes. [Learn more →](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Humidity-Detection)
 
 ### Cooling/AC Configuration
 ```yaml
@@ -224,28 +249,35 @@ Tracks on→off cycles and fires maintenance alerts at 80% and 90% wear. [Learn 
 - `sensor.{zone}_settling_time` - Time to reach setpoint (min)
 - `sensor.{zone}_oscillations` - Number of temperature oscillations
 - `sensor.{zone}_heat_output` - Heat output (W) - requires supply/return temp sensors
+- `sensor.{zone}_time_at_target` - Time at target temperature (%)
+- `sensor.{zone}_comfort_score` - Composite comfort score (0-100)
 - `sensor.{zone}_heater_wear` - Heater wear % (hidden, optional)
 - `sensor.{zone}_cooler_wear` - Cooler wear % (hidden, optional)
 
 ### System
 - `number.adaptive_thermostat_learning_window` - Learning window in days (adjustable)
+- `sensor.adaptive_thermostat_total_power` - Total power across all zones
+- `sensor.adaptive_thermostat_weekly_cost` - Weekly energy cost
 
 ## Services
 
-### Entity Services
+### Entity Services (require `debug: true`)
 - `adaptive_thermostat.reset_pid_to_physics` - Reset PID to physics-based defaults
-- `adaptive_thermostat.apply_adaptive_pid` - Apply learned PID adjustments (manual)
-- `adaptive_thermostat.rollback_pid` - Revert to previous PID configuration
-- `adaptive_thermostat.clear_learning` - Clear all learning data and reset to physics defaults
+- `adaptive_thermostat.apply_adaptive_pid` - Apply learned PID adjustments manually
 - `adaptive_thermostat.apply_adaptive_ke` - Apply outdoor compensation tuning
+- `adaptive_thermostat.rollback_pid` - Revert to previous PID configuration
+- `adaptive_thermostat.clear_learning` - Clear all learning data and reset
+
+### Entity Services (always available)
+- `adaptive_thermostat.delete_pid_history` - Clear PID adjustment history
+- `adaptive_thermostat.restore_pid_history` - Restore from saved history
 
 ### Domain Services
-- `adaptive_thermostat.run_learning` - Trigger learning analysis for all zones
-- `adaptive_thermostat.health_check` - System health monitoring
 - `adaptive_thermostat.weekly_report` - Generate performance report
 - `adaptive_thermostat.cost_report` - Energy cost analysis (daily/weekly/monthly)
 - `adaptive_thermostat.set_vacation_mode` - Enable frost protection mode
-- `adaptive_thermostat.pid_recommendations` - Preview recommended PID values
+- `adaptive_thermostat.run_learning` - Trigger learning analysis (debug only)
+- `adaptive_thermostat.pid_recommendations` - Preview recommended PID values (debug only)
 
 [Full service documentation →](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Services)
 
@@ -292,11 +324,12 @@ climate:
 With `auto_apply_pid: false`, use `adaptive_thermostat.apply_adaptive_pid` service to manually apply learned values.
 
 ### Entity Attributes
-Monitor auto-apply status via entity attributes:
-- `auto_apply_pid_enabled` - Whether auto-apply is enabled
-- `auto_apply_count` - Number of times PID has been auto-applied
-- `validation_mode` - Currently validating new PID values
-- `pid_history` - Last 3 PID configurations (timestamp, values, reason)
+Monitor status via entity attributes:
+- `learning_status` - Current state: `collecting`, `stable`, or `optimized`
+- `convergence_confidence_pct` - Learning confidence (0-100%)
+- `cycles_collected` - Number of complete heating cycles analyzed
+- `pid_history` - Last 10 PID changes with timestamp, reason, and actor
+- `status` - Operational status with `state` and `conditions` (contact_open, humidity_spike, etc.)
 
 ## Troubleshooting
 
@@ -308,16 +341,17 @@ The thermostat automatically learns and adjusts. Give it time:
 
 ### Common Issues
 
-**Slow response**
+**Slow response to setpoint changes**
+- Setpoint feedforward (`setpoint_boost: true`) accelerates response
 - Verify `heating_type` matches your actual system
-- Check `area_m2` is accurate
-- Wait for adaptive learning (3-7 days) or increase Kp manually
+- Wait for adaptive learning (3-7 days)
 
 **Oscillations**
 - Usually resolves after adaptive learning detects the pattern
 - May indicate `heating_type` mismatch or very short PWM period
 
 **Never reaches setpoint**
+- Chronic approach detector automatically boosts Ki after repeated failures
 - Ensure `area_m2` is correct
 - Check for high heat loss (poor insulation, open windows)
 - Verify heater has sufficient capacity
@@ -326,12 +360,16 @@ The thermostat automatically learns and adjusts. Give it time:
 - Normal behavior initially
 - Adaptive learning will detect overshoot and reduce Kp automatically
 
-### Health Warnings
+**Heating pauses unexpectedly**
+- Check `status.conditions` attribute for: `contact_open`, `humidity_spike`, `open_window`
+- Check `status.resume_at` for when heating will resume
 
-Monitor sensor values for performance issues:
-- **Critical cycle time (<10 min)**: System cycling too fast, check PID tuning
-- **Warning cycle time (<15 min)**: Consider increasing PWM period
-- **High power (>20 W/m²)**: May indicate heat loss or inefficient operation
+### Learning Status
+
+Monitor `learning_status` attribute:
+- `collecting` - Gathering data (< 6 cycles or low confidence)
+- `stable` - System converged, PID optimized
+- `optimized` - Very high confidence (95%+)
 
 [Full troubleshooting guide →](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Troubleshooting)
 
