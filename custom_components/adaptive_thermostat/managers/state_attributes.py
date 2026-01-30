@@ -184,7 +184,8 @@ def _add_learning_status_attributes(
             attrs["undershoot_ki_multiplier"] = round(detector.cumulative_ki_multiplier, 3)
 
     # Format PID history (only include if non-empty)
-    pid_history = adaptive_learner.get_pid_history()
+    # PID history is now managed by PIDGainsManager, not AdaptiveLearner
+    pid_history = thermostat._gains_manager.get_history() if thermostat._gains_manager else []
     if pid_history:
         from ..const import ATTR_PID_HISTORY
         formatted_history = [
@@ -193,6 +194,7 @@ def _add_learning_status_attributes(
                 "kp": round(entry["kp"], 2),
                 "ki": round(entry["ki"], 4),
                 "kd": round(entry["kd"], 2),
+                "ke": round(entry["ke"], 2),
                 "reason": entry["reason"],
             }
             for entry in pid_history

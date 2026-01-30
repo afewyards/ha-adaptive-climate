@@ -107,8 +107,7 @@ class StateRestorer:
 
         This method restores:
         - PID integral value (pid_i)
-        - PID gains: kp, ki, kd, ke
-        - Dual gain sets: _heating_gains and _cooling_gains (from pid_history)
+        - PID gains: kp, ki, kd, ke (via gains_manager)
         - PID mode (auto/off)
 
         Args:
@@ -119,10 +118,6 @@ class StateRestorer:
 
         if old_state is None or thermostat._pid_controller is None:
             return
-
-        # Restore dual gain sets from pid_history FIRST (before legacy gains)
-        # This ensures pid_history takes precedence over legacy kp/ki/kd attributes
-        self._restore_dual_gain_sets(old_state)
 
         # Restore PID integral value (check new name first, then legacy)
         integral_value = old_state.attributes.get('integral')
@@ -141,25 +136,49 @@ class StateRestorer:
                 list(old_state.attributes.keys())
             )
 
-        # Restore Kp
-        if old_state.attributes.get('kp') is not None:
-            thermostat._kp = float(old_state.attributes.get('kp'))
-            thermostat._pid_controller.set_pid_param(kp=thermostat._kp)
+        # Restore PID gains (kp, ki, kd, ke) via gains_manager
+        if thermostat._gains_manager:
+            # Use gains_manager's restore_from_state() which handles:
+            # - Restoring kp, ki, kd, ke from attributes (defaults ke to 0.0)
+            # - Recording a snapshot with reason='restore'
+            # - Migrating old history format
+            thermostat._gains_manager.restore_from_state(old_state)
 
-        # Restore Ki
-        if old_state.attributes.get('ki') is not None:
-            thermostat._ki = float(old_state.attributes.get('ki'))
-            thermostat._pid_controller.set_pid_param(ki=thermostat._ki)
+            # Sync restored gains to thermostat attributes for backward compat
+            current_gains = thermostat._gains_manager.get_gains()
+            thermostat._kp = current_gains.kp
+            thermostat._ki = current_gains.ki
+            thermostat._kd = current_gains.kd
+            thermostat._ke = current_gains.ke
 
-        # Restore Kd
-        if old_state.attributes.get('kd') is not None:
-            thermostat._kd = float(old_state.attributes.get('kd'))
-            thermostat._pid_controller.set_pid_param(kd=thermostat._kd)
+            _LOGGER.info("%s: Restored PID values via gains_manager - Kp=%.4f, Ki=%.5f, Kd=%.3f, Ke=%s",
+                        thermostat.entity_id, thermostat._kp, thermostat._ki, thermostat._kd, thermostat._ke or 0)
+        else:
+            # Fallback for backward compat (shouldn't happen since gains_manager is initialized before restore)
+            _LOGGER.warning("%s: gains_manager not available, using fallback restoration", thermostat.entity_id)
 
-        # Restore Ke
-        if old_state.attributes.get('ke') is not None:
-            thermostat._ke = float(old_state.attributes.get('ke'))
-            thermostat._pid_controller.set_pid_param(ke=thermostat._ke)
+            # Restore Kp
+            if old_state.attributes.get('kp') is not None:
+                thermostat._kp = float(old_state.attributes.get('kp'))
+                thermostat._pid_controller.set_pid_param(kp=thermostat._kp)
+
+            # Restore Ki
+            if old_state.attributes.get('ki') is not None:
+                thermostat._ki = float(old_state.attributes.get('ki'))
+                thermostat._pid_controller.set_pid_param(ki=thermostat._ki)
+
+            # Restore Kd
+            if old_state.attributes.get('kd') is not None:
+                thermostat._kd = float(old_state.attributes.get('kd'))
+                thermostat._pid_controller.set_pid_param(kd=thermostat._kd)
+
+            # Restore Ke
+            if old_state.attributes.get('ke') is not None:
+                thermostat._ke = float(old_state.attributes.get('ke'))
+                thermostat._pid_controller.set_pid_param(ke=thermostat._ke)
+
+            _LOGGER.info("%s: Restored PID values (fallback) - Kp=%.4f, Ki=%.5f, Kd=%.3f, Ke=%s",
+                        thermostat.entity_id, thermostat._kp, thermostat._ki, thermostat._kd, thermostat._ke or 0)
 
         # Restore outdoor temperature lag state
         if old_state.attributes.get('outdoor_temp_lagged') is not None:
@@ -167,9 +186,6 @@ class StateRestorer:
             thermostat._pid_controller.outdoor_temp_lagged = outdoor_temp_lagged
             _LOGGER.info("%s: Restored outdoor_temp_lagged=%.2f°C",
                         thermostat.entity_id, outdoor_temp_lagged)
-
-        _LOGGER.info("%s: Restored PID values - Kp=%.4f, Ki=%.5f, Kd=%.3f, Ke=%s",
-                     thermostat.entity_id, thermostat._kp, thermostat._ki, thermostat._kd, thermostat._ke or 0)
 
         # Restore PID mode
         if old_state.attributes.get('pid_mode') is not None:
@@ -194,129 +210,5 @@ class StateRestorer:
             # restoring it can cause spurious heating when combined with a restored
             # PID integral that keeps control_output positive even when temp > setpoint.
 
-        # Restore PID history for rollback support
-        self._restore_pid_history(old_state)
-
-    def _restore_dual_gain_sets(self, old_state: State) -> None:
-        """Restore dual PIDGains sets (heating and cooling) from pid_history.
-
-        Supports only the current mode-keyed format:
-        pid_history = {"heating": [...], "cooling": [...]}
-
-        Fallback: If no pid_history exists, initialize heating gains from physics baseline.
-
-        Args:
-            old_state: The restored state object from async_get_last_state().
-        """
-        thermostat = self._thermostat
-        pid_history = old_state.attributes.get('pid_history')
-
-        # Initialize gain sets to None (will be set below)
-        thermostat._heating_gains = None
-        thermostat._cooling_gains = None
-
-        # Mode-keyed pid_history format
-        if pid_history and isinstance(pid_history, dict):
-            if 'heating' in pid_history or 'cooling' in pid_history:
-                # Restore heating gains from last entry
-                heating_history = pid_history.get('heating', [])
-                if heating_history and len(heating_history) > 0:
-                    last_heating = heating_history[-1]
-                    thermostat._heating_gains = PIDGains(
-                        kp=float(last_heating.get('kp', thermostat._kp)),
-                        ki=float(last_heating.get('ki', thermostat._ki)),
-                        kd=float(last_heating.get('kd', thermostat._kd))
-                    )
-                    _LOGGER.info(
-                        "%s: Restored heating gains from pid_history: Kp=%.4f, Ki=%.5f, Kd=%.3f",
-                        thermostat.entity_id,
-                        thermostat._heating_gains.kp,
-                        thermostat._heating_gains.ki,
-                        thermostat._heating_gains.kd
-                    )
-
-                # Restore cooling gains from last entry (if exists)
-                cooling_history = pid_history.get('cooling', [])
-                if cooling_history and len(cooling_history) > 0:
-                    last_cooling = cooling_history[-1]
-                    thermostat._cooling_gains = PIDGains(
-                        kp=float(last_cooling.get('kp', thermostat._kp)),
-                        ki=float(last_cooling.get('ki', thermostat._ki)),
-                        kd=float(last_cooling.get('kd', thermostat._kd))
-                    )
-                    _LOGGER.info(
-                        "%s: Restored cooling gains from pid_history: Kp=%.4f, Ki=%.5f, Kd=%.3f",
-                        thermostat.entity_id,
-                        thermostat._cooling_gains.kp,
-                        thermostat._cooling_gains.ki,
-                        thermostat._cooling_gains.kd
-                    )
-                else:
-                    # Cooling gains not present - lazy init
-                    _LOGGER.debug("%s: Cooling gains not in pid_history - will lazy init on first COOL mode",
-                                thermostat.entity_id)
-
-                return  # Successfully restored from mode-keyed format
-
-        # Fallback: No history - initialize heating gains from physics-based baseline
-        # The thermostat._kp/_ki/_kd values are already set from calculate_initial_pid() or config
-        if thermostat._kp and thermostat._ki and thermostat._kd:
-            thermostat._heating_gains = PIDGains(
-                kp=thermostat._kp,
-                ki=thermostat._ki,
-                kd=thermostat._kd
-            )
-            _LOGGER.info(
-                "%s: Initialized heating gains from physics baseline: Kp=%.4f, Ki=%.5f, Kd=%.3f",
-                thermostat.entity_id,
-                thermostat._heating_gains.kp,
-                thermostat._heating_gains.ki,
-                thermostat._heating_gains.kd
-            )
-        # Cooling gains remain None (lazy init)
-
-    def _restore_pid_history(self, old_state: State) -> None:
-        """Restore PID history from Home Assistant's state restoration.
-
-        This enables rollback to previous PID configurations across restarts.
-
-        Args:
-            old_state: The restored state object from async_get_last_state().
-        """
-        from ..const import DOMAIN, ATTR_PID_HISTORY
-
-        thermostat = self._thermostat
-
-        pid_history = old_state.attributes.get(ATTR_PID_HISTORY)
-        if not pid_history:
-            return
-
-        # Get the adaptive learner from coordinator
-        coordinator = thermostat._coordinator
-        if not coordinator:
-            _LOGGER.debug("%s: No coordinator available for PID history restoration",
-                         thermostat.entity_id)
-            return
-
-        zone_id = getattr(thermostat, "_zone_id", None)
-        if not zone_id:
-            _LOGGER.debug("%s: No zone_id available for PID history restoration",
-                         thermostat.entity_id)
-            return
-
-        zone_data = coordinator.get_zone_data(zone_id)
-        if not zone_data:
-            _LOGGER.debug("%s: No zone_data available for PID history restoration",
-                         thermostat.entity_id)
-            return
-
-        adaptive_learner = zone_data.get("adaptive_learner")
-        if not adaptive_learner:
-            _LOGGER.debug("%s: No adaptive_learner available for PID history restoration",
-                         thermostat.entity_id)
-            return
-
-        # Restore the history
-        adaptive_learner.restore_pid_history(pid_history)
-        _LOGGER.info("%s: Restored PID history with %d entries",
-                    thermostat.entity_id, len(pid_history))
+        # Note: PID history restoration is now handled by gains_manager.restore_from_state()
+        # called earlier in this method (line 150)

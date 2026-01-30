@@ -9,6 +9,7 @@ import time
 from homeassistant.components.climate import HVACMode
 from homeassistant.util import dt as dt_util
 
+from .const import PIDChangeReason
 from .managers.events import TemperatureUpdateEvent
 
 _LOGGER = logging.getLogger(__name__)
@@ -138,8 +139,15 @@ class ClimateControlMixin:
                                         new_ki,
                                     )
 
-                                # Update PID controller Ki
-                                self._pid_controller.ki = new_ki
+                                # Update Ki via PIDGainsManager
+                                undershoot_amount = self._target_temp - self._current_temp if self._target_temp and self._current_temp else 0.0
+                                self._gains_manager.set_gains(
+                                    PIDChangeReason.UNDERSHOOT_BOOST,
+                                    ki=new_ki,
+                                    metrics={"undershoot_amount": undershoot_amount},
+                                )
+
+                                # Update legacy attribute for backward compatibility
                                 self._ki = new_ki
 
                                 # Trigger state save

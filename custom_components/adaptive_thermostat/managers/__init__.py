@@ -21,6 +21,7 @@ from .heater_controller import HeaterController
 from .ke_manager import KeManager
 from .night_setback_calculator import NightSetbackCalculator
 from .night_setback_manager import NightSetbackManager
+from .pid_gains_manager import PIDGainsManager
 from .status_manager import StatusManager
 from .pid_tuning import PIDTuningManager
 from .setpoint_boost import SetpointBoostManager
@@ -46,6 +47,7 @@ __all__ = [
     "ModeChangedEvent",
     "NightSetbackCalculator",
     "NightSetbackManager",
+    "PIDGainsManager",
     "StatusManager",
     "PIDTuningManager",
     "SetpointBoostManager",

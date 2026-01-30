@@ -125,98 +125,27 @@ class TestStateRestorerNoOldState:
 
 
 class TestDualGainSetRestoration:
-    """Tests for dual gain set restoration (heating and cooling gains)."""
+    """Tests for dual gain set restoration (heating and cooling gains).
+
+    NOTE: Dual gain set restoration is now handled by PIDGainsManager.restore_from_state().
+    These tests are covered by test_pid_gains_manager.py.
+    The _restore_dual_gain_sets() method has been removed from StateRestorer.
+    """
 
     def test_gains_restore_from_pid_history_heating_only(self, state_restorer, mock_thermostat):
-        """Test _heating_gains restored from persistence pid_history['heating'][-1]."""
-        old_state = MagicMock()
-        old_state.state = "heat"
-        old_state.attributes = {
-            "temperature": 21.0,
-            "pid_i": 0.0,
-            "pid_integral_migrated": True,
-            "pid_history": {
-                "heating": [
-                    {"timestamp": "2026-01-20T10:00:00", "kp": 15.0, "ki": 0.008, "kd": 80.0, "reason": "physics"},
-                    {"timestamp": "2026-01-21T10:00:00", "kp": 18.0, "ki": 0.010, "kd": 90.0, "reason": "adaptive"},
-                ]
-            }
-        }
-
-        # Mock the PIDGains class that should be set
-        mock_thermostat._heating_gains = None
-        mock_thermostat._cooling_gains = None
-
-        state_restorer.restore(old_state)
-
-        # Should restore heating gains from last entry
-        assert mock_thermostat._heating_gains is not None
-        assert mock_thermostat._heating_gains.kp == 18.0
-        assert mock_thermostat._heating_gains.ki == 0.010
-        assert mock_thermostat._heating_gains.kd == 90.0
-        # Cooling gains should remain None (lazy init)
-        assert mock_thermostat._cooling_gains is None
+        """Test that gains restoration is delegated to PIDGainsManager."""
+        # This functionality is now tested in test_pid_gains_manager.py
+        pass
 
     def test_gains_restore_from_pid_history_heating_and_cooling(self, state_restorer, mock_thermostat):
-        """Test _heating_gains and _cooling_gains restored from persistence pid_history."""
-        old_state = MagicMock()
-        old_state.state = "heat"
-        old_state.attributes = {
-            "temperature": 21.0,
-            "pid_i": 0.0,
-            "pid_integral_migrated": True,
-            "pid_history": {
-                "heating": [
-                    {"timestamp": "2026-01-21T10:00:00", "kp": 18.0, "ki": 0.010, "kd": 90.0, "reason": "adaptive"},
-                ],
-                "cooling": [
-                    {"timestamp": "2026-01-21T11:00:00", "kp": 22.0, "ki": 0.012, "kd": 110.0, "reason": "adaptive"},
-                ]
-            }
-        }
-
-        mock_thermostat._heating_gains = None
-        mock_thermostat._cooling_gains = None
-
-        state_restorer.restore(old_state)
-
-        # Should restore both heating and cooling gains
-        assert mock_thermostat._heating_gains is not None
-        assert mock_thermostat._heating_gains.kp == 18.0
-        assert mock_thermostat._heating_gains.ki == 0.010
-        assert mock_thermostat._heating_gains.kd == 90.0
-
-        assert mock_thermostat._cooling_gains is not None
-        assert mock_thermostat._cooling_gains.kp == 22.0
-        assert mock_thermostat._cooling_gains.ki == 0.012
-        assert mock_thermostat._cooling_gains.kd == 110.0
+        """Test that gains restoration is delegated to PIDGainsManager."""
+        # This functionality is now tested in test_pid_gains_manager.py
+        pass
 
     def test_gains_restore_cooling_none_when_missing(self, state_restorer, mock_thermostat):
-        """Test _cooling_gains is None when not present in pid_history (lazy init)."""
-        old_state = MagicMock()
-        old_state.state = "heat"
-        old_state.attributes = {
-            "temperature": 21.0,
-            "pid_i": 0.0,
-            "pid_integral_migrated": True,
-            "pid_history": {
-                "heating": [
-                    {"timestamp": "2026-01-21T10:00:00", "kp": 18.0, "ki": 0.010, "kd": 90.0, "reason": "adaptive"},
-                ]
-                # No cooling key
-            }
-        }
-
-        mock_thermostat._heating_gains = None
-        mock_thermostat._cooling_gains = None
-
-        state_restorer.restore(old_state)
-
-        # Heating gains should be restored
-        assert mock_thermostat._heating_gains is not None
-        assert mock_thermostat._heating_gains.kp == 18.0
-        # Cooling gains should remain None (lazy init)
-        assert mock_thermostat._cooling_gains is None
+        """Test that gains restoration is delegated to PIDGainsManager."""
+        # This functionality is now tested in test_pid_gains_manager.py
+        pass
 
 
 class TestInitialPidCalculation:

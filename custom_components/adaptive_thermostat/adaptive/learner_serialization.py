@@ -37,24 +37,6 @@ def serialize_cycle(cycle: CycleMetrics) -> Dict[str, Any]:
     }
 
 
-def _serialize_pid_history(pid_history: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Serialize PID history with ISO timestamps.
-
-    Args:
-        pid_history: List of PID snapshot dictionaries
-
-    Returns:
-        List of serialized PID snapshots with ISO timestamp strings
-    """
-    serialized = []
-    for entry in pid_history:
-        serialized_entry = entry.copy()
-        if isinstance(entry.get("timestamp"), datetime):
-            serialized_entry["timestamp"] = entry["timestamp"].isoformat()
-        serialized.append(serialized_entry)
-    return serialized
-
-
 def learner_to_dict(
     heating_cycle_history: List[CycleMetrics],
     cooling_cycle_history: List[CycleMetrics],
@@ -62,7 +44,6 @@ def learner_to_dict(
     cooling_auto_apply_count: int,
     heating_convergence_confidence: float,
     cooling_convergence_confidence: float,
-    pid_history: List[Dict[str, Any]],
     last_adjustment_time: Optional[datetime],
     consecutive_converged_cycles: int,
     pid_converged_for_ke: bool,
@@ -77,7 +58,6 @@ def learner_to_dict(
         cooling_auto_apply_count: Number of auto-applies for cooling mode
         heating_convergence_confidence: Convergence confidence for heating mode
         cooling_convergence_confidence: Convergence confidence for cooling mode
-        pid_history: List of PID snapshots
         last_adjustment_time: Timestamp of last PID adjustment
         consecutive_converged_cycles: Number of consecutive converged cycles
         pid_converged_for_ke: Whether PID has converged for Ke learning
@@ -88,10 +68,10 @@ def learner_to_dict(
         - v6 structure with undershoot detector state
         - v5 mode-keyed structure (heating/cooling sub-dicts)
         - v4 backward-compatible top-level keys (cycle_history, auto_apply_count, etc.)
-    """
-    # Serialize PID history with ISO timestamps
-    serialized_pid_history = _serialize_pid_history(pid_history)
 
+    Note:
+        pid_history is no longer managed by AdaptiveLearner - it's now owned by PIDGainsManager.
+    """
     # Serialize cycle histories
     serialized_heating_cycles = [serialize_cycle(cycle) for cycle in heating_cycle_history]
     serialized_cooling_cycles = [serialize_cycle(cycle) for cycle in cooling_cycle_history]
@@ -114,13 +94,11 @@ def learner_to_dict(
             "cycle_history": serialized_heating_cycles,
             "auto_apply_count": heating_auto_apply_count,
             "convergence_confidence": heating_convergence_confidence,
-            "pid_history": serialized_pid_history,
         },
         "cooling": {
             "cycle_history": serialized_cooling_cycles,
             "auto_apply_count": cooling_auto_apply_count,
             "convergence_confidence": cooling_convergence_confidence,
-            "pid_history": [],  # Cooling mode typically shares PID history or has separate tracking
         },
         # TODO: V4 backward-compatible top-level keys are still needed for users upgrading
         # from versions prior to v5 format (v0.36.0 and earlier). Consider removing after
@@ -160,29 +138,6 @@ def _deserialize_cycle(cycle_dict: Dict[str, Any]) -> CycleMetrics:
         decay_contribution=cycle_dict.get("decay_contribution"),
         mode=cycle_dict.get("mode"),
     )
-
-
-def _deserialize_pid_history(pid_history_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Deserialize PID history from dictionaries with ISO timestamp strings.
-
-    Args:
-        pid_history_data: List of PID snapshot dictionaries with ISO timestamps
-
-    Returns:
-        List of PID snapshot dictionaries with parsed datetime objects
-    """
-    restored = []
-    for entry in pid_history_data:
-        try:
-            restored_entry = entry.copy()
-            timestamp_str = entry.get("timestamp")
-            if timestamp_str is not None and isinstance(timestamp_str, str):
-                restored_entry["timestamp"] = datetime.fromisoformat(timestamp_str)
-            restored.append(restored_entry)
-        except (ValueError, TypeError) as e:
-            _LOGGER.warning("Failed to restore PID history entry: %s - %s", entry, e)
-            continue
-    return restored
 
 
 def restore_learner_from_dict(data: Dict[str, Any]) -> Dict[str, Any]:
@@ -234,8 +189,9 @@ def restore_learner_from_dict(data: Dict[str, Any]) -> Dict[str, Any]:
         heating_convergence_confidence = data.get("heating", {}).get("convergence_confidence", 0.0)
         cooling_convergence_confidence = data.get("cooling", {}).get("convergence_confidence", 0.0)
 
-        # Restore PID history from heating mode
-        pid_history = _deserialize_pid_history(data.get("heating", {}).get("pid_history", []))
+        # pid_history is no longer stored in learner data (now managed by PIDGainsManager)
+        # For backward compatibility, we ignore it if it exists in old persisted data
+        pid_history = []
 
         # Restore undershoot detector state (v6 only)
         if is_v6_format:

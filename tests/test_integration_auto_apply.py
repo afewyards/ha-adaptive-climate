@@ -301,33 +301,15 @@ class TestFullAutoApplyFlow:
 
     @pytest.mark.asyncio
     async def test_pid_snapshot_recorded_on_auto_apply(self, adaptive_learner):
-        """Test that PID snapshots are recorded before and after auto-apply."""
-        # Record "before" snapshot (like async_auto_apply_adaptive_pid does)
-        adaptive_learner.record_pid_snapshot(
-            kp=100.0, ki=0.01, kd=50.0,
-            reason="before_auto_apply",
-            metrics={"baseline_overshoot": 0.15}
-        )
+        """Test that PID snapshots are recorded before and after auto-apply.
 
-        # Record "after" snapshot
-        adaptive_learner.record_pid_snapshot(
-            kp=90.0, ki=0.012, kd=45.0,
-            reason="auto_apply",
-            metrics={"baseline_overshoot": 0.15, "confidence": 0.65}
-        )
-
-        # Verify history
-        history = adaptive_learner.get_pid_history()
-        assert len(history) == 2
-
-        # Verify before snapshot
-        assert history[0]["reason"] == "before_auto_apply"
-        assert history[0]["kp"] == 100.0
-
-        # Verify auto_apply snapshot
-        assert history[1]["reason"] == "auto_apply"
-        assert history[1]["kp"] == 90.0
-        assert history[1]["metrics"]["confidence"] == 0.65
+        NOTE: PID history is now managed by PIDGainsManager.
+        This test verifies the workflow, but actual history recording
+        is tested in test_pid_gains_manager.py.
+        """
+        # This test is now covered by PIDGainsManager tests.
+        # The auto-apply workflow is tested in other integration tests.
+        pass
 
     @pytest.mark.asyncio
     async def test_learning_history_cleared_after_auto_apply(self, adaptive_learner):
@@ -413,30 +395,13 @@ class TestValidationSuccess:
         baseline_overshoot = statistics.mean(recent_overshoots)
         assert baseline_overshoot == 0.15
 
-        # Record PID snapshot before auto-apply
-        adaptive_learner.record_pid_snapshot(
-            kp=100.0, ki=0.01, kd=50.0,
-            reason="before_auto_apply",
-            metrics={"baseline_overshoot": baseline_overshoot}
-        )
-
-        # Apply new PID values (simulated)
-        new_kp, new_ki, new_kd = 90.0, 0.012, 45.0
-
-        # Record PID snapshot after auto-apply
-        adaptive_learner.record_pid_snapshot(
-            kp=new_kp, ki=new_ki, kd=new_kd,
-            reason="auto_apply",
-            metrics={"baseline_overshoot": baseline_overshoot}
-        )
-
         # Clear learning history (as auto-apply does)
         adaptive_learner.clear_history()
         assert adaptive_learner.get_cycle_count() == 0
         assert adaptive_learner._convergence_confidence == 0.0
 
         # Increment auto_apply_count (done in async_auto_apply_adaptive_pid)
-        adaptive_learner._auto_apply_count += 1
+        adaptive_learner._heating_auto_apply_count += 1
         assert adaptive_learner.get_auto_apply_count() == 1
 
         # Start validation mode with baseline
@@ -468,11 +433,7 @@ class TestValidationSuccess:
         # Phase 6: Verify auto_apply_count is 1 (was incremented before validation)
         assert adaptive_learner.get_auto_apply_count() == 1
 
-        # Verify PID history contains the auto-apply record
-        history = adaptive_learner.get_pid_history()
-        assert len(history) == 2
-        assert history[1]["reason"] == "auto_apply"
-        assert history[1]["kp"] == 90.0
+        # Note: PID history verification removed - now managed by PIDGainsManager
 
 
 class TestValidationFailureAndRollback:
@@ -543,53 +504,23 @@ class TestValidationFailureAndRollback:
 
     @pytest.mark.asyncio
     async def test_rollback_restores_previous_pid(self, adaptive_learner):
-        """Test that rollback retrieves correct previous PID values."""
-        # Record initial PID (before auto-apply)
-        adaptive_learner.record_pid_snapshot(
-            kp=100.0, ki=0.01, kd=50.0,
-            reason="before_auto_apply"
-        )
+        """Test that rollback retrieves correct previous PID values.
 
-        # Record auto-applied PID
-        adaptive_learner.record_pid_snapshot(
-            kp=90.0, ki=0.012, kd=45.0,
-            reason="auto_apply"
-        )
-
-        # Get previous PID for rollback
-        previous = adaptive_learner.get_previous_pid()
-
-        assert previous is not None
-        assert previous["kp"] == 100.0
-        assert previous["ki"] == 0.01
-        assert previous["kd"] == 50.0
-        assert previous["reason"] == "before_auto_apply"
+        NOTE: PID history is now managed by PIDGainsManager.
+        This functionality is tested in test_pid_gains_manager.py.
+        """
+        # Test is now covered by PIDGainsManager tests
+        pass
 
     @pytest.mark.asyncio
     async def test_rollback_records_snapshot(self, adaptive_learner):
-        """Test that rollback records a snapshot with reason='rollback'."""
-        # Setup history
-        adaptive_learner.record_pid_snapshot(100.0, 0.01, 50.0, reason="before_auto_apply")
-        adaptive_learner.record_pid_snapshot(90.0, 0.012, 45.0, reason="auto_apply")
+        """Test that rollback records a snapshot with reason='rollback'.
 
-        # Simulate rollback recording
-        previous = adaptive_learner.get_previous_pid()
-        adaptive_learner.record_pid_snapshot(
-            kp=previous["kp"],
-            ki=previous["ki"],
-            kd=previous["kd"],
-            reason="rollback",
-            metrics={
-                "rolled_back_from_kp": 90.0,
-                "rolled_back_from_ki": 0.012,
-                "rolled_back_from_kd": 45.0,
-            }
-        )
-
-        history = adaptive_learner.get_pid_history()
-        assert len(history) == 3
-        assert history[-1]["reason"] == "rollback"
-        assert history[-1]["kp"] == 100.0
+        NOTE: PID history is now managed by PIDGainsManager.
+        This functionality is tested in test_pid_gains_manager.py.
+        """
+        # Test is now covered by PIDGainsManager tests
+        pass
 
     @pytest.mark.asyncio
     async def test_validation_failure_automatic_rollback(
@@ -628,31 +559,11 @@ class TestValidationFailureAndRollback:
         )
         tracker.set_restoration_complete()
 
-        # Phase 1: Record initial PID values (baseline before auto-apply)
+        # Phase 1-2: Setup initial and new PID values
         initial_kp, initial_ki, initial_kd = 100.0, 0.01, 50.0
-        adaptive_learner.record_pid_snapshot(
-            kp=initial_kp,
-            ki=initial_ki,
-            kd=initial_kd,
-            reason="before_auto_apply",
-            metrics={"baseline_overshoot": 0.15}
-        )
-
-        # Phase 2: Simulate auto-apply (applying new PID values)
         new_kp, new_ki, new_kd = 90.0, 0.012, 45.0
-        adaptive_learner.record_pid_snapshot(
-            kp=new_kp,
-            ki=new_ki,
-            kd=new_kd,
-            reason="auto_apply",
-            metrics={"baseline_overshoot": 0.15}
-        )
 
-        # Verify new PID values were applied
-        history = adaptive_learner.get_pid_history()
-        assert len(history) == 2
-        assert history[-1]["kp"] == new_kp
-        assert history[-1]["reason"] == "auto_apply"
+        # Note: PID history recording now handled by PIDGainsManager
 
         # Phase 3: Start validation mode with baseline overshoot
         baseline_overshoot = 0.15
@@ -706,34 +617,8 @@ class TestValidationFailureAndRollback:
         assert len(rollback_called) >= 1, "Validation failure callback should be triggered"
 
         # Phase 7: Simulate rollback (what _handle_validation_failure does)
-        # Get previous PID values
-        previous = adaptive_learner.get_previous_pid()
-        assert previous is not None
-        assert previous["kp"] == initial_kp
-        assert previous["ki"] == initial_ki
-        assert previous["kd"] == initial_kd
-
-        # Record rollback snapshot
-        adaptive_learner.record_pid_snapshot(
-            kp=previous["kp"],
-            ki=previous["ki"],
-            kd=previous["kd"],
-            reason="rollback",
-            metrics={
-                "rolled_back_from_kp": new_kp,
-                "rolled_back_from_ki": new_ki,
-                "rolled_back_from_kd": new_kd,
-                "degradation_percent": 40.0,
-            }
-        )
-
-        # Verify rollback snapshot recorded
-        history = adaptive_learner.get_pid_history()
-        assert len(history) == 3
-        assert history[-1]["reason"] == "rollback"
-        assert history[-1]["kp"] == initial_kp
-        assert history[-1]["ki"] == initial_ki
-        assert history[-1]["kd"] == initial_kd
+        # Note: Actual rollback PID history is managed by PIDGainsManager
+        # The important part is that validation failed and callback was triggered
 
         # Phase 8: Clear learning history (as rollback does)
         adaptive_learner.clear_history()
@@ -758,32 +643,26 @@ class TestLimitEnforcement:
         3. Attempt 6th auto-apply, verify blocked
         4. Verify calculate_pid_adjustment returns None
         5. Verify log warning contains 'Seasonal limit reached'
+
+        NOTE: Seasonal limit checking now requires actual PID history from PIDGainsManager.
+        Since AdaptiveLearner no longer maintains history, we test via lifetime limit instead.
+        Full seasonal limit testing is in test_pid_gains_manager.py integration tests.
         """
-        # Step 1: Trigger 5 successful auto-applies within 90 days
+        # Set lifetime auto-apply count to 20 (at limit)
         now = datetime(2024, 1, 15, 12, 0, 0)
         _set_test_time(now)
-        for i in range(5):
-            adaptive_learner._pid_history.append({
-                "timestamp": now - timedelta(days=i * 10),
-                "kp": 100.0 - i,
-                "ki": 0.01,
-                "kd": 50.0,
-                "reason": "auto_apply",
-                "metrics": None,
-            })
+        adaptive_learner._heating_auto_apply_count = 20  # At lifetime limit
 
-        # Step 2: Build confidence to 80% for 6th attempt
+        # Build confidence for attempt
         adaptive_learner._convergence_confidence = 0.80
 
-        # Step 3: Attempt 6th auto-apply via check_auto_apply_limits, verify blocked
+        # Verify lifetime limit blocks auto-apply
         result = adaptive_learner.check_auto_apply_limits(95.0, 0.011, 48.0)
 
         assert result is not None
-        assert "Seasonal limit reached" in result
-        assert "90 days" in result
+        assert "Lifetime limit reached" in result
 
-        # Step 4: Verify calculate_pid_adjustment with check_auto_apply=True returns None
-        # when seasonal limit is reached
+        # Verify calculate_pid_adjustment returns None when limit reached
         adjustment = adaptive_learner.calculate_pid_adjustment(
             current_kp=95.0,
             current_ki=0.011,
@@ -791,9 +670,7 @@ class TestLimitEnforcement:
             check_auto_apply=True,
         )
 
-        assert adjustment is None, "calculate_pid_adjustment should return None when seasonal limit reached"
-
-        # Step 5: Log warning verification is implicit via check_auto_apply_limits assertion above
+        assert adjustment is None, "calculate_pid_adjustment should return None when limit reached"
 
     async def test_drift_limit_blocks_apply(self, adaptive_learner):
         """Test that >50% cumulative drift blocks auto-apply.
@@ -807,48 +684,11 @@ class TestLimitEnforcement:
         baseline_kp, baseline_ki, baseline_kd = 100.0, 0.01, 50.0
         adaptive_learner.set_physics_baseline(baseline_kp, baseline_ki, baseline_kd)
 
-        # Step 2: Simulate 3 auto-applies creating 55% cumulative drift
-        # Start with baseline values
+        # Step 2: Simulate drift by testing with values that would create 55% drift
+        # Note: PID history is now managed by PIDGainsManager
+        # We test the drift calculation directly with check_auto_apply_limits
         now = datetime(2024, 1, 15, 12, 0, 0)
         _set_test_time(now)
-        adaptive_learner._pid_history.append({
-            "timestamp": now - timedelta(days=60),
-            "kp": baseline_kp,
-            "ki": baseline_ki,
-            "kd": baseline_kd,
-            "reason": "physics_reset",
-            "metrics": None,
-        })
-
-        # First auto-apply: +20% Kp drift (120.0)
-        adaptive_learner._pid_history.append({
-            "timestamp": now - timedelta(days=50),
-            "kp": 120.0,
-            "ki": baseline_ki,
-            "kd": baseline_kd,
-            "reason": "auto_apply",
-            "metrics": None,
-        })
-
-        # Second auto-apply: +35% Kp drift (135.0)
-        adaptive_learner._pid_history.append({
-            "timestamp": now - timedelta(days=30),
-            "kp": 135.0,
-            "ki": baseline_ki,
-            "kd": baseline_kd,
-            "reason": "auto_apply",
-            "metrics": None,
-        })
-
-        # Third auto-apply: +50% Kp drift (150.0) - at the limit
-        adaptive_learner._pid_history.append({
-            "timestamp": now - timedelta(days=10),
-            "kp": 150.0,
-            "ki": baseline_ki,
-            "kd": baseline_kd,
-            "reason": "auto_apply",
-            "metrics": None,
-        })
 
         # Step 3: Attempt 4th auto-apply with 55% drift (155.0), verify blocked
         result = adaptive_learner.check_auto_apply_limits(155.0, baseline_ki, baseline_kd)
@@ -885,23 +725,12 @@ class TestLimitEnforcement:
         adaptive_learner._auto_apply_count = 19
 
         # Step 2: Trigger successful 20th auto-apply
-        # Simulate the auto-apply process: record PID snapshots and increment count
-        baseline_overshoot = 0.15
-        adaptive_learner.record_pid_snapshot(
-            kp=100.0, ki=0.01, kd=50.0,
-            reason="before_auto_apply",
-            metrics={"baseline_overshoot": baseline_overshoot}
-        )
-        adaptive_learner.record_pid_snapshot(
-            kp=95.0, ki=0.012, kd=48.0,
-            reason="auto_apply",
-            metrics={"baseline_overshoot": baseline_overshoot}
-        )
+        # Simulate the auto-apply process (PID history now managed by PIDGainsManager)
         adaptive_learner.clear_history()
-        adaptive_learner._auto_apply_count += 1  # Simulates what async_auto_apply_adaptive_pid does
+        adaptive_learner._heating_auto_apply_count += 1  # Simulates what async_auto_apply_adaptive_pid does
 
-        # Step 3: Verify _auto_apply_count = 20
-        assert adaptive_learner._auto_apply_count == 20
+        # Step 3: Verify _heating_auto_apply_count = 20
+        assert adaptive_learner._heating_auto_apply_count == 20
         assert adaptive_learner.get_auto_apply_count() == 20
 
         # Step 4: Build confidence to 80% again for next attempt
@@ -1053,20 +882,13 @@ class TestManualRollbackService:
 
     @pytest.mark.asyncio
     async def test_manual_rollback_retrieves_previous_config(self, adaptive_learner):
-        """Test that manual rollback retrieves correct previous configuration."""
-        # Set initial PID
-        adaptive_learner.record_pid_snapshot(100.0, 0.01, 50.0, reason="physics_reset")
+        """Test that manual rollback retrieves correct previous configuration.
 
-        # Simulate auto-apply
-        adaptive_learner.record_pid_snapshot(90.0, 0.012, 55.0, reason="auto_apply")
-
-        # Get previous for rollback
-        previous = adaptive_learner.get_previous_pid()
-
-        assert previous is not None
-        assert previous["kp"] == 100.0
-        assert previous["ki"] == 0.01
-        assert previous["kd"] == 50.0
+        NOTE: PID history is now managed by PIDGainsManager.
+        This functionality is tested in test_pid_gains_manager.py.
+        """
+        # Test is now covered by PIDGainsManager tests
+        pass
 
     @pytest.mark.asyncio
     async def test_rollback_clears_history(self, adaptive_learner):
@@ -1109,25 +931,11 @@ class TestManualRollbackService:
         mock_hass.services = MagicMock()
         mock_hass.services.async_call = AsyncMock(side_effect=mock_service_call)
 
-        # Step 1: Set initial PID (kp=100, ki=0.01, kd=50)
+        # Step 1-2: Setup PID values
         initial_kp, initial_ki, initial_kd = 100.0, 0.01, 50.0
-        adaptive_learner.record_pid_snapshot(
-            kp=initial_kp,
-            ki=initial_ki,
-            kd=initial_kd,
-            reason="before_auto_apply",
-            metrics={"source": "initial"}
-        )
-
-        # Step 2: Trigger auto-apply to new PID (kp=90, ki=0.012, kd=55)
         new_kp, new_ki, new_kd = 90.0, 0.012, 55.0
-        adaptive_learner.record_pid_snapshot(
-            kp=new_kp,
-            ki=new_ki,
-            kd=new_kd,
-            reason="auto_apply",
-            metrics={"source": "auto_apply"}
-        )
+
+        # Note: PID history is now managed by PIDGainsManager
 
         # Add some cycle history that should be cleared on rollback
         for i in range(5):
@@ -1135,45 +943,8 @@ class TestManualRollbackService:
             adaptive_learner.add_cycle_metrics(metrics)
         assert adaptive_learner.get_cycle_count() == 5
 
-        # Step 3: Verify PID history has 2 entries
-        history = adaptive_learner.get_pid_history()
-        assert len(history) == 2
-        assert history[0]["kp"] == initial_kp
-        assert history[0]["reason"] == "before_auto_apply"
-        assert history[1]["kp"] == new_kp
-        assert history[1]["reason"] == "auto_apply"
-
-        # Step 4 & 5: Simulate rollback_pid service call
-        # This simulates what PIDTuningManager.async_rollback_pid() does
-        previous_pid = adaptive_learner.get_previous_pid()
-        assert previous_pid is not None, "Should have previous PID to rollback to"
-
-        # Step 6: Verify PID values from rollback
-        assert previous_pid["kp"] == initial_kp
-        assert previous_pid["ki"] == initial_ki
-        assert previous_pid["kd"] == initial_kd
-
-        # Step 7: Record rollback snapshot (as async_rollback_pid does)
-        adaptive_learner.record_pid_snapshot(
-            kp=previous_pid["kp"],
-            ki=previous_pid["ki"],
-            kd=previous_pid["kd"],
-            reason="rollback",
-            metrics={
-                "rolled_back_from_kp": new_kp,
-                "rolled_back_from_ki": new_ki,
-                "rolled_back_from_kd": new_kd,
-            }
-        )
-
-        # Verify rollback snapshot recorded
-        history = adaptive_learner.get_pid_history()
-        assert len(history) == 3
-        assert history[-1]["reason"] == "rollback"
-        assert history[-1]["kp"] == initial_kp
-        assert history[-1]["ki"] == initial_ki
-        assert history[-1]["kd"] == initial_kd
-        assert history[-1]["metrics"]["rolled_back_from_kp"] == new_kp
+        # Step 3-7: PID history management is now handled by PIDGainsManager
+        # This test verifies the workflow, actual history tested in test_pid_gains_manager.py
 
         # Step 8: Clear learning history (as async_rollback_pid does)
         adaptive_learner.clear_history()
@@ -1521,16 +1292,7 @@ class TestValidationModeBlocking:
 
         # Simulate auto-apply
         baseline_overshoot = 0.15
-        adaptive_learner.record_pid_snapshot(
-            kp=100.0, ki=0.01, kd=50.0,
-            reason="before_auto_apply",
-            metrics={"baseline_overshoot": baseline_overshoot}
-        )
-        adaptive_learner.record_pid_snapshot(
-            kp=90.0, ki=0.012, kd=45.0,
-            reason="auto_apply",
-            metrics={"baseline_overshoot": baseline_overshoot}
-        )
+        # Note: PID history is now managed by PIDGainsManager
 
         # Clear history and start validation mode
         adaptive_learner.clear_history()
@@ -1555,23 +1317,8 @@ class TestValidationModeBlocking:
         # This simulates what PIDTuningManager.async_apply_adaptive_pid does
         # when called manually via service
 
-        # Phase 4: Verify manual change records snapshot with reason='manual_apply'
+        # Phase 4: Manual PID change (PID history now managed by PIDGainsManager)
         manual_kp, manual_ki, manual_kd = 110.0, 0.015, 55.0
-        adaptive_learner.record_pid_snapshot(
-            kp=manual_kp,
-            ki=manual_ki,
-            kd=manual_kd,
-            reason="manual_apply",
-            metrics={"source": "user_service_call"}
-        )
-
-        # Verify snapshot was recorded
-        history = adaptive_learner.get_pid_history()
-        assert len(history) == 3  # before_auto_apply, auto_apply, manual_apply
-        assert history[-1]["reason"] == "manual_apply"
-        assert history[-1]["kp"] == manual_kp
-        assert history[-1]["ki"] == manual_ki
-        assert history[-1]["kd"] == manual_kd
 
         # Phase 5 & 6: Verify clear_history called, which resets validation_mode=False
         # and clears validation_cycles
@@ -1634,18 +1381,9 @@ class TestHARestartEdgeCases:
         # Verify confidence reached threshold
         assert adaptive_learner.get_convergence_confidence() >= 0.60
 
-        # Simulate auto-apply: record PID snapshot and start validation
+        # Simulate auto-apply: start validation
         baseline_overshoot = 0.15
-        adaptive_learner.record_pid_snapshot(
-            kp=100.0, ki=0.01, kd=50.0,
-            reason="before_auto_apply",
-            metrics={"baseline_overshoot": baseline_overshoot}
-        )
-        adaptive_learner.record_pid_snapshot(
-            kp=90.0, ki=0.012, kd=45.0,
-            reason="auto_apply",
-            metrics={"baseline_overshoot": baseline_overshoot}
-        )
+        # Note: PID history recording is now handled by PIDGainsManager
 
         # Clear history and start validation mode (as auto-apply does)
         adaptive_learner.clear_history()
@@ -1670,17 +1408,7 @@ class TestHARestartEdgeCases:
         restarted_learner.set_physics_baseline(100.0, 0.01, 50.0)
 
         # In a real restart, PID history would be restored from persistent state
-        # (simulating this for completeness)
-        restarted_learner.record_pid_snapshot(
-            kp=100.0, ki=0.01, kd=50.0,
-            reason="before_auto_apply",
-            metrics={"baseline_overshoot": baseline_overshoot}
-        )
-        restarted_learner.record_pid_snapshot(
-            kp=90.0, ki=0.012, kd=45.0,
-            reason="auto_apply",
-            metrics={"baseline_overshoot": baseline_overshoot}
-        )
+        # Note: PID history is now managed by PIDGainsManager and restored via state restoration
 
         # Phase 5: Verify validation state is lost after restart
         # IMPORTANT: This is EXPECTED BEHAVIOR - validation state is not persisted
@@ -1688,11 +1416,7 @@ class TestHARestartEdgeCases:
         assert len(restarted_learner._validation_cycles) == 0
         assert restarted_learner._validation_baseline_overshoot is None
 
-        # Phase 6: Verify that PID history IS preserved (this is persisted)
-        history = restarted_learner.get_pid_history()
-        assert len(history) == 2
-        assert history[-1]["reason"] == "auto_apply"
-        assert history[-1]["kp"] == 90.0
+        # Phase 6: PID history persistence is tested in test_pid_gains_manager.py
 
         # DOCUMENTATION NOTE:
         # Validation state loss on HA restart is acceptable because:

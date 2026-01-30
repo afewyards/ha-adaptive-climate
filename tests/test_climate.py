@@ -2443,7 +2443,7 @@ class TestPIDControllerHeatingTypeTolerance:
         adaptive_learner._cycles_since_last_adjustment = 12
 
         # Verify initial state: auto_apply_count should be 0
-        assert adaptive_learner._auto_apply_count == 0
+        assert adaptive_learner._heating_auto_apply_count == 0
         assert pid_controller._auto_apply_count == 0
 
         # Create mock coordinator that returns our adaptive_learner
@@ -2471,7 +2471,7 @@ class TestPIDControllerHeatingTypeTolerance:
             }
         }
 
-        # Create PIDTuningManager with mocked callbacks
+        # Create PIDTuningManager with mocked callbacks (no set_* callbacks - handled by PIDGainsManager)
         pid_tuning_manager = PIDTuningManager(
             thermostat=mock_thermostat,
             pid_controller=pid_controller,
@@ -2479,10 +2479,6 @@ class TestPIDControllerHeatingTypeTolerance:
             get_ki=lambda: 0.001,
             get_kd=lambda: 50.0,
             get_ke=lambda: 0.0,
-            set_kp=Mock(),
-            set_ki=Mock(),
-            set_kd=Mock(),
-            set_ke=Mock(),
             get_area_m2=lambda: 20.0,
             get_ceiling_height=lambda: 2.5,
             get_window_area_m2=lambda: 2.0,
@@ -2503,9 +2499,9 @@ class TestPIDControllerHeatingTypeTolerance:
         # Assert - Verify auto-apply was successful
         assert result["applied"] == True, f"Auto-apply should succeed, got: {result.get('reason')}"
 
-        # Assert - Verify AdaptiveLearner._auto_apply_count was incremented
-        assert adaptive_learner._auto_apply_count == 1, \
-            f"AdaptiveLearner._auto_apply_count should be 1 after first auto-apply, got {adaptive_learner._auto_apply_count}"
+        # Assert - Verify AdaptiveLearner._heating_auto_apply_count was incremented
+        assert adaptive_learner._heating_auto_apply_count == 1, \
+            f"AdaptiveLearner._heating_auto_apply_count should be 1 after first auto-apply, got {adaptive_learner._heating_auto_apply_count}"
 
         # Assert - Verify PID controller's _auto_apply_count was synced
         assert pid_controller._auto_apply_count == 1, \

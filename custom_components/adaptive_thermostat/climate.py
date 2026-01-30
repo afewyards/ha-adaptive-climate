@@ -315,6 +315,9 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
         # Setpoint boost manager (initialized in async_added_to_hass when hass is available)
         self._setpoint_boost_manager: SetpointBoostManager | None = None
 
+        # PID gains manager (initialized in async_added_to_hass when hass is available)
+        self._gains_manager = None
+
         # Heater control failure tracking (managed by HeaterController when available)
         self._heater_control_failed = False
         self._last_heater_error: str | None = None
@@ -367,13 +370,6 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
 
         # Initialize KeLearner (will be configured properly in async_added_to_hass)
         self._ke_learner: Optional[KeLearner] = None
-
-        # Initialize dual gain sets for mode-specific PID tuning (heating and cooling)
-        # These will be restored from persistence or initialized from physics-based values
-        # _heating_gains: PID gains for HEAT mode
-        # _cooling_gains: PID gains for COOL mode (lazy init on first COOL mode)
-        self._heating_gains: Optional[const.PIDGains] = None
-        self._cooling_gains: Optional[const.PIDGains] = None
 
         # Initialize PreheatLearner (will be configured properly in async_added_to_hass)
         self._preheat_learner: Optional[PreheatLearner] = None
@@ -1385,19 +1381,6 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
     def _set_ke(self, value: float) -> None:
         """Set the Ke value."""
         self._ke = value
-
-    # Setter callbacks for PIDTuningManager
-    def _set_kp(self, value: float) -> None:
-        """Set the Kp value."""
-        self._kp = value
-
-    def _set_ki(self, value: float) -> None:
-        """Set the Ki value."""
-        self._ki = value
-
-    def _set_kd(self, value: float) -> None:
-        """Set the Kd value."""
-        self._kd = value
 
     # Setter callbacks for ControlOutputManager
     def _set_control_output(self, value: float) -> None:

@@ -51,6 +51,44 @@ class ThermostatState(StrEnum):
     PREHEATING = "preheating"
     SETTLING = "settling"
 
+
+class PIDChangeActor(StrEnum):
+    """Actor that initiated a PID gain change."""
+    USER = "user"          # Manual action (service call, UI, reset button)
+    SYSTEM = "system"      # Startup, restore, init
+    LEARNING = "learning"  # Adaptive tuning, auto-apply, undershoot boost
+
+
+class PIDChangeReason(StrEnum):
+    """Reason for a PID gain change."""
+    PHYSICS_INIT = "physics_init"          # climate_init.py setup
+    PHYSICS_RESET = "physics_reset"        # User reset to physics
+    ADAPTIVE_APPLY = "adaptive_apply"      # Manual apply
+    AUTO_APPLY = "auto_apply"              # Validation manager
+    ROLLBACK = "rollback"
+    KE_PHYSICS = "ke_physics_enable"
+    KE_LEARNING = "ke_learning_apply"
+    UNDERSHOOT_BOOST = "undershoot_ki_boost"
+    CHRONIC_APPROACH = "chronic_approach_ki_boost"  # Future
+    SERVICE_CALL = "service_call"          # Manual set_pid service
+    RESTORE = "restore"
+
+
+# Mapping of PID change reasons to their initiating actor
+REASON_TO_ACTOR: dict[PIDChangeReason, PIDChangeActor] = {
+    PIDChangeReason.PHYSICS_INIT: PIDChangeActor.SYSTEM,
+    PIDChangeReason.PHYSICS_RESET: PIDChangeActor.USER,
+    PIDChangeReason.ADAPTIVE_APPLY: PIDChangeActor.USER,
+    PIDChangeReason.AUTO_APPLY: PIDChangeActor.LEARNING,
+    PIDChangeReason.ROLLBACK: PIDChangeActor.USER,
+    PIDChangeReason.KE_PHYSICS: PIDChangeActor.SYSTEM,
+    PIDChangeReason.KE_LEARNING: PIDChangeActor.LEARNING,
+    PIDChangeReason.UNDERSHOOT_BOOST: PIDChangeActor.LEARNING,
+    PIDChangeReason.CHRONIC_APPROACH: PIDChangeActor.LEARNING,
+    PIDChangeReason.SERVICE_CALL: PIDChangeActor.USER,
+    PIDChangeReason.RESTORE: PIDChangeActor.SYSTEM,
+}
+
 DEFAULT_NAME = "Adaptive Thermostat"
 DEFAULT_OUTPUT_PRECISION = 1
 DEFAULT_OUTPUT_MIN = 0
@@ -148,6 +186,7 @@ class PIDGains:
     kp: float
     ki: float
     kd: float
+    ke: float = 0.0
 
 # Heating type characteristics lookup table
 # Used by adaptive/physics.py for PID initialization

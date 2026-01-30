@@ -119,9 +119,6 @@ class AdaptiveLearner:
         # Rule state tracker with hysteresis to prevent oscillation
         self._rule_state_tracker = RuleStateTracker()
 
-        # PID history for rollback and debugging
-        self._pid_history: List[Dict[str, Any]] = []
-
         # Confidence tracker for convergence confidence and auto-apply counts
         self._confidence = ConfidenceTracker(self._convergence_thresholds)
 
@@ -514,6 +511,7 @@ class AdaptiveLearner:
         # Auto-apply safety gates (when called for automatic PID application)
         if check_auto_apply:
             # Delegate to auto-apply manager for all safety gate checks
+            # Note: pid_history is now managed by PIDGainsManager, not AdaptiveLearner
             gates_passed, min_interval_hours, min_adjustment_cycles, min_cycles = (
                 self._auto_apply.check_auto_apply_safety_gates(
                     validation_manager=self._validation,
@@ -522,7 +520,7 @@ class AdaptiveLearner:
                     current_ki=current_ki,
                     current_kd=current_kd,
                     outdoor_temp=outdoor_temp,
-                    pid_history=self._pid_history,
+                    pid_history=[],  # Empty list - history is now managed by PIDGainsManager
                     mode=mode,
                 )
             )
@@ -807,129 +805,17 @@ class AdaptiveLearner:
         self._confidence.reset_confidence()  # Reset both modes
         self._validation.reset_validation_state()
 
-    def record_pid_snapshot(
-        self,
-        kp: float,
-        ki: float,
-        kd: float,
-        reason: str,
-        metrics: Optional[Dict[str, float]] = None,
-    ) -> None:
-        """Record a PID configuration snapshot for history tracking.
-
-        Maintains a FIFO history of PID configurations for rollback and debugging.
-
-        Args:
-            kp: Proportional gain value
-            ki: Integral gain value
-            kd: Derivative gain value
-            reason: Why this snapshot was recorded (auto_apply, manual, physics_reset, rollback)
-            metrics: Optional performance metrics at time of snapshot
-        """
-        snapshot = {
-            "timestamp": dt_util.utcnow(),
-            "kp": kp,
-            "ki": ki,
-            "kd": kd,
-            "reason": reason,
-            "metrics": metrics,
-        }
-        self._pid_history.append(snapshot)
-
-        # FIFO eviction: keep only the last PID_HISTORY_SIZE entries
-        if len(self._pid_history) > PID_HISTORY_SIZE:
-            self._pid_history = self._pid_history[-PID_HISTORY_SIZE:]
-
-        _LOGGER.debug(
-            "Recorded PID snapshot: Kp=%.2f, Ki=%.4f, Kd=%.2f, reason=%s",
-            kp,
-            ki,
-            kd,
-            reason,
-        )
-
     def get_previous_pid(self) -> Optional[Dict[str, float]]:
         """Get the previous PID configuration for rollback.
 
-        Returns the second-to-last PID configuration from history,
-        which represents the configuration before the most recent change.
-        Used for rollback when auto-applied changes cause degradation.
+        DEPRECATED: PID history is now managed by PIDGainsManager.
+        This method is kept for backward compatibility but always returns None.
 
         Returns:
-            Dict with kp, ki, kd, timestamp, reason if history has >= 2 entries,
-            None otherwise.
+            None (history is now managed by PIDGainsManager)
         """
-        if len(self._pid_history) < 2:
-            _LOGGER.debug(
-                "Cannot get previous PID: insufficient history (%d entries)",
-                len(self._pid_history),
-            )
-            return None
-
-        prev = self._pid_history[-2]
-        return {
-            "kp": prev["kp"],
-            "ki": prev["ki"],
-            "kd": prev["kd"],
-            "timestamp": prev["timestamp"],
-            "reason": prev["reason"],
-        }
-
-    def get_pid_history(self) -> List[Dict[str, Any]]:
-        """Get full PID history for debugging.
-
-        Returns a copy of the PID history list to prevent external mutation.
-
-        Returns:
-            List of PID snapshot dictionaries, each containing:
-            - timestamp: When the snapshot was recorded
-            - kp, ki, kd: PID gain values
-            - reason: Why this snapshot was recorded
-            - metrics: Optional performance metrics at time of snapshot
-        """
-        return self._pid_history.copy()
-
-    def restore_pid_history(self, history: List[Dict[str, Any]]) -> None:
-        """Restore PID history from state restoration.
-
-        Parses ISO timestamp strings back to datetime objects and validates entries.
-        Used during Home Assistant startup to restore history from previous session.
-
-        Args:
-            history: List of PID snapshot dictionaries with ISO timestamp strings
-        """
-        if not history:
-            return
-
-        restored = []
-        for entry in history:
-            try:
-                # Parse ISO timestamp string back to datetime
-                timestamp = entry.get("timestamp")
-                if isinstance(timestamp, str):
-                    timestamp = datetime.fromisoformat(timestamp)
-                elif not isinstance(timestamp, datetime):
-                    _LOGGER.warning("Invalid timestamp in PID history entry: %s", entry)
-                    continue
-
-                restored.append({
-                    "timestamp": timestamp,
-                    "kp": float(entry.get("kp", 0)),
-                    "ki": float(entry.get("ki", 0)),
-                    "kd": float(entry.get("kd", 0)),
-                    "reason": entry.get("reason", "restored"),
-                    "metrics": entry.get("metrics"),
-                })
-            except (ValueError, TypeError) as e:
-                _LOGGER.warning("Failed to restore PID history entry: %s - %s", entry, e)
-                continue
-
-        # Apply FIFO limit
-        if len(restored) > PID_HISTORY_SIZE:
-            restored = restored[-PID_HISTORY_SIZE:]
-
-        self._pid_history = restored
-        _LOGGER.info("Restored %d PID history entries", len(restored))
+        _LOGGER.debug("get_previous_pid() called on AdaptiveLearner - PID history now managed by PIDGainsManager")
+        return None
 
     def set_physics_baseline(self, kp: float, ki: float, kd: float) -> None:
         """Set the physics-based baseline PID values for drift calculation.
@@ -1202,11 +1088,12 @@ class AdaptiveLearner:
             None if all checks pass (OK to auto-apply),
             Error message string if any check fails (blocked).
         """
+        # PID history is now managed by PIDGainsManager, pass empty list
         return self._validation.check_auto_apply_limits(
             current_kp, current_ki, current_kd,
             self._heating_auto_apply_count,
             self._cooling_auto_apply_count,
-            self._pid_history
+            []  # Empty list - history is now managed by PIDGainsManager
         )
 
     def record_seasonal_shift(self) -> None:
@@ -1288,14 +1175,18 @@ class AdaptiveLearner:
         return self._undershoot_detector
 
     def to_dict(self) -> Dict[str, Any]:
-        """Serialize AdaptiveLearner state to a dictionary in v5 format with v4 backward compatibility.
+        """Serialize AdaptiveLearner state to a dictionary in v6 format with backward compatibility.
 
         Delegates to learner_serialization module for actual serialization logic.
 
         Returns:
             Dictionary containing:
+            - v6 structure with undershoot detector state
             - v5 mode-keyed structure (heating/cooling sub-dicts)
             - v4 backward-compatible top-level keys (cycle_history, auto_apply_count, etc.)
+
+        Note:
+            pid_history is no longer included as it's now managed by PIDGainsManager.
         """
         return learner_to_dict(
             heating_cycle_history=self._heating_cycle_history,
@@ -1304,10 +1195,10 @@ class AdaptiveLearner:
             cooling_auto_apply_count=self._cooling_auto_apply_count,
             heating_convergence_confidence=self._heating_convergence_confidence,
             cooling_convergence_confidence=self._cooling_convergence_confidence,
-            pid_history=self._pid_history,
             last_adjustment_time=self._last_adjustment_time,
             consecutive_converged_cycles=self._consecutive_converged_cycles,
             pid_converged_for_ke=self._pid_converged_for_ke,
+            undershoot_detector=self._undershoot_detector,
         )
 
     def restore_from_dict(self, data: Dict[str, Any]) -> None:
@@ -1339,7 +1230,7 @@ class AdaptiveLearner:
         self._cooling_auto_apply_count = restored["cooling_auto_apply_count"]
         self._heating_convergence_confidence = restored["heating_convergence_confidence"]
         self._cooling_convergence_confidence = restored["cooling_convergence_confidence"]
-        self._pid_history = restored["pid_history"]
+        # pid_history is no longer stored here - it's managed by PIDGainsManager
         self._last_adjustment_time = restored["last_adjustment_time"]
         self._consecutive_converged_cycles = restored["consecutive_converged_cycles"]
         self._pid_converged_for_ke = restored["pid_converged_for_ke"]

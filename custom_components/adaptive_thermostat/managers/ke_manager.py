@@ -15,6 +15,7 @@ except ImportError:
 
 from ..adaptive.ke_learning import KeLearner
 from .. import const
+from ..const import PIDChangeReason
 
 if TYPE_CHECKING:
     from ..climate import AdaptiveThermostat
@@ -178,20 +179,11 @@ class KeManager:
                 self._ke_learner.enable()
                 physics_ke = self._ke_learner.current_ke
                 if physics_ke > 0:
-                    self._set_ke(physics_ke)
-                    pid_controller = self._get_pid_controller()
-                    if pid_controller:
-                        pid_controller.set_pid_param(ke=physics_ke)
-                        # Record to pid_history
-                        adaptive_learner = getattr(self._thermostat, "_adaptive_learner", None)
-                        if adaptive_learner:
-                            adaptive_learner.record_pid_snapshot(
-                                kp=pid_controller.kp,
-                                ki=pid_controller.ki,
-                                kd=pid_controller.kd,
-                                ke=physics_ke,
-                                reason="ke_physics_enable",
-                            )
+                    # Use PIDGainsManager to set Ke and record to history
+                    self._thermostat._gains_manager.set_gains(
+                        PIDChangeReason.KE_PHYSICS,
+                        ke=physics_ke,
+                    )
                     _LOGGER.info(
                         "%s: PID converged - enabled Ke learning and applied physics-based Ke=%.3f",
                         self._thermostat.entity_id,
@@ -269,23 +261,13 @@ class KeManager:
 
         # Apply the recommended Ke value
         old_ke = self._get_ke()
-        self._set_ke(recommendation)
         self._ke_learner.apply_ke_adjustment(recommendation)
 
-        # Update PID controller
-        pid_controller = self._get_pid_controller()
-        pid_controller.set_pid_param(ke=recommendation)
-
-        # Record to pid_history
-        adaptive_learner = getattr(self._thermostat, "_adaptive_learner", None)
-        if adaptive_learner:
-            adaptive_learner.record_pid_snapshot(
-                kp=pid_controller.kp,
-                ki=pid_controller.ki,
-                kd=pid_controller.kd,
-                ke=recommendation,
-                reason="ke_learning_apply",
-            )
+        # Use PIDGainsManager to set Ke and record to history
+        self._thermostat._gains_manager.set_gains(
+            PIDChangeReason.KE_LEARNING,
+            ke=recommendation,
+        )
 
         _LOGGER.info(
             "%s: Applied adaptive Ke: %.2f (was %.2f)",

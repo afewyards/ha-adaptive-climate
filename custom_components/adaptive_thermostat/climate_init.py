@@ -22,11 +22,13 @@ from .managers import (
     TemperatureManager,
     CycleTrackerManager,
 )
+from .managers.pid_gains_manager import PIDGainsManager
 from .managers.events import (
     CycleEventDispatcher,
     CycleEventType,
 )
 from . import DOMAIN
+from .const import PIDChangeReason, PIDGains
 
 if TYPE_CHECKING:
     from .climate import AdaptiveThermostat
@@ -210,7 +212,7 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
             # Restore KeLearner from storage
             thermostat._ke_learner = KeLearner.from_dict(stored_ke_data)
             thermostat._ke = thermostat._ke_learner.current_ke
-            thermostat._pid_controller.set_pid_param(ke=thermostat._ke)
+            # Note: PID controller will be updated via PIDGainsManager after it's initialized
             _LOGGER.info(
                 "%s: KeLearner restored from storage (Ke=%.4f, enabled=%s, observations=%d)",
                 thermostat.entity_id, thermostat._ke, thermostat._ke_learner.enabled, thermostat._ke_learner.observation_count
@@ -227,8 +229,7 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
             # Apply physics-based Ke from startup for accurate PID learning
             thermostat._ke = initial_ke
             thermostat._ke_learner = KeLearner(initial_ke=initial_ke)
-            # PID controller starts with physics-based Ke compensation
-            thermostat._pid_controller.set_pid_param(ke=initial_ke)
+            # Note: PID controller will be updated via PIDGainsManager after it's initialized
             temp_source = "outdoor sensor" if thermostat._ext_sensor_entity_id else "weather entity"
             _LOGGER.info(
                 "%s: Ke initialized from physics using %s (Ke=%.4f) "
@@ -240,6 +241,30 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
             "%s: Ke learning disabled - no outdoor temperature source configured",
             thermostat.entity_id
         )
+
+    # Initialize PID gains manager
+    # Create initial heating gains from current PID values (already set from physics or restored)
+    # Ke will be updated later if outdoor temp source is configured
+    initial_heating_gains = PIDGains(
+        kp=thermostat._kp,
+        ki=thermostat._ki,
+        kd=thermostat._kd,
+        ke=thermostat._ke,
+    )
+
+    # Cooling gains are lazy-initialized on first COOL mode
+    initial_cooling_gains = None
+
+    thermostat._gains_manager = PIDGainsManager(
+        pid_controller=thermostat._pid_controller,
+        initial_heating_gains=initial_heating_gains,
+        initial_cooling_gains=initial_cooling_gains,
+        get_hvac_mode=lambda: thermostat._hvac_mode,
+    )
+    _LOGGER.info(
+        "%s: PID gains manager initialized (Kp=%.4f, Ki=%.5f, Kd=%.3f, Ke=%.4f)",
+        thermostat.entity_id, thermostat._kp, thermostat._ki, thermostat._kd, thermostat._ke
+    )
 
     # Initialize Ke controller (always, even without outdoor sensor)
     thermostat._ke_controller = KeManager(
@@ -272,10 +297,6 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
         get_ki=lambda: thermostat._ki,
         get_kd=lambda: thermostat._kd,
         get_ke=lambda: thermostat._ke,
-        set_kp=thermostat._set_kp,
-        set_ki=thermostat._set_ki,
-        set_kd=thermostat._set_kd,
-        set_ke=thermostat._set_ke,
         get_area_m2=lambda: thermostat._area_m2,
         get_ceiling_height=lambda: thermostat._ceiling_height,
         get_window_area_m2=lambda: thermostat._window_area_m2,
