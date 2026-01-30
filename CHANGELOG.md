@@ -1,6 +1,42 @@
 # CHANGELOG
 
 
+## v0.46.2 (2026-01-30)
+
+### Bug Fixes
+
+- **chronic-approach**: Use PID history for cooldown across restarts
+  ([`31583a4`](https://github.com/afewyards/ha-adaptive-thermostat/commit/31583a4d29815514db7d3c6dc90c1fc9ca9ccc1d))
+
+- **climate**: Pass PID history to detector cooldown checks
+  ([`6bacb4b`](https://github.com/afewyards/ha-adaptive-thermostat/commit/6bacb4bfefd0a6a5332858667356d822aef25eb3))
+
+- **climate**: Remove stale _initial_gains_staging reference in log
+  ([`001b71b`](https://github.com/afewyards/ha-adaptive-thermostat/commit/001b71b27b6a83b581e86f16f25c3996180536c2))
+
+- **learning**: Pass PID history timestamps to detectors
+  ([`6a28b1e`](https://github.com/afewyards/ha-adaptive-thermostat/commit/6a28b1ec4c6497141c3b1208d25a01e0ab529763))
+
+- Add _get_last_adjustment_time_from_history helper to extract last adjustment timestamps from PID
+  history by reason - Update check_undershoot_adjustment to accept pid_history parameter and pass
+  last boost time to undershoot detector - Update check_chronic_approach_adjustment to accept
+  pid_history parameter and pass last boost time to chronic approach detector - Import timezone from
+  datetime module for proper timestamp handling
+
+- **undershoot**: Use PID history for cooldown across restarts
+  ([`da379a8`](https://github.com/afewyards/ha-adaptive-thermostat/commit/da379a88311630e70a0302edc4d3bdaf65a863dc))
+
+### Refactoring
+
+- Create gains_manager in __init__ instead of async_setup_managers
+  ([`c182deb`](https://github.com/afewyards/ha-adaptive-thermostat/commit/c182debc6c523c12d4bded0c6b2a7d856c5a37d9))
+
+- Create _gains_manager immediately after PID controller in __init__ - Remove _initial_gains_staging
+  dict pattern - Simplify _kp/_ki/_kd/_ke properties to always delegate to gains_manager - Update
+  climate_init.py to use gains_manager.set_gains() for Ke - Update MockThermostat in tests to match
+  new pattern
+
+
 ## v0.46.1 (2026-01-30)
 
 ### Bug Fixes
