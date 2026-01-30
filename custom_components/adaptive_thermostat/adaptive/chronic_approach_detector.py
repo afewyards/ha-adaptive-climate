@@ -15,6 +15,7 @@ runaway integral gain.
 """
 import logging
 import time
+from datetime import datetime
 from typing import Optional
 
 from ..const import (
@@ -97,8 +98,14 @@ class ChronicApproachDetector:
 
         return True
 
-    def should_adjust_ki(self) -> bool:
+    def should_adjust_ki(
+        self,
+        last_history_adjustment_utc: Optional[datetime] = None,
+    ) -> bool:
         """Check if pattern is detected and adjustment should be applied.
+
+        Args:
+            last_history_adjustment_utc: Timestamp of last adjustment from PID history (UTC)
 
         Returns:
             True if chronic approach pattern detected and adjustment allowed
@@ -108,7 +115,7 @@ class ChronicApproachDetector:
             return False
 
         # Check if in cooldown
-        if self._is_in_cooldown():
+        if self._is_in_cooldown(last_history_adjustment_utc):
             return False
 
         # Check if applying adjustment would exceed cap
@@ -159,22 +166,41 @@ class ChronicApproachDetector:
 
         return multiplier
 
-    def _is_in_cooldown(self) -> bool:
+    def _is_in_cooldown(
+        self,
+        last_history_adjustment_utc: Optional[datetime] = None,
+    ) -> bool:
         """Check if detector is in cooldown period.
+
+        Args:
+            last_history_adjustment_utc: Timestamp of last adjustment from PID history (UTC)
 
         Returns:
             True if in cooldown, False otherwise
         """
-        if self.last_adjustment_time is None:
-            return False
+        cooldown_seconds = self._get_cooldown_hours() * 3600
 
-        # Cooldown duration is heating-type specific
-        # Use similar pattern to undershoot detection
-        cooldown_hours = self._get_cooldown_hours()
-        cooldown_seconds = cooldown_hours * 3600
+        # Check monotonic (within-session)
+        if self.last_adjustment_time is not None:
+            elapsed = time.monotonic() - self.last_adjustment_time
+            if elapsed < cooldown_seconds:
+                return True
 
-        elapsed = time.monotonic() - self.last_adjustment_time
-        return elapsed < cooldown_seconds
+        # Check history datetime (cross-restart)
+        if last_history_adjustment_utc is not None:
+            from datetime import timezone
+            elapsed = (datetime.now(timezone.utc) - last_history_adjustment_utc).total_seconds()
+            if elapsed < cooldown_seconds:
+                remaining_hours = (cooldown_seconds - elapsed) / 3600.0
+                _LOGGER.debug(
+                    "Chronic approach Ki boost blocked by history cooldown: "
+                    "last boost was %.1fh ago, %.1fh remaining",
+                    elapsed / 3600.0,
+                    remaining_hours,
+                )
+                return True
+
+        return False
 
     def _get_cooldown_hours(self) -> float:
         """Get cooldown duration in hours for this heating type.
@@ -200,10 +226,16 @@ class ChronicApproachDetector:
         """
         return self.cumulative_ki_multiplier
 
-    def is_in_cooldown(self) -> bool:
+    def is_in_cooldown(
+        self,
+        last_history_adjustment_utc: Optional[datetime] = None,
+    ) -> bool:
         """Check if detector is in cooldown period (public API).
+
+        Args:
+            last_history_adjustment_utc: Timestamp of last adjustment from PID history (UTC)
 
         Returns:
             True if in cooldown, False otherwise
         """
-        return self._is_in_cooldown()
+        return self._is_in_cooldown(last_history_adjustment_utc)
