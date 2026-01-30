@@ -144,41 +144,14 @@ class StateRestorer:
             # - Migrating old history format
             thermostat._gains_manager.restore_from_state(old_state)
 
-            # Sync restored gains to thermostat attributes for backward compat
-            current_gains = thermostat._gains_manager.get_gains()
-            thermostat._kp = current_gains.kp
-            thermostat._ki = current_gains.ki
-            thermostat._kd = current_gains.kd
-            thermostat._ke = current_gains.ke
-
+            # Log restored values (access via properties which read from gains_manager)
             _LOGGER.info("%s: Restored PID values via gains_manager - Kp=%.4f, Ki=%.5f, Kd=%.3f, Ke=%s",
                         thermostat.entity_id, thermostat._kp, thermostat._ki, thermostat._kd, thermostat._ke or 0)
         else:
-            # Fallback for backward compat (shouldn't happen since gains_manager is initialized before restore)
-            _LOGGER.warning("%s: gains_manager not available, using fallback restoration", thermostat.entity_id)
-
-            # Restore Kp
-            if old_state.attributes.get('kp') is not None:
-                thermostat._kp = float(old_state.attributes.get('kp'))
-                thermostat._pid_controller.set_pid_param(kp=thermostat._kp)
-
-            # Restore Ki
-            if old_state.attributes.get('ki') is not None:
-                thermostat._ki = float(old_state.attributes.get('ki'))
-                thermostat._pid_controller.set_pid_param(ki=thermostat._ki)
-
-            # Restore Kd
-            if old_state.attributes.get('kd') is not None:
-                thermostat._kd = float(old_state.attributes.get('kd'))
-                thermostat._pid_controller.set_pid_param(kd=thermostat._kd)
-
-            # Restore Ke
-            if old_state.attributes.get('ke') is not None:
-                thermostat._ke = float(old_state.attributes.get('ke'))
-                thermostat._pid_controller.set_pid_param(ke=thermostat._ke)
-
-            _LOGGER.info("%s: Restored PID values (fallback) - Kp=%.4f, Ki=%.5f, Kd=%.3f, Ke=%s",
-                        thermostat.entity_id, thermostat._kp, thermostat._ki, thermostat._kd, thermostat._ke or 0)
+            # This should never happen since gains_manager is initialized in async_setup_managers()
+            # before restore() is called. Log error and skip gain restoration.
+            _LOGGER.error("%s: gains_manager not available during restoration - this indicates an initialization order bug",
+                         thermostat.entity_id)
 
         # Restore outdoor temperature lag state
         if old_state.attributes.get('outdoor_temp_lagged') is not None:

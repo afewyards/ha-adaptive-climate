@@ -211,7 +211,7 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
         if stored_ke_data:
             # Restore KeLearner from storage
             thermostat._ke_learner = KeLearner.from_dict(stored_ke_data)
-            thermostat._ke = thermostat._ke_learner.current_ke
+            thermostat._initial_gains_staging["ke"] = thermostat._ke_learner.current_ke
             # Note: PID controller will be updated via PIDGainsManager after it's initialized
             _LOGGER.info(
                 "%s: KeLearner restored from storage (Ke=%.4f, enabled=%s, observations=%d)",
@@ -227,7 +227,7 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
                 heating_type=thermostat._heating_type,
             )
             # Apply physics-based Ke from startup for accurate PID learning
-            thermostat._ke = initial_ke
+            thermostat._initial_gains_staging["ke"] = initial_ke
             thermostat._ke_learner = KeLearner(initial_ke=initial_ke)
             # Note: PID controller will be updated via PIDGainsManager after it's initialized
             temp_source = "outdoor sensor" if thermostat._ext_sensor_entity_id else "weather entity"
@@ -283,6 +283,7 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
         async_control_heating=thermostat._async_control_heating_internal,
         async_write_ha_state=thermostat._async_write_ha_state_internal,
         get_is_pid_converged=thermostat._is_pid_converged_for_ke,
+        gains_manager=thermostat._gains_manager,
     )
     _LOGGER.info(
         "%s: Ke controller initialized",

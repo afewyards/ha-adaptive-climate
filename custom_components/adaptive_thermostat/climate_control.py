@@ -147,9 +147,6 @@ class ClimateControlMixin:
                                     metrics={"undershoot_amount": undershoot_amount},
                                 )
 
-                                # Update legacy attribute for backward compatibility
-                                self._ki = new_ki
-
                                 # Trigger state save
                                 self.async_write_ha_state()
 
@@ -191,9 +188,6 @@ class ClimateControlMixin:
                                         "consecutive_failures": adaptive_learner.chronic_approach_detector._consecutive_failures,
                                     },
                                 )
-
-                                # Update legacy attribute for backward compatibility
-                                self._ki = new_ki_chronic
 
                                 # Trigger state save
                                 self.async_write_ha_state()

@@ -1264,3 +1264,235 @@ class TestRestoreFromHistory:
         calls = mock_pid_controller.set_pid_param.call_args_list
         # Should have 4 calls (kp, ki, kd, ke)
         assert len(calls) >= 4
+
+
+# =============================================================================
+# Single Source of Truth Integration
+# =============================================================================
+
+class TestSingleSourceOfTruth:
+    """Integration tests for single source of truth pattern.
+
+    These tests verify that:
+    1. PIDGainsManager is the sole owner of PID gains state
+    2. Reading gains via properties always reflects current manager state
+    3. All writes go through gains_manager.set_gains()
+    4. Values stay synchronized between manager, properties, and pid_controller
+    """
+
+    def test_write_via_manager_readable_via_property(self, mock_pid_controller, initial_heating_gains):
+        """Test that values written via gains_manager are readable via properties.
+
+        This simulates the pattern used in climate.py where gains are accessed
+        via @property methods that delegate to gains_manager.
+        """
+        manager = PIDGainsManager(mock_pid_controller, initial_heating_gains)
+
+        # Write via manager
+        manager.set_gains(
+            reason=PIDChangeReason.ADAPTIVE_APPLY,
+            kp=2.5,
+            ki=0.025,
+            kd=18.0,
+            ke=0.8,
+        )
+
+        # Read via manager (simulates property getter)
+        gains = manager.get_gains()
+
+        # Verify all values match
+        assert gains.kp == 2.5
+        assert gains.ki == 0.025
+        assert gains.kd == 18.0
+        assert gains.ke == 0.8
+
+    def test_manager_syncs_to_pid_controller(self, mock_pid_controller, initial_heating_gains):
+        """Test that gains_manager syncs values to PIDController.
+
+        This verifies that the manager properly propagates changes to the
+        underlying PID controller.
+        """
+        manager = PIDGainsManager(mock_pid_controller, initial_heating_gains)
+
+        # Clear init calls
+        mock_pid_controller.set_pid_param.reset_mock()
+
+        # Write via manager
+        manager.set_gains(
+            reason=PIDChangeReason.AUTO_APPLY,
+            kp=3.0,
+            ki=0.03,
+            kd=20.0,
+            ke=1.0,
+        )
+
+        # Verify PIDController received all updates
+        assert mock_pid_controller.set_pid_param.call_count == 4
+
+        # Verify correct values were passed
+        calls = mock_pid_controller.set_pid_param.call_args_list
+        call_dict = {call[0][0]: call[0][1] for call in calls}
+
+        assert call_dict['kp'] == 3.0
+        assert call_dict['ki'] == 0.03
+        assert call_dict['kd'] == 20.0
+        assert call_dict['ke'] == 1.0
+
+    def test_partial_update_maintains_consistency(self, mock_pid_controller, initial_heating_gains):
+        """Test that partial updates maintain consistency across all layers.
+
+        This verifies that when only Ki is updated (e.g., for undershoot boost),
+        all other gains remain consistent.
+        """
+        manager = PIDGainsManager(mock_pid_controller, initial_heating_gains)
+
+        # Set initial state
+        manager.set_gains(
+            reason=PIDChangeReason.PHYSICS_INIT,
+            kp=1.5,
+            ki=0.01,
+            kd=12.0,
+            ke=0.5,
+        )
+
+        # Partial update (only Ki, like undershoot boost)
+        manager.set_gains(
+            reason=PIDChangeReason.UNDERSHOOT_BOOST,
+            ki=0.02,
+        )
+
+        # Read back all gains
+        gains = manager.get_gains()
+
+        # Verify Ki was updated
+        assert gains.ki == 0.02
+
+        # Verify all other gains remain unchanged
+        assert gains.kp == 1.5
+        assert gains.kd == 12.0
+        assert gains.ke == 0.5
+
+    def test_history_reflects_all_changes(self, mock_pid_controller, initial_heating_gains):
+        """Test that history accurately reflects all gain changes.
+
+        This verifies that the single source of truth pattern includes
+        proper tracking of all state mutations.
+        """
+        manager = PIDGainsManager(mock_pid_controller, initial_heating_gains)
+
+        # Make a series of changes
+        manager.set_gains(PIDChangeReason.PHYSICS_INIT, kp=1.0, ki=0.01, kd=10.0, ke=0.0)
+        manager.set_gains(PIDChangeReason.ADAPTIVE_APPLY, kp=1.5, ki=0.015, kd=12.0, ke=0.5)
+        manager.set_gains(PIDChangeReason.UNDERSHOOT_BOOST, ki=0.025)
+
+        # Verify history has all entries
+        history = manager.get_history()
+        assert len(history) == 3
+
+        # Verify each entry is correct
+        assert history[0]["kp"] == 1.0
+        assert history[0]["ki"] == 0.01
+        assert history[0]["reason"] == "physics_init"
+
+        assert history[1]["kp"] == 1.5
+        assert history[1]["ki"] == 0.015
+        assert history[1]["reason"] == "adaptive_apply"
+
+        # Partial update should snapshot ALL current values
+        assert history[2]["kp"] == 1.5  # Unchanged from previous
+        assert history[2]["ki"] == 0.025  # Updated
+        assert history[2]["kd"] == 12.0  # Unchanged from previous
+        assert history[2]["ke"] == 0.5  # Unchanged from previous
+        assert history[2]["reason"] == "undershoot_ki_boost"
+
+    def test_mode_switching_maintains_state_isolation(
+        self, mock_pid_controller, initial_heating_gains, initial_cooling_gains
+    ):
+        """Test that HEAT and COOL modes maintain separate state.
+
+        This verifies that the single source of truth pattern properly
+        isolates state between different HVAC modes.
+        """
+        manager = PIDGainsManager(
+            pid_controller=mock_pid_controller,
+            initial_heating_gains=initial_heating_gains,
+            initial_cooling_gains=initial_cooling_gains,
+        )
+
+        # Update heating gains
+        manager.set_gains(
+            reason=PIDChangeReason.ADAPTIVE_APPLY,
+            kp=2.0,
+            ki=0.02,
+            mode=HVACMode.HEAT,
+        )
+
+        # Update cooling gains
+        manager.set_gains(
+            reason=PIDChangeReason.ADAPTIVE_APPLY,
+            kp=3.0,
+            ki=0.03,
+            mode=HVACMode.COOL,
+        )
+
+        # Verify heating gains
+        heat_gains = manager.get_gains(mode=HVACMode.HEAT)
+        assert heat_gains.kp == 2.0
+        assert heat_gains.ki == 0.02
+        assert heat_gains.kd == 10.0  # From initial
+        assert heat_gains.ke == 0.0  # From initial
+
+        # Verify cooling gains (completely independent)
+        cool_gains = manager.get_gains(mode=HVACMode.COOL)
+        assert cool_gains.kp == 3.0
+        assert cool_gains.ki == 0.03
+        assert cool_gains.kd == 12.0  # From initial (different)
+        assert cool_gains.ke == 0.0  # From initial
+
+    def test_restore_preserves_single_source_of_truth(self, mock_pid_controller, initial_heating_gains):
+        """Test that state restoration maintains the single source of truth.
+
+        This verifies that after restore, all reads still go through the
+        manager and the state is consistent.
+        """
+        manager = PIDGainsManager(mock_pid_controller, initial_heating_gains)
+
+        # Create old state
+        old_state = Mock()
+        old_state.attributes = {
+            "kp": 2.5,
+            "ki": 0.025,
+            "kd": 18.0,
+            "ke": 0.8,
+            "pid_history": [
+                {
+                    "timestamp": "2024-01-15T10:00:00",
+                    "kp": 2.5,
+                    "ki": 0.025,
+                    "kd": 18.0,
+                    "ke": 0.8,
+                    "reason": "adaptive_apply",
+                    "actor": "user",
+                }
+            ],
+        }
+
+        # Restore
+        manager.restore_from_state(old_state)
+
+        # Verify gains are readable via manager
+        gains = manager.get_gains()
+        assert gains.kp == 2.5
+        assert gains.ki == 0.025
+        assert gains.kd == 18.0
+        assert gains.ke == 0.8
+
+        # Verify history is intact
+        history = manager.get_history()
+        assert len(history) == 1
+        assert history[0]["kp"] == 2.5
+
+        # Verify subsequent writes still work
+        manager.set_gains(PIDChangeReason.UNDERSHOOT_BOOST, ki=0.03)
+        gains = manager.get_gains()
+        assert gains.ki == 0.03

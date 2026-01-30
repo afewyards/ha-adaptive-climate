@@ -341,32 +341,41 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
                 area_m2=self._area_m2,
                 heating_type=self._heating_type,
             )
-            self._kp, self._ki, self._kd = calculate_initial_pid(
+            kp, ki, kd = calculate_initial_pid(
                 self._thermal_time_constant, self._heating_type, self._area_m2, self._max_power_w, self._supply_temperature
             )
             # Calculate outdoor temperature lag time constant: tau_lag = 2 * tau_building
             # This models the thermal inertia of the building envelope
             self._outdoor_temp_lag_tau = 2.0 * self._thermal_time_constant
 
+            # Stage gains for gains manager initialization
+            self._initial_gains_staging = {
+                "kp": kp,
+                "ki": ki,
+                "kd": kd,
+                "ke": const.DEFAULT_KE,
+            }
+
             # Log power and supply temp scaling info if configured
             power_info = f", power={self._max_power_w}W" if self._max_power_w else ""
             supply_info = f", supply={self._supply_temperature}°C" if self._supply_temperature else ""
             _LOGGER.info("%s: Physics-based PID init (tau=%.2f, type=%s, window=%s%s%s): Kp=%.4f, Ki=%.5f, Kd=%.3f, outdoor_lag_tau=%.2f",
-                         self.unique_id, self._thermal_time_constant, self._heating_type, self._window_rating, power_info, supply_info, self._kp, self._ki, self._kd, self._outdoor_temp_lag_tau)
+                         self.unique_id, self._thermal_time_constant, self._heating_type, self._window_rating, power_info, supply_info,
+                         self._initial_gains_staging["kp"], self._initial_gains_staging["ki"], self._initial_gains_staging["kd"], self._outdoor_temp_lag_tau)
         else:
             # Fallback defaults if no zone properties
             self._thermal_time_constant = None
-            self._kp = 0.5
-            self._ki = 0.01
-            self._kd = 5.0
             self._outdoor_temp_lag_tau = 4.0  # Default 4 hours if no tau available
+
+            # Stage gains for gains manager initialization
+            self._initial_gains_staging = {
+                "kp": 0.5,
+                "ki": 0.01,
+                "kd": 5.0,
+                "ke": const.DEFAULT_KE,
+            }
             _LOGGER.warning("%s: No area_m2 configured, using default PID values and outdoor_lag_tau=%.2f",
                           self.unique_id, self._outdoor_temp_lag_tau)
-
-        # Calculate initial Ke from physics (adaptive learning will refine it)
-        # Note: energy_rating may not be available during __init__ since hass isn't fully set up
-        # It will be recalculated in async_added_to_hass if needed
-        self._ke = const.DEFAULT_KE
 
         # Initialize KeLearner (will be configured properly in async_added_to_hass)
         self._ke_learner: Optional[KeLearner] = None
@@ -395,23 +404,29 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
         self._last_ext_sensor_update = time.monotonic()
         self._last_control_time = time.monotonic()
         _LOGGER.info("%s: Active PID values - Kp=%.4f, Ki=%.5f, Kd=%.3f, Ke=%s, D_filter_alpha=%.2f, outdoor_lag_tau=%.2f",
-                     self.unique_id, self._kp, self._ki, self._kd, self._ke or 0, self._derivative_filter_alpha, self._outdoor_temp_lag_tau)
+                     self.unique_id, self._initial_gains_staging["kp"], self._initial_gains_staging["ki"],
+                     self._initial_gains_staging["kd"], self._initial_gains_staging["ke"] or 0,
+                     self._derivative_filter_alpha, self._outdoor_temp_lag_tau)
         decay_rate = const.HEATING_TYPE_INTEGRAL_DECAY.get(
             self._heating_type, const.DEFAULT_INTEGRAL_DECAY
         )
         exp_decay_tau = const.HEATING_TYPE_EXP_DECAY_TAU.get(
             self._heating_type, const.DEFAULT_EXP_DECAY_TAU
         )
-        self._pid_controller = pid_controller.PID(self._kp, self._ki, self._kd, self._ke,
-                                                  out_min=self._min_out, out_max=self._max_out,
-                                                  sampling_period=self._sampling_period,
-                                                  cold_tolerance=self._cold_tolerance,
-                                                  hot_tolerance=self._hot_tolerance,
-                                                  derivative_filter_alpha=self._derivative_filter_alpha,
-                                                  outdoor_temp_lag_tau=self._outdoor_temp_lag_tau,
-                                                  integral_decay_multiplier=decay_rate,
-                                                  integral_exp_decay_tau=exp_decay_tau,
-                                                  heating_type=self._heating_type)
+        self._pid_controller = pid_controller.PID(
+            self._initial_gains_staging["kp"],
+            self._initial_gains_staging["ki"],
+            self._initial_gains_staging["kd"],
+            self._initial_gains_staging["ke"],
+            out_min=self._min_out, out_max=self._max_out,
+            sampling_period=self._sampling_period,
+            cold_tolerance=self._cold_tolerance,
+            hot_tolerance=self._hot_tolerance,
+            derivative_filter_alpha=self._derivative_filter_alpha,
+            outdoor_temp_lag_tau=self._outdoor_temp_lag_tau,
+            integral_decay_multiplier=decay_rate,
+            integral_exp_decay_tau=exp_decay_tau,
+            heating_type=self._heating_type)
         self._pid_controller.mode = "AUTO"
 
     async def async_added_to_hass(self):
@@ -934,6 +949,34 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
         if self.pid_mode == 'off':
             return self._min_off_cycle_duration_pid_off
         return self._min_off_cycle_duration_pid_on
+
+    @property
+    def _kp(self) -> float:
+        """Get proportional gain from gains manager or staging."""
+        if self._gains_manager is not None:
+            return self._gains_manager.get_gains().kp
+        return self._initial_gains_staging["kp"]
+
+    @property
+    def _ki(self) -> float:
+        """Get integral gain from gains manager or staging."""
+        if self._gains_manager is not None:
+            return self._gains_manager.get_gains().ki
+        return self._initial_gains_staging["ki"]
+
+    @property
+    def _kd(self) -> float:
+        """Get derivative gain from gains manager or staging."""
+        if self._gains_manager is not None:
+            return self._gains_manager.get_gains().kd
+        return self._initial_gains_staging["kd"]
+
+    @property
+    def _ke(self) -> float:
+        """Get external temperature compensation gain from gains manager or staging."""
+        if self._gains_manager is not None:
+            return self._gains_manager.get_gains().ke
+        return self._initial_gains_staging["ke"]
 
     @property
     def pid_parm(self):

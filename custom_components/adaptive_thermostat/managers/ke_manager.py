@@ -19,6 +19,7 @@ from ..const import PIDChangeReason
 
 if TYPE_CHECKING:
     from ..climate import AdaptiveThermostat
+    from .pid_gains_manager import PIDGainsManager
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -51,6 +52,7 @@ class KeManager:
         async_control_heating: callable,
         async_write_ha_state: callable,
         get_is_pid_converged: callable = None,
+        gains_manager: Optional["PIDGainsManager"] = None,
     ):
         """Initialize the KeManager.
 
@@ -65,14 +67,16 @@ class KeManager:
             get_cold_tolerance: Callback to get cold tolerance
             get_hot_tolerance: Callback to get hot tolerance
             get_ke: Callback to get current Ke value
-            set_ke: Callback to set Ke value
+            set_ke: Callback to set Ke value (fallback for backward compatibility)
             get_pid_controller: Callback to get PID controller
             async_control_heating: Async callback to trigger heating control
             async_write_ha_state: Async callback to write HA state
             get_is_pid_converged: Callback to check if PID has converged for Ke learning
+            gains_manager: PIDGainsManager instance for centralized gain mutations
         """
         self._thermostat = thermostat
         self._ke_learner = ke_learner
+        self._gains_manager = gains_manager
 
         # Callbacks
         self._get_hvac_mode = get_hvac_mode
@@ -83,7 +87,7 @@ class KeManager:
         self._get_cold_tolerance = get_cold_tolerance
         self._get_hot_tolerance = get_hot_tolerance
         self._get_ke = get_ke
-        self._set_ke = set_ke
+        self._set_ke = set_ke  # Keep as fallback for backward compatibility
         self._get_pid_controller = get_pid_controller
         self._async_control_heating = async_control_heating
         self._async_write_ha_state = async_write_ha_state
@@ -180,10 +184,14 @@ class KeManager:
                 physics_ke = self._ke_learner.current_ke
                 if physics_ke > 0:
                     # Use PIDGainsManager to set Ke and record to history
-                    self._thermostat._gains_manager.set_gains(
-                        PIDChangeReason.KE_PHYSICS,
-                        ke=physics_ke,
-                    )
+                    if self._gains_manager:
+                        self._gains_manager.set_gains(
+                            PIDChangeReason.KE_PHYSICS,
+                            ke=physics_ke,
+                        )
+                    else:
+                        # Fallback for backward compatibility
+                        self._set_ke(physics_ke)
                     _LOGGER.info(
                         "%s: PID converged - enabled Ke learning and applied physics-based Ke=%.3f",
                         self._thermostat.entity_id,
@@ -264,10 +272,14 @@ class KeManager:
         self._ke_learner.apply_ke_adjustment(recommendation)
 
         # Use PIDGainsManager to set Ke and record to history
-        self._thermostat._gains_manager.set_gains(
-            PIDChangeReason.KE_LEARNING,
-            ke=recommendation,
-        )
+        if self._gains_manager:
+            self._gains_manager.set_gains(
+                PIDChangeReason.KE_LEARNING,
+                ke=recommendation,
+            )
+        else:
+            # Fallback for backward compatibility
+            self._set_ke(recommendation)
 
         _LOGGER.info(
             "%s: Applied adaptive Ke: %.2f (was %.2f)",
