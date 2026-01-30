@@ -30,11 +30,6 @@ def build_state_attributes(thermostat: SmartThermostat) -> dict[str, Any]:
     attrs: dict[str, Any] = {
         "integration": DOMAIN,
         "control_output": thermostat._control_output,
-        "ke": thermostat._ke,
-        "kp": thermostat._kp,
-        "ki": thermostat._ki,
-        "kd": thermostat._kd,
-        "pid_mode": thermostat.pid_mode,
         # Outdoor temperature lag state
         "outdoor_temp_lagged": thermostat._pid_controller.outdoor_temp_lagged,
         # Actuator wear tracking - cycle counts

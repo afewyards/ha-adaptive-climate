@@ -107,8 +107,7 @@ class StateRestorer:
 
         This method restores:
         - PID integral value (pid_i)
-        - PID gains: kp, ki, kd, ke (via gains_manager)
-        - PID mode (auto/off)
+        - PID gains: kp, ki, kd, ke (via gains_manager from pid_history)
 
         Args:
             old_state: The restored state object from async_get_last_state().
@@ -159,10 +158,6 @@ class StateRestorer:
             thermostat._pid_controller.outdoor_temp_lagged = outdoor_temp_lagged
             _LOGGER.info("%s: Restored outdoor_temp_lagged=%.2f°C",
                         thermostat.entity_id, outdoor_temp_lagged)
-
-        # Restore PID mode
-        if old_state.attributes.get('pid_mode') is not None:
-            thermostat._pid_controller.mode = old_state.attributes.get('pid_mode')
 
         # Restore actuator cycle counts for wear tracking
         if thermostat._heater_controller:
