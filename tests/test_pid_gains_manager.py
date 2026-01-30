@@ -852,22 +852,26 @@ class TestRestoreDeduplication:
         assert history[0]["reason"] == "adaptive_apply"
 
     def test_restore_with_precision_mismatch_no_duplicate(self, manager):
-        """Restore should handle float precision differences from JSON serialization."""
+        """Restore should handle float precision differences from JSON serialization.
+
+        Uses 2 decimal place rounding to match HA state serialization.
+        """
         old_state = Mock()
         old_state.attributes = {
             # Full precision values (as stored in state attributes)
-            "kp": 0.4926,
-            "ki": 2.389662,
-            "kd": 1.52,
-            "ke": 0.0,
+            # These round to: kp=1.84, ki=5.33, ke=0.21
+            "kp": 1.8368,
+            "ki": 5.3306,
+            "kd": 0.6,
+            "ke": 0.2073,
             "pid_history": [
                 {
                     "timestamp": "2024-01-15T11:00:00",
-                    # Rounded values (as might be stored in history)
-                    "kp": 0.49,
-                    "ki": 2.3897,
-                    "kd": 1.52,
-                    "ke": 0.0,
+                    # Rounded values (as stored in history by HA)
+                    "kp": 1.84,
+                    "ki": 5.33,
+                    "kd": 0.6,
+                    "ke": 0.21,
                     "reason": "adaptive_apply",
                 },
             ],
@@ -876,7 +880,7 @@ class TestRestoreDeduplication:
         manager.restore_from_state(old_state)
 
         history = manager.get_history(HVACMode.HEAT)
-        # Should NOT add a RESTORE entry since gains are approximately equal
+        # Should NOT add a RESTORE entry since gains match when rounded to 2 decimals
         assert len(history) == 1
         assert history[0]["reason"] == "adaptive_apply"
 
