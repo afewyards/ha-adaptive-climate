@@ -1,6 +1,35 @@
 # CHANGELOG
 
 
+## v0.48.1 (2026-01-30)
+
+### Bug Fixes
+
+- **humidity**: Prevent re-trigger on lingering post-shower humidity
+  ([`8dc5027`](https://github.com/afewyards/ha-adaptive-thermostat/commit/8dc5027e77a78d3900463982f5d56f2ef8e31266))
+
+Skip absolute threshold check during stabilizing state and reset history buffer on
+  PAUSED→STABILIZING transition for fresh rate detection.
+
+### Documentation
+
+- **readme**: Update for v0.47.0 features
+  ([`7ae8428`](https://github.com/afewyards/ha-adaptive-thermostat/commit/7ae842886e61c7ddd9d5d15c27e7607c376e8a6a))
+
+- Updated to 5-term PID (P+I+D+E+F) - Added disturbance handling features (humidity, open window) -
+  Added predictive pre-heating and setpoint feedforward - Added auto mode switching to multi-zone
+  example - Added bathroom humidity detection example - Updated services list (debug vs always
+  available) - Added comfort sensors and system sensors - Updated entity attributes
+  (learning_status, status) - Updated troubleshooting with new features - Added wiki link for
+  Humidity Detection
+
+- **services**: Add missing service definitions and debug notes
+  ([`f3ed54d`](https://github.com/afewyards/ha-adaptive-thermostat/commit/f3ed54d6530a51b203d25232c71df342fb820421))
+
+- Added apply_adaptive_ke service definition - Added pid_recommendations service definition - Added
+  'Requires debug: true' notes to debug-only services
+
+
 ## v0.48.0 (2026-01-30)
 
 ### Features
