@@ -395,8 +395,7 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
         self._last_ext_sensor_update = time.monotonic()
         self._last_control_time = time.monotonic()
         _LOGGER.info("%s: Active PID values - Kp=%.4f, Ki=%.5f, Kd=%.3f, Ke=%s, D_filter_alpha=%.2f, outdoor_lag_tau=%.2f",
-                     self.unique_id, self._initial_gains_staging["kp"], self._initial_gains_staging["ki"],
-                     self._initial_gains_staging["kd"], self._initial_gains_staging["ke"] or 0,
+                     self.unique_id, kp, ki, kd, const.DEFAULT_KE,
                      self._derivative_filter_alpha, self._outdoor_temp_lag_tau)
         decay_rate = const.HEATING_TYPE_INTEGRAL_DECAY.get(
             self._heating_type, const.DEFAULT_INTEGRAL_DECAY
