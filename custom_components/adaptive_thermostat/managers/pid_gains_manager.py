@@ -85,10 +85,7 @@ class PIDGainsManager:
 
     def _sync_gains_to_controller(self, gains: PIDGains) -> None:
         """Sync gains to the PID controller."""
-        self._pid_controller.set_pid_param("kp", gains.kp)
-        self._pid_controller.set_pid_param("ki", gains.ki)
-        self._pid_controller.set_pid_param("kd", gains.kd)
-        self._pid_controller.set_pid_param("ke", gains.ke)
+        self._pid_controller.set_pid_param(kp=gains.kp, ki=gains.ki, kd=gains.kd, ke=gains.ke)
 
     def _gains_match_last_entry(self, gains: PIDGains, mode: HVACMode) -> bool:
         """Check if gains match the last history entry.

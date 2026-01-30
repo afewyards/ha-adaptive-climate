@@ -1261,9 +1261,8 @@ class TestRestoreFromHistory:
 
         # Verify PIDController received the restored gains
         assert mock_pid_controller.set_pid_param.called
-        calls = mock_pid_controller.set_pid_param.call_args_list
-        # Should have 4 calls (kp, ki, kd, ke)
-        assert len(calls) >= 4
+        # Should have been called with all gains in one call
+        mock_pid_controller.set_pid_param.assert_called_with(kp=1.5, ki=0.015, kd=12.0, ke=0.5)
 
 
 # =============================================================================
@@ -1326,17 +1325,9 @@ class TestSingleSourceOfTruth:
             ke=1.0,
         )
 
-        # Verify PIDController received all updates
-        assert mock_pid_controller.set_pid_param.call_count == 4
-
-        # Verify correct values were passed
-        calls = mock_pid_controller.set_pid_param.call_args_list
-        call_dict = {call[0][0]: call[0][1] for call in calls}
-
-        assert call_dict['kp'] == 3.0
-        assert call_dict['ki'] == 0.03
-        assert call_dict['kd'] == 20.0
-        assert call_dict['ke'] == 1.0
+        # Verify PIDController received all updates in one call
+        assert mock_pid_controller.set_pid_param.call_count == 1
+        mock_pid_controller.set_pid_param.assert_called_with(kp=3.0, ki=0.03, kd=20.0, ke=1.0)
 
     def test_partial_update_maintains_consistency(self, mock_pid_controller, initial_heating_gains):
         """Test that partial updates maintain consistency across all layers.
