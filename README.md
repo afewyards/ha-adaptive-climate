@@ -68,9 +68,9 @@ If you're upgrading from the `adaptive_thermostat` integration, see the [CHANGEL
 
 ## Companion Lovelace Card
 
-For the best experience, use the [Adaptive Climate Card](https://github.com/afewyards/adaptive-climate-card) — a custom Lovelace card designed specifically for this integration.
+For the best experience, use the [Adaptive Climate Card](https://github.com/afewyards/ha-adaptive-climate-card) — a custom Lovelace card designed specifically for this integration.
 
-[![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/afewyards/adaptive-climate-card)
+[![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/afewyards/ha-adaptive-climate-card)
 
 ## Quick Start
 
