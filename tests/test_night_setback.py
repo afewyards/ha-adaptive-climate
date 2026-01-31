@@ -813,3 +813,283 @@ class TestNightSetbackTimezone:
         # Should NOT start recovery (6.25 < 7)
         should_recover = setback.should_start_recovery(current, current_temp, base_setpoint)
         assert should_recover is False
+
+
+class TestNightSetbackManagerGraduatedDelta:
+    """Test NightSetbackManager with graduated delta callback."""
+
+    def test_manager_applies_min_of_configured_and_allowed(self):
+        """Test manager applies min(configured_delta, allowed_delta)."""
+        from unittest.mock import Mock
+        from custom_components.adaptive_climate.managers.night_setback_manager import NightSetbackManager
+        from custom_components.adaptive_climate.adaptive.night_setback import NightSetback
+
+        # Mock hass
+        hass = Mock()
+        hass.states.get.return_value = None
+        hass.data = {}
+
+        # Create night setback with configured delta of 3.0
+        night_setback = NightSetback(
+            start_time="22:00",
+            end_time="06:00",
+            setback_delta=3.0
+        )
+
+        # Callback returns allowed_delta of 0.5
+        def get_allowed_delta():
+            return 0.5
+
+        # Create manager
+        manager = NightSetbackManager(
+            hass=hass,
+            entity_id="climate.test",
+            night_setback=night_setback,
+            night_setback_config=None,
+            solar_recovery=None,
+            window_orientation=None,
+            get_target_temp=lambda: 20.0,
+            get_current_temp=lambda: 18.0,
+            get_allowed_setback_delta=get_allowed_delta,
+        )
+
+        # During night
+        current = datetime(2024, 1, 15, 23, 0)
+        effective_target, in_night_period, info = manager.calculate_night_setback_adjustment(current)
+
+        # Should apply min(3.0, 0.5) = 0.5
+        assert in_night_period is True
+        assert effective_target == 19.5  # 20.0 - 0.5
+        assert info.get("night_setback_delta") == 0.5
+
+    def test_manager_applies_full_when_allowed_none(self):
+        """Test manager applies full configured_delta when allowed_delta is None."""
+        from unittest.mock import Mock
+        from custom_components.adaptive_climate.managers.night_setback_manager import NightSetbackManager
+        from custom_components.adaptive_climate.adaptive.night_setback import NightSetback
+
+        # Mock hass
+        hass = Mock()
+        hass.states.get.return_value = None
+        hass.data = {}
+
+        # Create night setback with configured delta of 3.0
+        night_setback = NightSetback(
+            start_time="22:00",
+            end_time="06:00",
+            setback_delta=3.0
+        )
+
+        # Callback returns None (no restriction)
+        def get_allowed_delta():
+            return None
+
+        # Create manager
+        manager = NightSetbackManager(
+            hass=hass,
+            entity_id="climate.test",
+            night_setback=night_setback,
+            night_setback_config=None,
+            solar_recovery=None,
+            window_orientation=None,
+            get_target_temp=lambda: 20.0,
+            get_current_temp=lambda: 18.0,
+            get_allowed_setback_delta=get_allowed_delta,
+        )
+
+        # During night
+        current = datetime(2024, 1, 15, 23, 0)
+        effective_target, in_night_period, info = manager.calculate_night_setback_adjustment(current)
+
+        # Should apply full 3.0 when allowed is None
+        assert in_night_period is True
+        assert effective_target == 17.0  # 20.0 - 3.0
+        assert info.get("night_setback_delta") == 3.0
+
+    def test_manager_applies_full_when_allowed_exceeds_configured(self):
+        """Test manager applies full configured when allowed > configured."""
+        from unittest.mock import Mock
+        from custom_components.adaptive_climate.managers.night_setback_manager import NightSetbackManager
+        from custom_components.adaptive_climate.adaptive.night_setback import NightSetback
+
+        # Mock hass
+        hass = Mock()
+        hass.states.get.return_value = None
+        hass.data = {}
+
+        # Create night setback with configured delta of 2.0
+        night_setback = NightSetback(
+            start_time="22:00",
+            end_time="06:00",
+            setback_delta=2.0
+        )
+
+        # Callback returns allowed_delta of 5.0 (exceeds configured)
+        def get_allowed_delta():
+            return 5.0
+
+        # Create manager
+        manager = NightSetbackManager(
+            hass=hass,
+            entity_id="climate.test",
+            night_setback=night_setback,
+            night_setback_config=None,
+            solar_recovery=None,
+            window_orientation=None,
+            get_target_temp=lambda: 20.0,
+            get_current_temp=lambda: 18.0,
+            get_allowed_setback_delta=get_allowed_delta,
+        )
+
+        # During night
+        current = datetime(2024, 1, 15, 23, 0)
+        effective_target, in_night_period, info = manager.calculate_night_setback_adjustment(current)
+
+        # Should apply min(2.0, 5.0) = 2.0
+        assert in_night_period is True
+        assert effective_target == 18.0  # 20.0 - 2.0
+        assert info.get("night_setback_delta") == 2.0
+
+    def test_manager_applies_zero_when_allowed_zero(self):
+        """Test manager suppresses setback when allowed_delta is 0."""
+        from unittest.mock import Mock
+        from custom_components.adaptive_climate.managers.night_setback_manager import NightSetbackManager
+        from custom_components.adaptive_climate.adaptive.night_setback import NightSetback
+
+        # Mock hass
+        hass = Mock()
+        hass.states.get.return_value = None
+        hass.data = {}
+
+        # Create night setback with configured delta of 3.0
+        night_setback = NightSetback(
+            start_time="22:00",
+            end_time="06:00",
+            setback_delta=3.0
+        )
+
+        # Callback returns allowed_delta of 0 (fully suppressed)
+        def get_allowed_delta():
+            return 0.0
+
+        # Create manager
+        manager = NightSetbackManager(
+            hass=hass,
+            entity_id="climate.test",
+            night_setback=night_setback,
+            night_setback_config=None,
+            solar_recovery=None,
+            window_orientation=None,
+            get_target_temp=lambda: 20.0,
+            get_current_temp=lambda: 18.0,
+            get_allowed_setback_delta=get_allowed_delta,
+        )
+
+        # During night
+        current = datetime(2024, 1, 15, 23, 0)
+        effective_target, in_night_period, info = manager.calculate_night_setback_adjustment(current)
+
+        # Should apply 0 (no setback)
+        assert in_night_period is True
+        assert effective_target == 20.0  # 20.0 - 0.0 (no change)
+        assert info.get("night_setback_delta") == 0.0
+
+    def test_manager_suppressed_reason_limited_when_reduced(self):
+        """Test suppressed_reason is 'limited' when allowed < configured."""
+        from unittest.mock import Mock
+        from custom_components.adaptive_climate.managers.night_setback_manager import NightSetbackManager
+        from custom_components.adaptive_climate.adaptive.night_setback import NightSetback
+
+        # Mock hass
+        hass = Mock()
+        hass.states.get.return_value = None
+        hass.data = {}
+
+        # Create night setback with configured delta of 3.0
+        night_setback = NightSetback(
+            start_time="22:00",
+            end_time="06:00",
+            setback_delta=3.0
+        )
+
+        # Callback returns allowed_delta of 1.0 (less than configured)
+        def get_allowed_delta():
+            return 1.0
+
+        # Create manager
+        manager = NightSetbackManager(
+            hass=hass,
+            entity_id="climate.test",
+            night_setback=night_setback,
+            night_setback_config=None,
+            solar_recovery=None,
+            window_orientation=None,
+            get_target_temp=lambda: 20.0,
+            get_current_temp=lambda: 18.0,
+            get_allowed_setback_delta=get_allowed_delta,
+        )
+
+        # During night
+        current = datetime(2024, 1, 15, 23, 0)
+        effective_target, in_night_period, info = manager.calculate_night_setback_adjustment(current)
+
+        # Should have suppressed_reason='limited' since allowed < configured
+        assert in_night_period is True
+        assert effective_target == 19.0  # 20.0 - 1.0
+        assert info.get("suppressed_reason") == "limited"
+
+    def test_manager_no_suppressed_reason_when_full(self):
+        """Test no suppressed_reason when allowed >= configured or None."""
+        from unittest.mock import Mock
+        from custom_components.adaptive_climate.managers.night_setback_manager import NightSetbackManager
+        from custom_components.adaptive_climate.adaptive.night_setback import NightSetback
+
+        # Mock hass
+        hass = Mock()
+        hass.states.get.return_value = None
+        hass.data = {}
+
+        # Test case 1: allowed >= configured
+        night_setback = NightSetback(
+            start_time="22:00",
+            end_time="06:00",
+            setback_delta=2.0
+        )
+
+        def get_allowed_delta_high():
+            return 5.0
+
+        manager = NightSetbackManager(
+            hass=hass,
+            entity_id="climate.test",
+            night_setback=night_setback,
+            night_setback_config=None,
+            solar_recovery=None,
+            window_orientation=None,
+            get_target_temp=lambda: 20.0,
+            get_current_temp=lambda: 18.0,
+            get_allowed_setback_delta=get_allowed_delta_high,
+        )
+
+        current = datetime(2024, 1, 15, 23, 0)
+        _, _, info = manager.calculate_night_setback_adjustment(current)
+        assert "suppressed_reason" not in info
+
+        # Test case 2: allowed is None
+        def get_allowed_delta_none():
+            return None
+
+        manager2 = NightSetbackManager(
+            hass=hass,
+            entity_id="climate.test",
+            night_setback=night_setback,
+            night_setback_config=None,
+            solar_recovery=None,
+            window_orientation=None,
+            get_target_temp=lambda: 20.0,
+            get_current_temp=lambda: 18.0,
+            get_allowed_setback_delta=get_allowed_delta_none,
+        )
+
+        _, _, info2 = manager2.calculate_night_setback_adjustment(current)
+        assert "suppressed_reason" not in info2
