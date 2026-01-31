@@ -54,14 +54,11 @@ sys.modules['homeassistant.helpers.update_coordinator'].DataUpdateCoordinator = 
 # Mock homeassistant.helpers.event for async_track_state_change_event
 sys.modules['homeassistant.helpers.event'] = Mock()
 
-# Mock homeassistant.components.climate for HVACMode
-mock_climate = Mock()
-mock_climate.HVACMode = Mock()
-mock_climate.HVACMode.HEAT = "heat"
-mock_climate.HVACMode.COOL = "cool"
-mock_climate.HVACMode.OFF = "off"
-sys.modules['homeassistant.components'] = Mock()
-sys.modules['homeassistant.components.climate'] = mock_climate
+# DO NOT replace homeassistant.components.climate - it's already set up in conftest.py
+# with the correct MockHVACMode that uses global singleton values
+if 'homeassistant.components' not in sys.modules:
+    sys.modules['homeassistant.components'] = Mock()
+# DO NOT set sys.modules['homeassistant.components.climate'] - use the one from conftest.py
 
 # Mock managers.auto_mode_switching
 sys.modules['managers'] = Mock()

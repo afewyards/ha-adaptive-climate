@@ -9,18 +9,11 @@ from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch, Mock
 from enum import Enum
 
-# Mock HVACMode before importing custom components
-class MockHVACMode(str, Enum):
-    """Mock HVAC mode enum."""
-    HEAT = "heat"
-    COOL = "cool"
-    OFF = "off"
-
-# Mock the homeassistant.components.climate module
-mock_climate = MagicMock()
-mock_climate.HVACMode = MockHVACMode
-sys.modules['homeassistant.components.climate'] = mock_climate
-sys.modules['homeassistant.components'] = MagicMock()
+# DO NOT replace homeassistant.components.climate - it's already set up in conftest.py
+# with the correct MockHVACMode that uses global singleton values
+if 'homeassistant.components' not in sys.modules:
+    sys.modules['homeassistant.components'] = MagicMock()
+# DO NOT set sys.modules['homeassistant.components.climate'] - use the one from conftest.py
 
 
 class MockStore:

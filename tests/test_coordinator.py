@@ -9,32 +9,39 @@ from datetime import timedelta
 sys.path.insert(0, str(Path(__file__).parent.parent / "custom_components" / "adaptive_climate"))
 
 # Mock homeassistant modules before importing coordinator
-sys.modules['homeassistant'] = Mock()
+# NOTE: Most mocks are already set up in conftest.py, but we need to ensure
+# they're available before importing coordinator module
+# DO NOT replace sys.modules['homeassistant.components.climate'] - use the one from conftest.py
 
-# Event needs to support subscripting for type hints like Event[EventStateChangedData]
-class MockEvent:
-    """Mock Event class that supports generic subscripting."""
-    def __class_getitem__(cls, item):
-        return cls
+# Just ensure the mocks exist (conftest.py should have already set these up)
+if 'homeassistant' not in sys.modules:
+    sys.modules['homeassistant'] = Mock()
 
-mock_core = Mock()
-mock_core.Event = MockEvent
-mock_core.callback = lambda f: f  # Mock the callback decorator
-sys.modules['homeassistant.core'] = mock_core
-sys.modules['homeassistant.helpers'] = Mock()
-sys.modules['homeassistant.helpers.update_coordinator'] = Mock()
-sys.modules['homeassistant.helpers.event'] = Mock()
-sys.modules['homeassistant.exceptions'] = Mock()
-sys.modules['homeassistant.components'] = Mock()
-sys.modules['homeassistant.components.climate'] = Mock()
+if 'homeassistant.core' not in sys.modules:
+    # Event needs to support subscripting for type hints like Event[EventStateChangedData]
+    class MockEvent:
+        """Mock Event class that supports generic subscripting."""
+        def __class_getitem__(cls, item):
+            return cls
 
-# Mock HVACMode
-mock_climate = Mock()
-mock_climate.HVACMode = Mock()
-mock_climate.HVACMode.HEAT = "heat"
-mock_climate.HVACMode.COOL = "cool"
-mock_climate.HVACMode.OFF = "off"
-sys.modules['homeassistant.components.climate'] = mock_climate
+    mock_core = Mock()
+    mock_core.Event = MockEvent
+    mock_core.callback = lambda f: f  # Mock the callback decorator
+    sys.modules['homeassistant.core'] = mock_core
+
+if 'homeassistant.helpers' not in sys.modules:
+    sys.modules['homeassistant.helpers'] = Mock()
+if 'homeassistant.helpers.update_coordinator' not in sys.modules:
+    sys.modules['homeassistant.helpers.update_coordinator'] = Mock()
+if 'homeassistant.helpers.event' not in sys.modules:
+    sys.modules['homeassistant.helpers.event'] = Mock()
+if 'homeassistant.exceptions' not in sys.modules:
+    sys.modules['homeassistant.exceptions'] = Mock()
+if 'homeassistant.components' not in sys.modules:
+    sys.modules['homeassistant.components'] = Mock()
+
+# DO NOT replace homeassistant.components.climate - it's already set up in conftest.py
+# with the correct MockHVACMode that uses global singleton values
 
 # Mock managers.auto_mode_switching
 sys.modules['managers'] = Mock()

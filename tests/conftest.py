@@ -1,7 +1,7 @@
 """Test configuration and fixtures for adaptive thermostat tests."""
 
 import sys
-from abc import ABC
+from abc import ABC, ABCMeta
 from enum import IntFlag
 from unittest.mock import MagicMock
 
@@ -86,8 +86,8 @@ mock_typing.ConfigType = MagicMock()
 mock_typing.DiscoveryInfoType = MagicMock()
 mock_helpers.typing = mock_typing
 
-# RestoreEntity must inherit from ABC to be compatible with ABCMeta
-class MockRestoreEntity(ABC):
+# RestoreEntity must use ABCMeta to be compatible with ClimateEntity
+class MockRestoreEntity(metaclass=ABCMeta):
     """Mock RestoreEntity base class."""
     pass
 
@@ -116,7 +116,7 @@ mock_valve.ATTR_POSITION = "position"
 mock_components.valve = mock_valve
 
 # Climate - needs proper class definitions to avoid metaclass conflicts
-class MockClimateEntity(ABC):
+class MockClimateEntity(metaclass=ABCMeta):
     """Mock ClimateEntity base class."""
     pass
 
@@ -128,13 +128,50 @@ class MockClimateEntityFeature(IntFlag):
     TURN_OFF = 8
     PRESET_MODE = 16
 
-class MockHVACMode:
-    """Mock HVACMode enum."""
-    OFF = "off"
-    HEAT = "heat"
-    COOL = "cool"
-    HEAT_COOL = "heat_cool"
-    AUTO = "auto"
+# Create global singleton HVACMode values that persist even if modules are replaced
+# Store them in a way that ensures they're always the same object
+_HVAC_MODE_VALUES = {
+    'OFF': sys.intern("off"),
+    'HEAT': sys.intern("heat"),
+    'COOL': sys.intern("cool"),
+    'HEAT_COOL': sys.intern("heat_cool"),
+    'AUTO': sys.intern("auto"),
+}
+
+
+class _ImmutableHVACModeMeta(type):
+    """Metaclass that prevents modification of class attributes and returns global singletons."""
+
+    def __getattribute__(cls, name):
+        # Return the global singleton values instead of class attributes
+        if name in _HVAC_MODE_VALUES:
+            return _HVAC_MODE_VALUES[name]
+        return super().__getattribute__(name)
+
+    def __setattr__(cls, name, value):
+        if name in ('OFF', 'HEAT', 'COOL', 'HEAT_COOL', 'AUTO'):
+            raise AttributeError(f"Cannot modify HVACMode.{name}")
+        super().__setattr__(name, value)
+
+    def __delattr__(cls, name):
+        if name in ('OFF', 'HEAT', 'COOL', 'HEAT_COOL', 'AUTO'):
+            raise AttributeError(f"Cannot delete HVACMode.{name}")
+        super().__delattr__(name)
+
+
+class MockHVACMode(metaclass=_ImmutableHVACModeMeta):
+    """Mock HVACMode enum with immutable global singleton attributes.
+
+    This implementation ensures that HVACMode.HEAT always returns the same
+    interned string object, even if sys.modules['homeassistant.components.climate']
+    is replaced by other tests. The values are stored in a global dictionary.
+    """
+    # Set initial values (but __getattribute__ will return the global singletons)
+    OFF = _HVAC_MODE_VALUES['OFF']
+    HEAT = _HVAC_MODE_VALUES['HEAT']
+    COOL = _HVAC_MODE_VALUES['COOL']
+    HEAT_COOL = _HVAC_MODE_VALUES['HEAT_COOL']
+    AUTO = _HVAC_MODE_VALUES['AUTO']
 
 class MockHVACAction:
     """Mock HVACAction enum."""
@@ -184,3 +221,22 @@ sys.modules["homeassistant.components.input_number"] = mock_input_number
 sys.modules["homeassistant.components.light"] = mock_light
 sys.modules["homeassistant.components.valve"] = mock_valve
 sys.modules["homeassistant.components.climate"] = mock_climate
+
+# ============================================================================
+# Pytest Fixtures
+# ============================================================================
+
+import pytest
+
+# Save reference to the original mock_climate for restoration
+_ORIGINAL_MOCK_CLIMATE = mock_climate
+
+
+def pytest_runtest_setup(item):
+    """Pytest hook that runs before each test item.
+
+    Restores the original climate mock before each test to prevent pollution
+    from tests that replace sys.modules['homeassistant.components.climate'].
+    """
+    # Restore the original mock before each test
+    sys.modules["homeassistant.components.climate"] = _ORIGINAL_MOCK_CLIMATE

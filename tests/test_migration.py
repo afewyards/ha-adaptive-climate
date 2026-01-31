@@ -5,13 +5,18 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import sys
 
 # Mock Home Assistant modules before importing
-mock_climate = MagicMock()
-sys.modules['homeassistant.components.climate'] = mock_climate
-sys.modules['homeassistant.components'] = MagicMock()
-sys.modules['homeassistant'] = MagicMock()
-sys.modules['homeassistant.core'] = MagicMock()
-sys.modules['homeassistant.helpers'] = MagicMock()
-sys.modules['homeassistant.helpers.storage'] = MagicMock()
+# DO NOT replace homeassistant.components.climate - it's already set up in conftest.py
+if 'homeassistant.components' not in sys.modules:
+    sys.modules['homeassistant.components'] = MagicMock()
+if 'homeassistant' not in sys.modules:
+    sys.modules['homeassistant'] = MagicMock()
+if 'homeassistant.core' not in sys.modules:
+    sys.modules['homeassistant.core'] = MagicMock()
+if 'homeassistant.helpers' not in sys.modules:
+    sys.modules['homeassistant.helpers'] = MagicMock()
+if 'homeassistant.helpers.storage' not in sys.modules:
+    sys.modules['homeassistant.helpers.storage'] = MagicMock()
+# DO NOT set sys.modules['homeassistant.components.climate'] - use the one from conftest.py
 
 
 class MockStore:
