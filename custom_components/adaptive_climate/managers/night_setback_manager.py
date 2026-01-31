@@ -179,20 +179,25 @@ class NightSetbackManager:
             if target_temp is None:
                 target_temp = 20.0  # Fallback
 
+            # Calculate what the configured delta would be
+            configured_delta = target_temp - effective_target  # How much setback was calculated
+
             if allowed_delta == 0.0:
                 # Fully suppressed - no setback
                 if not self._learning_suppressed:
                     _LOGGER.info("Night setback fully suppressed - learning not ready")
                     self._learning_suppressed = True
-                return (target_temp, True, {"suppressed_reason": "learning"})
+                return (target_temp, True, {"night_setback_delta": 0.0, "suppressed_reason": "learning"})
 
             elif allowed_delta is not None and allowed_delta > 0.0:
                 # Partially allowed - cap the delta
-                configured_delta = target_temp - effective_target  # How much setback was calculated
                 capped_delta = min(configured_delta, allowed_delta)
                 capped_target = target_temp - capped_delta
 
-                # Log when delta is capped
+                # Build info dict with night_setback_delta
+                result_info = {"night_setback_delta": capped_delta}
+
+                # Add suppressed_reason if delta is reduced
                 if capped_delta < configured_delta:
                     if not self._learning_suppressed:
                         _LOGGER.info(
@@ -200,23 +205,22 @@ class NightSetbackManager:
                             capped_delta, allowed_delta, configured_delta
                         )
                         self._learning_suppressed = True
+                    result_info["suppressed_reason"] = "limited"
                 else:
                     # Full configured delta allowed (allowed_delta >= configured_delta)
                     if self._learning_suppressed:
                         _LOGGER.info("Night setback no longer capped - full configured delta allowed")
                         self._learning_suppressed = False
 
-                # Always return with setback_delta when we have a valid allowed_delta
-                return (capped_target, True, {"setback_delta": capped_delta})
+                return (capped_target, True, result_info)
 
             else:
                 # allowed_delta is None - unlimited (full setback allowed)
                 if self._learning_suppressed:
                     _LOGGER.info("Night setback enabled - learning reached stable status")
                     self._learning_suppressed = False
-                # Add setback_delta to info for consistency
-                configured_delta = target_temp - effective_target
-                info["setback_delta"] = configured_delta
+                # Add night_setback_delta to info for consistency
+                info["night_setback_delta"] = configured_delta
 
         # Fallback to old behavior if callback not provided
         elif not self._is_learning_stable():
