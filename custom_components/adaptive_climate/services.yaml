@@ -7,7 +7,7 @@ reset_pid_to_physics:
     Requires debug: true in domain configuration.
   target:
     entity:
-      integration: adaptive_thermostat
+      integration: adaptive_climate
       domain: climate
 
 apply_adaptive_pid:
@@ -20,7 +20,7 @@ apply_adaptive_pid:
     Requires debug: true in domain configuration.
   target:
     entity:
-      integration: adaptive_thermostat
+      integration: adaptive_climate
       domain: climate
 
 apply_adaptive_ke:
@@ -31,7 +31,7 @@ apply_adaptive_ke:
     Requires debug: true in domain configuration.
   target:
     entity:
-      integration: adaptive_thermostat
+      integration: adaptive_climate
       domain: climate
 
 rollback_pid:
@@ -43,7 +43,7 @@ rollback_pid:
     Requires debug: true in domain configuration.
   target:
     entity:
-      integration: adaptive_thermostat
+      integration: adaptive_climate
       domain: climate
 
 delete_pid_history:
@@ -51,7 +51,7 @@ delete_pid_history:
   description: Delete specific entries from PID history for the zone.
   target:
     entity:
-      integration: adaptive_thermostat
+      integration: adaptive_climate
       domain: climate
   fields:
     indices:
@@ -77,7 +77,7 @@ restore_pid_history:
   description: Restore PID gains from a specific history entry.
   target:
     entity:
-      integration: adaptive_thermostat
+      integration: adaptive_climate
       domain: climate
   fields:
     index:
@@ -110,7 +110,7 @@ clear_learning:
     Requires debug: true in domain configuration.
   target:
     entity:
-      integration: adaptive_thermostat
+      integration: adaptive_climate
       domain: climate
 
 # Domain-level services for system-wide operations

@@ -1,6 +1,6 @@
 {
-  "domain": "adaptive_thermostat",
-  "name": "Adaptive Thermostat",
+  "domain": "adaptive_climate",
+  "name": "Adaptive Climate",
   "codeowners": ["@afewyards"],
   "dependencies": ["history"],
   "documentation": "https://github.com/afewyards/ha-adaptive-thermostat",

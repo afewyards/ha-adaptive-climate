@@ -4,7 +4,7 @@ from enum import Enum
 from typing import Dict, Optional
 import sys
 
-DOMAIN = "adaptive_thermostat"
+DOMAIN = "adaptive_climate"
 
 
 # StrEnum compatibility for Python < 3.11
@@ -91,7 +91,7 @@ REASON_TO_ACTOR: dict[PIDChangeReason, PIDChangeActor] = {
     PIDChangeReason.RESTORE: PIDChangeActor.SYSTEM,
 }
 
-DEFAULT_NAME = "Adaptive Thermostat"
+DEFAULT_NAME = "Adaptive Climate"
 DEFAULT_OUTPUT_PRECISION = 1
 DEFAULT_OUTPUT_MIN = 0
 DEFAULT_OUTPUT_MAX = 100
