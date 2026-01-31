@@ -166,6 +166,21 @@ climate:
 
 With `preheat_enabled`, the system learns your heating rate and starts recovery early to reach target AT the deadline. [Learn more →](https://github.com/afewyards/ha-adaptive-climate/wiki/Energy-Optimization#predictive-pre-heating)
 
+### Graduated Night Setback
+
+Night setback is automatically limited during early learning to protect PID tuning:
+
+| Learning Status | Cycles | Max Setback |
+|-----------------|--------|-------------|
+| collecting | < 3 | Suppressed |
+| collecting | ≥ 3 | 0.5°C |
+| stable | - | 1.0°C |
+| tuned/optimized | - | Full configured |
+
+This provides valuable calibration data (cooling reveals building envelope, recovery validates heating) while preventing corrupted metrics during initial learning.
+
+**Tip:** Configure night setback early - even with small values, the daily recovery cycles accelerate learning.
+
 ### Bathroom with Humidity Detection
 ```yaml
 climate:
@@ -312,6 +327,17 @@ By default, PID parameters are automatically applied when the system reaches suf
 | `forced_air` | 60% | 80% | 6 | 36h |
 
 Slow systems (high thermal mass) require higher confidence because mistakes are costly to recover from.
+
+#### Learning Status Thresholds
+
+| Type | Tier 1 (stable) | Tier 2 (tuned) | Tier 3 (optimized) |
+|------|-----------------|----------------|-------------------|
+| `floor_hydronic` | 32% | 56% | 95% |
+| `radiator` | 36% | 63% | 95% |
+| `convector` | 40% | 70% | 95% |
+| `forced_air` | 44% | 77% | 95% |
+
+Night setback requires "tuned" status for full configured delta. Slower systems (floor hydronic) have lower thresholds because they need more cycles to reach the same confidence level.
 
 ### Disabling Auto-Apply
 ```yaml
