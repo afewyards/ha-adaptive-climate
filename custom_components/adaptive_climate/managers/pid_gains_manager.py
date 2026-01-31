@@ -422,24 +422,3 @@ class PIDGainsManager:
             }
 
         return state
-
-    def restore_from_storage(self, pid_history_by_mode: dict[str, list]) -> None:
-        """One-time import of pid_history from LearningDataStore.
-
-        This replaces current history with stored history. Called during
-        async_added_to_hass for one-time migration from .storage file.
-
-        Args:
-            pid_history_by_mode: Dict with "heating" and/or "cooling" keys,
-                                 each containing a list of history entries.
-        """
-        for mode in ["heating", "cooling"]:
-            stored = pid_history_by_mode.get(mode, [])
-            if stored:
-                migrated = [self._migrate_history_entry(e) for e in stored]
-                self._pid_history[mode] = migrated
-
-        # Enforce size limits
-        for mode_key in ["heating", "cooling"]:
-            if len(self._pid_history[mode_key]) > PID_HISTORY_SIZE:
-                self._pid_history[mode_key] = self._pid_history[mode_key][-PID_HISTORY_SIZE:]

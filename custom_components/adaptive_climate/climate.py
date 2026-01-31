@@ -459,16 +459,6 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
             self._cycle_tracker.set_restoration_complete()
             _LOGGER.debug("%s: Cycle tracker restoration complete", self.entity_id)
 
-        # One-time import of pid_history from .storage (if present)
-        coordinator = self._coordinator
-        if coordinator and self._zone_id:
-            zone_data = coordinator.get_zone_data(self._zone_id)
-            if zone_data and "stored_pid_history" in zone_data:
-                self._gains_manager.restore_from_storage(zone_data["stored_pid_history"])
-                del zone_data["stored_pid_history"]
-                await self._delete_pid_history_from_storage()
-                _LOGGER.info("%s: Imported pid_history from storage (one-time migration)", self.entity_id)
-
         # Set physics baseline for adaptive learning after PID values are finalized
         # (either restored from previous state or calculated from physics in __init__)
         coordinator = self._coordinator
@@ -563,30 +553,6 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
             self.entity_id,
             labels={label.label_id},
         )
-
-    async def _delete_pid_history_from_storage(self) -> None:
-        """Remove pid_history from LearningDataStore after one-time import.
-
-        Called after successfully importing pid_history to PIDGainsManager.
-        This ensures the migration is one-time only.
-        """
-        learning_store = self.hass.data.get(DOMAIN, {}).get("learning_store")
-        if not learning_store:
-            return
-
-        zone_data = learning_store.get_zone_data(self._zone_id)
-        if not zone_data or "adaptive_learner" not in zone_data:
-            return
-
-        adaptive = zone_data["adaptive_learner"]
-        modified = False
-        for mode in ["heating", "cooling"]:
-            if mode in adaptive and "pid_history" in adaptive[mode]:
-                del adaptive[mode]["pid_history"]
-                modified = True
-
-        if modified:
-            await learning_store.async_save_zone(self._zone_id, adaptive_data=adaptive)
 
     async def async_will_remove_from_hass(self) -> None:
         """Run when entity is being removed from Home Assistant.
