@@ -1,6 +1,100 @@
 # CHANGELOG
 
 
+## v0.53.1 (2026-01-31)
+
+### Bug Fixes
+
+- Update chronic approach historic scan tests for unified detector
+  ([`cd582ba`](https://github.com/afewyards/ha-adaptive-climate/commit/cd582ba44097c2d72c1e5925393aab008c685f6e))
+
+Update test_chronic_approach_historic_scan.py to use the unified UndershootDetector API after the
+  ChronicApproachDetector merge:
+
+- Replace _chronic_approach_detector with _undershoot_detector references - Update serialization key
+  from "chronic_approach_detector" to "undershoot_detector" - Add cycles_completed parameter to
+  should_adjust_ki() calls - Increase test cycle counts to meet MIN_CYCLES_FOR_LEARNING (6 cycles)
+  requirement - Update test comments to reflect new minimum cycles threshold
+
+All 7 tests now pass successfully.
+
+### Documentation
+
+- Update CLAUDE.md for unified UndershootDetector
+  ([`3846f51`](https://github.com/afewyards/ha-adaptive-climate/commit/3846f518518479ed630c139903cd054828cadc5e))
+
+### Refactoring
+
+- Merge CHRONIC_APPROACH_THRESHOLDS into UNDERSHOOT_THRESHOLDS
+  ([`16d9289`](https://github.com/afewyards/ha-adaptive-climate/commit/16d9289dbe7a09e92cedf9cdccf4da0b91d81471))
+
+Unify threshold configurations for both real-time mode (debt accumulation) and cycle mode (approach
+  failure) into a single UNDERSHOOT_THRESHOLDS dict. Each heating type now has real-time mode, cycle
+  mode, and shared parameters in one place.
+
+- Remove ChronicApproachDetector (merged into UndershootDetector)
+  ([`3580533`](https://github.com/afewyards/ha-adaptive-climate/commit/3580533437c566fabc5bd3f75c73710d699abcf3))
+
+- Remove duplicate chronic approach check in climate_control
+  ([`1932bee`](https://github.com/afewyards/ha-adaptive-climate/commit/1932bee730d28a363c2361a95fe12680873cc747))
+
+- Removed separate check_chronic_approach_adjustment call (now unified) - Updated
+  check_undershoot_adjustment to pass mode parameter - Enhanced metrics to include all detector
+  state: - time_below_target_hours - thermal_debt - consecutive_failures - Changed PIDChangeReason
+  from CHRONIC_APPROACH_BOOST to UNDERSHOOT_BOOST - Updated logging to indicate unified detector -
+  Removed ~40 lines of duplicate code
+
+- Standardize manager communication with protocols
+  ([`ccdca32`](https://github.com/afewyards/ha-adaptive-climate/commit/ccdca32b058b45ca2a5fbaf5a50298d10501ea55))
+
+- Add sub-protocols: TemperatureState, PIDState, HVACState - Compose ThermostatState from
+  sub-protocols - Add KeManagerState and PIDTuningManagerState protocols - Extract
+  LearningGateManager from closure in climate_init.py - Refactor KeManager: 15 callbacks → Protocol
+  + 2 action callbacks - Refactor PIDTuningManager: 17 callbacks → Protocol + 2 callbacks - Remove
+  redundant thermostat ref from TemperatureManager - Add was_clamped callback to HeaterController -
+  Create docs/architecture/manager-communication.md
+
+- Unify UndershootDetector with real-time and cycle modes
+  ([`cfc96c3`](https://github.com/afewyards/ha-adaptive-climate/commit/cfc96c38f44525501d41f1b70344c670ca9e03e1))
+
+Merges functionality from ChronicApproachDetector into UndershootDetector to create a unified
+  interface with two detection modes:
+
+Real-time mode: - Tracks time_below_target and thermal_debt accumulation - Triggers on bootstrap OR
+  severe undershoot (2x threshold) - Active during early learning and catch-22 scenarios
+
+Cycle mode: - Detects chronic approach failures (consecutive cycles without rise_time) - Requires
+  MIN_CYCLES_FOR_LEARNING before activating - Tracks consecutive_failures counter
+
+Shared state: - Single cumulative_ki_multiplier (max cap 2.0) - Single last_adjustment_time for
+  cooldown tracking - Both modes contribute to same cumulative multiplier
+
+Interface changes: - Added update_realtime() (update() kept for backward compatibility) - Added
+  add_cycle() for cycle-based detection - Added reset_realtime() (reset() kept for backward
+  compatibility) - should_adjust_ki() now checks both modes - apply_adjustment() resets both modes
+
+Tests updated to match merged threshold values from const.py.
+
+- Update AdaptiveLearner to use unified UndershootDetector
+  ([`04dd8b8`](https://github.com/afewyards/ha-adaptive-climate/commit/04dd8b8384dc448d52aa52250cada1a1745483d6))
+
+- Removed ChronicApproachDetector import and initialization - Removed
+  check_chronic_approach_adjustment() method - Updated add_cycle_metrics() to feed cycles to unified
+  detector - Updated check_undershoot_adjustment() to use unified detector - Now checks both
+  real-time and cycle modes - Merges last adjustment time from both old reason strings - Logs all
+  detector state (time_below, thermal_debt, consecutive_failures) - Updates convergence confidence
+  on adjustment - Updated update_undershoot_detector() to use update_realtime() - Updated
+  serialization to v8 format - to_dict() passes None for chronic_approach_detector -
+  restore_from_dict() uses undershoot_detector_state from serialization - Serialization module
+  already handles v7->v8 migration - Updated _perform_historic_scan() to use unified detector - All
+  192 learning tests pass
+
+### Testing
+
+- Merge chronic_approach tests into unified undershoot_detector tests
+  ([`305a31b`](https://github.com/afewyards/ha-adaptive-climate/commit/305a31b7837a64466c0746542f9ddf155f368a82))
+
+
 ## v0.53.0 (2026-01-31)
 
 ### Bug Fixes
