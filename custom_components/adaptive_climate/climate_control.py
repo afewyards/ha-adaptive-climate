@@ -9,7 +9,7 @@ import time
 from homeassistant.components.climate import HVACMode
 from homeassistant.util import dt as dt_util
 
-from .const import PIDChangeReason
+from .const import DOMAIN, PIDChangeReason
 from .managers.events import TemperatureUpdateEvent
 
 _LOGGER = logging.getLogger(__name__)
