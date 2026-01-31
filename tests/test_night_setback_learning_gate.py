@@ -135,8 +135,9 @@ class TestGraduatedSetbackCallbackInterface:
         # Should apply 0.5°C setback (capped by allowed_delta)
         assert effective_target == 19.5  # 20.0 - 0.5
         assert in_night_period is True
-        assert "suppressed_reason" not in info  # Not fully suppressed
-        assert info.get("setback_delta") == 0.5  # Partial setback applied
+        assert info.get("suppressed_reason") == "limited"  # Capped by learning gate
+        assert info.get("night_setback_delta") == 0.5
+        assert info.get("effective_delta") == 0.5  # Partial setback applied
 
     def test_callback_returns_one_degree_when_stable(self):
         """Test callback returns allowed_delta = 1.0 when status is 'stable'."""
@@ -157,8 +158,9 @@ class TestGraduatedSetbackCallbackInterface:
         # Should apply 1.0°C setback (capped by allowed_delta)
         assert effective_target == 19.0  # 20.0 - 1.0
         assert in_night_period is True
-        assert "suppressed_reason" not in info  # Not fully suppressed
-        assert info.get("setback_delta") == 1.0  # Partial setback applied
+        assert info.get("suppressed_reason") == "limited"  # Capped by learning gate
+        assert info.get("night_setback_delta") == 1.0
+        assert info.get("effective_delta") == 1.0  # Partial setback applied
 
     def test_callback_returns_full_when_tuned(self):
         """Test callback returns allowed_delta = None when status is 'tuned'."""
@@ -180,7 +182,8 @@ class TestGraduatedSetbackCallbackInterface:
         assert effective_target == 17.0  # 20.0 - 3.0 (full setback)
         assert in_night_period is True
         assert "suppressed_reason" not in info  # Not suppressed
-        assert info.get("setback_delta") == 3.0  # Full setback applied
+        assert info.get("night_setback_delta") == 3.0
+        assert info.get("effective_delta") == 3.0  # Full setback applied
 
     def test_callback_returns_full_when_optimized(self):
         """Test callback returns allowed_delta = None when status is 'optimized'."""
@@ -202,7 +205,8 @@ class TestGraduatedSetbackCallbackInterface:
         assert effective_target == 17.5  # 20.0 - 2.5 (full setback)
         assert in_night_period is True
         assert "suppressed_reason" not in info  # Not suppressed
-        assert info.get("setback_delta") == 2.5  # Full setback applied
+        assert info.get("night_setback_delta") == 2.5
+        assert info.get("effective_delta") == 2.5  # Full setback applied
 
     def test_callback_capping_when_configured_delta_smaller(self):
         """Test that even with allowed_delta > configured delta, only configured delta is applied."""
@@ -223,8 +227,9 @@ class TestGraduatedSetbackCallbackInterface:
         # Should apply only the configured delta (capped by config)
         assert effective_target == 18.5  # 20.0 - 1.5 (config limit)
         assert in_night_period is True
-        assert "suppressed_reason" not in info
-        assert info.get("setback_delta") == 1.5  # Capped by config
+        assert "suppressed_reason" not in info  # Not capped - allowed_delta >= configured_delta
+        assert info.get("night_setback_delta") == 1.5
+        assert info.get("effective_delta") == 1.5  # Capped by config
 
     def test_transition_from_zero_to_half_degree(self):
         """Test transitioning from 0°C to 0.5°C allowed delta."""
@@ -255,8 +260,9 @@ class TestGraduatedSetbackCallbackInterface:
             effective_target_2, _, info_2 = manager.calculate_night_setback_adjustment(current)
 
         assert effective_target_2 == 19.5  # 0.5°C setback
-        assert "suppressed_reason" not in info_2
-        assert info_2.get("setback_delta") == 0.5
+        assert info_2.get("suppressed_reason") == "limited"  # Capped by learning gate
+        assert info_2.get("night_setback_delta") == 0.5
+        assert info_2.get("effective_delta") == 0.5
 
     def test_transition_from_half_degree_to_full(self):
         """Test transitioning from 0.5°C to full (None) allowed delta."""
@@ -277,7 +283,9 @@ class TestGraduatedSetbackCallbackInterface:
             effective_target_1, _, info_1 = manager.calculate_night_setback_adjustment(current)
 
         assert effective_target_1 == 19.5  # 0.5°C setback
-        assert info_1.get("setback_delta") == 0.5
+        assert info_1.get("night_setback_delta") == 0.5
+        assert info_1.get("effective_delta") == 0.5
+        assert info_1.get("suppressed_reason") == "limited"  # Capped
 
         # Transition to None (tuned)
         get_allowed_setback_delta.return_value = None
@@ -288,7 +296,8 @@ class TestGraduatedSetbackCallbackInterface:
 
         assert effective_target_2 == 18.0  # 2.0°C setback (full)
         assert "suppressed_reason" not in info_2
-        assert info_2.get("setback_delta") == 2.0
+        assert info_2.get("night_setback_delta") == 2.0
+        assert info_2.get("effective_delta") == 2.0
 
     def test_no_callback_defaults_to_full_setback(self):
         """Test that without a callback, full setback is allowed (backward compat)."""
@@ -383,7 +392,9 @@ class TestGraduatedSetbackEdgeCases:
         # Should apply only 0.1°C setback
         assert effective_target == 19.9  # 20.0 - 0.1
         assert in_night_period is True
-        assert info.get("setback_delta") == 0.1
+        assert info.get("night_setback_delta") == 0.1
+        assert info.get("effective_delta") == 0.1
+        assert info.get("suppressed_reason") == "limited"  # Capped by learning gate
 
     def test_exact_match_allowed_delta_equals_config(self):
         """Test when allowed delta exactly matches configured delta."""
@@ -404,11 +415,13 @@ class TestGraduatedSetbackEdgeCases:
         # Should apply full 2.0°C setback
         assert effective_target == 18.0  # 20.0 - 2.0
         assert in_night_period is True
-        assert info.get("setback_delta") == 2.0
+        assert info.get("night_setback_delta") == 2.0
+        assert info.get("effective_delta") == 2.0
+        assert "suppressed_reason" not in info  # Not capped - allowed_delta >= configured_delta
 
-    def test_negative_allowed_delta_treated_as_zero(self):
-        """Test that negative allowed delta is treated as zero (no setback)."""
-        # Mock callback that returns negative (invalid)
+    def test_negative_allowed_delta_treated_as_unlimited(self):
+        """Test that negative allowed delta falls through to unlimited (full setback)."""
+        # Mock callback that returns negative (invalid - treated as None)
         get_allowed_setback_delta = Mock(return_value=-0.5)
 
         manager = self._create_manager(
@@ -422,7 +435,9 @@ class TestGraduatedSetbackEdgeCases:
         with patch('homeassistant.util.dt.utcnow', return_value=current):
             effective_target, in_night_period, info = manager.calculate_night_setback_adjustment(current)
 
-        # Should not apply any setback (negative treated as invalid/zero)
-        assert effective_target == 20.0  # No setback
+        # Negative falls through to None case (unlimited) - applies full setback
+        assert effective_target == 18.0  # Full setback: 20.0 - 2.0
         assert in_night_period is True
-        assert info.get("suppressed_reason") == "learning"
+        assert "suppressed_reason" not in info  # Not suppressed
+        assert info.get("night_setback_delta") == 2.0
+        assert info.get("effective_delta") == 2.0

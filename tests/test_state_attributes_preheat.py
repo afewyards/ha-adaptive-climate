@@ -48,17 +48,15 @@ class TestPreheatStateAttributes:
         thermostat._humidity_detector = None
         thermostat.in_learning_grace_period = False
         thermostat._coordinator = None  # No coordinator for preheat tests
-        thermostat.hass = MagicMock()
-        # Enable debug mode for preheat attributes to be visible
-        thermostat.hass.data = {"adaptive_climate": {"debug": True}}
+
+        # Set up hass mock with proper data structure for debug mode
+        hass_mock = MagicMock()
+        hass_mock.data = {"adaptive_climate": {"debug": True}}
+        thermostat.hass = hass_mock
         # Add temperature getters for preheat
         thermostat._get_current_temp = MagicMock(return_value=18.0)
         thermostat._get_target_temp = MagicMock(return_value=21.0)
         thermostat._outdoor_sensor_temp = 5.0
-        # Mock night setback adjustment calculation
-        thermostat._calculate_night_setback_adjustment = MagicMock(
-            return_value=(21.0, False, {})
-        )
         return thermostat
 
     def test_preheat_disabled_attributes(self):
@@ -128,7 +126,7 @@ class TestPreheatStateAttributes:
             "delta": 3.0,
         }
 
-        # Mock night setback calculator with scheduled preheat (future)
+        # Mock night setback controller and calculator
         scheduled_start = test_now + timedelta(hours=2)
         calculator = MagicMock()
         calculator.get_preheat_info.return_value = {
@@ -138,6 +136,10 @@ class TestPreheatStateAttributes:
         }
         controller = MagicMock()
         controller.calculator = calculator
+        # Mock calculate_night_setback_adjustment to return (target, in_period, info)
+        controller.calculate_night_setback_adjustment.return_value = (
+            21.0, False, {"effective_delta": 0.0}
+        )
         thermostat._night_setback_controller = controller
 
         attrs = build_state_attributes(thermostat)
@@ -171,7 +173,7 @@ class TestPreheatStateAttributes:
             "delta": 3.0,
         }
 
-        # Mock night setback calculator with active preheat
+        # Mock night setback controller and calculator with active preheat
         scheduled_start = test_now - timedelta(minutes=10)  # Started 10 min ago
         calculator = MagicMock()
         calculator.get_preheat_info.return_value = {
@@ -181,6 +183,10 @@ class TestPreheatStateAttributes:
         }
         controller = MagicMock()
         controller.calculator = calculator
+        # Mock calculate_night_setback_adjustment
+        controller.calculate_night_setback_adjustment.return_value = (
+            18.0, True, {"effective_delta": 3.0}  # In night period with setback
+        )
         thermostat._night_setback_controller = controller
 
         attrs = build_state_attributes(thermostat)
@@ -288,7 +294,7 @@ class TestPreheatStateAttributes:
             "delta": 3.0,
         }
 
-        # Test with specific timestamp
+        # Mock night setback controller and calculator with specific timestamp
         test_time = datetime(2024, 6, 15, 5, 30, 0)
         calculator = MagicMock()
         calculator.get_preheat_info.return_value = {
@@ -298,6 +304,10 @@ class TestPreheatStateAttributes:
         }
         controller = MagicMock()
         controller.calculator = calculator
+        # Mock calculate_night_setback_adjustment
+        controller.calculate_night_setback_adjustment.return_value = (
+            21.0, False, {"effective_delta": 0.0}
+        )
         thermostat._night_setback_controller = controller
 
         attrs = build_state_attributes(thermostat)
