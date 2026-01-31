@@ -30,6 +30,7 @@ class StatusInfo(TypedDict):
         resume_at: ISO8601 timestamp when pause ends (optional)
         setback_delta: Temperature adjustment in °C during night_setback (optional)
         setback_end: ISO8601 timestamp when night period ends (optional)
+        suppressed_reason: Reason night setback was suppressed (optional)
 
     Rich (debug mode):
         humidity_peak: Peak humidity % when humidity_spike active (optional)
@@ -40,6 +41,7 @@ class StatusInfo(TypedDict):
     resume_at: NotRequired[str]
     setback_delta: NotRequired[float]
     setback_end: NotRequired[str]
+    suppressed_reason: NotRequired[str]
     # Debug fields
     humidity_peak: NotRequired[float]
     open_sensors: NotRequired[list[str]]
@@ -101,6 +103,7 @@ class StatusManager:
         resume_in_seconds: int | None = None,
         setback_delta: float | None = None,
         setback_end_time: str | None = None,  # "HH:MM" format
+        suppressed_reason: str | None = None,
         # Debug values (only used when debug=True)
         humidity_peak: float | None = None,
         open_sensors: list[str] | None = None,
@@ -143,6 +146,9 @@ class StatusManager:
         setback_end = convert_setback_end(setback_end_time)
         if setback_end:
             result["setback_end"] = setback_end
+
+        if suppressed_reason is not None:
+            result["suppressed_reason"] = suppressed_reason
 
         # Debug fields only when debug mode enabled
         if self._debug:

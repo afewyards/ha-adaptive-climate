@@ -498,11 +498,13 @@ def _build_status_attribute(thermostat: SmartThermostat) -> dict[str, Any]:
     # Get night setback info
     setback_delta = None
     setback_end_time = None
+    suppressed_reason = None
     if night_setback_active and thermostat._night_setback_controller:
         try:
             _, _, info = thermostat._night_setback_controller.calculate_night_setback_adjustment()
             setback_delta = info.get("night_setback_delta")
             setback_end_time = info.get("night_setback_end")
+            suppressed_reason = info.get("suppressed_reason")
         except (TypeError, AttributeError, ValueError):
             pass
 
@@ -537,6 +539,7 @@ def _build_status_attribute(thermostat: SmartThermostat) -> dict[str, Any]:
         resume_in_seconds=resume_in_seconds,
         setback_delta=setback_delta,
         setback_end_time=setback_end_time,
+        suppressed_reason=suppressed_reason,
         humidity_peak=humidity_peak,
         open_sensors=open_sensors,
     )
