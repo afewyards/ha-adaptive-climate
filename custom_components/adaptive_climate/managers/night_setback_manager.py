@@ -165,11 +165,12 @@ class NightSetbackManager:
             current_time
         )
 
-        # If not in night period, return as-is
+        # If not in night period, return as-is with zero effective delta
         if not in_night_period:
             # Clear suppression flag if we were suppressed
             if self._learning_suppressed:
                 self._learning_suppressed = False
+            info["effective_delta"] = 0.0
             return effective_target, in_night_period, info
 
         # Apply graduated delta if callback is provided
@@ -187,15 +188,15 @@ class NightSetbackManager:
                 if not self._learning_suppressed:
                     _LOGGER.info("Night setback fully suppressed - learning not ready")
                     self._learning_suppressed = True
-                return (target_temp, True, {"night_setback_delta": 0.0, "suppressed_reason": "learning"})
+                return (target_temp, True, {"night_setback_delta": 0.0, "effective_delta": 0.0, "suppressed_reason": "learning"})
 
             elif allowed_delta is not None and allowed_delta > 0.0:
                 # Partially allowed - cap the delta
                 capped_delta = min(configured_delta, allowed_delta)
                 capped_target = target_temp - capped_delta
 
-                # Build info dict with night_setback_delta
-                result_info = {"night_setback_delta": capped_delta}
+                # Build info dict with night_setback_delta and effective_delta
+                result_info = {"night_setback_delta": capped_delta, "effective_delta": capped_delta}
 
                 # Add suppressed_reason if delta is reduced
                 if capped_delta < configured_delta:
@@ -219,8 +220,9 @@ class NightSetbackManager:
                 if self._learning_suppressed:
                     _LOGGER.info("Night setback enabled - learning reached stable status")
                     self._learning_suppressed = False
-                # Add night_setback_delta to info for consistency
+                # Add night_setback_delta and effective_delta to info for consistency
                 info["night_setback_delta"] = configured_delta
+                info["effective_delta"] = configured_delta
 
         # Fallback to old behavior if callback not provided
         elif not self._is_learning_stable():
@@ -234,12 +236,19 @@ class NightSetbackManager:
                 _LOGGER.info("Night setback suppressed - learning status: %s", status)
                 self._learning_suppressed = True
 
-            return (target_temp, True, {"suppressed_reason": "learning"})
+            return (target_temp, True, {"suppressed_reason": "learning", "effective_delta": 0.0})
         else:
             # If we were previously suppressed but now stable, log the transition
             if self._learning_suppressed:
                 _LOGGER.info("Night setback enabled - learning reached stable status")
                 self._learning_suppressed = False
+
+            # Calculate effective delta for old callback path
+            target_temp = self._calculator._get_target_temp()
+            if target_temp is None:
+                target_temp = 20.0
+            configured_delta = target_temp - effective_target
+            info["effective_delta"] = configured_delta
 
         # Handle transition detection for learning grace period (state management)
         if self._calculator.is_configured:

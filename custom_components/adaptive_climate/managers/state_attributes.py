@@ -328,6 +328,16 @@ def _add_preheat_attributes(
                         if hasattr(thermostat, '_humidity_detector') and thermostat._humidity_detector
                         else False
                     )
+
+                    # Get effective delta from night setback calculation
+                    # This accounts for learning gate limitations
+                    effective_delta = None
+                    try:
+                        _, _, night_info = thermostat._night_setback_controller.calculate_night_setback_adjustment(now)
+                        effective_delta = night_info.get("effective_delta")
+                    except (TypeError, AttributeError):
+                        pass
+
                     preheat_info = thermostat._night_setback_controller.calculator.get_preheat_info(
                         now=now,
                         current_temp=current_temp,
@@ -335,6 +345,7 @@ def _add_preheat_attributes(
                         outdoor_temp=outdoor_temp,
                         deadline=deadline,
                         humidity_paused=humidity_paused,
+                        effective_delta=effective_delta,
                     )
 
                     attrs["preheat_active"] = preheat_info["active"]
@@ -499,12 +510,16 @@ def _build_status_attribute(thermostat: SmartThermostat) -> dict[str, Any]:
     setback_delta = None
     setback_end_time = None
     suppressed_reason = None
+    allowed_setback = None
     if night_setback_active and thermostat._night_setback_controller:
         try:
             _, _, info = thermostat._night_setback_controller.calculate_night_setback_adjustment()
             setback_delta = info.get("night_setback_delta")
             setback_end_time = info.get("night_setback_end")
             suppressed_reason = info.get("suppressed_reason")
+            # When suppressed_reason is "limited", setback_delta IS the allowed amount
+            if suppressed_reason == "limited" and setback_delta is not None:
+                allowed_setback = setback_delta
         except (TypeError, AttributeError, ValueError):
             pass
 
@@ -540,6 +555,7 @@ def _build_status_attribute(thermostat: SmartThermostat) -> dict[str, Any]:
         setback_delta=setback_delta,
         setback_end_time=setback_end_time,
         suppressed_reason=suppressed_reason,
+        allowed_setback=allowed_setback,
         humidity_peak=humidity_peak,
         open_sensors=open_sensors,
     )

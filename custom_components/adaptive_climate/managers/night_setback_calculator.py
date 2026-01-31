@@ -346,15 +346,21 @@ class NightSetbackCalculator:
         target_temp: float,
         outdoor_temp: float,
         humidity_paused: bool = False,
+        effective_delta: float | None = None,
     ) -> Optional[datetime]:
         """Calculate when to start preheating before recovery deadline.
 
         Args:
             deadline: Recovery deadline datetime
             current_temp: Current temperature in C
-            target_temp: Target temperature in C
+            target_temp: Target temperature in C (base target, before night setback)
             outdoor_temp: Outdoor temperature in C
             humidity_paused: Whether heating is paused due to humidity spike
+            effective_delta: Optional effective setback delta (after learning gate limits).
+                If provided, preheat will calculate based on this delta instead of
+                the full (target_temp - current_temp) delta. This ensures preheat
+                timing matches the actual temperature recovery needed when learning
+                limits the setback amount.
 
         Returns:
             Datetime when preheat should start, or None if preheat is disabled/not configured
@@ -373,13 +379,28 @@ class NightSetbackCalculator:
         if not self._preheat_learner:
             return None
 
-        # If already at or above target, no preheat needed
-        if current_temp >= target_temp:
+        # If effective_delta is provided and is zero, no preheat needed
+        if effective_delta is not None and effective_delta == 0.0:
             return deadline
 
-        # Get estimated time from PreheatLearner
+        # Calculate the effective target temperature to reach
+        if effective_delta is not None:
+            # Use effective delta (accounts for learning limitations)
+            effective_target = target_temp
+            # The actual recovery needed is from (target - effective_delta) to target
+            recovery_start_temp = target_temp - effective_delta
+        else:
+            # Fall back to full delta calculation
+            effective_target = target_temp
+            recovery_start_temp = current_temp
+
+        # If already at or above effective target, no preheat needed
+        if recovery_start_temp >= effective_target:
+            return deadline
+
+        # Get estimated time from PreheatLearner based on effective recovery needed
         estimated_minutes = self._preheat_learner.estimate_time_to_target(
-            current_temp, target_temp, outdoor_temp
+            recovery_start_temp, effective_target, outdoor_temp
         )
 
         # Add 10% buffer (minimum 15 minutes)
@@ -404,16 +425,20 @@ class NightSetbackCalculator:
         outdoor_temp: float,
         deadline: datetime,
         humidity_paused: bool = False,
+        effective_delta: float | None = None,
     ) -> Dict[str, Any]:
         """Get preheat information for state attributes.
 
         Args:
             now: Current datetime
             current_temp: Current temperature in C
-            target_temp: Target temperature in C
+            target_temp: Target temperature in C (base target, before night setback)
             outdoor_temp: Outdoor temperature in C
             deadline: Recovery deadline datetime
             humidity_paused: Whether heating is paused due to humidity spike
+            effective_delta: Optional effective setback delta (after learning gate limits).
+                If provided, preheat will calculate based on this delta instead of
+                the full (target_temp - current_temp) delta.
 
         Returns:
             Dict with scheduled_start, estimated_duration, and active status
@@ -427,17 +452,22 @@ class NightSetbackCalculator:
         if not self._preheat_enabled or not self._preheat_learner:
             return info
 
-        # Calculate scheduled start
+        # Calculate scheduled start with effective delta
         scheduled_start = self.calculate_preheat_start(
-            deadline, current_temp, target_temp, outdoor_temp, humidity_paused
+            deadline, current_temp, target_temp, outdoor_temp, humidity_paused, effective_delta
         )
 
         if scheduled_start is None:
             return info
 
-        # Get estimated duration
+        # Calculate estimated duration based on effective recovery needed
+        if effective_delta is not None:
+            recovery_start_temp = target_temp - effective_delta
+        else:
+            recovery_start_temp = current_temp
+
         estimated_minutes = self._preheat_learner.estimate_time_to_target(
-            current_temp, target_temp, outdoor_temp
+            recovery_start_temp, target_temp, outdoor_temp
         )
 
         info["scheduled_start"] = scheduled_start
