@@ -100,14 +100,18 @@ class NightSetbackManager:
 
         Returns:
             True if learning status callback is None (backwards compat) or
-            if status is "stable", "tuned", or "optimized".
-            False if status is "idle" or "collecting".
+            if status is "tuned" or "optimized".
+            False if status is "idle", "collecting", or "stable".
+
+        Note: "stable" status means system is stable but not yet tuned, so we
+        suppress night setback until it reaches "tuned" status to ensure
+        PID has collected enough data before applying temperature reductions.
         """
         if self._get_learning_status is None:
             return True
 
         status = self._get_learning_status()
-        return status in ("stable", "tuned", "optimized")
+        return status in ("tuned", "optimized")
 
     @property
     def in_learning_grace_period(self) -> bool:
@@ -151,6 +155,31 @@ class NightSetbackManager:
             - in_night_period: Whether we are currently in the night setback period
             - night_setback_info: Dict with additional info for state attributes
         """
+        # Check learning stability first - suppress night setback if learning is not stable
+        # BUT only suppress if we're actually in the night period
+        if not self._is_learning_stable():
+            # First check if we're in night period using the calculator
+            _, in_night_period, _ = self._calculator.calculate_night_setback_adjustment(current_time)
+
+            # Only suppress if we're actually in the night period
+            if in_night_period:
+                target_temp = self._calculator._get_target_temp()
+                if target_temp is None:
+                    target_temp = 20.0  # Fallback
+
+                # Log when suppression state changes
+                if not self._learning_suppressed:
+                    status = self._get_learning_status() if self._get_learning_status else "unknown"
+                    _LOGGER.info("Night setback suppressed - learning status: %s", status)
+                    self._learning_suppressed = True
+
+                return (target_temp, True, {"suppressed_reason": "learning"})
+
+        # If we were previously suppressed but now stable, log the transition
+        if self._learning_suppressed:
+            _LOGGER.info("Night setback enabled - learning reached stable status")
+            self._learning_suppressed = False
+
         # Delegate calculation to the calculator
         effective_target, in_night_period, info = self._calculator.calculate_night_setback_adjustment(
             current_time

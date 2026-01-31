@@ -65,11 +65,8 @@ class TestNightSetbackLearningGate:
             window_orientation=None,
             get_target_temp=lambda: 20.0,
             get_current_temp=lambda: 19.0,
+            get_learning_status=get_learning_status,
         )
-
-        # Inject the learning status callback if provided
-        if get_learning_status:
-            manager._calculator._get_learning_status = get_learning_status
 
         return manager
 
@@ -220,8 +217,8 @@ class TestNightSetbackLearningGate:
 
     def test_status_no_suppressed_reason_when_active(self):
         """Test status dict does not contain suppressed_reason when night setback is active."""
-        # Mock learning status callback that returns "stable"
-        get_learning_status = Mock(return_value="stable")
+        # Mock learning status callback that returns "tuned"
+        get_learning_status = Mock(return_value="tuned")
 
         manager = self._create_manager(
             night_setback_delta=2.0,
@@ -440,8 +437,8 @@ class TestNightSetbackLearningGateEdgeCases:
             window_orientation=None,
             get_target_temp=lambda: 20.0,
             get_current_temp=lambda: 19.0,
+            get_learning_status=get_learning_status,
         )
-        manager._calculator._get_learning_status = get_learning_status
 
         # During night period
         current = datetime(2024, 1, 15, 23, 0)
@@ -485,8 +482,8 @@ class TestNightSetbackLearningGateEdgeCases:
             window_orientation=None,
             get_target_temp=lambda: 20.0,
             get_current_temp=lambda: 19.0,
+            get_learning_status=get_learning_status,
         )
-        manager._calculator._get_learning_status = get_learning_status
 
         # During night period
         current = datetime(2024, 1, 15, 23, 0)
@@ -530,8 +527,8 @@ class TestNightSetbackLearningGateEdgeCases:
             window_orientation=None,
             get_target_temp=lambda: 20.0,
             get_current_temp=lambda: 19.0,
+            get_learning_status=get_learning_status,
         )
-        manager._calculator._get_learning_status = get_learning_status
 
         # During night period
         current = datetime(2024, 1, 15, 23, 0)
@@ -604,9 +601,9 @@ class TestNightSetbackLearningGateEdgeCases:
                 window_orientation=None,
                 get_target_temp=lambda: 20.0,
                 get_current_temp=lambda: 19.0,
+                get_learning_status=get_learning_status,
             )
-            manager._calculator._get_learning_status = get_learning_status
-
+    
             current = datetime(2024, 1, 15, 23, 0)
 
             with patch('homeassistant.util.dt.utcnow', return_value=current):
@@ -634,9 +631,9 @@ class TestNightSetbackLearningGateEdgeCases:
                 window_orientation=None,
                 get_target_temp=lambda: 20.0,
                 get_current_temp=lambda: 19.0,
+                get_learning_status=get_learning_status,
             )
-            manager._calculator._get_learning_status = get_learning_status
-
+    
             current = datetime(2024, 1, 15, 23, 0)
 
             with patch('homeassistant.util.dt.utcnow', return_value=current):
