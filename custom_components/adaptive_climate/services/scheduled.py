@@ -151,7 +151,7 @@ async def _run_health_check_core(
         if persistent_notification:
             await async_send_persistent_notification_func(
                 hass,
-                notification_id="adaptive_thermostat_health",
+                notification_id="adaptive_climate_health",
                 title=title,
                 message=detailed_message,
             )
@@ -349,7 +349,7 @@ async def _run_weekly_report_core(
     if persistent_notification:
         await async_send_persistent_notification_func(
             hass,
-            notification_id="adaptive_thermostat_weekly",
+            notification_id="adaptive_climate_weekly",
             title=title,
             message=report_text,
         )

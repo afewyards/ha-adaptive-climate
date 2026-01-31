@@ -324,7 +324,7 @@ async def async_handle_cost_report(
     if persistent_notification:
         await async_send_persistent_notification_func(
             hass,
-            notification_id="adaptive_thermostat_cost",
+            notification_id="adaptive_climate_cost",
             title=title,
             message=report_text,
         )

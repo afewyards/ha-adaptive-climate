@@ -10,7 +10,7 @@ try:
     from ..const import HeatingType
 except ImportError:
     # Fallback for test environment
-    from custom_components.adaptive_thermostat.const import HeatingType
+    from custom_components.adaptive_climate.const import HeatingType
 
 # Re-export floor physics functions for backward compatibility
 from .floor_physics import (

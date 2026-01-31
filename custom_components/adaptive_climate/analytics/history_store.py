@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
-STORAGE_KEY = "adaptive_thermostat_history"
+STORAGE_KEY = "adaptive_climate_history"
 STORAGE_VERSION = 1
 MAX_WEEKS_TO_KEEP = 12
 

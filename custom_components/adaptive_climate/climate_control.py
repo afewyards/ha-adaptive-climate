@@ -43,14 +43,14 @@ class ClimateControlMixin:
                         await self._async_set_valve_value(self._control_output)
                 # Update zone demand to False when OFF/inactive
                 if self._zone_id:
-                    coordinator = self.hass.data.get("adaptive_thermostat", {}).get("coordinator")
+                    coordinator = self.hass.data.get(DOMAIN, {}).get("coordinator")
                     if coordinator:
                         coordinator.update_zone_demand(self._zone_id, False, self._hvac_mode.value if self._hvac_mode else None)
                 self.async_write_ha_state()
                 return
 
             # Cache coordinator lookup for hot path optimization
-            coordinator = self.hass.data.get("adaptive_thermostat", {}).get("coordinator") if self._zone_id else None
+            coordinator = self.hass.data.get(DOMAIN, {}).get("coordinator") if self._zone_id else None
 
             # Unified pause check (contact sensors, humidity detection, etc.)
             if self._status_manager.is_paused():

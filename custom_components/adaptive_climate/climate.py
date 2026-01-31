@@ -1257,7 +1257,7 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
                 "persistent_notification",
                 "create",
                 {
-                    "notification_id": f"adaptive_thermostat_auto_apply_{self._zone_id}",
+                    "notification_id": f"adaptive_climate_auto_apply_{self._zone_id}",
                     "title": f"🔧 PID Auto-Applied: {self._name}",
                     "message": (
                         f"Adaptive PID values have been automatically applied.\n\n"
@@ -1272,7 +1272,7 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
                         f"The system will validate performance over the next 5 cycles. "
                         f"If performance degrades, it will automatically rollback.\n\n"
                         f"To manually rollback, call service: "
-                        f"`adaptive_thermostat.rollback_pid`"
+                        f"`adaptive_climate.rollback_pid`"
                     ),
                 },
                 blocking=False,
@@ -1358,7 +1358,7 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
                 "persistent_notification",
                 "create",
                 {
-                    "notification_id": f"adaptive_thermostat_rollback_{self._zone_id}",
+                    "notification_id": f"adaptive_climate_rollback_{self._zone_id}",
                     "title": f"⚠️ PID Rolled Back: {self._name}",
                     "message": (
                         f"The auto-applied PID values caused performance degradation "

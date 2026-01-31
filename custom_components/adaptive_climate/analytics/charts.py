@@ -408,11 +408,11 @@ async def save_chart_to_www(
         filename: Filename (without path)
 
     Returns:
-        URL path for the image (/local/adaptive_thermostat/filename), or None on error
+        URL path for the image (/local/adaptive_climate/filename), or None on error
     """
     try:
         # Get www directory path
-        www_dir = Path(hass.config.path("www")) / "adaptive_thermostat"
+        www_dir = Path(hass.config.path("www")) / "adaptive_climate"
 
         # Create directory if needed
         www_dir.mkdir(parents=True, exist_ok=True)
@@ -424,7 +424,7 @@ async def save_chart_to_www(
         _LOGGER.debug("Chart saved to %s", file_path)
 
         # Return URL path
-        return f"/local/adaptive_thermostat/{filename}"
+        return f"/local/adaptive_climate/{filename}"
 
     except (OSError, IOError) as e:
         _LOGGER.error("Failed to save chart: %s", e)
@@ -444,7 +444,7 @@ async def cleanup_old_charts(
     try:
         from datetime import datetime, timedelta
 
-        www_dir = Path(hass.config.path("www")) / "adaptive_thermostat"
+        www_dir = Path(hass.config.path("www")) / "adaptive_climate"
         if not www_dir.exists():
             return
 
