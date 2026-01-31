@@ -2,14 +2,14 @@
 
 ## Overview
 
-HA custom component: PID thermostat with adaptive learning, multi-zone coordination, physics-based init. Fork of Smart Thermostat PID.
+Adaptive Climate: HA custom component with PID thermostat, adaptive learning, multi-zone coordination, physics-based init. Fork of Smart Thermostat PID.
 
 ## Commands
 
 ```bash
 pytest                                    # all tests
 pytest tests/test_pid_controller.py       # specific file
-pytest --cov=custom_components/adaptive_thermostat  # coverage
+pytest --cov=custom_components/adaptive_climate  # coverage
 ```
 
 ## Code Style
@@ -69,7 +69,7 @@ Temp → TemperatureManager → PID → HeaterController → CycleTracker → Co
 
 ### Config Levels
 
-1. **Domain** (`adaptive_thermostat:`): house_energy_rating, main_heater, sync_modes, presets, manifolds, thermal_groups
+1. **Domain** (`adaptive_climate:`): house_energy_rating, main_heater, sync_modes, presets, manifolds, thermal_groups
 2. **Entity** (`climate:` platform): heater, target_sensor, heating_type, area_m2, night_setback
 
 ## Key Details
@@ -123,7 +123,7 @@ Detects shower steam in bathrooms, pauses heating during shower, resumes after s
 **Configuration (entity-level only):**
 ```yaml
 climate:
-  - platform: adaptive_thermostat
+  - platform: adaptive_climate
     humidity_sensor: sensor.bathroom_humidity
     humidity_spike_threshold: 15       # % rise to trigger (default 15)
     humidity_absolute_max: 80          # % absolute cap (default 80)
@@ -175,7 +175,7 @@ Detects setpoint changes and applies integral boost/decay to accelerate PID resp
 **Configuration (entity-level):**
 ```yaml
 climate:
-  - platform: adaptive_thermostat
+  - platform: adaptive_climate
     setpoint_boost: true          # Enable setpoint feedforward (default: true)
     setpoint_boost_factor: 25.0   # Override default factor (optional)
     setpoint_debounce: 5          # Debounce window in seconds (default: 5)
@@ -212,7 +212,7 @@ Detects persistent inability to reach setpoint across multiple consecutive cycle
 
 **Configuration (domain-level):**
 ```yaml
-adaptive_thermostat:
+adaptive_climate:
   chronic_approach_historic_scan: false  # Enable scan of existing cycles on startup
 ```
 
@@ -302,7 +302,7 @@ House-wide automatic HVAC mode switching based on outdoor temp vs zone setpoints
 
 **Configuration (domain-level):**
 ```yaml
-adaptive_thermostat:
+adaptive_climate:
   weather_entity: weather.home
   auto_mode_switching:
     enabled: true
