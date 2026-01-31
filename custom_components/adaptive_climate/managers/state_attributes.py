@@ -108,11 +108,14 @@ def _compute_learning_status(
         is_paused: Whether any pause condition is active (contact_open, humidity_spike, learning_grace)
 
     Returns:
-        Learning status string: "idle" | "collecting" | "stable" | "optimized"
+        Learning status string: "idle" | "collecting" | "stable" | "tuned" | "optimized"
     """
     from ..const import (
         MIN_CYCLES_FOR_LEARNING,
-        AUTO_APPLY_THRESHOLDS,
+        CONFIDENCE_TIER_1,
+        CONFIDENCE_TIER_2,
+        CONFIDENCE_TIER_3,
+        HEATING_TYPE_CONFIDENCE_SCALE,
         HeatingType,
     )
 
@@ -120,20 +123,27 @@ def _compute_learning_status(
     if is_paused:
         return "idle"
 
-    # Use heating-type-specific confidence threshold
-    # Default to CONVECTOR if heating_type not recognized
-    thresholds = AUTO_APPLY_THRESHOLDS.get(
-        heating_type, AUTO_APPLY_THRESHOLDS[HeatingType.CONVECTOR]
+    # Get heating-type-specific confidence scaling factor
+    # Default to CONVECTOR (1.0) if heating_type not recognized
+    scale = HEATING_TYPE_CONFIDENCE_SCALE.get(
+        heating_type, HEATING_TYPE_CONFIDENCE_SCALE.get(HeatingType.CONVECTOR, 1.0)
     )
-    confidence_threshold = thresholds["confidence_first"]
 
-    # Collecting: not enough cycles OR confidence below threshold
-    # Stable: confidence at or above threshold but below optimized threshold
-    # Optimized: confidence at or above 95%
-    if cycle_count < MIN_CYCLES_FOR_LEARNING or convergence_confidence < confidence_threshold:
+    # Calculate scaled thresholds (tier 3 is NOT scaled - always 95%)
+    scaled_tier_1 = min(CONFIDENCE_TIER_1 * scale / 100.0, 0.95)  # Cap at 95%
+    scaled_tier_2 = min(CONFIDENCE_TIER_2 * scale / 100.0, 0.95)  # Cap at 95%
+    tier_3 = CONFIDENCE_TIER_3 / 100.0  # Always 95%
+
+    # Collecting: not enough cycles OR confidence below tier 1
+    # Stable: confidence >= tier 1 AND < tier 2
+    # Tuned: confidence >= tier 2 AND < tier 3
+    # Optimized: confidence >= tier 3
+    if cycle_count < MIN_CYCLES_FOR_LEARNING or convergence_confidence < scaled_tier_1:
         return "collecting"
-    elif convergence_confidence >= OPTIMIZED_CONFIDENCE_THRESHOLD:
+    elif convergence_confidence >= tier_3:
         return "optimized"
+    elif convergence_confidence >= scaled_tier_2:
+        return "tuned"
     else:
         return "stable"
 

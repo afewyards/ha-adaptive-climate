@@ -105,33 +105,35 @@ class TestComputeLearningStatus:
         assert status == "collecting"
 
     def test_stable_status(self):
-        """Test stable status when confidence >= heating-type threshold but < 95%."""
-        # CONVECTOR threshold is 0.60
+        """Test stable status when confidence >= tier 1 but < tier 2."""
+        # CONVECTOR: tier 1 = 40%, tier 2 = 70%
+        # 0.5 is between tier 1 and tier 2
         status = _compute_learning_status(
             cycle_count=MIN_CYCLES_FOR_LEARNING,
-            convergence_confidence=0.7,
+            convergence_confidence=0.5,
             heating_type=HeatingType.CONVECTOR,
         )
         assert status == "stable"
 
     def test_stable_status_at_boundary(self):
-        """Test stable status at confidence == heating-type threshold."""
-        # CONVECTOR threshold is 0.60
+        """Test stable status at confidence == tier 1 threshold."""
+        # CONVECTOR tier 1 = 40%
         status = _compute_learning_status(
             cycle_count=MIN_CYCLES_FOR_LEARNING + 1,
-            convergence_confidence=0.6,
+            convergence_confidence=0.4,
             heating_type=HeatingType.CONVECTOR,
         )
         assert status == "stable"
 
     def test_stable_status_high_confidence(self):
-        """Test stable status with high confidence but below optimized threshold."""
+        """Test tuned status with high confidence but below optimized threshold."""
+        # 0.90 is between tier 2 (70%) and tier 3 (95%)
         status = _compute_learning_status(
             cycle_count=15,
             convergence_confidence=0.90,
             heating_type=HeatingType.CONVECTOR,
         )
-        assert status == "stable"
+        assert status == "tuned"
 
     def test_optimized_status(self):
         """Test optimized status when confidence >= 95%."""
@@ -161,22 +163,30 @@ class TestComputeLearningStatus:
         assert status == "optimized"
 
     def test_floor_hydronic_threshold(self):
-        """Test that floor_hydronic uses higher threshold (0.80)."""
-        # Below floor_hydronic threshold (0.80) but above convector threshold (0.60)
+        """Test that floor_hydronic uses scaled thresholds (tier 1=32%, tier 2=56%)."""
+        # Below floor_hydronic tier 1 (32%)
+        status = _compute_learning_status(
+            cycle_count=MIN_CYCLES_FOR_LEARNING,
+            convergence_confidence=0.30,
+            heating_type=HeatingType.FLOOR_HYDRONIC,
+        )
+        assert status == "collecting"
+
+        # Between tier 1 (32%) and tier 2 (56%) - should be stable
+        status = _compute_learning_status(
+            cycle_count=MIN_CYCLES_FOR_LEARNING,
+            convergence_confidence=0.40,
+            heating_type=HeatingType.FLOOR_HYDRONIC,
+        )
+        assert status == "stable"
+
+        # Between tier 2 (56%) and tier 3 (95%) - should be tuned
         status = _compute_learning_status(
             cycle_count=MIN_CYCLES_FOR_LEARNING,
             convergence_confidence=0.70,
             heating_type=HeatingType.FLOOR_HYDRONIC,
         )
-        assert status == "collecting"
-
-        # At floor_hydronic threshold (0.80) - should be stable (not optimized yet)
-        status = _compute_learning_status(
-            cycle_count=MIN_CYCLES_FOR_LEARNING,
-            convergence_confidence=0.80,
-            heating_type=HeatingType.FLOOR_HYDRONIC,
-        )
-        assert status == "stable"
+        assert status == "tuned"
 
         # At optimized threshold (0.95) - should be optimized
         status = _compute_learning_status(
@@ -187,22 +197,30 @@ class TestComputeLearningStatus:
         assert status == "optimized"
 
     def test_radiator_threshold(self):
-        """Test that radiator uses threshold (0.70)."""
-        # Below radiator threshold
+        """Test that radiator uses scaled thresholds (tier 1=36%, tier 2=63%)."""
+        # Below radiator tier 1 (36%)
         status = _compute_learning_status(
             cycle_count=MIN_CYCLES_FOR_LEARNING,
-            convergence_confidence=0.65,
+            convergence_confidence=0.35,
             heating_type=HeatingType.RADIATOR,
         )
         assert status == "collecting"
 
-        # At radiator threshold - should be stable (not optimized yet)
+        # Between tier 1 (36%) and tier 2 (63%) - should be stable
         status = _compute_learning_status(
             cycle_count=MIN_CYCLES_FOR_LEARNING,
-            convergence_confidence=0.70,
+            convergence_confidence=0.50,
             heating_type=HeatingType.RADIATOR,
         )
         assert status == "stable"
+
+        # At tier 2 boundary (63%) - should be tuned
+        status = _compute_learning_status(
+            cycle_count=MIN_CYCLES_FOR_LEARNING,
+            convergence_confidence=0.63,
+            heating_type=HeatingType.RADIATOR,
+        )
+        assert status == "tuned"
 
         # At optimized threshold (0.95) - should be optimized
         status = _compute_learning_status(
@@ -213,22 +231,30 @@ class TestComputeLearningStatus:
         assert status == "optimized"
 
     def test_forced_air_threshold(self):
-        """Test that forced_air uses threshold (0.60)."""
-        # Below forced_air threshold
+        """Test that forced_air uses scaled thresholds (tier 1=44%, tier 2=77%)."""
+        # Below forced_air tier 1 (44%)
         status = _compute_learning_status(
             cycle_count=MIN_CYCLES_FOR_LEARNING,
-            convergence_confidence=0.55,
+            convergence_confidence=0.43,
             heating_type=HeatingType.FORCED_AIR,
         )
         assert status == "collecting"
 
-        # At forced_air threshold - should be stable (not optimized yet)
+        # Between tier 1 (44%) and tier 2 (77%) - should be stable
         status = _compute_learning_status(
             cycle_count=MIN_CYCLES_FOR_LEARNING,
             convergence_confidence=0.60,
             heating_type=HeatingType.FORCED_AIR,
         )
         assert status == "stable"
+
+        # At tier 2 boundary (77%) - should be tuned
+        status = _compute_learning_status(
+            cycle_count=MIN_CYCLES_FOR_LEARNING,
+            convergence_confidence=0.77,
+            heating_type=HeatingType.FORCED_AIR,
+        )
+        assert status == "tuned"
 
         # At optimized threshold (0.95) - should be optimized
         status = _compute_learning_status(
@@ -239,21 +265,31 @@ class TestComputeLearningStatus:
         assert status == "optimized"
 
     def test_unknown_heating_type_uses_convector_default(self):
-        """Test that unknown heating type defaults to convector threshold."""
-        # Unknown heating type should use convector threshold (0.60)
+        """Test that unknown heating type defaults to convector thresholds (tier 1=40%, tier 2=70%)."""
+        # Unknown heating type should use convector thresholds
+        # Between tier 1 (40%) and tier 2 (70%) = stable
         status = _compute_learning_status(
             cycle_count=MIN_CYCLES_FOR_LEARNING,
-            convergence_confidence=0.60,
+            convergence_confidence=0.50,
             heating_type="unknown_type",
         )
         assert status == "stable"
 
+        # Below tier 1 (40%) = collecting
         status = _compute_learning_status(
             cycle_count=MIN_CYCLES_FOR_LEARNING,
-            convergence_confidence=0.55,
+            convergence_confidence=0.35,
             heating_type="unknown_type",
         )
         assert status == "collecting"
+
+        # At tier 2 (70%) = tuned
+        status = _compute_learning_status(
+            cycle_count=MIN_CYCLES_FOR_LEARNING,
+            convergence_confidence=0.70,
+            heating_type="unknown_type",
+        )
+        assert status == "tuned"
 
 
 class TestAddLearningStatusAttributes:
@@ -605,7 +641,8 @@ class TestAddLearningStatusAttributes:
         thermostat._heating_type = HeatingType.CONVECTOR
         adaptive_learner = MagicMock()
         adaptive_learner.get_cycle_count.return_value = 10
-        adaptive_learner.get_convergence_confidence.return_value = 0.7  # Above 0.6 threshold
+        # 0.5 is between tier 1 (40%) and tier 2 (70%) for convector = stable
+        adaptive_learner.get_convergence_confidence.return_value = 0.5
 
         cycle_tracker = MagicMock()
         cycle_tracker.get_state_name.return_value = "idle"
