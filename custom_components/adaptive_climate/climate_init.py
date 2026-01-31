@@ -28,7 +28,16 @@ from .managers.events import (
     CycleEventType,
 )
 from . import DOMAIN
-from .const import PIDChangeReason, PIDGains
+from .const import (
+    PIDChangeReason,
+    PIDGains,
+    MIN_CYCLES_FOR_LEARNING,
+    CONFIDENCE_TIER_1,
+    CONFIDENCE_TIER_2,
+    CONFIDENCE_TIER_3,
+    HEATING_TYPE_CONFIDENCE_SCALE,
+    HeatingType,
+)
 
 if TYPE_CHECKING:
     from .climate import AdaptiveThermostat
@@ -147,6 +156,81 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
                     thermostat.entity_id, manifold_transport_delay
                 )
 
+        # Create callback for learning status (used to gate night setback)
+        def get_learning_status() -> str:
+            """Get current learning status for night setback suppression.
+
+            Returns:
+                Learning status: "idle" | "collecting" | "stable" | "tuned" | "optimized"
+            """
+            # Check idle conditions first
+            is_paused = False
+
+            # Check learning grace period
+            if thermostat._night_setback_controller:
+                try:
+                    is_paused = thermostat._night_setback_controller.in_learning_grace_period
+                except (TypeError, AttributeError):
+                    pass
+
+            # Check contact sensor pause
+            if not is_paused and thermostat._contact_sensor_handler:
+                try:
+                    is_paused = thermostat._contact_sensor_handler.is_any_contact_open()
+                except (TypeError, AttributeError):
+                    pass
+
+            # Check humidity pause
+            if not is_paused and thermostat._humidity_detector:
+                try:
+                    is_paused = thermostat._humidity_detector.should_pause()
+                except (TypeError, AttributeError):
+                    pass
+
+            if is_paused:
+                return "idle"
+
+            # Get adaptive learner from coordinator
+            if not coordinator or not thermostat._zone_id:
+                return "collecting"
+
+            zone_data = coordinator.get_zone_data(thermostat._zone_id)
+            if not zone_data:
+                return "collecting"
+
+            adaptive_learner = zone_data.get("adaptive_learner")
+            if not adaptive_learner:
+                return "collecting"
+
+            # Get cycle count and convergence confidence
+            cycle_count = adaptive_learner.get_cycle_count()
+            convergence_confidence = adaptive_learner.get_convergence_confidence()
+
+            # Check minimum cycles
+            if cycle_count < MIN_CYCLES_FOR_LEARNING:
+                return "collecting"
+
+            # Get heating type scaling factor
+            heating_type = thermostat._heating_type
+            scale = HEATING_TYPE_CONFIDENCE_SCALE.get(
+                heating_type, HEATING_TYPE_CONFIDENCE_SCALE.get(HeatingType.CONVECTOR, 1.0)
+            )
+
+            # Calculate scaled thresholds (tier 3 is NOT scaled - always 95%)
+            scaled_tier_1 = min(CONFIDENCE_TIER_1 * scale / 100.0, 0.95)
+            scaled_tier_2 = min(CONFIDENCE_TIER_2 * scale / 100.0, 0.95)
+            tier_3 = CONFIDENCE_TIER_3 / 100.0  # Always 95%
+
+            # Determine status based on confidence tiers
+            if convergence_confidence >= tier_3:
+                return "optimized"
+            elif convergence_confidence >= scaled_tier_2:
+                return "tuned"
+            elif convergence_confidence >= scaled_tier_1:
+                return "stable"
+            else:
+                return "collecting"
+
         thermostat._night_setback_controller = NightSetbackManager(
             hass=thermostat.hass,
             entity_id=thermostat.entity_id,
@@ -159,6 +243,7 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
             preheat_learner=thermostat._preheat_learner,
             preheat_enabled=preheat_enabled,
             manifold_transport_delay=manifold_transport_delay,
+            get_learning_status=get_learning_status,
         )
         _LOGGER.info(
             "%s: Night setback controller initialized (preheat=%s)",
