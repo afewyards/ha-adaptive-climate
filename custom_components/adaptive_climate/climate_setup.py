@@ -349,6 +349,15 @@ async def async_setup_platform(hass: HomeAssistant, config: ConfigType, async_ad
             zone_data["stored_preheat_data"] = stored_zone_data["preheat_learner"]
             _LOGGER.info("Stored preheat_learner data for zone %s for later restoration", zone_id)
 
+        # Store pid_history for one-time import to PIDGainsManager
+        if stored_zone_data and "adaptive_learner" in stored_zone_data:
+            adaptive_data = stored_zone_data["adaptive_learner"]
+            heating_ph = adaptive_data.get("heating", {}).get("pid_history", [])
+            cooling_ph = adaptive_data.get("cooling", {}).get("pid_history", [])
+            if heating_ph or cooling_ph:
+                zone_data["stored_pid_history"] = {"heating": heating_ph, "cooling": cooling_ph}
+                _LOGGER.info("Stored pid_history for zone %s for one-time migration", zone_id)
+
         coordinator.register_zone(zone_id, zone_data)
         _LOGGER.info("Registered zone %s with coordinator", zone_id)
 
