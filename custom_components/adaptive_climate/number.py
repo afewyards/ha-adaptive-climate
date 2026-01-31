@@ -1,4 +1,4 @@
-"""Number entities for Adaptive Thermostat."""
+"""Number entities for Adaptive Climate."""
 from __future__ import annotations
 
 import logging
@@ -28,7 +28,7 @@ async def async_setup_platform(
     async_add_entities: AddEntitiesCallback,
     discovery_info: DiscoveryInfoType | None = None,
 ) -> None:
-    """Set up the Adaptive Thermostat number entities."""
+    """Set up the Adaptive Climate number entities."""
     # Create system-level number entity for learning window
     entities = [
         LearningWindowNumber(hass),
@@ -43,7 +43,7 @@ class LearningWindowNumber(RestoreNumber):
     def __init__(self, hass: HomeAssistant) -> None:
         """Initialize the number entity."""
         self.hass = hass
-        self._attr_name = "Adaptive Thermostat Learning Window"
+        self._attr_name = "Adaptive Climate Learning Window"
         self._attr_unique_id = f"{DOMAIN}_learning_window"
         self._attr_native_min_value = 1
         self._attr_native_max_value = 30

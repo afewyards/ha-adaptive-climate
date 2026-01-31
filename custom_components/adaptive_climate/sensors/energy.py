@@ -1,4 +1,4 @@
-"""Energy sensors for Adaptive Thermostat.
+"""Energy sensors for Adaptive Climate.
 
 This module contains sensors that track energy consumption and costs:
 - PowerPerM2Sensor: Tracks power consumption per square meter

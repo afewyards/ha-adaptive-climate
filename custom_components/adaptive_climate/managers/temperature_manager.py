@@ -1,4 +1,4 @@
-"""Temperature and preset mode manager for Adaptive Thermostat integration."""
+"""Temperature and preset mode manager for Adaptive Climate integration."""
 from __future__ import annotations
 
 import logging

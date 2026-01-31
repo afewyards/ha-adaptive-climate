@@ -1,4 +1,4 @@
-"""PWM tuning utilities for Adaptive Thermostat."""
+"""PWM tuning utilities for Adaptive Climate."""
 
 from typing import List, Optional
 import statistics

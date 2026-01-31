@@ -1,4 +1,4 @@
-"""Sensors module for Adaptive Thermostat."""
+"""Sensors module for Adaptive Climate."""
 from .performance import (
     AdaptiveThermostatSensor,
     DutyCycleSensor,

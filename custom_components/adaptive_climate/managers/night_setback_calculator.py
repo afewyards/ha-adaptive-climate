@@ -1,4 +1,4 @@
-"""Night setback calculator for Adaptive Thermostat integration.
+"""Night setback calculator for Adaptive Climate integration.
 
 This module provides pure calculation logic for night setback functionality,
 separated from the state management concerns handled by NightSetbackManager.

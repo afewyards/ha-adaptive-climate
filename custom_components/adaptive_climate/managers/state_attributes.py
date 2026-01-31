@@ -1,4 +1,4 @@
-"""State attribute builder for Adaptive Thermostat."""
+"""State attribute builder for Adaptive Climate."""
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any

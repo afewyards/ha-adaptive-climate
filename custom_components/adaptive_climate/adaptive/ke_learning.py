@@ -1,4 +1,4 @@
-"""Ke (outdoor temperature compensation) adaptive learning for Adaptive Thermostat.
+"""Ke (outdoor temperature compensation) adaptive learning for Adaptive Climate.
 
 This module provides automatic tuning of the Ke parameter based on observed
 correlations between outdoor temperature and required heating effort (PID output).

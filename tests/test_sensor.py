@@ -1,4 +1,4 @@
-"""Tests for Adaptive Thermostat DutyCycleSensor.
+"""Tests for Adaptive Climate DutyCycleSensor.
 
 These tests verify the real duty cycle calculation based on:
 1. Tracking heater on/off state changes with timestamps

@@ -1,4 +1,4 @@
-"""Protocol definitions for Adaptive Thermostat.
+"""Protocol definitions for Adaptive Climate.
 
 This module defines protocols (structural types) that describe the interfaces
 managers and other components expect from the thermostat entity.

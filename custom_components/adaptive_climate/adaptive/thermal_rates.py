@@ -1,4 +1,4 @@
-"""Thermal rate learning for Adaptive Thermostat.
+"""Thermal rate learning for Adaptive Climate.
 
 This module provides the ThermalRateLearner class for learning thermal heating
 and cooling rates from observed temperature history.

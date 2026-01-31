@@ -1,4 +1,4 @@
-"""Control output manager for Adaptive Thermostat integration."""
+"""Control output manager for Adaptive Climate integration."""
 from __future__ import annotations
 
 import logging

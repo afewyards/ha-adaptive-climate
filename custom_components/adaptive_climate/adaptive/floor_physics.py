@@ -1,4 +1,4 @@
-"""Floor heating physics calculations for Adaptive Thermostat.
+"""Floor heating physics calculations for Adaptive Climate.
 
 This module provides functions to validate floor construction configurations
 and calculate thermal properties for floor heating systems.

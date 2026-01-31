@@ -76,7 +76,7 @@ from .climate_setup import async_setup_platform, PLATFORM_SCHEMA, validate_pwm_c
 
 
 class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntity, RestoreEntity):
-    """Representation of an Adaptive Thermostat device."""
+    """Representation of an Adaptive Climate device."""
 
     def __init__(self, **kwargs):
         """Initialize the thermostat."""
@@ -539,7 +539,7 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
         entity_registry = er.async_get(self.hass)
         label_registry = lr.async_get(self.hass)
 
-        label_name = "Adaptive Thermostat"
+        label_name = "Adaptive Climate"
         label = label_registry.async_get_label_by_name(label_name)
 
         if label is None:

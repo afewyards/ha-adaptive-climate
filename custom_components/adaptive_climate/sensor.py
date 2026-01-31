@@ -1,4 +1,4 @@
-"""Sensor platform for Adaptive Thermostat.
+"""Sensor platform for Adaptive Climate.
 
 This module serves as the entry point for the sensor platform,
 importing and re-exporting sensor classes from submodules.
@@ -50,7 +50,7 @@ async def async_setup_platform(
     async_add_entities: AddEntitiesCallback,
     discovery_info: DiscoveryInfoType | None = None,
 ) -> None:
-    """Set up the Adaptive Thermostat performance sensors."""
+    """Set up the Adaptive Climate performance sensors."""
     if discovery_info is None:
         return
 

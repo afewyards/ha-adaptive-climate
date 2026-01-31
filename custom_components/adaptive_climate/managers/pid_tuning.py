@@ -1,4 +1,4 @@
-"""PID tuning manager for Adaptive Thermostat integration."""
+"""PID tuning manager for Adaptive Climate integration."""
 from __future__ import annotations
 
 import logging

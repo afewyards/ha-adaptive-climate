@@ -1,4 +1,4 @@
-"""Setpoint boost manager for Adaptive Thermostat integration."""
+"""Setpoint boost manager for Adaptive Climate integration."""
 from __future__ import annotations
 
 import logging

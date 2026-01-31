@@ -1,4 +1,4 @@
-"""Tests for Adaptive Thermostat performance sensors."""
+"""Tests for Adaptive Climate performance sensors."""
 import pytest
 import asyncio
 from unittest.mock import Mock, MagicMock

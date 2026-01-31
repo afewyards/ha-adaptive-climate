@@ -1,4 +1,4 @@
-"""HVAC mode helper utilities for Adaptive Thermostat.
+"""HVAC mode helper utilities for Adaptive Climate.
 
 Provides helper functions for working with HVACMode enums,
 including lazy imports and string conversions.

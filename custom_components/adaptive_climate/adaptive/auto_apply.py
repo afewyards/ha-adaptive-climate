@@ -1,4 +1,4 @@
-"""Auto-apply safety gates and threshold management for Adaptive Thermostat.
+"""Auto-apply safety gates and threshold management for Adaptive Climate.
 
 This module contains logic for automatic PID adjustment application, including:
 - Heating-type-specific confidence thresholds

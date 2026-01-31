@@ -1,4 +1,4 @@
-"""Physics-based PID initialization for Adaptive Thermostat.
+"""Physics-based PID initialization for Adaptive Climate.
 
 This module provides functions to calculate initial PID parameters based on
 thermal properties of zones and heating system characteristics.

@@ -1,4 +1,4 @@
-"""Static Thermal Groups for Adaptive Thermostat.
+"""Static Thermal Groups for Adaptive Climate.
 
 Provides declarative thermal group configuration for:
 - Leader/follower coordination in open plan areas

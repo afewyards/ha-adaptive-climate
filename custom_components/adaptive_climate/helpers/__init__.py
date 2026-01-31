@@ -1,1 +1,1 @@
-"""Helper utilities for Adaptive Thermostat."""
+"""Helper utilities for Adaptive Climate."""

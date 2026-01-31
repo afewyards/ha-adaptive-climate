@@ -1,4 +1,4 @@
-"""Actuator wear tracking sensors for Adaptive Thermostat.
+"""Actuator wear tracking sensors for Adaptive Climate.
 
 This module contains sensors that track actuator (contactor/valve) wear
 based on on→off cycle counting, with maintenance alerts at configurable thresholds.

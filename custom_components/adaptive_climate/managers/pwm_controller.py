@@ -1,4 +1,4 @@
-"""PWM (Pulse Width Modulation) controller for Adaptive Thermostat integration.
+"""PWM (Pulse Width Modulation) controller for Adaptive Climate integration.
 
 Manages duty accumulation for sub-threshold PID outputs and PWM switching logic.
 """

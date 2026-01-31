@@ -1,4 +1,4 @@
-"""Heater controller manager for Adaptive Thermostat integration."""
+"""Heater controller manager for Adaptive Climate integration."""
 from __future__ import annotations
 
 import logging

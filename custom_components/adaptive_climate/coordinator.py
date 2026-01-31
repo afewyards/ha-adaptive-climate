@@ -1,4 +1,4 @@
-"""Data Update Coordinator for Adaptive Thermostat."""
+"""Data Update Coordinator for Adaptive Climate."""
 from __future__ import annotations
 
 from datetime import datetime, timedelta

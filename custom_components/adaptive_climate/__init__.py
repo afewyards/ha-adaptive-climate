@@ -454,7 +454,7 @@ async def async_send_persistent_notification(
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Set up the Adaptive Thermostat integration."""
+    """Set up the Adaptive Climate integration."""
     if not HAS_HOMEASSISTANT:
         return False
 
@@ -803,12 +803,12 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     shutdown_unsub = hass.bus.async_listen_once("homeassistant_stop", _async_save_manifold_state_on_shutdown)
     hass.data[DOMAIN]["shutdown_unsub"] = shutdown_unsub
 
-    _LOGGER.info("Adaptive Thermostat integration setup complete")
+    _LOGGER.info("Adaptive Climate integration setup complete")
     return True
 
 
 async def async_unload(hass: HomeAssistant) -> bool:
-    """Unload the Adaptive Thermostat integration.
+    """Unload the Adaptive Climate integration.
 
     This function handles cleanup when the integration is being unloaded or reloaded:
     - Cancels all scheduled tasks (health checks, weekly reports, daily learning)
@@ -826,7 +826,7 @@ async def async_unload(hass: HomeAssistant) -> bool:
         _LOGGER.debug("Domain data not found, nothing to unload")
         return True
 
-    _LOGGER.info("Unloading Adaptive Thermostat integration")
+    _LOGGER.info("Unloading Adaptive Climate integration")
 
     # Cancel all scheduled tasks
     unsub_callbacks = hass.data[DOMAIN].get("unsub_callbacks", [])
@@ -908,6 +908,6 @@ async def async_unload(hass: HomeAssistant) -> bool:
 
     # Remove all domain data
     hass.data.pop(DOMAIN, None)
-    _LOGGER.info("Adaptive Thermostat integration unloaded successfully")
+    _LOGGER.info("Adaptive Climate integration unloaded successfully")
 
     return True

@@ -1,4 +1,4 @@
-"""Cycle analysis functions and classes for Adaptive Thermostat.
+"""Cycle analysis functions and classes for Adaptive Climate.
 
 This module provides tools for analyzing heating cycle performance metrics
 including overshoot detection, undershoot calculation, oscillation counting,

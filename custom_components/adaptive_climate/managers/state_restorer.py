@@ -1,4 +1,4 @@
-"""State restoration manager for Adaptive Thermostat integration."""
+"""State restoration manager for Adaptive Climate integration."""
 from __future__ import annotations
 
 import logging

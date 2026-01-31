@@ -1,4 +1,4 @@
-"""Health sensors for Adaptive Thermostat.
+"""Health sensors for Adaptive Climate.
 
 This module contains sensors that track overall system health:
 - SystemHealthSensor: Monitors health status across all heating zones

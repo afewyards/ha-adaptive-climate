@@ -1,4 +1,4 @@
-"""Thermal rate learning and adaptive PID adjustments for Adaptive Thermostat."""
+"""Thermal rate learning and adaptive PID adjustments for Adaptive Climate."""
 
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Any, TYPE_CHECKING

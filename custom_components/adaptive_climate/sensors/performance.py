@@ -1,4 +1,4 @@
-"""Performance sensors for Adaptive Thermostat.
+"""Performance sensors for Adaptive Climate.
 
 This module contains sensors that track heating system performance metrics:
 - DutyCycleSensor: Tracks heater on/off time as percentage
@@ -50,7 +50,7 @@ class HeaterStateChange:
 
 
 class AdaptiveThermostatSensor(SensorEntity):
-    """Base class for Adaptive Thermostat sensors."""
+    """Base class for Adaptive Climate sensors."""
 
     def __init__(
         self,

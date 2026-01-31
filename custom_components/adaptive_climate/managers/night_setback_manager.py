@@ -1,4 +1,4 @@
-"""Night setback controller manager for Adaptive Thermostat integration."""
+"""Night setback controller manager for Adaptive Climate integration."""
 from __future__ import annotations
 
 import logging

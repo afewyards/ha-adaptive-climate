@@ -1,4 +1,4 @@
-"""Scheduled task handlers for Adaptive Thermostat integration."""
+"""Scheduled task handlers for Adaptive Climate integration."""
 from __future__ import annotations
 
 import logging

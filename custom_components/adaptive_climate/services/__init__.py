@@ -1,4 +1,4 @@
-"""Service handlers for Adaptive Thermostat integration."""
+"""Service handlers for Adaptive Climate integration."""
 from __future__ import annotations
 
 import logging
@@ -468,7 +468,7 @@ def async_register_services(
     default_vacation_target_temp: float,
     debug: bool = False,
 ) -> None:
-    """Register all services for the Adaptive Thermostat integration.
+    """Register all services for the Adaptive Climate integration.
 
     Args:
         hass: Home Assistant instance
@@ -543,7 +543,7 @@ def async_register_services(
 
 
 def async_unregister_services(hass: HomeAssistant) -> None:
-    """Unregister all services for the Adaptive Thermostat integration.
+    """Unregister all services for the Adaptive Climate integration.
 
     Args:
         hass: Home Assistant instance

@@ -1,4 +1,4 @@
-"""Comfort sensors for Adaptive Thermostat.
+"""Comfort sensors for Adaptive Climate.
 
 This module contains sensors that track comfort metrics:
 - TimeAtTargetSensor: Tracks percentage of time temperature is within target band

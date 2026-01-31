@@ -1,4 +1,4 @@
-"""Adaptive learning module for Adaptive Thermostat."""
+"""Adaptive learning module for Adaptive Climate."""
 
 try:
     from .thermal_rates import ThermalRateLearner

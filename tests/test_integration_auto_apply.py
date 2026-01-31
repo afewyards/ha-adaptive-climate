@@ -956,7 +956,7 @@ class TestManualRollbackService:
             "persistent_notification",
             "create",
             {
-                "title": "Adaptive Thermostat PID Rolled Back",
+                "title": "Adaptive Climate PID Rolled Back",
                 "message": (
                     f"PID values rolled back for test_zone:\n"
                     f"Kp: {new_kp:.2f} → {initial_kp:.2f}\n"
