@@ -45,6 +45,7 @@ class NightSetbackManager:
         preheat_learner: Optional[Any] = None,
         preheat_enabled: bool = False,
         manifold_transport_delay: float = 0.0,
+        get_learning_status: Callable[[], str] | None = None,
     ):
         """Initialize the NightSetbackManager.
 
@@ -60,8 +61,10 @@ class NightSetbackManager:
             preheat_learner: Optional PreheatLearner instance for time estimation
             preheat_enabled: Whether preheat functionality is enabled
             manifold_transport_delay: Manifold transport delay in minutes (default: 0.0)
+            get_learning_status: Optional callback to get current learning status
         """
         self._entity_id = entity_id
+        self._get_learning_status = get_learning_status
 
         # Initialize the calculator for pure calculation logic
         self._calculator = NightSetbackCalculator(
@@ -80,6 +83,7 @@ class NightSetbackManager:
         # Grace period tracking state variables (state management, not calculation)
         self._learning_grace_until: Optional[datetime] = None
         self._night_setback_was_active: Optional[bool] = None
+        self._learning_suppressed: bool = False
 
     @property
     def calculator(self) -> NightSetbackCalculator:
@@ -90,6 +94,20 @@ class NightSetbackManager:
     def is_configured(self) -> bool:
         """Return True if night setback is configured."""
         return self._calculator.is_configured
+
+    def _is_learning_stable(self) -> bool:
+        """Check if learning is stable enough for night setback to be active.
+
+        Returns:
+            True if learning status callback is None (backwards compat) or
+            if status is "stable", "tuned", or "optimized".
+            False if status is "idle" or "collecting".
+        """
+        if self._get_learning_status is None:
+            return True
+
+        status = self._get_learning_status()
+        return status in ("stable", "tuned", "optimized")
 
     @property
     def in_learning_grace_period(self) -> bool:
