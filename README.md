@@ -1,5 +1,5 @@
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge)](https://github.com/custom-components/hacs)
-[![Tests](https://github.com/afewyards/ha-adaptive-thermostat/workflows/Tests/badge.svg)](https://github.com/afewyards/ha-adaptive-thermostat/actions/workflows/tests.yml)
+[![Tests](https://github.com/afewyards/ha-adaptive-climate/workflows/Tests/badge.svg)](https://github.com/afewyards/ha-adaptive-climate/actions/workflows/tests.yml)
 
 <a href="https://www.buymeacoffee.com/afewyards" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" height="41" width="174"></a>
 
@@ -10,21 +10,21 @@
 ██╔══██║██║  ██║██╔══██║██╔═══╝    ██║   ██║╚██╗ ██╔╝██╔══╝
 ██║  ██║██████╔╝██║  ██║██║        ██║   ██║ ╚████╔╝ ███████╗
 ╚═╝  ╚═╝╚═════╝ ╚═╝  ╚═╝╚═╝        ╚═╝   ╚═╝  ╚═══╝  ╚══════╝
-████████╗██╗  ██╗███████╗██████╗ ███╗   ███╗ ██████╗ ███████╗████████╗ █████╗ ████████╗
-╚══██╔══╝██║  ██║██╔════╝██╔══██╗████╗ ████║██╔═══██╗██╔════╝╚══██╔══╝██╔══██╗╚══██╔══╝
-   ██║   ███████║█████╗  ██████╔╝██╔████╔██║██║   ██║███████╗   ██║   ███████║   ██║
-   ██║   ██╔══██║██╔══╝  ██╔══██╗██║╚██╔╝██║██║   ██║╚════██║   ██║   ██╔══██║   ██║
-   ██║   ██║  ██║███████╗██║  ██║██║ ╚═╝ ██║╚██████╔╝███████║   ██║   ██║  ██║   ██║
-   ╚═╝   ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚═╝     ╚═╝ ╚═════╝ ╚══════╝   ╚═╝   ╚═╝  ╚═╝   ╚═╝
+ ██████╗██╗     ██╗███╗   ███╗ █████╗ ████████╗███████╗
+██╔════╝██║     ██║████╗ ████║██╔══██╗╚══██╔══╝██╔════╝
+██║     ██║     ██║██╔████╔██║███████║   ██║   █████╗
+██║     ██║     ██║██║╚██╔╝██║██╔══██║   ██║   ██╔══╝
+╚██████╗███████╗██║██║ ╚═╝ ██║██║  ██║   ██║   ███████╗
+ ╚═════╝╚══════╝╚═╝╚═╝     ╚═╝╚═╝  ╚═╝   ╚═╝   ╚══════╝
 ```
 
-# Adaptive Thermostat
-## Smart PID Thermostat with Adaptive Learning for Home Assistant
+# Adaptive Climate
+## Smart PID Climate Control with Adaptive Learning for Home Assistant
 
-An advanced thermostat integration featuring PID control with automatic tuning, adaptive learning, multi-zone coordination, and energy optimization. Fork of [HASmartThermostat](https://github.com/ScratMan/HASmartThermostat) with extensive enhancements.
+An advanced climate integration featuring PID control with automatic tuning, adaptive learning, multi-zone coordination, and energy optimization. Fork of [HASmartThermostat](https://github.com/ScratMan/HASmartThermostat) with extensive enhancements.
 
 > **Note: This project is currently in active testing and development.**
-> While the core functionality is operational, adaptive learning features and multi-zone coordination are being refined based on real-world usage. Please report any issues or unexpected behavior via [GitHub Issues](https://github.com/afewyards/ha-adaptive-thermostat/issues).
+> While the core functionality is operational, adaptive learning features and multi-zone coordination are being refined based on real-world usage. Please report any issues or unexpected behavior via [GitHub Issues](https://github.com/afewyards/ha-adaptive-climate/issues).
 
 ### Key Features
 
@@ -39,41 +39,45 @@ An advanced thermostat integration featuring PID control with automatic tuning, 
 
 ## 📚 Full Documentation
 
-**[Visit the Wiki](https://github.com/afewyards/ha-adaptive-thermostat/wiki)** for comprehensive documentation including:
+**[Visit the Wiki](https://github.com/afewyards/ha-adaptive-climate/wiki)** for comprehensive documentation including:
 
-- [Installation & Setup](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Installation-&-Setup) - Detailed installation guide and first-time configuration
-- [Configuration Reference](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Configuration-Reference) - Complete parameter reference
-- [PID Control](https://github.com/afewyards/ha-adaptive-thermostat/wiki/PID-Control) - 5-term PID (P/I/D/E/F), PWM vs valve control
-- [Adaptive Learning](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Adaptive-Learning) - Cycle tracking, learning rules, chronic approach detection
-- [Multi-Zone Coordination](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Multi-Zone-Coordination) - Central controller, thermal groups, auto mode switching
-- [Energy Optimization](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Energy-Optimization) - Night setback, predictive preheat, outdoor compensation
-- [Humidity Detection](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Humidity-Detection) - Bathroom steam detection
-- [Troubleshooting](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Troubleshooting) - Diagnostic checklist and common issues
+- [Installation & Setup](https://github.com/afewyards/ha-adaptive-climate/wiki/Installation-&-Setup) - Detailed installation guide and first-time configuration
+- [Configuration Reference](https://github.com/afewyards/ha-adaptive-climate/wiki/Configuration-Reference) - Complete parameter reference
+- [PID Control](https://github.com/afewyards/ha-adaptive-climate/wiki/PID-Control) - 5-term PID (P/I/D/E/F), PWM vs valve control
+- [Adaptive Learning](https://github.com/afewyards/ha-adaptive-climate/wiki/Adaptive-Learning) - Cycle tracking, learning rules, chronic approach detection
+- [Multi-Zone Coordination](https://github.com/afewyards/ha-adaptive-climate/wiki/Multi-Zone-Coordination) - Central controller, thermal groups, auto mode switching
+- [Energy Optimization](https://github.com/afewyards/ha-adaptive-climate/wiki/Energy-Optimization) - Night setback, predictive preheat, outdoor compensation
+- [Humidity Detection](https://github.com/afewyards/ha-adaptive-climate/wiki/Humidity-Detection) - Bathroom steam detection
+- [Troubleshooting](https://github.com/afewyards/ha-adaptive-climate/wiki/Troubleshooting) - Diagnostic checklist and common issues
 
 ## Installation
 
 ### Install using HACS (Recommended)
 1. Go to HACS → Integrations → Three dots menu → Custom repositories
-2. Add `https://github.com/afewyards/ha-adaptive-thermostat` as Integration
-3. Click Install on the Adaptive Thermostat card
+2. Add `https://github.com/afewyards/ha-adaptive-climate` as Integration
+3. Click Install on the Adaptive Climate card
 4. Restart Home Assistant
 
 ### Manual Installation
-1. Copy the `custom_components/adaptive_thermostat` folder to your `<config>/custom_components/` directory
+1. Copy the `custom_components/adaptive_climate` folder to your `<config>/custom_components/` directory
 2. Restart Home Assistant
+
+## Migration from adaptive_thermostat
+
+If you're upgrading from the `adaptive_thermostat` integration, see the [CHANGELOG](CHANGELOG.md) for migration instructions. The integration has been renamed to `adaptive_climate` to better reflect support for both heating and cooling.
 
 ## Companion Lovelace Card
 
-For the best experience, use the [Adaptive Thermostat Card](https://github.com/afewyards/adaptive-thermostat-card) — a custom Lovelace card designed specifically for this integration.
+For the best experience, use the [Adaptive Climate Card](https://github.com/afewyards/adaptive-climate-card) — a custom Lovelace card designed specifically for this integration.
 
-[![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/afewyards/adaptive-thermostat-card)
+[![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/afewyards/adaptive-climate-card)
 
 ## Quick Start
 
 ### Basic Configuration
 ```yaml
 climate:
-  - platform: adaptive_thermostat
+  - platform: adaptive_climate
     name: Living Room
     heater: switch.heating_living_room
     target_sensor: sensor.temp_living_room
@@ -90,7 +94,7 @@ PID values are automatically calculated from `heating_type` and `area_m2`, then 
 
 ### Multi-Zone with Central Heat Source
 ```yaml
-adaptive_thermostat:
+adaptive_climate:
   house_energy_rating: A+++
   main_heater_switch: switch.boiler
   outdoor_sensor: sensor.outdoor_temp
@@ -117,7 +121,7 @@ adaptive_thermostat:
       delay_minutes: 15
 
 climate:
-  - platform: adaptive_thermostat
+  - platform: adaptive_climate
     name: Ground Floor
     heater: switch.heating_gf
     target_sensor: sensor.temp_gf
@@ -134,7 +138,7 @@ climate:
           material: cement
           thickness_mm: 50
 
-  - platform: adaptive_thermostat
+  - platform: adaptive_climate
     name: Kitchen
     heater: switch.heating_kitchen
     target_sensor: sensor.temp_kitchen
@@ -145,7 +149,7 @@ climate:
 ### Night Setback with Predictive Pre-Heating
 ```yaml
 climate:
-  - platform: adaptive_thermostat
+  - platform: adaptive_climate
     name: Bedroom
     heater: switch.heating_bedroom
     target_sensor: sensor.temp_bedroom
@@ -160,12 +164,12 @@ climate:
       preheat_enabled: true  # Learn heating rate and start early
 ```
 
-With `preheat_enabled`, the system learns your heating rate and starts recovery early to reach target AT the deadline. [Learn more →](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Energy-Optimization#predictive-pre-heating)
+With `preheat_enabled`, the system learns your heating rate and starts recovery early to reach target AT the deadline. [Learn more →](https://github.com/afewyards/ha-adaptive-climate/wiki/Energy-Optimization#predictive-pre-heating)
 
 ### Bathroom with Humidity Detection
 ```yaml
 climate:
-  - platform: adaptive_thermostat
+  - platform: adaptive_climate
     name: Bathroom
     heater: switch.heating_bathroom
     target_sensor: sensor.temp_bathroom
@@ -175,12 +179,12 @@ climate:
     humidity_spike_threshold: 15  # Pause heating on 15% spike (shower)
 ```
 
-Detects shower steam and pauses heating to prevent wasted energy. Resumes after humidity stabilizes. [Learn more →](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Humidity-Detection)
+Detects shower steam and pauses heating to prevent wasted energy. Resumes after humidity stabilizes. [Learn more →](https://github.com/afewyards/ha-adaptive-climate/wiki/Humidity-Detection)
 
 ### Cooling/AC Configuration
 ```yaml
 climate:
-  - platform: adaptive_thermostat
+  - platform: adaptive_climate
     name: Living Room AC
     heater: switch.heating_living
     cooler: switch.ac_living
@@ -194,7 +198,7 @@ climate:
 ### Valve Control (0-100%)
 ```yaml
 climate:
-  - platform: adaptive_thermostat
+  - platform: adaptive_climate
     name: Fan Coil Unit
     demand_switch: switch.fcunit_valve
     target_sensor: sensor.temp_fcunit
@@ -206,7 +210,7 @@ climate:
 ### Floor Construction (Underfloor Heating)
 ```yaml
 climate:
-  - platform: adaptive_thermostat
+  - platform: adaptive_climate
     name: Living Room UFH
     heater: switch.ufh_living
     target_sensor: sensor.temp_living
@@ -223,12 +227,12 @@ climate:
           thickness_mm: 70
 ```
 
-Specifying floor construction improves PID initialization by calculating thermal mass from actual materials. Heavier floors get more conservative tuning. [Learn more →](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Configuration-Reference#floor_construction)
+Specifying floor construction improves PID initialization by calculating thermal mass from actual materials. Heavier floors get more conservative tuning. [Learn more →](https://github.com/afewyards/ha-adaptive-climate/wiki/Configuration-Reference#floor_construction)
 
 ### Actuator Wear Tracking
 ```yaml
 climate:
-  - platform: adaptive_thermostat
+  - platform: adaptive_climate
     name: Living Room
     heater: switch.heating_living
     target_sensor: sensor.temp_living
@@ -237,7 +241,7 @@ climate:
     heater_rated_cycles: 100000  # Typical contactor lifetime
 ```
 
-Tracks on→off cycles and fires maintenance alerts at 80% and 90% wear. [Learn more →](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Actuator-Wear-Tracking)
+Tracks on→off cycles and fires maintenance alerts at 80% and 90% wear. [Learn more →](https://github.com/afewyards/ha-adaptive-climate/wiki/Actuator-Wear-Tracking)
 
 ## Created Entities
 
@@ -255,31 +259,31 @@ Tracks on→off cycles and fires maintenance alerts at 80% and 90% wear. [Learn 
 - `sensor.{zone}_cooler_wear` - Cooler wear % (hidden, optional)
 
 ### System
-- `number.adaptive_thermostat_learning_window` - Learning window in days (adjustable)
-- `sensor.adaptive_thermostat_total_power` - Total power across all zones
-- `sensor.adaptive_thermostat_weekly_cost` - Weekly energy cost
+- `number.adaptive_climate_learning_window` - Learning window in days (adjustable)
+- `sensor.adaptive_climate_total_power` - Total power across all zones
+- `sensor.adaptive_climate_weekly_cost` - Weekly energy cost
 
 ## Services
 
 ### Entity Services (require `debug: true`)
-- `adaptive_thermostat.reset_pid_to_physics` - Reset PID to physics-based defaults
-- `adaptive_thermostat.apply_adaptive_pid` - Apply learned PID adjustments manually
-- `adaptive_thermostat.apply_adaptive_ke` - Apply outdoor compensation tuning
-- `adaptive_thermostat.rollback_pid` - Revert to previous PID configuration
-- `adaptive_thermostat.clear_learning` - Clear all learning data and reset
+- `adaptive_climate.reset_pid_to_physics` - Reset PID to physics-based defaults
+- `adaptive_climate.apply_adaptive_pid` - Apply learned PID adjustments manually
+- `adaptive_climate.apply_adaptive_ke` - Apply outdoor compensation tuning
+- `adaptive_climate.rollback_pid` - Revert to previous PID configuration
+- `adaptive_climate.clear_learning` - Clear all learning data and reset
 
 ### Entity Services (always available)
-- `adaptive_thermostat.delete_pid_history` - Clear PID adjustment history
-- `adaptive_thermostat.restore_pid_history` - Restore from saved history
+- `adaptive_climate.delete_pid_history` - Clear PID adjustment history
+- `adaptive_climate.restore_pid_history` - Restore from saved history
 
 ### Domain Services
-- `adaptive_thermostat.weekly_report` - Generate performance report
-- `adaptive_thermostat.cost_report` - Energy cost analysis (daily/weekly/monthly)
-- `adaptive_thermostat.set_vacation_mode` - Enable frost protection mode
-- `adaptive_thermostat.run_learning` - Trigger learning analysis (debug only)
-- `adaptive_thermostat.pid_recommendations` - Preview recommended PID values (debug only)
+- `adaptive_climate.weekly_report` - Generate performance report
+- `adaptive_climate.cost_report` - Energy cost analysis (daily/weekly/monthly)
+- `adaptive_climate.set_vacation_mode` - Enable frost protection mode
+- `adaptive_climate.run_learning` - Trigger learning analysis (debug only)
+- `adaptive_climate.pid_recommendations` - Preview recommended PID values (debug only)
 
-[Full service documentation →](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Services)
+[Full service documentation →](https://github.com/afewyards/ha-adaptive-climate/wiki/Services)
 
 ## Automatic PID Tuning
 
@@ -312,7 +316,7 @@ Slow systems (high thermal mass) require higher confidence because mistakes are 
 ### Disabling Auto-Apply
 ```yaml
 climate:
-  - platform: adaptive_thermostat
+  - platform: adaptive_climate
     name: Living Room
     heater: switch.heating_living
     target_sensor: sensor.temp_living
@@ -321,7 +325,7 @@ climate:
     auto_apply_pid: false  # Disable automatic application
 ```
 
-With `auto_apply_pid: false`, use `adaptive_thermostat.apply_adaptive_pid` service to manually apply learned values.
+With `auto_apply_pid: false`, use `adaptive_climate.apply_adaptive_pid` service to manually apply learned values.
 
 ### Entity Attributes
 Monitor status via entity attributes:
@@ -340,7 +344,7 @@ Additional attributes available with `debug: true` in domain config:
 The thermostat automatically learns and adjusts. Give it time:
 - Initial values come from physics-based calculations
 - PID adjustments are auto-applied when confidence reaches heating-type threshold
-- Manual application available via `adaptive_thermostat.apply_adaptive_pid` service
+- Manual application available via `adaptive_climate.apply_adaptive_pid` service
 
 ### Common Issues
 
@@ -374,7 +378,7 @@ Monitor `learning_status` attribute:
 - `stable` - System converged, PID optimized
 - `optimized` - Very high confidence (95%+)
 
-[Full troubleshooting guide →](https://github.com/afewyards/ha-adaptive-thermostat/wiki/Troubleshooting)
+[Full troubleshooting guide →](https://github.com/afewyards/ha-adaptive-climate/wiki/Troubleshooting)
 
 ## Credits
 
