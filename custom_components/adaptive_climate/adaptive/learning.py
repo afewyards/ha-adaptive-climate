@@ -1346,34 +1346,16 @@ class AdaptiveLearner:
         self._consecutive_converged_cycles = restored["consecutive_converged_cycles"]
         self._pid_converged_for_ke = restored["pid_converged_for_ke"]
 
-        # Restore unified undershoot detector state (v8+)
-        unified_state = restored.get("unified_detector_state", {})
-        if unified_state:
+        # Restore unified undershoot detector state (serialization module already handles v7->v8 migration)
+        undershoot_state = restored.get("undershoot_detector_state", {})
+        if undershoot_state:
             # Real-time mode state
-            self._undershoot_detector.time_below_target = unified_state.get("time_below_target", 0.0)
-            self._undershoot_detector.thermal_debt = unified_state.get("thermal_debt", 0.0)
+            self._undershoot_detector.time_below_target = undershoot_state.get("time_below_target", 0.0)
+            self._undershoot_detector.thermal_debt = undershoot_state.get("thermal_debt", 0.0)
             # Cycle mode state
-            self._undershoot_detector._consecutive_failures = unified_state.get("consecutive_failures", 0)
+            self._undershoot_detector._consecutive_failures = undershoot_state.get("consecutive_failures", 0)
             # Shared state
-            self._undershoot_detector.cumulative_ki_multiplier = unified_state.get("cumulative_ki_multiplier", 1.0)
-        else:
-            # Backward compatibility: merge separate v7 detector states
-            undershoot_state = restored.get("undershoot_detector_state", {})
-            chronic_state = restored.get("chronic_approach_detector_state", {})
-
-            # Real-time mode (from old undershoot detector)
-            if undershoot_state:
-                self._undershoot_detector.time_below_target = undershoot_state.get("time_below_target", 0.0)
-                self._undershoot_detector.thermal_debt = undershoot_state.get("thermal_debt", 0.0)
-
-            # Cycle mode (from old chronic approach detector)
-            if chronic_state:
-                self._undershoot_detector._consecutive_failures = chronic_state.get("consecutive_failures", 0)
-
-            # Merge cumulative multipliers (use max to be conservative)
-            undershoot_mult = undershoot_state.get("cumulative_ki_multiplier", 1.0) if undershoot_state else 1.0
-            chronic_mult = chronic_state.get("cumulative_multiplier", 1.0) if chronic_state else 1.0
-            self._undershoot_detector.cumulative_ki_multiplier = max(undershoot_mult, chronic_mult)
+            self._undershoot_detector.cumulative_ki_multiplier = undershoot_state.get("cumulative_ki_multiplier", 1.0)
 
         # Perform historic scan if enabled
         if self._chronic_approach_historic_scan:
