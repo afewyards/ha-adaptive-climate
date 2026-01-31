@@ -120,12 +120,12 @@ class ClimateControlMixin:
                                 self._cold_tolerance,
                             )
 
-                            # Check if Ki adjustment is needed
+                            # Check if Ki adjustment is needed (unified detector handles both real-time and cycle modes)
                             cycles_completed = adaptive_learner.get_cycle_count()
                             current_ki = self._pid_controller.ki
                             pid_history = self._gains_manager.get_history()
                             new_ki = adaptive_learner.check_undershoot_adjustment(
-                                cycles_completed, current_ki, pid_history
+                                cycles_completed, current_ki, pid_history, mode=self._hvac_mode
                             )
 
                             if new_ki is not None:
@@ -142,54 +142,16 @@ class ClimateControlMixin:
                                         new_ki,
                                     )
 
-                                # Update Ki via PIDGainsManager
+                                # Update Ki via PIDGainsManager with comprehensive metrics
                                 undershoot_amount = self._target_temp - self._current_temp if self._target_temp and self._current_temp else 0.0
                                 self._gains_manager.set_gains(
                                     PIDChangeReason.UNDERSHOOT_BOOST,
                                     ki=new_ki,
-                                    metrics={"undershoot_amount": undershoot_amount},
-                                )
-
-                                # Trigger state save
-                                self.async_write_ha_state()
-
-                                _LOGGER.info(
-                                    "%s: Undershoot detector adjusted Ki: %.5f -> %.5f",
-                                    self.entity_id,
-                                    old_ki,
-                                    new_ki,
-                                )
-
-                            # Check if Ki adjustment is needed for chronic approach failure
-                            current_ki = self._pid_controller.ki
-                            new_ki_chronic = adaptive_learner.check_chronic_approach_adjustment(
-                                current_ki,
-                                zone_name=self._name or self.entity_id,
-                                pid_history=pid_history,
-                            )
-
-                            if new_ki_chronic is not None:
-                                # Scale integral to prevent output spike
-                                old_ki = self._pid_controller.ki
-                                if old_ki > 0:
-                                    scale_factor = old_ki / new_ki_chronic
-                                    self._pid_controller.scale_integral(scale_factor)
-                                    _LOGGER.info(
-                                        "%s: Scaled integral by %.3f to prevent output spike (Ki: %.5f -> %.5f)",
-                                        self.entity_id,
-                                        scale_factor,
-                                        old_ki,
-                                        new_ki_chronic,
-                                    )
-
-                                # Update Ki via PIDGainsManager
-                                undershoot_amount = self._target_temp - self._current_temp if self._target_temp and self._current_temp else 0.0
-                                self._gains_manager.set_gains(
-                                    PIDChangeReason.CHRONIC_APPROACH_BOOST,
-                                    ki=new_ki_chronic,
                                     metrics={
                                         "undershoot_amount": undershoot_amount,
-                                        "consecutive_failures": adaptive_learner.chronic_approach_detector._consecutive_failures,
+                                        "time_below_target_hours": adaptive_learner.undershoot_detector.time_below_target / 3600.0,
+                                        "thermal_debt": adaptive_learner.undershoot_detector.thermal_debt,
+                                        "consecutive_failures": adaptive_learner.undershoot_detector._consecutive_failures,
                                     },
                                 )
 
@@ -197,10 +159,10 @@ class ClimateControlMixin:
                                 self.async_write_ha_state()
 
                                 _LOGGER.info(
-                                    "%s: Chronic approach detector adjusted Ki: %.5f -> %.5f",
+                                    "%s: Undershoot detector (unified) adjusted Ki: %.5f -> %.5f",
                                     self.entity_id,
                                     old_ki,
-                                    new_ki_chronic,
+                                    new_ki,
                                 )
 
                 # Record temperature for cycle tracking
