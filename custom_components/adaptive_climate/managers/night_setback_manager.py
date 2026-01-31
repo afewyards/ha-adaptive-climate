@@ -46,6 +46,7 @@ class NightSetbackManager:
         preheat_enabled: bool = False,
         manifold_transport_delay: float = 0.0,
         get_learning_status: Callable[[], str] | None = None,
+        get_allowed_setback_delta: Callable[[], float | None] | None = None,
     ):
         """Initialize the NightSetbackManager.
 
@@ -61,10 +62,12 @@ class NightSetbackManager:
             preheat_learner: Optional PreheatLearner instance for time estimation
             preheat_enabled: Whether preheat functionality is enabled
             manifold_transport_delay: Manifold transport delay in minutes (default: 0.0)
-            get_learning_status: Optional callback to get current learning status
+            get_learning_status: Optional callback to get current learning status (DEPRECATED - use get_allowed_setback_delta)
+            get_allowed_setback_delta: Optional callback to get allowed setback delta based on learning progress
         """
         self._entity_id = entity_id
         self._get_learning_status = get_learning_status
+        self._get_allowed_setback_delta = get_allowed_setback_delta
 
         # Initialize the calculator for pure calculation logic
         self._calculator = NightSetbackCalculator(
@@ -146,6 +149,8 @@ class NightSetbackManager:
         Handles both static end time (NightSetback object) and dynamic end time
         (sunrise/orientation/weather-based) configurations.
 
+        Applies graduated setback delta based on learning progress when callback is provided.
+
         Args:
             current_time: Optional datetime for testing; defaults to dt_util.utcnow()
 
@@ -155,35 +160,82 @@ class NightSetbackManager:
             - in_night_period: Whether we are currently in the night setback period
             - night_setback_info: Dict with additional info for state attributes
         """
-        # Check learning stability first - suppress night setback if learning is not stable
-        # BUT only suppress if we're actually in the night period
-        if not self._is_learning_stable():
-            # First check if we're in night period using the calculator
-            _, in_night_period, _ = self._calculator.calculate_night_setback_adjustment(current_time)
-
-            # Only suppress if we're actually in the night period
-            if in_night_period:
-                target_temp = self._calculator._get_target_temp()
-                if target_temp is None:
-                    target_temp = 20.0  # Fallback
-
-                # Log when suppression state changes
-                if not self._learning_suppressed:
-                    status = self._get_learning_status() if self._get_learning_status else "unknown"
-                    _LOGGER.info("Night setback suppressed - learning status: %s", status)
-                    self._learning_suppressed = True
-
-                return (target_temp, True, {"suppressed_reason": "learning"})
-
-        # If we were previously suppressed but now stable, log the transition
-        if self._learning_suppressed:
-            _LOGGER.info("Night setback enabled - learning reached stable status")
-            self._learning_suppressed = False
-
-        # Delegate calculation to the calculator
+        # First calculate what the full setback would be
         effective_target, in_night_period, info = self._calculator.calculate_night_setback_adjustment(
             current_time
         )
+
+        # If not in night period, return as-is
+        if not in_night_period:
+            # Clear suppression flag if we were suppressed
+            if self._learning_suppressed:
+                self._learning_suppressed = False
+            return effective_target, in_night_period, info
+
+        # Apply graduated delta if callback is provided
+        if self._get_allowed_setback_delta is not None:
+            allowed_delta = self._get_allowed_setback_delta()
+            target_temp = self._calculator._get_target_temp()
+            if target_temp is None:
+                target_temp = 20.0  # Fallback
+
+            if allowed_delta == 0.0:
+                # Fully suppressed - no setback
+                if not self._learning_suppressed:
+                    _LOGGER.info("Night setback fully suppressed - learning not ready")
+                    self._learning_suppressed = True
+                return (target_temp, True, {"suppressed_reason": "learning"})
+
+            elif allowed_delta is not None and allowed_delta > 0.0:
+                # Partially allowed - cap the delta
+                configured_delta = target_temp - effective_target  # How much setback was calculated
+                capped_delta = min(configured_delta, allowed_delta)
+                capped_target = target_temp - capped_delta
+
+                # Log when delta is capped
+                if capped_delta < configured_delta:
+                    if not self._learning_suppressed:
+                        _LOGGER.info(
+                            "Night setback capped to %.1f°C (allowed: %.1f°C, configured: %.1f°C)",
+                            capped_delta, allowed_delta, configured_delta
+                        )
+                        self._learning_suppressed = True
+                else:
+                    # Full configured delta allowed (allowed_delta >= configured_delta)
+                    if self._learning_suppressed:
+                        _LOGGER.info("Night setback no longer capped - full configured delta allowed")
+                        self._learning_suppressed = False
+
+                # Always return with setback_delta when we have a valid allowed_delta
+                return (capped_target, True, {"setback_delta": capped_delta})
+
+            else:
+                # allowed_delta is None - unlimited (full setback allowed)
+                if self._learning_suppressed:
+                    _LOGGER.info("Night setback enabled - learning reached stable status")
+                    self._learning_suppressed = False
+                # Add setback_delta to info for consistency
+                configured_delta = target_temp - effective_target
+                info["setback_delta"] = configured_delta
+
+        # Fallback to old behavior if callback not provided
+        elif not self._is_learning_stable():
+            target_temp = self._calculator._get_target_temp()
+            if target_temp is None:
+                target_temp = 20.0  # Fallback
+
+            # Log when suppression state changes
+            if not self._learning_suppressed:
+                status = self._get_learning_status() if self._get_learning_status else "unknown"
+                _LOGGER.info("Night setback suppressed - learning status: %s", status)
+                self._learning_suppressed = True
+
+            return (target_temp, True, {"suppressed_reason": "learning"})
+        else:
+            # If we were previously suppressed but now stable, log the transition
+            if self._learning_suppressed:
+                _LOGGER.info("Night setback enabled - learning reached stable status")
+                self._learning_suppressed = False
 
         # Handle transition detection for learning grace period (state management)
         if self._calculator.is_configured:

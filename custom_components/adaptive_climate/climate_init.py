@@ -156,12 +156,16 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
                     thermostat.entity_id, manifold_transport_delay
                 )
 
-        # Create callback for learning status (used to gate night setback)
-        def get_learning_status() -> str:
-            """Get current learning status for night setback suppression.
+        # Create callback for graduated setback delta (used to gate night setback)
+        def get_allowed_setback_delta() -> float | None:
+            """Get allowed setback delta based on learning status and cycle count.
 
             Returns:
-                Learning status: "idle" | "collecting" | "stable" | "tuned" | "optimized"
+                float | None: Max allowed setback delta in °C, or None for unlimited.
+                - 0.0: Fully suppressed (idle or collecting with < 3 cycles)
+                - 0.5: Early learning (collecting with >= 3 cycles)
+                - 1.0: Moderate learning (stable status)
+                - None: Unlimited (tuned or optimized status)
             """
             # Check idle conditions first
             is_paused = False
@@ -188,27 +192,23 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
                     pass
 
             if is_paused:
-                return "idle"
+                return 0.0  # Fully suppressed when idle
 
             # Get adaptive learner from coordinator
             if not coordinator or not thermostat._zone_id:
-                return "collecting"
+                return 0.0  # No data available - suppress
 
             zone_data = coordinator.get_zone_data(thermostat._zone_id)
             if not zone_data:
-                return "collecting"
+                return 0.0  # No zone data - suppress
 
             adaptive_learner = zone_data.get("adaptive_learner")
             if not adaptive_learner:
-                return "collecting"
+                return 0.0  # No learner - suppress
 
             # Get cycle count and convergence confidence
             cycle_count = adaptive_learner.get_cycle_count()
             convergence_confidence = adaptive_learner.get_convergence_confidence()
-
-            # Check minimum cycles
-            if cycle_count < MIN_CYCLES_FOR_LEARNING:
-                return "collecting"
 
             # Get heating type scaling factor
             heating_type = thermostat._heating_type
@@ -221,15 +221,17 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
             scaled_tier_2 = min(CONFIDENCE_TIER_2 * scale / 100.0, 0.95)
             tier_3 = CONFIDENCE_TIER_3 / 100.0  # Always 95%
 
-            # Determine status based on confidence tiers
+            # Determine allowed delta based on confidence tiers and cycle count
             if convergence_confidence >= tier_3:
-                return "optimized"
+                return None  # Optimized - unlimited
             elif convergence_confidence >= scaled_tier_2:
-                return "tuned"
+                return None  # Tuned - unlimited
             elif convergence_confidence >= scaled_tier_1:
-                return "stable"
+                return 1.0  # Stable - 1°C allowed
+            elif cycle_count >= 3:
+                return 0.5  # Collecting with data - 0.5°C allowed
             else:
-                return "collecting"
+                return 0.0  # Collecting without data - suppressed
 
         thermostat._night_setback_controller = NightSetbackManager(
             hass=thermostat.hass,
@@ -243,7 +245,7 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
             preheat_learner=thermostat._preheat_learner,
             preheat_enabled=preheat_enabled,
             manifold_transport_delay=manifold_transport_delay,
-            get_learning_status=get_learning_status,
+            get_allowed_setback_delta=get_allowed_setback_delta,
         )
         _LOGGER.info(
             "%s: Night setback controller initialized (preheat=%s)",
