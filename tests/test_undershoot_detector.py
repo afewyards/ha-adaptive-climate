@@ -445,7 +445,7 @@ class TestDifferentHeatingTypes:
 
         assert thresholds["time_threshold_hours"] == 4.0
         assert thresholds["debt_threshold"] == 2.0
-        assert thresholds["ki_multiplier"] == 1.15
+        assert thresholds["ki_multiplier"] == 1.20
         assert thresholds["cooldown_hours"] == 24.0
 
     def test_radiator_thresholds(self):
@@ -455,7 +455,7 @@ class TestDifferentHeatingTypes:
 
         assert thresholds["time_threshold_hours"] == 2.0
         assert thresholds["debt_threshold"] == 1.0
-        assert thresholds["ki_multiplier"] == 1.20
+        assert thresholds["ki_multiplier"] == 1.25
         assert thresholds["cooldown_hours"] == 8.0
 
     def test_convector_thresholds(self):
@@ -465,7 +465,7 @@ class TestDifferentHeatingTypes:
 
         assert thresholds["time_threshold_hours"] == 1.5
         assert thresholds["debt_threshold"] == 0.75
-        assert thresholds["ki_multiplier"] == 1.25
+        assert thresholds["ki_multiplier"] == 1.30
         assert thresholds["cooldown_hours"] == 4.0
 
     def test_forced_air_thresholds(self):
@@ -475,7 +475,7 @@ class TestDifferentHeatingTypes:
 
         assert thresholds["time_threshold_hours"] == 0.75
         assert thresholds["debt_threshold"] == 0.5
-        assert thresholds["ki_multiplier"] == 1.30
+        assert thresholds["ki_multiplier"] == 1.35
         assert thresholds["cooldown_hours"] == 2.0
 
     def test_forced_air_triggers_faster(self):
@@ -642,7 +642,7 @@ class TestPersistentUndershootMode:
 
         # Apply adjustment and verify multiplier
         multiplier = detector.apply_adjustment()
-        assert multiplier == thresholds["ki_multiplier"]  # 1.15 for floor_hydronic
+        assert multiplier == thresholds["ki_multiplier"]  # 1.20 for floor_hydronic
 
     def test_forced_air_severe_threshold(self):
         """Test severe undershoot threshold for forced_air (faster system)."""
