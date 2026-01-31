@@ -59,6 +59,7 @@ pytest --cov=custom_components/adaptive_climate  # coverage
 | `KeManager` | Outdoor compensation |
 | `NightSetbackManager` | Night setback orchestration |
 | `NightSetbackCalculator` | Preheat timing |
+| `NightSetbackLearningGate` | Suppresses night setback until tuned |
 | `pid_gains_manager.py` | Centralized PID gain mutations, auto-history |
 
 ### Data Flow
@@ -167,6 +168,19 @@ night_setback:
 - Fallback: Uses `HEATING_TYPE_PREHEAT_CONFIG` rates until sufficient data
 
 **State attributes (debug only):** `preheat_active`, `preheat_scheduled_start`, `preheat_estimated_duration_min`, `preheat_learning_confidence`, `preheat_heating_rate_learned`, `preheat_observation_count`
+
+### Night Setback Learning Gate
+
+Night setback is automatically suppressed until the zone reaches "tuned" learning status. This prevents premature temperature reductions during initial PID learning that could interfere with convergence metrics.
+
+**Behavior:**
+- Suppressed when learning_status is "idle", "collecting", or "stable"
+- Enabled when learning_status is "tuned" or "optimized"
+- Always-on (no configuration flag)
+- Preheat also suppressed (tied to night setback)
+- Status attribute shows `suppressed_reason: "learning"` when suppressed
+
+**Rationale:** Night setback reduces the setpoint during sleeping hours. If applied before the PID has learned the system's thermal characteristics, it can corrupt cycle metrics and delay convergence. By gating on "tuned" status, we ensure the controller has collected sufficient data before allowing setpoint modifications.
 
 ### Setpoint Feedforward
 
@@ -348,7 +362,7 @@ Exposed via `extra_state_attributes`. Minimized for clarity - only restoration +
     "control_output",        # Current PID output %
 
     # Learning status
-    "learning_status",           # "idle" | "collecting" | "stable" | "optimized"
+    "learning_status",           # "idle" | "collecting" | "stable" | "tuned" | "optimized"
     "pid_history",               # List of PID adjustments (when non-empty)
 
     # Operational status
@@ -369,15 +383,21 @@ Exposed via `extra_state_attributes`. Minimized for clarity - only restoration +
 
 **Learning status states:**
 - `idle` - Learning paused (contact_open, humidity_spike, or learning_grace active)
-- `collecting` - Gathering data (< 6 cycles OR confidence below heating-type threshold)
-- `stable` - System stable (confidence ≥ heating-type threshold AND < 95%)
+- `collecting` - Gathering data (< 6 cycles OR confidence below tier 1 threshold)
+- `stable` - Basic convergence (confidence ≥ tier 1 threshold AND < tier 2)
+- `tuned` - System well-tuned, night setback enabled (confidence ≥ tier 2 threshold AND < 95%)
 - `optimized` - Very high confidence (confidence ≥ 95%)
 
-**Heating-type confidence thresholds for "stable" state:**
-- floor_hydronic: 80%
-- radiator: 70%
-- convector: 60%
-- forced_air: 60%
+**Confidence tier thresholds (scaled by heating type):**
+
+| Heating Type | Tier 1 (stable) | Tier 2 (tuned) | Tier 3 (optimized) |
+|--------------|-----------------|----------------|-------------------|
+| floor_hydronic | 32% | 56% | 95% |
+| radiator | 36% | 63% | 95% |
+| convector | 40% | 70% | 95% |
+| forced_air | 44% | 77% | 95% |
+
+*Base values: Tier 1=40%, Tier 2=70%, Tier 3=95%. Scaling: floor 0.8x, radiator 0.9x, convector 1.0x, forced_air 1.1x (capped at 95%)*
 
 **Debug-only attributes** (require `debug: true` in domain config):
 - `duty_accumulator_pct` - PWM accumulation as % of threshold
