@@ -50,6 +50,10 @@ class ConfidenceTracker:
         self._heating_auto_apply_count: int = 0
         self._cooling_auto_apply_count: int = 0
 
+        # Mode-specific cycle count tracking
+        self._heating_cycle_count: int = 0
+        self._cooling_cycle_count: int = 0
+
     def get_convergence_confidence(self, mode: "HVACMode" = None) -> float:
         """Get current convergence confidence level for specified mode.
 
@@ -82,6 +86,22 @@ class ConfidenceTracker:
         else:
             return self._heating_auto_apply_count
 
+    def get_cycle_count(self, mode: "HVACMode" = None) -> int:
+        """Get number of cycles tracked for specified mode.
+
+        Args:
+            mode: HVACMode (HEAT or COOL) to check (defaults to HEAT)
+
+        Returns:
+            Total count of cycles tracked for the specified mode.
+        """
+        if mode is None:
+            mode = get_hvac_heat_mode()
+        if mode == get_hvac_cool_mode():
+            return self._cooling_cycle_count
+        else:
+            return self._heating_cycle_count
+
     def update_convergence_confidence(self, metrics, mode: "HVACMode" = None) -> None:
         """Update convergence confidence based on cycle performance.
 
@@ -94,6 +114,13 @@ class ConfidenceTracker:
         """
         if mode is None:
             mode = get_hvac_heat_mode()
+
+        # Increment cycle count for this mode
+        if mode == get_hvac_cool_mode():
+            self._cooling_cycle_count += 1
+        else:
+            self._heating_cycle_count += 1
+
         # Select confidence value based on mode
         if mode == get_hvac_cool_mode():
             current_confidence = self._cooling_convergence_confidence

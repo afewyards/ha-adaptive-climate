@@ -848,40 +848,33 @@ VALIDATION_DEGRADATION_THRESHOLD = 0.30
 SEASONAL_SHIFT_BLOCK_DAYS = 7
 
 # Heating-type-specific auto-apply thresholds
-# Slow systems (high thermal mass) require higher confidence and longer cooldowns
-# to ensure stability before automatic PID changes are applied.
+# Slow systems (high thermal mass) require longer cooldowns to ensure stability
+# before automatic PID changes are applied.
 #
 # Keys:
-#   confidence_first: Required confidence for first auto-apply (no history)
-#   confidence_subsequent: Required confidence for subsequent auto-applies
 #   min_cycles: Minimum cycles before auto-apply can trigger
 #   cooldown_hours: Minimum hours between auto-applies
 #   cooldown_cycles: Minimum cycles between auto-applies
+#
+# Note: Confidence thresholds are determined by learning status tiers
+# (see LEARNING_STATUS_THRESHOLDS), not per-apply thresholds.
 AUTO_APPLY_THRESHOLDS = {
     HeatingType.FLOOR_HYDRONIC: {
-        "confidence_first": 0.80,        # High confidence - slow response makes mistakes costly
-        "confidence_subsequent": 0.90,   # Very high - each change needs strong evidence
         "min_cycles": 8,                 # More cycles needed due to long cycle times
         "cooldown_hours": 96,            # 4 days between applies
         "cooldown_cycles": 15,           # ~1 week of normal operation
     },
     HeatingType.RADIATOR: {
-        "confidence_first": 0.70,        # Moderate confidence
-        "confidence_subsequent": 0.85,   # Higher for subsequent changes
         "min_cycles": 7,                 # Moderate cycle requirement
         "cooldown_hours": 72,            # 3 days between applies
         "cooldown_cycles": 12,           # ~5 days of normal operation
     },
     HeatingType.CONVECTOR: {
-        "confidence_first": 0.60,        # Standard confidence threshold
-        "confidence_subsequent": 0.80,   # Higher for subsequent changes
         "min_cycles": 6,                 # Standard cycle requirement
         "cooldown_hours": 48,            # 2 days between applies
         "cooldown_cycles": 10,           # ~3-4 days of normal operation
     },
     HeatingType.FORCED_AIR: {
-        "confidence_first": 0.60,        # Standard confidence (fast recovery if wrong)
-        "confidence_subsequent": 0.80,   # Higher for subsequent changes
         "min_cycles": 6,                 # Standard cycle requirement
         "cooldown_hours": 36,            # 1.5 days between applies
         "cooldown_cycles": 8,            # ~2 days of normal operation

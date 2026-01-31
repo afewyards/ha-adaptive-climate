@@ -2434,6 +2434,8 @@ class TestPIDControllerHeatingTypeTolerance:
                 rise_time=15.0,
             )
             adaptive_learner.add_cycle_metrics(cycle)
+            # Also update convergence confidence to increment cycle count in ConfidenceTracker
+            adaptive_learner.update_convergence_confidence(cycle)
 
         # Set convergence confidence high enough for auto-apply (first apply needs 0.75+)
         adaptive_learner._convergence_confidence = 0.85

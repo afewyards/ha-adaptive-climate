@@ -317,18 +317,9 @@ By default, PID parameters are automatically applied when the system reaches suf
 - **50% max drift** - PID values can't drift too far from physics baseline
 - **Seasonal blocking** - 7-day pause after large outdoor temperature shifts
 
-### Heating-Type Thresholds
+### Confidence Tier System
 
-| Type | First Apply | Subsequent | Min Cycles | Cooldown |
-|------|-------------|------------|------------|----------|
-| `floor_hydronic` | 80% | 90% | 8 | 96h |
-| `radiator` | 70% | 85% | 7 | 72h |
-| `convector` | 60% | 80% | 6 | 48h |
-| `forced_air` | 60% | 80% | 6 | 36h |
-
-Slow systems (high thermal mass) require higher confidence because mistakes are costly to recover from.
-
-#### Learning Status Thresholds
+The system uses a unified tier structure that governs learning status, night setback gates, and auto-apply thresholds:
 
 | Type | Tier 1 (stable) | Tier 2 (tuned) | Tier 3 (optimized) |
 |------|-----------------|----------------|-------------------|
@@ -337,7 +328,16 @@ Slow systems (high thermal mass) require higher confidence because mistakes are 
 | `convector` | 40% | 70% | 95% |
 | `forced_air` | 44% | 77% | 95% |
 
-Night setback requires "tuned" status for full configured delta. Slower systems (floor hydronic) have lower thresholds because they need more cycles to reach the same confidence level.
+**Tier 2 (tuned)** - First auto-apply allowed, night setback enabled at full configured delta
+**Tier 3 (optimized)** - Subsequent auto-applies allowed, very high confidence
+
+Slower systems (high thermal mass) have lower tier thresholds because they require more cycles to gather the same amount of data. For example, floor hydronic reaches "tuned" status at 56% confidence, while forced air requires 77%.
+
+**Additional Auto-Apply Requirements:**
+- **Min cycles:** 6-8 complete cycles (varies by heating type)
+- **Cooldown:** 36-96 hours between applications (longer for slower systems)
+- **Seasonal limit:** 5 auto-applies per 90-day season
+- **Lifetime limit:** 20 total auto-applies (requires manual review after)
 
 ### Disabling Auto-Apply
 ```yaml

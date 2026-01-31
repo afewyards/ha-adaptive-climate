@@ -16,6 +16,11 @@ from ..const import (
     AUTO_APPLY_THRESHOLDS,
     SUBSEQUENT_LEARNING_CYCLE_MULTIPLIER,
     HeatingType,
+    MIN_CYCLES_FOR_LEARNING,
+    CONFIDENCE_TIER_1,
+    CONFIDENCE_TIER_2,
+    CONFIDENCE_TIER_3,
+    HEATING_TYPE_CONFIDENCE_SCALE,
 )
 
 from ..helpers.hvac_mode import mode_to_str
@@ -57,6 +62,46 @@ class AutoApplyManager:
             heating_type: Heating system type for threshold selection
         """
         self._heating_type = heating_type
+
+    def _compute_learning_status(
+        self, cycle_count: int, confidence: float, heating_type: str
+    ) -> str:
+        """Compute learning status based on cycle metrics.
+
+        Args:
+            cycle_count: Number of cycles collected
+            confidence: Convergence confidence (0.0-1.0)
+            heating_type: HeatingType value (e.g., "floor_hydronic", "radiator")
+
+        Returns:
+            Learning status string: "collecting" | "stable" | "tuned" | "optimized"
+        """
+        # Confidence is already in 0-1 range from ConfidenceTracker
+        convergence_confidence = confidence
+
+        # Get heating-type-specific confidence scaling factor
+        # Default to CONVECTOR (1.0) if heating_type not recognized
+        scale = HEATING_TYPE_CONFIDENCE_SCALE.get(
+            heating_type, HEATING_TYPE_CONFIDENCE_SCALE.get(HeatingType.CONVECTOR, 1.0)
+        )
+
+        # Calculate scaled thresholds (tier 3 is NOT scaled - always 95%)
+        scaled_tier_1 = min(CONFIDENCE_TIER_1 * scale / 100.0, 0.95)  # Cap at 95%
+        scaled_tier_2 = min(CONFIDENCE_TIER_2 * scale / 100.0, 0.95)  # Cap at 95%
+        tier_3 = CONFIDENCE_TIER_3 / 100.0  # Always 95%
+
+        # Collecting: not enough cycles OR confidence below tier 1
+        # Stable: confidence >= tier 1 AND < tier 2
+        # Tuned: confidence >= tier 2 AND < tier 3
+        # Optimized: confidence >= tier 3
+        if cycle_count < MIN_CYCLES_FOR_LEARNING or convergence_confidence < scaled_tier_1:
+            return "collecting"
+        elif convergence_confidence >= tier_3:
+            return "optimized"
+        elif convergence_confidence >= scaled_tier_2:
+            return "tuned"
+        else:
+            return "stable"
 
     def check_auto_apply_safety_gates(
         self,
@@ -135,18 +180,30 @@ class AutoApplyManager:
         # Get heating-type-specific thresholds
         thresholds = get_auto_apply_thresholds(self._heating_type)
 
-        # Check 4: Confidence threshold (first apply vs subsequent)
-        confidence_threshold = (
-            thresholds["confidence_first"]
-            if auto_apply_count == 0
-            else thresholds["confidence_subsequent"]
+        # Check 4: Learning status tier requirement (first apply vs subsequent)
+        # Get cycle count from confidence tracker
+        cycle_count = confidence_tracker.get_cycle_count(mode)
+
+        # Compute learning status based on tier thresholds
+        learning_status = self._compute_learning_status(
+            cycle_count, convergence_confidence, self._heating_type
         )
-        if convergence_confidence < confidence_threshold:
+
+        # First auto-apply requires "tuned" or "optimized"
+        # Subsequent auto-applies require "optimized"
+        if auto_apply_count == 0:
+            required_statuses = ("tuned", "optimized")
+            tier_description = "tuned (tier 2) or optimized (tier 3)"
+        else:
+            required_statuses = ("optimized",)
+            tier_description = "optimized (tier 3)"
+
+        if learning_status not in required_statuses:
             _LOGGER.debug(
-                f"Auto-apply blocked: confidence {convergence_confidence:.2f} "
-                f"< threshold {confidence_threshold:.2f} "
+                f"Auto-apply blocked: learning_status={learning_status}, "
+                f"required={tier_description} "
                 f"(heating_type={self._heating_type}, mode={mode_to_str(mode)}, "
-                f"apply_count={auto_apply_count})"
+                f"apply_count={auto_apply_count}, confidence={convergence_confidence:.2f})"
             )
             return False, None, None, None
 
@@ -160,8 +217,8 @@ class AutoApplyManager:
             min_cycles = int(min_cycles * SUBSEQUENT_LEARNING_CYCLE_MULTIPLIER)
 
         _LOGGER.debug(
-            f"Auto-apply checks passed: confidence={convergence_confidence:.2f}, "
-            f"threshold={confidence_threshold:.2f}, heating_type={self._heating_type}, "
+            f"Auto-apply checks passed: learning_status={learning_status}, "
+            f"confidence={convergence_confidence:.2f}, heating_type={self._heating_type}, "
             f"mode={mode_to_str(mode)}, min_cycles={min_cycles} (apply_count={auto_apply_count})"
         )
 
