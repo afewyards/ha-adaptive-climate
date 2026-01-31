@@ -1,6 +1,90 @@
 # CHANGELOG
 
 
+## v0.52.0 (2026-01-31)
+
+### Documentation
+
+- Document 3-tier learning status and night setback learning gate
+  ([`afdff42`](https://github.com/afewyards/ha-adaptive-climate/commit/afdff42990afa8b28d519b9ad3b8dc2c7f5ac304))
+
+### Features
+
+- Add confidence tier constants for learning status
+  ([`0f5cf53`](https://github.com/afewyards/ha-adaptive-climate/commit/0f5cf53a094f0fbc20c6992f0c0e773dc3a893f9))
+
+Add 3-tier confidence system constants to gate night setback functionality: - CONFIDENCE_TIER_1
+  (40): stable - basic convergence - CONFIDENCE_TIER_2 (70): tuned - gates night setback -
+  CONFIDENCE_TIER_3 (95): optimized - very high confidence
+
+Add HEATING_TYPE_CONFIDENCE_SCALE to adjust thresholds based on thermal mass.
+
+- Add learning status callback to NightSetbackManager
+  ([`c762d42`](https://github.com/afewyards/ha-adaptive-climate/commit/c762d42f17ade5e3a09cca701d3fcb2eca923a3d))
+
+- Add optional get_learning_status callback parameter to __init__ - Add _is_learning_stable() helper
+  method that returns True for backwards compatibility when callback is None, or checks for
+  stable/tuned/optimized status - Add _learning_suppressed instance variable for tracking
+  suppression state - All existing tests pass, changes are backward compatible
+
+- Expose suppressed_reason in status attribute
+  ([`23bf007`](https://github.com/afewyards/ha-adaptive-climate/commit/23bf007c32e6279b2dd8d1cbf2b89cb6e527170d))
+
+When night setback is suppressed due to learning state, the status attribute now includes
+  suppressed_reason field explaining why.
+
+- Implement 3-tier learning status with heating-type scaling
+  ([`4001cc8`](https://github.com/afewyards/ha-adaptive-climate/commit/4001cc87e7f6ec2d077c89ac818f3b4aa6e08a41))
+
+- Add new "tuned" status between "stable" and "optimized" - Apply heating-type scaling to tier
+  thresholds via HEATING_TYPE_CONFIDENCE_SCALE - Tier 1 (stable): scaled by heating type (floor:
+  32%, radiator: 36%, convector: 40%, forced_air: 44%) - Tier 2 (tuned): scaled by heating type
+  (floor: 56%, radiator: 63%, convector: 70%, forced_air: 77%) - Tier 3 (optimized): always 95% (NOT
+  scaled) - Update docstring to reflect new 5-state system: idle/collecting/stable/tuned/optimized -
+  Add comprehensive test coverage in test_confidence_tiers.py - Update existing tests to match new
+  tier boundaries
+
+- Suppress night setback when learning not stable
+  ([`603141b`](https://github.com/afewyards/ha-adaptive-climate/commit/603141bbd40d78bd7f848dca3da5f5873fb52b20))
+
+Night setback now requires learning to reach "tuned" or "optimized" status before applying
+  temperature reductions. Prevents premature night setback during initial learning phase when PID
+  gains are still being established.
+
+Suppression logic: - Checks learning status via callback before applying night setback - Returns
+  original target temp with suppressed_reason when not stable - Only suppresses when actually in
+  night period (not during day) - Logs suppression state changes for visibility
+
+Learning status requirements: - Allow: "tuned", "optimized" - Suppress: "idle", "collecting",
+  "stable" - No callback (backward compat): always allow
+
+- Wire learning status callback to NightSetbackManager
+  ([`ee3ec59`](https://github.com/afewyards/ha-adaptive-climate/commit/ee3ec59232851d2f2ab919bd708d2aa23532f0d7))
+
+Wire get_learning_status callback in climate_init.py to provide real-time learning status to
+  NightSetbackManager for night setback suppression. The callback computes status using same logic
+  as state_attributes.py: - Checks idle conditions (contact_open, humidity_paused, learning_grace) -
+  Returns "idle" | "collecting" | "stable" | "tuned" | "optimized" - Uses heating-type-scaled
+  confidence thresholds - Accesses adaptive_learner from coordinator zone data
+
+Night setback now properly suppresses when status is not "tuned" or "optimized", ensuring PID has
+  collected sufficient data before applying temperature reductions.
+
+Imported required constants: - MIN_CYCLES_FOR_LEARNING - CONFIDENCE_TIER_1, CONFIDENCE_TIER_2,
+  CONFIDENCE_TIER_3 - HEATING_TYPE_CONFIDENCE_SCALE - HeatingType
+
+### Testing
+
+- Add comprehensive tests for night setback learning gate
+  ([`9f8e482`](https://github.com/afewyards/ha-adaptive-climate/commit/9f8e48234c838ad79ccd088e7d85be7cd99fdfe6))
+
+- Night setback suppressed when learning status is "idle", "collecting", or "stable" - Night setback
+  active when learning status is "tuned" or "optimized" - Heating-type-specific confidence
+  thresholds (tier_2 gates night setback) - Status dict shows suppressed_reason when applicable -
+  Tests for state transitions and edge cases - TDD approach: tests written, implementation pending
+  in tasks #4, #5, #6
+
+
 ## v0.51.0 (2026-01-31)
 
 ### Features
