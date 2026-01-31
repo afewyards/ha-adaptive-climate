@@ -394,6 +394,97 @@ class TestNightSetbackCalculatorPreheat:
         time_diff_minutes = (preheat_start_no_delay - preheat_start).total_seconds() / 60
         assert abs(time_diff_minutes - manifold_delay_min) < 0.1
 
+    def test_calculate_preheat_start_with_effective_delta(self):
+        """Test that preheat uses effective_delta when provided."""
+        learner = PreheatLearner(heating_type="radiator")
+        # Simple fallback rate: ~1.2°C/hour for radiator
+        # So 1°C takes ~50 minutes
+
+        calculator = self.create_calculator(
+            preheat_learner=learner,
+            preheat_enabled=True
+        )
+
+        deadline = datetime(2024, 1, 15, 7, 0)
+        current_temp = 17.0
+        target_temp = 20.0
+        outdoor_temp = 5.0
+
+        # Test 1: No effective_delta (uses full delta: target - current = 3°C)
+        preheat_full = calculator.calculate_preheat_start(
+            deadline, current_temp, target_temp, outdoor_temp, False, None
+        )
+
+        # Test 2: effective_delta = 0.5°C (limited by learning gate)
+        # Should calculate preheat for only 0.5°C recovery, not 3.0°C
+        preheat_limited = calculator.calculate_preheat_start(
+            deadline, current_temp, target_temp, outdoor_temp, False, 0.5
+        )
+
+        # Test 3: effective_delta = 0.0 (fully suppressed)
+        preheat_zero = calculator.calculate_preheat_start(
+            deadline, current_temp, target_temp, outdoor_temp, False, 0.0
+        )
+
+        # Assertions
+        assert preheat_full is not None, "Full delta should return preheat time"
+        assert preheat_limited is not None, "Limited delta should return preheat time"
+        assert preheat_zero == deadline, "Zero delta should return deadline (no preheat)"
+
+        # Limited delta should start later (needs less time)
+        assert preheat_limited > preheat_full, "Limited delta should start later than full delta"
+
+        # Calculate time differences
+        time_full = (deadline - preheat_full).total_seconds() / 60
+        time_limited = (deadline - preheat_limited).total_seconds() / 60
+
+        # With effective_delta=0.5, we need 1/6 the recovery time compared to 3.0°C
+        # Ratio should be roughly 6:1 (accounting for buffer and minimum time)
+        ratio = time_full / time_limited
+        assert 3.0 < ratio < 10.0, f"Ratio {ratio:.1f} outside expected range (3-10)"
+
+    def test_get_preheat_info_with_effective_delta(self):
+        """Test that get_preheat_info correctly uses effective_delta."""
+        learner = PreheatLearner(heating_type="radiator")
+
+        calculator = self.create_calculator(
+            preheat_learner=learner,
+            preheat_enabled=True
+        )
+
+        now = datetime(2024, 1, 15, 3, 0)
+        deadline = datetime(2024, 1, 15, 7, 0)
+        current_temp = 17.0
+        target_temp = 20.0
+        outdoor_temp = 5.0
+
+        # Test 1: No effective_delta
+        info_full = calculator.get_preheat_info(
+            now, current_temp, target_temp, outdoor_temp, deadline, False, None
+        )
+
+        # Test 2: effective_delta = 1.0°C
+        info_limited = calculator.get_preheat_info(
+            now, current_temp, target_temp, outdoor_temp, deadline, False, 1.0
+        )
+
+        # Test 3: effective_delta = 0.0°C
+        info_zero = calculator.get_preheat_info(
+            now, current_temp, target_temp, outdoor_temp, deadline, False, 0.0
+        )
+
+        # Assertions
+        assert info_full["scheduled_start"] is not None
+        assert info_limited["scheduled_start"] is not None
+        assert info_zero["scheduled_start"] == deadline  # No preheat needed
+
+        # Limited should have shorter estimated duration
+        assert info_limited["estimated_duration"] < info_full["estimated_duration"]
+        assert info_zero["estimated_duration"] == 0
+
+        # Limited should start later
+        assert info_limited["scheduled_start"] > info_full["scheduled_start"]
+
 
 class TestNightSetbackCalculatorTimezone:
     """Test NightSetbackCalculator with timezone-aware datetimes."""
