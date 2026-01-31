@@ -171,16 +171,24 @@ night_setback:
 
 ### Night Setback Learning Gate
 
-Night setback is automatically suppressed until the zone reaches "tuned" learning status. This prevents premature temperature reductions during initial PID learning that could interfere with convergence metrics.
+Night setback delta is graduated based on learning progress, allowing partial setback early to accelerate learning while protecting convergence metrics.
 
-**Behavior:**
-- Suppressed when learning_status is "idle", "collecting", or "stable"
-- Enabled when learning_status is "tuned" or "optimized"
-- Always-on (no configuration flag)
-- Preheat also suppressed (tied to night setback)
-- Status attribute shows `suppressed_reason: "learning"` when suppressed
+**Graduated Delta:**
+- `cycles < 3` or "idle": fully suppressed (0°C applied)
+- `cycles >= 3` + "collecting": 0.5°C allowed
+- "stable": 1.0°C allowed
+- "tuned"/"optimized": full configured delta
 
-**Rationale:** Night setback reduces the setpoint during sleeping hours. If applied before the PID has learned the system's thermal characteristics, it can corrupt cycle metrics and delay convergence. By gating on "tuned" status, we ensure the controller has collected sufficient data before allowing setpoint modifications.
+**Status attribute:**
+- `suppressed_reason: "learning"` when fully suppressed (0°C)
+- `suppressed_reason: "limited"` when capped below configured delta
+- `allowed_setback: X.X` shows effective delta when limited
+
+**Preheat scaling:**
+- Preheat timing scales with effective delta (not configured delta)
+- Early setback cycles provide preheat observations that accelerate learning
+
+**Rationale:** Graduated approach balances two goals: (1) protect initial PID learning from large setpoint swings, (2) gather early setback/preheat data to accelerate convergence. Partial setback is safe once basic cycle metrics stabilize.
 
 ### Setpoint Feedforward
 
@@ -372,6 +380,7 @@ Exposed via `extra_state_attributes`. Minimized for clarity - only restoration +
         "resume_at": str,        # ISO8601 timestamp when pause ends (optional)
         "setback_delta": float,  # °C adjustment during night_setback (optional)
         "setback_end": str,      # ISO8601 timestamp when night period ends (optional)
+        "allowed_setback": float, # °C effective delta when limited by learning gate (optional)
         # Debug-only fields (when debug: true in domain config):
         "humidity_peak": float,  # Peak humidity % during spike (optional)
         "open_sensors": list[str], # Contact sensor entity IDs that triggered (optional)
