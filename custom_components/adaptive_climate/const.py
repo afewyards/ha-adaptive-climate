@@ -500,6 +500,24 @@ CONVERGENCE_CONFIDENCE_HIGH = 1.0  # Maximum confidence level (fully converged)
 CONFIDENCE_DECAY_RATE_DAILY = 0.02  # 2% confidence decay per day
 CONFIDENCE_INCREASE_PER_GOOD_CYCLE = 0.1  # 10% confidence increase per good cycle
 
+# Confidence tier thresholds for learning status and night setback gating
+# Tier 1: Minimum confidence for "stable" status (basic convergence)
+# Tier 2: Minimum confidence for "tuned" status (gates night setback)
+# Tier 3: Minimum confidence for "optimized" status (very high confidence)
+CONFIDENCE_TIER_1 = 40  # stable - basic convergence achieved
+CONFIDENCE_TIER_2 = 70  # tuned - gates night setback functionality
+CONFIDENCE_TIER_3 = 95  # optimized - very high confidence
+
+# Heating type confidence scaling factors
+# Applied to tier thresholds to account for thermal mass differences
+# Slower systems (high thermal mass) need lower thresholds due to longer learning cycles
+HEATING_TYPE_CONFIDENCE_SCALE = {
+    HeatingType.FLOOR_HYDRONIC: 0.8,   # Lower threshold - slow response, longer learning
+    HeatingType.RADIATOR: 0.9,          # Moderate threshold
+    HeatingType.CONVECTOR: 1.0,         # Baseline threshold
+    HeatingType.FORCED_AIR: 1.1,        # Higher threshold - fast response, quicker learning
+}
+
 # Settling detection (v0.7.0)
 SETTLING_MAD_THRESHOLD = 0.05  # Maximum MAD (°C) for temperature stability detection
 
