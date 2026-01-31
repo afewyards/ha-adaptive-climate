@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.51.0 (2026-01-31)
+
+### Features
+
+- Update icon to brain thermometer design
+  ([`45ded8e`](https://github.com/afewyards/ha-adaptive-climate/commit/45ded8e62519217ab86f4ed425e1cca1702f5ef9))
+
+
 ## v0.50.0 (2026-01-31)
 
 ### Bug Fixes
