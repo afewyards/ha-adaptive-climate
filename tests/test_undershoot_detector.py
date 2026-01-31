@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
+from custom_components.adaptive_climate.adaptive.cycle_analysis import CycleMetrics
 from custom_components.adaptive_climate.adaptive.undershoot_detector import (
     UndershootDetector,
 )
@@ -659,3 +660,276 @@ class TestPersistentUndershootMode:
 
         # Should trigger persistent mode
         assert detector.should_adjust_ki(cycles_completed=15) is True
+
+
+class TestCycleModeDetection:
+    """Test cycle mode for detecting chronic approach failures."""
+
+    def test_add_cycle_with_failing_cycle(self, detector):
+        """Test that failing cycles (rise_time=None, high undershoot) increment counter."""
+        thresholds = UNDERSHOOT_THRESHOLDS[HeatingType.FLOOR_HYDRONIC]
+
+        # Create a failing cycle
+        cycle = CycleMetrics(
+            rise_time=None,  # Never reached setpoint
+            settling_time=None,
+            undershoot=thresholds["undershoot_threshold"] + 0.1,
+            overshoot=0.0,
+            inter_cycle_drift=0.0,
+            settling_mae=0.0,
+        )
+
+        # Add cycle with sufficient duration
+        detector.add_cycle(cycle, cycle_duration_minutes=thresholds["min_cycle_duration"] + 5)
+
+        # Should have 1 consecutive failure
+        assert detector._consecutive_failures == 1
+
+    def test_add_cycle_with_successful_cycle_resets_counter(self, detector):
+        """Test that successful cycles (with rise_time) reset the counter."""
+        thresholds = UNDERSHOOT_THRESHOLDS[HeatingType.FLOOR_HYDRONIC]
+
+        # Add failing cycle
+        failing_cycle = CycleMetrics(
+            rise_time=None,
+            settling_time=None,
+            undershoot=thresholds["undershoot_threshold"] + 0.1,
+            overshoot=0.0,
+            inter_cycle_drift=0.0,
+            settling_mae=0.0,
+        )
+        detector.add_cycle(failing_cycle, cycle_duration_minutes=thresholds["min_cycle_duration"] + 5)
+        assert detector._consecutive_failures == 1
+
+        # Add successful cycle (has rise_time)
+        success_cycle = CycleMetrics(
+            rise_time=20.0,  # Reached setpoint in 20 minutes
+            settling_time=5.0,
+            undershoot=0.1,
+            overshoot=0.2,
+            inter_cycle_drift=0.1,
+            settling_mae=0.05,
+        )
+        detector.add_cycle(success_cycle, cycle_duration_minutes=30.0)
+
+        # Counter should reset to 0
+        assert detector._consecutive_failures == 0
+
+    def test_cycle_mode_triggers_after_consecutive_failures(self, detector):
+        """Test that cycle mode triggers adjustment after enough consecutive failures."""
+        thresholds = UNDERSHOOT_THRESHOLDS[HeatingType.FLOOR_HYDRONIC]
+
+        # Add 4 consecutive failing cycles (floor_hydronic requires 4)
+        for _ in range(4):
+            cycle = CycleMetrics(
+                rise_time=None,
+                settling_time=None,
+                undershoot=thresholds["undershoot_threshold"] + 0.1,
+                overshoot=0.0,
+                inter_cycle_drift=0.0,
+                settling_mae=0.0,
+            )
+            detector.add_cycle(cycle, cycle_duration_minutes=thresholds["min_cycle_duration"] + 5)
+
+        # Should be ready to adjust after MIN_CYCLES_FOR_LEARNING
+        assert detector.should_adjust_ki(cycles_completed=MIN_CYCLES_FOR_LEARNING) is True
+
+    def test_cycle_mode_ignores_short_duration_cycles(self, detector):
+        """Test that cycles shorter than min_duration are ignored."""
+        thresholds = UNDERSHOOT_THRESHOLDS[HeatingType.FLOOR_HYDRONIC]
+
+        # Add 4 failing cycles but with too short duration
+        for _ in range(4):
+            cycle = CycleMetrics(
+                rise_time=None,
+                settling_time=None,
+                undershoot=thresholds["undershoot_threshold"] + 0.1,
+                overshoot=0.0,
+                inter_cycle_drift=0.0,
+                settling_mae=0.0,
+            )
+            detector.add_cycle(cycle, cycle_duration_minutes=thresholds["min_cycle_duration"] - 10)
+
+        # Should NOT trigger - all cycles too short
+        assert detector._consecutive_failures == 0
+        assert detector.should_adjust_ki(cycles_completed=0) is False
+
+    def test_cycle_mode_ignores_low_undershoot(self, detector):
+        """Test that cycles with undershoot below threshold are ignored."""
+        thresholds = UNDERSHOOT_THRESHOLDS[HeatingType.FLOOR_HYDRONIC]
+
+        # Add 4 cycles with undershoot below threshold
+        for _ in range(4):
+            cycle = CycleMetrics(
+                rise_time=None,
+                settling_time=None,
+                undershoot=thresholds["undershoot_threshold"] - 0.05,
+                overshoot=0.0,
+                inter_cycle_drift=0.0,
+                settling_mae=0.0,
+            )
+            detector.add_cycle(cycle, cycle_duration_minutes=thresholds["min_cycle_duration"] + 5)
+
+        # Should NOT trigger - undershoot too small
+        assert detector._consecutive_failures == 0
+        assert detector.should_adjust_ki(cycles_completed=0) is False
+
+    def test_cycle_mode_requires_consecutive_failures(self, detector):
+        """Test that pattern requires CONSECUTIVE failures (no successful cycles in between)."""
+        thresholds = UNDERSHOOT_THRESHOLDS[HeatingType.FLOOR_HYDRONIC]
+
+        # Alternate between failing and successful cycles
+        for i in range(8):
+            if i % 2 == 0:
+                # Failing cycle
+                cycle = CycleMetrics(
+                    rise_time=None,
+                    settling_time=None,
+                    undershoot=thresholds["undershoot_threshold"] + 0.1,
+                    overshoot=0.0,
+                    inter_cycle_drift=0.0,
+                    settling_mae=0.0,
+                )
+            else:
+                # Successful cycle
+                cycle = CycleMetrics(
+                    rise_time=15.0,
+                    settling_time=5.0,
+                    undershoot=0.1,
+                    overshoot=0.1,
+                    inter_cycle_drift=0.1,
+                    settling_mae=0.05,
+                )
+            detector.add_cycle(cycle, cycle_duration_minutes=thresholds["min_cycle_duration"] + 5)
+
+        # Should never trigger - no consecutive sequence of 4
+        # After alternating, the last cycle is successful (i=7), so counter resets to 0
+        assert detector._consecutive_failures == 0
+        assert detector.should_adjust_ki(cycles_completed=MIN_CYCLES_FOR_LEARNING) is False
+
+    def test_cycle_mode_forced_air_requires_fewer_cycles(self, forced_air_detector):
+        """Test that forced_air requires only 2 consecutive failures."""
+        thresholds = UNDERSHOOT_THRESHOLDS[HeatingType.FORCED_AIR]
+
+        # Add only 2 failing cycles
+        for _ in range(2):
+            cycle = CycleMetrics(
+                rise_time=None,
+                settling_time=None,
+                undershoot=thresholds["undershoot_threshold"] + 0.05,
+                overshoot=0.0,
+                inter_cycle_drift=0.0,
+                settling_mae=0.0,
+            )
+            forced_air_detector.add_cycle(cycle, cycle_duration_minutes=thresholds["min_cycle_duration"] + 5)
+
+        # Should trigger with just 2 cycles after MIN_CYCLES_FOR_LEARNING
+        assert forced_air_detector.should_adjust_ki(cycles_completed=MIN_CYCLES_FOR_LEARNING) is True
+
+    def test_cycle_mode_shares_cooldown_with_realtime(self, detector):
+        """Test that cycle mode and real-time mode share the same cooldown."""
+        thresholds = UNDERSHOOT_THRESHOLDS[HeatingType.FLOOR_HYDRONIC]
+
+        # Trigger adjustment via real-time mode
+        detector.update(temp=18.0, setpoint=20.0, dt_seconds=14400.0, cold_tolerance=0.5)
+        assert detector.should_adjust_ki(cycles_completed=0) is True
+        detector.apply_adjustment()
+
+        # Try to trigger via cycle mode
+        for _ in range(4):
+            cycle = CycleMetrics(
+                rise_time=None,
+                settling_time=None,
+                undershoot=thresholds["undershoot_threshold"] + 0.1,
+                overshoot=0.0,
+                inter_cycle_drift=0.0,
+                settling_mae=0.0,
+            )
+            detector.add_cycle(cycle, cycle_duration_minutes=thresholds["min_cycle_duration"] + 5)
+
+        # Should be blocked by cooldown
+        assert detector.should_adjust_ki(cycles_completed=0) is False
+
+    def test_cycle_mode_shares_cumulative_cap_with_realtime(self, detector):
+        """Test that cycle mode and real-time mode share the same cumulative Ki cap."""
+        # Set cumulative multiplier at cap
+        detector.cumulative_ki_multiplier = MAX_UNDERSHOOT_KI_MULTIPLIER
+
+        # Try to trigger via cycle mode
+        thresholds = UNDERSHOOT_THRESHOLDS[HeatingType.FLOOR_HYDRONIC]
+        for _ in range(4):
+            cycle = CycleMetrics(
+                rise_time=None,
+                settling_time=None,
+                undershoot=thresholds["undershoot_threshold"] + 0.1,
+                overshoot=0.0,
+                inter_cycle_drift=0.0,
+                settling_mae=0.0,
+            )
+            detector.add_cycle(cycle, cycle_duration_minutes=thresholds["min_cycle_duration"] + 5)
+
+        # Should be blocked by cap
+        assert detector.should_adjust_ki(cycles_completed=0) is False
+
+    def test_cycle_mode_get_adjustment_returns_chronic_approach_multiplier(self, detector):
+        """Test that get_adjustment returns the chronic approach multiplier when triggered by cycles."""
+        thresholds = UNDERSHOOT_THRESHOLDS[HeatingType.FLOOR_HYDRONIC]
+
+        # Trigger via cycle mode
+        for _ in range(4):
+            cycle = CycleMetrics(
+                rise_time=None,
+                settling_time=None,
+                undershoot=thresholds["undershoot_threshold"] + 0.1,
+                overshoot=0.0,
+                inter_cycle_drift=0.0,
+                settling_mae=0.0,
+            )
+            detector.add_cycle(cycle, cycle_duration_minutes=thresholds["min_cycle_duration"] + 5)
+
+        # get_adjustment should return the chronic approach ki_multiplier
+        multiplier = detector.get_adjustment()
+        assert multiplier == pytest.approx(thresholds["ki_multiplier"], abs=0.001)
+
+    def test_cycle_mode_apply_adjustment_updates_cumulative(self, detector):
+        """Test that applying cycle mode adjustment updates cumulative multiplier."""
+        thresholds = UNDERSHOOT_THRESHOLDS[HeatingType.FLOOR_HYDRONIC]
+
+        # Trigger via cycle mode
+        for _ in range(4):
+            cycle = CycleMetrics(
+                rise_time=None,
+                settling_time=None,
+                undershoot=thresholds["undershoot_threshold"] + 0.1,
+                overshoot=0.0,
+                inter_cycle_drift=0.0,
+                settling_mae=0.0,
+            )
+            detector.add_cycle(cycle, cycle_duration_minutes=thresholds["min_cycle_duration"] + 5)
+
+        initial_cumulative = detector.cumulative_ki_multiplier
+        detector.apply_adjustment()
+
+        expected_cumulative = initial_cumulative * thresholds["ki_multiplier"]
+        assert detector.cumulative_ki_multiplier == pytest.approx(expected_cumulative, abs=0.001)
+
+    def test_cycle_mode_with_no_duration_accepts_cycles(self, detector):
+        """Test that cycles without duration parameter (None) are accepted."""
+        thresholds = UNDERSHOOT_THRESHOLDS[HeatingType.FLOOR_HYDRONIC]
+
+        # Add cycles without duration parameter
+        for _ in range(4):
+            cycle = CycleMetrics(
+                rise_time=None,
+                settling_time=None,
+                undershoot=thresholds["undershoot_threshold"] + 0.1,
+                overshoot=0.0,
+                inter_cycle_drift=0.0,
+                settling_mae=0.0,
+            )
+            detector.add_cycle(cycle)  # No duration parameter - defaults to None
+
+        # Cycles should be accepted (counter increments)
+        assert detector._consecutive_failures == 4
+        # Should trigger after MIN_CYCLES_FOR_LEARNING
+        assert detector.should_adjust_ki(cycles_completed=MIN_CYCLES_FOR_LEARNING) is True

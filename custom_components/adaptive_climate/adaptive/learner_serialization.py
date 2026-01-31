@@ -14,6 +14,9 @@ from .cycle_analysis import CycleMetrics
 
 _LOGGER = logging.getLogger(__name__)
 
+# Current serialization format version
+CURRENT_VERSION = 8
+
 
 def serialize_cycle(cycle: CycleMetrics) -> Dict[str, Any]:
     """Convert a CycleMetrics object to a dictionary.
@@ -50,7 +53,7 @@ def learner_to_dict(
     undershoot_detector: Optional[Any] = None,
     chronic_approach_detector: Optional[Any] = None,
 ) -> Dict[str, Any]:
-    """Serialize AdaptiveLearner state to a dictionary in v7 format with backward compatibility.
+    """Serialize AdaptiveLearner state to a dictionary in v8 format with backward compatibility.
 
     Args:
         heating_cycle_history: List of heating cycle metrics
@@ -63,46 +66,37 @@ def learner_to_dict(
         consecutive_converged_cycles: Number of consecutive converged cycles
         pid_converged_for_ke: Whether PID has converged for Ke learning
         undershoot_detector: UndershootDetector instance for state serialization
-        chronic_approach_detector: ChronicApproachDetector instance for state serialization
+        chronic_approach_detector: Deprecated, kept for backward compatibility (ignored)
 
     Returns:
         Dictionary containing:
-        - v7 structure with undershoot and chronic approach detector states
-        - v6 structure with undershoot detector state
+        - v8 structure with unified undershoot_detector state
         - v5 mode-keyed structure (heating/cooling sub-dicts)
         - v4 backward-compatible top-level keys (cycle_history, auto_apply_count, etc.)
 
     Note:
         pid_history is no longer managed by AdaptiveLearner - it's now owned by PIDGainsManager.
+        chronic_approach_detector parameter is deprecated - unified detector is used instead.
     """
     # Serialize cycle histories
     serialized_heating_cycles = [serialize_cycle(cycle) for cycle in heating_cycle_history]
     serialized_cooling_cycles = [serialize_cycle(cycle) for cycle in cooling_cycle_history]
 
-    # Serialize undershoot detector state
+    # Serialize unified undershoot detector state (v8 format)
     undershoot_state = {}
     if undershoot_detector is not None:
         undershoot_state = {
-            "time_below_target": undershoot_detector.time_below_target,
-            "thermal_debt": undershoot_detector.thermal_debt,
             "cumulative_ki_multiplier": undershoot_detector.cumulative_ki_multiplier,
-            # Note: last_adjustment_time uses monotonic, not persisted
-        }
-
-    # Serialize chronic approach detector state
-    chronic_approach_state = {}
-    if chronic_approach_detector is not None:
-        chronic_approach_state = {
-            "consecutive_failures": chronic_approach_detector._consecutive_failures,
-            "cumulative_multiplier": chronic_approach_detector.cumulative_ki_multiplier,
-            # Note: last_adjustment_time uses monotonic, not persisted
+            "last_adjustment_time": undershoot_detector.last_adjustment_time,
+            "time_below_target": undershoot_detector._time_below_target,
+            "thermal_debt": undershoot_detector._thermal_debt,
+            "consecutive_failures": undershoot_detector._consecutive_failures,
         }
 
     return {
-        # V7 chronic approach detector state
-        "chronic_approach_detector": chronic_approach_state,
-        # V6 undershoot detector state
+        # V8 unified undershoot detector state
         "undershoot_detector": undershoot_state,
+        "format_version": CURRENT_VERSION,
         # V5 mode-keyed structure
         "heating": {
             "cycle_history": serialized_heating_cycles,
@@ -157,14 +151,16 @@ def _deserialize_cycle(cycle_dict: Dict[str, Any]) -> CycleMetrics:
 def restore_learner_from_dict(data: Dict[str, Any]) -> Dict[str, Any]:
     """Restore AdaptiveLearner state from a dictionary.
 
-    Supports v4 (flat), v5 (mode-keyed), v6 (undershoot detector), and v7 (chronic approach detector) formats.
+    Supports v4 (flat), v5 (mode-keyed), v6 (undershoot detector), v7 (chronic approach detector),
+    and v8 (unified detector) formats.
 
     Args:
         data: Dictionary containing either:
             v4 format: cycle_history, auto_apply_count, etc. at top level
             v5 format: heating/cooling sub-dicts with mode-specific data
             v6 format: v5 + undershoot_detector state
-            v7 format: v6 + chronic_approach_detector state
+            v7 format: v6 + chronic_approach_detector state (separate)
+            v8 format: v5 + unified undershoot_detector state (merged)
 
     Returns:
         Dictionary with restored state containing:
@@ -178,17 +174,18 @@ def restore_learner_from_dict(data: Dict[str, Any]) -> Dict[str, Any]:
         - last_adjustment_time: Timestamp of last PID adjustment (datetime or None)
         - consecutive_converged_cycles: Number of consecutive converged cycles
         - pid_converged_for_ke: Whether PID has converged for Ke learning
-        - undershoot_detector_state: Dict with detector state (time_below_target, etc.)
-        - chronic_approach_detector_state: Dict with detector state (consecutive_failures, etc.)
-        - format_version: 'v7', 'v6', 'v5', or 'v4' to indicate which format was detected
+        - undershoot_detector_state: Dict with unified detector state
+        - format_version: 'v8', 'v7', 'v6', 'v5', or 'v4' to indicate which format was detected
     """
     # Detect format version by checking for version-specific keys
-    is_v7_format = "chronic_approach_detector" in data
-    is_v6_format = "undershoot_detector" in data
-    is_v5_format = "heating" in data
+    stored_version = data.get("format_version", 0)
+    is_v8_format = stored_version == 8
+    is_v7_format = "chronic_approach_detector" in data and not is_v8_format
+    is_v6_format = "undershoot_detector" in data and not is_v7_format and not is_v8_format
+    is_v5_format = "heating" in data and not is_v6_format and not is_v7_format and not is_v8_format
 
-    if is_v7_format or is_v6_format or is_v5_format:
-        # V7/V6/V5 format: mode-keyed structure
+    if is_v8_format or is_v7_format or is_v6_format or is_v5_format:
+        # V8/V7/V6/V5 format: mode-keyed structure
         heating_cycle_history = [
             _deserialize_cycle(cycle_dict)
             for cycle_dict in data.get("heating", {}).get("cycle_history", [])
@@ -210,28 +207,60 @@ def restore_learner_from_dict(data: Dict[str, Any]) -> Dict[str, Any]:
         # For backward compatibility, we ignore it if it exists in old persisted data
         pid_history = []
 
-        # Restore undershoot detector state (v6+ only)
-        if is_v6_format or is_v7_format:
+        # Restore unified undershoot detector state
+        if is_v8_format:
+            # V8 format: unified detector state
             undershoot_detector_state = data.get("undershoot_detector", {})
+            format_version = 'v8'
+        elif is_v7_format:
+            # Migration from v7: merge undershoot and chronic approach detector states
+            undershoot_state = data.get("undershoot_detector", {})
+            chronic_state = data.get("chronic_approach_detector", {})
+
+            # Take max of both cumulative_ki_multiplier values
+            undershoot_multiplier = undershoot_state.get("cumulative_ki_multiplier", 1.0)
+            chronic_multiplier = chronic_state.get("cumulative_multiplier", 1.0)
+            merged_multiplier = max(undershoot_multiplier, chronic_multiplier)
+
+            # Preserve last_adjustment_time from either (take most recent)
+            # Note: In v7 format, last_adjustment_time was not persisted (monotonic)
+            # so we don't migrate it here
+
+            undershoot_detector_state = {
+                "cumulative_ki_multiplier": merged_multiplier,
+                "last_adjustment_time": None,  # Not persisted in v7
+                "time_below_target": undershoot_state.get("time_below_target", 0.0),
+                "thermal_debt": undershoot_state.get("thermal_debt", 0.0),
+                "consecutive_failures": chronic_state.get("consecutive_failures", 0),
+            }
+            format_version = 'v7'
+            _LOGGER.info(
+                "Migrated v7 to v8: merged cumulative multipliers (%.3f, %.3f) -> %.3f",
+                undershoot_multiplier,
+                chronic_multiplier,
+                merged_multiplier,
+            )
+        elif is_v6_format:
+            # Migration from v6: add missing fields for unified detector
+            undershoot_state = data.get("undershoot_detector", {})
+            undershoot_detector_state = {
+                "cumulative_ki_multiplier": undershoot_state.get("cumulative_ki_multiplier", 1.0),
+                "last_adjustment_time": None,
+                "time_below_target": undershoot_state.get("time_below_target", 0.0),
+                "thermal_debt": undershoot_state.get("thermal_debt", 0.0),
+                "consecutive_failures": 0,  # New field in v8
+            }
+            format_version = 'v6'
         else:
             # Migration from v5: initialize with defaults
             undershoot_detector_state = {
+                "cumulative_ki_multiplier": 1.0,
+                "last_adjustment_time": None,
                 "time_below_target": 0.0,
                 "thermal_debt": 0.0,
-                "cumulative_ki_multiplier": 1.0,
-            }
-
-        # Restore chronic approach detector state (v7 only)
-        if is_v7_format:
-            chronic_approach_detector_state = data.get("chronic_approach_detector", {})
-            format_version = 'v7'
-        else:
-            # Migration from v6/v5: initialize with defaults
-            chronic_approach_detector_state = {
                 "consecutive_failures": 0,
-                "cumulative_multiplier": 1.0,
             }
-            format_version = 'v6' if is_v6_format else 'v5'
+            format_version = 'v5'
 
         _LOGGER.info(
             "AdaptiveLearner state restored (%s): heating=%d cycles, cooling=%d cycles, "
@@ -263,13 +292,11 @@ def restore_learner_from_dict(data: Dict[str, Any]) -> Dict[str, Any]:
         # V4 didn't store PID history or detector states
         pid_history = []
         undershoot_detector_state = {
+            "cumulative_ki_multiplier": 1.0,
+            "last_adjustment_time": None,
             "time_below_target": 0.0,
             "thermal_debt": 0.0,
-            "cumulative_ki_multiplier": 1.0,
-        }
-        chronic_approach_detector_state = {
             "consecutive_failures": 0,
-            "cumulative_multiplier": 1.0,
         }
 
         _LOGGER.info(
@@ -303,6 +330,5 @@ def restore_learner_from_dict(data: Dict[str, Any]) -> Dict[str, Any]:
         "consecutive_converged_cycles": consecutive_converged_cycles,
         "pid_converged_for_ke": pid_converged_for_ke,
         "undershoot_detector_state": undershoot_detector_state,
-        "chronic_approach_detector_state": chronic_approach_detector_state,
         "format_version": format_version,
     }

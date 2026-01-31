@@ -3993,38 +3993,40 @@ class TestModeSpecificCycleHistories:
 
 
 class TestChronicApproachDetectorSerialization:
-    """Tests for ChronicApproachDetector state serialization and restoration."""
+    """Tests for unified UndershootDetector state serialization (v8 format)."""
 
     def test_serialize_chronic_approach_detector_state(self):
-        """Test to_dict serializes chronic approach detector state."""
+        """Test to_dict serializes unified detector state (v8 format)."""
         learner = AdaptiveLearner()
 
-        # Simulate chronic approach detector state
-        learner._chronic_approach_detector._consecutive_failures = 3
-        learner._chronic_approach_detector.cumulative_ki_multiplier = 1.5
+        # Simulate unified detector state (chronic approach fields now in UndershootDetector)
+        learner._undershoot_detector._consecutive_failures = 3
+        learner._undershoot_detector.cumulative_ki_multiplier = 1.5
 
         result = learner.to_dict()
 
-        # Verify chronic approach detector state is serialized
-        assert "chronic_approach_detector" in result
-        chronic_state = result["chronic_approach_detector"]
-        assert chronic_state["consecutive_failures"] == 3
-        assert chronic_state["cumulative_multiplier"] == 1.5
+        # Verify unified detector state is serialized in v8 format
+        assert "undershoot_detector" in result
+        detector_state = result["undershoot_detector"]
+        assert detector_state["consecutive_failures"] == 3
+        assert detector_state["cumulative_ki_multiplier"] == 1.5
+        assert result["format_version"] == 8
 
     def test_serialize_chronic_approach_detector_empty_state(self):
-        """Test to_dict serializes empty chronic approach detector state."""
+        """Test to_dict serializes empty unified detector state (v8 format)."""
         learner = AdaptiveLearner()
 
         result = learner.to_dict()
 
         # Verify default state is serialized
-        assert "chronic_approach_detector" in result
-        chronic_state = result["chronic_approach_detector"]
-        assert chronic_state["consecutive_failures"] == 0
-        assert chronic_state["cumulative_multiplier"] == 1.0
+        assert "undershoot_detector" in result
+        detector_state = result["undershoot_detector"]
+        assert detector_state["consecutive_failures"] == 0
+        assert detector_state["cumulative_ki_multiplier"] == 1.0
+        assert result["format_version"] == 8
 
     def test_restore_chronic_approach_detector_state(self):
-        """Test restore_from_dict restores chronic approach detector state."""
+        """Test restore_from_dict migrates v7 format to unified detector."""
         learner = AdaptiveLearner()
 
         # Prepare data with chronic approach detector state (v7 format)
@@ -4034,9 +4036,9 @@ class TestChronicApproachDetectorSerialization:
                 "cumulative_multiplier": 1.3,
             },
             "undershoot_detector": {
-                "time_below_target": 0.0,
-                "thermal_debt": 0.0,
-                "cumulative_ki_multiplier": 1.0,
+                "time_below_target": 60.0,
+                "thermal_debt": 0.2,
+                "cumulative_ki_multiplier": 1.1,
             },
             "heating": {
                 "cycle_history": [],
@@ -4055,12 +4057,14 @@ class TestChronicApproachDetectorSerialization:
 
         learner.restore_from_dict(data)
 
-        # Verify chronic approach detector state is restored
-        assert learner._chronic_approach_detector._consecutive_failures == 2
-        assert learner._chronic_approach_detector.cumulative_ki_multiplier == 1.3
+        # Verify unified detector has merged state (takes max of multipliers)
+        assert learner._undershoot_detector._consecutive_failures == 2
+        assert learner._undershoot_detector.cumulative_ki_multiplier == 1.3  # max(1.1, 1.3)
+        assert learner._undershoot_detector.time_below_target == 60.0
+        assert learner._undershoot_detector.thermal_debt == 0.2
 
     def test_restore_backward_compatibility_v6_format(self):
-        """Test restore_from_dict handles v6 format without chronic approach detector."""
+        """Test restore_from_dict migrates v6 format to unified detector."""
         learner = AdaptiveLearner()
 
         # Prepare v6 data (has undershoot_detector but no chronic_approach_detector)
@@ -4087,14 +4091,11 @@ class TestChronicApproachDetectorSerialization:
 
         learner.restore_from_dict(data)
 
-        # Verify chronic approach detector is initialized with defaults
-        assert learner._chronic_approach_detector._consecutive_failures == 0
-        assert learner._chronic_approach_detector.cumulative_ki_multiplier == 1.0
-
-        # Verify undershoot detector is restored correctly
+        # Verify unified detector is initialized with v6 data + defaults for new fields
+        assert learner._undershoot_detector._consecutive_failures == 0  # New field in v8
+        assert learner._undershoot_detector.cumulative_ki_multiplier == 1.2
         assert learner._undershoot_detector.time_below_target == 120.0
         assert learner._undershoot_detector.thermal_debt == 0.5
-        assert learner._undershoot_detector.cumulative_ki_multiplier == 1.2
 
     def test_restore_backward_compatibility_v5_format(self):
         """Test restore_from_dict handles v5 format without any detectors."""
@@ -4119,11 +4120,11 @@ class TestChronicApproachDetectorSerialization:
 
         learner.restore_from_dict(data)
 
-        # Verify both detectors are initialized with defaults
-        assert learner._chronic_approach_detector._consecutive_failures == 0
-        assert learner._chronic_approach_detector.cumulative_ki_multiplier == 1.0
-        assert learner._undershoot_detector.time_below_target == 0.0
+        # Verify unified detector is initialized with defaults
+        assert learner._undershoot_detector._consecutive_failures == 0
         assert learner._undershoot_detector.cumulative_ki_multiplier == 1.0
+        assert learner._undershoot_detector.time_below_target == 0.0
+        assert learner._undershoot_detector.thermal_debt == 0.0
 
     def test_restore_backward_compatibility_v4_format(self):
         """Test restore_from_dict handles v4 format without heating/cooling split."""
@@ -4141,22 +4142,22 @@ class TestChronicApproachDetectorSerialization:
 
         learner.restore_from_dict(data)
 
-        # Verify both detectors are initialized with defaults
-        assert learner._chronic_approach_detector._consecutive_failures == 0
-        assert learner._chronic_approach_detector.cumulative_ki_multiplier == 1.0
-        assert learner._undershoot_detector.time_below_target == 0.0
+        # Verify unified detector is initialized with defaults
+        assert learner._undershoot_detector._consecutive_failures == 0
         assert learner._undershoot_detector.cumulative_ki_multiplier == 1.0
+        assert learner._undershoot_detector.time_below_target == 0.0
+        assert learner._undershoot_detector.thermal_debt == 0.0
 
     def test_serialization_round_trip_with_chronic_approach_detector(self):
-        """Test full serialization and restoration round-trip with chronic approach detector state."""
+        """Test full serialization and restoration round-trip with unified detector state (v8)."""
         learner1 = AdaptiveLearner()
 
-        # Set up state
+        # Set up state (all in unified detector now)
         learner1.add_cycle_metrics(CycleMetrics(overshoot=0.5, oscillations=1, settling_time=30.0))
-        learner1._chronic_approach_detector._consecutive_failures = 4
-        learner1._chronic_approach_detector.cumulative_ki_multiplier = 1.8
-        learner1._undershoot_detector.time_below_target = 200.0
-        learner1._undershoot_detector.cumulative_ki_multiplier = 1.5
+        learner1._undershoot_detector._consecutive_failures = 4
+        learner1._undershoot_detector.cumulative_ki_multiplier = 1.8
+        learner1._undershoot_detector._time_below_target = 200.0
+        learner1._undershoot_detector._thermal_debt = 0.6
 
         # Serialize
         data = learner1.to_dict()
@@ -4165,11 +4166,11 @@ class TestChronicApproachDetectorSerialization:
         learner2 = AdaptiveLearner()
         learner2.restore_from_dict(data)
 
-        # Verify all detector state matches
-        assert learner2._chronic_approach_detector._consecutive_failures == 4
-        assert learner2._chronic_approach_detector.cumulative_ki_multiplier == 1.8
+        # Verify all unified detector state matches
+        assert learner2._undershoot_detector._consecutive_failures == 4
+        assert learner2._undershoot_detector.cumulative_ki_multiplier == 1.8
         assert learner2._undershoot_detector.time_below_target == 200.0
-        assert learner2._undershoot_detector.cumulative_ki_multiplier == 1.5
+        assert learner2._undershoot_detector.thermal_debt == 0.6
 
         # Verify cycle history is preserved
         assert len(learner2._heating_cycle_history) == 1

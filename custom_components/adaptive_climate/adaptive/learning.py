@@ -82,9 +82,6 @@ from .auto_apply import AutoApplyManager, get_auto_apply_thresholds
 # Import undershoot detector for persistent temperature deficit detection
 from .undershoot_detector import UndershootDetector
 
-# Import chronic approach detector for persistent inability to reach setpoint
-from .chronic_approach_detector import ChronicApproachDetector
-
 # Import HVAC mode helpers
 from ..helpers.hvac_mode import mode_to_str, get_hvac_heat_mode, get_hvac_cool_mode
 
@@ -164,21 +161,18 @@ class AdaptiveLearner:
         # Auto-apply manager for safety gates and threshold-based decisions
         self._auto_apply = AutoApplyManager(heating_type)
 
-        # Undershoot detector for persistent temperature deficit detection
-        self._undershoot_detector = UndershootDetector(heating_type)
-
-        # Chronic approach detector for persistent inability to reach setpoint
+        # Undershoot detector for persistent temperature deficit detection (unified real-time + cycle)
         # Convert string to HeatingType enum if needed (default to RADIATOR if None)
         from ..const import HeatingType as HeatingTypeEnum
         if heating_type is None:
-            chronic_heating_type = HeatingTypeEnum.RADIATOR
+            undershoot_heating_type = HeatingTypeEnum.RADIATOR
         elif isinstance(heating_type, str):
-            chronic_heating_type = HeatingTypeEnum(heating_type)
+            undershoot_heating_type = HeatingTypeEnum(heating_type)
         else:
-            chronic_heating_type = heating_type
-        self._chronic_approach_detector = ChronicApproachDetector(chronic_heating_type)
+            undershoot_heating_type = heating_type
+        self._undershoot_detector = UndershootDetector(undershoot_heating_type)
 
-        # Store chronic approach historic scan flag
+        # Store historic scan flag (used by unified detector)
         self._chronic_approach_historic_scan = chronic_approach_historic_scan
 
     @property
@@ -367,7 +361,7 @@ class AdaptiveLearner:
         # Increment cycle counter for hybrid rate limiting
         self._cycles_since_last_adjustment += 1
 
-        # Feed cycle to chronic approach detector
+        # Feed cycle to unified undershoot detector for chronic approach detection
         # Calculate cycle duration if timestamps available
         cycle_duration_minutes = None
         if metrics.rise_time is not None or metrics.settling_time is not None:
@@ -376,7 +370,7 @@ class AdaptiveLearner:
             rise = metrics.rise_time or 0.0
             settling = metrics.settling_time or 0.0
             cycle_duration_minutes = rise + settling
-        self._chronic_approach_detector.add_cycle(metrics, cycle_duration_minutes)
+        self._undershoot_detector.add_cycle(metrics, cycle_duration_minutes)
 
         # FIFO eviction: remove oldest entries when exceeding max history (in-place for efficiency)
         if len(cycle_history) > self._max_history:
@@ -1176,8 +1170,8 @@ class AdaptiveLearner:
     ) -> None:
         """Update undershoot detector with current temperature reading.
 
-        Delegates to the UndershootDetector to track time below target
-        and thermal debt accumulation. Call this on each temperature update.
+        Delegates to the unified UndershootDetector to track time below target
+        and thermal debt accumulation (real-time mode). Call this on each temperature update.
 
         Args:
             temp: Current temperature in °C
@@ -1185,35 +1179,49 @@ class AdaptiveLearner:
             dt_seconds: Time elapsed since last update in seconds
             cold_tolerance: Acceptable temperature deficit in °C
         """
-        self._undershoot_detector.update(temp, setpoint, dt_seconds, cold_tolerance)
+        self._undershoot_detector.update_realtime(temp, setpoint, dt_seconds, cold_tolerance)
 
     def check_undershoot_adjustment(
         self,
         cycles_completed: int,
         current_ki: float,
         pid_history: Optional[list[dict]] = None,
+        mode: "HVACMode" = None,
     ) -> Optional[float]:
-        """Check if Ki adjustment is needed for persistent undershoot.
+        """Check if Ki adjustment is needed for persistent undershoot (unified real-time + cycle).
 
-        Checks if the undershoot detector has identified persistent temperature
-        deficit conditions requiring Ki increase. If adjustment is needed, applies
-        the multiplier to Ki. The caller should scale the integral proportionally
-        using PIDController.scale_integral() to prevent sudden control output changes.
+        Checks if the unified undershoot detector has identified either:
+        1. Real-time mode: Persistent temperature deficit (time below target, thermal debt)
+        2. Cycle mode: Chronic approach failures (consecutive cycles failing to reach setpoint)
+
+        If adjustment is needed, applies the multiplier to Ki and updates convergence confidence.
+        The caller should scale the integral proportionally using PIDController.scale_integral()
+        to prevent sudden control output changes.
 
         Args:
             cycles_completed: Number of complete heating cycles observed
             current_ki: Current integral gain value
             pid_history: Optional list of PID history entries from PIDGainsManager
+            mode: HVACMode (HEAT or COOL) to update confidence for (defaults to HEAT)
 
         Returns:
             New Ki value if adjustment was applied, None otherwise
         """
-        # Extract last boost time from PID history
+        # Extract last boost time from PID history (checks both reason strings)
         last_boost_utc = None
         if pid_history:
-            last_boost_utc = _get_last_adjustment_time_from_history(
+            # Check both old reason names for backward compatibility
+            undershoot_utc = _get_last_adjustment_time_from_history(
                 pid_history, "undershoot_ki_boost"
             )
+            chronic_utc = _get_last_adjustment_time_from_history(
+                pid_history, "chronic_approach_ki_boost"
+            )
+            # Use the most recent adjustment
+            if undershoot_utc and chronic_utc:
+                last_boost_utc = max(undershoot_utc, chronic_utc)
+            else:
+                last_boost_utc = undershoot_utc or chronic_utc
 
         if not self._undershoot_detector.should_adjust_ki(cycles_completed, last_boost_utc):
             return None
@@ -1222,83 +1230,21 @@ class AdaptiveLearner:
         multiplier = self._undershoot_detector.apply_adjustment()
         new_ki = current_ki * multiplier
 
+        # Log with context about which mode triggered
         _LOGGER.info(
             "Undershoot detected: increasing Ki from %.4f to %.4f (%.1f%% increase, "
-            "time_below=%.1fh, thermal_debt=%.2f°C·h, cumulative=%.2fx)",
+            "time_below=%.1fh, thermal_debt=%.2f°C·h, consecutive_failures=%d, cumulative=%.2fx)",
             current_ki,
             new_ki,
             (multiplier - 1.0) * 100,
             self._undershoot_detector.time_below_target / 3600.0,
             self._undershoot_detector.thermal_debt,
+            self._undershoot_detector._consecutive_failures,
             self._undershoot_detector.cumulative_ki_multiplier,
         )
 
-        return new_ki
-
-    @property
-    def undershoot_detector(self) -> UndershootDetector:
-        """Expose undershoot detector for serialization access.
-
-        Returns:
-            The UndershootDetector instance
-        """
-        return self._undershoot_detector
-
-    def check_chronic_approach_adjustment(
-        self,
-        current_ki: float,
-        zone_name: str = "zone",
-        mode: "HVACMode" = None,
-        pid_history: Optional[list[dict]] = None,
-    ) -> Optional[float]:
-        """Check if Ki adjustment is needed for chronic approach failure.
-
-        Checks if the chronic approach detector has identified a persistent pattern
-        of failing to reach setpoint across multiple cycles, indicating insufficient
-        heating capacity or integral gain. If adjustment is needed, applies the
-        multiplier to Ki and updates convergence confidence.
-
-        Args:
-            current_ki: Current integral gain value
-            zone_name: Name of the zone for logging (optional)
-            mode: HVACMode (HEAT or COOL) to update confidence for (defaults to HEAT)
-            pid_history: Optional list of PID history entries from PIDGainsManager
-
-        Returns:
-            New Ki value if adjustment was applied, None otherwise
-        """
-        # Extract last boost time from PID history
-        last_boost_utc = None
-        if pid_history:
-            last_boost_utc = _get_last_adjustment_time_from_history(
-                pid_history, "chronic_approach_ki_boost"
-            )
-
-        if not self._chronic_approach_detector.should_adjust_ki(last_boost_utc):
-            return None
-
-        # Get and apply the adjustment
-        multiplier = self._chronic_approach_detector.apply_adjustment()
-        new_ki = current_ki * multiplier
-
-        # Get detector state for logging
-        consecutive_failures = self._chronic_approach_detector._consecutive_failures
-        cumulative_multiplier = self._chronic_approach_detector.cumulative_ki_multiplier
-
-        _LOGGER.warning(
-            "Chronic approach failure detected in %s: zone consistently failing to reach setpoint "
-            "across %d consecutive cycles. This may indicate undersized heating system. "
-            "Increasing Ki from %.4f to %.4f (%.1f%% increase, cumulative: %.2fx)",
-            zone_name,
-            consecutive_failures,
-            current_ki,
-            new_ki,
-            (multiplier - 1.0) * 100,
-            cumulative_multiplier,
-        )
-
         # Update convergence confidence - decrease due to poor performance
-        # Chronic approach failure indicates persistent poor tuning, similar to poor cycles
+        # Undershoot indicates persistent poor tuning, similar to poor cycles
         if mode is None:
             mode = get_hvac_heat_mode()
 
@@ -1316,7 +1262,7 @@ class AdaptiveLearner:
             self._confidence._heating_convergence_confidence = new_confidence
 
         _LOGGER.debug(
-            "Convergence confidence (%s mode) decreased to %.2f due to chronic approach failure",
+            "Convergence confidence (%s mode) decreased to %.2f due to undershoot detection",
             mode_to_str(mode),
             new_confidence,
         )
@@ -1324,23 +1270,25 @@ class AdaptiveLearner:
         return new_ki
 
     @property
-    def chronic_approach_detector(self) -> ChronicApproachDetector:
-        """Expose chronic approach detector for serialization access.
+    def undershoot_detector(self) -> UndershootDetector:
+        """Expose undershoot detector for serialization access.
 
         Returns:
-            The ChronicApproachDetector instance
+            The UndershootDetector instance
         """
-        return self._chronic_approach_detector
+        return self._undershoot_detector
+
 
     def to_dict(self) -> Dict[str, Any]:
-        """Serialize AdaptiveLearner state to a dictionary in v7 format with backward compatibility.
+        """Serialize AdaptiveLearner state to a dictionary in v8 format with backward compatibility.
 
         Delegates to learner_serialization module for actual serialization logic.
 
         Returns:
             Dictionary containing:
-            - v7 structure with undershoot and chronic approach detector states
-            - v6 structure with undershoot detector state
+            - v8 structure with unified undershoot detector state (real-time + cycle modes)
+            - v7 structure with separate undershoot and chronic approach detector states
+            - v6 structure with undershoot detector state only
             - v5 mode-keyed structure (heating/cooling sub-dicts)
             - v4 backward-compatible top-level keys (cycle_history, auto_apply_count, etc.)
 
@@ -1358,7 +1306,7 @@ class AdaptiveLearner:
             consecutive_converged_cycles=self._consecutive_converged_cycles,
             pid_converged_for_ke=self._pid_converged_for_ke,
             undershoot_detector=self._undershoot_detector,
-            chronic_approach_detector=self._chronic_approach_detector,
+            chronic_approach_detector=None,  # No longer used (merged into unified detector)
         )
 
     def restore_from_dict(self, data: Dict[str, Any]) -> None:
@@ -1369,14 +1317,15 @@ class AdaptiveLearner:
 
         Delegates to learner_serialization module for actual deserialization logic.
 
-        Supports v4 (flat), v5 (mode-keyed), v6 (undershoot detector), and v7 (chronic approach detector) formats.
+        Supports v4 (flat), v5 (mode-keyed), v6 (undershoot), v7 (chronic approach), and v8 (unified) formats.
 
         Args:
             data: Dictionary containing either:
                 v4 format: cycle_history, auto_apply_count, etc. at top level
                 v5 format: heating/cooling sub-dicts with mode-specific data
                 v6 format: v5 + undershoot_detector state
-                v7 format: v6 + chronic_approach_detector state
+                v7 format: v6 + chronic_approach_detector state (separate)
+                v8 format: v7 + unified_detector state (merged)
         """
         # Delegate to serialization module for parsing
         restored = restore_learner_from_dict(data)
@@ -1397,28 +1346,44 @@ class AdaptiveLearner:
         self._consecutive_converged_cycles = restored["consecutive_converged_cycles"]
         self._pid_converged_for_ke = restored["pid_converged_for_ke"]
 
-        # Restore undershoot detector state
-        undershoot_state = restored.get("undershoot_detector_state", {})
-        if undershoot_state:
-            self._undershoot_detector.time_below_target = undershoot_state.get("time_below_target", 0.0)
-            self._undershoot_detector.thermal_debt = undershoot_state.get("thermal_debt", 0.0)
-            self._undershoot_detector.cumulative_ki_multiplier = undershoot_state.get("cumulative_ki_multiplier", 1.0)
+        # Restore unified undershoot detector state (v8+)
+        unified_state = restored.get("unified_detector_state", {})
+        if unified_state:
+            # Real-time mode state
+            self._undershoot_detector.time_below_target = unified_state.get("time_below_target", 0.0)
+            self._undershoot_detector.thermal_debt = unified_state.get("thermal_debt", 0.0)
+            # Cycle mode state
+            self._undershoot_detector._consecutive_failures = unified_state.get("consecutive_failures", 0)
+            # Shared state
+            self._undershoot_detector.cumulative_ki_multiplier = unified_state.get("cumulative_ki_multiplier", 1.0)
+        else:
+            # Backward compatibility: merge separate v7 detector states
+            undershoot_state = restored.get("undershoot_detector_state", {})
+            chronic_state = restored.get("chronic_approach_detector_state", {})
 
-        # Restore chronic approach detector state
-        chronic_approach_state = restored.get("chronic_approach_detector_state", {})
-        if chronic_approach_state:
-            self._chronic_approach_detector._consecutive_failures = chronic_approach_state.get("consecutive_failures", 0)
-            self._chronic_approach_detector.cumulative_ki_multiplier = chronic_approach_state.get("cumulative_multiplier", 1.0)
+            # Real-time mode (from old undershoot detector)
+            if undershoot_state:
+                self._undershoot_detector.time_below_target = undershoot_state.get("time_below_target", 0.0)
+                self._undershoot_detector.thermal_debt = undershoot_state.get("thermal_debt", 0.0)
+
+            # Cycle mode (from old chronic approach detector)
+            if chronic_state:
+                self._undershoot_detector._consecutive_failures = chronic_state.get("consecutive_failures", 0)
+
+            # Merge cumulative multipliers (use max to be conservative)
+            undershoot_mult = undershoot_state.get("cumulative_ki_multiplier", 1.0) if undershoot_state else 1.0
+            chronic_mult = chronic_state.get("cumulative_multiplier", 1.0) if chronic_state else 1.0
+            self._undershoot_detector.cumulative_ki_multiplier = max(undershoot_mult, chronic_mult)
 
         # Perform historic scan if enabled
         if self._chronic_approach_historic_scan:
             self._perform_historic_scan()
 
     def _perform_historic_scan(self) -> None:
-        """Scan existing cycle history for chronic approach patterns.
+        """Scan existing cycle history for chronic approach patterns using unified detector.
 
         Called during restoration if chronic_approach_historic_scan flag is enabled.
-        Feeds all existing cycles to the chronic approach detector in order.
+        Feeds all existing cycles to the unified undershoot detector's cycle mode in order.
         If a pattern is detected, logs the finding (adjustment will be applied
         by the normal learning flow).
         """
@@ -1431,20 +1396,27 @@ class AdaptiveLearner:
             len(self._heating_cycle_history)
         )
 
-        # Feed all cycles to detector in order
+        # Feed all cycles to unified detector in order
         for cycle in self._heating_cycle_history:
-            # Add cycle to detector (this will track consecutive failures)
-            self._chronic_approach_detector.add_cycle(cycle)
+            # Calculate cycle duration if timing metrics available
+            cycle_duration_minutes = None
+            if cycle.rise_time is not None or cycle.settling_time is not None:
+                rise = cycle.rise_time or 0.0
+                settling = cycle.settling_time or 0.0
+                cycle_duration_minutes = rise + settling
+            # Add cycle to detector (this will track consecutive failures in cycle mode)
+            self._undershoot_detector.add_cycle(cycle, cycle_duration_minutes)
 
-        # Check if pattern detected
-        if self._chronic_approach_detector.should_adjust_ki():
+        # Check if pattern detected (use cycle count from history length)
+        cycles_completed = len(self._heating_cycle_history)
+        if self._undershoot_detector.should_adjust_ki(cycles_completed):
             _LOGGER.warning(
                 "Historic scan detected chronic approach pattern: %d consecutive failures",
-                self._chronic_approach_detector._consecutive_failures
+                self._undershoot_detector._consecutive_failures
             )
             _LOGGER.info(
                 "Chronic approach Ki adjustment will be recommended: %.3fx multiplier",
-                self._chronic_approach_detector.get_adjustment()
+                self._undershoot_detector.get_adjustment()
             )
         else:
             _LOGGER.debug("No chronic approach pattern detected in historic scan")
