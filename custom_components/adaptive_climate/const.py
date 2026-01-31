@@ -763,31 +763,55 @@ HEATING_TYPE_EXP_DECAY_TAU = {
 }
 
 # Undershoot detection thresholds by heating type
-# Detects persistent undershoot (temperature debt accumulation) and adjusts Ki to improve response
+# Unified configuration for both real-time mode (debt accumulation) and cycle mode (approach failure)
 # Slower systems (high thermal mass) get longer time thresholds and higher debt thresholds
 UNDERSHOOT_THRESHOLDS: dict[HeatingType, dict[str, float]] = {
     HeatingType.FLOOR_HYDRONIC: {
+        # Real-time mode
         "time_threshold_hours": 4.0,    # Hours below setpoint before triggering
         "debt_threshold": 2.0,          # Temperature debt (°C·h) threshold
-        "ki_multiplier": 1.15,          # Ki boost per detection (15% increase)
+        # Cycle mode
+        "min_consecutive_cycles": 4,    # Minimum consecutive approach failures
+        "undershoot_threshold": 0.4,    # Temperature gap threshold (°C)
+        "min_cycle_duration": 60.0,     # Minimum cycle duration (minutes)
+        # Shared
+        "ki_multiplier": 1.20,          # Ki boost per detection (20% increase)
         "cooldown_hours": 24.0,         # Hours between adjustments
     },
     HeatingType.RADIATOR: {
+        # Real-time mode
         "time_threshold_hours": 2.0,
         "debt_threshold": 1.0,
-        "ki_multiplier": 1.20,
+        # Cycle mode
+        "min_consecutive_cycles": 3,
+        "undershoot_threshold": 0.35,
+        "min_cycle_duration": 30.0,
+        # Shared
+        "ki_multiplier": 1.25,
         "cooldown_hours": 8.0,
     },
     HeatingType.CONVECTOR: {
+        # Real-time mode
         "time_threshold_hours": 1.5,
         "debt_threshold": 0.75,
-        "ki_multiplier": 1.25,
+        # Cycle mode
+        "min_consecutive_cycles": 3,
+        "undershoot_threshold": 0.30,
+        "min_cycle_duration": 20.0,
+        # Shared
+        "ki_multiplier": 1.30,
         "cooldown_hours": 4.0,
     },
     HeatingType.FORCED_AIR: {
+        # Real-time mode
         "time_threshold_hours": 0.75,
         "debt_threshold": 0.5,
-        "ki_multiplier": 1.30,
+        # Cycle mode
+        "min_consecutive_cycles": 2,
+        "undershoot_threshold": 0.25,
+        "min_cycle_duration": 10.0,
+        # Shared
+        "ki_multiplier": 1.35,
         "cooldown_hours": 2.0,
     },
 }
@@ -798,36 +822,6 @@ MAX_UNDERSHOOT_KI_MULTIPLIER = 2.0
 # Severe undershoot multiplier - thermal debt must exceed this multiple of threshold
 # for persistent undershoot detection to stay active beyond bootstrap phase
 SEVERE_UNDERSHOOT_MULTIPLIER = 2.0
-
-# Chronic approach failure thresholds by heating type
-# Detects persistent inability to reach setpoint across multiple cycles
-# Slower systems (high thermal mass) require longer cycle durations and more cycles
-CHRONIC_APPROACH_THRESHOLDS: dict[HeatingType, dict[str, float]] = {
-    HeatingType.FLOOR_HYDRONIC: {
-        "min_cycles": 4,                # Minimum consecutive approach failures
-        "undershoot_threshold": 0.4,    # Temperature gap threshold (°C)
-        "min_cycle_duration": 60.0,     # Minimum cycle duration (minutes)
-        "ki_multiplier": 1.20,          # Ki boost per detection (20% increase)
-    },
-    HeatingType.RADIATOR: {
-        "min_cycles": 3,
-        "undershoot_threshold": 0.35,
-        "min_cycle_duration": 30.0,
-        "ki_multiplier": 1.25,
-    },
-    HeatingType.CONVECTOR: {
-        "min_cycles": 3,
-        "undershoot_threshold": 0.30,
-        "min_cycle_duration": 20.0,
-        "ki_multiplier": 1.30,
-    },
-    HeatingType.FORCED_AIR: {
-        "min_cycles": 2,
-        "undershoot_threshold": 0.25,
-        "min_cycle_duration": 10.0,
-        "ki_multiplier": 1.35,
-    },
-}
 
 # Auto-apply PID constants
 # Maximum auto-applies per season (90 days) to prevent runaway tuning
