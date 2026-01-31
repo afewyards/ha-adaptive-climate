@@ -1,6 +1,31 @@
 # CHANGELOG
 
 
+## v0.49.0 (2026-01-31)
+
+### BREAKING CHANGES
+
+- **domain**: Renamed from "Adaptive Thermostat" to "Adaptive Climate"
+
+  This is a breaking change that affects entity IDs, services, and configuration.
+
+  **What changed:**
+  - Entity IDs: `climate.adaptive_thermostat_*` → `climate.adaptive_climate_*`
+  - Services: `adaptive_thermostat.*` → `adaptive_climate.*`
+  - Configuration: `platform: adaptive_thermostat` → `platform: adaptive_climate`
+  - Domain key: `adaptive_thermostat:` → `adaptive_climate:` (top-level config)
+
+  **Migration:**
+  1. Update configuration.yaml: change `platform: adaptive_thermostat` to `platform: adaptive_climate`
+  2. Update domain config: rename `adaptive_thermostat:` to `adaptive_climate:`
+  3. Restart Home Assistant (data migrates automatically on startup)
+  4. Update automations/scripts: replace old entity IDs with new ones
+  5. Update dashboards: replace old entity IDs with new ones
+  6. Update service calls: `adaptive_thermostat.*` → `adaptive_climate.*`
+
+  **Note:** Learning data, PID history, and all state automatically migrates. Entity ID changes will break existing automations and dashboards.
+
+
 ## v0.48.1 (2026-01-30)
 
 ### Bug Fixes
