@@ -1313,7 +1313,7 @@ class TestValidationModeBlocking:
         assert len(adaptive_learner._validation_cycles) == 2
         assert adaptive_learner.is_in_validation_mode() is True
 
-        # Phase 3: User manually calls adaptive_thermostat.set_pid service
+        # Phase 3: User manually calls adaptive_climate.set_pid service
         # This simulates what PIDTuningManager.async_apply_adaptive_pid does
         # when called manually via service
 
