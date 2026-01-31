@@ -1,7 +1,16 @@
 # CHANGELOG
 
 
-## v1.1.0 (2026-01-31)
+## v0.50.0 (2026-01-31)
+
+### Bug Fixes
+
+- One-time import of pid_history from .storage on restart
+  ([`40e559d`](https://github.com/afewyards/ha-adaptive-climate/commit/40e559d0783a06d78b8c5a988b567b7918e915f6))
+
+pid_history was stored in LearningDataStore but not imported to state attributes on restart. Now
+  extracts pid_history during platform setup, imports to PIDGainsManager in async_added_to_hass,
+  then deletes from storage to ensure migration is one-time only.
 
 ### Features
 
@@ -3505,9 +3514,6 @@ Create tests/test_coupling_integration.py with: - Multi-zone fixture with coordi
 
 Set major_on_zero = false in semantic-release config to keep project in alpha (0.x.x) until
   explicitly ready for stable release.
-
-
-## v1.0.0 (2026-01-31)
 
 ### Refactoring
 
