@@ -1,4 +1,4 @@
-"""The adaptive_thermostat component."""
+"""The adaptive_climate component."""
 from __future__ import annotations
 
 import logging
@@ -166,7 +166,7 @@ def valid_notify_service(value: Any) -> str:
 
 
 # Domain configuration schema
-# This validates the configuration under the adaptive_thermostat: key
+# This validates the configuration under the adaptive_climate: key
 if HAS_HOMEASSISTANT:
     # Thermal group schema
     THERMAL_GROUP_SCHEMA = vol.Schema({
@@ -476,12 +476,19 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         vol.Optional("period", default="weekly"): vol.In(["daily", "weekly", "monthly"]),
     })
 
+    # Migrate from old domain if exists
+    old_domain_data = hass.data.get("adaptive_thermostat")
+    if old_domain_data:
+        hass.data[DOMAIN] = old_domain_data
+        del hass.data["adaptive_thermostat"]
+        _LOGGER.info("Migrated data from adaptive_thermostat to adaptive_climate")
+
     # Initialize domain data storage
     hass.data.setdefault(DOMAIN, {})
 
     # Create www directory for chart images
     from pathlib import Path
-    www_dir = Path(hass.config.path("www")) / "adaptive_thermostat"
+    www_dir = Path(hass.config.path("www")) / "adaptive_climate"
     try:
         www_dir.mkdir(parents=True, exist_ok=True)
         _LOGGER.debug("Chart directory ready: %s", www_dir)
@@ -512,7 +519,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     hass.data[DOMAIN]["debug"] = domain_config.get(CONF_DEBUG, DEFAULT_DEBUG)
 
     # Set logger level based on debug flag - suppresses info/debug when debug=false
-    pkg_logger = logging.getLogger("custom_components.adaptive_thermostat")
+    pkg_logger = logging.getLogger("custom_components.adaptive_climate")
     pkg_logger.setLevel(logging.DEBUG if hass.data[DOMAIN]["debug"] else logging.WARNING)
     hass.data[DOMAIN]["energy_meter_entity"] = energy_meter
     hass.data[DOMAIN]["energy_cost_entity"] = energy_cost
@@ -714,7 +721,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
     # Event listener to set integral values (for restoration/debugging)
     async def _handle_set_integral_event(event):
-        """Handle adaptive_thermostat_set_integral event."""
+        """Handle adaptive_climate_set_integral event."""
         values = event.data.get("values", {})
         entity_component = hass.data.get("climate")
         if not entity_component:
@@ -731,7 +738,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
                 _LOGGER.warning("set_integral: Entity not found or no PID controller: %s", entity_id)
 
     # Store unsub handle for cleanup during unload (C3 fix)
-    set_integral_unsub = hass.bus.async_listen("adaptive_thermostat_set_integral", _handle_set_integral_event)
+    set_integral_unsub = hass.bus.async_listen("adaptive_climate_set_integral", _handle_set_integral_event)
     hass.data[DOMAIN]["set_integral_unsub"] = set_integral_unsub
 
     # Store cancel callbacks for scheduled tasks (needed for unload)

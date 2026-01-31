@@ -19,7 +19,8 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
-STORAGE_KEY = "adaptive_thermostat_learning"
+STORAGE_KEY = "adaptive_climate_learning"
+OLD_STORAGE_KEY = "adaptive_thermostat_learning"
 STORAGE_VERSION = 5
 SAVE_DELAY_SECONDS = 30
 
@@ -132,6 +133,10 @@ class LearningDataStore:
 
         data = await self._store.async_load()
 
+        # If no data found with new key, try migrating from old key
+        if data is None:
+            data = await self._migrate_from_old_storage()
+
         if data is None:
             # No existing data - return default structure
             self._data = {"version": 5, "zones": {}}
@@ -147,6 +152,37 @@ class LearningDataStore:
 
         self._data = data
         return data
+
+    async def _migrate_from_old_storage(self) -> Optional[Dict[str, Any]]:
+        """
+        Migrate data from old storage key to new storage key.
+
+        Returns:
+            Migrated data dictionary, or None if no old data found
+        """
+        # Create store with old key
+        old_store = _create_store(self.hass, STORAGE_VERSION, OLD_STORAGE_KEY)
+
+        # Try to load from old storage
+        old_data = await old_store.async_load()
+
+        if old_data is None:
+            _LOGGER.debug("No old storage file found - skipping migration")
+            return None
+
+        _LOGGER.info(
+            f"Migrating learning data from '{OLD_STORAGE_KEY}' to '{STORAGE_KEY}'"
+        )
+
+        # Save to new storage location
+        await self._store.async_save(old_data)
+
+        _LOGGER.info(
+            f"Successfully migrated learning data to '{STORAGE_KEY}' "
+            f"(old file will be removed automatically by HA)"
+        )
+
+        return old_data
 
     def get_zone_data(self, zone_id: str) -> Optional[Dict[str, Any]]:
         """
