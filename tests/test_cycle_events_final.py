@@ -14,11 +14,11 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, AsyncMock, patch
 
-from custom_components.adaptive_thermostat.managers.cycle_tracker import (
+from custom_components.adaptive_climate.managers.cycle_tracker import (
     CycleState,
     CycleTrackerManager,
 )
-from custom_components.adaptive_thermostat.managers.events import (
+from custom_components.adaptive_climate.managers.events import (
     CycleEventDispatcher,
     CycleStartedEvent,
     SettlingStartedEvent,
@@ -34,7 +34,7 @@ def mock_dt_util():
     """Mock dt_util.utcnow() to return a fixed datetime for duration calculations."""
     # Set a far-future datetime to ensure all cycle durations are valid
     fixed_now = datetime(2024, 12, 31, 23, 59, 59)
-    with patch('custom_components.adaptive_thermostat.managers.cycle_metrics.dt_util.utcnow', return_value=fixed_now):
+    with patch('custom_components.adaptive_climate.managers.cycle_metrics.dt_util.utcnow', return_value=fixed_now):
         yield
 
 
@@ -200,7 +200,7 @@ class TestNoLegacyCode:
     def test_heater_controller_no_cycle_tracker_refs(self):
         """Verify HeaterController has no direct _cycle_tracker references."""
         # Read HeaterController source
-        hc_path = Path(__file__).parent.parent / "custom_components" / "adaptive_thermostat" / "managers" / "heater_controller.py"
+        hc_path = Path(__file__).parent.parent / "custom_components" / "adaptive_climate" / "managers" / "heater_controller.py"
         source = hc_path.read_text()
 
         # Check for _cycle_tracker references
@@ -211,7 +211,7 @@ class TestNoLegacyCode:
     def test_climate_no_legacy_cycle_calls(self):
         """Verify climate.py uses only events for cycle communication."""
         # Read climate.py source
-        climate_path = Path(__file__).parent.parent / "custom_components" / "adaptive_thermostat" / "climate.py"
+        climate_path = Path(__file__).parent.parent / "custom_components" / "adaptive_climate" / "climate.py"
         source = climate_path.read_text()
 
         # Parse the AST to find method calls

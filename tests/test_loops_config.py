@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 # Add parent directory to path
-sys.path.insert(0, str(Path(__file__).parent.parent / "custom_components" / "adaptive_thermostat"))
+sys.path.insert(0, str(Path(__file__).parent.parent / "custom_components" / "adaptive_climate"))
 
 import voluptuous as vol
 from const import CONF_LOOPS

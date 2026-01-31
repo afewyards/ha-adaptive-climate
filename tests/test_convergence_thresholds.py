@@ -1,6 +1,6 @@
 """Tests for heating-type-specific convergence thresholds."""
 
-from custom_components.adaptive_thermostat.const import (
+from custom_components.adaptive_climate.const import (
     get_convergence_thresholds,
     DEFAULT_CONVERGENCE_THRESHOLDS,
     HEATING_TYPE_FLOOR_HYDRONIC,
@@ -8,8 +8,8 @@ from custom_components.adaptive_thermostat.const import (
     HEATING_TYPE_CONVECTOR,
     HEATING_TYPE_FORCED_AIR,
 )
-from custom_components.adaptive_thermostat.adaptive.learning import AdaptiveLearner
-from custom_components.adaptive_thermostat.adaptive.cycle_analysis import CycleMetrics
+from custom_components.adaptive_climate.adaptive.learning import AdaptiveLearner
+from custom_components.adaptive_climate.adaptive.cycle_analysis import CycleMetrics
 
 
 class TestConvergenceThresholdsHelper:
@@ -125,7 +125,7 @@ class TestAdaptiveLearnerHeatingTypeThresholds:
         # With tightened forced_air thresholds, this performance should trigger adjustments
         # The system should detect that it's not converged because metrics exceed thresholds
         # Check _check_convergence directly to verify threshold logic
-        from custom_components.adaptive_thermostat.adaptive.robust_stats import robust_average
+        from custom_components.adaptive_climate.adaptive.robust_stats import robust_average
 
         overshoot_values = [m.overshoot for m in learner._cycle_history if m.overshoot is not None]
         settling_values = [m.settling_time for m in learner._cycle_history if m.settling_time is not None]
@@ -164,5 +164,5 @@ class TestAdaptiveLearnerHeatingTypeThresholds:
 # Marker test
 def test_convergence_thresholds_module_exists():
     """Marker test to ensure convergence threshold helpers are importable."""
-    from custom_components.adaptive_thermostat.const import get_convergence_thresholds
+    from custom_components.adaptive_climate.const import get_convergence_thresholds
     assert get_convergence_thresholds is not None

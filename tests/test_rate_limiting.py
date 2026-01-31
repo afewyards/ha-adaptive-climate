@@ -3,8 +3,8 @@
 import pytest
 from datetime import datetime, timedelta
 from unittest.mock import patch
-from custom_components.adaptive_thermostat.adaptive.learning import AdaptiveLearner
-from custom_components.adaptive_thermostat.adaptive.cycle_analysis import CycleMetrics
+from custom_components.adaptive_climate.adaptive.learning import AdaptiveLearner
+from custom_components.adaptive_climate.adaptive.cycle_analysis import CycleMetrics
 
 
 @pytest.fixture
@@ -34,7 +34,7 @@ class TestHybridRateLimiting:
         """Verify both time AND cycle gates must be satisfied."""
         fake_now = datetime.now()
 
-        with patch('custom_components.adaptive_thermostat.adaptive.learning.dt_util') as mock_dt_util:
+        with patch('custom_components.adaptive_climate.adaptive.learning.dt_util') as mock_dt_util:
             mock_dt_util.utcnow.return_value = fake_now
 
             # Add 6 cycles to meet minimum for learning
@@ -115,7 +115,7 @@ class TestHybridRateLimiting:
 
         # Simulate 8 hours passing (new hybrid gate)
         fake_now = datetime.now()
-        with patch('custom_components.adaptive_thermostat.adaptive.learning.dt_util') as mock_dt_util:
+        with patch('custom_components.adaptive_climate.adaptive.learning.dt_util') as mock_dt_util:
             mock_dt_util.utcnow.return_value = fake_now
             learner._last_adjustment_time = fake_now - timedelta(hours=8)
 
@@ -141,7 +141,7 @@ class TestHybridRateLimiting:
 
         # Simulate only 8 hours passing (would fail with 24h gate)
         fake_now = datetime.now()
-        with patch('custom_components.adaptive_thermostat.adaptive.learning.dt_util') as mock_dt_util:
+        with patch('custom_components.adaptive_climate.adaptive.learning.dt_util') as mock_dt_util:
             mock_dt_util.utcnow.return_value = fake_now
             learner._last_adjustment_time = fake_now - timedelta(hours=8)
 
@@ -212,7 +212,7 @@ class TestHybridRateLimiting:
 
         # Simulate only 4 hours passing (less than 8h minimum)
         fake_now = datetime.now()
-        with patch('custom_components.adaptive_thermostat.adaptive.learning.dt_util') as mock_dt_util:
+        with patch('custom_components.adaptive_climate.adaptive.learning.dt_util') as mock_dt_util:
             mock_dt_util.utcnow.return_value = fake_now
             learner._last_adjustment_time = fake_now - timedelta(hours=4)
 
@@ -243,7 +243,7 @@ class TestHybridRateLimiting:
 
         # Simulate 8 hours passing (satisfies time gate)
         fake_now = datetime.now()
-        with patch('custom_components.adaptive_thermostat.adaptive.learning.dt_util') as mock_dt_util:
+        with patch('custom_components.adaptive_climate.adaptive.learning.dt_util') as mock_dt_util:
             mock_dt_util.utcnow.return_value = fake_now
             learner._last_adjustment_time = fake_now - timedelta(hours=8)
 
@@ -291,7 +291,7 @@ class TestHybridRateLimiting:
 
         # Simulate 12 hours passing
         fake_now = datetime.now()
-        with patch('custom_components.adaptive_thermostat.adaptive.learning.dt_util') as mock_dt_util:
+        with patch('custom_components.adaptive_climate.adaptive.learning.dt_util') as mock_dt_util:
             mock_dt_util.utcnow.return_value = fake_now
             learner._last_adjustment_time = fake_now - timedelta(hours=12)
 

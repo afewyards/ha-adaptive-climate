@@ -52,8 +52,8 @@ def create_mock_storage_module(load_data=None):
     return mock_module
 
 
-from custom_components.adaptive_thermostat.adaptive.persistence import LearningDataStore
-from custom_components.adaptive_thermostat.adaptive.learning import (
+from custom_components.adaptive_climate.adaptive.persistence import LearningDataStore
+from custom_components.adaptive_climate.adaptive.learning import (
     ThermalRateLearner,
     AdaptiveLearner,
     CycleMetrics,

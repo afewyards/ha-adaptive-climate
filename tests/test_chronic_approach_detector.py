@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from custom_components.adaptive_thermostat.adaptive.cycle_analysis import CycleMetrics
-from custom_components.adaptive_thermostat.const import (
+from custom_components.adaptive_climate.adaptive.cycle_analysis import CycleMetrics
+from custom_components.adaptive_climate.const import (
     CHRONIC_APPROACH_THRESHOLDS,
     HeatingType,
     MAX_UNDERSHOOT_KI_MULTIPLIER,
@@ -34,7 +34,7 @@ def make_cycle_metrics(
 def detector():
     """Create a detector for floor_hydronic heating."""
     # Import will be available after implementation
-    from custom_components.adaptive_thermostat.adaptive.chronic_approach_detector import (
+    from custom_components.adaptive_climate.adaptive.chronic_approach_detector import (
         ChronicApproachDetector,
     )
     return ChronicApproachDetector(HeatingType.FLOOR_HYDRONIC)
@@ -43,7 +43,7 @@ def detector():
 @pytest.fixture
 def radiator_detector():
     """Create a detector for radiator heating."""
-    from custom_components.adaptive_thermostat.adaptive.chronic_approach_detector import (
+    from custom_components.adaptive_climate.adaptive.chronic_approach_detector import (
         ChronicApproachDetector,
     )
     return ChronicApproachDetector(HeatingType.RADIATOR)
@@ -52,7 +52,7 @@ def radiator_detector():
 @pytest.fixture
 def convector_detector():
     """Create a detector for convector heating."""
-    from custom_components.adaptive_thermostat.adaptive.chronic_approach_detector import (
+    from custom_components.adaptive_climate.adaptive.chronic_approach_detector import (
         ChronicApproachDetector,
     )
     return ChronicApproachDetector(HeatingType.CONVECTOR)
@@ -61,7 +61,7 @@ def convector_detector():
 @pytest.fixture
 def forced_air_detector():
     """Create a detector for forced_air heating."""
-    from custom_components.adaptive_thermostat.adaptive.chronic_approach_detector import (
+    from custom_components.adaptive_climate.adaptive.chronic_approach_detector import (
         ChronicApproachDetector,
     )
     return ChronicApproachDetector(HeatingType.FORCED_AIR)
@@ -433,7 +433,7 @@ class TestCooldownBehavior:
         # Should now be in cooldown
         assert detector.should_adjust_ki() is False
 
-    @patch('custom_components.adaptive_thermostat.adaptive.chronic_approach_detector.time.monotonic')
+    @patch('custom_components.adaptive_climate.adaptive.chronic_approach_detector.time.monotonic')
     def test_suppresses_detection_during_cooldown(self, mock_time, detector):
         """Test that pattern detection is suppressed during cooldown."""
         mock_time.return_value = 1000.0
@@ -463,7 +463,7 @@ class TestCooldownBehavior:
         mock_time.return_value = 1000.0 + 23 * 3600  # 23 hours later
         assert detector.should_adjust_ki() is False
 
-    @patch('custom_components.adaptive_thermostat.adaptive.chronic_approach_detector.time.monotonic')
+    @patch('custom_components.adaptive_climate.adaptive.chronic_approach_detector.time.monotonic')
     def test_resumes_detection_after_cooldown(self, mock_time, detector):
         """Test that detection resumes after cooldown expires."""
         mock_time.return_value = 1000.0

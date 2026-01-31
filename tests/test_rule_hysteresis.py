@@ -1,7 +1,7 @@
 """Tests for PID rule hysteresis to prevent oscillation."""
 
 import pytest
-from custom_components.adaptive_thermostat.adaptive.pid_rules import (
+from custom_components.adaptive_climate.adaptive.pid_rules import (
     PIDRule,
     RuleStateTracker,
     evaluate_pid_rules,

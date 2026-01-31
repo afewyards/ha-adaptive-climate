@@ -5,8 +5,8 @@ from datetime import datetime
 from unittest.mock import Mock, MagicMock
 from homeassistant.components.climate import HVACMode
 
-from custom_components.adaptive_thermostat.managers.pid_gains_manager import PIDGainsManager
-from custom_components.adaptive_thermostat.const import (
+from custom_components.adaptive_climate.managers.pid_gains_manager import PIDGainsManager
+from custom_components.adaptive_climate.const import (
     PIDChangeReason,
     PIDChangeActor,
     REASON_TO_ACTOR,

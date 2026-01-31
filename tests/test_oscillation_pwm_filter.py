@@ -3,9 +3,9 @@
 from datetime import datetime, timedelta
 import pytest
 
-from custom_components.adaptive_thermostat.adaptive.learning import AdaptiveLearner
-from custom_components.adaptive_thermostat.adaptive.cycle_analysis import CycleMetrics
-from custom_components.adaptive_thermostat.adaptive.pid_rules import PIDRule
+from custom_components.adaptive_climate.adaptive.learning import AdaptiveLearner
+from custom_components.adaptive_climate.adaptive.cycle_analysis import CycleMetrics
+from custom_components.adaptive_climate.adaptive.pid_rules import PIDRule
 
 
 class TestOscillationCountingPWMFilter:
@@ -267,7 +267,7 @@ class TestCountOscillationsDocumentation:
 
     def test_counts_temperature_crossings_not_heater_cycles(self):
         """Test that count_oscillations counts temp crossings, not heater cycles."""
-        from custom_components.adaptive_thermostat.adaptive.cycle_analysis import (
+        from custom_components.adaptive_climate.adaptive.cycle_analysis import (
             count_oscillations,
         )
 
@@ -286,7 +286,7 @@ class TestCountOscillationsDocumentation:
 
     def test_docstring_mentions_temperature_oscillations(self):
         """Test that count_oscillations docstring clarifies it counts temp oscillations."""
-        from custom_components.adaptive_thermostat.adaptive.cycle_analysis import (
+        from custom_components.adaptive_climate.adaptive.cycle_analysis import (
             count_oscillations,
         )
 

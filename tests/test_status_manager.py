@@ -2,13 +2,13 @@
 import pytest
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
-from custom_components.adaptive_thermostat.managers.status_manager import (
+from custom_components.adaptive_climate.managers.status_manager import (
     StatusManager,
     calculate_resume_at,
     convert_setback_end,
 )
-from custom_components.adaptive_thermostat.adaptive.contact_sensors import ContactAction
-from custom_components.adaptive_thermostat.const import ThermostatCondition
+from custom_components.adaptive_climate.adaptive.contact_sensors import ContactAction
+from custom_components.adaptive_climate.const import ThermostatCondition
 
 
 class TestCalculateResumeAt:
@@ -34,7 +34,7 @@ class TestCalculateResumeAt:
         # Mock dt_util.utcnow to return a fixed time
         fixed_now = datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
 
-        with patch('custom_components.adaptive_thermostat.managers.status_manager.dt_util.utcnow', return_value=fixed_now):
+        with patch('custom_components.adaptive_climate.managers.status_manager.dt_util.utcnow', return_value=fixed_now):
             result = calculate_resume_at(300)  # 5 minutes
 
         assert result is not None
@@ -46,7 +46,7 @@ class TestCalculateResumeAt:
         # Mock dt_util.utcnow
         fixed_now = datetime(2024, 1, 15, 23, 45, 0, tzinfo=timezone.utc)
 
-        with patch('custom_components.adaptive_thermostat.managers.status_manager.dt_util.utcnow', return_value=fixed_now):
+        with patch('custom_components.adaptive_climate.managers.status_manager.dt_util.utcnow', return_value=fixed_now):
             result = calculate_resume_at(3600)  # 1 hour
 
         assert result is not None
@@ -59,7 +59,7 @@ class TestStatusInfoTypedDict:
 
     def test_minimal_status_info_structure(self):
         """Test StatusInfo can be constructed with minimal required fields."""
-        from custom_components.adaptive_thermostat.managers.status_manager import StatusInfo
+        from custom_components.adaptive_climate.managers.status_manager import StatusInfo
 
         # Minimal fields: state and conditions
         status: StatusInfo = {
@@ -73,7 +73,7 @@ class TestStatusInfoTypedDict:
 
     def test_status_info_with_optional_fields(self):
         """Test StatusInfo can include optional fields."""
-        from custom_components.adaptive_thermostat.managers.status_manager import StatusInfo
+        from custom_components.adaptive_climate.managers.status_manager import StatusInfo
 
         status: StatusInfo = {
             "state": "paused",
@@ -91,7 +91,7 @@ class TestStatusInfoTypedDict:
 
     def test_status_info_with_debug_fields(self):
         """Test StatusInfo can include debug fields."""
-        from custom_components.adaptive_thermostat.managers.status_manager import StatusInfo
+        from custom_components.adaptive_climate.managers.status_manager import StatusInfo
 
         status: StatusInfo = {
             "state": "paused",
@@ -105,7 +105,7 @@ class TestStatusInfoTypedDict:
 
     def test_status_info_field_types(self):
         """Test StatusInfo fields have correct types."""
-        from custom_components.adaptive_thermostat.managers.status_manager import StatusInfo
+        from custom_components.adaptive_climate.managers.status_manager import StatusInfo
 
         status: StatusInfo = {
             "state": "settling",
@@ -227,7 +227,7 @@ class TestConvertSetbackEnd:
         # Don't provide now parameter - should use dt_util.now()
         fixed_now = datetime(2024, 1, 15, 6, 0, 0, tzinfo=timezone.utc)
 
-        with patch('custom_components.adaptive_thermostat.managers.status_manager.dt_util.now', return_value=fixed_now):
+        with patch('custom_components.adaptive_climate.managers.status_manager.dt_util.now', return_value=fixed_now):
             result = convert_setback_end("07:00")
 
         assert result is not None
@@ -239,7 +239,7 @@ class TestThermostatState:
 
     def test_enum_values_exist(self):
         """Test that all required ThermostatState values exist."""
-        from custom_components.adaptive_thermostat.const import ThermostatState
+        from custom_components.adaptive_climate.const import ThermostatState
         assert ThermostatState.IDLE == "idle"
         assert ThermostatState.HEATING == "heating"
         assert ThermostatState.COOLING == "cooling"
@@ -249,7 +249,7 @@ class TestThermostatState:
 
     def test_enum_is_string(self):
         """Test that ThermostatState enum values are strings."""
-        from custom_components.adaptive_thermostat.const import ThermostatState
+        from custom_components.adaptive_climate.const import ThermostatState
         assert isinstance(ThermostatState.IDLE, str)
         assert isinstance(ThermostatState.HEATING, str)
         assert isinstance(ThermostatState.COOLING, str)
@@ -259,7 +259,7 @@ class TestThermostatState:
 
     def test_enum_str_conversion(self):
         """Test that str() returns the enum value."""
-        from custom_components.adaptive_thermostat.const import ThermostatState
+        from custom_components.adaptive_climate.const import ThermostatState
         assert str(ThermostatState.IDLE) == "idle"
         assert str(ThermostatState.HEATING) == "heating"
         assert str(ThermostatState.COOLING) == "cooling"
@@ -272,7 +272,7 @@ class TestFormatIso8601:
 
     def test_format_timezone_aware_datetime(self):
         """Test formatting timezone-aware datetime to ISO8601."""
-        from custom_components.adaptive_thermostat.managers.status_manager import format_iso8601
+        from custom_components.adaptive_climate.managers.status_manager import format_iso8601
 
         # Create timezone-aware datetime
         dt = datetime(2024, 1, 15, 14, 30, 45, 123456, tzinfo=timezone.utc)
@@ -285,7 +285,7 @@ class TestFormatIso8601:
     def test_format_different_timezone(self):
         """Test formatting datetime with non-UTC timezone."""
         from datetime import timedelta
-        from custom_components.adaptive_thermostat.managers.status_manager import format_iso8601
+        from custom_components.adaptive_climate.managers.status_manager import format_iso8601
 
         # Create datetime with UTC+5 timezone
         tz = timezone(timedelta(hours=5))
@@ -302,7 +302,7 @@ class TestBuildConditions:
 
     def test_no_conditions_active(self):
         """Test that no active conditions returns empty list."""
-        from custom_components.adaptive_thermostat.managers.status_manager import build_conditions
+        from custom_components.adaptive_climate.managers.status_manager import build_conditions
 
         result = build_conditions()
         assert result == []
@@ -310,7 +310,7 @@ class TestBuildConditions:
 
     def test_night_setback_active(self):
         """Test night setback active returns correct condition."""
-        from custom_components.adaptive_thermostat.managers.status_manager import build_conditions
+        from custom_components.adaptive_climate.managers.status_manager import build_conditions
 
         result = build_conditions(night_setback_active=True)
         assert result == ["night_setback"]
@@ -318,7 +318,7 @@ class TestBuildConditions:
 
     def test_open_window_detected(self):
         """Test open window detected returns correct condition."""
-        from custom_components.adaptive_thermostat.managers.status_manager import build_conditions
+        from custom_components.adaptive_climate.managers.status_manager import build_conditions
 
         result = build_conditions(open_window_detected=True)
         assert result == ["open_window"]
@@ -326,7 +326,7 @@ class TestBuildConditions:
 
     def test_multiple_conditions_order_matters(self):
         """Test that multiple conditions are returned in priority order."""
-        from custom_components.adaptive_thermostat.managers.status_manager import build_conditions
+        from custom_components.adaptive_climate.managers.status_manager import build_conditions
 
         result = build_conditions(
             night_setback_active=True,
@@ -339,7 +339,7 @@ class TestBuildConditions:
 
     def test_explicit_false_values(self):
         """Test that explicitly False values don't add conditions."""
-        from custom_components.adaptive_thermostat.managers.status_manager import build_conditions
+        from custom_components.adaptive_climate.managers.status_manager import build_conditions
 
         result = build_conditions(
             night_setback_active=False,
@@ -352,7 +352,7 @@ class TestBuildConditions:
 
     def test_returns_enum_values_as_strings(self):
         """Test that returned conditions are string values from ThermostatCondition enum."""
-        from custom_components.adaptive_thermostat.managers.status_manager import build_conditions
+        from custom_components.adaptive_climate.managers.status_manager import build_conditions
 
         result = build_conditions(night_setback_active=True)
         # Should return string value, not enum object
@@ -362,7 +362,7 @@ class TestBuildConditions:
 
     def test_open_window_returns_enum_value(self):
         """Test that open_window returns the correct enum string value."""
-        from custom_components.adaptive_thermostat.managers.status_manager import build_conditions
+        from custom_components.adaptive_climate.managers.status_manager import build_conditions
 
         result = build_conditions(open_window_detected=True)
         assert isinstance(result[0], str)
@@ -371,7 +371,7 @@ class TestBuildConditions:
 
     def test_humidity_spike_active(self):
         """Test humidity spike active returns correct condition."""
-        from custom_components.adaptive_thermostat.managers.status_manager import build_conditions
+        from custom_components.adaptive_climate.managers.status_manager import build_conditions
 
         result = build_conditions(humidity_spike_active=True)
         assert result == ["humidity_spike"]
@@ -379,7 +379,7 @@ class TestBuildConditions:
 
     def test_contact_open(self):
         """Test contact open returns correct condition."""
-        from custom_components.adaptive_thermostat.managers.status_manager import build_conditions
+        from custom_components.adaptive_climate.managers.status_manager import build_conditions
 
         result = build_conditions(contact_open=True)
         assert result == ["contact_open"]
@@ -387,7 +387,7 @@ class TestBuildConditions:
 
     def test_all_four_conditions_returns_correct_order(self):
         """Test all four conditions returns in priority order: contact, humidity, open_window, night_setback."""
-        from custom_components.adaptive_thermostat.managers.status_manager import build_conditions
+        from custom_components.adaptive_climate.managers.status_manager import build_conditions
 
         result = build_conditions(
             contact_open=True,
@@ -400,7 +400,7 @@ class TestBuildConditions:
 
     def test_contact_and_night_setback(self):
         """Test contact open + night setback returns both in correct order."""
-        from custom_components.adaptive_thermostat.managers.status_manager import build_conditions
+        from custom_components.adaptive_climate.managers.status_manager import build_conditions
 
         result = build_conditions(
             contact_open=True,
@@ -411,7 +411,7 @@ class TestBuildConditions:
 
     def test_learning_grace_active(self):
         """Test learning grace active returns correct condition."""
-        from custom_components.adaptive_thermostat.managers.status_manager import build_conditions
+        from custom_components.adaptive_climate.managers.status_manager import build_conditions
 
         result = build_conditions(learning_grace_active=True)
         assert result == ["learning_grace"]
@@ -419,7 +419,7 @@ class TestBuildConditions:
 
     def test_all_five_conditions_returns_correct_order(self):
         """Test all five conditions returns in priority order: contact, humidity, open_window, night_setback, learning_grace."""
-        from custom_components.adaptive_thermostat.managers.status_manager import build_conditions
+        from custom_components.adaptive_climate.managers.status_manager import build_conditions
 
         result = build_conditions(
             contact_open=True,
@@ -433,7 +433,7 @@ class TestBuildConditions:
 
     def test_night_setback_and_learning_grace(self):
         """Test night setback + learning grace returns both in correct order."""
-        from custom_components.adaptive_thermostat.managers.status_manager import build_conditions
+        from custom_components.adaptive_climate.managers.status_manager import build_conditions
 
         result = build_conditions(
             night_setback_active=True,
@@ -448,144 +448,144 @@ class TestDeriveState:
 
     def test_hvac_off_returns_idle(self):
         """Test that HVAC mode off returns idle state."""
-        from custom_components.adaptive_thermostat.managers.status_manager import derive_state
-        from custom_components.adaptive_thermostat.const import ThermostatState
+        from custom_components.adaptive_climate.managers.status_manager import derive_state
+        from custom_components.adaptive_climate.const import ThermostatState
 
         result = derive_state(hvac_mode="off")
         assert result == ThermostatState.IDLE
 
     def test_hvac_off_with_heater_on_returns_idle(self):
         """Test that HVAC off overrides heater state."""
-        from custom_components.adaptive_thermostat.managers.status_manager import derive_state
-        from custom_components.adaptive_thermostat.const import ThermostatState
+        from custom_components.adaptive_climate.managers.status_manager import derive_state
+        from custom_components.adaptive_climate.const import ThermostatState
 
         result = derive_state(hvac_mode="off", heater_on=True)
         assert result == ThermostatState.IDLE
 
     def test_heater_on_returns_heating(self):
         """Test that heater on returns heating state."""
-        from custom_components.adaptive_thermostat.managers.status_manager import derive_state
-        from custom_components.adaptive_thermostat.const import ThermostatState
+        from custom_components.adaptive_climate.managers.status_manager import derive_state
+        from custom_components.adaptive_climate.const import ThermostatState
 
         result = derive_state(hvac_mode="heat", heater_on=True)
         assert result == ThermostatState.HEATING
 
     def test_heater_off_returns_idle(self):
         """Test that heater off returns idle state."""
-        from custom_components.adaptive_thermostat.managers.status_manager import derive_state
-        from custom_components.adaptive_thermostat.const import ThermostatState
+        from custom_components.adaptive_climate.managers.status_manager import derive_state
+        from custom_components.adaptive_climate.const import ThermostatState
 
         result = derive_state(hvac_mode="heat", heater_on=False)
         assert result == ThermostatState.IDLE
 
     def test_heat_mode_no_heater_state_returns_idle(self):
         """Test that heat mode with no heater state returns idle."""
-        from custom_components.adaptive_thermostat.managers.status_manager import derive_state
-        from custom_components.adaptive_thermostat.const import ThermostatState
+        from custom_components.adaptive_climate.managers.status_manager import derive_state
+        from custom_components.adaptive_climate.const import ThermostatState
 
         result = derive_state(hvac_mode="heat")
         assert result == ThermostatState.IDLE
 
     def test_paused_overrides_heating(self):
         """Test that paused state takes priority over heater on."""
-        from custom_components.adaptive_thermostat.managers.status_manager import derive_state
-        from custom_components.adaptive_thermostat.const import ThermostatState
+        from custom_components.adaptive_climate.managers.status_manager import derive_state
+        from custom_components.adaptive_climate.const import ThermostatState
 
         result = derive_state(hvac_mode="heat", heater_on=True, is_paused=True)
         assert result == ThermostatState.PAUSED
 
     def test_paused_overrides_cooling(self):
         """Test that paused state takes priority over cooler on."""
-        from custom_components.adaptive_thermostat.managers.status_manager import derive_state
-        from custom_components.adaptive_thermostat.const import ThermostatState
+        from custom_components.adaptive_climate.managers.status_manager import derive_state
+        from custom_components.adaptive_climate.const import ThermostatState
 
         result = derive_state(hvac_mode="cool", cooler_on=True, is_paused=True)
         assert result == ThermostatState.PAUSED
 
     def test_paused_without_active_heater_or_cooler(self):
         """Test that paused is returned even without active heater/cooler."""
-        from custom_components.adaptive_thermostat.managers.status_manager import derive_state
-        from custom_components.adaptive_thermostat.const import ThermostatState
+        from custom_components.adaptive_climate.managers.status_manager import derive_state
+        from custom_components.adaptive_climate.const import ThermostatState
 
         result = derive_state(hvac_mode="heat", is_paused=True)
         assert result == ThermostatState.PAUSED
 
     def test_cooler_on_returns_cooling(self):
         """Test that cooler on returns cooling state."""
-        from custom_components.adaptive_thermostat.managers.status_manager import derive_state
-        from custom_components.adaptive_thermostat.const import ThermostatState
+        from custom_components.adaptive_climate.managers.status_manager import derive_state
+        from custom_components.adaptive_climate.const import ThermostatState
 
         result = derive_state(hvac_mode="cool", cooler_on=True)
         assert result == ThermostatState.COOLING
 
     def test_cooler_off_returns_idle(self):
         """Test that cooler off returns idle state."""
-        from custom_components.adaptive_thermostat.managers.status_manager import derive_state
-        from custom_components.adaptive_thermostat.const import ThermostatState
+        from custom_components.adaptive_climate.managers.status_manager import derive_state
+        from custom_components.adaptive_climate.const import ThermostatState
 
         result = derive_state(hvac_mode="cool", cooler_on=False)
         assert result == ThermostatState.IDLE
 
     def test_cool_mode_no_cooler_state_returns_idle(self):
         """Test that cool mode with no cooler state returns idle."""
-        from custom_components.adaptive_thermostat.managers.status_manager import derive_state
-        from custom_components.adaptive_thermostat.const import ThermostatState
+        from custom_components.adaptive_climate.managers.status_manager import derive_state
+        from custom_components.adaptive_climate.const import ThermostatState
 
         result = derive_state(hvac_mode="cool")
         assert result == ThermostatState.IDLE
 
     def test_preheat_active_returns_preheating(self):
         """Test that preheat_active=True returns preheating state."""
-        from custom_components.adaptive_thermostat.managers.status_manager import derive_state
-        from custom_components.adaptive_thermostat.const import ThermostatState
+        from custom_components.adaptive_climate.managers.status_manager import derive_state
+        from custom_components.adaptive_climate.const import ThermostatState
 
         result = derive_state(hvac_mode="heat", preheat_active=True)
         assert result == ThermostatState.PREHEATING
 
     def test_preheat_with_pause_returns_paused(self):
         """Test that pause takes priority over preheat."""
-        from custom_components.adaptive_thermostat.managers.status_manager import derive_state
-        from custom_components.adaptive_thermostat.const import ThermostatState
+        from custom_components.adaptive_climate.managers.status_manager import derive_state
+        from custom_components.adaptive_climate.const import ThermostatState
 
         result = derive_state(hvac_mode="heat", preheat_active=True, is_paused=True)
         assert result == ThermostatState.PAUSED
 
     def test_cycle_settling_returns_settling(self):
         """Test that cycle_state='settling' returns settling state."""
-        from custom_components.adaptive_thermostat.managers.status_manager import derive_state
-        from custom_components.adaptive_thermostat.const import ThermostatState
+        from custom_components.adaptive_climate.managers.status_manager import derive_state
+        from custom_components.adaptive_climate.const import ThermostatState
 
         result = derive_state(hvac_mode="heat", cycle_state="settling")
         assert result == ThermostatState.SETTLING
 
     def test_preheat_priority_over_settling(self):
         """Test that preheat takes priority over settling."""
-        from custom_components.adaptive_thermostat.managers.status_manager import derive_state
-        from custom_components.adaptive_thermostat.const import ThermostatState
+        from custom_components.adaptive_climate.managers.status_manager import derive_state
+        from custom_components.adaptive_climate.const import ThermostatState
 
         result = derive_state(hvac_mode="heat", preheat_active=True, cycle_state="settling")
         assert result == ThermostatState.PREHEATING
 
     def test_cycle_heating_with_heater_on_returns_heating(self):
         """Test that cycle_state='heating' with heater on returns heating (not settling)."""
-        from custom_components.adaptive_thermostat.managers.status_manager import derive_state
-        from custom_components.adaptive_thermostat.const import ThermostatState
+        from custom_components.adaptive_climate.managers.status_manager import derive_state
+        from custom_components.adaptive_climate.const import ThermostatState
 
         result = derive_state(hvac_mode="heat", heater_on=True, cycle_state="heating")
         assert result == ThermostatState.HEATING
 
     def test_settling_priority_over_heater_on(self):
         """Test that settling state takes priority over heater on."""
-        from custom_components.adaptive_thermostat.managers.status_manager import derive_state
-        from custom_components.adaptive_thermostat.const import ThermostatState
+        from custom_components.adaptive_climate.managers.status_manager import derive_state
+        from custom_components.adaptive_climate.const import ThermostatState
 
         result = derive_state(hvac_mode="heat", heater_on=True, cycle_state="settling")
         assert result == ThermostatState.SETTLING
 
     def test_preheat_with_heater_on_returns_preheating(self):
         """Test that preheat takes priority over heater on."""
-        from custom_components.adaptive_thermostat.managers.status_manager import derive_state
-        from custom_components.adaptive_thermostat.const import ThermostatState
+        from custom_components.adaptive_climate.managers.status_manager import derive_state
+        from custom_components.adaptive_climate.const import ThermostatState
 
         result = derive_state(hvac_mode="heat", preheat_active=True, heater_on=True)
         assert result == ThermostatState.PREHEATING
@@ -632,7 +632,7 @@ class TestStatusManagerBuildStatus:
         manager = StatusManager()
 
         fixed_now = datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
-        with patch('custom_components.adaptive_thermostat.managers.status_manager.dt_util.utcnow', return_value=fixed_now):
+        with patch('custom_components.adaptive_climate.managers.status_manager.dt_util.utcnow', return_value=fixed_now):
             result = manager.build_status(
                 hvac_mode="heat",
                 is_paused=True,
@@ -661,7 +661,7 @@ class TestStatusManagerBuildStatus:
         manager = StatusManager()
 
         fixed_now = datetime(2024, 1, 15, 6, 0, 0, tzinfo=timezone.utc)
-        with patch('custom_components.adaptive_thermostat.managers.status_manager.dt_util.now', return_value=fixed_now):
+        with patch('custom_components.adaptive_climate.managers.status_manager.dt_util.now', return_value=fixed_now):
             result = manager.build_status(
                 hvac_mode="heat",
                 night_setback_active=True,
@@ -691,8 +691,8 @@ class TestStatusManagerBuildStatus:
         manager = StatusManager()
 
         fixed_now = datetime(2024, 1, 15, 6, 0, 0, tzinfo=timezone.utc)
-        with patch('custom_components.adaptive_thermostat.managers.status_manager.dt_util.utcnow', return_value=fixed_now):
-            with patch('custom_components.adaptive_thermostat.managers.status_manager.dt_util.now', return_value=fixed_now):
+        with patch('custom_components.adaptive_climate.managers.status_manager.dt_util.utcnow', return_value=fixed_now):
+            with patch('custom_components.adaptive_climate.managers.status_manager.dt_util.now', return_value=fixed_now):
                 result = manager.build_status(
                     hvac_mode="heat",
                     heater_on=True,

@@ -10,18 +10,18 @@ import pytest
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from custom_components.adaptive_thermostat.managers.cycle_tracker import (
+from custom_components.adaptive_climate.managers.cycle_tracker import (
     CycleState,
     CycleTrackerManager,
 )
-from custom_components.adaptive_thermostat.managers.events import (
+from custom_components.adaptive_climate.managers.events import (
     CycleEventDispatcher,
     CycleStartedEvent,
     SettlingStartedEvent,
     SetpointChangedEvent,
     ContactPauseEvent,
 )
-from custom_components.adaptive_thermostat.adaptive.cycle_analysis import CycleMetrics
+from custom_components.adaptive_climate.adaptive.cycle_analysis import CycleMetrics
 from homeassistant.util import dt as dt_util
 
 
@@ -31,7 +31,7 @@ def mock_dt_util():
     # Set a far-future datetime to ensure all cycle durations are valid
     # Tests use various dates, so we set utcnow to 2025-01-01 (far enough in future)
     fixed_now = datetime(2025, 1, 1, 0, 0, 0)
-    with patch('custom_components.adaptive_thermostat.managers.cycle_metrics.dt_util.utcnow', return_value=fixed_now):
+    with patch('custom_components.adaptive_climate.managers.cycle_metrics.dt_util.utcnow', return_value=fixed_now):
         yield
 
 
@@ -517,7 +517,7 @@ class TestSetpointChangeInCoolingMode:
 # Marker test for module existence
 def test_integration_cycle_learning_module_exists(dispatcher):
     """Marker test to verify module can be imported."""
-    from custom_components.adaptive_thermostat.managers.cycle_tracker import (
+    from custom_components.adaptive_climate.managers.cycle_tracker import (
         CycleTrackerManager,
         CycleState,
     )
@@ -609,8 +609,8 @@ class TestPersistenceRoundtrip:
         Creates a learner, adds cycles, saves to dict, creates new learner,
         restores from dict, and verifies all cycles and state match.
         """
-        from custom_components.adaptive_thermostat.adaptive.learning import AdaptiveLearner
-        from custom_components.adaptive_thermostat.adaptive.cycle_analysis import CycleMetrics
+        from custom_components.adaptive_climate.adaptive.learning import AdaptiveLearner
+        from custom_components.adaptive_climate.adaptive.cycle_analysis import CycleMetrics
 
         # Create learner and add cycles
         original_learner = AdaptiveLearner(heating_type="floor_hydronic")
@@ -670,7 +670,7 @@ class TestPersistenceRoundtrip:
 
     def test_ke_learner_persistence_roundtrip(self):
         """Test KeLearner observations persist and restore correctly."""
-        from custom_components.adaptive_thermostat.adaptive.ke_learning import KeLearner, KeObservation
+        from custom_components.adaptive_climate.adaptive.ke_learning import KeLearner, KeObservation
 
         # Create learner and add observations
         original_learner = KeLearner(initial_ke=0.5)
@@ -714,10 +714,10 @@ class TestPersistenceRoundtrip:
 
     def test_full_persistence_roundtrip_with_store(self):
         """Test complete persistence flow using LearningDataStore."""
-        from custom_components.adaptive_thermostat.adaptive.learning import AdaptiveLearner
-        from custom_components.adaptive_thermostat.adaptive.persistence import LearningDataStore
-        from custom_components.adaptive_thermostat.adaptive.cycle_analysis import CycleMetrics
-        from custom_components.adaptive_thermostat.adaptive.ke_learning import KeLearner, KeObservation
+        from custom_components.adaptive_climate.adaptive.learning import AdaptiveLearner
+        from custom_components.adaptive_climate.adaptive.persistence import LearningDataStore
+        from custom_components.adaptive_climate.adaptive.cycle_analysis import CycleMetrics
+        from custom_components.adaptive_climate.adaptive.ke_learning import KeLearner, KeObservation
         from unittest.mock import MagicMock
 
         # Create mock hass for the store
@@ -794,7 +794,7 @@ class TestEventDrivenCycleFlow:
     @pytest.fixture
     def dispatcher(self):
         """Create a CycleEventDispatcher for testing."""
-        from custom_components.adaptive_thermostat.managers.events import CycleEventDispatcher
+        from custom_components.adaptive_climate.managers.events import CycleEventDispatcher
         return CycleEventDispatcher()
 
     @pytest.fixture
@@ -821,7 +821,7 @@ class TestEventDrivenCycleFlow:
 
         Verifies: CYCLE_STARTED → HEATING_STARTED → HEATING_ENDED → SETTLING_STARTED → CYCLE_ENDED
         """
-        from custom_components.adaptive_thermostat.managers.events import (
+        from custom_components.adaptive_climate.managers.events import (
             CycleEventType,
             CycleStartedEvent,
             HeatingStartedEvent,
@@ -904,7 +904,7 @@ class TestEventDrivenCycleFlow:
         self, event_tracker_with_dispatcher, dispatcher, mock_adaptive_learner
     ):
         """Test that MODE_CHANGED event during heating aborts cycle."""
-        from custom_components.adaptive_thermostat.managers.events import (
+        from custom_components.adaptive_climate.managers.events import (
             CycleStartedEvent,
             ModeChangedEvent,
         )
@@ -950,7 +950,7 @@ class TestEventDrivenCycleFlow:
         self, event_tracker_with_dispatcher, dispatcher, mock_adaptive_learner
     ):
         """Test CONTACT_PAUSE and CONTACT_RESUME event handling."""
-        from custom_components.adaptive_thermostat.managers.events import (
+        from custom_components.adaptive_climate.managers.events import (
             CycleStartedEvent,
             ContactPauseEvent,
             ContactResumeEvent,
@@ -1018,7 +1018,7 @@ class TestEventDrivenCycleFlow:
         - decay_contribution calculated correctly (entry - cross)
         - CycleMetrics has all decay fields populated
         """
-        from custom_components.adaptive_thermostat.managers.events import (
+        from custom_components.adaptive_climate.managers.events import (
             CycleStartedEvent,
             SettlingStartedEvent,
             TemperatureUpdateEvent,
@@ -1195,7 +1195,7 @@ class TestEventDrivenCycleFlow:
         self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher, mock_dt_util
     ):
         """Test SETPOINT_CHANGED event during cycle handled via event."""
-        from custom_components.adaptive_thermostat.managers.events import (
+        from custom_components.adaptive_climate.managers.events import (
             CycleStartedEvent,
             SetpointChangedEvent,
             SettlingStartedEvent,
@@ -1283,7 +1283,7 @@ class TestEventDrivenCycleFlow:
         self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher, mock_dt_util
     ):
         """Test that major SETPOINT_CHANGED event (device inactive) aborts cycle."""
-        from custom_components.adaptive_thermostat.managers.events import (
+        from custom_components.adaptive_climate.managers.events import (
             CycleStartedEvent,
             SetpointChangedEvent,
         )
@@ -1352,8 +1352,8 @@ class TestDecayAwareKiAdjustment:
         - decay_ratio = 1.0 (all decay) -> no Ki increase
         - decay_ratio = 0.5 (partial decay) -> 50% Ki increase
         """
-        from custom_components.adaptive_thermostat.adaptive.learning import AdaptiveLearner
-        from custom_components.adaptive_thermostat.adaptive.cycle_analysis import CycleMetrics
+        from custom_components.adaptive_climate.adaptive.learning import AdaptiveLearner
+        from custom_components.adaptive_climate.adaptive.cycle_analysis import CycleMetrics
 
         # Create learner with radiator heating type
         # Radiator thresholds: undershoot=0.375°C, overshoot_max=0.25, min_cycles=6
@@ -1565,8 +1565,8 @@ class TestSafetyNetDisabledAfterAutoApply:
         2. After auto-apply, safety net is disabled (returns False)
         3. This prevents interference with learned PID parameters
         """
-        from custom_components.adaptive_thermostat.pid_controller import PID
-        from custom_components.adaptive_thermostat.adaptive.learning import AdaptiveLearner
+        from custom_components.adaptive_climate.pid_controller import PID
+        from custom_components.adaptive_climate.adaptive.learning import AdaptiveLearner
 
         # Create PID controller for radiator (INTEGRAL_DECAY_THRESHOLDS: radiator=40.0)
         pid = PID(
@@ -1649,7 +1649,7 @@ class TestSettlingTimeFromDeviceOff:
         4. settling_time is calculated from device_off_time, not from first settling sample
         5. This ensures accurate settling time measurement that reflects actual device behavior
         """
-        from custom_components.adaptive_thermostat.managers.events import (
+        from custom_components.adaptive_climate.managers.events import (
             CycleStartedEvent,
             HeatingEndedEvent,
             SettlingStartedEvent,
@@ -1781,7 +1781,7 @@ class TestClampedCycleEndToEnd:
 
         This test verifies Story 4.1: integration of clamping awareness across the system.
         """
-        from custom_components.adaptive_thermostat.managers.events import (
+        from custom_components.adaptive_climate.managers.events import (
             CycleStartedEvent,
             SettlingStartedEvent,
         )
@@ -1878,7 +1878,7 @@ class TestClampedCycleEndToEnd:
         Verifies that when a cycle completes normally without clamping,
         the was_clamped flag is correctly set to False throughout the chain.
         """
-        from custom_components.adaptive_thermostat.managers.events import (
+        from custom_components.adaptive_climate.managers.events import (
             CycleStartedEvent,
             SettlingStartedEvent,
         )

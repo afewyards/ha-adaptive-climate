@@ -7,13 +7,13 @@ import voluptuous as vol
 
 from homeassistant.const import CONF_NAME
 
-from custom_components.adaptive_thermostat.adaptive.preheat import PreheatLearner
-from custom_components.adaptive_thermostat.managers.events import (
+from custom_components.adaptive_climate.adaptive.preheat import PreheatLearner
+from custom_components.adaptive_climate.managers.events import (
     CycleEventDispatcher,
     CycleEventType,
     CycleEndedEvent,
 )
-from custom_components.adaptive_thermostat import const
+from custom_components.adaptive_climate import const
 
 
 @pytest.fixture
@@ -21,7 +21,7 @@ def mock_hass():
     """Create mock Home Assistant instance."""
     hass = Mock()
     hass.data = {
-        "adaptive_thermostat": {
+        "adaptive_climate": {
             "coordinator": None,
         }
     }
@@ -147,11 +147,11 @@ class TestPreheatLearnerPersistence:
         mock_coordinator.get_zone_data = Mock(
             return_value={"stored_preheat_data": stored_preheat_data}
         )
-        mock_hass.data["adaptive_thermostat"]["coordinator"] = mock_coordinator
+        mock_hass.data["adaptive_climate"]["coordinator"] = mock_coordinator
 
         # Simulate restoration from storage (as in async_added_to_hass)
         zone_id = "test_zone"
-        coordinator = mock_hass.data.get("adaptive_thermostat", {}).get("coordinator")
+        coordinator = mock_hass.data.get("adaptive_climate", {}).get("coordinator")
         stored_preheat_data_retrieved = None
         if coordinator and zone_id:
             zone_data = coordinator.get_zone_data(zone_id)
@@ -316,10 +316,10 @@ class TestPreheatLearnerPassedToNightSetback:
         self, mock_hass, mock_night_setback_config
     ):
         """Test PreheatLearner is passed to NightSetbackCalculator."""
-        from custom_components.adaptive_thermostat.adaptive.night_setback import (
+        from custom_components.adaptive_climate.adaptive.night_setback import (
             NightSetback,
         )
-        from custom_components.adaptive_thermostat.managers.night_setback_calculator import (
+        from custom_components.adaptive_climate.managers.night_setback_calculator import (
             NightSetbackCalculator,
         )
 

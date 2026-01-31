@@ -42,7 +42,7 @@ pytestmark = pytest.mark.skipif(not HAS_VOLUPTUOUS, reason="voluptuous not insta
 
 
 # Import constants from the module
-from custom_components.adaptive_thermostat.const import (
+from custom_components.adaptive_climate.const import (
     DOMAIN,
     CONF_NOTIFY_SERVICE,
     CONF_PERSISTENT_NOTIFICATION,
@@ -78,7 +78,7 @@ from custom_components.adaptive_thermostat.const import (
 # Import valid_notify_service after mocking HA
 # =============================================================================
 
-from custom_components.adaptive_thermostat import valid_notify_service
+from custom_components.adaptive_climate import valid_notify_service
 
 
 # =============================================================================
@@ -570,7 +570,7 @@ class TestTypeCoercion:
 
 def test_config_validation_module_exists():
     """Test that CONFIG_SCHEMA and valid_notify_service are importable."""
-    from custom_components.adaptive_thermostat import valid_notify_service
+    from custom_components.adaptive_climate import valid_notify_service
     assert callable(valid_notify_service)
 
 
@@ -586,8 +586,8 @@ class TestAsyncUnload:
     @pytest.mark.skipif(not HAS_VOLUPTUOUS, reason="voluptuous not installed")
     def test_unload_with_no_domain_data(self):
         """Test unload when domain data doesn't exist."""
-        from custom_components.adaptive_thermostat import async_unload
-        from custom_components.adaptive_thermostat.const import DOMAIN
+        from custom_components.adaptive_climate import async_unload
+        from custom_components.adaptive_climate.const import DOMAIN
         import asyncio
 
         # Create mock hass without domain data
@@ -604,8 +604,8 @@ class TestAsyncUnload:
     @pytest.mark.skipif(not HAS_VOLUPTUOUS, reason="voluptuous not installed")
     def test_unload_cancels_scheduled_tasks(self):
         """Test that unload cancels all scheduled task callbacks."""
-        from custom_components.adaptive_thermostat import async_unload
-        from custom_components.adaptive_thermostat.const import DOMAIN
+        from custom_components.adaptive_climate import async_unload
+        from custom_components.adaptive_climate.const import DOMAIN
         import asyncio
 
         # Create mock callbacks
@@ -639,8 +639,8 @@ class TestAsyncUnload:
     @pytest.mark.skipif(not HAS_VOLUPTUOUS, reason="voluptuous not installed")
     def test_unload_handles_callback_errors_gracefully(self):
         """Test that unload continues even if a callback raises an error."""
-        from custom_components.adaptive_thermostat import async_unload
-        from custom_components.adaptive_thermostat.const import DOMAIN
+        from custom_components.adaptive_climate import async_unload
+        from custom_components.adaptive_climate.const import DOMAIN
         import asyncio
 
         # Create mock callbacks - one that raises an error
@@ -672,8 +672,8 @@ class TestAsyncUnload:
     @pytest.mark.skipif(not HAS_VOLUPTUOUS, reason="voluptuous not installed")
     def test_unload_handles_none_callbacks(self):
         """Test that unload handles None values in callback list."""
-        from custom_components.adaptive_thermostat import async_unload
-        from custom_components.adaptive_thermostat.const import DOMAIN
+        from custom_components.adaptive_climate import async_unload
+        from custom_components.adaptive_climate.const import DOMAIN
         import asyncio
 
         # Create mock callbacks with None
@@ -703,8 +703,8 @@ class TestAsyncUnload:
     @pytest.mark.skipif(not HAS_VOLUPTUOUS, reason="voluptuous not installed")
     def test_unload_removes_domain_data(self):
         """Test that unload removes all domain data from hass.data."""
-        from custom_components.adaptive_thermostat import async_unload
-        from custom_components.adaptive_thermostat.const import DOMAIN
+        from custom_components.adaptive_climate import async_unload
+        from custom_components.adaptive_climate.const import DOMAIN
         import asyncio
 
         # Create mock coordinator with async_cleanup
@@ -738,8 +738,8 @@ class TestAsyncUnload:
     @pytest.mark.skipif(not HAS_VOLUPTUOUS, reason="voluptuous not installed")
     def test_unload_clears_central_controller_reference(self):
         """Test that unload clears central controller reference from coordinator."""
-        from custom_components.adaptive_thermostat import async_unload
-        from custom_components.adaptive_thermostat.const import DOMAIN
+        from custom_components.adaptive_climate import async_unload
+        from custom_components.adaptive_climate.const import DOMAIN
         import asyncio
 
         # Create mock coordinator and central controller
@@ -775,7 +775,7 @@ class TestAsyncUnregisterServices:
     @pytest.mark.skipif(not HAS_VOLUPTUOUS, reason="voluptuous not installed")
     def test_unregister_services_removes_all_services(self):
         """Test that all services are unregistered."""
-        from custom_components.adaptive_thermostat.services import (
+        from custom_components.adaptive_climate.services import (
             async_unregister_services,
             SERVICE_RUN_LEARNING,
             SERVICE_WEEKLY_REPORT,
@@ -783,7 +783,7 @@ class TestAsyncUnregisterServices:
             SERVICE_SET_VACATION_MODE,
             SERVICE_PID_RECOMMENDATIONS,
         )
-        from custom_components.adaptive_thermostat.const import DOMAIN
+        from custom_components.adaptive_climate.const import DOMAIN
 
         # Create mock hass where all services exist
         hass = MagicMock()
@@ -809,10 +809,10 @@ class TestAsyncUnregisterServices:
     @pytest.mark.skipif(not HAS_VOLUPTUOUS, reason="voluptuous not installed")
     def test_unregister_services_skips_nonexistent(self):
         """Test that unregister skips services that don't exist."""
-        from custom_components.adaptive_thermostat.services import (
+        from custom_components.adaptive_climate.services import (
             async_unregister_services,
         )
-        from custom_components.adaptive_thermostat.const import DOMAIN
+        from custom_components.adaptive_climate.const import DOMAIN
 
         # Create mock hass where no services exist
         hass = MagicMock()
@@ -831,8 +831,8 @@ class TestReloadWithoutLeftoverState:
     @pytest.mark.skipif(not HAS_VOLUPTUOUS, reason="voluptuous not installed")
     def test_setup_then_unload_then_setup_is_clean(self):
         """Test that after unload, setup can run cleanly again."""
-        from custom_components.adaptive_thermostat import async_unload
-        from custom_components.adaptive_thermostat.const import DOMAIN
+        from custom_components.adaptive_climate import async_unload
+        from custom_components.adaptive_climate.const import DOMAIN
         import asyncio
 
         # Simulate first setup by populating hass.data
@@ -871,8 +871,8 @@ class TestReloadWithoutLeftoverState:
     @pytest.mark.skipif(not HAS_VOLUPTUOUS, reason="voluptuous not installed")
     def test_unload_clears_all_expected_keys(self):
         """Test that unload removes all keys that setup creates."""
-        from custom_components.adaptive_thermostat import async_unload
-        from custom_components.adaptive_thermostat.const import DOMAIN
+        from custom_components.adaptive_climate import async_unload
+        from custom_components.adaptive_climate.const import DOMAIN
         import asyncio
 
         # All keys that async_setup creates
@@ -922,8 +922,8 @@ class TestReloadWithoutLeftoverState:
     @pytest.mark.skipif(not HAS_VOLUPTUOUS, reason="voluptuous not installed")
     def test_multiple_unloads_are_safe(self):
         """Test that calling unload multiple times is safe."""
-        from custom_components.adaptive_thermostat import async_unload
-        from custom_components.adaptive_thermostat.const import DOMAIN
+        from custom_components.adaptive_climate import async_unload
+        from custom_components.adaptive_climate.const import DOMAIN
         import asyncio
 
         # Create mock hass with domain data (no central_controller)
@@ -950,12 +950,12 @@ class TestReloadWithoutLeftoverState:
     @pytest.mark.skipif(not HAS_VOLUPTUOUS, reason="voluptuous not installed")
     def test_services_not_duplicated_after_reload(self):
         """Test that services aren't registered twice after reload."""
-        from custom_components.adaptive_thermostat.services import (
+        from custom_components.adaptive_climate.services import (
             async_register_services,
             async_unregister_services,
             SERVICE_RUN_LEARNING,
         )
-        from custom_components.adaptive_thermostat.const import DOMAIN
+        from custom_components.adaptive_climate.const import DOMAIN
 
         hass = MagicMock()
 

@@ -1,7 +1,7 @@
 """Tests for solar gain learning and prediction."""
 import pytest
 from datetime import datetime
-from custom_components.adaptive_thermostat.solar.solar_gain import (
+from custom_components.adaptive_climate.solar.solar_gain import (
     SolarGainLearner,
     SolarGainManager,
     WindowOrientation,

@@ -21,13 +21,13 @@ class MockHVACMode:
 
 
 # Import and patch the module
-import custom_components.adaptive_thermostat.managers.heater_controller as heater_controller_module
+import custom_components.adaptive_climate.managers.heater_controller as heater_controller_module
 heater_controller_module.HVACMode = MockHVACMode
 
-from custom_components.adaptive_thermostat.managers.heater_controller import (
+from custom_components.adaptive_climate.managers.heater_controller import (
     HeaterController,
 )
-from custom_components.adaptive_thermostat.managers.events import (
+from custom_components.adaptive_climate.managers.events import (
     CycleEventDispatcher,
     CycleEventType,
     CycleStartedEvent,
@@ -757,7 +757,7 @@ class TestAccumulatorEdgeCases:
 # Module existence marker
 def test_integration_duty_accumulator_module_exists():
     """Marker test to verify module can be imported."""
-    from custom_components.adaptive_thermostat.managers.heater_controller import (
+    from custom_components.adaptive_climate.managers.heater_controller import (
         HeaterController,
     )
     assert HeaterController is not None

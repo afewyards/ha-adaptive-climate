@@ -85,7 +85,7 @@ class TestServiceRegistration:
 
     def test_public_services_registered_without_debug(self, mock_hass, mock_coordinator, mock_vacation_mode, mock_notification_funcs):
         """Verify only public services are registered when debug=False."""
-        from custom_components.adaptive_thermostat.services import (
+        from custom_components.adaptive_climate.services import (
             async_register_services,
             SERVICE_WEEKLY_REPORT,
             SERVICE_COST_REPORT,
@@ -126,7 +126,7 @@ class TestServiceRegistration:
 
     def test_all_services_registered_with_debug(self, mock_hass, mock_coordinator, mock_vacation_mode, mock_notification_funcs):
         """Verify all services are registered when debug=True."""
-        from custom_components.adaptive_thermostat.services import (
+        from custom_components.adaptive_climate.services import (
             async_register_services,
             SERVICE_RUN_LEARNING,
             SERVICE_WEEKLY_REPORT,
@@ -171,7 +171,7 @@ class TestServiceRegistration:
 
     def test_debug_services_not_registered_without_debug(self, mock_hass, mock_coordinator, mock_vacation_mode, mock_notification_funcs):
         """Verify debug services are NOT registered when debug=False."""
-        from custom_components.adaptive_thermostat.services import (
+        from custom_components.adaptive_climate.services import (
             async_register_services,
             SERVICE_RUN_LEARNING,
             SERVICE_PID_RECOMMENDATIONS,
@@ -203,8 +203,8 @@ class TestServiceRegistration:
 
     def test_services_registered_with_correct_domain(self, mock_hass, mock_coordinator, mock_vacation_mode, mock_notification_funcs):
         """Verify services are registered under correct domain."""
-        from custom_components.adaptive_thermostat.services import async_register_services
-        from custom_components.adaptive_thermostat.const import DOMAIN
+        from custom_components.adaptive_climate.services import async_register_services
+        from custom_components.adaptive_climate.const import DOMAIN
 
         async_register_services(
             hass=mock_hass,
@@ -225,7 +225,7 @@ class TestServiceRegistration:
 
     def test_cost_report_uses_schema(self, mock_hass, mock_coordinator, mock_vacation_mode, mock_notification_funcs):
         """Verify cost_report service is registered with schema."""
-        from custom_components.adaptive_thermostat.services import (
+        from custom_components.adaptive_climate.services import (
             async_register_services,
             SERVICE_COST_REPORT,
         )
@@ -266,7 +266,7 @@ class TestHealthCheckDeduplication:
 
     def test_scheduled_health_check_exists(self, mock_hass, mock_coordinator, mock_notification_funcs):
         """Verify scheduled health check function exists."""
-        from custom_components.adaptive_thermostat.services import (
+        from custom_components.adaptive_climate.services import (
             async_scheduled_health_check,
             _run_health_check_core,
         )
@@ -282,11 +282,11 @@ class TestHealthCheckDeduplication:
 
     def test_scheduled_only_notifies_on_issues(self, mock_hass, mock_coordinator, mock_notification_funcs):
         """Verify scheduled check skips notification when healthy."""
-        from custom_components.adaptive_thermostat.services import _run_health_check_core
-        from custom_components.adaptive_thermostat.analytics.health import HealthStatus
+        from custom_components.adaptive_climate.services import _run_health_check_core
+        from custom_components.adaptive_climate.analytics.health import HealthStatus
 
         # Mock the health monitor to return healthy status
-        with patch("custom_components.adaptive_thermostat.analytics.health.SystemHealthMonitor") as MockHealthMonitor:
+        with patch("custom_components.adaptive_climate.analytics.health.SystemHealthMonitor") as MockHealthMonitor:
             mock_monitor = Mock()
             mock_result = {
                 "status": HealthStatus.HEALTHY,
@@ -314,10 +314,10 @@ class TestHealthCheckDeduplication:
 
     def test_scheduled_notifies_on_issues(self, mock_hass, mock_coordinator, mock_notification_funcs):
         """Verify scheduled check sends notification when issues found."""
-        from custom_components.adaptive_thermostat.services import _run_health_check_core
-        from custom_components.adaptive_thermostat.analytics.health import HealthStatus
+        from custom_components.adaptive_climate.services import _run_health_check_core
+        from custom_components.adaptive_climate.analytics.health import HealthStatus
 
-        with patch("custom_components.adaptive_thermostat.analytics.health.SystemHealthMonitor") as MockHealthMonitor:
+        with patch("custom_components.adaptive_climate.analytics.health.SystemHealthMonitor") as MockHealthMonitor:
             mock_monitor = Mock()
             mock_issue = Mock()
             mock_issue.message = "Test issue"
@@ -355,13 +355,13 @@ class TestWeeklyReportDeduplication:
 
     def test_scheduled_only_runs_on_sunday(self, mock_hass, mock_coordinator, mock_notification_funcs):
         """Verify scheduled report only runs on Sunday."""
-        from custom_components.adaptive_thermostat.services import async_scheduled_weekly_report
+        from custom_components.adaptive_climate.services import async_scheduled_weekly_report
 
         # Test on a Monday (weekday() = 0)
         monday = Mock()
         monday.weekday = Mock(return_value=0)
 
-        with patch("custom_components.adaptive_thermostat.services.scheduled._run_weekly_report_core") as mock_core:
+        with patch("custom_components.adaptive_climate.services.scheduled._run_weekly_report_core") as mock_core:
             _run_async(async_scheduled_weekly_report(
                 hass=mock_hass,
                 coordinator=mock_coordinator,
@@ -377,13 +377,13 @@ class TestWeeklyReportDeduplication:
 
     def test_scheduled_runs_on_sunday(self, mock_hass, mock_coordinator, mock_notification_funcs):
         """Verify scheduled report runs on Sunday."""
-        from custom_components.adaptive_thermostat.services import async_scheduled_weekly_report
+        from custom_components.adaptive_climate.services import async_scheduled_weekly_report
 
         # Test on a Sunday (weekday() = 6)
         sunday = Mock()
         sunday.weekday = Mock(return_value=6)
 
-        with patch("custom_components.adaptive_thermostat.services.scheduled._run_weekly_report_core") as mock_core:
+        with patch("custom_components.adaptive_climate.services.scheduled._run_weekly_report_core") as mock_core:
             mock_core.return_value = {"report": Mock(), "has_energy_data": False, "total_cost": 0}
 
             _run_async(async_scheduled_weekly_report(
@@ -410,7 +410,7 @@ class TestPIDRecommendationsHandler:
 
     def test_pid_recommendations_returns_expected_structure(self, mock_hass, mock_coordinator):
         """Verify pid_recommendations returns expected data structure."""
-        from custom_components.adaptive_thermostat.services import async_handle_pid_recommendations
+        from custom_components.adaptive_climate.services import async_handle_pid_recommendations
 
         call = MockServiceCall()
         result = _run_async(async_handle_pid_recommendations(mock_hass, mock_coordinator, call))
@@ -423,7 +423,7 @@ class TestPIDRecommendationsHandler:
 
     def test_pid_recommendations_with_learner(self, mock_hass, mock_coordinator):
         """Verify pid_recommendations works with adaptive learner."""
-        from custom_components.adaptive_thermostat.services import async_handle_pid_recommendations
+        from custom_components.adaptive_climate.services import async_handle_pid_recommendations
 
         # Set up a zone with adaptive learner
         mock_learner = Mock()
@@ -456,7 +456,7 @@ class TestPIDRecommendationsHandler:
 
     def test_pid_recommendations_no_learner(self, mock_hass, mock_coordinator):
         """Verify pid_recommendations handles zones without learner."""
-        from custom_components.adaptive_thermostat.services import async_handle_pid_recommendations
+        from custom_components.adaptive_climate.services import async_handle_pid_recommendations
 
         # Zone without adaptive learner
         mock_coordinator.get_all_zones = Mock(return_value={
@@ -482,7 +482,7 @@ class TestRunLearningHandler:
 
     def test_run_learning_returns_results(self, mock_hass, mock_coordinator):
         """Verify run_learning returns proper results structure."""
-        from custom_components.adaptive_thermostat.services import async_handle_run_learning
+        from custom_components.adaptive_climate.services import async_handle_run_learning
 
         call = MockServiceCall()
         result = _run_async(async_handle_run_learning(mock_hass, mock_coordinator, call))
@@ -494,7 +494,7 @@ class TestRunLearningHandler:
 
     def test_run_learning_skips_zones_without_learner(self, mock_hass, mock_coordinator):
         """Verify run_learning skips zones without adaptive learner."""
-        from custom_components.adaptive_thermostat.services import async_handle_run_learning
+        from custom_components.adaptive_climate.services import async_handle_run_learning
 
         call = MockServiceCall()
         result = _run_async(async_handle_run_learning(mock_hass, mock_coordinator, call))
@@ -515,7 +515,7 @@ class TestVacationModeHandler:
 
     def test_vacation_mode_enable(self, mock_hass, mock_vacation_mode):
         """Verify vacation mode can be enabled."""
-        from custom_components.adaptive_thermostat.services import async_handle_set_vacation_mode
+        from custom_components.adaptive_climate.services import async_handle_set_vacation_mode
 
         call = MockServiceCall({"enabled": True, "target_temp": 12.0})
         _run_async(async_handle_set_vacation_mode(mock_hass, mock_vacation_mode, call, 15.0))
@@ -525,7 +525,7 @@ class TestVacationModeHandler:
 
     def test_vacation_mode_disable(self, mock_hass, mock_vacation_mode):
         """Verify vacation mode can be disabled."""
-        from custom_components.adaptive_thermostat.services import async_handle_set_vacation_mode
+        from custom_components.adaptive_climate.services import async_handle_set_vacation_mode
 
         call = MockServiceCall({"enabled": False})
         _run_async(async_handle_set_vacation_mode(mock_hass, mock_vacation_mode, call, 15.0))
@@ -535,7 +535,7 @@ class TestVacationModeHandler:
 
     def test_vacation_mode_uses_default_temp(self, mock_hass, mock_vacation_mode):
         """Verify vacation mode uses default temp when not specified."""
-        from custom_components.adaptive_thermostat.services import async_handle_set_vacation_mode
+        from custom_components.adaptive_climate.services import async_handle_set_vacation_mode
 
         call = MockServiceCall({"enabled": True})
         _run_async(async_handle_set_vacation_mode(mock_hass, mock_vacation_mode, call, 15.0))
@@ -553,7 +553,7 @@ class TestDailyLearningCallback:
 
     def test_daily_learning_processes_zones(self, mock_hass, mock_coordinator):
         """Verify daily learning processes all zones."""
-        from custom_components.adaptive_thermostat.services import async_daily_learning
+        from custom_components.adaptive_climate.services import async_daily_learning
 
         # Set up a zone with adaptive learner
         mock_learner = Mock()
@@ -588,7 +588,7 @@ class TestServiceConstants:
 
     def test_service_names_defined(self):
         """Verify all service name constants are defined."""
-        from custom_components.adaptive_thermostat.services import (
+        from custom_components.adaptive_climate.services import (
             SERVICE_RUN_LEARNING,
             SERVICE_WEEKLY_REPORT,
             SERVICE_COST_REPORT,
@@ -610,7 +610,7 @@ class TestServiceConstants:
 
 def test_services_module_exists():
     """Verify services module can be imported."""
-    from custom_components.adaptive_thermostat import services
+    from custom_components.adaptive_climate import services
 
     assert services is not None
     assert hasattr(services, "async_register_services")

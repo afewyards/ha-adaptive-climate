@@ -1,8 +1,8 @@
 """Tests for NightSetback integration with PreheatLearner."""
 import pytest
 from datetime import datetime
-from custom_components.adaptive_thermostat.adaptive.night_setback import NightSetback
-from custom_components.adaptive_thermostat.adaptive.preheat import PreheatLearner
+from custom_components.adaptive_climate.adaptive.night_setback import NightSetback
+from custom_components.adaptive_climate.adaptive.preheat import PreheatLearner
 
 
 class TestNightSetbackPreheatIntegration:

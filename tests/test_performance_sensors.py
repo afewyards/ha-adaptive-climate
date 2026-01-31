@@ -70,7 +70,7 @@ def test_duty_cycle_calculation():
     sys.modules['homeassistant.helpers.event'] = mock_event
     sys.modules['homeassistant.helpers.restore_state'] = mock_restore_state
 
-    from custom_components.adaptive_thermostat.sensor import DutyCycleSensor
+    from custom_components.adaptive_climate.sensor import DutyCycleSensor
 
     # Create mock hass
     mock_hass = Mock()
@@ -154,7 +154,7 @@ def test_power_m2_estimation():
     sys.modules['homeassistant.helpers.event'] = Mock()
     sys.modules['homeassistant.helpers.restore_state'] = mock_restore_state
 
-    from custom_components.adaptive_thermostat.sensor import PowerPerM2Sensor
+    from custom_components.adaptive_climate.sensor import PowerPerM2Sensor
 
     # Create mock hass
     mock_hass = Mock()
@@ -168,7 +168,7 @@ def test_power_m2_estimation():
     }
 
     mock_hass.data = {
-        "adaptive_thermostat": {"coordinator": coordinator}
+        "adaptive_climate": {"coordinator": coordinator}
     }
 
     # Create sensor
@@ -254,7 +254,7 @@ def test_average_cycle_time():
     sys.modules['homeassistant.helpers.event'] = Mock()
     sys.modules['homeassistant.helpers.restore_state'] = mock_restore_state
 
-    from custom_components.adaptive_thermostat.sensor import CycleTimeSensor
+    from custom_components.adaptive_climate.sensor import CycleTimeSensor
 
     # Create mock hass
     mock_hass = Mock()

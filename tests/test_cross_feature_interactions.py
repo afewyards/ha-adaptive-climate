@@ -11,24 +11,24 @@ import pytest
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 
-from custom_components.adaptive_thermostat.adaptive.humidity_detector import (
+from custom_components.adaptive_climate.adaptive.humidity_detector import (
     HumidityDetector,
 )
-from custom_components.adaptive_thermostat.adaptive.contact_sensors import (
+from custom_components.adaptive_climate.adaptive.contact_sensors import (
     ContactSensorHandler,
     ContactAction,
 )
-from custom_components.adaptive_thermostat.adaptive.preheat import (
+from custom_components.adaptive_climate.adaptive.preheat import (
     PreheatLearner,
 )
-from custom_components.adaptive_thermostat.adaptive.learning import (
+from custom_components.adaptive_climate.adaptive.learning import (
     AdaptiveLearner,
     CycleMetrics,
 )
-from custom_components.adaptive_thermostat.managers.status_manager import (
+from custom_components.adaptive_climate.managers.status_manager import (
     StatusManager,
 )
-from custom_components.adaptive_thermostat.const import (
+from custom_components.adaptive_climate.const import (
     HEATING_TYPE_CONVECTOR,
     HEATING_TYPE_RADIATOR,
 )

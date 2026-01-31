@@ -4,13 +4,13 @@ import pytest
 from datetime import datetime, timedelta
 from unittest.mock import patch
 
-from custom_components.adaptive_thermostat.adaptive.learning import (
+from custom_components.adaptive_climate.adaptive.learning import (
     PhaseAwareOvershootTracker,
     calculate_overshoot,
     AdaptiveLearner,
     CycleMetrics,
 )
-from custom_components.adaptive_thermostat.adaptive.cycle_analysis import (
+from custom_components.adaptive_climate.adaptive.cycle_analysis import (
     calculate_rise_time,
 )
 
@@ -526,7 +526,7 @@ class TestOvershootIntegration:
 # Test marker for pytest discovery
 def test_overshoot_module_exists():
     """Marker test to ensure module is importable."""
-    from custom_components.adaptive_thermostat.adaptive.learning import (
+    from custom_components.adaptive_climate.adaptive.learning import (
         PhaseAwareOvershootTracker,
         calculate_overshoot,
     )
@@ -1106,7 +1106,7 @@ class TestConvergenceConfidence:
 # Test marker for rule conflict module
 def test_rule_conflicts_module_exists():
     """Marker test to ensure rule conflict types are importable."""
-    from custom_components.adaptive_thermostat.adaptive.learning import (
+    from custom_components.adaptive_climate.adaptive.learning import (
         PIDRule,
         PIDRuleResult,
     )
@@ -1128,12 +1128,12 @@ class TestSegmentNoiseToleranceConstants:
 
     def test_noise_tolerance_constant_exists(self):
         """Test SEGMENT_NOISE_TOLERANCE constant exists and has correct default."""
-        from custom_components.adaptive_thermostat.const import SEGMENT_NOISE_TOLERANCE
+        from custom_components.adaptive_climate.const import SEGMENT_NOISE_TOLERANCE
         assert SEGMENT_NOISE_TOLERANCE == 0.05
 
     def test_rate_bounds_constants_exist(self):
         """Test SEGMENT_RATE_MIN and SEGMENT_RATE_MAX constants exist."""
-        from custom_components.adaptive_thermostat.const import (
+        from custom_components.adaptive_climate.const import (
             SEGMENT_RATE_MIN,
             SEGMENT_RATE_MAX,
         )
@@ -1146,7 +1146,7 @@ class TestNoisyTemperatureData:
 
     def test_cooling_segment_with_noise_below_tolerance(self):
         """Test that small temperature reversals below tolerance don't break segments."""
-        from custom_components.adaptive_thermostat.adaptive.learning import (
+        from custom_components.adaptive_climate.adaptive.learning import (
             ThermalRateLearner,
         )
 
@@ -1171,7 +1171,7 @@ class TestNoisyTemperatureData:
 
     def test_cooling_segment_broken_by_reversal_above_tolerance(self):
         """Test that temperature reversals above tolerance DO break segments."""
-        from custom_components.adaptive_thermostat.adaptive.learning import (
+        from custom_components.adaptive_climate.adaptive.learning import (
             ThermalRateLearner,
         )
 
@@ -1197,7 +1197,7 @@ class TestNoisyTemperatureData:
 
     def test_heating_segment_with_noise_below_tolerance(self):
         """Test heating segment detection with noise tolerance."""
-        from custom_components.adaptive_thermostat.adaptive.learning import (
+        from custom_components.adaptive_climate.adaptive.learning import (
             ThermalRateLearner,
         )
 
@@ -1221,7 +1221,7 @@ class TestNoisyTemperatureData:
 
     def test_calculate_cooling_rate_with_noisy_data(self):
         """Test full cooling rate calculation with noisy data."""
-        from custom_components.adaptive_thermostat.adaptive.learning import (
+        from custom_components.adaptive_climate.adaptive.learning import (
             ThermalRateLearner,
         )
 
@@ -1251,7 +1251,7 @@ class TestRateBoundsRejection:
 
     def test_reject_rate_below_minimum(self):
         """Test that rates below SEGMENT_RATE_MIN are rejected."""
-        from custom_components.adaptive_thermostat.adaptive.learning import (
+        from custom_components.adaptive_climate.adaptive.learning import (
             ThermalRateLearner,
         )
 
@@ -1271,7 +1271,7 @@ class TestRateBoundsRejection:
 
     def test_reject_rate_above_maximum(self):
         """Test that rates above SEGMENT_RATE_MAX are rejected."""
-        from custom_components.adaptive_thermostat.adaptive.learning import (
+        from custom_components.adaptive_climate.adaptive.learning import (
             ThermalRateLearner,
         )
 
@@ -1291,7 +1291,7 @@ class TestRateBoundsRejection:
 
     def test_accept_rate_within_bounds(self):
         """Test that rates within bounds are accepted."""
-        from custom_components.adaptive_thermostat.adaptive.learning import (
+        from custom_components.adaptive_climate.adaptive.learning import (
             ThermalRateLearner,
         )
 
@@ -1310,7 +1310,7 @@ class TestRateBoundsRejection:
 
     def test_reject_heating_rate_above_maximum(self):
         """Test that impossibly fast heating rates are rejected."""
-        from custom_components.adaptive_thermostat.adaptive.learning import (
+        from custom_components.adaptive_climate.adaptive.learning import (
             ThermalRateLearner,
         )
 
@@ -1329,10 +1329,10 @@ class TestRateBoundsRejection:
 
     def test_rate_bounds_at_boundaries(self):
         """Test rates exactly at boundary values."""
-        from custom_components.adaptive_thermostat.adaptive.learning import (
+        from custom_components.adaptive_climate.adaptive.learning import (
             ThermalRateLearner,
         )
-        from custom_components.adaptive_thermostat.const import (
+        from custom_components.adaptive_climate.const import (
             SEGMENT_RATE_MIN,
             SEGMENT_RATE_MAX,
         )
@@ -1366,7 +1366,7 @@ class TestSegmentDetectionEdgeCases:
 
     def test_all_noise_no_trend(self):
         """Test data that is all noise with no clear trend."""
-        from custom_components.adaptive_thermostat.adaptive.learning import (
+        from custom_components.adaptive_climate.adaptive.learning import (
             ThermalRateLearner,
         )
 
@@ -1393,7 +1393,7 @@ class TestSegmentDetectionEdgeCases:
 
     def test_custom_noise_tolerance(self):
         """Test that custom noise tolerance value is respected."""
-        from custom_components.adaptive_thermostat.adaptive.learning import (
+        from custom_components.adaptive_climate.adaptive.learning import (
             ThermalRateLearner,
         )
 
@@ -1429,10 +1429,10 @@ class TestSegmentDetectionEdgeCases:
 
     def test_learner_uses_default_noise_tolerance(self):
         """Test that ThermalRateLearner uses SEGMENT_NOISE_TOLERANCE by default."""
-        from custom_components.adaptive_thermostat.adaptive.learning import (
+        from custom_components.adaptive_climate.adaptive.learning import (
             ThermalRateLearner,
         )
-        from custom_components.adaptive_thermostat.const import SEGMENT_NOISE_TOLERANCE
+        from custom_components.adaptive_climate.const import SEGMENT_NOISE_TOLERANCE
 
         learner = ThermalRateLearner()
         assert learner.noise_tolerance == SEGMENT_NOISE_TOLERANCE
@@ -1440,7 +1440,7 @@ class TestSegmentDetectionEdgeCases:
 
     def test_validate_segment_rejects_no_net_change(self):
         """Test that _validate_segment rejects segments with no net temperature change."""
-        from custom_components.adaptive_thermostat.adaptive.learning import (
+        from custom_components.adaptive_climate.adaptive.learning import (
             ThermalRateLearner,
         )
 
@@ -1461,8 +1461,8 @@ class TestSegmentDetectionEdgeCases:
 # Marker test for segment detection feature
 def test_segment_detection_module():
     """Marker test to ensure segment detection with noise tolerance works."""
-    from custom_components.adaptive_thermostat.adaptive.learning import ThermalRateLearner
-    from custom_components.adaptive_thermostat.const import (
+    from custom_components.adaptive_climate.adaptive.learning import ThermalRateLearner
+    from custom_components.adaptive_climate.const import (
         SEGMENT_NOISE_TOLERANCE,
         SEGMENT_RATE_MIN,
         SEGMENT_RATE_MAX,
@@ -1485,19 +1485,19 @@ class TestCycleHistoryBounding:
 
     def test_max_cycle_history_constant_exists(self):
         """Test MAX_CYCLE_HISTORY constant exists and has correct default."""
-        from custom_components.adaptive_thermostat.const import MAX_CYCLE_HISTORY
+        from custom_components.adaptive_climate.const import MAX_CYCLE_HISTORY
         assert MAX_CYCLE_HISTORY == 100
 
     def test_min_adjustment_interval_constant_exists(self):
         """Test MIN_ADJUSTMENT_INTERVAL constant exists and has correct default."""
-        from custom_components.adaptive_thermostat.const import MIN_ADJUSTMENT_INTERVAL, MIN_ADJUSTMENT_CYCLES
+        from custom_components.adaptive_climate.const import MIN_ADJUSTMENT_INTERVAL, MIN_ADJUSTMENT_CYCLES
         # Updated from 24h to 8h in v0.7.0 for hybrid rate limiting
         assert MIN_ADJUSTMENT_INTERVAL == 8
         assert MIN_ADJUSTMENT_CYCLES == 3
 
     def test_adaptive_learner_default_max_history(self):
         """Test AdaptiveLearner uses MAX_CYCLE_HISTORY by default."""
-        from custom_components.adaptive_thermostat.const import MAX_CYCLE_HISTORY
+        from custom_components.adaptive_climate.const import MAX_CYCLE_HISTORY
 
         learner = AdaptiveLearner()
         assert learner._max_history == MAX_CYCLE_HISTORY
@@ -1653,7 +1653,7 @@ class TestRateLimiting:
         learner = AdaptiveLearner()
 
         fake_now = datetime.now()
-        with patch('custom_components.adaptive_thermostat.adaptive.learning.dt_util') as mock_dt_util:
+        with patch('custom_components.adaptive_climate.adaptive.learning.dt_util') as mock_dt_util:
             mock_dt_util.utcnow.return_value = fake_now
 
             # Add enough cycles
@@ -1701,7 +1701,7 @@ class TestRateLimiting:
 
         # Manually set last adjustment time to 25 hours ago
         fake_now = datetime.now()
-        with patch('custom_components.adaptive_thermostat.adaptive.learning.dt_util') as mock_dt_util:
+        with patch('custom_components.adaptive_climate.adaptive.learning.dt_util') as mock_dt_util:
             mock_dt_util.utcnow.return_value = fake_now
             learner._last_adjustment_time = fake_now - timedelta(hours=25)
 
@@ -1737,7 +1737,7 @@ class TestRateLimiting:
 
         # Set last adjustment to 2 hours ago
         fake_now = datetime.now()
-        with patch('custom_components.adaptive_thermostat.adaptive.learning.dt_util') as mock_dt_util:
+        with patch('custom_components.adaptive_climate.adaptive.learning.dt_util') as mock_dt_util:
             mock_dt_util.utcnow.return_value = fake_now
             learner._last_adjustment_time = fake_now - timedelta(hours=2)
 
@@ -1759,7 +1759,7 @@ class TestRateLimiting:
         learner = AdaptiveLearner()
 
         fake_now = datetime.now()
-        with patch('custom_components.adaptive_thermostat.adaptive.learning.dt_util') as mock_dt_util:
+        with patch('custom_components.adaptive_climate.adaptive.learning.dt_util') as mock_dt_util:
             mock_dt_util.utcnow.return_value = fake_now
 
             # Set last adjustment to exactly 8 hours ago (time gate at boundary)
@@ -1817,7 +1817,7 @@ class TestRateLimiting:
             ))
 
         fake_now = datetime.now()
-        with patch('custom_components.adaptive_thermostat.adaptive.learning.dt_util') as mock_dt_util:
+        with patch('custom_components.adaptive_climate.adaptive.learning.dt_util') as mock_dt_util:
             mock_dt_util.utcnow.return_value = fake_now
             result = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
 
@@ -1830,12 +1830,12 @@ class TestRateLimiting:
 # Marker test for Story 3.5
 def test_story_3_5_features():
     """Marker test to ensure Story 3.5 features are importable."""
-    from custom_components.adaptive_thermostat.const import (
+    from custom_components.adaptive_climate.const import (
         MAX_CYCLE_HISTORY,
         MIN_ADJUSTMENT_INTERVAL,
         MIN_ADJUSTMENT_CYCLES,
     )
-    from custom_components.adaptive_thermostat.adaptive.learning import AdaptiveLearner
+    from custom_components.adaptive_climate.adaptive.learning import AdaptiveLearner
 
     assert MAX_CYCLE_HISTORY == 100
     # Updated from 24h to 8h in v0.7.0 for hybrid rate limiting
@@ -1859,7 +1859,7 @@ class TestPIDLimitsConstants:
 
     def test_pid_limits_constant_exists(self):
         """Test PID_LIMITS constant exists with all required keys."""
-        from custom_components.adaptive_thermostat.const import PID_LIMITS
+        from custom_components.adaptive_climate.const import PID_LIMITS
 
         assert "kp_min" in PID_LIMITS
         assert "kp_max" in PID_LIMITS
@@ -1872,27 +1872,27 @@ class TestPIDLimitsConstants:
 
     def test_ke_limits_values(self):
         """Test Ke limits have correct default values (0.0 to 2.0) after v0.7.1."""
-        from custom_components.adaptive_thermostat.const import PID_LIMITS
+        from custom_components.adaptive_climate.const import PID_LIMITS
 
         assert PID_LIMITS["ke_min"] == 0.0
         assert PID_LIMITS["ke_max"] == 2.0  # Restored by 100x in v0.7.1 (issue 1.3)
 
     def test_ke_limits_range_is_valid(self):
         """Test that ke_min is less than ke_max."""
-        from custom_components.adaptive_thermostat.const import PID_LIMITS
+        from custom_components.adaptive_climate.const import PID_LIMITS
 
         assert PID_LIMITS["ke_min"] < PID_LIMITS["ke_max"]
 
     def test_all_pid_limits_are_numeric(self):
         """Test all PID limits are numeric (int or float)."""
-        from custom_components.adaptive_thermostat.const import PID_LIMITS
+        from custom_components.adaptive_climate.const import PID_LIMITS
 
         for key, value in PID_LIMITS.items():
             assert isinstance(value, (int, float)), f"{key} is not numeric"
 
     def test_all_min_limits_less_than_max(self):
         """Test all min limits are less than corresponding max limits."""
-        from custom_components.adaptive_thermostat.const import PID_LIMITS
+        from custom_components.adaptive_climate.const import PID_LIMITS
 
         assert PID_LIMITS["kp_min"] < PID_LIMITS["kp_max"]
         assert PID_LIMITS["ki_min"] < PID_LIMITS["ki_max"]
@@ -1907,7 +1907,7 @@ def test_pid_limits():
     - ke_min = 0.0 (no weather compensation)
     - ke_max = 2.0 (restored by 100x in v0.7.1 - issue 1.3)
     """
-    from custom_components.adaptive_thermostat.const import PID_LIMITS
+    from custom_components.adaptive_climate.const import PID_LIMITS
 
     # Verify Ke limits exist
     assert "ke_min" in PID_LIMITS, "ke_min missing from PID_LIMITS"
@@ -1936,7 +1936,7 @@ class TestCalculateRiseTime:
 
     def test_calculate_rise_time_basic(self):
         """Test basic rise time calculation with normal temperature rise."""
-        from custom_components.adaptive_thermostat.adaptive.cycle_analysis import (
+        from custom_components.adaptive_climate.adaptive.cycle_analysis import (
             calculate_rise_time,
         )
 
@@ -1952,7 +1952,7 @@ class TestCalculateRiseTime:
 
     def test_calculate_rise_time_never_reached(self):
         """Test rise time when target temperature is never reached."""
-        from custom_components.adaptive_thermostat.adaptive.cycle_analysis import (
+        from custom_components.adaptive_climate.adaptive.cycle_analysis import (
             calculate_rise_time,
         )
 
@@ -1969,7 +1969,7 @@ class TestCalculateRiseTime:
 
     def test_calculate_rise_time_insufficient_data(self):
         """Test rise time with insufficient data (< 2 samples)."""
-        from custom_components.adaptive_thermostat.adaptive.cycle_analysis import (
+        from custom_components.adaptive_climate.adaptive.cycle_analysis import (
             calculate_rise_time,
         )
 
@@ -1986,7 +1986,7 @@ class TestCalculateRiseTime:
 
     def test_calculate_rise_time_already_at_target(self):
         """Test rise time when start temperature equals target."""
-        from custom_components.adaptive_thermostat.adaptive.cycle_analysis import (
+        from custom_components.adaptive_climate.adaptive.cycle_analysis import (
             calculate_rise_time,
         )
 
@@ -2002,7 +2002,7 @@ class TestCalculateRiseTime:
 
     def test_calculate_rise_time_threshold_variations(self):
         """Test rise time with different threshold values."""
-        from custom_components.adaptive_thermostat.adaptive.cycle_analysis import (
+        from custom_components.adaptive_climate.adaptive.cycle_analysis import (
             calculate_rise_time,
         )
 
@@ -2028,7 +2028,7 @@ class TestCalculateRiseTime:
 
     def test_calculate_rise_time_first_reading_at_target(self):
         """Test when first reading already reaches target (within threshold)."""
-        from custom_components.adaptive_thermostat.adaptive.cycle_analysis import (
+        from custom_components.adaptive_climate.adaptive.cycle_analysis import (
             calculate_rise_time,
         )
 
@@ -2044,7 +2044,7 @@ class TestCalculateRiseTime:
 
     def test_calculate_rise_time_slow_rise(self):
         """Test rise time with slow heating over longer duration."""
-        from custom_components.adaptive_thermostat.adaptive.cycle_analysis import (
+        from custom_components.adaptive_climate.adaptive.cycle_analysis import (
             calculate_rise_time,
         )
 
@@ -2064,7 +2064,7 @@ class TestCalculateRiseTime:
 
     def test_calculate_rise_time_fast_rise(self):
         """Test rise time with rapid heating."""
-        from custom_components.adaptive_thermostat.adaptive.cycle_analysis import (
+        from custom_components.adaptive_climate.adaptive.cycle_analysis import (
             calculate_rise_time,
         )
 
@@ -2079,7 +2079,7 @@ class TestCalculateRiseTime:
 
     def test_calculate_rise_time_with_overshoot(self):
         """Test that rise time is measured to first crossing, not peak."""
-        from custom_components.adaptive_thermostat.adaptive.cycle_analysis import (
+        from custom_components.adaptive_climate.adaptive.cycle_analysis import (
             calculate_rise_time,
         )
 
@@ -2098,7 +2098,7 @@ class TestCalculateRiseTime:
 
     def test_calculate_rise_time_start_above_target(self):
         """Test when start temperature is already above target."""
-        from custom_components.adaptive_thermostat.adaptive.cycle_analysis import (
+        from custom_components.adaptive_climate.adaptive.cycle_analysis import (
             calculate_rise_time,
         )
 
@@ -2166,7 +2166,7 @@ class TestCalculateRiseTime:
 # Marker test for rise time function
 def test_calculate_rise_time_module_exists():
     """Marker test to ensure calculate_rise_time is importable."""
-    from custom_components.adaptive_thermostat.adaptive.cycle_analysis import (
+    from custom_components.adaptive_climate.adaptive.cycle_analysis import (
         calculate_rise_time,
     )
     assert calculate_rise_time is not None
@@ -2261,7 +2261,7 @@ class TestAdaptiveLearnerSerialization:
 
         # Trigger adjustment with mocked time
         fake_now = datetime.now()
-        with patch('custom_components.adaptive_thermostat.adaptive.learning.dt_util') as mock_dt_util:
+        with patch('custom_components.adaptive_climate.adaptive.learning.dt_util') as mock_dt_util:
             mock_dt_util.utcnow.return_value = fake_now
             learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
 
@@ -2865,7 +2865,7 @@ class TestDecayMetricsPassing:
             ))
 
         # Mock evaluate_pid_rules to inspect what it receives
-        with patch('custom_components.adaptive_thermostat.adaptive.learning.evaluate_pid_rules') as mock_evaluate:
+        with patch('custom_components.adaptive_climate.adaptive.learning.evaluate_pid_rules') as mock_evaluate:
             # Configure mock to return empty list (no rules triggered)
             mock_evaluate.return_value = []
 
@@ -2905,7 +2905,7 @@ class TestDecayMetricsPassing:
             ))
 
         # Mock evaluate_pid_rules to inspect what it receives
-        with patch('custom_components.adaptive_thermostat.adaptive.learning.evaluate_pid_rules') as mock_evaluate:
+        with patch('custom_components.adaptive_climate.adaptive.learning.evaluate_pid_rules') as mock_evaluate:
             mock_evaluate.return_value = []
 
             # Call calculate_pid_adjustment
@@ -2944,7 +2944,7 @@ class TestDecayMetricsPassing:
                 ))
 
         # Mock evaluate_pid_rules to inspect what it receives
-        with patch('custom_components.adaptive_thermostat.adaptive.learning.evaluate_pid_rules') as mock_evaluate:
+        with patch('custom_components.adaptive_climate.adaptive.learning.evaluate_pid_rules') as mock_evaluate:
             mock_evaluate.return_value = []
 
             # Call calculate_pid_adjustment
@@ -2961,7 +2961,7 @@ class TestDecayMetricsPassing:
 # Marker test for Story 6.4
 def test_decay_metrics_passing_exists():
     """Marker test to ensure decay metrics are passed from AdaptiveLearner to evaluate_pid_rules."""
-    from custom_components.adaptive_thermostat.adaptive.pid_rules import evaluate_pid_rules
+    from custom_components.adaptive_climate.adaptive.pid_rules import evaluate_pid_rules
     import inspect
 
     # Verify evaluate_pid_rules has decay_contribution and integral_at_tolerance_entry parameters
@@ -2980,7 +2980,7 @@ class TestHeatingTypeMaxSettling:
 
     def test_pid_adjustment_uses_heating_type_max_settling(self):
         """Test floor_hydronic uses 90min max_settling from HEATING_TYPE_CHARACTERISTICS."""
-        from custom_components.adaptive_thermostat.const import (
+        from custom_components.adaptive_climate.const import (
             HEATING_TYPE_FLOOR_HYDRONIC,
             HEATING_TYPE_CHARACTERISTICS,
             get_rule_thresholds,
@@ -3004,7 +3004,7 @@ class TestHeatingTypeMaxSettling:
 
     def test_pid_adjustment_uses_radiator_max_settling(self):
         """Test radiator uses 45min max_settling from HEATING_TYPE_CHARACTERISTICS."""
-        from custom_components.adaptive_thermostat.const import (
+        from custom_components.adaptive_climate.const import (
             HEATING_TYPE_RADIATOR,
             HEATING_TYPE_CHARACTERISTICS,
             get_rule_thresholds,
@@ -3022,7 +3022,7 @@ class TestHeatingTypeMaxSettling:
 
     def test_pid_adjustment_uses_forced_air_max_settling(self):
         """Test forced_air uses 15min max_settling from HEATING_TYPE_CHARACTERISTICS."""
-        from custom_components.adaptive_thermostat.const import (
+        from custom_components.adaptive_climate.const import (
             HEATING_TYPE_FORCED_AIR,
             HEATING_TYPE_CHARACTERISTICS,
             get_rule_thresholds,
@@ -3040,7 +3040,7 @@ class TestHeatingTypeMaxSettling:
 
     def test_pid_adjustment_default_settling_without_heating_type(self):
         """Test default threshold uses fallback when no heating_type specified."""
-        from custom_components.adaptive_thermostat.const import (
+        from custom_components.adaptive_climate.const import (
             get_rule_thresholds,
             DEFAULT_CONVERGENCE_THRESHOLDS,
             RULE_THRESHOLD_MULTIPLIERS,
@@ -3057,7 +3057,7 @@ class TestHeatingTypeMaxSettling:
 # Marker test for Story 6.5
 def test_heating_type_max_settling_exists():
     """Marker test to ensure get_rule_thresholds uses max_settling_time from HEATING_TYPE_CHARACTERISTICS."""
-    from custom_components.adaptive_thermostat.const import (
+    from custom_components.adaptive_climate.const import (
         HEATING_TYPE_FLOOR_HYDRONIC,
         HEATING_TYPE_CHARACTERISTICS,
         get_rule_thresholds,
@@ -3081,7 +3081,7 @@ class TestClampedOvershootMultipliers:
 
     def test_clamped_floor_hydronic_overshoot_multiplied_1_5(self):
         """Test floor heating clamped overshoot 0.2 becomes 0.3 (1.5x multiplier)."""
-        from custom_components.adaptive_thermostat.const import (
+        from custom_components.adaptive_climate.const import (
             HEATING_TYPE_FLOOR_HYDRONIC,
             CLAMPED_OVERSHOOT_MULTIPLIER,
         )
@@ -3111,7 +3111,7 @@ class TestClampedOvershootMultipliers:
 
     def test_clamped_radiator_overshoot_multiplied_1_35(self):
         """Test radiator clamped overshoot 0.2 becomes 0.27 (1.35x multiplier)."""
-        from custom_components.adaptive_thermostat.const import (
+        from custom_components.adaptive_climate.const import (
             HEATING_TYPE_RADIATOR,
             CLAMPED_OVERSHOOT_MULTIPLIER,
         )
@@ -3133,7 +3133,7 @@ class TestClampedOvershootMultipliers:
 
     def test_clamped_convector_overshoot_multiplied_1_2(self):
         """Test convector clamped overshoot 0.2 becomes 0.24 (1.2x multiplier)."""
-        from custom_components.adaptive_thermostat.const import (
+        from custom_components.adaptive_climate.const import (
             HEATING_TYPE_CONVECTOR,
             CLAMPED_OVERSHOOT_MULTIPLIER,
         )
@@ -3155,7 +3155,7 @@ class TestClampedOvershootMultipliers:
 
     def test_clamped_forced_air_overshoot_multiplied_1_1(self):
         """Test forced_air clamped overshoot 0.2 becomes 0.22 (1.1x multiplier)."""
-        from custom_components.adaptive_thermostat.const import (
+        from custom_components.adaptive_climate.const import (
             HEATING_TYPE_FORCED_AIR,
             CLAMPED_OVERSHOOT_MULTIPLIER,
         )
@@ -3177,7 +3177,7 @@ class TestClampedOvershootMultipliers:
 
     def test_non_clamped_cycles_contribute_normally(self):
         """Test that cycles with was_clamped=False use actual overshoot value."""
-        from custom_components.adaptive_thermostat.const import HEATING_TYPE_FLOOR_HYDRONIC
+        from custom_components.adaptive_climate.const import HEATING_TYPE_FLOOR_HYDRONIC
 
         learner = AdaptiveLearner(heating_type=HEATING_TYPE_FLOOR_HYDRONIC)
 
@@ -3200,7 +3200,7 @@ class TestClampedOvershootMultipliers:
 
     def test_unknown_heating_type_uses_default_1_25(self):
         """Test that unknown heating type uses default multiplier 1.25."""
-        from custom_components.adaptive_thermostat.const import (
+        from custom_components.adaptive_climate.const import (
             DEFAULT_CLAMPED_OVERSHOOT_MULTIPLIER,
             CLAMPED_OVERSHOOT_MULTIPLIER,
         )
@@ -3226,7 +3226,7 @@ class TestClampedOvershootMultipliers:
 
     def test_mixed_clamped_and_non_clamped_cycles(self):
         """Test learning with mix of clamped and non-clamped cycles."""
-        from custom_components.adaptive_thermostat.const import HEATING_TYPE_FLOOR_HYDRONIC
+        from custom_components.adaptive_climate.const import HEATING_TYPE_FLOOR_HYDRONIC
 
         learner = AdaptiveLearner(heating_type=HEATING_TYPE_FLOOR_HYDRONIC)
 
@@ -3262,7 +3262,7 @@ class TestClampedOvershootMultipliers:
     def test_learner_logs_clamped_cycle_count(self, caplog):
         """Test that learner logs clamped cycle count and multiplier."""
         import logging
-        from custom_components.adaptive_thermostat.const import HEATING_TYPE_FLOOR_HYDRONIC
+        from custom_components.adaptive_climate.const import HEATING_TYPE_FLOOR_HYDRONIC
 
         caplog.set_level(logging.DEBUG)
 
@@ -3314,7 +3314,7 @@ class TestClampedOvershootMultipliers:
 
     def test_disturbed_and_clamped_cycle(self):
         """Test that disturbed cycles take precedence over clamped - excluded from learning."""
-        from custom_components.adaptive_thermostat.const import HEATING_TYPE_FLOOR_HYDRONIC
+        from custom_components.adaptive_climate.const import HEATING_TYPE_FLOOR_HYDRONIC
 
         learner = AdaptiveLearner(heating_type=HEATING_TYPE_FLOOR_HYDRONIC)
 
@@ -3381,7 +3381,7 @@ class TestConvergenceThresholdsNewMetrics:
 
     def test_default_convergence_thresholds_includes_inter_cycle_drift(self):
         """Test DEFAULT_CONVERGENCE_THRESHOLDS includes inter_cycle_drift_max."""
-        from custom_components.adaptive_thermostat.const import (
+        from custom_components.adaptive_climate.const import (
             DEFAULT_CONVERGENCE_THRESHOLDS
         )
 
@@ -3391,7 +3391,7 @@ class TestConvergenceThresholdsNewMetrics:
 
     def test_default_convergence_thresholds_includes_settling_mae(self):
         """Test DEFAULT_CONVERGENCE_THRESHOLDS includes settling_mae_max."""
-        from custom_components.adaptive_thermostat.const import (
+        from custom_components.adaptive_climate.const import (
             DEFAULT_CONVERGENCE_THRESHOLDS
         )
 
@@ -3401,7 +3401,7 @@ class TestConvergenceThresholdsNewMetrics:
 
     def test_floor_hydronic_thresholds_include_new_metrics(self):
         """Test floor_hydronic specific thresholds include new metrics."""
-        from custom_components.adaptive_thermostat.const import (
+        from custom_components.adaptive_climate.const import (
             HEATING_TYPE_CONVERGENCE_THRESHOLDS,
             HEATING_TYPE_FLOOR_HYDRONIC,
         )
@@ -3416,7 +3416,7 @@ class TestConvergenceThresholdsNewMetrics:
 
     def test_radiator_thresholds_include_new_metrics(self):
         """Test radiator specific thresholds include new metrics."""
-        from custom_components.adaptive_thermostat.const import (
+        from custom_components.adaptive_climate.const import (
             HEATING_TYPE_CONVERGENCE_THRESHOLDS,
             HEATING_TYPE_RADIATOR,
         )
@@ -3429,7 +3429,7 @@ class TestConvergenceThresholdsNewMetrics:
 
     def test_convector_thresholds_include_new_metrics(self):
         """Test convector specific thresholds include new metrics."""
-        from custom_components.adaptive_thermostat.const import (
+        from custom_components.adaptive_climate.const import (
             HEATING_TYPE_CONVERGENCE_THRESHOLDS,
             HEATING_TYPE_CONVECTOR,
         )
@@ -3442,7 +3442,7 @@ class TestConvergenceThresholdsNewMetrics:
 
     def test_forced_air_thresholds_include_new_metrics(self):
         """Test forced_air specific thresholds include new metrics."""
-        from custom_components.adaptive_thermostat.const import (
+        from custom_components.adaptive_climate.const import (
             HEATING_TYPE_CONVERGENCE_THRESHOLDS,
             HEATING_TYPE_FORCED_AIR,
         )
@@ -3457,7 +3457,7 @@ class TestConvergenceThresholdsNewMetrics:
 
     def test_get_convergence_thresholds_returns_new_metrics_default(self):
         """Test get_convergence_thresholds() returns new metrics for default."""
-        from custom_components.adaptive_thermostat.const import (
+        from custom_components.adaptive_climate.const import (
             get_convergence_thresholds
         )
 
@@ -3470,7 +3470,7 @@ class TestConvergenceThresholdsNewMetrics:
 
     def test_get_convergence_thresholds_returns_new_metrics_floor_hydronic(self):
         """Test get_convergence_thresholds() returns new metrics for floor_hydronic."""
-        from custom_components.adaptive_thermostat.const import (
+        from custom_components.adaptive_climate.const import (
             get_convergence_thresholds,
             HEATING_TYPE_FLOOR_HYDRONIC,
         )
@@ -3484,7 +3484,7 @@ class TestConvergenceThresholdsNewMetrics:
 
     def test_get_convergence_thresholds_returns_new_metrics_radiator(self):
         """Test get_convergence_thresholds() returns new metrics for radiator."""
-        from custom_components.adaptive_thermostat.const import (
+        from custom_components.adaptive_climate.const import (
             get_convergence_thresholds,
             HEATING_TYPE_RADIATOR,
         )
@@ -3496,7 +3496,7 @@ class TestConvergenceThresholdsNewMetrics:
 
     def test_get_convergence_thresholds_returns_new_metrics_convector(self):
         """Test get_convergence_thresholds() returns new metrics for convector."""
-        from custom_components.adaptive_thermostat.const import (
+        from custom_components.adaptive_climate.const import (
             get_convergence_thresholds,
             HEATING_TYPE_CONVECTOR,
         )
@@ -3508,7 +3508,7 @@ class TestConvergenceThresholdsNewMetrics:
 
     def test_get_convergence_thresholds_returns_new_metrics_forced_air(self):
         """Test get_convergence_thresholds() returns new metrics for forced_air."""
-        from custom_components.adaptive_thermostat.const import (
+        from custom_components.adaptive_climate.const import (
             get_convergence_thresholds,
             HEATING_TYPE_FORCED_AIR,
         )
@@ -3520,7 +3520,7 @@ class TestConvergenceThresholdsNewMetrics:
 
     def test_new_metrics_thresholds_are_heating_type_appropriate(self):
         """Test that new metric thresholds are appropriately scaled by heating type."""
-        from custom_components.adaptive_thermostat.const import (
+        from custom_components.adaptive_climate.const import (
             get_convergence_thresholds,
             HEATING_TYPE_FLOOR_HYDRONIC,
             HEATING_TYPE_FORCED_AIR,
@@ -3537,7 +3537,7 @@ class TestConvergenceThresholdsNewMetrics:
 
 def test_convergence_thresholds_new_metrics_module_exists():
     """Verify convergence threshold tests module exists and imports work."""
-    from custom_components.adaptive_thermostat.const import (
+    from custom_components.adaptive_climate.const import (
         DEFAULT_CONVERGENCE_THRESHOLDS,
         HEATING_TYPE_CONVERGENCE_THRESHOLDS,
         get_convergence_thresholds,

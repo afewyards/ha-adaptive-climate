@@ -1,7 +1,7 @@
 """Tests for adaptive/physics.py module."""
 
 import pytest
-from custom_components.adaptive_thermostat.adaptive.physics import (
+from custom_components.adaptive_climate.adaptive.physics import (
     calculate_thermal_time_constant,
     calculate_initial_pid,
     calculate_initial_pwm_period,
@@ -507,7 +507,7 @@ class TestKdValues:
 
     def test_kd_reference_profiles_respect_kd_max(self):
         """Test that all reference profile Kd values respect kd_max=3.3."""
-        from custom_components.adaptive_thermostat.const import PID_LIMITS
+        from custom_components.adaptive_climate.const import PID_LIMITS
 
         kd_max = PID_LIMITS["kd_max"]
 
@@ -1191,7 +1191,7 @@ class TestFloorConstruction:
 
     def test_all_top_floor_materials(self):
         """Test that all defined top floor materials work."""
-        from custom_components.adaptive_thermostat.const import TOP_FLOOR_MATERIALS
+        from custom_components.adaptive_climate.const import TOP_FLOOR_MATERIALS
 
         for material in TOP_FLOOR_MATERIALS.keys():
             layers = [
@@ -1207,7 +1207,7 @@ class TestFloorConstruction:
 
     def test_all_screed_materials(self):
         """Test that all defined screed materials work."""
-        from custom_components.adaptive_thermostat.const import SCREED_MATERIALS
+        from custom_components.adaptive_climate.const import SCREED_MATERIALS
 
         for material in SCREED_MATERIALS.keys():
             layers = [
@@ -2339,7 +2339,7 @@ class TestCoolingPIDCalculations:
         heating_tau = 1.5  # hours
         cooling_type = "forced_air"
 
-        from custom_components.adaptive_thermostat.adaptive.physics import (
+        from custom_components.adaptive_climate.adaptive.physics import (
             estimate_cooling_time_constant
         )
 
@@ -2354,7 +2354,7 @@ class TestCoolingPIDCalculations:
         heating_tau = 4.0  # hours
         cooling_type = "radiator"
 
-        from custom_components.adaptive_thermostat.adaptive.physics import (
+        from custom_components.adaptive_climate.adaptive.physics import (
             estimate_cooling_time_constant
         )
 
@@ -2369,7 +2369,7 @@ class TestCoolingPIDCalculations:
         heating_tau = 8.0  # hours
         cooling_type = "floor_hydronic"
 
-        from custom_components.adaptive_thermostat.adaptive.physics import (
+        from custom_components.adaptive_climate.adaptive.physics import (
             estimate_cooling_time_constant
         )
 
@@ -2384,7 +2384,7 @@ class TestCoolingPIDCalculations:
         heating_tau = 2.5  # hours
         cooling_type = "convector"
 
-        from custom_components.adaptive_thermostat.adaptive.physics import (
+        from custom_components.adaptive_climate.adaptive.physics import (
             estimate_cooling_time_constant
         )
 
@@ -2399,7 +2399,7 @@ class TestCoolingPIDCalculations:
         cooling_tau = 0.45  # hours (from heating_tau=1.5 × tau_ratio=0.3)
         cooling_type = "forced_air"
 
-        from custom_components.adaptive_thermostat.adaptive.physics import (
+        from custom_components.adaptive_climate.adaptive.physics import (
             calculate_initial_cooling_pid
         )
 
@@ -2418,7 +2418,7 @@ class TestCoolingPIDCalculations:
         cooling_tau = 2.0  # hours (from heating_tau=4.0 × tau_ratio=0.5)
         cooling_type = "radiator"
 
-        from custom_components.adaptive_thermostat.adaptive.physics import (
+        from custom_components.adaptive_climate.adaptive.physics import (
             calculate_initial_cooling_pid
         )
 
@@ -2437,7 +2437,7 @@ class TestCoolingPIDCalculations:
         cooling_tau = 6.4  # hours (from heating_tau=8.0 × tau_ratio=0.8)
         cooling_type = "floor_hydronic"
 
-        from custom_components.adaptive_thermostat.adaptive.physics import (
+        from custom_components.adaptive_climate.adaptive.physics import (
             calculate_initial_cooling_pid
         )
 
@@ -2454,7 +2454,7 @@ class TestCoolingPIDCalculations:
         # Compare cooling vs heating PID for same tau value
         tau = 1.5  # hours
 
-        from custom_components.adaptive_thermostat.adaptive.physics import (
+        from custom_components.adaptive_climate.adaptive.physics import (
             calculate_initial_cooling_pid
         )
 
@@ -2473,7 +2473,7 @@ class TestCoolingPIDCalculations:
         """Test cooling Kp multiplier for radiator system."""
         tau = 3.0  # hours
 
-        from custom_components.adaptive_thermostat.adaptive.physics import (
+        from custom_components.adaptive_climate.adaptive.physics import (
             calculate_initial_cooling_pid
         )
 
@@ -2493,7 +2493,7 @@ class TestCoolingPIDCalculations:
         # This test verifies the function reads tau_ratio from COOLING_TYPE_CHARACTERISTICS
         heating_tau = 10.0
 
-        from custom_components.adaptive_thermostat.adaptive.physics import (
+        from custom_components.adaptive_climate.adaptive.physics import (
             estimate_cooling_time_constant
         )
 
@@ -2520,7 +2520,7 @@ class TestCoolingPIDCalculations:
         area_m2 = 50.0
         max_power_w = 1000.0  # Undersized for 50m² (baseline 50 W/m² = 2500W)
 
-        from custom_components.adaptive_thermostat.adaptive.physics import (
+        from custom_components.adaptive_climate.adaptive.physics import (
             calculate_initial_cooling_pid
         )
 
@@ -2545,7 +2545,7 @@ class TestCoolingPIDCalculations:
         cooling_tau = 3.5
         cooling_type = "convector"
 
-        from custom_components.adaptive_thermostat.adaptive.physics import (
+        from custom_components.adaptive_climate.adaptive.physics import (
             calculate_initial_cooling_pid
         )
 

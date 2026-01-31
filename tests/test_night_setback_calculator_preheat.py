@@ -2,8 +2,8 @@
 import pytest
 from datetime import datetime, time as dt_time, timedelta
 from unittest.mock import Mock
-from custom_components.adaptive_thermostat.managers.night_setback_calculator import NightSetbackCalculator
-from custom_components.adaptive_thermostat.adaptive.preheat import PreheatLearner
+from custom_components.adaptive_climate.managers.night_setback_calculator import NightSetbackCalculator
+from custom_components.adaptive_climate.adaptive.preheat import PreheatLearner
 
 
 class TestNightSetbackCalculatorPreheat:

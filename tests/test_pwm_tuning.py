@@ -1,7 +1,7 @@
 """Tests for PWM auto-tuning functionality."""
 
 import pytest
-from custom_components.adaptive_thermostat.adaptive.learning import (
+from custom_components.adaptive_climate.adaptive.learning import (
     calculate_pwm_adjustment,
     ValveCycleTracker,
 )

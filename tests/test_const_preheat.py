@@ -2,7 +2,7 @@
 
 import pytest
 
-from custom_components.adaptive_thermostat.const import (
+from custom_components.adaptive_climate.const import (
     CONF_PREHEAT_ENABLED,
     CONF_MAX_PREHEAT_HOURS,
     HEATING_TYPE_PREHEAT_CONFIG,

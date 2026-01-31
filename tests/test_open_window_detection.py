@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 # Note: OpenWindowDetector doesn't exist yet - these tests follow TDD approach
 # based on CLAUDE.md specification
 try:
-    from custom_components.adaptive_thermostat.adaptive.open_window_detection import (
+    from custom_components.adaptive_climate.adaptive.open_window_detection import (
         OpenWindowDetector,
     )
 except ImportError:

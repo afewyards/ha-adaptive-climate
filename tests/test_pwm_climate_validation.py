@@ -6,7 +6,7 @@ from pathlib import Path
 from datetime import timedelta
 
 # Add parent directory to path
-sys.path.insert(0, str(Path(__file__).parent.parent / "custom_components" / "adaptive_thermostat"))
+sys.path.insert(0, str(Path(__file__).parent.parent / "custom_components" / "adaptive_climate"))
 
 from const import CONF_HEATER, CONF_COOLER, CONF_PWM
 

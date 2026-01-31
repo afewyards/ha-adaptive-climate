@@ -4,10 +4,10 @@ from unittest.mock import patch
 
 import pytest
 
-from custom_components.adaptive_thermostat.adaptive.undershoot_detector import (
+from custom_components.adaptive_climate.adaptive.undershoot_detector import (
     UndershootDetector,
 )
-from custom_components.adaptive_thermostat.const import (
+from custom_components.adaptive_climate.const import (
     HeatingType,
     MAX_UNDERSHOOT_KI_MULTIPLIER,
     MIN_CYCLES_FOR_LEARNING,
@@ -199,7 +199,7 @@ class TestCooldownEnforcement:
         # Immediately check again - should be in cooldown
         assert detector.should_adjust_ki(cycles_completed=0) is False
 
-    @patch('custom_components.adaptive_thermostat.adaptive.undershoot_detector.time.monotonic')
+    @patch('custom_components.adaptive_climate.adaptive.undershoot_detector.time.monotonic')
     def test_can_adjust_after_cooldown_expires(self, mock_time, detector):
         """Test that adjustment is allowed after cooldown expires."""
         # Set initial time

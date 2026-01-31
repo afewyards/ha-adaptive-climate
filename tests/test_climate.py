@@ -18,7 +18,7 @@ class MockHomeAssistantError(Exception):
     pass
 
 
-DOMAIN = "adaptive_thermostat"
+DOMAIN = "adaptive_climate"
 
 
 class MockHVACMode:
@@ -1539,7 +1539,7 @@ async def test_setup_creates_learning_store():
     import sys
     sys.path.insert(0, str(Path(__file__).parent.parent))
 
-    from custom_components.adaptive_thermostat.adaptive.persistence import LearningDataStore
+    from custom_components.adaptive_climate.adaptive.persistence import LearningDataStore
 
     # Arrange
     mock_hass = _create_mock_hass()
@@ -1576,8 +1576,8 @@ async def test_setup_restores_adaptive_learner():
     import sys
     sys.path.insert(0, str(Path(__file__).parent.parent))
 
-    from custom_components.adaptive_thermostat.adaptive.persistence import LearningDataStore
-    from custom_components.adaptive_thermostat.adaptive.learning import AdaptiveLearner
+    from custom_components.adaptive_climate.adaptive.persistence import LearningDataStore
+    from custom_components.adaptive_climate.adaptive.learning import AdaptiveLearner
 
     # Arrange
     mock_hass = _create_mock_hass()
@@ -1638,7 +1638,7 @@ async def test_setup_stores_ke_data_for_later():
     import sys
     sys.path.insert(0, str(Path(__file__).parent.parent))
 
-    from custom_components.adaptive_thermostat.adaptive.persistence import LearningDataStore
+    from custom_components.adaptive_climate.adaptive.persistence import LearningDataStore
 
     # Arrange
     mock_hass = _create_mock_hass()
@@ -1695,7 +1695,7 @@ async def test_setup_stores_ke_data_for_later():
 @pytest.mark.asyncio
 async def test_ke_learner_restored_from_storage():
     """Test that KeLearner is restored from storage when stored_ke_data exists."""
-    from custom_components.adaptive_thermostat.adaptive.ke_learning import KeLearner
+    from custom_components.adaptive_climate.adaptive.ke_learning import KeLearner
 
     # Arrange - create stored ke_learner data with observations
     stored_ke_data = {
@@ -1735,8 +1735,8 @@ async def test_ke_learner_restored_from_storage():
 @pytest.mark.asyncio
 async def test_ke_learner_falls_back_to_physics():
     """Test that KeLearner is created from physics when no stored data exists."""
-    from custom_components.adaptive_thermostat.adaptive.ke_learning import KeLearner
-    from custom_components.adaptive_thermostat.adaptive.physics import calculate_initial_ke
+    from custom_components.adaptive_climate.adaptive.ke_learning import KeLearner
+    from custom_components.adaptive_climate.adaptive.physics import calculate_initial_ke
 
     # Arrange - calculate physics-based Ke
     physics_ke = calculate_initial_ke(
@@ -1765,8 +1765,8 @@ async def test_ke_learner_falls_back_to_physics():
 @pytest.mark.asyncio
 async def test_removal_saves_learning_data():
     """Test that async_will_remove_from_hass calls async_save_zone on entity removal."""
-    from custom_components.adaptive_thermostat.adaptive.persistence import LearningDataStore
-    from custom_components.adaptive_thermostat.adaptive.learning import AdaptiveLearner
+    from custom_components.adaptive_climate.adaptive.persistence import LearningDataStore
+    from custom_components.adaptive_climate.adaptive.learning import AdaptiveLearner
 
     # Arrange
     mock_hass = _create_mock_hass()
@@ -1814,9 +1814,9 @@ async def test_removal_saves_learning_data():
 @pytest.mark.asyncio
 async def test_removal_saves_both_learners():
     """Test that async_will_remove_from_hass saves both adaptive_learner and ke_learner."""
-    from custom_components.adaptive_thermostat.adaptive.persistence import LearningDataStore
-    from custom_components.adaptive_thermostat.adaptive.learning import AdaptiveLearner
-    from custom_components.adaptive_thermostat.adaptive.ke_learning import KeLearner
+    from custom_components.adaptive_climate.adaptive.persistence import LearningDataStore
+    from custom_components.adaptive_climate.adaptive.learning import AdaptiveLearner
+    from custom_components.adaptive_climate.adaptive.ke_learning import KeLearner
 
     # Arrange
     mock_hass = _create_mock_hass()
@@ -1897,7 +1897,7 @@ class TestClimateDispatcherIntegration:
 
     def test_climate_creates_dispatcher(self):
         """Test AdaptiveThermostat creates CycleEventDispatcher on init."""
-        from custom_components.adaptive_thermostat.managers.events import CycleEventDispatcher
+        from custom_components.adaptive_climate.managers.events import CycleEventDispatcher
 
         # Create a mock thermostat instance
         mock_thermostat = MagicMock()
@@ -1911,8 +1911,8 @@ class TestClimateDispatcherIntegration:
 
     def test_climate_passes_dispatcher_to_hc(self, mock_hass_for_dispatcher):
         """Test dispatcher passed to HeaterController."""
-        from custom_components.adaptive_thermostat.managers.events import CycleEventDispatcher
-        from custom_components.adaptive_thermostat.managers.heater_controller import HeaterController
+        from custom_components.adaptive_climate.managers.events import CycleEventDispatcher
+        from custom_components.adaptive_climate.managers.heater_controller import HeaterController
 
         dispatcher = CycleEventDispatcher()
 
@@ -1939,9 +1939,9 @@ class TestClimateDispatcherIntegration:
 
     def test_climate_passes_dispatcher_to_ctm(self, mock_hass_for_dispatcher):
         """Test dispatcher passed to CycleTrackerManager."""
-        from custom_components.adaptive_thermostat.managers.events import CycleEventDispatcher
-        from custom_components.adaptive_thermostat.managers.cycle_tracker import CycleTrackerManager
-        from custom_components.adaptive_thermostat.adaptive.learning import AdaptiveLearner
+        from custom_components.adaptive_climate.managers.events import CycleEventDispatcher
+        from custom_components.adaptive_climate.managers.cycle_tracker import CycleTrackerManager
+        from custom_components.adaptive_climate.adaptive.learning import AdaptiveLearner
 
         dispatcher = CycleEventDispatcher()
         learner = AdaptiveLearner(heating_type="floor_hydronic")
@@ -1966,7 +1966,7 @@ class TestClimateDispatcherIntegration:
 
     def test_climate_emits_setpoint_changed(self):
         """Test target temp change emits SETPOINT_CHANGED."""
-        from custom_components.adaptive_thermostat.managers.events import (
+        from custom_components.adaptive_climate.managers.events import (
             CycleEventDispatcher,
             CycleEventType,
             SetpointChangedEvent,
@@ -1998,7 +1998,7 @@ class TestClimateDispatcherIntegration:
 
     def test_climate_emits_mode_changed(self):
         """Test HVAC mode change emits MODE_CHANGED."""
-        from custom_components.adaptive_thermostat.managers.events import (
+        from custom_components.adaptive_climate.managers.events import (
             CycleEventDispatcher,
             CycleEventType,
             ModeChangedEvent,
@@ -2026,7 +2026,7 @@ class TestClimateDispatcherIntegration:
 
     def test_climate_emits_contact_pause(self):
         """Test contact sensor open emits CONTACT_PAUSE."""
-        from custom_components.adaptive_thermostat.managers.events import (
+        from custom_components.adaptive_climate.managers.events import (
             CycleEventDispatcher,
             CycleEventType,
             ContactPauseEvent,
@@ -2053,7 +2053,7 @@ class TestClimateDispatcherIntegration:
 
     def test_climate_emits_contact_resume(self):
         """Test contact sensor close emits CONTACT_RESUME."""
-        from custom_components.adaptive_thermostat.managers.events import (
+        from custom_components.adaptive_climate.managers.events import (
             CycleEventDispatcher,
             CycleEventType,
             ContactResumeEvent,
@@ -2083,7 +2083,7 @@ class TestClimateDispatcherIntegration:
 
     def test_climate_contact_pause_duration_tracking(self):
         """Test that pause duration is correctly calculated."""
-        from custom_components.adaptive_thermostat.managers.events import (
+        from custom_components.adaptive_climate.managers.events import (
             CycleEventDispatcher,
             CycleEventType,
             ContactPauseEvent,
@@ -2151,7 +2151,7 @@ class TestClimateDispatcherIntegration:
 
     def test_climate_setpoint_no_change_no_event(self):
         """Test that no event is emitted when setpoint doesn't change."""
-        from custom_components.adaptive_thermostat.managers.events import (
+        from custom_components.adaptive_climate.managers.events import (
             CycleEventDispatcher,
             CycleEventType,
         )
@@ -2166,7 +2166,7 @@ class TestClimateDispatcherIntegration:
 
         # Only emit if old != new (simulates the check in _set_target_temp)
         if old_temp is not None and old_temp != new_temp:
-            from custom_components.adaptive_thermostat.managers.events import SetpointChangedEvent
+            from custom_components.adaptive_climate.managers.events import SetpointChangedEvent
             dispatcher.emit(
                 SetpointChangedEvent(
                     hvac_mode="heat",
@@ -2180,7 +2180,7 @@ class TestClimateDispatcherIntegration:
 
     def test_climate_mode_no_change_no_event(self):
         """Test that no event is emitted when mode doesn't change."""
-        from custom_components.adaptive_thermostat.managers.events import (
+        from custom_components.adaptive_climate.managers.events import (
             CycleEventDispatcher,
             CycleEventType,
         )
@@ -2194,7 +2194,7 @@ class TestClimateDispatcherIntegration:
 
         # Only emit if old != new (simulates the check in async_set_hvac_mode)
         if old_mode != new_mode:
-            from custom_components.adaptive_thermostat.managers.events import ModeChangedEvent
+            from custom_components.adaptive_climate.managers.events import ModeChangedEvent
             dispatcher.emit(
                 ModeChangedEvent(
                     timestamp=datetime.now(),
@@ -2208,7 +2208,7 @@ class TestClimateDispatcherIntegration:
     def test_fires_temperature_update_event(self):
         """Test climate.py fires TemperatureUpdateEvent after PID calc."""
         from datetime import datetime
-        from custom_components.adaptive_thermostat.managers.events import (
+        from custom_components.adaptive_climate.managers.events import (
             CycleEventDispatcher,
             CycleEventType,
             TemperatureUpdateEvent,
@@ -2252,7 +2252,7 @@ class TestClimateDispatcherIntegration:
         # Check climate_control.py since _async_control_heating was moved there
         climate_control_file = os.path.join(
             os.path.dirname(__file__),
-            "..", "custom_components", "adaptive_thermostat", "climate_control.py"
+            "..", "custom_components", "adaptive_climate", "climate_control.py"
         )
         with open(climate_control_file, "r") as f:
             source = f.read()
@@ -2275,7 +2275,7 @@ class TestClimateNoDirectCTMCalls:
         import os
         climate_file = os.path.join(
             os.path.dirname(__file__),
-            "..", "custom_components", "adaptive_thermostat", "climate.py"
+            "..", "custom_components", "adaptive_climate", "climate.py"
         )
         with open(climate_file, "r") as f:
             source = f.read()
@@ -2289,7 +2289,7 @@ class TestClimateNoDirectCTMCalls:
         import os
         climate_file = os.path.join(
             os.path.dirname(__file__),
-            "..", "custom_components", "adaptive_thermostat", "climate.py"
+            "..", "custom_components", "adaptive_climate", "climate.py"
         )
         with open(climate_file, "r") as f:
             source = f.read()
@@ -2303,7 +2303,7 @@ class TestClimateNoDirectCTMCalls:
         import os
         climate_file = os.path.join(
             os.path.dirname(__file__),
-            "..", "custom_components", "adaptive_thermostat", "climate.py"
+            "..", "custom_components", "adaptive_climate", "climate.py"
         )
         with open(climate_file, "r") as f:
             source = f.read()
@@ -2317,7 +2317,7 @@ class TestClimateNoDirectCTMCalls:
         import os
         climate_file = os.path.join(
             os.path.dirname(__file__),
-            "..", "custom_components", "adaptive_thermostat", "climate.py"
+            "..", "custom_components", "adaptive_climate", "climate.py"
         )
         with open(climate_file, "r") as f:
             source = f.read()
@@ -2342,8 +2342,8 @@ class TestPIDControllerHeatingTypeTolerance:
         """
         sys.path.insert(0, str(Path(__file__).parent.parent))
 
-        from custom_components.adaptive_thermostat import pid_controller
-        from custom_components.adaptive_thermostat.const import HEATING_TYPE_CHARACTERISTICS
+        from custom_components.adaptive_climate import pid_controller
+        from custom_components.adaptive_climate.const import HEATING_TYPE_CHARACTERISTICS
 
         # Test that this behavior would work by verifying HEATING_TYPE_CHARACTERISTICS structure
         # and that PID accepts these parameters correctly
@@ -2399,10 +2399,10 @@ class TestPIDControllerHeatingTypeTolerance:
         sys.path.insert(0, str(Path(__file__).parent.parent))
 
         from unittest.mock import Mock, AsyncMock, patch
-        from custom_components.adaptive_thermostat.managers.pid_tuning import PIDTuningManager
-        from custom_components.adaptive_thermostat.adaptive.learning import AdaptiveLearner
-        from custom_components.adaptive_thermostat.pid_controller import PID
-        from custom_components.adaptive_thermostat.adaptive.cycle_analysis import CycleMetrics
+        from custom_components.adaptive_climate.managers.pid_tuning import PIDTuningManager
+        from custom_components.adaptive_climate.adaptive.learning import AdaptiveLearner
+        from custom_components.adaptive_climate.pid_controller import PID
+        from custom_components.adaptive_climate.adaptive.cycle_analysis import CycleMetrics
 
         # Arrange - Create mock thermostat and PID controller
         mock_thermostat = Mock()
@@ -2466,7 +2466,7 @@ class TestPIDControllerHeatingTypeTolerance:
         # Create mock hass
         mock_hass = Mock()
         mock_hass.data = {
-            "adaptive_thermostat": {
+            "adaptive_climate": {
                 "coordinator": mock_coordinator,
             }
         }
@@ -2701,7 +2701,7 @@ class TestClimateManifoldIntegration:
         mock_coordinator.register_zone = MagicMock()
 
         hass.data = {
-            "adaptive_thermostat": {
+            "adaptive_climate": {
                 "coordinator": mock_coordinator,
             }
         }
@@ -2709,7 +2709,7 @@ class TestClimateManifoldIntegration:
 
     def test_entity_stores_loops_config(self):
         """Test entity stores loops config value from configuration."""
-        from custom_components.adaptive_thermostat.const import CONF_LOOPS
+        from custom_components.adaptive_climate.const import CONF_LOOPS
 
         # Arrange
         config = {CONF_LOOPS: 3}
@@ -2723,7 +2723,7 @@ class TestClimateManifoldIntegration:
 
     def test_entity_stores_default_loops(self):
         """Test entity defaults to 1 loop when not configured."""
-        from custom_components.adaptive_thermostat.const import CONF_LOOPS
+        from custom_components.adaptive_climate.const import CONF_LOOPS
 
         # Arrange
         config = {}
@@ -2748,7 +2748,7 @@ class TestClimateManifoldIntegration:
         mock_thermostat._unique_id = zone_id
         mock_thermostat._loops = loops
 
-        coordinator = mock_hass_manifold.data["adaptive_thermostat"]["coordinator"]
+        coordinator = mock_hass_manifold.data["adaptive_climate"]["coordinator"]
 
         # Act - Simulate registering zone with loops
         # This would happen in async_setup_platform before async_added_to_hass
@@ -2767,7 +2767,7 @@ class TestClimateManifoldIntegration:
         mock_thermostat.hass = mock_hass_manifold
         mock_thermostat._unique_id = zone_id
 
-        coordinator = mock_hass_manifold.data["adaptive_thermostat"]["coordinator"]
+        coordinator = mock_hass_manifold.data["adaptive_climate"]["coordinator"]
         coordinator.get_transport_delay_for_zone.return_value = 5.0
 
         # Act - Simulate querying transport delay when heating starts
@@ -2826,7 +2826,7 @@ class TestClimateManifoldIntegration:
         """Test transport delay is re-queried when heating restarts."""
         # Arrange
         zone_id = "test_zone"
-        coordinator = mock_hass_manifold.data["adaptive_thermostat"]["coordinator"]
+        coordinator = mock_hass_manifold.data["adaptive_climate"]["coordinator"]
 
         # First call returns 5 min delay (cold manifold)
         # Second call returns 0 delay (warm manifold)
@@ -2864,7 +2864,7 @@ class TestClimateManifoldIntegration:
         """Test transport delay returns 0 when manifold recently active."""
         # Arrange
         zone_id = "test_zone"
-        coordinator = mock_hass_manifold.data["adaptive_thermostat"]["coordinator"]
+        coordinator = mock_hass_manifold.data["adaptive_climate"]["coordinator"]
         coordinator.get_transport_delay_for_zone.return_value = 0.0
 
         # Act - Query when manifold is warm
@@ -2954,7 +2954,7 @@ class TestClimateManifoldIntegration:
         mock_manifold_registry = MagicMock()
         mock_manifold_registry.mark_manifold_active = MagicMock()
 
-        mock_hass_manifold.data["adaptive_thermostat"]["manifold_registry"] = mock_manifold_registry
+        mock_hass_manifold.data["adaptive_climate"]["manifold_registry"] = mock_manifold_registry
 
         mock_thermostat = MagicMock()
         mock_thermostat.hass = mock_hass_manifold
@@ -2974,7 +2974,7 @@ class TestClimateManifoldIntegration:
         mock_manifold_registry = MagicMock()
         mock_manifold_registry.mark_manifold_active = MagicMock()
 
-        mock_hass_manifold.data["adaptive_thermostat"]["manifold_registry"] = mock_manifold_registry
+        mock_hass_manifold.data["adaptive_climate"]["manifold_registry"] = mock_manifold_registry
 
         mock_thermostat = MagicMock()
         mock_thermostat.hass = mock_hass_manifold
@@ -2991,14 +2991,14 @@ class TestClimateManifoldIntegration:
     async def test_query_and_mark_manifold_sets_transport_delay_for_heating(self, mock_hass_manifold):
         """Test _query_and_mark_manifold sets transport delay and marks manifold for heating."""
         # Arrange
-        from custom_components.adaptive_thermostat.climate import AdaptiveThermostat
+        from custom_components.adaptive_climate.climate import AdaptiveThermostat
         from unittest.mock import MagicMock, patch
 
         mock_manifold_registry = MagicMock()
         mock_manifold_registry.mark_manifold_active = MagicMock()
-        mock_hass_manifold.data["adaptive_thermostat"]["manifold_registry"] = mock_manifold_registry
+        mock_hass_manifold.data["adaptive_climate"]["manifold_registry"] = mock_manifold_registry
 
-        coordinator = mock_hass_manifold.data["adaptive_thermostat"]["coordinator"]
+        coordinator = mock_hass_manifold.data["adaptive_climate"]["coordinator"]
         coordinator.get_transport_delay_for_zone.return_value = 3.5
 
         mock_thermostat = MagicMock(spec=AdaptiveThermostat)
@@ -3011,7 +3011,7 @@ class TestClimateManifoldIntegration:
         mock_thermostat._cycle_tracker = MagicMock()
 
         # Act - Call _query_and_mark_manifold directly
-        from custom_components.adaptive_thermostat.climate import AdaptiveThermostat
+        from custom_components.adaptive_climate.climate import AdaptiveThermostat
         AdaptiveThermostat._query_and_mark_manifold(mock_thermostat, "heating")
 
         # Assert
@@ -3024,14 +3024,14 @@ class TestClimateManifoldIntegration:
     async def test_query_and_mark_manifold_sets_transport_delay_for_cooling(self, mock_hass_manifold):
         """Test _query_and_mark_manifold sets transport delay and marks manifold for cooling."""
         # Arrange
-        from custom_components.adaptive_thermostat.climate import AdaptiveThermostat
+        from custom_components.adaptive_climate.climate import AdaptiveThermostat
         from unittest.mock import MagicMock
 
         mock_manifold_registry = MagicMock()
         mock_manifold_registry.mark_manifold_active = MagicMock()
-        mock_hass_manifold.data["adaptive_thermostat"]["manifold_registry"] = mock_manifold_registry
+        mock_hass_manifold.data["adaptive_climate"]["manifold_registry"] = mock_manifold_registry
 
-        coordinator = mock_hass_manifold.data["adaptive_thermostat"]["coordinator"]
+        coordinator = mock_hass_manifold.data["adaptive_climate"]["coordinator"]
         coordinator.get_transport_delay_for_zone.return_value = 2.0
 
         mock_thermostat = MagicMock(spec=AdaptiveThermostat)
@@ -3091,7 +3091,7 @@ class TestLazyCoolingPIDInitialization:
         """
         sys.path.insert(0, str(Path(__file__).parent.parent))
 
-        from custom_components.adaptive_thermostat.climate import AdaptiveThermostat
+        from custom_components.adaptive_climate.climate import AdaptiveThermostat
         from unittest.mock import Mock
 
         # Arrange - Create minimal mock config for thermostat
@@ -3138,7 +3138,7 @@ class TestLazyCoolingPIDInitialization:
         """
         sys.path.insert(0, str(Path(__file__).parent.parent))
 
-        from custom_components.adaptive_thermostat.climate import AdaptiveThermostat
+        from custom_components.adaptive_climate.climate import AdaptiveThermostat
         from unittest.mock import Mock, patch, AsyncMock
         from homeassistant.components.climate import HVACMode
 
@@ -3163,7 +3163,7 @@ class TestLazyCoolingPIDInitialization:
         )
 
         # Mock the physics calculation function
-        with patch('custom_components.adaptive_thermostat.climate.calculate_initial_cooling_pid') as mock_calc:
+        with patch('custom_components.adaptive_climate.climate.calculate_initial_cooling_pid') as mock_calc:
             mock_calc.return_value = (50.0, 0.0005, 25.0)  # Mock Kp, Ki, Kd
 
             # Act - Switch to COOL mode for the first time
@@ -3192,7 +3192,7 @@ class TestLazyCoolingPIDInitialization:
         """
         sys.path.insert(0, str(Path(__file__).parent.parent))
 
-        from custom_components.adaptive_thermostat.adaptive.physics import calculate_initial_cooling_pid
+        from custom_components.adaptive_climate.adaptive.physics import calculate_initial_cooling_pid
 
         # Arrange - Known heating tau and derive cooling tau (in hours, not seconds)
         heating_tau = 1.0  # 1 hour heating time constant
@@ -3212,7 +3212,7 @@ class TestLazyCoolingPIDInitialization:
 
         # Assert - Cooling gains should differ from heating gains
         # (we can verify this by comparing with standard heating PID calculation)
-        from custom_components.adaptive_thermostat.adaptive.physics import calculate_initial_pid
+        from custom_components.adaptive_climate.adaptive.physics import calculate_initial_pid
         heating_kp, heating_ki, heating_kd = calculate_initial_pid(
             thermal_time_constant=heating_tau,
             heating_type="radiator"
@@ -3234,7 +3234,7 @@ class TestLazyCoolingPIDInitialization:
         """
         sys.path.insert(0, str(Path(__file__).parent.parent))
 
-        from custom_components.adaptive_thermostat.climate import AdaptiveThermostat
+        from custom_components.adaptive_climate.climate import AdaptiveThermostat
         from unittest.mock import Mock, AsyncMock
         from homeassistant.components.climate import HVACMode
 
@@ -3289,7 +3289,7 @@ class TestLazyCoolingPIDInitialization:
         """
         sys.path.insert(0, str(Path(__file__).parent.parent))
 
-        from custom_components.adaptive_thermostat.climate import AdaptiveThermostat
+        from custom_components.adaptive_climate.climate import AdaptiveThermostat
         from unittest.mock import Mock, patch, AsyncMock
         from homeassistant.components.climate import HVACMode
 
@@ -3314,7 +3314,7 @@ class TestLazyCoolingPIDInitialization:
         )
 
         # Act - First COOL activation
-        with patch('custom_components.adaptive_thermostat.climate.calculate_initial_cooling_pid') as mock_calc:
+        with patch('custom_components.adaptive_climate.climate.calculate_initial_cooling_pid') as mock_calc:
             mock_calc.return_value = (50.0, 0.0005, 25.0)
 
             await thermostat.async_set_hvac_mode(HVACMode.COOL)

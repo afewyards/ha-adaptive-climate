@@ -2,11 +2,11 @@
 
 import pytest
 
-from custom_components.adaptive_thermostat.adaptive.learning import (
+from custom_components.adaptive_climate.adaptive.learning import (
     AdaptiveLearner,
     CycleMetrics,
 )
-from custom_components.adaptive_thermostat.const import MIN_CYCLES_FOR_LEARNING
+from custom_components.adaptive_climate.const import MIN_CYCLES_FOR_LEARNING
 
 
 def test_high_overshoot_reducing_kp():

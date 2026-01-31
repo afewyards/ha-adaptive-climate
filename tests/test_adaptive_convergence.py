@@ -3,9 +3,9 @@
 import pytest
 from datetime import datetime, timedelta
 from unittest.mock import patch
-from custom_components.adaptive_thermostat.adaptive.learning import AdaptiveLearner
-from custom_components.adaptive_thermostat.adaptive.cycle_analysis import CycleMetrics
-from custom_components.adaptive_thermostat.const import (
+from custom_components.adaptive_climate.adaptive.learning import AdaptiveLearner
+from custom_components.adaptive_climate.adaptive.cycle_analysis import CycleMetrics
+from custom_components.adaptive_climate.const import (
     CONVERGENCE_CONFIDENCE_HIGH,
     CONFIDENCE_INCREASE_PER_GOOD_CYCLE,
 )
@@ -237,7 +237,7 @@ class TestSeasonalShift:
         """Test that no shift is detected with stable outdoor temperature."""
         # Add 15 readings around 10°C
         now = datetime.now()
-        with patch('custom_components.adaptive_thermostat.adaptive.validation.dt_util') as mock_dt_util:
+        with patch('custom_components.adaptive_climate.adaptive.validation.dt_util') as mock_dt_util:
             mock_dt_util.utcnow.return_value = now
             for _ in range(15):
                 assert not learner.check_seasonal_shift(outdoor_temp=10.0)
@@ -245,7 +245,7 @@ class TestSeasonalShift:
     def test_shift_detected_with_large_change(self, learner):
         """Test that shift is detected with 10°C+ change."""
         now = datetime.now()
-        with patch('custom_components.adaptive_thermostat.adaptive.validation.dt_util') as mock_dt_util:
+        with patch('custom_components.adaptive_climate.adaptive.validation.dt_util') as mock_dt_util:
             mock_dt_util.utcnow.return_value = now
 
             # Add 10 readings at 5°C
@@ -270,7 +270,7 @@ class TestSeasonalShift:
         """Test that shift detection requires sufficient history."""
         # Add only 5 readings (need at least 10)
         now = datetime.now()
-        with patch('custom_components.adaptive_thermostat.adaptive.validation.dt_util') as mock_dt_util:
+        with patch('custom_components.adaptive_climate.adaptive.validation.dt_util') as mock_dt_util:
             mock_dt_util.utcnow.return_value = now
             for _ in range(5):
                 assert not learner.check_seasonal_shift(outdoor_temp=10.0)
@@ -278,7 +278,7 @@ class TestSeasonalShift:
     def test_shift_check_rate_limited(self, learner):
         """Test that shift check is rate-limited to once per day."""
         now = datetime.now()
-        with patch('custom_components.adaptive_thermostat.adaptive.validation.dt_util') as mock_dt_util:
+        with patch('custom_components.adaptive_climate.adaptive.validation.dt_util') as mock_dt_util:
             mock_dt_util.utcnow.return_value = now
 
             # Add 20 readings to build history

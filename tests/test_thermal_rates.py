@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta
 import pytest
 
-from custom_components.adaptive_thermostat.adaptive.learning import ThermalRateLearner
+from custom_components.adaptive_climate.adaptive.learning import ThermalRateLearner
 
 
 def test_cooling_rate_calculation():

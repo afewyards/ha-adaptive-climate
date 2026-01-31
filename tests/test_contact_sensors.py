@@ -1,7 +1,7 @@
 """Tests for contact sensor module."""
 import pytest
 from datetime import datetime, timedelta
-from custom_components.adaptive_thermostat.adaptive.contact_sensors import (
+from custom_components.adaptive_climate.adaptive.contact_sensors import (
     ContactSensorHandler,
     ContactSensorManager,
     ContactAction

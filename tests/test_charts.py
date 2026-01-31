@@ -2,7 +2,7 @@
 from unittest.mock import MagicMock, patch, AsyncMock
 import pytest
 
-from custom_components.adaptive_thermostat.analytics.charts import (
+from custom_components.adaptive_climate.analytics.charts import (
     ChartGenerator,
     save_chart_to_www,
     cleanup_old_charts,
@@ -63,7 +63,7 @@ def test_chart_generator_bar_chart():
     mock_draw = MagicMock()
     mock_buffer = MagicMock()
 
-    with patch("custom_components.adaptive_thermostat.analytics.charts.ChartGenerator._check_pillow", return_value=True):
+    with patch("custom_components.adaptive_climate.analytics.charts.ChartGenerator._check_pillow", return_value=True):
         gen = ChartGenerator()
         gen._pillow_available = True
 
@@ -104,7 +104,7 @@ def test_chart_generator_comfort_chart():
     mock_image = MagicMock()
     mock_draw = MagicMock()
 
-    with patch("custom_components.adaptive_thermostat.analytics.charts.ChartGenerator._check_pillow", return_value=True):
+    with patch("custom_components.adaptive_climate.analytics.charts.ChartGenerator._check_pillow", return_value=True):
         gen = ChartGenerator()
         gen._pillow_available = True
 
@@ -130,7 +130,7 @@ def test_chart_generator_comparison_chart():
     mock_image = MagicMock()
     mock_draw = MagicMock()
 
-    with patch("custom_components.adaptive_thermostat.analytics.charts.ChartGenerator._check_pillow", return_value=True):
+    with patch("custom_components.adaptive_climate.analytics.charts.ChartGenerator._check_pillow", return_value=True):
         gen = ChartGenerator()
         gen._pillow_available = True
 

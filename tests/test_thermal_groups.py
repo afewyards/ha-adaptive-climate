@@ -2,7 +2,7 @@
 import pytest
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock
-from custom_components.adaptive_thermostat.adaptive.thermal_groups import (
+from custom_components.adaptive_climate.adaptive.thermal_groups import (
     ThermalGroup,
     ThermalGroupManager,
     TransferHistory,
@@ -363,7 +363,7 @@ class TestCrossGroupFeedforward:
         )
 
         # Calculate feedforward for bedroom1
-        with patch('custom_components.adaptive_thermostat.adaptive.thermal_groups.dt_util') as mock_dt_util:
+        with patch('custom_components.adaptive_climate.adaptive.thermal_groups.dt_util') as mock_dt_util:
             mock_dt_util.utcnow.return_value = current_time
             feedforward = manager.calculate_feedforward("bedroom1")
 
@@ -406,7 +406,7 @@ class TestCrossGroupFeedforward:
         )
 
         # Should return 0 because data is too recent (doesn't match delay)
-        with patch('custom_components.adaptive_thermostat.adaptive.thermal_groups.dt_util') as mock_dt_util:
+        with patch('custom_components.adaptive_climate.adaptive.thermal_groups.dt_util') as mock_dt_util:
             mock_dt_util.utcnow.return_value = current_time
             feedforward = manager.calculate_feedforward("bedroom1")
             assert feedforward == 0.0
@@ -480,7 +480,7 @@ class TestCrossGroupFeedforward:
 
         # Record heat output for living_room (in downstairs group)
         current_time = datetime(2024, 1, 15, 10, 0)
-        with patch('custom_components.adaptive_thermostat.adaptive.thermal_groups.dt_util') as mock_dt_util:
+        with patch('custom_components.adaptive_climate.adaptive.thermal_groups.dt_util') as mock_dt_util:
             mock_dt_util.utcnow.return_value = current_time
             manager.record_heat_output("living_room", 60.0)
 
@@ -531,7 +531,7 @@ class TestCrossGroupFeedforward:
         manager._transfer_history["upstairs"].append(recent_entry)
 
         # Record new heat output (triggers pruning)
-        with patch('custom_components.adaptive_thermostat.adaptive.thermal_groups.dt_util') as mock_dt_util:
+        with patch('custom_components.adaptive_climate.adaptive.thermal_groups.dt_util') as mock_dt_util:
             mock_dt_util.utcnow.return_value = current_time
             manager.record_heat_output("living_room", 50.0)
 
@@ -578,7 +578,7 @@ class TestCrossGroupFeedforward:
         )
 
         # Should return 0 because entry is outside 5-minute tolerance window
-        with patch('custom_components.adaptive_thermostat.adaptive.thermal_groups.dt_util') as mock_dt_util:
+        with patch('custom_components.adaptive_climate.adaptive.thermal_groups.dt_util') as mock_dt_util:
             mock_dt_util.utcnow.return_value = current_time
             feedforward = manager.calculate_feedforward("bedroom1")
             assert feedforward == 0.0

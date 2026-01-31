@@ -5,11 +5,11 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from custom_components.adaptive_thermostat.managers.cycle_tracker import (
+from custom_components.adaptive_climate.managers.cycle_tracker import (
     CycleState,
     CycleTrackerManager,
 )
-from custom_components.adaptive_thermostat.managers.events import (
+from custom_components.adaptive_climate.managers.events import (
     CycleEventDispatcher,
     CycleStartedEvent,
     SettlingStartedEvent,
@@ -29,8 +29,8 @@ def mock_dt_util():
     # Tests use various dates in January 2025, so we use end of January
     fixed_now = datetime(2025, 1, 31, 23, 59, 59)
     # Patch both modules that use dt_util.utcnow()
-    with patch('custom_components.adaptive_thermostat.managers.cycle_metrics.dt_util.utcnow', return_value=fixed_now), \
-         patch('custom_components.adaptive_thermostat.managers.cycle_tracker.dt_util.utcnow', return_value=fixed_now):
+    with patch('custom_components.adaptive_climate.managers.cycle_metrics.dt_util.utcnow', return_value=fixed_now), \
+         patch('custom_components.adaptive_climate.managers.cycle_tracker.dt_util.utcnow', return_value=fixed_now):
         yield
 
 
@@ -38,7 +38,7 @@ def mock_dt_util():
 def mock_async_call_later():
     """Mock async_call_later from homeassistant.helpers.event."""
     with patch(
-        "custom_components.adaptive_thermostat.managers.cycle_tracker.async_call_later"
+        "custom_components.adaptive_climate.managers.cycle_tracker.async_call_later"
     ) as mock:
         mock.return_value = MagicMock()  # Returns cancel handle
         yield mock
@@ -1140,7 +1140,7 @@ class TestCycleTrackerEventSubscriptions:
 
     def test_ctm_subscribes_to_events(self, mock_hass, mock_adaptive_learner, mock_callbacks):
         """Test CTM subscribes to all input events on init."""
-        from custom_components.adaptive_thermostat.managers.events import (
+        from custom_components.adaptive_climate.managers.events import (
             CycleEventType,
             CycleEventDispatcher,
         )
@@ -1175,7 +1175,7 @@ class TestCycleTrackerEventSubscriptions:
 
     def test_ctm_cycle_started_handler(self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher):
         """Test CYCLE_STARTED event triggers IDLE→HEATING transition."""
-        from custom_components.adaptive_thermostat.managers.events import (
+        from custom_components.adaptive_climate.managers.events import (
             CycleEventDispatcher,
             CycleStartedEvent,
         )
@@ -1209,7 +1209,7 @@ class TestCycleTrackerEventSubscriptions:
 
     def test_ctm_settling_started_handler(self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher):
         """Test SETTLING_STARTED event triggers HEATING→SETTLING transition."""
-        from custom_components.adaptive_thermostat.managers.events import (
+        from custom_components.adaptive_climate.managers.events import (
             CycleEventDispatcher,
             CycleStartedEvent,
             SettlingStartedEvent,
@@ -1247,7 +1247,7 @@ class TestCycleTrackerEventSubscriptions:
 
     def test_ctm_heating_events_track_duty(self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher):
         """Test HEATING_STARTED/ENDED events update duty cycle tracking."""
-        from custom_components.adaptive_thermostat.managers.events import (
+        from custom_components.adaptive_climate.managers.events import (
             CycleEventDispatcher,
             CycleStartedEvent,
             HeatingStartedEvent,
@@ -1297,7 +1297,7 @@ class TestCycleTrackerEventSubscriptions:
 
     def test_ctm_contact_pause_handler(self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher):
         """Test CONTACT_PAUSE event records interruption."""
-        from custom_components.adaptive_thermostat.managers.events import (
+        from custom_components.adaptive_climate.managers.events import (
             CycleEventDispatcher,
             CycleStartedEvent,
             ContactPauseEvent,
@@ -1337,7 +1337,7 @@ class TestCycleTrackerEventSubscriptions:
 
     def test_ctm_contact_resume_handler(self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher):
         """Test CONTACT_RESUME handler (currently no-op since pause already aborts)."""
-        from custom_components.adaptive_thermostat.managers.events import (
+        from custom_components.adaptive_climate.managers.events import (
             CycleEventDispatcher,
             ContactResumeEvent,
         )
@@ -1369,7 +1369,7 @@ class TestCycleTrackerEventSubscriptions:
 
     def test_ctm_mode_changed_aborts(self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher):
         """Test MODE_CHANGED event during cycle aborts it."""
-        from custom_components.adaptive_thermostat.managers.events import (
+        from custom_components.adaptive_climate.managers.events import (
             CycleEventDispatcher,
             CycleStartedEvent,
             ModeChangedEvent,
@@ -1410,7 +1410,7 @@ class TestCycleTrackerEventSubscriptions:
     @pytest.mark.asyncio
     async def test_ctm_emits_cycle_ended(self, mock_hass, mock_adaptive_learner, mock_callbacks):
         """Test CTM emits CYCLE_ENDED when settling completes."""
-        from custom_components.adaptive_thermostat.managers.events import (
+        from custom_components.adaptive_climate.managers.events import (
             CycleEventDispatcher,
             CycleEventType,
         )
@@ -1462,7 +1462,7 @@ class TestCycleTrackerEventSubscriptions:
     @pytest.mark.asyncio
     async def test_ctm_cycle_ended_contains_preheat_fields(self, mock_hass, mock_adaptive_learner, mock_callbacks):
         """Test CYCLE_ENDED event metrics contain preheat-required fields."""
-        from custom_components.adaptive_thermostat.managers.events import (
+        from custom_components.adaptive_climate.managers.events import (
             CycleEventDispatcher,
             CycleEventType,
             CycleStartedEvent,
@@ -1915,7 +1915,7 @@ class TestCycleTrackerFinalizeSave:
 
         # Setup hass.data with DOMAIN and learning_store
         mock_hass.data = {
-            "adaptive_thermostat": {
+            "adaptive_climate": {
                 "learning_store": mock_learning_store,
             }
         }
@@ -1975,7 +1975,7 @@ class TestCycleTrackerFinalizeSave:
 
         # Setup hass.data with DOMAIN and learning_store
         mock_hass.data = {
-            "adaptive_thermostat": {
+            "adaptive_climate": {
                 "learning_store": mock_learning_store,
             }
         }
@@ -2110,7 +2110,7 @@ class TestCycleTrackerFinalizeSave:
 
         # Mock calculate_settling_time to verify reference_time is passed
         with patch(
-            "custom_components.adaptive_thermostat.adaptive.cycle_analysis.calculate_settling_time"
+            "custom_components.adaptive_climate.adaptive.cycle_analysis.calculate_settling_time"
         ) as mock_calc_settling:
             mock_calc_settling.return_value = 5.0  # Return dummy value
 
@@ -2217,7 +2217,7 @@ class TestTemperatureUpdateIntegralTracking:
         self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
     ):
         """Test that CycleTrackerManager captures integral value when entering cold tolerance zone."""
-        from custom_components.adaptive_thermostat.const import HEATING_TYPE_CHARACTERISTICS, HEATING_TYPE_RADIATOR
+        from custom_components.adaptive_climate.const import HEATING_TYPE_CHARACTERISTICS, HEATING_TYPE_RADIATOR
 
         # Create cycle tracker with radiator heating type (cold_tolerance = 0.3)
         cycle_tracker = CycleTrackerManager(
@@ -2367,7 +2367,7 @@ class TestTemperatureUpdateIntegralTracking:
         self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
     ):
         """Test that starting a new cycle resets integral tracking values."""
-        from custom_components.adaptive_thermostat.const import HEATING_TYPE_RADIATOR
+        from custom_components.adaptive_climate.const import HEATING_TYPE_RADIATOR
 
         # Create cycle tracker with radiator heating type
         cycle_tracker = CycleTrackerManager(
@@ -2433,7 +2433,7 @@ class TestTemperatureUpdateIntegralTracking:
     ):
         """Test that finalized cycle includes decay-related integral metrics."""
         from datetime import timedelta
-        from custom_components.adaptive_thermostat.const import HEATING_TYPE_RADIATOR
+        from custom_components.adaptive_climate.const import HEATING_TYPE_RADIATOR
 
         # Create cycle tracker with radiator heating type
         cycle_tracker = CycleTrackerManager(
@@ -3197,7 +3197,7 @@ class TestCycleTrackerSettlingMAE:
 
         # Mock calculate_settling_mae to verify it's called
         with patch(
-            "custom_components.adaptive_thermostat.adaptive.cycle_analysis.calculate_settling_mae"
+            "custom_components.adaptive_climate.adaptive.cycle_analysis.calculate_settling_mae"
         ) as mock_calc_settling_mae:
             mock_calc_settling_mae.return_value = 0.15  # Return dummy value
 
@@ -3251,7 +3251,7 @@ class TestCycleTrackerSettlingMAE:
 
         # Mock calculate_settling_mae to verify settling_start_time is passed
         with patch(
-            "custom_components.adaptive_thermostat.adaptive.cycle_analysis.calculate_settling_mae"
+            "custom_components.adaptive_climate.adaptive.cycle_analysis.calculate_settling_mae"
         ) as mock_calc_settling_mae:
             mock_calc_settling_mae.return_value = 0.15  # Return dummy value
 
@@ -3309,7 +3309,7 @@ class TestCycleTrackerSettlingMAE:
         await cycle_tracker_stable.update_temperature(datetime(2025, 1, 14, 10, 8, 0), 20.03)
 
         with patch(
-            "custom_components.adaptive_thermostat.adaptive.cycle_analysis.calculate_settling_mae"
+            "custom_components.adaptive_climate.adaptive.cycle_analysis.calculate_settling_mae"
         ) as mock_calc:
             mock_calc.return_value = 0.05  # Low MAE for stable settling
             await cycle_tracker_stable._finalize_cycle()
@@ -3346,7 +3346,7 @@ class TestCycleTrackerSettlingMAE:
         await cycle_tracker_oscillating.update_temperature(datetime(2025, 1, 14, 11, 9, 0), 19.6)
 
         with patch(
-            "custom_components.adaptive_thermostat.adaptive.cycle_analysis.calculate_settling_mae"
+            "custom_components.adaptive_climate.adaptive.cycle_analysis.calculate_settling_mae"
         ) as mock_calc:
             mock_calc.return_value = 0.25  # High MAE for oscillating settling
             await cycle_tracker_oscillating._finalize_cycle()
@@ -3395,7 +3395,7 @@ class TestCycleTrackerSettlingMAE:
 
         # Mock calculate_settling_mae to verify it returns None
         with patch(
-            "custom_components.adaptive_thermostat.adaptive.cycle_analysis.calculate_settling_mae"
+            "custom_components.adaptive_climate.adaptive.cycle_analysis.calculate_settling_mae"
         ) as mock_calc_settling_mae:
             mock_calc_settling_mae.return_value = None  # None when no settling_start_time
 
@@ -3893,7 +3893,7 @@ class TestCycleTrackerModePassingToCycleMetrics:
         cycle_tracker2._unsubscribe_handles.clear()
 
         # Subscribe to events for new tracker
-        from custom_components.adaptive_thermostat.managers.events import CycleEventType
+        from custom_components.adaptive_climate.managers.events import CycleEventType
         cycle_tracker2._unsubscribe_handles.append(
             dispatcher2.subscribe(CycleEventType.CYCLE_STARTED, cycle_tracker2._on_cycle_started)
         )

@@ -3,11 +3,11 @@
 import pytest
 from datetime import datetime, timedelta
 
-from custom_components.adaptive_thermostat.adaptive.preheat import (
+from custom_components.adaptive_climate.adaptive.preheat import (
     HeatingObservation,
     PreheatLearner,
 )
-from custom_components.adaptive_thermostat.const import (
+from custom_components.adaptive_climate.const import (
     HEATING_TYPE_FLOOR_HYDRONIC,
     HEATING_TYPE_RADIATOR,
     HEATING_TYPE_CONVECTOR,

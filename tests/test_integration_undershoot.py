@@ -12,14 +12,14 @@ import time
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
 
-from custom_components.adaptive_thermostat.const import (
+from custom_components.adaptive_climate.const import (
     HeatingType,
     MIN_CYCLES_FOR_LEARNING,
     SEVERE_UNDERSHOOT_MULTIPLIER,
     UNDERSHOOT_THRESHOLDS,
 )
-from custom_components.adaptive_thermostat.adaptive.learning import AdaptiveLearner
-from custom_components.adaptive_thermostat.pid_controller import PID
+from custom_components.adaptive_climate.adaptive.learning import AdaptiveLearner
+from custom_components.adaptive_climate.pid_controller import PID
 from homeassistant.components.climate import HVACMode
 
 
@@ -28,7 +28,7 @@ def mock_hass():
     """Create a mock Home Assistant instance."""
     hass = MagicMock()
     hass.data = {
-        "adaptive_thermostat": {
+        "adaptive_climate": {
             "coordinator": MagicMock(),
             "debug": True,  # Enable debug mode for full attribute visibility
         }
@@ -77,7 +77,7 @@ def mock_thermostat(mock_hass, adaptive_learner, pid_controller):
 
     # Set up coordinator with zone data
     zone_data = {"adaptive_learner": adaptive_learner}
-    mock_hass.data["adaptive_thermostat"]["coordinator"].get_zone_data.return_value = zone_data
+    mock_hass.data["adaptive_climate"]["coordinator"].get_zone_data.return_value = zone_data
 
     return thermostat
 
@@ -87,7 +87,7 @@ class TestUndershootDetectionIntegration:
 
     def test_updates_detector_on_each_control_loop(self, mock_thermostat, adaptive_learner):
         """Test that detector is updated on each control loop iteration."""
-        from custom_components.adaptive_thermostat.climate_control import ClimateControlMixin
+        from custom_components.adaptive_climate.climate_control import ClimateControlMixin
 
         # Simulate control loop calling update_undershoot_detector
         current_time = time.monotonic()

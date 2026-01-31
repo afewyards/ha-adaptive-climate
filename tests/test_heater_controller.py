@@ -14,7 +14,7 @@ class MockHVACMode:
 
 
 # Import and patch the module
-import custom_components.adaptive_thermostat.managers.heater_controller as heater_controller_module
+import custom_components.adaptive_climate.managers.heater_controller as heater_controller_module
 heater_controller_module.HVACMode = MockHVACMode
 
 # Mock split_entity_id for tests
@@ -24,10 +24,10 @@ def mock_split_entity_id(entity_id: str):
 
 heater_controller_module.split_entity_id = mock_split_entity_id
 
-from custom_components.adaptive_thermostat.managers.heater_controller import (
+from custom_components.adaptive_climate.managers.heater_controller import (
     HeaterController,
 )
-from custom_components.adaptive_thermostat.managers.events import (
+from custom_components.adaptive_climate.managers.events import (
     CycleEventDispatcher,
     CycleEventType,
     CycleStartedEvent,

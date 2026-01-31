@@ -26,7 +26,7 @@ mock_ha_climate.ClimateEntity = MockClimateEntity
 mock_ha_climate.ClimateEntityFeature = MockClimateEntityFeature
 sys.modules['homeassistant.components.climate'] = mock_ha_climate
 
-from custom_components.adaptive_thermostat.managers.state_restorer import StateRestorer
+from custom_components.adaptive_climate.managers.state_restorer import StateRestorer
 
 
 @pytest.fixture
@@ -203,8 +203,8 @@ class TestInitialPhysicsGainsRecording:
 
     def test_initial_gains_recorded_when_no_saved_state(self, state_restorer, mock_thermostat):
         """Test that initial physics gains are recorded to pid_history on fresh start."""
-        from custom_components.adaptive_thermostat.managers.pid_gains_manager import PIDGainsManager
-        from custom_components.adaptive_thermostat.const import PIDGains, PIDChangeReason
+        from custom_components.adaptive_climate.managers.pid_gains_manager import PIDGainsManager
+        from custom_components.adaptive_climate.const import PIDGains, PIDChangeReason
 
         # Setup gains manager with initial physics gains
         initial_gains = PIDGains(kp=20.0, ki=0.01, kd=100.0, ke=0.0)
@@ -227,8 +227,8 @@ class TestInitialPhysicsGainsRecording:
 
     def test_initial_gains_recorded_when_no_history_in_saved_state(self, state_restorer, mock_thermostat):
         """Test that initial physics gains are recorded when saved state has no history."""
-        from custom_components.adaptive_thermostat.managers.pid_gains_manager import PIDGainsManager
-        from custom_components.adaptive_thermostat.const import PIDGains, PIDChangeReason
+        from custom_components.adaptive_climate.managers.pid_gains_manager import PIDGainsManager
+        from custom_components.adaptive_climate.const import PIDGains, PIDChangeReason
 
         # Setup gains manager
         initial_gains = PIDGains(kp=20.0, ki=0.01, kd=100.0, ke=0.0)
@@ -257,8 +257,8 @@ class TestInitialPhysicsGainsRecording:
 
     def test_no_duplicate_when_history_exists_in_saved_state(self, state_restorer, mock_thermostat):
         """Test that ensure_initial_history_recorded doesn't duplicate when history exists."""
-        from custom_components.adaptive_thermostat.managers.pid_gains_manager import PIDGainsManager
-        from custom_components.adaptive_thermostat.const import PIDGains
+        from custom_components.adaptive_climate.managers.pid_gains_manager import PIDGainsManager
+        from custom_components.adaptive_climate.const import PIDGains
 
         # Setup gains manager
         initial_gains = PIDGains(kp=20.0, ki=0.01, kd=100.0, ke=0.0)

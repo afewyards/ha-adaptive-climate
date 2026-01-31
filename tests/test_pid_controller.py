@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 # Add parent directory to path to import pid_controller
-sys.path.insert(0, str(Path(__file__).parent.parent / "custom_components" / "adaptive_thermostat"))
+sys.path.insert(0, str(Path(__file__).parent.parent / "custom_components" / "adaptive_climate"))
 
 from pid_controller import PID
 
@@ -2185,7 +2185,7 @@ class TestOutputClampingOnWrongSide:
         This test confirms that INTEGRAL_DECAY_THRESHOLDS['floor_hydronic'] == 30.0,
         which enables earlier safety net activation for high thermal mass systems.
         """
-        from custom_components.adaptive_thermostat.const import INTEGRAL_DECAY_THRESHOLDS
+        from custom_components.adaptive_climate.const import INTEGRAL_DECAY_THRESHOLDS
 
         assert INTEGRAL_DECAY_THRESHOLDS["floor_hydronic"] == 30.0
 

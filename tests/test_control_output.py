@@ -4,10 +4,10 @@ import pytest
 from unittest.mock import Mock, MagicMock, patch
 from datetime import datetime
 
-from custom_components.adaptive_thermostat.managers.control_output import (
+from custom_components.adaptive_climate.managers.control_output import (
     ControlOutputManager,
 )
-from custom_components.adaptive_thermostat.const import (
+from custom_components.adaptive_climate.const import (
     HEATING_TYPE_FLOOR_HYDRONIC,
     HEATING_TYPE_RADIATOR,
     HEATING_TYPE_CONVECTOR,

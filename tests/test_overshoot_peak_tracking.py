@@ -4,11 +4,11 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from custom_components.adaptive_thermostat.adaptive.cycle_analysis import (
+from custom_components.adaptive_climate.adaptive.cycle_analysis import (
     PhaseAwareOvershootTracker,
     calculate_overshoot,
 )
-from custom_components.adaptive_thermostat.const import OVERSHOOT_PEAK_WINDOW_MINUTES
+from custom_components.adaptive_climate.const import OVERSHOOT_PEAK_WINDOW_MINUTES
 
 
 class TestPhaseAwareOvershootTrackerPeakWindow:

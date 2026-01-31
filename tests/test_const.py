@@ -1,6 +1,6 @@
 """Tests for constants in const.py."""
 
-from custom_components.adaptive_thermostat.const import (
+from custom_components.adaptive_climate.const import (
     HEATING_TYPE_CHARACTERISTICS,
     HEATING_TYPE_FLOOR_HYDRONIC,
     HEATING_TYPE_RADIATOR,
@@ -395,5 +395,5 @@ class TestHumidityDetectionConstants:
 # Marker test
 def test_const_module_exists():
     """Marker test to ensure const module is importable."""
-    from custom_components.adaptive_thermostat import const
+    from custom_components.adaptive_climate import const
     assert const is not None

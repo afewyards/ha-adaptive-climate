@@ -3,7 +3,7 @@
 import pytest
 from datetime import datetime, timedelta
 
-from custom_components.adaptive_thermostat.adaptive.humidity_detector import (
+from custom_components.adaptive_climate.adaptive.humidity_detector import (
     HumidityDetector,
 )
 

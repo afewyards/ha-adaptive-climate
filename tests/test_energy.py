@@ -89,7 +89,7 @@ def _setup_mocks():
 # Set up mocks before importing the module
 _setup_mocks()
 
-from custom_components.adaptive_thermostat.sensor import WeeklyCostSensor
+from custom_components.adaptive_climate.sensor import WeeklyCostSensor
 
 
 class TestWeeklyDeltaCalculation:
@@ -134,7 +134,7 @@ class TestWeeklyDeltaCalculation:
 
         # Patch dt_util.utcnow to return same week
         with patch(
-            "custom_components.adaptive_thermostat.sensors.energy.dt_util"
+            "custom_components.adaptive_climate.sensors.energy.dt_util"
         ) as mock_dt_util:
             mock_dt_util.utcnow.return_value = datetime.now()
 
@@ -400,7 +400,7 @@ class TestWeekBoundaryReset:
         week3_date = datetime(2025, 1, 20, 12, 0, 0)  # Monday of week 4
 
         with patch(
-            "custom_components.adaptive_thermostat.sensors.energy.dt_util"
+            "custom_components.adaptive_climate.sensors.energy.dt_util"
         ) as mock_dt_util:
             mock_dt_util.utcnow.return_value = week3_date
 
@@ -432,7 +432,7 @@ class TestWeekBoundaryReset:
         friday = datetime(2025, 1, 10, 18, 0, 0)
 
         with patch(
-            "custom_components.adaptive_thermostat.sensors.energy.dt_util"
+            "custom_components.adaptive_climate.sensors.energy.dt_util"
         ) as mock_dt_util:
             mock_dt_util.utcnow.return_value = friday
 
@@ -463,7 +463,7 @@ class TestWeekBoundaryReset:
         new_week = datetime(2025, 1, 13, 10, 0, 0)
 
         with patch(
-            "custom_components.adaptive_thermostat.sensors.energy.dt_util"
+            "custom_components.adaptive_climate.sensors.energy.dt_util"
         ) as mock_dt_util:
             mock_dt_util.utcnow.return_value = new_week
 
@@ -494,7 +494,7 @@ class TestWeekBoundaryReset:
         new_year = datetime(2025, 1, 6, 10, 0, 0)
 
         with patch(
-            "custom_components.adaptive_thermostat.sensors.energy.dt_util"
+            "custom_components.adaptive_climate.sensors.energy.dt_util"
         ) as mock_dt_util:
             mock_dt_util.utcnow.return_value = new_year
 

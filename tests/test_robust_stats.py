@@ -1,7 +1,7 @@
 """Tests for robust statistics functions."""
 
 import pytest
-from custom_components.adaptive_thermostat.adaptive.robust_stats import (
+from custom_components.adaptive_climate.adaptive.robust_stats import (
     calculate_median,
     calculate_mad,
     detect_outliers_modified_zscore,

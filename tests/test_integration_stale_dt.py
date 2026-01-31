@@ -11,11 +11,11 @@ rates (e.g., 3%/min instead of 0.01%/min).
 import pytest
 from unittest.mock import Mock, patch
 
-from custom_components.adaptive_thermostat.managers.control_output import (
+from custom_components.adaptive_climate.managers.control_output import (
     ControlOutputManager,
 )
-from custom_components.adaptive_thermostat.pid_controller import PID
-from custom_components.adaptive_thermostat.const import (
+from custom_components.adaptive_climate.pid_controller import PID
+from custom_components.adaptive_climate.const import (
     HEATING_TYPE_CONVECTOR,
 )
 

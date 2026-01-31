@@ -2,7 +2,7 @@
 from datetime import datetime
 import pytest
 
-from custom_components.adaptive_thermostat.analytics.reports import (
+from custom_components.adaptive_climate.analytics.reports import (
     WeeklyReport,
     generate_weekly_report,
 )

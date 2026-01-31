@@ -71,7 +71,7 @@ sys.modules['homeassistant.helpers.entity_platform'] = MagicMock()
 sys.modules['homeassistant.helpers.typing'] = MagicMock()
 
 # Now import the sensors module
-from custom_components.adaptive_thermostat.sensors.comfort import (
+from custom_components.adaptive_climate.sensors.comfort import (
     TimeAtTargetSensor,
     ComfortScoreSensor,
     TemperatureSample,
@@ -131,7 +131,7 @@ def test_time_at_target_record_sample(mock_hass):
     assert sensor._samples[0].setpoint == 21.0
 
 
-@patch('custom_components.adaptive_thermostat.sensors.comfort.dt_util')
+@patch('custom_components.adaptive_climate.sensors.comfort.dt_util')
 def test_time_at_target_calculation(mock_dt_util, mock_hass):
     """Test time at target percentage calculation."""
     sensor = TimeAtTargetSensor(
@@ -258,7 +258,7 @@ async def test_comfort_score_with_missing_data(mock_hass):
 
 
 @pytest.mark.asyncio
-@patch('custom_components.adaptive_thermostat.sensors.comfort.dt_util')
+@patch('custom_components.adaptive_climate.sensors.comfort.dt_util')
 async def test_time_at_target_async_update(mock_dt_util, mock_hass):
     """Test async_update records sample from climate entity."""
     now = datetime.now()
@@ -308,7 +308,7 @@ def test_comfort_score_extra_attributes(mock_hass):
     assert attrs["oscillation_score"] == 85.0
 
 
-@patch('custom_components.adaptive_thermostat.sensors.comfort.dt_util')
+@patch('custom_components.adaptive_climate.sensors.comfort.dt_util')
 def test_time_at_target_custom_tolerance(mock_dt_util, mock_hass):
     """Test TimeAtTargetSensor with custom tolerance."""
     sensor = TimeAtTargetSensor(

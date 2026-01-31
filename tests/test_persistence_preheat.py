@@ -4,8 +4,8 @@ import pytest
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
-from custom_components.adaptive_thermostat.adaptive.persistence import LearningDataStore
-from custom_components.adaptive_thermostat.adaptive.preheat import PreheatLearner
+from custom_components.adaptive_climate.adaptive.persistence import LearningDataStore
+from custom_components.adaptive_climate.adaptive.preheat import PreheatLearner
 
 
 class MockStore:

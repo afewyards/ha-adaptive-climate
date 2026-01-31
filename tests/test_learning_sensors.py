@@ -49,8 +49,8 @@ def test_overshoot_sensor_value():
     sys.modules['homeassistant.helpers.event'] = Mock()
     sys.modules['homeassistant.helpers.restore_state'] = mock_restore_state
 
-    from custom_components.adaptive_thermostat.sensor import OvershootSensor
-    from custom_components.adaptive_thermostat.adaptive.learning import (
+    from custom_components.adaptive_climate.sensor import OvershootSensor
+    from custom_components.adaptive_climate.adaptive.learning import (
         CycleMetrics,
         AdaptiveLearner,
     )
@@ -91,7 +91,7 @@ def test_overshoot_sensor_value():
     coordinator = Mock()
     coordinator.get_zone_data.return_value = {"adaptive_learner": learner}
 
-    mock_hass.data = {"adaptive_thermostat": {"coordinator": coordinator}}
+    mock_hass.data = {"adaptive_climate": {"coordinator": coordinator}}
 
     # Create sensor
     sensor = OvershootSensor(
@@ -151,8 +151,8 @@ def test_settling_time_in_minutes_conversion():
     sys.modules['homeassistant.helpers.event'] = Mock()
     sys.modules['homeassistant.helpers.restore_state'] = mock_restore_state
 
-    from custom_components.adaptive_thermostat.sensor import SettlingTimeSensor
-    from custom_components.adaptive_thermostat.adaptive.learning import (
+    from custom_components.adaptive_climate.sensor import SettlingTimeSensor
+    from custom_components.adaptive_climate.adaptive.learning import (
         CycleMetrics,
         AdaptiveLearner,
     )
@@ -193,7 +193,7 @@ def test_settling_time_in_minutes_conversion():
     coordinator = Mock()
     coordinator.get_zone_data.return_value = {"adaptive_learner": learner}
 
-    mock_hass.data = {"adaptive_thermostat": {"coordinator": coordinator}}
+    mock_hass.data = {"adaptive_climate": {"coordinator": coordinator}}
 
     # Create sensor
     sensor = SettlingTimeSensor(

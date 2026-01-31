@@ -2,8 +2,8 @@
 import pytest
 from datetime import datetime, timedelta
 from unittest.mock import Mock, AsyncMock, MagicMock, patch, call
-from custom_components.adaptive_thermostat.adaptive.humidity_detector import HumidityDetector
-from custom_components.adaptive_thermostat.const import (
+from custom_components.adaptive_climate.adaptive.humidity_detector import HumidityDetector
+from custom_components.adaptive_climate.const import (
     DEFAULT_HUMIDITY_SPIKE_THRESHOLD,
     DEFAULT_HUMIDITY_ABSOLUTE_MAX,
     DEFAULT_HUMIDITY_DETECTION_WINDOW,
@@ -47,7 +47,7 @@ class TestHumidityDetectorInitialization:
         }
 
         # Mock detector creation
-        with patch('custom_components.adaptive_thermostat.adaptive.humidity_detector.HumidityDetector') as MockDetector:
+        with patch('custom_components.adaptive_climate.adaptive.humidity_detector.HumidityDetector') as MockDetector:
             detector_instance = MagicMock()
             MockDetector.return_value = detector_instance
 
@@ -80,7 +80,7 @@ class TestHumidityDetectorInitialization:
 
     def test_humidity_detector_uses_defaults(self):
         """Test detector uses default values from const.py."""
-        with patch('custom_components.adaptive_thermostat.adaptive.humidity_detector.HumidityDetector') as MockDetector:
+        with patch('custom_components.adaptive_climate.adaptive.humidity_detector.HumidityDetector') as MockDetector:
             detector_instance = MagicMock()
             MockDetector.return_value = detector_instance
 

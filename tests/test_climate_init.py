@@ -7,18 +7,18 @@ from datetime import timedelta
 from unittest.mock import Mock, MagicMock, AsyncMock, patch
 from typing import Any
 
-from custom_components.adaptive_thermostat.climate_init import (
+from custom_components.adaptive_climate.climate_init import (
     async_setup_managers,
     _has_recovery_deadline,
 )
-from custom_components.adaptive_thermostat.const import (
+from custom_components.adaptive_climate.const import (
     HEATING_TYPE_CONVECTOR,
     HEATING_TYPE_FLOOR_HYDRONIC,
     HEATING_TYPE_RADIATOR,
     HEATING_TYPE_FORCED_AIR,
     PIDGains,
 )
-from custom_components.adaptive_thermostat.managers.pid_gains_manager import PIDGainsManager
+from custom_components.adaptive_climate.managers.pid_gains_manager import PIDGainsManager
 
 
 class MockThermostat:
@@ -267,7 +267,7 @@ class TestAsyncSetupManagers:
 
         assert thermostat._cycle_dispatcher is not None
         # Verify it's a CycleEventDispatcher by checking it has expected structure
-        from custom_components.adaptive_thermostat.managers.events import CycleEventDispatcher
+        from custom_components.adaptive_climate.managers.events import CycleEventDispatcher
         assert isinstance(thermostat._cycle_dispatcher, CycleEventDispatcher)
 
     async def test_heater_controller_initialization_with_pwm(self):
@@ -390,7 +390,7 @@ class TestAsyncSetupManagers:
             "_zone_id": "test_zone",
         })
 
-        with patch("custom_components.adaptive_thermostat.climate_init.PreheatLearner.from_dict") as mock_from_dict:
+        with patch("custom_components.adaptive_climate.climate_init.PreheatLearner.from_dict") as mock_from_dict:
             mock_from_dict.return_value = Mock(
                 heating_type=HEATING_TYPE_RADIATOR,
                 get_observation_count=Mock(return_value=5),
@@ -487,7 +487,7 @@ class TestAsyncSetupManagers:
             "_area_m2": 25.0,
         })
 
-        with patch("custom_components.adaptive_thermostat.climate_init.calculate_initial_ke") as mock_calc_ke:
+        with patch("custom_components.adaptive_climate.climate_init.calculate_initial_ke") as mock_calc_ke:
             mock_calc_ke.return_value = 0.05
 
             await async_setup_managers(thermostat)
@@ -516,7 +516,7 @@ class TestAsyncSetupManagers:
             "_zone_id": "test_zone",
         })
 
-        with patch("custom_components.adaptive_thermostat.climate_init.KeLearner.from_dict") as mock_from_dict:
+        with patch("custom_components.adaptive_climate.climate_init.KeLearner.from_dict") as mock_from_dict:
             mock_ke_learner = Mock()
             mock_ke_learner.current_ke = 0.045
             mock_ke_learner.enabled = True
@@ -729,12 +729,12 @@ class TestAsyncSetupManagers:
             "_has_outdoor_temp_source": True,
         })
         thermostat.hass.data = {
-            "adaptive_thermostat": {
+            "adaptive_climate": {
                 "house_energy_rating": "A",
             }
         }
 
-        with patch("custom_components.adaptive_thermostat.climate_init.calculate_initial_ke") as mock_calc_ke:
+        with patch("custom_components.adaptive_climate.climate_init.calculate_initial_ke") as mock_calc_ke:
             mock_calc_ke.return_value = 0.03
 
             await async_setup_managers(thermostat)

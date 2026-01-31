@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from custom_components.adaptive_thermostat.managers.events import (
+from custom_components.adaptive_climate.managers.events import (
     CycleEventType,
     CycleStartedEvent,
     CycleEndedEvent,

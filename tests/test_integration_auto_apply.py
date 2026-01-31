@@ -16,21 +16,21 @@ import time
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from custom_components.adaptive_thermostat.managers.cycle_tracker import (
+from custom_components.adaptive_climate.managers.cycle_tracker import (
     CycleState,
     CycleTrackerManager,
 )
-from custom_components.adaptive_thermostat.managers.events import (
+from custom_components.adaptive_climate.managers.events import (
     CycleEventDispatcher,
     CycleStartedEvent,
     SettlingStartedEvent,
 )
-from custom_components.adaptive_thermostat.adaptive.learning import (
+from custom_components.adaptive_climate.adaptive.learning import (
     AdaptiveLearner,
     get_auto_apply_thresholds,
 )
-from custom_components.adaptive_thermostat.adaptive.cycle_analysis import CycleMetrics
-from custom_components.adaptive_thermostat.const import (
+from custom_components.adaptive_climate.adaptive.cycle_analysis import CycleMetrics
+from custom_components.adaptive_climate.const import (
     CONFIDENCE_INCREASE_PER_GOOD_CYCLE,
     VALIDATION_CYCLE_COUNT,
     HEATING_TYPE_CONVECTOR,
@@ -59,8 +59,8 @@ def _set_test_time(dt: datetime):
 @pytest.fixture(autouse=True)
 def mock_dt_modules():
     """Automatically patch dt_util.utcnow for all tests in this module."""
-    with patch('custom_components.adaptive_thermostat.managers.cycle_metrics.dt_util') as mock_metrics_dt, \
-         patch('custom_components.adaptive_thermostat.adaptive.validation.dt_util') as mock_validation_dt:
+    with patch('custom_components.adaptive_climate.managers.cycle_metrics.dt_util') as mock_metrics_dt, \
+         patch('custom_components.adaptive_climate.adaptive.validation.dt_util') as mock_validation_dt:
         mock_metrics_dt.utcnow = _mock_utcnow
         mock_validation_dt.utcnow = _mock_utcnow
         yield
@@ -138,8 +138,8 @@ def mock_dt_util():
 # Decorator to patch dt_util for integration tests
 def patch_dt_util(func):
     """Decorator to patch dt_util.utcnow for cycle_metrics and validation modules."""
-    @patch('custom_components.adaptive_thermostat.managers.cycle_metrics.dt_util')
-    @patch('custom_components.adaptive_thermostat.adaptive.validation.dt_util')
+    @patch('custom_components.adaptive_climate.managers.cycle_metrics.dt_util')
+    @patch('custom_components.adaptive_climate.adaptive.validation.dt_util')
     async def wrapper(self, mock_validation_dt, mock_metrics_dt, *args, **kwargs):
         # Set up mocked dt_util to return real datetime objects
         current_time = [datetime(2024, 1, 1, 10, 0, 0)]
@@ -1039,7 +1039,7 @@ class TestMultiZoneAutoApply:
         5. Verify both zones apply PID independently
         6. Verify no interference (zone1 history not cleared by zone2 action)
         """
-        from custom_components.adaptive_thermostat.const import HEATING_TYPE_RADIATOR
+        from custom_components.adaptive_climate.const import HEATING_TYPE_RADIATOR
 
         # Track auto-apply calls for each zone
         zone1_auto_apply_calls = []
@@ -1434,11 +1434,11 @@ class TestHARestartEdgeCases:
 # Marker test for module existence
 def test_integration_auto_apply_module_exists():
     """Marker test to verify module can be imported."""
-    from custom_components.adaptive_thermostat.managers.cycle_tracker import (
+    from custom_components.adaptive_climate.managers.cycle_tracker import (
         CycleTrackerManager,
         CycleState,
     )
-    from custom_components.adaptive_thermostat.adaptive.learning import AdaptiveLearner
+    from custom_components.adaptive_climate.adaptive.learning import AdaptiveLearner
 
     assert CycleTrackerManager is not None
     assert CycleState is not None

@@ -4,12 +4,12 @@ import pytest
 from datetime import datetime, timedelta
 from unittest.mock import patch
 
-from custom_components.adaptive_thermostat.adaptive.learning import (
+from custom_components.adaptive_climate.adaptive.learning import (
     AdaptiveLearner,
     CycleMetrics,
     get_auto_apply_thresholds,
 )
-from custom_components.adaptive_thermostat.const import (
+from custom_components.adaptive_climate.const import (
     PID_HISTORY_SIZE,
     MAX_AUTO_APPLIES_LIFETIME,
     MAX_AUTO_APPLIES_PER_SEASON,
@@ -268,7 +268,7 @@ class TestAutoApplyLimits:
         now = datetime.now()
         learner._last_seasonal_shift = now - timedelta(days=3)
 
-        with patch('custom_components.adaptive_thermostat.adaptive.validation.dt_util') as mock_dt_util:
+        with patch('custom_components.adaptive_climate.adaptive.validation.dt_util') as mock_dt_util:
             mock_dt_util.utcnow.return_value = now
             result = learner.check_auto_apply_limits(100.0, 0.01, 50.0)
 
@@ -288,7 +288,7 @@ class TestAutoApplyLimits:
         # No seasonal shift recorded
 
         # 10% drift (within 50% limit)
-        with patch('custom_components.adaptive_thermostat.adaptive.validation.dt_util') as mock_dt_util:
+        with patch('custom_components.adaptive_climate.adaptive.validation.dt_util') as mock_dt_util:
             now = datetime.now()
             mock_dt_util.utcnow.return_value = now
             result = learner.check_auto_apply_limits(110.0, 0.01, 50.0)
@@ -311,7 +311,7 @@ class TestSeasonalShiftRecording:
         assert learner._last_seasonal_shift is None
 
         now = datetime.now()
-        with patch('custom_components.adaptive_thermostat.adaptive.validation.dt_util') as mock_dt_util:
+        with patch('custom_components.adaptive_climate.adaptive.validation.dt_util') as mock_dt_util:
             mock_dt_util.utcnow.return_value = now
             learner.record_seasonal_shift()
 

@@ -1,8 +1,8 @@
 """Tests for disturbance rejection in adaptive learning."""
 import pytest
 from datetime import datetime, timedelta
-from custom_components.adaptive_thermostat.adaptive.disturbance_detector import DisturbanceDetector
-from custom_components.adaptive_thermostat.adaptive.cycle_analysis import CycleMetrics
+from custom_components.adaptive_climate.adaptive.disturbance_detector import DisturbanceDetector
+from custom_components.adaptive_climate.adaptive.cycle_analysis import CycleMetrics
 
 
 class TestDisturbanceDetector:
@@ -274,5 +274,5 @@ class TestDisturbanceFiltering:
 
 def test_disturbance_rejection_module_exists():
     """Test that disturbance rejection module is importable."""
-    from custom_components.adaptive_thermostat.adaptive import disturbance_detector
+    from custom_components.adaptive_climate.adaptive import disturbance_detector
     assert hasattr(disturbance_detector, 'DisturbanceDetector')

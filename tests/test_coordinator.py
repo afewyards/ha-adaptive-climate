@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, Mock
 from datetime import timedelta
 
 # Add parent directory to path
-sys.path.insert(0, str(Path(__file__).parent.parent / "custom_components" / "adaptive_thermostat"))
+sys.path.insert(0, str(Path(__file__).parent.parent / "custom_components" / "adaptive_climate"))
 
 # Mock homeassistant modules before importing coordinator
 sys.modules['homeassistant'] = Mock()

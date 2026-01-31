@@ -27,7 +27,7 @@ mock_ha_climate.ClimateEntityFeature = MockClimateEntityFeature
 sys.modules['homeassistant.components'] = MagicMock()
 sys.modules['homeassistant.components.climate'] = mock_ha_climate
 
-from custom_components.adaptive_thermostat.managers.state_attributes import (
+from custom_components.adaptive_climate.managers.state_attributes import (
     _compute_learning_status,
     _add_learning_status_attributes,
     _build_status_attribute,
@@ -35,7 +35,7 @@ from custom_components.adaptive_thermostat.managers.state_attributes import (
     ATTR_CYCLES_COLLECTED,
     ATTR_CONVERGENCE_CONFIDENCE,
 )
-from custom_components.adaptive_thermostat.const import (
+from custom_components.adaptive_climate.const import (
     MIN_CYCLES_FOR_LEARNING,
     MIN_CONVERGENCE_CYCLES_FOR_KE,
     HeatingType,
@@ -338,7 +338,7 @@ class TestAddLearningStatusAttributes:
         thermostat._contact_sensor_handler = None
         thermostat._humidity_detector = None
         # Enable debug mode to get cycles_collected and convergence_confidence_pct
-        thermostat.hass.data = {"adaptive_thermostat": {"debug": True}}
+        thermostat.hass.data = {"adaptive_climate": {"debug": True}}
         attrs = {}
 
         _add_learning_status_attributes(thermostat, attrs)
@@ -376,7 +376,7 @@ class TestAddLearningStatusAttributes:
         thermostat._contact_sensor_handler = None
         thermostat._humidity_detector = None
         # Enable debug mode to get cycles_collected and convergence_confidence_pct
-        thermostat.hass.data = {"adaptive_thermostat": {"debug": True}}
+        thermostat.hass.data = {"adaptive_climate": {"debug": True}}
         attrs = {}
 
         _add_learning_status_attributes(thermostat, attrs)
@@ -417,7 +417,7 @@ class TestAddLearningStatusAttributes:
         thermostat._contact_sensor_handler = None
         thermostat._humidity_detector = None
         # Enable debug mode to get cycles_collected and convergence_confidence_pct
-        thermostat.hass.data = {"adaptive_thermostat": {"debug": True}}
+        thermostat.hass.data = {"adaptive_climate": {"debug": True}}
         attrs = {}
 
         _add_learning_status_attributes(thermostat, attrs)
@@ -471,7 +471,7 @@ class TestAddLearningStatusAttributes:
         thermostat._contact_sensor_handler = None
         thermostat._humidity_detector = None
         # Enable debug mode to get convergence_confidence_pct
-        thermostat.hass.data = {"adaptive_thermostat": {"debug": True}}
+        thermostat.hass.data = {"adaptive_climate": {"debug": True}}
 
         # Test various confidence values
         test_cases = [
@@ -522,7 +522,7 @@ class TestAddLearningStatusAttributes:
         thermostat._contact_sensor_handler = None
         thermostat._humidity_detector = None
 
-        thermostat.hass.data = {"adaptive_thermostat": {"debug": False}}
+        thermostat.hass.data = {"adaptive_climate": {"debug": False}}
         attrs = {}
 
         _add_learning_status_attributes(thermostat, attrs)
@@ -557,7 +557,7 @@ class TestAddLearningStatusAttributes:
         thermostat._contact_sensor_handler = contact_handler
         thermostat._humidity_detector = None
 
-        thermostat.hass.data = {"adaptive_thermostat": {"debug": False}}
+        thermostat.hass.data = {"adaptive_climate": {"debug": False}}
         attrs = {}
 
         _add_learning_status_attributes(thermostat, attrs)
@@ -592,7 +592,7 @@ class TestAddLearningStatusAttributes:
         humidity_detector.should_pause.return_value = True
         thermostat._humidity_detector = humidity_detector
 
-        thermostat.hass.data = {"adaptive_thermostat": {"debug": False}}
+        thermostat.hass.data = {"adaptive_climate": {"debug": False}}
         attrs = {}
 
         _add_learning_status_attributes(thermostat, attrs)
@@ -625,7 +625,7 @@ class TestAddLearningStatusAttributes:
         thermostat._contact_sensor_handler = None
         thermostat._humidity_detector = None
 
-        thermostat.hass.data = {"adaptive_thermostat": {"debug": False}}
+        thermostat.hass.data = {"adaptive_climate": {"debug": False}}
         attrs = {}
 
         _add_learning_status_attributes(thermostat, attrs)
@@ -668,7 +668,7 @@ class TestAddLearningStatusAttributes:
         humidity_detector.should_pause.return_value = False
         thermostat._humidity_detector = humidity_detector
 
-        thermostat.hass.data = {"adaptive_thermostat": {"debug": False}}
+        thermostat.hass.data = {"adaptive_climate": {"debug": False}}
         attrs = {}
 
         _add_learning_status_attributes(thermostat, attrs)
@@ -686,7 +686,7 @@ class TestDutyAccumulatorAttributes:
 
     def test_accumulator_not_in_state_attributes_without_debug(self):
         """Test duty_accumulator_pct is not present without debug mode."""
-        from custom_components.adaptive_thermostat.managers.state_attributes import (
+        from custom_components.adaptive_climate.managers.state_attributes import (
             build_state_attributes,
         )
 
@@ -723,7 +723,7 @@ class TestDutyAccumulatorAttributes:
         thermostat.in_learning_grace_period = False
         thermostat._coordinator = None  # No coordinator, so learning status won't be added
         thermostat.hass = MagicMock()
-        thermostat.hass.data = {"adaptive_thermostat": {"debug": False}}
+        thermostat.hass.data = {"adaptive_climate": {"debug": False}}
 
         attrs = build_state_attributes(thermostat)
 
@@ -733,7 +733,7 @@ class TestDutyAccumulatorAttributes:
 
     def test_accumulator_in_state_attributes_with_debug(self):
         """Test duty_accumulator_pct present in debug mode."""
-        from custom_components.adaptive_thermostat.managers.state_attributes import (
+        from custom_components.adaptive_climate.managers.state_attributes import (
             build_state_attributes,
         )
 
@@ -770,7 +770,7 @@ class TestDutyAccumulatorAttributes:
         thermostat.in_learning_grace_period = False
         thermostat._coordinator = None  # No coordinator, so learning status won't be added
         thermostat.hass = MagicMock()
-        thermostat.hass.data = {"adaptive_thermostat": {"debug": True}}
+        thermostat.hass.data = {"adaptive_climate": {"debug": True}}
 
         attrs = build_state_attributes(thermostat)
 
@@ -780,7 +780,7 @@ class TestDutyAccumulatorAttributes:
 
     def test_accumulator_pct_attribute(self):
         """Test duty_accumulator_pct shows percentage of threshold in debug mode."""
-        from custom_components.adaptive_thermostat.managers.state_attributes import (
+        from custom_components.adaptive_climate.managers.state_attributes import (
             build_state_attributes,
         )
 
@@ -818,7 +818,7 @@ class TestDutyAccumulatorAttributes:
         thermostat.in_learning_grace_period = False
         thermostat.hass = MagicMock()
         thermostat._coordinator = None  # No coordinator, so learning status won't be added
-        thermostat.hass.data = {"adaptive_thermostat": {"debug": True}}
+        thermostat.hass.data = {"adaptive_climate": {"debug": True}}
 
         attrs = build_state_attributes(thermostat)
 
@@ -827,7 +827,7 @@ class TestDutyAccumulatorAttributes:
 
     def test_accumulator_pct_at_threshold(self):
         """Test duty_accumulator_pct shows 100% when at threshold."""
-        from custom_components.adaptive_thermostat.managers.state_attributes import (
+        from custom_components.adaptive_climate.managers.state_attributes import (
             _compute_duty_accumulator_pct,
         )
 
@@ -842,7 +842,7 @@ class TestDutyAccumulatorAttributes:
 
     def test_accumulator_pct_above_threshold(self):
         """Test duty_accumulator_pct can exceed 100% (max is 200%)."""
-        from custom_components.adaptive_thermostat.managers.state_attributes import (
+        from custom_components.adaptive_climate.managers.state_attributes import (
             _compute_duty_accumulator_pct,
         )
 
@@ -857,7 +857,7 @@ class TestDutyAccumulatorAttributes:
 
     def test_accumulator_pct_zero_without_controller(self):
         """Test duty_accumulator_pct is 0 when heater_controller is None."""
-        from custom_components.adaptive_thermostat.managers.state_attributes import (
+        from custom_components.adaptive_climate.managers.state_attributes import (
             _compute_duty_accumulator_pct,
         )
 
@@ -870,7 +870,7 @@ class TestDutyAccumulatorAttributes:
 
     def test_accumulator_pct_zero_with_zero_min_on(self):
         """Test duty_accumulator_pct handles zero min_on_cycle_duration."""
-        from custom_components.adaptive_thermostat.managers.state_attributes import (
+        from custom_components.adaptive_climate.managers.state_attributes import (
             _compute_duty_accumulator_pct,
         )
 
@@ -894,7 +894,7 @@ class TestPerModeConvergenceConfidence:
         via gains_manager.restore_from_state(), so they don't need to be exposed
         as top-level state attributes.
         """
-        from custom_components.adaptive_thermostat.managers.state_attributes import (
+        from custom_components.adaptive_climate.managers.state_attributes import (
             build_state_attributes,
         )
 
@@ -952,7 +952,7 @@ class TestPerModeConvergenceConfidence:
 
     def test_heating_convergence_confidence_attribute(self):
         """Test heating_convergence_confidence attribute removed."""
-        from custom_components.adaptive_thermostat.managers.state_attributes import (
+        from custom_components.adaptive_climate.managers.state_attributes import (
             build_state_attributes,
         )
 
@@ -999,7 +999,7 @@ class TestPerModeConvergenceConfidence:
 
     def test_cooling_convergence_confidence_attribute(self):
         """Test cooling_convergence_confidence attribute removed."""
-        from custom_components.adaptive_thermostat.managers.state_attributes import (
+        from custom_components.adaptive_climate.managers.state_attributes import (
             build_state_attributes,
         )
         from homeassistant.components.climate import HVACMode
@@ -1061,7 +1061,7 @@ class TestPerModeConvergenceConfidence:
 
     def test_both_mode_convergence_attributes(self):
         """Test both heating and cooling convergence attributes removed."""
-        from custom_components.adaptive_thermostat.managers.state_attributes import (
+        from custom_components.adaptive_climate.managers.state_attributes import (
             build_state_attributes,
         )
         from homeassistant.components.climate import HVACMode
@@ -1132,7 +1132,7 @@ class TestPerModeConvergenceConfidence:
 
     def test_convergence_confidence_no_coordinator(self):
         """Test that missing coordinator doesn't add per-mode convergence attributes."""
-        from custom_components.adaptive_thermostat.managers.state_attributes import (
+        from custom_components.adaptive_climate.managers.state_attributes import (
             build_state_attributes,
         )
 
@@ -1182,7 +1182,7 @@ class TestPerModeConvergenceConfidence:
 
     def test_convergence_confidence_no_adaptive_learner(self):
         """Test that missing adaptive learner doesn't add per-mode convergence attributes."""
-        from custom_components.adaptive_thermostat.managers.state_attributes import (
+        from custom_components.adaptive_climate.managers.state_attributes import (
             build_state_attributes,
         )
 
@@ -1230,7 +1230,7 @@ class TestPerModeConvergenceConfidence:
 
         thermostat._coordinator = coordinator
         thermostat.hass = MagicMock()
-        thermostat.hass.data = {"adaptive_thermostat": {"coordinator": coordinator}}
+        thermostat.hass.data = {"adaptive_climate": {"coordinator": coordinator}}
 
         attrs = build_state_attributes(thermostat)
 
@@ -1240,7 +1240,7 @@ class TestPerModeConvergenceConfidence:
 
     def test_convergence_confidence_rounding(self):
         """Test that convergence confidence is properly rounded to integer percentage."""
-        from custom_components.adaptive_thermostat.managers.state_attributes import (
+        from custom_components.adaptive_climate.managers.state_attributes import (
             build_state_attributes,
         )
         from homeassistant.components.climate import HVACMode
@@ -1308,7 +1308,7 @@ class TestHumidityDetectionAttributes:
 
     def test_status_not_active_when_no_detector(self):
         """Test that status attribute shows inactive when detector is None."""
-        from custom_components.adaptive_thermostat.managers.state_attributes import (
+        from custom_components.adaptive_climate.managers.state_attributes import (
             _build_status_attribute,
         )
 
@@ -1329,7 +1329,7 @@ class TestHumidityDetectionAttributes:
 
     def test_status_not_active_humidity_normal_state(self):
         """Test status attribute when humidity detector is in normal state."""
-        from custom_components.adaptive_thermostat.managers.state_attributes import (
+        from custom_components.adaptive_climate.managers.state_attributes import (
             _build_status_attribute,
         )
 
@@ -1356,7 +1356,7 @@ class TestHumidityDetectionAttributes:
 
     def test_status_active_humidity_paused_state(self):
         """Test status attribute when humidity detector is in paused state."""
-        from custom_components.adaptive_thermostat.managers.state_attributes import (
+        from custom_components.adaptive_climate.managers.state_attributes import (
             _build_status_attribute,
         )
 
@@ -1384,7 +1384,7 @@ class TestHumidityDetectionAttributes:
 
     def test_status_active_humidity_stabilizing_with_countdown(self):
         """Test status attribute when humidity detector is in stabilizing state with countdown."""
-        from custom_components.adaptive_thermostat.managers.state_attributes import (
+        from custom_components.adaptive_climate.managers.state_attributes import (
             _build_status_attribute,
         )
 
@@ -1412,7 +1412,7 @@ class TestHumidityDetectionAttributes:
 
     def test_status_active_humidity_stabilizing_with_zero_resume_time(self):
         """Test status attribute when humidity is stabilizing with 0 resume time (about to exit)."""
-        from custom_components.adaptive_thermostat.managers.state_attributes import (
+        from custom_components.adaptive_climate.managers.state_attributes import (
             _build_status_attribute,
         )
 
@@ -1441,7 +1441,7 @@ class TestHumidityDetectionAttributes:
 
     def test_debug_attributes_still_present(self):
         """Test that humidity_detection_state and humidity_resume_in are still available for debugging."""
-        from custom_components.adaptive_thermostat.managers.state_attributes import (
+        from custom_components.adaptive_climate.managers.state_attributes import (
             _add_humidity_detection_attributes,
         )
 
@@ -1466,7 +1466,7 @@ class TestStatusAttribute:
 
     def test_status_not_active_no_detectors(self):
         """Test status attribute when no detectors configured."""
-        from custom_components.adaptive_thermostat.managers.state_attributes import (
+        from custom_components.adaptive_climate.managers.state_attributes import (
             _build_status_attribute,
         )
 
@@ -1485,7 +1485,7 @@ class TestStatusAttribute:
 
     def test_status_not_active_contact_closed(self):
         """Test status attribute when contact sensor exists but is closed."""
-        from custom_components.adaptive_thermostat.managers.state_attributes import (
+        from custom_components.adaptive_climate.managers.state_attributes import (
             _build_status_attribute,
         )
 
@@ -1510,10 +1510,10 @@ class TestStatusAttribute:
 
     def test_status_active_contact(self):
         """Test status attribute when contact sensor status is active."""
-        from custom_components.adaptive_thermostat.managers.state_attributes import (
+        from custom_components.adaptive_climate.managers.state_attributes import (
             _build_status_attribute,
         )
-        from custom_components.adaptive_thermostat.adaptive.contact_sensors import ContactAction
+        from custom_components.adaptive_climate.adaptive.contact_sensors import ContactAction
 
         thermostat = MagicMock()
 
@@ -1538,7 +1538,7 @@ class TestStatusAttribute:
 
     def test_status_pending_contact(self):
         """Test status attribute when contact is open but not paused yet (in delay)."""
-        from custom_components.adaptive_thermostat.managers.state_attributes import (
+        from custom_components.adaptive_climate.managers.state_attributes import (
             _build_status_attribute,
         )
 
@@ -1567,7 +1567,7 @@ class TestStatusAttribute:
 
     def test_status_active_humidity(self):
         """Test status attribute when humidity status is active."""
-        from custom_components.adaptive_thermostat.managers.state_attributes import (
+        from custom_components.adaptive_climate.managers.state_attributes import (
             _build_status_attribute,
         )
 
@@ -1592,7 +1592,7 @@ class TestStatusAttribute:
 
     def test_status_humidity_stabilizing_with_countdown(self):
         """Test status attribute when humidity is stabilizing with countdown."""
-        from custom_components.adaptive_thermostat.managers.state_attributes import (
+        from custom_components.adaptive_climate.managers.state_attributes import (
             _build_status_attribute,
         )
 
@@ -1619,10 +1619,10 @@ class TestStatusAttribute:
 
     def test_status_contact_priority_over_humidity(self):
         """Test that contact sensor takes priority over humidity when both active."""
-        from custom_components.adaptive_thermostat.managers.state_attributes import (
+        from custom_components.adaptive_climate.managers.state_attributes import (
             _build_status_attribute,
         )
-        from custom_components.adaptive_thermostat.adaptive.contact_sensors import ContactAction
+        from custom_components.adaptive_climate.adaptive.contact_sensors import ContactAction
 
         thermostat = MagicMock()
 
@@ -1654,7 +1654,7 @@ class TestStatusAttribute:
 
     def test_status_humidity_only_when_no_contact(self):
         """Test humidity detector works when no contact sensor configured."""
-        from custom_components.adaptive_thermostat.managers.state_attributes import (
+        from custom_components.adaptive_climate.managers.state_attributes import (
             _build_status_attribute,
         )
 
@@ -1685,7 +1685,7 @@ class TestStatusAttributeIntegration:
 
     def test_idle_thermostat_status(self):
         """Test status when thermostat is idle (at setpoint, not heating)."""
-        from custom_components.adaptive_thermostat.managers.state_attributes import (
+        from custom_components.adaptive_climate.managers.state_attributes import (
             build_state_attributes,
         )
 
@@ -1732,7 +1732,7 @@ class TestStatusAttributeIntegration:
 
     def test_heating_thermostat_status(self):
         """Test status when thermostat is actively heating."""
-        from custom_components.adaptive_thermostat.managers.state_attributes import (
+        from custom_components.adaptive_climate.managers.state_attributes import (
             build_state_attributes,
         )
 
@@ -1779,10 +1779,10 @@ class TestStatusAttributeIntegration:
 
     def test_paused_by_contact_sensor_status(self):
         """Test status when paused by open contact sensor."""
-        from custom_components.adaptive_thermostat.managers.state_attributes import (
+        from custom_components.adaptive_climate.managers.state_attributes import (
             build_state_attributes,
         )
-        from custom_components.adaptive_thermostat.adaptive.contact_sensors import ContactAction
+        from custom_components.adaptive_climate.adaptive.contact_sensors import ContactAction
 
         thermostat = MagicMock()
         # Setup thermostat paused by contact sensor
@@ -1837,7 +1837,7 @@ class TestStatusAttributeIntegration:
 
     def test_paused_by_humidity_status(self):
         """Test status when paused by humidity spike."""
-        from custom_components.adaptive_thermostat.managers.state_attributes import (
+        from custom_components.adaptive_climate.managers.state_attributes import (
             build_state_attributes,
         )
 
@@ -1891,13 +1891,13 @@ class TestStatusAttributeIntegration:
 
     def test_night_setback_status(self):
         """Test status during night setback period."""
-        from custom_components.adaptive_thermostat.managers.state_attributes import (
+        from custom_components.adaptive_climate.managers.state_attributes import (
             build_state_attributes,
         )
 
         # Mock dt_util.now() to return a real datetime
         mock_now = datetime(2024, 1, 15, 6, 30, 0)
-        with patch('custom_components.adaptive_thermostat.managers.status_manager.dt_util.now', return_value=mock_now):
+        with patch('custom_components.adaptive_climate.managers.status_manager.dt_util.now', return_value=mock_now):
             thermostat = MagicMock()
             # Setup thermostat in night setback
             thermostat._away_temp = 18.0
@@ -1952,13 +1952,13 @@ class TestStatusAttributeIntegration:
 
     def test_multiple_conditions_status(self):
         """Test status with multiple active conditions."""
-        from custom_components.adaptive_thermostat.managers.state_attributes import (
+        from custom_components.adaptive_climate.managers.state_attributes import (
             build_state_attributes,
         )
 
         # Mock dt_util.now() to return a real datetime
         mock_now = datetime(2024, 1, 15, 6, 30, 0)
-        with patch('custom_components.adaptive_thermostat.managers.status_manager.dt_util.now', return_value=mock_now):
+        with patch('custom_components.adaptive_climate.managers.status_manager.dt_util.now', return_value=mock_now):
             thermostat = MagicMock()
             # Setup thermostat with multiple conditions
             thermostat._away_temp = 18.0
@@ -2012,13 +2012,13 @@ class TestStatusAttributeIntegration:
 
     def test_preheating_status(self):
         """Test status when preheating before night setback ends."""
-        from custom_components.adaptive_thermostat.managers.state_attributes import (
+        from custom_components.adaptive_climate.managers.state_attributes import (
             build_state_attributes,
         )
 
         # Mock dt_util.now() to return a real datetime
         mock_now = datetime(2024, 1, 15, 6, 30, 0)
-        with patch('custom_components.adaptive_thermostat.managers.status_manager.dt_util.now', return_value=mock_now):
+        with patch('custom_components.adaptive_climate.managers.status_manager.dt_util.now', return_value=mock_now):
             thermostat = MagicMock()
             # Setup thermostat in preheat mode
             thermostat._away_temp = 18.0
@@ -2074,7 +2074,7 @@ class TestStatusAttributeIntegration:
 
     def test_settling_status(self):
         """Test status during settling phase after heating cycle."""
-        from custom_components.adaptive_thermostat.managers.state_attributes import (
+        from custom_components.adaptive_climate.managers.state_attributes import (
             build_state_attributes,
         )
 
@@ -2124,7 +2124,7 @@ class TestStatusAttributeIntegration:
 
     def test_status_in_extra_state_attributes(self):
         """Test that status appears correctly in build_state_attributes."""
-        from custom_components.adaptive_thermostat.managers.state_attributes import (
+        from custom_components.adaptive_climate.managers.state_attributes import (
             build_state_attributes,
         )
 
@@ -2172,7 +2172,7 @@ class TestStatusAttributeIntegration:
 
     def test_resume_at_is_iso8601_format(self):
         """Test that resume_at timestamps are in ISO8601 format."""
-        from custom_components.adaptive_thermostat.managers.state_attributes import (
+        from custom_components.adaptive_climate.managers.state_attributes import (
             build_state_attributes,
         )
 

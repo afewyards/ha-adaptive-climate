@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 from homeassistant.util import dt as dt_util
 
-from custom_components.adaptive_thermostat.managers.state_attributes import (
+from custom_components.adaptive_climate.managers.state_attributes import (
     build_state_attributes,
 )
 
@@ -50,7 +50,7 @@ class TestPreheatStateAttributes:
         thermostat._coordinator = None  # No coordinator for preheat tests
         thermostat.hass = MagicMock()
         # Enable debug mode for preheat attributes to be visible
-        thermostat.hass.data = {"adaptive_thermostat": {"debug": True}}
+        thermostat.hass.data = {"adaptive_climate": {"debug": True}}
         # Add temperature getters for preheat
         thermostat._get_current_temp = MagicMock(return_value=18.0)
         thermostat._get_target_temp = MagicMock(return_value=21.0)
@@ -106,7 +106,7 @@ class TestPreheatStateAttributes:
         assert "preheat_heating_rate_learned" not in attrs  # Not set when no learned rate
         assert attrs["preheat_observation_count"] == 0
 
-    @patch('custom_components.adaptive_thermostat.managers.state_attributes.dt_util')
+    @patch('custom_components.adaptive_climate.managers.state_attributes.dt_util')
     def test_preheat_scheduled_not_active(self, mock_dt_util):
         """Test preheat attributes when preheat is scheduled but not yet active."""
         # Mock dt_util.utcnow() to return a real datetime
@@ -149,7 +149,7 @@ class TestPreheatStateAttributes:
         assert attrs["preheat_heating_rate_learned"] == 2.5
         assert attrs["preheat_observation_count"] == 6
 
-    @patch('custom_components.adaptive_thermostat.managers.state_attributes.dt_util')
+    @patch('custom_components.adaptive_climate.managers.state_attributes.dt_util')
     def test_preheat_active(self, mock_dt_util):
         """Test preheat attributes when preheat is currently active."""
         # Mock dt_util.utcnow() to return a real datetime
@@ -267,7 +267,7 @@ class TestPreheatStateAttributes:
         assert "preheat_scheduled_start" not in attrs
         assert "preheat_estimated_duration_min" not in attrs
 
-    @patch('custom_components.adaptive_thermostat.managers.state_attributes.dt_util')
+    @patch('custom_components.adaptive_climate.managers.state_attributes.dt_util')
     def test_preheat_timestamp_formatting(self, mock_dt_util):
         """Test that scheduled_start is formatted as ISO 8601."""
         # Mock dt_util.utcnow() to return a real datetime

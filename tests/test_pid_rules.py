@@ -2,15 +2,15 @@
 
 import pytest
 
-from custom_components.adaptive_thermostat.adaptive.pid_rules import (
+from custom_components.adaptive_climate.adaptive.pid_rules import (
     evaluate_pid_rules,
     PIDRule,
 )
-from custom_components.adaptive_thermostat.adaptive.learning import (
+from custom_components.adaptive_climate.adaptive.learning import (
     AdaptiveLearner,
     CycleMetrics,
 )
-from custom_components.adaptive_thermostat.const import (
+from custom_components.adaptive_climate.const import (
     PID_LIMITS,
     get_rule_thresholds,
     HEATING_TYPE_FLOOR_HYDRONIC,
@@ -384,7 +384,7 @@ class TestSlowResponseDiagnostics:
 
     def test_pearson_correlation_calculation(self):
         """Test Pearson correlation helper function."""
-        from custom_components.adaptive_thermostat.adaptive.pid_rules import calculate_pearson_correlation
+        from custom_components.adaptive_climate.adaptive.pid_rules import calculate_pearson_correlation
 
         # Perfect positive correlation
         x = [1.0, 2.0, 3.0, 4.0, 5.0]

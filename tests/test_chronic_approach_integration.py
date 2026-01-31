@@ -1,8 +1,8 @@
 """Integration tests for ChronicApproachDetector with AdaptiveLearner."""
 import pytest
-from custom_components.adaptive_thermostat.adaptive.learning import AdaptiveLearner
-from custom_components.adaptive_thermostat.adaptive.cycle_analysis import CycleMetrics
-from custom_components.adaptive_thermostat.const import HeatingType
+from custom_components.adaptive_climate.adaptive.learning import AdaptiveLearner
+from custom_components.adaptive_climate.adaptive.cycle_analysis import CycleMetrics
+from custom_components.adaptive_climate.const import HeatingType
 
 
 class TestChronicApproachIntegration:

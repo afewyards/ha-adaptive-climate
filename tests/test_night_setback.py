@@ -2,11 +2,11 @@
 import pytest
 from datetime import datetime, time, timedelta
 from unittest.mock import Mock
-from custom_components.adaptive_thermostat.adaptive.night_setback import (
+from custom_components.adaptive_climate.adaptive.night_setback import (
     NightSetback,
     NightSetbackManager
 )
-from custom_components.adaptive_thermostat.adaptive.thermal_rates import ThermalRateLearner
+from custom_components.adaptive_climate.adaptive.thermal_rates import ThermalRateLearner
 
 
 class TestNightSetback:
@@ -603,8 +603,8 @@ class TestNightSetbackLearnedRate:
 
 def test_night_setback_learned_rate_module_exists():
     """Marker test to verify night setback learned rate module exists."""
-    from custom_components.adaptive_thermostat.adaptive.night_setback import NightSetback
-    from custom_components.adaptive_thermostat.adaptive.thermal_rates import ThermalRateLearner
+    from custom_components.adaptive_climate.adaptive.night_setback import NightSetback
+    from custom_components.adaptive_climate.adaptive.thermal_rates import ThermalRateLearner
 
     # Verify new parameters exist
     learner = ThermalRateLearner()

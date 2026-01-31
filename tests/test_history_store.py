@@ -3,7 +3,7 @@ from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
-from custom_components.adaptive_thermostat.analytics.history_store import (
+from custom_components.adaptive_climate.analytics.history_store import (
     HistoryStore,
     WeeklySnapshot,
     ZoneSnapshot,

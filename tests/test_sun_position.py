@@ -3,7 +3,7 @@ import pytest
 from datetime import datetime, date, timezone, timedelta
 from unittest.mock import Mock, patch
 
-from custom_components.adaptive_thermostat.adaptive.sun_position import (
+from custom_components.adaptive_climate.adaptive.sun_position import (
     SunPositionCalculator,
     SunPosition,
     ORIENTATION_AZIMUTH,

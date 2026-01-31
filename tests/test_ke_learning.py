@@ -4,19 +4,19 @@ import pytest
 from datetime import datetime, timedelta
 from unittest.mock import patch
 
-from custom_components.adaptive_thermostat.adaptive.ke_learning import (
+from custom_components.adaptive_climate.adaptive.ke_learning import (
     KeLearner,
     KeObservation,
 )
-from custom_components.adaptive_thermostat.adaptive.physics import (
+from custom_components.adaptive_climate.adaptive.physics import (
     calculate_initial_ke,
     ENERGY_RATING_TO_INSULATION,
 )
-from custom_components.adaptive_thermostat.adaptive.learning import (
+from custom_components.adaptive_climate.adaptive.learning import (
     AdaptiveLearner,
     CycleMetrics,
 )
-from custom_components.adaptive_thermostat.const import (
+from custom_components.adaptive_climate.const import (
     KE_MIN_OBSERVATIONS,
     KE_MIN_TEMP_RANGE,
     KE_CORRELATION_THRESHOLD,
@@ -393,7 +393,7 @@ class TestKeLearnerRateLimiting:
 
         # Apply the adjustment (sets rate limit)
         current_time = datetime(2024, 1, 15, 10, 0)
-        with patch('custom_components.adaptive_thermostat.adaptive.ke_learning.dt_util') as mock_dt_util:
+        with patch('custom_components.adaptive_climate.adaptive.ke_learning.dt_util') as mock_dt_util:
             mock_dt_util.utcnow.return_value = current_time
             learner.apply_ke_adjustment(result1)
 
@@ -407,7 +407,7 @@ class TestKeLearnerRateLimiting:
             )
 
         # Second adjustment should be rate limited
-        with patch('custom_components.adaptive_thermostat.adaptive.ke_learning.dt_util') as mock_dt_util:
+        with patch('custom_components.adaptive_climate.adaptive.ke_learning.dt_util') as mock_dt_util:
             mock_dt_util.utcnow.return_value = current_time
             result2 = learner.calculate_ke_adjustment()
             assert result2 is None  # Rate limited
@@ -444,7 +444,7 @@ class TestKeLearnerRateLimiting:
             )
 
         # Adjustment should now succeed
-        with patch('custom_components.adaptive_thermostat.adaptive.ke_learning.dt_util') as mock_dt_util:
+        with patch('custom_components.adaptive_climate.adaptive.ke_learning.dt_util') as mock_dt_util:
             mock_dt_util.utcnow.return_value = current_time
             result2 = learner.calculate_ke_adjustment()
             assert result2 is not None

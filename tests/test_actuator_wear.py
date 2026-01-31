@@ -7,7 +7,7 @@ from pathlib import Path
 root_path = str(Path(__file__).parent.parent)
 sys.path.insert(0, root_path)
 
-from custom_components.adaptive_thermostat.const import (
+from custom_components.adaptive_climate.const import (
     ACTUATOR_MAINTENANCE_SOON_PCT,
     ACTUATOR_MAINTENANCE_DUE_PCT,
     DEFAULT_RATED_CYCLES,

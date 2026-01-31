@@ -1,7 +1,7 @@
 """Tests for manifold registry module."""
 import pytest
 from datetime import datetime, timedelta
-from custom_components.adaptive_thermostat.adaptive.manifold_registry import (
+from custom_components.adaptive_climate.adaptive.manifold_registry import (
     Manifold,
     ManifoldRegistry,
 )
@@ -301,7 +301,7 @@ class TestTransportDelayWarmManifold:
 
         # Mark as recently active (simulate time passing < 5 min)
         current_time = datetime(2024, 1, 15, 10, 0)
-        with patch('custom_components.adaptive_thermostat.adaptive.manifold_registry.dt_util') as mock_dt_util:
+        with patch('custom_components.adaptive_climate.adaptive.manifold_registry.dt_util') as mock_dt_util:
             mock_dt_util.utcnow.return_value = current_time
             registry.mark_manifold_active("climate.bathroom_2nd")
 
@@ -328,7 +328,7 @@ class TestTransportDelayWarmManifold:
         current_time = datetime(2024, 1, 15, 10, 0)
 
         # Mark as active
-        with patch('custom_components.adaptive_thermostat.adaptive.manifold_registry.dt_util') as mock_dt_util:
+        with patch('custom_components.adaptive_climate.adaptive.manifold_registry.dt_util') as mock_dt_util:
             mock_dt_util.utcnow.return_value = current_time
             registry.mark_manifold_active("climate.bathroom_2nd")
 
@@ -337,14 +337,14 @@ class TestTransportDelayWarmManifold:
             assert delay == 0.0
 
         # Simulate 2 minutes passing (still within 5 min cooldown)
-        with patch('custom_components.adaptive_thermostat.adaptive.manifold_registry.dt_util') as mock_dt_util:
+        with patch('custom_components.adaptive_climate.adaptive.manifold_registry.dt_util') as mock_dt_util:
             mock_dt_util.utcnow.return_value = current_time
             registry._last_active_time["2nd Floor"] = current_time - timedelta(minutes=2)
             delay = registry.get_transport_delay("climate.bathroom_2nd", active_zones)
             assert delay == 0.0
 
         # Simulate 4.5 minutes passing (still within cooldown)
-        with patch('custom_components.adaptive_thermostat.adaptive.manifold_registry.dt_util') as mock_dt_util:
+        with patch('custom_components.adaptive_climate.adaptive.manifold_registry.dt_util') as mock_dt_util:
             mock_dt_util.utcnow.return_value = current_time
             registry._last_active_time["2nd Floor"] = current_time - timedelta(minutes=4.5)
             delay = registry.get_transport_delay("climate.bathroom_2nd", active_zones)
@@ -369,7 +369,7 @@ class TestTransportDelayWarmManifold:
         current_time = datetime(2024, 1, 15, 10, 0)
 
         # Mark as active
-        with patch('custom_components.adaptive_thermostat.adaptive.manifold_registry.dt_util') as mock_dt_util:
+        with patch('custom_components.adaptive_climate.adaptive.manifold_registry.dt_util') as mock_dt_util:
             mock_dt_util.utcnow.return_value = current_time
             registry.mark_manifold_active("climate.bathroom_2nd")
 
@@ -378,7 +378,7 @@ class TestTransportDelayWarmManifold:
             assert delay == 0.0
 
         # Simulate 6 minutes passing (beyond cooldown)
-        with patch('custom_components.adaptive_thermostat.adaptive.manifold_registry.dt_util') as mock_dt_util:
+        with patch('custom_components.adaptive_climate.adaptive.manifold_registry.dt_util') as mock_dt_util:
             mock_dt_util.utcnow.return_value = current_time
             registry._last_active_time["2nd Floor"] = current_time - timedelta(minutes=6)
             delay = registry.get_transport_delay("climate.bathroom_2nd", active_zones)
@@ -406,7 +406,7 @@ class TestTransportDelayWarmManifold:
 
         # Mark only 2nd floor as active
         current_time = datetime(2024, 1, 15, 10, 0)
-        with patch('custom_components.adaptive_thermostat.adaptive.manifold_registry.dt_util') as mock_dt_util:
+        with patch('custom_components.adaptive_climate.adaptive.manifold_registry.dt_util') as mock_dt_util:
             mock_dt_util.utcnow.return_value = current_time
             registry.mark_manifold_active("climate.bathroom_2nd")
 
@@ -498,7 +498,7 @@ class TestMarkManifoldActiveProductionScenario:
 
         # Simulate production code: heater turns on → mark manifold active
         current_time = datetime(2024, 1, 15, 10, 0)
-        with patch('custom_components.adaptive_thermostat.adaptive.manifold_registry.dt_util') as mock_dt_util:
+        with patch('custom_components.adaptive_climate.adaptive.manifold_registry.dt_util') as mock_dt_util:
             mock_dt_util.utcnow.return_value = current_time
             registry.mark_manifold_active("climate.bathroom_2nd")
 
@@ -537,7 +537,7 @@ class TestMarkManifoldActiveProductionScenario:
 
         # Mark as active (simulating production heater turn-on)
         current_time = datetime(2024, 1, 15, 10, 0)
-        with patch('custom_components.adaptive_thermostat.adaptive.manifold_registry.dt_util') as mock_dt_util:
+        with patch('custom_components.adaptive_climate.adaptive.manifold_registry.dt_util') as mock_dt_util:
             mock_dt_util.utcnow.return_value = current_time
             registry.mark_manifold_active("climate.living_room")
 
@@ -581,7 +581,7 @@ class TestMarkManifoldActiveProductionScenario:
         assert delay == 10.0  # Cold initially
 
         current_time = datetime(2024, 1, 15, 10, 0)
-        with patch('custom_components.adaptive_thermostat.adaptive.manifold_registry.dt_util') as mock_dt_util:
+        with patch('custom_components.adaptive_climate.adaptive.manifold_registry.dt_util') as mock_dt_util:
             mock_dt_util.utcnow.return_value = current_time
             registry.mark_manifold_active("climate.bathroom_2nd")
 
@@ -765,7 +765,7 @@ class TestManifoldPersistence:
 
         # Mark manifold as active
         current_time = datetime(2024, 1, 15, 10, 30, 0)
-        with patch('custom_components.adaptive_thermostat.adaptive.manifold_registry.dt_util') as mock_dt_util:
+        with patch('custom_components.adaptive_climate.adaptive.manifold_registry.dt_util') as mock_dt_util:
             mock_dt_util.utcnow.return_value = current_time
             registry.mark_manifold_active("climate.bathroom_2nd")
 
@@ -800,7 +800,7 @@ class TestManifoldPersistence:
         time_2nd = datetime(2024, 1, 15, 10, 30, 0)
         time_ground = datetime(2024, 1, 15, 10, 45, 0)
 
-        with patch('custom_components.adaptive_thermostat.adaptive.manifold_registry.dt_util') as mock_dt_util:
+        with patch('custom_components.adaptive_climate.adaptive.manifold_registry.dt_util') as mock_dt_util:
             mock_dt_util.utcnow.return_value = time_2nd
             registry.mark_manifold_active("climate.bathroom_2nd")
 
@@ -967,7 +967,7 @@ class TestManifoldPersistence:
         time_2nd = datetime(2024, 1, 15, 10, 30, 0)
         time_ground = datetime(2024, 1, 15, 10, 45, 0)
 
-        with patch('custom_components.adaptive_thermostat.adaptive.manifold_registry.dt_util') as mock_dt_util:
+        with patch('custom_components.adaptive_climate.adaptive.manifold_registry.dt_util') as mock_dt_util:
             mock_dt_util.utcnow.return_value = time_2nd
             registry1.mark_manifold_active("climate.bathroom_2nd")
 

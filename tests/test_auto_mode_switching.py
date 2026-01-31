@@ -7,7 +7,7 @@ import pytest
 from homeassistant.components.climate import HVACMode
 from homeassistant.core import HomeAssistant
 
-from custom_components.adaptive_thermostat.const import (
+from custom_components.adaptive_climate.const import (
     CONF_AUTO_MODE_THRESHOLD,
     CONF_FORECAST_HOURS,
     CONF_MIN_SWITCH_INTERVAL,
@@ -15,7 +15,7 @@ from custom_components.adaptive_thermostat.const import (
     CONF_SUMMER_ABOVE,
     CONF_WINTER_BELOW,
 )
-from custom_components.adaptive_thermostat.managers.auto_mode_switching import (
+from custom_components.adaptive_climate.managers.auto_mode_switching import (
     AutoModeSwitchingManager,
 )
 

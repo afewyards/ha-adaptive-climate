@@ -4,13 +4,13 @@ Tests the complete flow: Cycle analysis -> PID recommendations -> application
 """
 import pytest
 
-from custom_components.adaptive_thermostat.adaptive.learning import (
+from custom_components.adaptive_climate.adaptive.learning import (
     AdaptiveLearner,
     CycleMetrics,
     ThermalRateLearner,
 )
-from custom_components.adaptive_thermostat.const import PID_LIMITS, MIN_CYCLES_FOR_LEARNING
-from custom_components.adaptive_thermostat.pid_controller import PID
+from custom_components.adaptive_climate.const import PID_LIMITS, MIN_CYCLES_FOR_LEARNING
+from custom_components.adaptive_climate.pid_controller import PID
 
 
 @pytest.fixture

@@ -1,7 +1,7 @@
 """Tests for chronic approach historic scan functionality."""
 import pytest
-from custom_components.adaptive_thermostat.adaptive.learning import AdaptiveLearner
-from custom_components.adaptive_thermostat.adaptive.cycle_analysis import CycleMetrics
+from custom_components.adaptive_climate.adaptive.learning import AdaptiveLearner
+from custom_components.adaptive_climate.adaptive.cycle_analysis import CycleMetrics
 
 
 class TestChronicApproachHistoricScan:

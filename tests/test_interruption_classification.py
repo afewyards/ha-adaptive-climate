@@ -3,7 +3,7 @@
 from datetime import datetime
 import pytest
 
-from custom_components.adaptive_thermostat.adaptive.cycle_analysis import (
+from custom_components.adaptive_climate.adaptive.cycle_analysis import (
     InterruptionType,
     InterruptionClassifier,
 )
