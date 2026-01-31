@@ -1601,6 +1601,333 @@ class TestCompressorMinCycleProtection:
         assert controller._cooler_cycle_count == initial_count
 
 
+class TestWasClampedCallback:
+    """Tests for was_clamped callback in HeaterController."""
+
+    @pytest.fixture
+    def heater_controller_with_dispatcher_and_pid(self, mock_hass, mock_thermostat):
+        """Create a HeaterController with event dispatcher and PID mock."""
+        dispatcher = CycleEventDispatcher()
+
+        # Mock PID controller with was_clamped
+        mock_pid = MagicMock()
+        mock_pid.was_clamped = False
+        mock_pid.reset_clamp_state = MagicMock()
+
+        controller = HeaterController(
+            hass=mock_hass,
+            thermostat=mock_thermostat,
+            heater_entity_id=["switch.heater"],
+            cooler_entity_id=None,
+            demand_switch_entity_id=None,
+            heater_polarity_invert=False,
+            pwm=600,  # 10 minutes
+            difference=100.0,
+            min_on_cycle_duration=300.0,  # 5 minutes
+            min_off_cycle_duration=300.0,  # 5 minutes
+            dispatcher=dispatcher,
+            get_was_clamped=lambda: mock_pid.was_clamped,
+            reset_clamp_state=lambda: mock_pid.reset_clamp_state(),
+        )
+        return controller, dispatcher, mock_pid
+
+    def test_get_pid_was_clamped_returns_true(self, heater_controller_with_dispatcher_and_pid):
+        """Test _get_pid_was_clamped returns True when PID reports clamping."""
+        controller, _, mock_pid = heater_controller_with_dispatcher_and_pid
+
+        # Set PID was_clamped to True
+        mock_pid.was_clamped = True
+
+        # Should return True
+        assert controller._get_pid_was_clamped() is True
+
+    def test_get_pid_was_clamped_returns_false(self, heater_controller_with_dispatcher_and_pid):
+        """Test _get_pid_was_clamped returns False when PID reports no clamping."""
+        controller, _, mock_pid = heater_controller_with_dispatcher_and_pid
+
+        # Set PID was_clamped to False
+        mock_pid.was_clamped = False
+
+        # Should return False
+        assert controller._get_pid_was_clamped() is False
+
+    def test_get_pid_was_clamped_handles_missing_pid(self, mock_hass, mock_thermostat):
+        """Test _get_pid_was_clamped gracefully handles missing PID controller."""
+        # Create controller without PID on thermostat
+        mock_thermostat._pid = None
+
+        controller = HeaterController(
+            hass=mock_hass,
+            thermostat=mock_thermostat,
+            heater_entity_id=["switch.heater"],
+            cooler_entity_id=None,
+            demand_switch_entity_id=None,
+            heater_polarity_invert=False,
+            pwm=600,
+            difference=100.0,
+            min_on_cycle_duration=300.0,
+            min_off_cycle_duration=300.0,
+        )
+
+        # Should return False (graceful fallback)
+        assert controller._get_pid_was_clamped() is False
+
+    def test_get_pid_was_clamped_handles_missing_attribute(self, mock_hass, mock_thermostat):
+        """Test _get_pid_was_clamped gracefully handles PID without was_clamped attribute."""
+        # Create controller with PID that doesn't have was_clamped
+        mock_pid = MagicMock()
+        del mock_pid.was_clamped  # Remove the attribute
+        mock_thermostat._pid = mock_pid
+
+        controller = HeaterController(
+            hass=mock_hass,
+            thermostat=mock_thermostat,
+            heater_entity_id=["switch.heater"],
+            cooler_entity_id=None,
+            demand_switch_entity_id=None,
+            heater_polarity_invert=False,
+            pwm=600,
+            difference=100.0,
+            min_on_cycle_duration=300.0,
+            min_off_cycle_duration=300.0,
+        )
+
+        # Should return False (graceful fallback)
+        assert controller._get_pid_was_clamped() is False
+
+    def test_reset_pid_clamp_state_calls_pid_method(self, heater_controller_with_dispatcher_and_pid):
+        """Test _reset_pid_clamp_state calls reset_clamp_state on PID."""
+        controller, _, mock_pid = heater_controller_with_dispatcher_and_pid
+
+        # Add reset_clamp_state method to mock
+        mock_pid.reset_clamp_state = MagicMock()
+
+        # Call reset
+        controller._reset_pid_clamp_state()
+
+        # Verify PID method was called
+        mock_pid.reset_clamp_state.assert_called_once()
+
+    def test_reset_pid_clamp_state_handles_missing_pid(self, mock_hass, mock_thermostat):
+        """Test _reset_pid_clamp_state gracefully handles missing PID controller."""
+        # Create controller without PID on thermostat
+        mock_thermostat._pid = None
+
+        controller = HeaterController(
+            hass=mock_hass,
+            thermostat=mock_thermostat,
+            heater_entity_id=["switch.heater"],
+            cooler_entity_id=None,
+            demand_switch_entity_id=None,
+            heater_polarity_invert=False,
+            pwm=600,
+            difference=100.0,
+            min_on_cycle_duration=300.0,
+            min_off_cycle_duration=300.0,
+        )
+
+        # Should not raise an error
+        controller._reset_pid_clamp_state()
+
+    def test_reset_pid_clamp_state_handles_missing_method(self, mock_hass, mock_thermostat):
+        """Test _reset_pid_clamp_state gracefully handles PID without reset_clamp_state method."""
+        # Create controller with PID that doesn't have reset_clamp_state
+        mock_pid = MagicMock(spec=[])  # Empty spec = no methods
+        mock_thermostat._pid = mock_pid
+
+        controller = HeaterController(
+            hass=mock_hass,
+            thermostat=mock_thermostat,
+            heater_entity_id=["switch.heater"],
+            cooler_entity_id=None,
+            demand_switch_entity_id=None,
+            heater_polarity_invert=False,
+            pwm=600,
+            difference=100.0,
+            min_on_cycle_duration=300.0,
+            min_off_cycle_duration=300.0,
+        )
+
+        # Should not raise an error
+        controller._reset_pid_clamp_state()
+
+    @pytest.mark.asyncio
+    async def test_settling_started_includes_was_clamped_true(self, heater_controller_with_dispatcher_and_pid):
+        """Test SETTLING_STARTED event includes was_clamped=True when PID was clamped."""
+        controller, dispatcher, mock_pid = heater_controller_with_dispatcher_and_pid
+
+        # Setup event listener
+        settling_events = []
+        dispatcher.subscribe(CycleEventType.SETTLING_STARTED, lambda e: settling_events.append(e))
+
+        # Set PID was_clamped to True
+        mock_pid.was_clamped = True
+
+        # Mock service calls to be async
+        async def mock_async_call(*args, **kwargs):
+            pass
+        controller._hass.services.async_call = mock_async_call
+        controller._hass.states.is_state = MagicMock(return_value=True)
+
+        # Mock callbacks
+        import time
+        cycle_start_time = time.monotonic() - 600  # 600 seconds ago
+        get_cycle_start_time = MagicMock(return_value=cycle_start_time)
+        set_is_heating = MagicMock()
+        set_last_heat_cycle_time = MagicMock()
+
+        # Set previous state and mark cycle as active
+        controller._last_heater_state = True
+        controller._cycle_active = True
+
+        # Turn off heater (should emit SETTLING_STARTED in PWM mode)
+        await controller.async_turn_off(
+            hvac_mode=MockHVACMode.HEAT,
+            get_cycle_start_time=get_cycle_start_time,
+            set_is_heating=set_is_heating,
+            set_last_heat_cycle_time=set_last_heat_cycle_time,
+        )
+
+        # Verify SETTLING_STARTED event was emitted with was_clamped=True
+        assert len(settling_events) == 1
+        settling_event = settling_events[0]
+        assert isinstance(settling_event, SettlingStartedEvent)
+        assert settling_event.was_clamped is True
+
+    @pytest.mark.asyncio
+    async def test_settling_started_includes_was_clamped_false(self, heater_controller_with_dispatcher_and_pid):
+        """Test SETTLING_STARTED event includes was_clamped=False when PID was not clamped."""
+        controller, dispatcher, mock_pid = heater_controller_with_dispatcher_and_pid
+
+        # Setup event listener
+        settling_events = []
+        dispatcher.subscribe(CycleEventType.SETTLING_STARTED, lambda e: settling_events.append(e))
+
+        # Set PID was_clamped to False
+        mock_pid.was_clamped = False
+
+        # Mock service calls to be async
+        async def mock_async_call(*args, **kwargs):
+            pass
+        controller._hass.services.async_call = mock_async_call
+        controller._hass.states.is_state = MagicMock(return_value=True)
+
+        # Mock callbacks
+        import time
+        cycle_start_time = time.monotonic() - 600
+        get_cycle_start_time = MagicMock(return_value=cycle_start_time)
+        set_is_heating = MagicMock()
+        set_last_heat_cycle_time = MagicMock()
+
+        # Set previous state and mark cycle as active
+        controller._last_heater_state = True
+        controller._cycle_active = True
+
+        # Turn off heater
+        await controller.async_turn_off(
+            hvac_mode=MockHVACMode.HEAT,
+            get_cycle_start_time=get_cycle_start_time,
+            set_is_heating=set_is_heating,
+            set_last_heat_cycle_time=set_last_heat_cycle_time,
+        )
+
+        # Verify SETTLING_STARTED event was emitted with was_clamped=False
+        assert len(settling_events) == 1
+        settling_event = settling_events[0]
+        assert isinstance(settling_event, SettlingStartedEvent)
+        assert settling_event.was_clamped is False
+
+    @pytest.mark.asyncio
+    async def test_cycle_started_resets_clamp_state(self, heater_controller_with_dispatcher_and_pid):
+        """Test that reset_clamp_state is called when CYCLE_STARTED is emitted."""
+        controller, dispatcher, mock_pid = heater_controller_with_dispatcher_and_pid
+
+        # Add reset_clamp_state method to mock
+        mock_pid.reset_clamp_state = MagicMock()
+
+        # Setup thermostat state
+        controller._thermostat.target_temperature = 21.0
+        controller._thermostat._current_temp = 19.5
+
+        # Mock service calls to be async
+        async def mock_async_call(*args, **kwargs):
+            pass
+        controller._hass.services.async_call = mock_async_call
+
+        # Mock device state as OFF
+        controller._hass.states.is_state = MagicMock(return_value=False)
+
+        # Mock callbacks
+        import time
+        cycle_start_time = time.monotonic() - 600  # 600 seconds ago
+        get_cycle_start_time = MagicMock(return_value=cycle_start_time)
+        set_is_heating = MagicMock()
+        set_last_heat_cycle_time = MagicMock()
+
+        # Set demand active (simulates async_set_control_value having been called)
+        controller._has_demand = True
+
+        # Turn on heater (should emit CYCLE_STARTED and reset clamp state)
+        await controller.async_turn_on(
+            hvac_mode=MockHVACMode.HEAT,
+            get_cycle_start_time=get_cycle_start_time,
+            set_is_heating=set_is_heating,
+            set_last_heat_cycle_time=set_last_heat_cycle_time,
+        )
+
+        # Verify reset_clamp_state was called
+        mock_pid.reset_clamp_state.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_valve_mode_settling_includes_was_clamped(self, mock_hass, mock_thermostat):
+        """Test valve mode SETTLING_STARTED event includes was_clamped from callback."""
+        dispatcher = CycleEventDispatcher()
+
+        # Mock PID controller with was_clamped
+        mock_pid = MagicMock()
+        mock_pid.was_clamped = True
+
+        controller = HeaterController(
+            hass=mock_hass,
+            thermostat=mock_thermostat,
+            heater_entity_id=["number.valve"],
+            cooler_entity_id=None,
+            demand_switch_entity_id=None,
+            heater_polarity_invert=False,
+            pwm=0,  # Valve mode
+            difference=100.0,
+            min_on_cycle_duration=0.0,
+            min_off_cycle_duration=0.0,
+            dispatcher=dispatcher,
+            get_was_clamped=lambda: mock_pid.was_clamped,
+            reset_clamp_state=lambda: None,
+        )
+
+        # Setup event listener
+        settling_events = []
+        dispatcher.subscribe(CycleEventType.SETTLING_STARTED, lambda e: settling_events.append(e))
+
+        # Mock service calls
+        controller._hass.services.async_call = MagicMock()
+
+        # Start with valve open (50)
+        controller._hass.states.get = MagicMock(return_value=MagicMock(state="50"))
+
+        # Set up state: cycle active, close to setpoint
+        controller._cycle_active = True
+        mock_thermostat.target_temperature = 21.0
+        mock_thermostat._current_temp = 20.7  # Within 0.5°C
+
+        # Transition: 50 → 4 (below 5%, should emit SETTLING_STARTED)
+        await controller.async_set_valve_value(4.0, MockHVACMode.HEAT)
+
+        # Verify SETTLING_STARTED event was emitted with was_clamped=True
+        assert len(settling_events) == 1
+        settling_event = settling_events[0]
+        assert isinstance(settling_event, SettlingStartedEvent)
+        assert settling_event.was_clamped is True
+
+
 class TestDutyAccumulatorPulse:
     """Tests for firing minimum pulse when accumulator reaches threshold (story 2.2)."""
 

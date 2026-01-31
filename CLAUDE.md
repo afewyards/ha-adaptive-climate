@@ -29,6 +29,8 @@ pytest --cov=custom_components/adaptive_climate  # coverage
 
 ## Architecture
 
+**See also:** `docs/architecture/manager-communication.md` for detailed explanation of communication patterns between thermostat and managers (Events, Callbacks, Protocols, Direct Reference).
+
 ### Core Modules
 
 | Module | Purpose |

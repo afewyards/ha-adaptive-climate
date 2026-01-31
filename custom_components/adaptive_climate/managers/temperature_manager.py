@@ -47,7 +47,7 @@ class TemperatureManager:
 
     def __init__(
         self,
-        thermostat: AdaptiveThermostat,
+        thermostat: Optional[AdaptiveThermostat],
         away_temp: Optional[float],
         eco_temp: Optional[float],
         boost_temp: Optional[float],
@@ -70,7 +70,7 @@ class TemperatureManager:
         """Initialize the TemperatureManager.
 
         Args:
-            thermostat: Reference to the parent thermostat entity
+            thermostat: (Unused) Optional reference to parent thermostat - kept for backward compatibility
             away_temp: Temperature for away preset
             eco_temp: Temperature for eco preset
             boost_temp: Temperature for boost preset
@@ -90,7 +90,6 @@ class TemperatureManager:
             async_set_pid_mode: Async callback to set PID mode
             async_control_heating: Async callback to trigger heating control
         """
-        self._thermostat = thermostat
         self._away_temp = away_temp
         self._eco_temp = eco_temp
         self._boost_temp = boost_temp

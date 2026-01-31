@@ -2400,14 +2400,24 @@ class TestPIDControllerHeatingTypeTolerance:
 
         from unittest.mock import Mock, AsyncMock, patch
         from custom_components.adaptive_climate.managers.pid_tuning import PIDTuningManager
+        from custom_components.adaptive_climate.managers.pid_gains_manager import PIDGainsManager
         from custom_components.adaptive_climate.adaptive.learning import AdaptiveLearner
         from custom_components.adaptive_climate.pid_controller import PID
         from custom_components.adaptive_climate.adaptive.cycle_analysis import CycleMetrics
+        from custom_components.adaptive_climate.const import PIDGains
 
         # Arrange - Create mock thermostat and PID controller
         mock_thermostat = Mock()
         mock_thermostat.entity_id = "climate.test_zone"
         mock_thermostat._pwm = 0  # Direct valve mode
+        mock_thermostat._area_m2 = 20.0
+        mock_thermostat._ceiling_height = 2.5
+        mock_thermostat._window_area_m2 = 2.0
+        mock_thermostat._window_rating = "double"
+        mock_thermostat.heating_type = "radiator"
+        mock_thermostat._floor_construction = None
+        mock_thermostat._supply_temperature = None
+        mock_thermostat._max_power_w = None
 
         # Create real PID controller (not a mock, so we can test set_auto_apply_count())
         pid_controller = PID(
@@ -2419,6 +2429,19 @@ class TestPIDControllerHeatingTypeTolerance:
             out_max=100,
             heating_type="radiator"
         )
+
+        # Create real PIDGainsManager
+        initial_gains = PIDGains(kp=100.0, ki=0.001, kd=50.0, ke=0.0)
+        gains_manager = PIDGainsManager(
+            pid_controller=pid_controller,
+            initial_heating_gains=initial_gains,
+            get_hvac_mode=lambda: "heat",
+        )
+
+        # Add _kp, _ki, _kd properties to mock_thermostat (protocol requirements)
+        mock_thermostat._kp = 100.0
+        mock_thermostat._ki = 0.001
+        mock_thermostat._kd = 50.0
 
         # Create real AdaptiveLearner with some cycle history for a valid recommendation
         adaptive_learner = AdaptiveLearner(heating_type="radiator")
@@ -2473,24 +2496,11 @@ class TestPIDControllerHeatingTypeTolerance:
             }
         }
 
-        # Create PIDTuningManager with mocked callbacks (no set_* callbacks - handled by PIDGainsManager)
+        # Create PIDTuningManager with new simplified signature
         pid_tuning_manager = PIDTuningManager(
-            thermostat=mock_thermostat,
+            thermostat_state=mock_thermostat,
             pid_controller=pid_controller,
-            get_kp=lambda: 100.0,
-            get_ki=lambda: 0.001,
-            get_kd=lambda: 50.0,
-            get_ke=lambda: 0.0,
-            get_area_m2=lambda: 20.0,
-            get_ceiling_height=lambda: 2.5,
-            get_window_area_m2=lambda: 2.0,
-            get_window_rating=lambda: "double",
-            get_heating_type=lambda: "radiator",
-            get_hass=lambda: mock_hass,
-            get_zone_id=lambda: "test_zone",
-            get_floor_construction=lambda: None,
-            get_supply_temperature=lambda: None,
-            get_max_power_w=lambda: None,
+            gains_manager=gains_manager,
             async_control_heating=AsyncMock(),
             async_write_ha_state=AsyncMock(),
         )

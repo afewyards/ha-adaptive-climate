@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional
 
 # These imports are only needed when running in Home Assistant
 try:
@@ -19,6 +19,7 @@ from ..const import PIDChangeReason
 
 if TYPE_CHECKING:
     from ..climate import AdaptiveThermostat
+    from ..protocols import KeManagerState
     from .pid_gains_manager import PIDGainsManager
 
 _LOGGER = logging.getLogger(__name__)
@@ -37,61 +38,85 @@ class KeManager:
 
     def __init__(
         self,
-        thermostat: AdaptiveThermostat,
-        ke_learner: Optional[KeLearner],
-        get_hvac_mode: callable,
-        get_current_temp: callable,
-        get_target_temp: callable,
-        get_ext_temp: callable,
-        get_control_output: callable,
-        get_cold_tolerance: callable,
-        get_hot_tolerance: callable,
-        get_ke: callable,
-        set_ke: callable,
-        get_pid_controller: callable,
-        async_control_heating: callable,
-        async_write_ha_state: callable,
-        get_is_pid_converged: callable = None,
+        state: "KeManagerState" = None,
+        ke_learner: Optional[KeLearner] = None,
         gains_manager: Optional["PIDGainsManager"] = None,
+        async_control_heating: Optional[Callable[..., Awaitable[None]]] = None,
+        async_write_ha_state: Optional[Callable[[], None]] = None,
+        # Backward compatibility parameters
+        thermostat: Optional["AdaptiveThermostat"] = None,
+        get_hvac_mode: Optional[callable] = None,
+        get_current_temp: Optional[callable] = None,
+        get_target_temp: Optional[callable] = None,
+        get_ext_temp: Optional[callable] = None,
+        get_control_output: Optional[callable] = None,
+        get_cold_tolerance: Optional[callable] = None,
+        get_hot_tolerance: Optional[callable] = None,
+        get_ke: Optional[callable] = None,
+        set_ke: Optional[callable] = None,
+        get_pid_controller: Optional[callable] = None,
+        get_is_pid_converged: Optional[callable] = None,
     ):
         """Initialize the KeManager.
 
         Args:
-            thermostat: Reference to the parent thermostat entity
+            state: KeManagerState protocol for all read-only state queries
             ke_learner: KeLearner instance (may be None if no outdoor sensor)
-            get_hvac_mode: Callback to get current HVAC mode
-            get_current_temp: Callback to get current indoor temperature
-            get_target_temp: Callback to get target temperature
-            get_ext_temp: Callback to get external/outdoor temperature
-            get_control_output: Callback to get current PID control output
-            get_cold_tolerance: Callback to get cold tolerance
-            get_hot_tolerance: Callback to get hot tolerance
-            get_ke: Callback to get current Ke value
-            set_ke: Callback to set Ke value (fallback for backward compatibility)
-            get_pid_controller: Callback to get PID controller
+            gains_manager: PIDGainsManager instance for centralized gain mutations
             async_control_heating: Async callback to trigger heating control
             async_write_ha_state: Async callback to write HA state
-            get_is_pid_converged: Callback to check if PID has converged for Ke learning
-            gains_manager: PIDGainsManager instance for centralized gain mutations
+            thermostat: (Backward compat) Reference to the parent thermostat entity
+            get_hvac_mode: (Backward compat) Callback to get current HVAC mode
+            get_current_temp: (Backward compat) Callback to get current indoor temperature
+            get_target_temp: (Backward compat) Callback to get target temperature
+            get_ext_temp: (Backward compat) Callback to get external/outdoor temperature
+            get_control_output: (Backward compat) Callback to get current PID control output
+            get_cold_tolerance: (Backward compat) Callback to get cold tolerance
+            get_hot_tolerance: (Backward compat) Callback to get hot tolerance
+            get_ke: (Backward compat) Callback to get current Ke value
+            set_ke: (Backward compat) Callback to set Ke value
+            get_pid_controller: (Backward compat) Callback to get PID controller
+            get_is_pid_converged: (Backward compat) Callback to check if PID has converged for Ke learning
         """
-        self._thermostat = thermostat
-        self._ke_learner = ke_learner
-        self._gains_manager = gains_manager
+        # Use protocol state if provided, otherwise create callbacks from thermostat
+        if state is not None:
+            self._state = state
+            self._thermostat = thermostat  # May be None with protocol-based approach
+            # Store callbacks as None when using protocol
+            self._get_hvac_mode_callback = None
+            self._get_current_temp_callback = None
+            self._get_target_temp_callback = None
+            self._get_ext_temp_callback = None
+            self._get_control_output_callback = None
+            self._get_cold_tolerance_callback = None
+            self._get_hot_tolerance_callback = None
+            self._get_ke_callback = None
+            self._get_pid_controller = get_pid_controller
+            self._get_is_pid_converged = get_is_pid_converged
+        else:
+            # Backward compatibility: use callbacks
+            self._state = None
+            self._thermostat = thermostat
+            self._get_hvac_mode_callback = get_hvac_mode
+            self._get_current_temp_callback = get_current_temp
+            self._get_target_temp_callback = get_target_temp
+            self._get_ext_temp_callback = get_ext_temp
+            self._get_control_output_callback = get_control_output
+            self._get_cold_tolerance_callback = get_cold_tolerance
+            self._get_hot_tolerance_callback = get_hot_tolerance
+            self._get_ke_callback = get_ke
+            self._get_pid_controller = get_pid_controller
+            self._get_is_pid_converged = get_is_pid_converged
 
-        # Callbacks
-        self._get_hvac_mode = get_hvac_mode
-        self._get_current_temp = get_current_temp
-        self._get_target_temp = get_target_temp
-        self._get_ext_temp = get_ext_temp
-        self._get_control_output = get_control_output
-        self._get_cold_tolerance = get_cold_tolerance
-        self._get_hot_tolerance = get_hot_tolerance
-        self._get_ke = get_ke
-        self._set_ke = set_ke  # Keep as fallback for backward compatibility
-        self._get_pid_controller = get_pid_controller
+        # Callbacks that represent actions (not state queries)
         self._async_control_heating = async_control_heating
         self._async_write_ha_state = async_write_ha_state
-        self._get_is_pid_converged = get_is_pid_converged
+
+        # Keep set_ke as fallback for backward compatibility
+        self._set_ke = set_ke
+
+        self._ke_learner = ke_learner
+        self._gains_manager = gains_manager
 
         # State tracking
         self._steady_state_start: Optional[float] = None
@@ -119,6 +144,55 @@ class KeManager:
             ke_learner: New KeLearner instance (or None to disable)
         """
         self._ke_learner = ke_learner
+
+    # Helper methods for backward compatibility - expose callbacks as methods
+    def _get_hvac_mode(self):
+        """Get HVAC mode - uses protocol state or callback."""
+        if self._state is not None:
+            return self._state._hvac_mode
+        return self._get_hvac_mode_callback()
+
+    def _get_current_temp(self):
+        """Get current temperature - uses protocol state or callback."""
+        if self._state is not None:
+            return self._state.current_temperature
+        return self._get_current_temp_callback()
+
+    def _get_target_temp(self):
+        """Get target temperature - uses protocol state or callback."""
+        if self._state is not None:
+            return self._state.target_temperature
+        return self._get_target_temp_callback()
+
+    def _get_ext_temp(self):
+        """Get external temperature - uses protocol state or callback."""
+        if self._state is not None:
+            return self._state._ext_temp
+        return self._get_ext_temp_callback()
+
+    def _get_control_output(self):
+        """Get control output - uses protocol state or callback."""
+        if self._state is not None:
+            return self._state._control_output
+        return self._get_control_output_callback()
+
+    def _get_cold_tolerance(self):
+        """Get cold tolerance - uses protocol state or callback."""
+        if self._state is not None:
+            return self._state._cold_tolerance
+        return self._get_cold_tolerance_callback()
+
+    def _get_hot_tolerance(self):
+        """Get hot tolerance - uses protocol state or callback."""
+        if self._state is not None:
+            return self._state._hot_tolerance
+        return self._get_hot_tolerance_callback()
+
+    def _get_ke(self):
+        """Get Ke value - uses protocol state or callback."""
+        if self._state is not None:
+            return self._state._ke
+        return self._get_ke_callback()
 
     def is_at_steady_state(self) -> bool:
         """Check if the system is at steady state (maintaining target temperature).
@@ -176,8 +250,12 @@ class KeManager:
         if not self._ke_learner:
             return
 
+        # Get entity_id for logging
+        entity_id = self._state.entity_id if self._state is not None else self._thermostat.entity_id
+
         # Check if PID has converged and enable Ke learning if not already enabled
         if not self._ke_learner.enabled:
+            # Use get_is_pid_converged callback if available (backward compat only)
             if self._get_is_pid_converged and self._get_is_pid_converged():
                 # PID has converged - enable Ke learning and apply physics-based Ke
                 self._ke_learner.enable()
@@ -194,7 +272,7 @@ class KeManager:
                         self._set_ke(physics_ke)
                     _LOGGER.info(
                         "%s: PID converged - enabled Ke learning and applied physics-based Ke=%.3f",
-                        self._thermostat.entity_id,
+                        entity_id,
                         physics_ke,
                     )
             else:
@@ -230,7 +308,7 @@ class KeManager:
 
         _LOGGER.debug(
             "%s: Ke observation recorded: outdoor=%.1f, pid=%.1f, indoor=%.1f, target=%.1f",
-            self._thermostat.entity_id,
+            entity_id,
             ext_temp,
             control_output,
             current_temp,
@@ -239,17 +317,20 @@ class KeManager:
 
     async def async_apply_adaptive_ke(self, **kwargs) -> None:
         """Apply adaptive Ke value based on learned outdoor temperature correlations."""
+        # Get entity_id for logging
+        entity_id = self._state.entity_id if self._state is not None else self._thermostat.entity_id
+
         if not self._ke_learner:
             _LOGGER.warning(
                 "%s: Cannot apply adaptive Ke - no Ke learner (outdoor sensor not configured?)",
-                self._thermostat.entity_id
+                entity_id
             )
             return
 
         if not self._ke_learner.enabled:
             _LOGGER.warning(
                 "%s: Cannot apply adaptive Ke - learning not enabled (PID not converged yet)",
-                self._thermostat.entity_id
+                entity_id
             )
             return
 
@@ -260,7 +341,7 @@ class KeManager:
             _LOGGER.warning(
                 "%s: Insufficient data for adaptive Ke (observations: %d, "
                 "temp_range: %s, correlation: %s)",
-                self._thermostat.entity_id,
+                entity_id,
                 summary.get("count", 0),
                 summary.get("outdoor_temp_range"),
                 summary.get("correlation"),
@@ -283,7 +364,7 @@ class KeManager:
 
         _LOGGER.info(
             "%s: Applied adaptive Ke: %.2f (was %.2f)",
-            self._thermostat.entity_id, recommendation, old_ke
+            entity_id, recommendation, old_ke
         )
 
         await self._async_control_heating(calc_pid=True)

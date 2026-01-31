@@ -3,15 +3,15 @@ from __future__ import annotations
 
 import logging
 import statistics
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict, Optional
 
 from ..adaptive.physics import calculate_thermal_time_constant, calculate_initial_pid
 from ..adaptive.learning import get_auto_apply_thresholds
+from ..protocols import PIDTuningManagerState
 from .. import const
 from ..const import VALIDATION_CYCLE_COUNT, PIDChangeReason
 
 if TYPE_CHECKING:
-    from ..climate import AdaptiveThermostat
     from ..pid_controller import PIDController
     from ..adaptive.learning import AdaptiveLearner
 
@@ -37,65 +37,24 @@ class PIDTuningManager:
 
     def __init__(
         self,
-        thermostat: AdaptiveThermostat,
+        thermostat_state: PIDTuningManagerState,
         pid_controller: PIDController,
-        get_kp: callable,
-        get_ki: callable,
-        get_kd: callable,
-        get_ke: callable,
-        get_area_m2: callable,
-        get_ceiling_height: callable,
-        get_window_area_m2: callable,
-        get_window_rating: callable,
-        get_heating_type: callable,
-        get_hass: callable,
-        get_zone_id: callable,
-        get_floor_construction: callable,
-        get_supply_temperature: callable,
-        get_max_power_w: callable,
-        async_control_heating: callable,
-        async_write_ha_state: callable,
+        gains_manager: Any,  # PIDGainsManager
+        async_control_heating: Callable[..., Awaitable[None]],
+        async_write_ha_state: Callable[[], None],
     ):
         """Initialize the PIDTuningManager.
 
         Args:
-            thermostat: Reference to the parent thermostat entity
-            pid_controller: Reference to the PID controller
-            get_kp: Callback to get current Kp value
-            get_ki: Callback to get current Ki value
-            get_kd: Callback to get current Kd value
-            get_ke: Callback to get current Ke value
-            get_area_m2: Callback to get room area in m2
-            get_ceiling_height: Callback to get ceiling height
-            get_window_area_m2: Callback to get window area in m2
-            get_window_rating: Callback to get window rating
-            get_heating_type: Callback to get heating type
-            get_hass: Callback to get Home Assistant instance
-            get_zone_id: Callback to get zone ID
-            get_floor_construction: Callback to get floor construction config
-            get_supply_temperature: Callback to get supply temperature
-            get_max_power_w: Callback to get max power in watts
+            thermostat_state: Protocol for state queries (read-only access)
+            pid_controller: Direct reference to PID controller (for integral resets)
+            gains_manager: PID gains manager instance (for gain mutations)
             async_control_heating: Async callback to trigger heating control
             async_write_ha_state: Async callback to write HA state
         """
-        self._thermostat = thermostat
+        self._state = thermostat_state
         self._pid_controller = pid_controller
-
-        # Getters
-        self._get_kp = get_kp
-        self._get_ki = get_ki
-        self._get_kd = get_kd
-        self._get_ke = get_ke
-        self._get_area_m2 = get_area_m2
-        self._get_ceiling_height = get_ceiling_height
-        self._get_window_area_m2 = get_window_area_m2
-        self._get_window_rating = get_window_rating
-        self._get_heating_type = get_heating_type
-        self._get_hass = get_hass
-        self._get_zone_id = get_zone_id
-        self._get_floor_construction = get_floor_construction
-        self._get_supply_temperature = get_supply_temperature
-        self._get_max_power_w = get_max_power_w
+        self._gains_manager = gains_manager
 
         # Async callbacks
         self._async_control_heating = async_control_heating
@@ -114,8 +73,8 @@ class PIDTuningManager:
         ke = kwargs.get('ke')
 
         # Use PIDGainsManager to set gains and record to history
-        self._thermostat._gains_manager.set_gains(
-            PIDChangeReason.MANUAL,
+        self._gains_manager.set_gains(
+            PIDChangeReason.SERVICE_CALL,
             kp=float(kp) if kp is not None else None,
             ki=float(ki) if ki is not None else None,
             kd=float(kd) if kd is not None else None,
@@ -141,20 +100,20 @@ class PIDTuningManager:
         Calculates initial PID parameters based on room thermal properties
         using the Ziegler-Nichols method. Includes floor construction if configured.
         """
-        area_m2 = self._get_area_m2()
+        area_m2 = self._state._area_m2
         if not area_m2:
             _LOGGER.warning(
                 "%s: Cannot reset PID to physics - no area_m2 configured",
-                self._thermostat.entity_id
+                self._state.entity_id
             )
             return
 
-        ceiling_height = self._get_ceiling_height()
+        ceiling_height = self._state._ceiling_height
         volume_m3 = area_m2 * ceiling_height
-        window_area_m2 = self._get_window_area_m2()
-        window_rating = self._get_window_rating()
-        heating_type = self._get_heating_type()
-        floor_construction = self._get_floor_construction()
+        window_area_m2 = self._state._window_area_m2
+        window_rating = self._state._window_rating
+        heating_type = self._state.heating_type
+        floor_construction = self._state._floor_construction
 
         tau = calculate_thermal_time_constant(
             volume_m3=volume_m3,
@@ -165,8 +124,8 @@ class PIDTuningManager:
             area_m2=area_m2,
             heating_type=heating_type,
         )
-        max_power_w = self._get_max_power_w()
-        supply_temperature = self._get_supply_temperature()
+        max_power_w = self._state._max_power_w
+        supply_temperature = self._state._supply_temperature
         kp, ki, kd = calculate_initial_pid(
             tau, heating_type, area_m2=area_m2, max_power_w=max_power_w, supply_temperature=supply_temperature
         )
@@ -175,7 +134,7 @@ class PIDTuningManager:
         self._pid_controller.integral = 0.0
 
         # Set gains via PIDGainsManager (auto-records history)
-        self._thermostat._gains_manager.set_gains(
+        self._gains_manager.set_gains(
             PIDChangeReason.PHYSICS_RESET,
             kp=kp,
             ki=ki,
@@ -183,9 +142,9 @@ class PIDTuningManager:
         )
 
         # Record physics baseline for auto-apply tracking
-        coordinator = self._thermostat._coordinator
+        coordinator = self._state._coordinator
         if coordinator:
-            adaptive_learner = coordinator.get_adaptive_learner(self._thermostat.entity_id)
+            adaptive_learner = coordinator.get_adaptive_learner(self._state.entity_id)
             if adaptive_learner:
                 adaptive_learner.set_physics_baseline(kp, ki, kd)
 
@@ -194,7 +153,7 @@ class PIDTuningManager:
         _LOGGER.info(
             "%s: Reset PID to physics defaults (tau=%.2f, type=%s, window=%s, floor=%s%s%s): "
             "Kp=%.4f, Ki=%.5f, Kd=%.3f",
-            self._thermostat.entity_id,
+            self._state.entity_id,
             tau,
             heating_type,
             window_rating,
@@ -215,50 +174,50 @@ class PIDTuningManager:
         Retrieves recommendations from the AdaptiveLearner and applies
         them to the PID controller.
         """
-        coordinator = self._thermostat._coordinator
+        coordinator = self._state._coordinator
         if not coordinator:
             _LOGGER.warning(
                 "%s: Cannot apply adaptive PID - no coordinator",
-                self._thermostat.entity_id
+                self._state.entity_id
             )
             return
 
-        adaptive_learner = coordinator.get_adaptive_learner(self._thermostat.entity_id)
+        adaptive_learner = coordinator.get_adaptive_learner(self._state.entity_id)
         if not adaptive_learner:
             _LOGGER.warning(
                 "%s: Cannot apply adaptive PID - no adaptive learner "
                 "(learning_enabled: false?)",
-                self._thermostat.entity_id
+                self._state.entity_id
             )
             return
 
         # Calculate recommendation based on current PID values
         recommendation = adaptive_learner.calculate_pid_adjustment(
-            current_kp=self._get_kp(),
-            current_ki=self._get_ki(),
-            current_kd=self._get_kd(),
-            pwm_seconds=self._thermostat._pwm,
+            current_kp=self._state._kp,
+            current_ki=self._state._ki,
+            current_kd=self._state._kd,
+            pwm_seconds=self._state._pwm,
         )
 
         if recommendation is None:
             cycle_count = adaptive_learner.get_cycle_count()
             _LOGGER.warning(
                 "%s: Insufficient data for adaptive PID (cycles: %d, need >= 3)",
-                self._thermostat.entity_id,
+                self._state.entity_id,
                 cycle_count,
             )
             return
 
         # Store old values for logging
-        old_kp = self._get_kp()
-        old_ki = self._get_ki()
-        old_kd = self._get_kd()
+        old_kp = self._state._kp
+        old_ki = self._state._ki
+        old_kd = self._state._kd
 
         # Clear integral to avoid wind-up from old tuning
         self._pid_controller.integral = 0.0
 
         # Apply the recommended values via PIDGainsManager (auto-records history)
-        self._thermostat._gains_manager.set_gains(
+        self._gains_manager.set_gains(
             PIDChangeReason.ADAPTIVE_APPLY,
             kp=recommendation["kp"],
             ki=recommendation["ki"],
@@ -266,21 +225,21 @@ class PIDTuningManager:
         )
 
         # Clear learning history for manual apply
-        coordinator = self._thermostat._coordinator
+        coordinator = self._state._coordinator
         if coordinator:
-            learner = coordinator.get_adaptive_learner(self._thermostat.entity_id)
+            learner = coordinator.get_adaptive_learner(self._state.entity_id)
             if learner:
                 learner.clear_history()
 
         _LOGGER.info(
             "%s: Applied adaptive PID: Kp=%.4f (was %.4f), Ki=%.5f (was %.5f), "
             "Kd=%.3f (was %.3f)",
-            self._thermostat.entity_id,
-            self._get_kp(),
+            self._state.entity_id,
+            self._state._kp,
             old_kp,
-            self._get_ki(),
+            self._state._ki,
             old_ki,
-            self._get_kd(),
+            self._state._kd,
             old_kd,
         )
 
@@ -309,7 +268,7 @@ class PIDTuningManager:
                 old_values (dict or None): Previous PID values if applied
                 new_values (dict or None): New PID values if applied
         """
-        coordinator = self._thermostat._coordinator
+        coordinator = self._state._coordinator
         if not coordinator:
             return {
                 "applied": False,
@@ -317,7 +276,7 @@ class PIDTuningManager:
                 "recommendation": None,
             }
 
-        adaptive_learner = coordinator.get_adaptive_learner(self._thermostat.entity_id)
+        adaptive_learner = coordinator.get_adaptive_learner(self._state.entity_id)
         if not adaptive_learner:
             return {
                 "applied": False,
@@ -326,7 +285,7 @@ class PIDTuningManager:
             }
 
         # Get heating type and thresholds
-        heating_type = self._get_heating_type()
+        heating_type = self._state.heating_type
         thresholds = get_auto_apply_thresholds(heating_type)
 
         # Calculate baseline overshoot from recent cycles
@@ -342,10 +301,10 @@ class PIDTuningManager:
 
         # Calculate recommendation with auto-apply safety checks
         recommendation = adaptive_learner.calculate_pid_adjustment(
-            current_kp=self._get_kp(),
-            current_ki=self._get_ki(),
-            current_kd=self._get_kd(),
-            pwm_seconds=self._thermostat._pwm,
+            current_kp=self._state._kp,
+            current_ki=self._state._ki,
+            current_kd=self._state._kd,
+            pwm_seconds=self._state._pwm,
             check_auto_apply=True,
             outdoor_temp=outdoor_temp,
         )
@@ -358,15 +317,15 @@ class PIDTuningManager:
             }
 
         # Store old values for logging
-        old_kp = self._get_kp()
-        old_ki = self._get_ki()
-        old_kd = self._get_kd()
+        old_kp = self._state._kp
+        old_ki = self._state._ki
+        old_kd = self._state._kd
 
         # Clear integral to avoid wind-up from old tuning
         self._pid_controller.integral = 0.0
 
         # Apply the recommended values via PIDGainsManager (auto-records history)
-        self._thermostat._gains_manager.set_gains(
+        self._gains_manager.set_gains(
             PIDChangeReason.AUTO_APPLY,
             kp=recommendation["kp"],
             ki=recommendation["ki"],
@@ -394,7 +353,7 @@ class PIDTuningManager:
             "%s: Auto-applied adaptive PID (apply #%d): "
             "Kp=%.4f→%.4f, Ki=%.5f→%.5f, Kd=%.3f→%.3f. "
             "Entering validation mode for %d cycles.",
-            self._thermostat.entity_id,
+            self._state.entity_id,
             adaptive_learner._auto_apply_count,
             old_kp,
             recommendation["kp"],
@@ -430,19 +389,19 @@ class PIDTuningManager:
         Returns:
             bool: True if rollback succeeded, False if no history available
         """
-        coordinator = self._thermostat._coordinator
+        coordinator = self._state._coordinator
         if not coordinator:
             _LOGGER.warning(
                 "%s: Cannot rollback PID - no coordinator",
-                self._thermostat.entity_id
+                self._state.entity_id
             )
             return False
 
-        adaptive_learner = coordinator.get_adaptive_learner(self._thermostat.entity_id)
+        adaptive_learner = coordinator.get_adaptive_learner(self._state.entity_id)
         if not adaptive_learner:
             _LOGGER.warning(
                 "%s: Cannot rollback PID - no adaptive learner",
-                self._thermostat.entity_id
+                self._state.entity_id
             )
             return False
 
@@ -451,20 +410,20 @@ class PIDTuningManager:
         if previous_pid is None:
             _LOGGER.warning(
                 "%s: Cannot rollback PID - no previous configuration in history",
-                self._thermostat.entity_id
+                self._state.entity_id
             )
             return False
 
         # Store current values for logging
-        current_kp = self._get_kp()
-        current_ki = self._get_ki()
-        current_kd = self._get_kd()
+        current_kp = self._state._kp
+        current_ki = self._state._ki
+        current_kd = self._state._kd
 
         # Clear integral to avoid wind-up
         self._pid_controller.integral = 0.0
 
         # Apply previous PID values via PIDGainsManager (auto-records history)
-        self._thermostat._gains_manager.set_gains(
+        self._gains_manager.set_gains(
             PIDChangeReason.ROLLBACK,
             kp=previous_pid["kp"],
             ki=previous_pid["ki"],
@@ -482,7 +441,7 @@ class PIDTuningManager:
         _LOGGER.warning(
             "%s: Rolled back PID to previous config (from %s): "
             "Kp=%.4f→%.4f, Ki=%.5f→%.5f, Kd=%.3f→%.3f",
-            self._thermostat.entity_id,
+            self._state.entity_id,
             previous_pid.get("timestamp", "unknown"),
             current_kp,
             previous_pid["kp"],
@@ -503,14 +462,14 @@ class PIDTuningManager:
         Note: This method delegates to the KeManager for the actual implementation.
         It is included here for consistency with the PID tuning interface.
         """
-        # Get the KeManager from the thermostat
-        ke_controller = getattr(self._thermostat, '_ke_controller', None)
+        # Get the KeManager from the thermostat state
+        ke_controller = getattr(self._state, '_ke_controller', None)
         if ke_controller is not None:
             await ke_controller.async_apply_adaptive_ke(**kwargs)
         else:
             _LOGGER.warning(
                 "%s: Cannot apply adaptive Ke - no Ke manager",
-                self._thermostat.entity_id
+                self._state.entity_id
             )
 
     async def async_clear_learning(self, **kwargs) -> None:
@@ -522,23 +481,23 @@ class PIDTuningManager:
         - Convergence state
         - Resets PID to physics-based defaults
         """
-        coordinator = self._thermostat._coordinator
+        coordinator = self._state._coordinator
         if coordinator:
-            adaptive_learner = coordinator.get_adaptive_learner(self._thermostat.entity_id)
+            adaptive_learner = coordinator.get_adaptive_learner(self._state.entity_id)
             if adaptive_learner:
                 adaptive_learner.clear_history()
                 _LOGGER.info(
                     "%s: Cleared adaptive learning cycle history",
-                    self._thermostat.entity_id
+                    self._state.entity_id
                 )
 
         # Clear Ke learner observations
-        ke_controller = getattr(self._thermostat, '_ke_controller', None)
+        ke_controller = getattr(self._state, '_ke_controller', None)
         if ke_controller and ke_controller.ke_learner:
             ke_controller.ke_learner.clear_observations()
             _LOGGER.info(
                 "%s: Cleared Ke learning observations",
-                self._thermostat.entity_id
+                self._state.entity_id
             )
 
         # Reset PID to physics defaults
@@ -546,5 +505,5 @@ class PIDTuningManager:
 
         _LOGGER.info(
             "%s: Learning cleared and PID reset to physics defaults",
-            self._thermostat.entity_id
+            self._state.entity_id
         )

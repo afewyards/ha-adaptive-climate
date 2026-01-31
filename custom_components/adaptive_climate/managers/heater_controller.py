@@ -97,6 +97,8 @@ class HeaterController:
         min_off_cycle_duration: float,  # in seconds
         dispatcher: Optional[CycleEventDispatcher] = None,
         cooling_type: Optional[str] = None,
+        get_was_clamped: Optional[Callable[[], bool]] = None,
+        reset_clamp_state: Optional[Callable[[], None]] = None,
     ):
         """Initialize the HeaterController.
 
@@ -113,6 +115,8 @@ class HeaterController:
             min_off_cycle_duration: Minimum off cycle duration in seconds
             dispatcher: Optional event dispatcher for cycle events
             cooling_type: Type of cooling system for compressor protection (forced_air, mini_split, chilled_water)
+            get_was_clamped: Callback to get PID was_clamped state
+            reset_clamp_state: Callback to reset PID clamp state
         """
         self._hass = hass
         self._thermostat = thermostat
@@ -126,6 +130,8 @@ class HeaterController:
         self._min_off_cycle_duration = min_off_cycle_duration
         self._dispatcher = dispatcher
         self._cooling_type = cooling_type
+        self._get_was_clamped = get_was_clamped
+        self._reset_clamp_state = reset_clamp_state
 
         # State tracking (owned by thermostat, but accessed here)
         self._heater_control_failed = False
@@ -151,22 +157,22 @@ class HeaterController:
         ) if pwm else None
 
     def _get_pid_was_clamped(self) -> bool:
-        """Get was_clamped state from PID controller with graceful fallback.
+        """Get was_clamped state from PID controller via callback.
 
         Returns:
             True if PID reports clamping occurred, False otherwise or if unavailable.
         """
-        return getattr(getattr(self._thermostat, '_pid', None), 'was_clamped', False)
+        if self._get_was_clamped is None:
+            return False
+        return self._get_was_clamped()
 
     def _reset_pid_clamp_state(self) -> None:
-        """Reset PID clamp state at cycle start.
+        """Reset PID clamp state at cycle start via callback.
 
-        Calls reset_clamp_state() on PID controller if available.
-        Silently ignores if PID or method not available.
+        Calls reset_clamp_state() callback if available.
         """
-        pid = getattr(self._thermostat, '_pid', None)
-        if pid is not None and hasattr(pid, 'reset_clamp_state'):
-            pid.reset_clamp_state()
+        if self._reset_clamp_state is not None:
+            self._reset_clamp_state()
 
     def _emit_cycle_started(self, hvac_mode: HVACMode) -> None:
         """Emit CycleStartedEvent with current temperature state.

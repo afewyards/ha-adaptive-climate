@@ -23,6 +23,7 @@ from .managers import (
     CycleTrackerManager,
 )
 from .managers.pid_gains_manager import PIDGainsManager
+from .managers.learning_gate import LearningGateManager
 from .managers.events import (
     CycleEventDispatcher,
     CycleEventType,
@@ -32,11 +33,6 @@ from .const import (
     PIDChangeReason,
     PIDGains,
     MIN_CYCLES_FOR_LEARNING,
-    CONFIDENCE_TIER_1,
-    CONFIDENCE_TIER_2,
-    CONFIDENCE_TIER_3,
-    HEATING_TYPE_CONFIDENCE_SCALE,
-    HeatingType,
 )
 
 if TYPE_CHECKING:
@@ -95,6 +91,9 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
         min_on_cycle_duration=thermostat._min_on_cycle_duration.seconds,
         min_off_cycle_duration=thermostat._min_off_cycle_duration.seconds,
         dispatcher=thermostat._cycle_dispatcher,
+        get_was_clamped=lambda: getattr(thermostat._pid_controller, 'was_clamped', False),
+        reset_clamp_state=lambda: thermostat._pid_controller.reset_clamp_state()
+            if hasattr(thermostat._pid_controller, 'reset_clamp_state') else None,
     )
 
     # Initialize PreheatLearner if preheat is enabled
@@ -156,82 +155,23 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
                     thermostat.entity_id, manifold_transport_delay
                 )
 
-        # Create callback for graduated setback delta (used to gate night setback)
-        def get_allowed_setback_delta() -> float | None:
-            """Get allowed setback delta based on learning status and cycle count.
-
-            Returns:
-                float | None: Max allowed setback delta in °C, or None for unlimited.
-                - 0.0: Fully suppressed (idle or collecting with < 3 cycles)
-                - 0.5: Early learning (collecting with >= 3 cycles)
-                - 1.0: Moderate learning (stable status)
-                - None: Unlimited (tuned or optimized status)
-            """
-            # Check idle conditions first
-            is_paused = False
-
-            # Check learning grace period
-            if thermostat._night_setback_controller:
-                try:
-                    is_paused = thermostat._night_setback_controller.in_learning_grace_period
-                except (TypeError, AttributeError):
-                    pass
-
-            # Check contact sensor pause
-            if not is_paused and thermostat._contact_sensor_handler:
-                try:
-                    is_paused = thermostat._contact_sensor_handler.is_any_contact_open()
-                except (TypeError, AttributeError):
-                    pass
-
-            # Check humidity pause
-            if not is_paused and thermostat._humidity_detector:
-                try:
-                    is_paused = thermostat._humidity_detector.should_pause()
-                except (TypeError, AttributeError):
-                    pass
-
-            if is_paused:
-                return 0.0  # Fully suppressed when idle
-
-            # Get adaptive learner from coordinator
+        # Create LearningGateManager for graduated setback delta
+        def get_adaptive_learner():
+            """Get adaptive learner from coordinator."""
             if not coordinator or not thermostat._zone_id:
-                return 0.0  # No data available - suppress
-
+                return None
             zone_data = coordinator.get_zone_data(thermostat._zone_id)
             if not zone_data:
-                return 0.0  # No zone data - suppress
+                return None
+            return zone_data.get("adaptive_learner")
 
-            adaptive_learner = zone_data.get("adaptive_learner")
-            if not adaptive_learner:
-                return 0.0  # No learner - suppress
-
-            # Get cycle count and convergence confidence
-            cycle_count = adaptive_learner.get_cycle_count()
-            convergence_confidence = adaptive_learner.get_convergence_confidence()
-
-            # Get heating type scaling factor
-            heating_type = thermostat._heating_type
-            scale = HEATING_TYPE_CONFIDENCE_SCALE.get(
-                heating_type, HEATING_TYPE_CONFIDENCE_SCALE.get(HeatingType.CONVECTOR, 1.0)
-            )
-
-            # Calculate scaled thresholds (tier 3 is NOT scaled - always 95%)
-            scaled_tier_1 = min(CONFIDENCE_TIER_1 * scale / 100.0, 0.95)
-            scaled_tier_2 = min(CONFIDENCE_TIER_2 * scale / 100.0, 0.95)
-            tier_3 = CONFIDENCE_TIER_3 / 100.0  # Always 95%
-
-            # Determine allowed delta based on confidence tiers and cycle count
-            if convergence_confidence >= tier_3:
-                return None  # Optimized - unlimited
-            elif convergence_confidence >= scaled_tier_2:
-                return None  # Tuned - unlimited
-            elif convergence_confidence >= scaled_tier_1:
-                return 1.0  # Stable - 1°C allowed
-            elif cycle_count >= 3:
-                return 0.5  # Collecting with data - 0.5°C allowed
-            else:
-                return 0.0  # Collecting without data - suppressed
+        learning_gate = LearningGateManager(
+            night_setback_controller=None,  # Will be set after NightSetbackManager is created
+            contact_sensor_handler=thermostat._contact_sensor_handler,
+            humidity_detector=thermostat._humidity_detector,
+            get_adaptive_learner=get_adaptive_learner,
+            heating_type=thermostat._heating_type,
+        )
 
         thermostat._night_setback_controller = NightSetbackManager(
             hass=thermostat.hass,
@@ -245,8 +185,12 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
             preheat_learner=thermostat._preheat_learner,
             preheat_enabled=preheat_enabled,
             manifold_transport_delay=manifold_transport_delay,
-            get_allowed_setback_delta=get_allowed_setback_delta,
+            get_allowed_setback_delta=learning_gate.get_allowed_delta,
         )
+
+        # Update learning_gate with the night_setback_controller reference
+        learning_gate._night_setback_controller = thermostat._night_setback_controller
+
         _LOGGER.info(
             "%s: Night setback controller initialized (preheat=%s)",
             thermostat.entity_id, preheat_enabled
@@ -254,7 +198,7 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
 
     # Initialize temperature manager
     thermostat._temperature_manager = TemperatureManager(
-        thermostat=thermostat,
+        thermostat=None,
         away_temp=thermostat._away_temp,
         eco_temp=thermostat._eco_temp,
         boost_temp=thermostat._boost_temp,
@@ -336,22 +280,11 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
 
     # Initialize Ke controller (always, even without outdoor sensor)
     thermostat._ke_controller = KeManager(
-        thermostat=thermostat,
+        state=thermostat,  # Thermostat implements KeManagerState protocol
         ke_learner=thermostat._ke_learner,
-        get_hvac_mode=lambda: thermostat._hvac_mode,
-        get_current_temp=lambda: thermostat._current_temp,
-        get_target_temp=lambda: thermostat._target_temp,
-        get_ext_temp=lambda: thermostat._ext_temp,
-        get_control_output=lambda: thermostat._control_output,
-        get_cold_tolerance=lambda: thermostat._cold_tolerance,
-        get_hot_tolerance=lambda: thermostat._hot_tolerance,
-        get_ke=lambda: thermostat._ke,
-        set_ke=thermostat._set_ke,
-        get_pid_controller=lambda: thermostat._pid_controller,
+        gains_manager=thermostat._gains_manager,
         async_control_heating=thermostat._async_control_heating_internal,
         async_write_ha_state=thermostat._async_write_ha_state_internal,
-        get_is_pid_converged=thermostat._is_pid_converged_for_ke,
-        gains_manager=thermostat._gains_manager,
     )
     _LOGGER.info(
         "%s: Ke controller initialized",
@@ -360,22 +293,9 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
 
     # Initialize PID tuning manager
     thermostat._pid_tuning_manager = PIDTuningManager(
-        thermostat=thermostat,
+        thermostat_state=thermostat,  # Thermostat implements PIDTuningManagerState
         pid_controller=thermostat._pid_controller,
-        get_kp=lambda: thermostat._kp,
-        get_ki=lambda: thermostat._ki,
-        get_kd=lambda: thermostat._kd,
-        get_ke=lambda: thermostat._ke,
-        get_area_m2=lambda: thermostat._area_m2,
-        get_ceiling_height=lambda: thermostat._ceiling_height,
-        get_window_area_m2=lambda: thermostat._window_area_m2,
-        get_window_rating=lambda: thermostat._window_rating,
-        get_heating_type=lambda: thermostat._heating_type,
-        get_hass=lambda: thermostat.hass,
-        get_zone_id=lambda: thermostat._zone_id,
-        get_floor_construction=lambda: thermostat._floor_construction,
-        get_supply_temperature=lambda: thermostat._supply_temperature,
-        get_max_power_w=lambda: thermostat._max_power_w,
+        gains_manager=thermostat._gains_manager,
         async_control_heating=thermostat._async_control_heating_internal,
         async_write_ha_state=thermostat._async_write_ha_state_internal,
     )

@@ -95,6 +95,10 @@ class MockThermostat:
         self._night_setback = None
         self._night_setback_config = None
 
+        # Contact sensor and humidity detection
+        self._contact_sensor_handler = None
+        self._humidity_detector = None
+
         # Outdoor temperature
         self._ext_sensor_entity_id = None
         self._has_outdoor_temp_source = False
