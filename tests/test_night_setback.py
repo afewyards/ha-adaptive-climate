@@ -1093,3 +1093,282 @@ class TestNightSetbackManagerGraduatedDelta:
 
         _, _, info2 = manager2.calculate_night_setback_adjustment(current)
         assert "suppressed_reason" not in info2
+
+
+class TestPreheatTimingWithGraduatedDelta:
+    """Test preheat timing calculations with graduated (limited) setback delta.
+
+    When night setback is suppressed or limited due to learning gate, the effective
+    delta is smaller than the configured delta. Preheat calculations must use the
+    effective delta, not the configured delta, to avoid starting preheat too early.
+
+    Key insight:
+    - Configured setback delta: 3.0°C (what user configured)
+    - Effective delta: target_temp - effective_target (actual temperature drop)
+    - Preheat must calculate based on effective_delta to get correct timing
+    """
+
+    def test_preheat_duration_scales_with_effective_delta(self):
+        """Test that preheat duration is based on effective delta, not configured delta.
+
+        When learning limits night setback:
+        - Configured delta: 3.0°C
+        - Allowed delta: 0.5°C (limited by learning)
+        - Effective delta: 0.5°C (actual temperature drop)
+        - Preheat should be ~1/6 the duration of full 3.0°C delta
+        """
+        # This test will FAIL until NightSetbackCalculator uses effective_delta
+        #
+        # Expected behavior:
+        # 1. configured_delta = 3.0°C
+        # 2. allowed_delta = 0.5°C (from learning gate callback)
+        # 3. effective_delta = min(3.0, 0.5) = 0.5°C
+        # 4. Preheat calculates: time = (0.5 / heating_rate) * margin
+        # 5. NOT: time = (3.0 / heating_rate) * margin
+        #
+        # Example with radiator (1.2°C/hour):
+        # - Full delta (3.0°C): (3.0/1.2)*1.3 = 3.25 hours = 195 minutes
+        # - Limited delta (0.5°C): (0.5/1.2)*1.3 = 0.54 hours = 32.5 minutes
+        # - Ratio: 195 / 32.5 ≈ 6.0 ✓
+
+        pytest.skip("Implementation not yet available - NightSetbackCalculator needs effective_delta")
+
+    def test_preheat_duration_uses_effective_not_configured(self):
+        """Test preheat explicitly uses effective delta when learning limits setback.
+
+        Scenario:
+        - Configured delta: 3.0°C
+        - Allowed delta: 1.0°C (partial suppression)
+        - Effective delta: 1.0°C
+        - Expected preheat: ~1/3 the duration of full 3.0°C delta
+        """
+        # This test will FAIL until implementation provides effective_delta to preheat
+        #
+        # Expected behavior:
+        # 1. Night setback configured with delta=3.0°C
+        # 2. Learning gate allows only 1.0°C
+        # 3. NightSetbackManager applies effective_delta=1.0°C
+        # 4. NightSetbackCalculator passes effective_delta to preheat calculation
+        # 5. Preheat start time based on recovering 1.0°C, not 3.0°C
+        #
+        # Verification:
+        # preheat_start_time(1.0°C) > preheat_start_time(3.0°C)
+        # (smaller delta = shorter preheat = starts later)
+
+        pytest.skip("Implementation not yet available - effective_delta not passed to preheat")
+
+    def test_preheat_disabled_when_effective_delta_zero(self):
+        """Test preheat is disabled when effective delta is zero (fully suppressed).
+
+        Scenario:
+        - Configured delta: 3.0°C
+        - Allowed delta: 0.0°C (fully suppressed by learning)
+        - Effective delta: 0.0°C (no temperature drop)
+        - Expected: preheat_start = None OR preheat_start = deadline (immediate)
+        """
+        # This test will FAIL until implementation checks effective_delta before preheat
+        #
+        # Expected behavior:
+        # 1. Learning gate allows 0.0°C (fully suppressed)
+        # 2. effective_delta = 0.0°C
+        # 3. Preheat calculator sees delta=0.0
+        # 4. Returns None or deadline (no lead time needed)
+        # 5. Preheat is effectively disabled
+        #
+        # Rationale:
+        # No temperature drop = no recovery needed = no preheat lead time
+
+        pytest.skip("Implementation not yet available - zero delta handling in preheat")
+
+    def test_preheat_full_duration_when_unlimited(self):
+        """Test preheat uses full configured delta when allowed_delta is None or >= configured.
+
+        Scenario:
+        - Configured delta: 3.0°C
+        - Allowed delta: None (no restriction from learning)
+        - Effective delta: 3.0°C (full configured delta)
+        - Expected: preheat based on full 3.0°C recovery
+        """
+        # This test will FAIL until implementation handles None allowed_delta correctly
+        #
+        # Expected behavior:
+        # 1. Learning gate returns None (no restriction)
+        # 2. effective_delta = configured_delta = 3.0°C
+        # 3. Preheat calculates based on 3.0°C
+        # 4. Preheat starts early enough to recover 3.0°C by deadline
+        #
+        # Also test when allowed_delta >= configured_delta:
+        # - configured: 3.0°C, allowed: 5.0°C -> effective: 3.0°C
+
+        pytest.skip("Implementation not yet available - None allowed_delta handling")
+
+    def test_preheat_transition_from_suppressed_to_enabled(self):
+        """Test preheat timing changes when learning transitions from limited to unlimited.
+
+        Scenario:
+        - Start: allowed_delta=0.0°C, effective_delta=0.0, no preheat
+        - Transition: allowed_delta=3.0°C, effective_delta=3.0, preheat enabled
+        - Expected: preheat start time recalculated based on new effective_delta
+        """
+        # This test will FAIL until implementation dynamically recalculates preheat
+        #
+        # Expected behavior:
+        # 1. Initially: allowed=0.0 -> preheat disabled or at deadline
+        # 2. Callback value changes to allowed=3.0
+        # 3. Preheat start time recalculated based on current_temp and full delta
+        # 4. System starts preheating if current_time >= new preheat_start
+        #
+        # Edge case: Transition happens close to deadline
+        # - If insufficient time to preheat, should start immediately
+
+        pytest.skip("Implementation not yet available - dynamic preheat recalculation")
+
+    def test_preheat_with_small_allowed_delta_floor_hydronic(self):
+        """Test preheat timing for floor hydronic with 0.5°C allowed delta.
+
+        Floor hydronic has slow heating rate (0.5°C/hour default).
+        Small delta (0.5°C) should result in ~1 hour preheat (vs ~6 hours for 3.0°C).
+
+        Scenario:
+        - Heating type: floor_hydronic
+        - Configured delta: 3.0°C
+        - Allowed delta: 0.5°C
+        - Effective delta: 0.5°C
+        - Heating rate: 0.5°C/hour (default)
+        - Expected preheat: ~1.5 hours (with 1.5x margin)
+        """
+        # This test will FAIL until implementation uses effective_delta
+        #
+        # Expected calculation:
+        # 1. effective_delta = 0.5°C
+        # 2. heating_rate = 0.5°C/hour (floor_hydronic default)
+        # 3. base_time = 0.5 / 0.5 = 1.0 hour
+        # 4. margin = 1.5x (floor_hydronic cold-soak)
+        # 5. total_time = 1.0 * 1.5 = 1.5 hours = 90 minutes
+        # 6. preheat_start = deadline - 90 minutes
+        #
+        # Contrast with full 3.0°C:
+        # - base_time = 3.0 / 0.5 = 6.0 hours
+        # - total_time = 6.0 * 1.5 = 9.0 hours (capped to max_hours)
+
+        pytest.skip("Implementation not yet available - effective_delta for floor_hydronic")
+
+    def test_preheat_with_small_allowed_delta_forced_air(self):
+        """Test preheat timing for forced air with 0.5°C allowed delta.
+
+        Forced air has fast heating rate (4.0°C/hour default).
+        Small delta (0.5°C) should result in ~8 minutes preheat (vs ~50 minutes for 3.0°C).
+
+        Scenario:
+        - Heating type: forced_air
+        - Configured delta: 3.0°C
+        - Allowed delta: 0.5°C
+        - Effective delta: 0.5°C
+        - Heating rate: 4.0°C/hour (default)
+        - Expected preheat: ~8 minutes (with 1.1x margin)
+        """
+        # This test will FAIL until implementation uses effective_delta
+        #
+        # Expected calculation:
+        # 1. effective_delta = 0.5°C
+        # 2. heating_rate = 4.0°C/hour (forced_air default)
+        # 3. base_time = 0.5 / 4.0 = 0.125 hours = 7.5 minutes
+        # 4. margin = 1.1x (forced_air cold-soak)
+        # 5. total_time = 7.5 * 1.1 = 8.25 minutes
+        # 6. preheat_start = deadline - 8.25 minutes
+        #
+        # Contrast with full 3.0°C:
+        # - base_time = 3.0 / 4.0 = 0.75 hours = 45 minutes
+        # - total_time = 45 * 1.1 = 49.5 minutes
+
+        pytest.skip("Implementation not yet available - effective_delta for forced_air")
+
+    def test_preheat_graduated_delta_ratios(self):
+        """Test that preheat duration ratios match effective delta ratios.
+
+        Mathematical relationship:
+        preheat_duration ∝ effective_delta
+
+        If delta is reduced by 6x (3.0°C -> 0.5°C), preheat should reduce by ~6x.
+
+        Scenario:
+        - Test case 1: effective_delta = 3.0°C -> preheat = T
+        - Test case 2: effective_delta = 1.5°C -> preheat = T/2
+        - Test case 3: effective_delta = 0.5°C -> preheat = T/6
+        """
+        # This test will FAIL until implementation correctly scales preheat
+        #
+        # Expected behavior:
+        # Given same heating rate and outdoor conditions:
+        # duration(3.0) / duration(0.5) ≈ 3.0 / 0.5 = 6.0
+        #
+        # Example with radiator (1.2°C/hour, 1.3x margin):
+        # - 3.0°C: (3.0/1.2)*60*1.3 = 195 minutes
+        # - 1.5°C: (1.5/1.2)*60*1.3 = 97.5 minutes
+        # - 0.5°C: (0.5/1.2)*60*1.3 = 32.5 minutes
+        # - Ratios: 195/97.5=2.0, 195/32.5=6.0 ✓
+
+        pytest.skip("Implementation not yet available - proportional scaling verification")
+
+    def test_preheat_confidence_not_affected_by_suppression(self):
+        """Test that preheat learner confidence is independent of suppression.
+
+        Preheat learning should continue collecting observations regardless of whether
+        night setback is suppressed. The suppression only affects when preheat starts,
+        not the learning itself.
+
+        Scenario:
+        - Night setback limited (allowed_delta < configured_delta)
+        - Preheat observations still collected during recovery periods
+        - Confidence continues to build
+        - When suppression lifts, preheat has good data
+        """
+        # This test will FAIL if implementation incorrectly blocks preheat learning
+        #
+        # Expected behavior:
+        # 1. Suppression active (allowed < configured)
+        # 2. Preheat disabled or limited for scheduling
+        # 3. BUT observations still collected (natural warmup periods)
+        # 4. Confidence continues to increase
+        # 5. When suppression lifts, preheat can immediately use learned rates
+        # 6. No restart of learning process
+        #
+        # Implementation note:
+        # PreheatLearner.add_observation() should be called regardless of suppression
+        # Only calculate_preheat_start() is affected by suppression
+
+        pytest.skip("Implementation not yet available - preheat learning during suppression")
+
+    def test_preheat_info_shows_effective_and_configured_delta(self):
+        """Test that preheat state attributes show both effective and configured delta.
+
+        For debugging and user understanding, both values should be visible.
+
+        Scenario:
+        - Configured delta: 3.0°C
+        - Allowed delta: 1.0°C
+        - Effective delta: 1.0°C
+        - State attributes should show:
+          - night_setback_delta_configured: 3.0
+          - night_setback_delta_effective: 1.0
+          - night_setback_delta_allowed: 1.0
+          - suppressed_reason: "limited"
+        """
+        # This test will FAIL until state attributes include both deltas
+        #
+        # Expected state attributes:
+        # {
+        #   "night_setback_delta_configured": 3.0,
+        #   "night_setback_delta_effective": 1.0,
+        #   "night_setback_delta_allowed": 1.0,
+        #   "suppressed_reason": "limited",
+        #   "preheat_estimated_duration_min": 65,  # Based on 1.0°C, not 3.0°C
+        #   "preheat_scheduled_start": "05:00",
+        # }
+        #
+        # This helps users understand:
+        # - What they configured (3.0°C)
+        # - What learning allows (1.0°C)
+        # - What is actually applied (1.0°C)
+
+        pytest.skip("Implementation not yet available - state attributes for effective delta")
