@@ -2,7 +2,7 @@
 major_on_zero = false
 version_toml = ["pyproject.toml:project.version"]
 version_variables = [
-    "custom_components/adaptive_thermostat/manifest.json:version"
+    "custom_components/adaptive_climate/manifest.json:version"
 ]
 tag_format = "v{version}"
 branch = "main"
@@ -22,7 +22,7 @@ pythonpath = ["."]
 testpaths = ["tests"]
 
 [project]
-name = "adaptive-thermostat"
+name = "adaptive-climate"
 version = "0.48.1"
 description = "Home Assistant custom component for PID-based thermostat control with adaptive learning"
 readme = "README.md"
