@@ -3,9 +3,9 @@
   "name": "Adaptive Climate",
   "codeowners": ["@afewyards"],
   "dependencies": ["history"],
-  "documentation": "https://github.com/afewyards/ha-adaptive-thermostat",
+  "documentation": "https://github.com/afewyards/ha-adaptive-climate",
   "iot_class": "local_push",
-  "issue_tracker": "https://github.com/afewyards/ha-adaptive-thermostat/issues",
+  "issue_tracker": "https://github.com/afewyards/ha-adaptive-climate/issues",
   "requirements": [],
   "version": "0.48.1"
 }
