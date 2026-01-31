@@ -46,6 +46,27 @@ from custom_components.adaptive_thermostat.const import (
 class TestComputeLearningStatus:
     """Test _compute_learning_status helper function."""
 
+    def test_idle_status_when_paused(self):
+        """Test idle status when is_paused=True, regardless of other metrics."""
+        # Should return idle even with high confidence and many cycles
+        status = _compute_learning_status(
+            cycle_count=20,
+            convergence_confidence=0.99,
+            heating_type=HeatingType.CONVECTOR,
+            is_paused=True,
+        )
+        assert status == "idle"
+
+    def test_idle_status_with_low_cycles_when_paused(self):
+        """Test idle status when paused with low cycle count."""
+        status = _compute_learning_status(
+            cycle_count=2,
+            convergence_confidence=0.0,
+            heating_type=HeatingType.CONVECTOR,
+            is_paused=True,
+        )
+        assert status == "idle"
+
     def test_collecting_status_insufficient_cycles(self):
         """Test collecting status when cycle count < MIN_CYCLES_FOR_LEARNING."""
         status = _compute_learning_status(
@@ -311,7 +332,13 @@ class TestAddLearningStatusAttributes:
         coordinator.get_zone_by_climate_entity.return_value = ("zone1", zone_data)
         # Set _coordinator directly on mock thermostat (bypassing the @property)
         thermostat._coordinator = coordinator
-        thermostat.hass.data.get.return_value = {"coordinator": coordinator}
+        thermostat._gains_manager = None
+        # Set pause conditions to None (not paused)
+        thermostat._night_setback_controller = None
+        thermostat._contact_sensor_handler = None
+        thermostat._humidity_detector = None
+        # Enable debug mode to get cycles_collected and convergence_confidence_pct
+        thermostat.hass.data = {"adaptive_thermostat": {"debug": True}}
         attrs = {}
 
         _add_learning_status_attributes(thermostat, attrs)
@@ -343,7 +370,13 @@ class TestAddLearningStatusAttributes:
         coordinator.get_zone_by_climate_entity.return_value = ("zone1", zone_data)
         # Set _coordinator directly on mock thermostat (bypassing the @property)
         thermostat._coordinator = coordinator
-        thermostat.hass.data.get.return_value = {"coordinator": coordinator}
+        thermostat._gains_manager = None
+        # Set pause conditions to None (not paused)
+        thermostat._night_setback_controller = None
+        thermostat._contact_sensor_handler = None
+        thermostat._humidity_detector = None
+        # Enable debug mode to get cycles_collected and convergence_confidence_pct
+        thermostat.hass.data = {"adaptive_thermostat": {"debug": True}}
         attrs = {}
 
         _add_learning_status_attributes(thermostat, attrs)
@@ -378,7 +411,13 @@ class TestAddLearningStatusAttributes:
         coordinator.get_zone_by_climate_entity.return_value = ("zone1", zone_data)
         # Set _coordinator directly on mock thermostat (bypassing the @property)
         thermostat._coordinator = coordinator
-        thermostat.hass.data.get.return_value = {"coordinator": coordinator}
+        thermostat._gains_manager = None
+        # Set pause conditions to None (not paused)
+        thermostat._night_setback_controller = None
+        thermostat._contact_sensor_handler = None
+        thermostat._humidity_detector = None
+        # Enable debug mode to get cycles_collected and convergence_confidence_pct
+        thermostat.hass.data = {"adaptive_thermostat": {"debug": True}}
         attrs = {}
 
         _add_learning_status_attributes(thermostat, attrs)
@@ -426,7 +465,13 @@ class TestAddLearningStatusAttributes:
         coordinator.get_zone_by_climate_entity.return_value = ("zone1", zone_data)
         # Set _coordinator directly on mock thermostat (bypassing the @property)
         thermostat._coordinator = coordinator
-        thermostat.hass.data.get.return_value = {"coordinator": coordinator}
+        thermostat._gains_manager = None
+        # Set pause conditions to None (not paused)
+        thermostat._night_setback_controller = None
+        thermostat._contact_sensor_handler = None
+        thermostat._humidity_detector = None
+        # Enable debug mode to get convergence_confidence_pct
+        thermostat.hass.data = {"adaptive_thermostat": {"debug": True}}
 
         # Test various confidence values
         test_cases = [
@@ -449,12 +494,198 @@ class TestAddLearningStatusAttributes:
         """Test that last adjustment timestamp is formatted (removed - timestamp no longer exposed)."""
         pass
 
+    def test_idle_status_with_learning_grace_period(self):
+        """Test idle status when learning grace period is active."""
+        thermostat = MagicMock()
+        thermostat._heating_type = HeatingType.CONVECTOR
+        adaptive_learner = MagicMock()
+        adaptive_learner.get_cycle_count.return_value = 10
+        adaptive_learner.get_convergence_confidence.return_value = 0.8
+
+        cycle_tracker = MagicMock()
+        cycle_tracker.get_state_name.return_value = "idle"
+
+        coordinator = MagicMock()
+        zone_data = {
+            "climate_entity_id": thermostat.entity_id,
+            "adaptive_learner": adaptive_learner,
+            "cycle_tracker": cycle_tracker,
+        }
+        coordinator.get_zone_by_climate_entity.return_value = ("zone1", zone_data)
+        thermostat._coordinator = coordinator
+        thermostat._gains_manager = None
+
+        # Learning grace period active
+        night_setback_controller = MagicMock()
+        night_setback_controller.in_learning_grace_period = True
+        thermostat._night_setback_controller = night_setback_controller
+        thermostat._contact_sensor_handler = None
+        thermostat._humidity_detector = None
+
+        thermostat.hass.data = {"adaptive_thermostat": {"debug": False}}
+        attrs = {}
+
+        _add_learning_status_attributes(thermostat, attrs)
+
+        assert attrs[ATTR_LEARNING_STATUS] == "idle"
+
+    def test_idle_status_with_contact_sensor_open(self):
+        """Test idle status when contact sensor is open."""
+        thermostat = MagicMock()
+        thermostat._heating_type = HeatingType.CONVECTOR
+        adaptive_learner = MagicMock()
+        adaptive_learner.get_cycle_count.return_value = 10
+        adaptive_learner.get_convergence_confidence.return_value = 0.8
+
+        cycle_tracker = MagicMock()
+        cycle_tracker.get_state_name.return_value = "idle"
+
+        coordinator = MagicMock()
+        zone_data = {
+            "climate_entity_id": thermostat.entity_id,
+            "adaptive_learner": adaptive_learner,
+            "cycle_tracker": cycle_tracker,
+        }
+        coordinator.get_zone_by_climate_entity.return_value = ("zone1", zone_data)
+        thermostat._coordinator = coordinator
+        thermostat._gains_manager = None
+        thermostat._night_setback_controller = None
+
+        # Contact sensor open
+        contact_handler = MagicMock()
+        contact_handler.is_any_contact_open.return_value = True
+        thermostat._contact_sensor_handler = contact_handler
+        thermostat._humidity_detector = None
+
+        thermostat.hass.data = {"adaptive_thermostat": {"debug": False}}
+        attrs = {}
+
+        _add_learning_status_attributes(thermostat, attrs)
+
+        assert attrs[ATTR_LEARNING_STATUS] == "idle"
+
+    def test_idle_status_with_humidity_spike(self):
+        """Test idle status when humidity spike is active."""
+        thermostat = MagicMock()
+        thermostat._heating_type = HeatingType.CONVECTOR
+        adaptive_learner = MagicMock()
+        adaptive_learner.get_cycle_count.return_value = 10
+        adaptive_learner.get_convergence_confidence.return_value = 0.8
+
+        cycle_tracker = MagicMock()
+        cycle_tracker.get_state_name.return_value = "idle"
+
+        coordinator = MagicMock()
+        zone_data = {
+            "climate_entity_id": thermostat.entity_id,
+            "adaptive_learner": adaptive_learner,
+            "cycle_tracker": cycle_tracker,
+        }
+        coordinator.get_zone_by_climate_entity.return_value = ("zone1", zone_data)
+        thermostat._coordinator = coordinator
+        thermostat._gains_manager = None
+        thermostat._night_setback_controller = None
+        thermostat._contact_sensor_handler = None
+
+        # Humidity detector paused
+        humidity_detector = MagicMock()
+        humidity_detector.should_pause.return_value = True
+        thermostat._humidity_detector = humidity_detector
+
+        thermostat.hass.data = {"adaptive_thermostat": {"debug": False}}
+        attrs = {}
+
+        _add_learning_status_attributes(thermostat, attrs)
+
+        assert attrs[ATTR_LEARNING_STATUS] == "idle"
+
+    def test_stable_status_when_not_paused(self):
+        """Test stable status when no pause conditions are active."""
+        thermostat = MagicMock()
+        thermostat._heating_type = HeatingType.CONVECTOR
+        adaptive_learner = MagicMock()
+        adaptive_learner.get_cycle_count.return_value = 10
+        adaptive_learner.get_convergence_confidence.return_value = 0.7  # Above 0.6 threshold
+
+        cycle_tracker = MagicMock()
+        cycle_tracker.get_state_name.return_value = "idle"
+
+        coordinator = MagicMock()
+        zone_data = {
+            "climate_entity_id": thermostat.entity_id,
+            "adaptive_learner": adaptive_learner,
+            "cycle_tracker": cycle_tracker,
+        }
+        coordinator.get_zone_by_climate_entity.return_value = ("zone1", zone_data)
+        thermostat._coordinator = coordinator
+        thermostat._gains_manager = None
+
+        # No pause conditions
+        thermostat._night_setback_controller = None
+        thermostat._contact_sensor_handler = None
+        thermostat._humidity_detector = None
+
+        thermostat.hass.data = {"adaptive_thermostat": {"debug": False}}
+        attrs = {}
+
+        _add_learning_status_attributes(thermostat, attrs)
+
+        assert attrs[ATTR_LEARNING_STATUS] == "stable"
+
+    def test_learning_grace_takes_priority(self):
+        """Test that learning grace period is checked first (before contact/humidity)."""
+        thermostat = MagicMock()
+        thermostat._heating_type = HeatingType.CONVECTOR
+        adaptive_learner = MagicMock()
+        adaptive_learner.get_cycle_count.return_value = 10
+        adaptive_learner.get_convergence_confidence.return_value = 0.8
+
+        cycle_tracker = MagicMock()
+        cycle_tracker.get_state_name.return_value = "idle"
+
+        coordinator = MagicMock()
+        zone_data = {
+            "climate_entity_id": thermostat.entity_id,
+            "adaptive_learner": adaptive_learner,
+            "cycle_tracker": cycle_tracker,
+        }
+        coordinator.get_zone_by_climate_entity.return_value = ("zone1", zone_data)
+        thermostat._coordinator = coordinator
+        thermostat._gains_manager = None
+
+        # Learning grace active (should take priority)
+        night_setback_controller = MagicMock()
+        night_setback_controller.in_learning_grace_period = True
+        thermostat._night_setback_controller = night_setback_controller
+
+        # Contact sensor NOT open (shouldn't matter since learning grace is active)
+        contact_handler = MagicMock()
+        contact_handler.is_any_contact_open.return_value = False
+        thermostat._contact_sensor_handler = contact_handler
+
+        # Humidity detector NOT paused
+        humidity_detector = MagicMock()
+        humidity_detector.should_pause.return_value = False
+        thermostat._humidity_detector = humidity_detector
+
+        thermostat.hass.data = {"adaptive_thermostat": {"debug": False}}
+        attrs = {}
+
+        _add_learning_status_attributes(thermostat, attrs)
+
+        # Should be idle due to learning grace
+        assert attrs[ATTR_LEARNING_STATUS] == "idle"
+
+        # Verify that contact and humidity checks were not called (short-circuit)
+        contact_handler.is_any_contact_open.assert_not_called()
+        humidity_detector.should_pause.assert_not_called()
+
 
 class TestDutyAccumulatorAttributes:
     """Tests for duty accumulator state attributes."""
 
-    def test_accumulator_in_state_attributes(self):
-        """Test duty_accumulator removed but duty_accumulator_pct present."""
+    def test_accumulator_not_in_state_attributes_without_debug(self):
+        """Test duty_accumulator_pct is not present without debug mode."""
         from custom_components.adaptive_thermostat.managers.state_attributes import (
             build_state_attributes,
         )
@@ -492,16 +723,16 @@ class TestDutyAccumulatorAttributes:
         thermostat.in_learning_grace_period = False
         thermostat._coordinator = None  # No coordinator, so learning status won't be added
         thermostat.hass = MagicMock()
-        thermostat.hass.data = {}
+        thermostat.hass.data = {"adaptive_thermostat": {"debug": False}}
 
         attrs = build_state_attributes(thermostat)
 
-        # duty_accumulator removed, but pct version remains
+        # duty_accumulator_pct is debug-only
         assert "duty_accumulator" not in attrs
-        assert "duty_accumulator_pct" in attrs
+        assert "duty_accumulator_pct" not in attrs
 
-    def test_accumulator_zero_without_heater_controller(self):
-        """Test duty_accumulator removed when heater_controller is None."""
+    def test_accumulator_in_state_attributes_with_debug(self):
+        """Test duty_accumulator_pct present in debug mode."""
         from custom_components.adaptive_thermostat.managers.state_attributes import (
             build_state_attributes,
         )
@@ -523,7 +754,11 @@ class TestDutyAccumulatorAttributes:
         thermostat.pid_control_i = 5.0
         thermostat._pid_controller = MagicMock()
         thermostat._pid_controller.outdoor_temp_lagged = 5.0
-        thermostat._heater_controller = None
+        thermostat._heater_controller = MagicMock()
+        thermostat._heater_controller.heater_cycle_count = 100
+        thermostat._heater_controller.cooler_cycle_count = 50
+        thermostat._heater_controller.duty_accumulator_seconds = 120.5
+        thermostat._heater_controller.min_on_cycle_duration = 300.0
         thermostat._night_setback = None
         thermostat._night_setback_config = None
         thermostat._night_setback_controller = None
@@ -533,18 +768,18 @@ class TestDutyAccumulatorAttributes:
         thermostat._contact_sensor_handler = None
         thermostat._humidity_detector = None
         thermostat.in_learning_grace_period = False
+        thermostat._coordinator = None  # No coordinator, so learning status won't be added
         thermostat.hass = MagicMock()
-        thermostat._coordinator = None  # No coordinator
-        thermostat.hass.data = {}
+        thermostat.hass.data = {"adaptive_thermostat": {"debug": True}}
 
         attrs = build_state_attributes(thermostat)
 
-        # duty_accumulator removed, but pct version is still 0.0
+        # duty_accumulator_pct present in debug mode
         assert "duty_accumulator" not in attrs
-        assert attrs["duty_accumulator_pct"] == 0.0
+        assert "duty_accumulator_pct" in attrs
 
     def test_accumulator_pct_attribute(self):
-        """Test duty_accumulator_pct shows percentage of threshold."""
+        """Test duty_accumulator_pct shows percentage of threshold in debug mode."""
         from custom_components.adaptive_thermostat.managers.state_attributes import (
             build_state_attributes,
         )
@@ -582,9 +817,8 @@ class TestDutyAccumulatorAttributes:
         thermostat._humidity_detector = None
         thermostat.in_learning_grace_period = False
         thermostat.hass = MagicMock()
-        thermostat._coordinator = None  # No coordinator
-        thermostat.hass.data = {}
         thermostat._coordinator = None  # No coordinator, so learning status won't be added
+        thermostat.hass.data = {"adaptive_thermostat": {"debug": True}}
 
         attrs = build_state_attributes(thermostat)
 

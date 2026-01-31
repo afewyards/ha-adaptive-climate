@@ -46,11 +46,14 @@ def build_state_attributes(thermostat: SmartThermostat) -> dict[str, Any]:
             if thermostat._heater_controller
             else 0
         ),
-        # Duty accumulator percentage
-        "duty_accumulator_pct": _compute_duty_accumulator_pct(thermostat),
         # PID integral - always persisted for restoration
         "integral": thermostat.pid_control_i,
     }
+
+    # Debug-only core attributes
+    debug_mode = thermostat.hass.data.get(DOMAIN, {}).get("debug", False)
+    if debug_mode:
+        attrs["duty_accumulator_pct"] = _compute_duty_accumulator_pct(thermostat)
 
     # Consolidated status attribute
     attrs["status"] = _build_status_attribute(thermostat)
@@ -94,6 +97,7 @@ def _compute_learning_status(
     cycle_count: int,
     convergence_confidence: float,
     heating_type: str,
+    is_paused: bool = False,
 ) -> str:
     """Compute learning status based on cycle metrics.
 
@@ -101,15 +105,20 @@ def _compute_learning_status(
         cycle_count: Number of cycles collected
         convergence_confidence: Convergence confidence (0.0-1.0)
         heating_type: HeatingType value (e.g., "floor_hydronic", "radiator")
+        is_paused: Whether any pause condition is active (contact_open, humidity_spike, learning_grace)
 
     Returns:
-        Learning status string: "collecting" | "stable" | "optimized"
+        Learning status string: "idle" | "collecting" | "stable" | "optimized"
     """
     from ..const import (
         MIN_CYCLES_FOR_LEARNING,
         AUTO_APPLY_THRESHOLDS,
         HeatingType,
     )
+
+    # Return idle first if any pause condition is active
+    if is_paused:
+        return "idle"
 
     # Use heating-type-specific confidence threshold
     # Default to CONVECTOR if heating_type not recognized
@@ -136,11 +145,11 @@ def _add_learning_status_attributes(
 
     Exposes only essential learning metrics:
     - learning_status: overall learning state
-    - cycles_collected: number of complete cycles observed
-    - convergence_confidence_pct: 0-100% confidence in convergence
     - pid_history: list of PID adjustments (if any)
 
     Debug mode adds:
+    - cycles_collected: number of complete cycles observed
+    - convergence_confidence_pct: 0-100% confidence in convergence
     - current_cycle_state: current cycle tracker state
     - cycles_required_for_learning: minimum cycles needed
     """
@@ -165,24 +174,46 @@ def _add_learning_status_attributes(
     if not adaptive_learner or not cycle_tracker:
         return
 
-    # Get cycle count
+    # Get cycle count and convergence confidence (needed for learning_status computation)
     cycle_count = adaptive_learner.get_cycle_count()
-    attrs[ATTR_CYCLES_COLLECTED] = cycle_count
-
-    # Get convergence confidence (0.0-1.0 -> 0-100%)
     convergence_confidence = adaptive_learner.get_convergence_confidence()
-    attrs[ATTR_CONVERGENCE_CONFIDENCE] = round(convergence_confidence * 100)
 
     # Get heating type from thermostat
     heating_type = thermostat._heating_type if hasattr(thermostat, '_heating_type') else None
 
+    # Detect all pause conditions
+    is_paused = False
+
+    # Check learning grace period
+    if thermostat._night_setback_controller:
+        try:
+            is_paused = thermostat._night_setback_controller.in_learning_grace_period
+        except (TypeError, AttributeError):
+            pass
+
+    # Check contact sensor pause
+    if not is_paused and thermostat._contact_sensor_handler:
+        try:
+            is_paused = thermostat._contact_sensor_handler.is_any_contact_open()
+        except (TypeError, AttributeError):
+            pass
+
+    # Check humidity pause
+    if not is_paused and thermostat._humidity_detector:
+        try:
+            is_paused = thermostat._humidity_detector.should_pause()
+        except (TypeError, AttributeError):
+            pass
+
     # Compute learning status
     attrs[ATTR_LEARNING_STATUS] = _compute_learning_status(
-        cycle_count, convergence_confidence, heating_type
+        cycle_count, convergence_confidence, heating_type, is_paused
     )
 
     # Debug-only attributes
     if debug_mode:
+        attrs[ATTR_CYCLES_COLLECTED] = cycle_count
+        attrs[ATTR_CONVERGENCE_CONFIDENCE] = round(convergence_confidence * 100)
         attrs["current_cycle_state"] = cycle_tracker.get_state_name()
         attrs["cycles_required_for_learning"] = MIN_CYCLES_FOR_LEARNING
 

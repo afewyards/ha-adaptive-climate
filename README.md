@@ -326,10 +326,13 @@ With `auto_apply_pid: false`, use `adaptive_thermostat.apply_adaptive_pid` servi
 ### Entity Attributes
 Monitor status via entity attributes:
 - `learning_status` - Current state: `collecting`, `stable`, or `optimized`
-- `convergence_confidence_pct` - Learning confidence (0-100%)
-- `cycles_collected` - Number of complete heating cycles analyzed
 - `pid_history` - Last 10 PID changes with timestamp, reason, and actor
 - `status` - Operational status with `state` and `conditions` (contact_open, humidity_spike, etc.)
+
+Additional attributes available with `debug: true` in domain config:
+- `convergence_confidence_pct` - Learning confidence (0-100%)
+- `cycles_collected` - Number of complete heating cycles analyzed
+- `duty_accumulator_pct` - PWM accumulation as % of threshold
 
 ## Troubleshooting
 

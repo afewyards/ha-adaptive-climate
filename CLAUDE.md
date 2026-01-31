@@ -346,12 +346,9 @@ Exposed via `extra_state_attributes`. Minimized for clarity - only restoration +
 
     # Critical diagnostics
     "control_output",        # Current PID output %
-    "duty_accumulator_pct",  # PWM accumulation as % of threshold
 
     # Learning status
-    "learning_status",           # "collecting" | "stable" | "optimized"
-    "cycles_collected",          # Count of complete cycles
-    "convergence_confidence_pct", # 0-100%
+    "learning_status",           # "idle" | "collecting" | "stable" | "optimized"
     "pid_history",               # List of PID adjustments (when non-empty)
 
     # Operational status
@@ -371,6 +368,7 @@ Exposed via `extra_state_attributes`. Minimized for clarity - only restoration +
 **Conditions:** contact_open, humidity_spike, open_window, night_setback, learning_grace
 
 **Learning status states:**
+- `idle` - Learning paused (contact_open, humidity_spike, or learning_grace active)
 - `collecting` - Gathering data (< 6 cycles OR confidence below heating-type threshold)
 - `stable` - System stable (confidence ≥ heating-type threshold AND < 95%)
 - `optimized` - Very high confidence (confidence ≥ 95%)
@@ -382,6 +380,9 @@ Exposed via `extra_state_attributes`. Minimized for clarity - only restoration +
 - forced_air: 60%
 
 **Debug-only attributes** (require `debug: true` in domain config):
+- `duty_accumulator_pct` - PWM accumulation as % of threshold
+- `cycles_collected` - Count of complete cycles
+- `convergence_confidence_pct` - 0-100%
 - `current_cycle_state` - Cycle tracker state (idle/heating/settling)
 - `cycles_required_for_learning` - Minimum cycles needed (constant: 6)
 - `preheat_*` - Preheat learning/scheduling details
