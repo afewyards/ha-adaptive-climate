@@ -256,7 +256,7 @@ class TestServiceNotFoundError:
 
         mock_hass.bus.async_fire.assert_called_once()
         call_args = mock_hass.bus.async_fire.call_args
-        assert call_args[0][0] == "adaptive_thermostat_heater_control_failed"
+        assert call_args[0][0] == "adaptive_climate_heater_control_failed"
         event_data = call_args[0][1]
         assert event_data["climate_entity_id"] == "climate.test_thermostat"
         assert event_data["heater_entity_id"] == "switch.heater"
@@ -303,7 +303,7 @@ class TestHomeAssistantError:
 
         mock_hass.bus.async_fire.assert_called_once()
         call_args = mock_hass.bus.async_fire.call_args
-        assert call_args[0][0] == "adaptive_thermostat_heater_control_failed"
+        assert call_args[0][0] == "adaptive_climate_heater_control_failed"
         assert "Entity unavailable" in call_args[0][1]["error"]
 
 

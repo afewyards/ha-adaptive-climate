@@ -1,4 +1,4 @@
-"""Tests for config schema validation in adaptive_thermostat __init__.py."""
+"""Tests for config schema validation in adaptive_climate __init__.py."""
 import pytest
 from unittest.mock import Mock, patch, MagicMock, AsyncMock
 import sys

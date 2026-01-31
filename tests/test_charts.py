@@ -163,7 +163,7 @@ async def test_save_chart_to_www():
 
             mock_mkdir.assert_called_once_with(parents=True, exist_ok=True)
             mock_write.assert_called_once_with(chart_bytes)
-            assert url == "/local/adaptive_thermostat/test_chart.png"
+            assert url == "/local/adaptive_climate/test_chart.png"
 
 
 @pytest.mark.asyncio

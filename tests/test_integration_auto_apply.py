@@ -915,7 +915,7 @@ class TestManualRollbackService:
         1. Set initial PID (kp=100, ki=0.01, kd=50)
         2. Trigger auto-apply to new PID (kp=90, ki=0.012, kd=55)
         3. Verify PID history has 2 entries
-        4. Call adaptive_thermostat.rollback_pid service
+        4. Call adaptive_climate.rollback_pid service
         5. Verify async_rollback_pid called
         6. Verify PID reverted to kp=100, ki=0.01, kd=50
         7. Verify rollback snapshot recorded
@@ -963,7 +963,7 @@ class TestManualRollbackService:
                     f"Ki: {new_ki:.4f} → {initial_ki:.4f}\n"
                     f"Kd: {new_kd:.2f} → {initial_kd:.2f}"
                 ),
-                "notification_id": "adaptive_thermostat_rollback_test_zone",
+                "notification_id": "adaptive_climate_rollback_test_zone",
             }
         )
 
@@ -1275,7 +1275,7 @@ class TestValidationModeBlocking:
         Integration test for story 10.3:
         1. Trigger auto-apply and enter validation mode
         2. Complete 2 out of 5 validation cycles
-        3. User manually calls adaptive_thermostat.set_pid service
+        3. User manually calls adaptive_climate.set_pid service
         4. Verify manual change records snapshot with reason='manual_apply'
         5. Verify clear_history called, which resets validation_mode=False
         6. Verify validation aborted (validation_cycles cleared)

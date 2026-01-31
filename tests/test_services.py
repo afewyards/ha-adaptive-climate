@@ -1,4 +1,4 @@
-"""Tests for service registration and handlers in adaptive_thermostat."""
+"""Tests for service registration and handlers in adaptive_climate."""
 import asyncio
 import pytest
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
