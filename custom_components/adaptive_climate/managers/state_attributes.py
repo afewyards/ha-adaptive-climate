@@ -413,6 +413,100 @@ def build_learning_object(status: str, confidence: int) -> dict[str, Any]:
     return {"status": status, "confidence": confidence}
 
 
+def build_debug_object(**kwargs) -> dict[str, Any]:
+    """Build debug object grouped by feature.
+
+    Groups:
+    - pwm: duty_accumulator_pct
+    - cycle: state, cycles_collected, cycles_required
+    - preheat: heating_rate_learned, observation_count
+    - humidity: state, peak
+    - undershoot: thermal_debt, consecutive_failures, ki_boost_applied
+    - ke: observations, current_ke
+    - pid: p_term, i_term, d_term, e_term, f_term
+
+    Args:
+        **kwargs: Prefixed args like pwm_duty_accumulator_pct, cycle_state, etc.
+
+    Returns:
+        Dict with feature groups, empty groups omitted
+    """
+    debug: dict[str, Any] = {}
+
+    # PWM group
+    pwm = {}
+    if kwargs.get("pwm_duty_accumulator_pct") is not None:
+        pwm["duty_accumulator_pct"] = kwargs["pwm_duty_accumulator_pct"]
+    if pwm:
+        debug["pwm"] = pwm
+
+    # Cycle group
+    cycle = {}
+    if kwargs.get("cycle_state") is not None:
+        cycle["state"] = kwargs["cycle_state"]
+    if kwargs.get("cycle_cycles_collected") is not None:
+        cycle["cycles_collected"] = kwargs["cycle_cycles_collected"]
+    if kwargs.get("cycle_cycles_required") is not None:
+        cycle["cycles_required"] = kwargs["cycle_cycles_required"]
+    if cycle:
+        debug["cycle"] = cycle
+
+    # Preheat group
+    preheat = {}
+    if kwargs.get("preheat_heating_rate_learned") is not None:
+        preheat["heating_rate_learned"] = kwargs["preheat_heating_rate_learned"]
+    if kwargs.get("preheat_observation_count") is not None:
+        preheat["observation_count"] = kwargs["preheat_observation_count"]
+    if preheat:
+        debug["preheat"] = preheat
+
+    # Humidity group
+    humidity = {}
+    if kwargs.get("humidity_state") is not None:
+        humidity["state"] = kwargs["humidity_state"]
+    if kwargs.get("humidity_peak") is not None:
+        humidity["peak"] = kwargs["humidity_peak"]
+    if humidity:
+        debug["humidity"] = humidity
+
+    # Undershoot group
+    undershoot = {}
+    if kwargs.get("undershoot_thermal_debt") is not None:
+        undershoot["thermal_debt"] = kwargs["undershoot_thermal_debt"]
+    if kwargs.get("undershoot_consecutive_failures") is not None:
+        undershoot["consecutive_failures"] = kwargs["undershoot_consecutive_failures"]
+    if kwargs.get("undershoot_ki_boost_applied") is not None:
+        undershoot["ki_boost_applied"] = kwargs["undershoot_ki_boost_applied"]
+    if undershoot:
+        debug["undershoot"] = undershoot
+
+    # Ke group
+    ke = {}
+    if kwargs.get("ke_observations") is not None:
+        ke["observations"] = kwargs["ke_observations"]
+    if kwargs.get("ke_current_ke") is not None:
+        ke["current_ke"] = kwargs["ke_current_ke"]
+    if ke:
+        debug["ke"] = ke
+
+    # PID group
+    pid = {}
+    if kwargs.get("pid_p_term") is not None:
+        pid["p_term"] = kwargs["pid_p_term"]
+    if kwargs.get("pid_i_term") is not None:
+        pid["i_term"] = kwargs["pid_i_term"]
+    if kwargs.get("pid_d_term") is not None:
+        pid["d_term"] = kwargs["pid_d_term"]
+    if kwargs.get("pid_e_term") is not None:
+        pid["e_term"] = kwargs["pid_e_term"]
+    if kwargs.get("pid_f_term") is not None:
+        pid["f_term"] = kwargs["pid_f_term"]
+    if pid:
+        debug["pid"] = pid
+
+    return debug
+
+
 def _build_status_attribute(thermostat: SmartThermostat) -> dict[str, Any]:
     """Build consolidated status attribute using StatusManager.
 
