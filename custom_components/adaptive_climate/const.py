@@ -547,6 +547,83 @@ HEATING_TYPE_CONFIDENCE_SCALE = {
     HeatingType.FORCED_AIR: 1.1,        # Higher threshold - fast response, quicker learning
 }
 
+# Recovery thresholds by heating type and learning status
+# Maps (heating_type, is_stable) -> threshold in °C
+RECOVERY_THRESHOLD_COLLECTING = {
+    HeatingType.FLOOR_HYDRONIC: 0.5,
+    HeatingType.RADIATOR: 0.3,
+    HeatingType.CONVECTOR: 0.3,
+    HeatingType.FORCED_AIR: 0.3,
+}
+
+RECOVERY_THRESHOLD_STABLE = {
+    HeatingType.FLOOR_HYDRONIC: 0.8,
+    HeatingType.RADIATOR: 0.5,
+    HeatingType.CONVECTOR: 0.3,
+    HeatingType.FORCED_AIR: 0.3,
+}
+
+# Maintenance confidence caps by heating type
+MAINTENANCE_CONFIDENCE_CAP = {
+    HeatingType.FLOOR_HYDRONIC: 0.25,
+    HeatingType.RADIATOR: 0.30,
+    HeatingType.CONVECTOR: 0.35,
+    HeatingType.FORCED_AIR: 0.35,
+}
+
+# Heating rate confidence caps by heating type
+HEATING_RATE_CONFIDENCE_CAP = {
+    HeatingType.FLOOR_HYDRONIC: 0.30,
+    HeatingType.RADIATOR: 0.20,
+    HeatingType.CONVECTOR: 0.10,
+    HeatingType.FORCED_AIR: 0.05,
+}
+
+# Settling windows by heating type (minutes from heat delivery end)
+SETTLING_WINDOW_MINUTES = {
+    HeatingType.FLOOR_HYDRONIC: 60,
+    HeatingType.RADIATOR: 30,
+    HeatingType.CONVECTOR: 15,
+    HeatingType.FORCED_AIR: 10,
+}
+
+# Recovery cycle requirements for tier progression
+RECOVERY_CYCLES_FOR_TIER1 = {
+    HeatingType.FLOOR_HYDRONIC: 12,
+    HeatingType.RADIATOR: 8,
+    HeatingType.CONVECTOR: 6,
+    HeatingType.FORCED_AIR: 6,
+}
+
+RECOVERY_CYCLES_FOR_TIER2 = {
+    HeatingType.FLOOR_HYDRONIC: 20,
+    HeatingType.RADIATOR: 15,
+    HeatingType.CONVECTOR: 12,
+    HeatingType.FORCED_AIR: 10,
+}
+
+# Cycle weighting constants
+MAINTENANCE_BASE_WEIGHT = 0.3
+RECOVERY_BASE_WEIGHT = 1.0
+DELTA_MULTIPLIER_SCALE = 0.5
+DELTA_MULTIPLIER_CAP = 2.0
+OUTCOME_FACTOR_CLEAN = 1.0
+OUTCOME_FACTOR_OVERSHOOT = 0.7
+OUTCOME_FACTOR_UNDERSHOOT = 0.5
+DUTY_BONUS = 0.15
+DUTY_BONUS_THRESHOLD = 0.60
+OUTDOOR_BONUS = 0.15
+OUTDOOR_BONUS_THRESHOLD = 5.0  # °C
+NIGHT_SETBACK_BONUS = 0.2
+MAINTENANCE_DIMINISHING_RATE = 0.1
+
+# Auto-learning setback constants
+AUTO_LEARNING_SETBACK_DELTA = 0.5  # °C
+AUTO_LEARNING_SETBACK_WINDOW_START = 3  # hour (3am)
+AUTO_LEARNING_SETBACK_WINDOW_END = 5  # hour (5am)
+AUTO_LEARNING_SETBACK_TRIGGER_DAYS = 7
+AUTO_LEARNING_SETBACK_COOLDOWN_DAYS = 7
+
 # Settling detection (v0.7.0)
 SETTLING_MAD_THRESHOLD = 0.05  # Maximum MAD (°C) for temperature stability detection
 
