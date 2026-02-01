@@ -70,6 +70,7 @@ from .events import (
     HeatingEndedEvent,
 )
 from .pwm_controller import PWMController
+from .heat_pipeline import HeatPipeline
 
 if TYPE_CHECKING:
     from ..climate import AdaptiveThermostat
@@ -162,7 +163,15 @@ class HeaterController:
             difference=difference,
             min_on_cycle_duration=min_on_cycle_duration,
             min_off_cycle_duration=min_off_cycle_duration,
+            valve_actuation_time=valve_actuation_time,
         ) if pwm else None
+
+        # Heat pipeline for committed heat tracking (created if valve_time > 0 or transport_delay > 0)
+        # Transport delay will be set dynamically when heating starts via coordinator
+        self._heat_pipeline = HeatPipeline(
+            transport_delay=0.0,  # Will be updated dynamically via set_transport_delay
+            valve_time=valve_actuation_time,
+        ) if valve_actuation_time > 0 else None
 
     def _get_pid_was_clamped(self) -> bool:
         """Get was_clamped state from PID controller via callback.
