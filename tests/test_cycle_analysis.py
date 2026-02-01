@@ -495,3 +495,114 @@ class TestCycleMetrics:
         assert metrics.dead_time == 2.5
 
 
+def test_calculate_overshoot_components():
+    """Split overshoot into controllable and committed portions."""
+    from custom_components.adaptive_climate.adaptive.cycle_analysis import (
+        calculate_overshoot_components,
+    )
+
+    # Peak 0.5°C above setpoint, 2 min of committed heat, heating at 0.1°C/min
+    controllable, committed = calculate_overshoot_components(
+        peak_temp=21.5,
+        setpoint=21.0,
+        committed_heat_seconds=120,
+        heating_rate=0.1 / 60,  # °C per second
+    )
+
+    # Committed: 120s × 0.1/60 = 0.2°C
+    # Controllable: 0.5 - 0.2 = 0.3°C
+    assert committed == pytest.approx(0.2, abs=0.01)
+    assert controllable == pytest.approx(0.3, abs=0.01)
+
+
+def test_calculate_overshoot_components_all_committed():
+    """When all overshoot is from committed heat."""
+    from custom_components.adaptive_climate.adaptive.cycle_analysis import (
+        calculate_overshoot_components,
+    )
+
+    controllable, committed = calculate_overshoot_components(
+        peak_temp=21.2,
+        setpoint=21.0,
+        committed_heat_seconds=300,
+        heating_rate=0.1 / 60,
+    )
+
+    # Committed would be 0.5°C but total is only 0.2°C
+    assert committed == pytest.approx(0.2, abs=0.01)
+    assert controllable == 0.0
+
+
+def test_calculate_overshoot_components_no_overshoot():
+    """When there is no overshoot at all."""
+    from custom_components.adaptive_climate.adaptive.cycle_analysis import (
+        calculate_overshoot_components,
+    )
+
+    controllable, committed = calculate_overshoot_components(
+        peak_temp=21.0,
+        setpoint=21.0,
+        committed_heat_seconds=120,
+        heating_rate=0.1 / 60,
+    )
+
+    assert committed == 0.0
+    assert controllable == 0.0
+
+
+def test_calculate_overshoot_components_no_committed_heat():
+    """When there is no committed heat (perfect timing)."""
+    from custom_components.adaptive_climate.adaptive.cycle_analysis import (
+        calculate_overshoot_components,
+    )
+
+    controllable, committed = calculate_overshoot_components(
+        peak_temp=21.3,
+        setpoint=21.0,
+        committed_heat_seconds=0,
+        heating_rate=0.1 / 60,
+    )
+
+    # All overshoot is controllable
+    assert committed == 0.0
+    assert controllable == pytest.approx(0.3, abs=0.01)
+
+
+def test_cycle_metrics_overshoot_split_fields():
+    """Test CycleMetrics stores controllable and committed overshoot fields."""
+    from custom_components.adaptive_climate.adaptive.cycle_analysis import CycleMetrics
+
+    # Create CycleMetrics with overshoot split
+    metrics = CycleMetrics(
+        overshoot=0.5,  # Total overshoot
+        controllable_overshoot=0.3,  # Controllable portion
+        committed_overshoot=0.2,  # Committed portion
+        settling_time=15.0,
+    )
+
+    # Verify split fields are stored correctly
+    assert metrics.overshoot == 0.5
+    assert metrics.controllable_overshoot == 0.3
+    assert metrics.committed_overshoot == 0.2
+    assert metrics.settling_time == 15.0
+
+
+def test_cycle_metrics_overshoot_split_fields_optional():
+    """Test that overshoot split fields are optional and default to None."""
+    from custom_components.adaptive_climate.adaptive.cycle_analysis import CycleMetrics
+
+    # Create CycleMetrics without split fields (backward compatibility)
+    metrics = CycleMetrics(
+        overshoot=0.4,
+        settling_time=12.0,
+    )
+
+    # Verify split fields default to None
+    assert metrics.controllable_overshoot is None
+    assert metrics.committed_overshoot is None
+
+    # Verify total overshoot still works
+    assert metrics.overshoot == 0.4
+    assert metrics.settling_time == 12.0
+
+

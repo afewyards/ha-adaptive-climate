@@ -622,14 +622,25 @@ class AdaptiveLearner:
             self._heating_type, DEFAULT_CLAMPED_OVERSHOOT_MULTIPLIER
         )
         clamped_cycle_count = 0
+        split_overshoot_count = 0
         overshoot_values = []
         for c in recent_cycles:
-            if c.overshoot is not None:
+            # Prefer controllable_overshoot when available (excludes committed heat)
+            # This ensures learning only penalizes controllable overshoot, not unavoidable
+            # overshoot from in-flight heat (valve actuation time)
+            overshoot_value = getattr(c, 'controllable_overshoot', None)
+            if overshoot_value is not None:
+                split_overshoot_count += 1
+            else:
+                # Fall back to total overshoot for backward compatibility
+                overshoot_value = c.overshoot
+
+            if overshoot_value is not None:
                 if getattr(c, 'was_clamped', False):
-                    overshoot_values.append(c.overshoot * clamped_multiplier)
+                    overshoot_values.append(overshoot_value * clamped_multiplier)
                     clamped_cycle_count += 1
                 else:
-                    overshoot_values.append(c.overshoot)
+                    overshoot_values.append(overshoot_value)
 
         if overshoot_values:
             avg_overshoot, overshoot_outliers = robust_average(overshoot_values)
@@ -641,6 +652,11 @@ class AdaptiveLearner:
                 _LOGGER.debug(
                     f"{clamped_cycle_count} of {len(overshoot_values)} recent cycles clamped, "
                     f"overshoot amplified by {clamped_multiplier}x ({self._heating_type})"
+                )
+            if split_overshoot_count > 0:
+                _LOGGER.debug(
+                    f"{split_overshoot_count} of {len(overshoot_values)} recent cycles using controllable overshoot "
+                    f"(excluding committed heat from valve actuation time)"
                 )
         else:
             avg_overshoot = 0.0
