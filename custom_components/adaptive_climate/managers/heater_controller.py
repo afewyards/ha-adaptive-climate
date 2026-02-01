@@ -8,9 +8,10 @@ from typing import TYPE_CHECKING, Any, Callable, List, Optional
 
 # These imports are only needed when running in Home Assistant
 try:
-    from homeassistant.core import HomeAssistant, split_entity_id
+    from homeassistant.core import HomeAssistant, split_entity_id, callback
     from homeassistant.util import dt as dt_util
     from homeassistant.core import DOMAIN as HA_DOMAIN
+    from homeassistant.helpers.event import async_call_later
     from homeassistant.const import (
         ATTR_ENTITY_ID,
         SERVICE_TURN_OFF,
@@ -99,6 +100,7 @@ class HeaterController:
         cooling_type: Optional[str] = None,
         get_was_clamped: Optional[Callable[[], bool]] = None,
         reset_clamp_state: Optional[Callable[[], None]] = None,
+        valve_actuation_time: float = 0.0,
     ):
         """Initialize the HeaterController.
 
@@ -117,6 +119,7 @@ class HeaterController:
             cooling_type: Type of cooling system for compressor protection (forced_air, mini_split, chilled_water)
             get_was_clamped: Callback to get PID was_clamped state
             reset_clamp_state: Callback to reset PID clamp state
+            valve_actuation_time: Time for valve to fully open in seconds (default 0 = immediate)
         """
         self._hass = hass
         self._thermostat = thermostat
@@ -132,10 +135,15 @@ class HeaterController:
         self._cooling_type = cooling_type
         self._get_was_clamped = get_was_clamped
         self._reset_clamp_state = reset_clamp_state
+        self._valve_actuation_time = valve_actuation_time
 
         # State tracking (owned by thermostat, but accessed here)
         self._heater_control_failed = False
         self._last_heater_error: str | None = None
+
+        # Timer handles for delayed demand signaling
+        self._valve_open_timer: Optional[Callable[[], None]] = None
+        self._valve_close_timer: Optional[Callable[[], None]] = None
 
         # Cycle counting for actuator wear tracking
         self._heater_cycle_count: int = 0
@@ -189,6 +197,34 @@ class HeaterController:
                 target_temp=target_temp,
                 current_temp=current_temp,
             ))
+
+    @callback
+    def _emit_heating_started_delayed(self, hvac_mode: HVACMode) -> None:
+        """Emit HeatingStartedEvent after valve actuation delay.
+
+        Args:
+            hvac_mode: Current HVAC mode
+        """
+        if self._dispatcher:
+            self._dispatcher.emit(HeatingStartedEvent(
+                hvac_mode=hvac_mode,
+                timestamp=dt_util.utcnow(),
+            ))
+        self._valve_open_timer = None
+
+    @callback
+    def _emit_heating_ended_delayed(self, hvac_mode: HVACMode) -> None:
+        """Emit HeatingEndedEvent after half valve actuation delay.
+
+        Args:
+            hvac_mode: Current HVAC mode
+        """
+        if self._dispatcher:
+            self._dispatcher.emit(HeatingEndedEvent(
+                hvac_mode=hvac_mode,
+                timestamp=dt_util.utcnow(),
+            ))
+        self._valve_close_timer = None
 
     def update_cycle_durations(
         self,
@@ -580,12 +616,21 @@ class HeaterController:
                 self._reset_pid_clamp_state()
                 self._emit_cycle_started(hvac_mode)
 
-            # Emit HEATING_STARTED event
+            # Emit HEATING_STARTED event (delayed if valve_actuation_time > 0)
             if self._dispatcher:
-                self._dispatcher.emit(HeatingStartedEvent(
-                    hvac_mode=hvac_mode,
-                    timestamp=dt_util.utcnow(),
-                ))
+                if self._pwm and self._valve_actuation_time > 0:
+                    # Schedule delayed demand signal for PWM mode with valve actuation time
+                    self._valve_open_timer = async_call_later(
+                        self._hass,
+                        self._valve_actuation_time,
+                        lambda _: self._emit_heating_started_delayed(hvac_mode),
+                    )
+                else:
+                    # Immediate signal for valve mode or when valve_actuation_time=0
+                    self._dispatcher.emit(HeatingStartedEvent(
+                        hvac_mode=hvac_mode,
+                        timestamp=dt_util.utcnow(),
+                    ))
         else:
             _LOGGER.info(
                 "%s: Reject request turning ON %s: Cycle is too short",
@@ -652,12 +697,27 @@ class HeaterController:
             # Increment cycle counter for wear tracking (on→off transition)
             self._increment_cycle_count(hvac_mode, is_now_off=True)
 
-            # Emit HEATING_ENDED event
+            # Cancel any pending valve open timer
+            if self._valve_open_timer is not None:
+                self._valve_open_timer()
+                self._valve_open_timer = None
+
+            # Emit HEATING_ENDED event (delayed by half valve_actuation_time if > 0)
             if self._dispatcher:
-                self._dispatcher.emit(HeatingEndedEvent(
-                    hvac_mode=hvac_mode,
-                    timestamp=dt_util.utcnow(),
-                ))
+                if self._pwm and self._valve_actuation_time > 0:
+                    # Schedule delayed demand removal for PWM mode with valve actuation time
+                    half_valve_time = self._valve_actuation_time / 2.0
+                    self._valve_close_timer = async_call_later(
+                        self._hass,
+                        half_valve_time,
+                        lambda _: self._emit_heating_ended_delayed(hvac_mode),
+                    )
+                else:
+                    # Immediate signal for valve mode or when valve_actuation_time=0
+                    self._dispatcher.emit(HeatingEndedEvent(
+                        hvac_mode=hvac_mode,
+                        timestamp=dt_util.utcnow(),
+                    ))
 
             # Emit SETTLING_STARTED for PWM mode to complete cycle tracking
             if self._pwm and self._cycle_active and self._dispatcher:
