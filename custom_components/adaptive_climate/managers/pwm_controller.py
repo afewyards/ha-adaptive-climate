@@ -390,8 +390,12 @@ class PWMController:
 
         is_device_active = heater_controller.is_active(hvac_mode)
 
+        # Calculate when to send the close command (earlier by half valve actuation time)
+        close_command_offset = self.get_close_command_offset()
+        time_to_close = time_on - close_command_offset
+
         if is_device_active:
-            if time_on <= time_passed or force_off:
+            if time_to_close <= time_passed or force_off:
                 _LOGGER.info(
                     "%s: ON time passed. Request turning OFF %s",
                     thermostat_entity_id,
@@ -409,7 +413,7 @@ class PWMController:
                     "%s: Time until %s turns OFF: %s sec",
                     thermostat_entity_id,
                     ", ".join(entities),
-                    int(time_on - time_passed)
+                    int(time_to_close - time_passed)
                 )
                 await heater_controller.async_turn_on(
                     hvac_mode=hvac_mode,

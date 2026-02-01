@@ -247,3 +247,169 @@ class TestPWMControllerValveActuation:
 
         # 50% of 900s = 450s heat + 120s valve = 570s
         assert time_on == 570.0
+
+
+@pytest.mark.asyncio
+class TestPWMControllerEarlyValveClose:
+    """Tests for early valve close command timing."""
+
+    async def test_early_valve_close_with_valve_actuation_time(self, mock_thermostat):
+        """Close command sent early by half valve actuation time."""
+        import time
+        from homeassistant.components.climate import HVACMode
+
+        controller = PWMController(
+            thermostat=mock_thermostat,
+            pwm_duration=900,
+            difference=100,
+            min_on_cycle_duration=0,
+            min_off_cycle_duration=0,
+            valve_actuation_time=120.0,
+        )
+
+        # Mock heater controller
+        heater_controller = MagicMock()
+        heater_controller.is_active = MagicMock(return_value=True)
+        heater_controller.get_entities = MagicMock(return_value=["switch.heater"])
+        heater_controller.async_turn_off = AsyncMock()
+        heater_controller.async_turn_on = AsyncMock()
+
+        # Mock callbacks
+        get_cycle_start_time = MagicMock(return_value=time.monotonic())
+        set_is_heating = MagicMock()
+        set_last_heat_cycle_time = MagicMock()
+        set_time_changed = MagicMock()
+        set_force_on = MagicMock()
+        set_force_off = MagicMock()
+
+        # Control output 50% → 450s heat + 120s valve = 570s total on-time
+        # Close command should be sent at 570s - 60s = 510s
+        control_output = 50.0
+        time_changed = time.monotonic()
+
+        # Simulate time passing to exactly when close command should be sent
+        # At 510 seconds, close command should fire
+        await controller.async_pwm_switch(
+            control_output=control_output,
+            hvac_mode=HVACMode.HEAT,
+            heater_controller=heater_controller,
+            get_cycle_start_time=get_cycle_start_time,
+            set_is_heating=set_is_heating,
+            set_last_heat_cycle_time=set_last_heat_cycle_time,
+            time_changed=time_changed - 510.0,  # 510 seconds have passed
+            set_time_changed=set_time_changed,
+            force_on=False,
+            force_off=False,
+            set_force_on=set_force_on,
+            set_force_off=set_force_off,
+        )
+
+        # Verify close command was sent
+        heater_controller.async_turn_off.assert_called_once()
+
+    async def test_early_valve_close_no_actuation_time(self, mock_thermostat):
+        """Without valve actuation time, close command at normal time."""
+        import time
+        from homeassistant.components.climate import HVACMode
+
+        controller = PWMController(
+            thermostat=mock_thermostat,
+            pwm_duration=900,
+            difference=100,
+            min_on_cycle_duration=0,
+            min_off_cycle_duration=0,
+            valve_actuation_time=0.0,
+        )
+
+        # Mock heater controller
+        heater_controller = MagicMock()
+        heater_controller.is_active = MagicMock(return_value=True)
+        heater_controller.get_entities = MagicMock(return_value=["switch.heater"])
+        heater_controller.async_turn_off = AsyncMock()
+        heater_controller.async_turn_on = AsyncMock()
+
+        # Mock callbacks
+        get_cycle_start_time = MagicMock(return_value=time.monotonic())
+        set_is_heating = MagicMock()
+        set_last_heat_cycle_time = MagicMock()
+        set_time_changed = MagicMock()
+        set_force_on = MagicMock()
+        set_force_off = MagicMock()
+
+        # Control output 50% → 450s (no valve delay)
+        # Close command should be sent at 450s (no early offset)
+        control_output = 50.0
+        time_changed = time.monotonic()
+
+        # Simulate time passing to exactly 450 seconds
+        await controller.async_pwm_switch(
+            control_output=control_output,
+            hvac_mode=HVACMode.HEAT,
+            heater_controller=heater_controller,
+            get_cycle_start_time=get_cycle_start_time,
+            set_is_heating=set_is_heating,
+            set_last_heat_cycle_time=set_last_heat_cycle_time,
+            time_changed=time_changed - 450.0,
+            set_time_changed=set_time_changed,
+            force_on=False,
+            force_off=False,
+            set_force_on=set_force_on,
+            set_force_off=set_force_off,
+        )
+
+        # Verify close command was sent
+        heater_controller.async_turn_off.assert_called_once()
+
+    async def test_early_valve_close_still_heating_before_offset(self, mock_thermostat):
+        """Before close command offset, heater remains on."""
+        import time
+        from homeassistant.components.climate import HVACMode
+
+        controller = PWMController(
+            thermostat=mock_thermostat,
+            pwm_duration=900,
+            difference=100,
+            min_on_cycle_duration=0,
+            min_off_cycle_duration=0,
+            valve_actuation_time=120.0,
+        )
+
+        # Mock heater controller
+        heater_controller = MagicMock()
+        heater_controller.is_active = MagicMock(return_value=True)
+        heater_controller.get_entities = MagicMock(return_value=["switch.heater"])
+        heater_controller.async_turn_off = AsyncMock()
+        heater_controller.async_turn_on = AsyncMock()
+
+        # Mock callbacks
+        get_cycle_start_time = MagicMock(return_value=time.monotonic())
+        set_is_heating = MagicMock()
+        set_last_heat_cycle_time = MagicMock()
+        set_time_changed = MagicMock()
+        set_force_on = MagicMock()
+        set_force_off = MagicMock()
+
+        # Control output 50% → 450s heat + 120s valve = 570s total
+        # Close command at 510s
+        # At 500s (before close command), heater should stay on
+        control_output = 50.0
+        time_changed = time.monotonic()
+
+        await controller.async_pwm_switch(
+            control_output=control_output,
+            hvac_mode=HVACMode.HEAT,
+            heater_controller=heater_controller,
+            get_cycle_start_time=get_cycle_start_time,
+            set_is_heating=set_is_heating,
+            set_last_heat_cycle_time=set_last_heat_cycle_time,
+            time_changed=time_changed - 500.0,  # 500s < 510s close time
+            set_time_changed=set_time_changed,
+            force_on=False,
+            force_off=False,
+            set_force_on=set_force_on,
+            set_force_off=set_force_off,
+        )
+
+        # Verify heater stayed on (turn_on called, not turn_off)
+        heater_controller.async_turn_on.assert_called_once()
+        heater_controller.async_turn_off.assert_not_called()
