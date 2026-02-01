@@ -413,6 +413,26 @@ def build_learning_object(status: str, confidence: int) -> dict[str, Any]:
     return {"status": status, "confidence": confidence}
 
 
+def build_cycle_count(
+    heater_count: int,
+    cooler_count: int,
+    is_demand_switch: bool,
+) -> int | dict[str, int]:
+    """Build cycle_count field based on configuration.
+
+    Args:
+        heater_count: Number of heater cycles
+        cooler_count: Number of cooler cycles
+        is_demand_switch: True if using demand_switch (single actuator)
+
+    Returns:
+        Single int for demand_switch, dict for heater/cooler
+    """
+    if is_demand_switch:
+        return heater_count  # demand_switch only uses heater_count internally
+    return {"heater": heater_count, "cooler": cooler_count}
+
+
 def build_debug_object(**kwargs) -> dict[str, Any]:
     """Build debug object grouped by feature.
 
