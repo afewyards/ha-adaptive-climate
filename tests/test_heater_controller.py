@@ -2100,3 +2100,270 @@ class TestDutyAccumulatorPulse:
         # Accumulator should have increased by ~6s (60s * 10% duty)
         # 200 + 6 = 206 < 300 threshold, so heater stays off
         assert 205.9 < controller._duty_accumulator_seconds < 206.1
+
+
+class TestValveActuationTimeDelays:
+    """Tests for valve actuation time delayed demand signaling."""
+
+    @pytest.fixture
+    def heater_controller_valve_actuation(self, mock_hass, mock_thermostat):
+        """Create a HeaterController with valve actuation time."""
+        dispatcher = CycleEventDispatcher()
+        controller = HeaterController(
+            hass=mock_hass,
+            thermostat=mock_thermostat,
+            heater_entity_id=["switch.heater"],
+            cooler_entity_id=None,
+            demand_switch_entity_id=["switch.demand"],
+            heater_polarity_invert=False,
+            pwm=600,  # 10 minutes
+            difference=100.0,
+            min_on_cycle_duration=300.0,  # 5 minutes
+            min_off_cycle_duration=300.0,  # 5 minutes
+            dispatcher=dispatcher,
+            valve_actuation_time=120.0,  # 2 minutes
+        )
+        return controller, dispatcher
+
+    @pytest.mark.asyncio
+    @patch('custom_components.adaptive_climate.managers.heater_controller.async_call_later')
+    async def test_demand_signal_delayed_on_turn_on(
+        self, mock_call_later, heater_controller_valve_actuation, mock_thermostat
+    ):
+        """Test that demand signal (HEATING_STARTED) is delayed by valve_actuation_time on turn_on."""
+        controller, dispatcher = heater_controller_valve_actuation
+        import time
+
+        # Setup event listeners
+        heating_started_events = []
+        dispatcher.subscribe(CycleEventType.HEATING_STARTED, lambda e: heating_started_events.append(e))
+
+        # Mock service calls
+        mock_service_call = MagicMock()
+        async def mock_async_call(*args, **kwargs):
+            mock_service_call(*args, **kwargs)
+        controller._hass.services.async_call = mock_async_call
+        controller._hass.states.is_state = MagicMock(return_value=False)
+
+        # Mock callbacks
+        cycle_start_time = time.monotonic() - 600  # 10 minutes ago
+        get_cycle_start_time = MagicMock(return_value=cycle_start_time)
+        set_is_heating = MagicMock()
+        set_last_heat_cycle_time = MagicMock()
+
+        # Set demand active
+        controller._has_demand = True
+
+        # Turn on heater
+        await controller.async_turn_on(
+            hvac_mode=MockHVACMode.HEAT,
+            get_cycle_start_time=get_cycle_start_time,
+            set_is_heating=set_is_heating,
+            set_last_heat_cycle_time=set_last_heat_cycle_time,
+        )
+
+        # Heater should be commanded ON immediately
+        mock_service_call.assert_called()
+
+        # But HEATING_STARTED should NOT be emitted yet (it's scheduled)
+        assert len(heating_started_events) == 0
+
+        # Verify timer was scheduled for 120s (valve_actuation_time)
+        mock_call_later.assert_called_once()
+        args = mock_call_later.call_args
+        assert args[0][1] == 120.0  # delay in seconds
+
+    @pytest.mark.asyncio
+    @patch('custom_components.adaptive_climate.managers.heater_controller.async_call_later')
+    async def test_demand_signal_immediate_when_no_valve_actuation_time(
+        self, mock_call_later, mock_hass, mock_thermostat
+    ):
+        """Test that demand signal is immediate when valve_actuation_time=0."""
+        dispatcher = CycleEventDispatcher()
+        controller = HeaterController(
+            hass=mock_hass,
+            thermostat=mock_thermostat,
+            heater_entity_id=["switch.heater"],
+            cooler_entity_id=None,
+            demand_switch_entity_id=None,
+            heater_polarity_invert=False,
+            pwm=600,
+            difference=100.0,
+            min_on_cycle_duration=300.0,
+            min_off_cycle_duration=300.0,
+            dispatcher=dispatcher,
+            valve_actuation_time=0.0,  # No delay
+        )
+
+        import time
+
+        # Setup event listeners
+        heating_started_events = []
+        dispatcher.subscribe(CycleEventType.HEATING_STARTED, lambda e: heating_started_events.append(e))
+
+        # Mock service calls
+        async def mock_async_call(*args, **kwargs):
+            pass
+        controller._hass.services.async_call = mock_async_call
+        controller._hass.states.is_state = MagicMock(return_value=False)
+
+        # Mock callbacks
+        cycle_start_time = time.monotonic() - 600
+        get_cycle_start_time = MagicMock(return_value=cycle_start_time)
+        set_is_heating = MagicMock()
+        set_last_heat_cycle_time = MagicMock()
+
+        # Set demand active
+        controller._has_demand = True
+
+        # Turn on heater
+        await controller.async_turn_on(
+            hvac_mode=MockHVACMode.HEAT,
+            get_cycle_start_time=get_cycle_start_time,
+            set_is_heating=set_is_heating,
+            set_last_heat_cycle_time=set_last_heat_cycle_time,
+        )
+
+        # HEATING_STARTED should be emitted immediately
+        assert len(heating_started_events) == 1
+
+        # No timer should be scheduled
+        mock_call_later.assert_not_called()
+
+    @pytest.mark.asyncio
+    @patch('custom_components.adaptive_climate.managers.heater_controller.async_call_later')
+    async def test_demand_removal_delayed_on_turn_off(
+        self, mock_call_later, heater_controller_valve_actuation, mock_thermostat
+    ):
+        """Test that demand removal (HEATING_ENDED) is delayed by half valve_actuation_time on turn_off."""
+        controller, dispatcher = heater_controller_valve_actuation
+        import time
+
+        # Setup event listeners
+        heating_ended_events = []
+        dispatcher.subscribe(CycleEventType.HEATING_ENDED, lambda e: heating_ended_events.append(e))
+
+        # Mock service calls
+        mock_service_call = MagicMock()
+        async def mock_async_call(*args, **kwargs):
+            mock_service_call(*args, **kwargs)
+        controller._hass.services.async_call = mock_async_call
+        controller._hass.states.is_state = MagicMock(return_value=True)
+
+        # Mock callbacks
+        cycle_start_time = time.monotonic() - 600
+        get_cycle_start_time = MagicMock(return_value=cycle_start_time)
+        set_is_heating = MagicMock()
+        set_last_heat_cycle_time = MagicMock()
+
+        # Set previous state for cycle counting
+        controller._last_heater_state = True
+
+        # Turn off heater
+        await controller.async_turn_off(
+            hvac_mode=MockHVACMode.HEAT,
+            get_cycle_start_time=get_cycle_start_time,
+            set_is_heating=set_is_heating,
+            set_last_heat_cycle_time=set_last_heat_cycle_time,
+        )
+
+        # Heater should be commanded OFF immediately
+        mock_service_call.assert_called()
+
+        # But HEATING_ENDED should NOT be emitted yet (it's scheduled)
+        assert len(heating_ended_events) == 0
+
+        # Verify timer was scheduled for 60s (half of 120s valve_actuation_time)
+        mock_call_later.assert_called_once()
+        args = mock_call_later.call_args
+        assert args[0][1] == 60.0  # half valve_actuation_time
+
+    @pytest.mark.asyncio
+    @patch('custom_components.adaptive_climate.managers.heater_controller.async_call_later')
+    async def test_pending_open_timer_cancelled_on_turn_off(
+        self, mock_call_later, heater_controller_valve_actuation, mock_thermostat
+    ):
+        """Test that pending valve open timer is cancelled when turning off."""
+        controller, dispatcher = heater_controller_valve_actuation
+        import time
+
+        # Mock service calls
+        async def mock_async_call(*args, **kwargs):
+            pass
+        controller._hass.services.async_call = mock_async_call
+
+        # Mock timer handle
+        mock_timer = MagicMock()
+        mock_call_later.return_value = mock_timer
+
+        # Turn on heater (schedules open timer)
+        controller._hass.states.is_state = MagicMock(return_value=False)
+        cycle_start_time = time.monotonic() - 600
+        get_cycle_start_time = MagicMock(return_value=cycle_start_time)
+        set_is_heating = MagicMock()
+        set_last_heat_cycle_time = MagicMock()
+        controller._has_demand = True
+
+        await controller.async_turn_on(
+            hvac_mode=MockHVACMode.HEAT,
+            get_cycle_start_time=get_cycle_start_time,
+            set_is_heating=set_is_heating,
+            set_last_heat_cycle_time=set_last_heat_cycle_time,
+        )
+
+        # Verify open timer was scheduled
+        assert mock_call_later.call_count == 1
+        mock_call_later.reset_mock()
+
+        # Now turn off before timer fires
+        controller._hass.states.is_state = MagicMock(return_value=True)
+        controller._last_heater_state = True
+
+        await controller.async_turn_off(
+            hvac_mode=MockHVACMode.HEAT,
+            get_cycle_start_time=get_cycle_start_time,
+            set_is_heating=set_is_heating,
+            set_last_heat_cycle_time=set_last_heat_cycle_time,
+        )
+
+        # Verify pending open timer was cancelled
+        mock_timer.assert_called_once()  # Timer cancel function called
+
+    @pytest.mark.asyncio
+    async def test_valve_mode_no_delay_on_valve_value(
+        self, mock_hass, mock_thermostat
+    ):
+        """Test that valve mode (pwm=0) does not apply valve actuation delays."""
+        dispatcher = CycleEventDispatcher()
+        controller = HeaterController(
+            hass=mock_hass,
+            thermostat=mock_thermostat,
+            heater_entity_id=["number.valve"],
+            cooler_entity_id=None,
+            demand_switch_entity_id=None,
+            heater_polarity_invert=False,
+            pwm=0,  # Valve mode
+            difference=100.0,
+            min_on_cycle_duration=0.0,
+            min_off_cycle_duration=0.0,
+            dispatcher=dispatcher,
+            valve_actuation_time=120.0,  # Should be ignored in valve mode
+        )
+
+        # Setup event listeners
+        heating_started_events = []
+        dispatcher.subscribe(CycleEventType.HEATING_STARTED, lambda e: heating_started_events.append(e))
+
+        # Mock service calls
+        async def mock_async_call(*args, **kwargs):
+            pass
+        controller._hass.services.async_call = mock_async_call
+
+        # Set valve value
+        await controller.async_set_valve_value(
+            value=50.0,
+            hvac_mode=MockHVACMode.HEAT,
+        )
+
+        # HEATING_STARTED should be emitted immediately (no delay in valve mode)
+        assert len(heating_started_events) == 1
