@@ -37,6 +37,7 @@ class PWMController:
         difference: float,
         min_on_cycle_duration: float,
         min_off_cycle_duration: float,
+        valve_actuation_time: float = 0.0,
     ):
         """Initialize the PWMController.
 
@@ -46,12 +47,14 @@ class PWMController:
             difference: Output range (max - min)
             min_on_cycle_duration: Minimum on cycle duration in seconds
             min_off_cycle_duration: Minimum off cycle duration in seconds
+            valve_actuation_time: Valve actuation time in seconds (default: 0.0)
         """
         self._thermostat = thermostat
         self._pwm = pwm_duration
         self._difference = difference
         self._min_on_cycle_duration = min_on_cycle_duration
         self._min_off_cycle_duration = min_off_cycle_duration
+        self._valve_actuation_time = valve_actuation_time
 
         # Duty accumulator for sub-threshold outputs
         self._duty_accumulator_seconds: float = 0.0
@@ -108,6 +111,46 @@ class PWMController:
         self._duty_accumulator_seconds = 0.0
         self._last_accumulator_calc_time = None
 
+    def calculate_adjusted_on_time(
+        self,
+        control_output: float,
+        difference: float,
+    ) -> float:
+        """Calculate valve-on duration accounting for actuation delay.
+
+        For valves with actuation time, we need to keep the valve open longer
+        to account for the time it takes to fully open/close. The valve command
+        is sent early (by half valve time) before the desired heat delivery should end.
+
+        Args:
+            control_output: Current PID control output
+            difference: Output range (max - min)
+
+        Returns:
+            Adjusted on-time in seconds
+        """
+        if difference == 0 or control_output == 0:
+            return 0.0
+
+        # Base heat delivery time from duty cycle
+        duty = control_output / difference
+        heat_duration = self._pwm * duty
+
+        # Add half valve time to account for close delay
+        # (we send close command early, so valve keeps delivering during close)
+        return heat_duration + (self._valve_actuation_time / 2)
+
+    def get_close_command_offset(self) -> float:
+        """Get offset in seconds to send close command early.
+
+        Returns half the valve actuation time, since the valve will continue
+        delivering heat while it closes.
+
+        Returns:
+            Offset in seconds
+        """
+        return self._valve_actuation_time / 2
+
     async def async_pwm_switch(
         self,
         control_output: float,
@@ -159,7 +202,11 @@ class PWMController:
             return
 
         # Compute time_on based on PWM duration and PID output
-        time_on = self._pwm * abs(control_output) / self._difference
+        # Use calculate_adjusted_on_time to account for valve actuation delay
+        time_on = self.calculate_adjusted_on_time(
+            control_output=abs(control_output),
+            difference=self._difference,
+        )
         time_off = self._pwm - time_on
 
         # If calculated on-time < min_on_cycle_duration, accumulate duty
