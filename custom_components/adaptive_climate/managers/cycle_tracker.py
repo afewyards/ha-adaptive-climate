@@ -73,6 +73,7 @@ class CycleTrackerManager:
         on_auto_apply_check: Callable[[], Awaitable[None]] | None = None,
         dispatcher: "CycleEventDispatcher | None" = None,
         heating_type: str | None = None,
+        valve_actuation_time: float = 0.0,
     ) -> None:
         """Initialize the cycle tracker manager.
 
@@ -92,6 +93,7 @@ class CycleTrackerManager:
             on_auto_apply_check: Async callback for auto-apply check after cycle completion
             dispatcher: Optional CycleEventDispatcher for event-driven operation
             heating_type: Heating system type (for cold_tolerance lookup)
+            valve_actuation_time: Valve actuation time in seconds (default: 0.0)
         """
         from ..const import (
             SETTLING_TIMEOUT_MULTIPLIER,
@@ -178,6 +180,8 @@ class CycleTrackerManager:
             on_auto_apply_check=on_auto_apply_check,
             dispatcher=dispatcher,
             cold_tolerance=cold_tolerance,
+            heating_type=heating_type,
+            valve_actuation_time=valve_actuation_time,
         )
 
         # Subscribe to events if dispatcher provided
