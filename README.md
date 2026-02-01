@@ -29,7 +29,7 @@ An advanced climate integration featuring PID control with automatic tuning, ada
 ### Key Features
 
 - **5-Term PID Control** - Advanced PID controller (P+I+D+E+F) with proportional-on-measurement, outdoor compensation, and thermal coupling feedforward
-- **Adaptive Learning** - Automatically learns thermal characteristics, optimizes PID parameters, and detects chronic approach failures
+- **Adaptive Learning** - Automatically learns thermal characteristics, optimizes PID parameters, weighted cycle learning to prevent premature convergence, and chronic approach detection
 - **Physics-Based Initialization** - Initial PID values calculated from zone properties, floor construction, and empirical HVAC data
 - **Multi-Zone Coordination** - Central heat source control, mode synchronization, thermal groups, and automatic HVAC mode switching
 - **Disturbance Handling** - Contact sensors, algorithmic open window detection, humidity-based steam detection (bathrooms)
@@ -306,10 +306,11 @@ By default, PID parameters are automatically applied when the system reaches suf
 
 ### How It Works
 1. **Learning** - System collects heating cycle metrics (overshoot, settling time, oscillations)
-2. **Confidence** - Convergence confidence builds as patterns stabilize
-3. **Auto-Apply** - When confidence reaches threshold, new PID values are applied automatically
-4. **Validation** - 5-cycle validation window monitors performance
-5. **Rollback** - If performance degrades >30%, automatically reverts to previous values
+2. **Weighted Confidence** - Recovery cycles (large temperature delta) contribute more than maintenance cycles
+3. **Tier Gating** - Requires minimum recovery cycles to advance, not just confidence percentage
+4. **Auto-Apply** - When confidence reaches threshold, new PID values are applied automatically
+5. **Validation** - 5-cycle validation window monitors performance
+6. **Rollback** - If performance degrades >30%, automatically reverts to previous values
 
 ### Safety Limits
 - **5 auto-applies per season** (90 days) - prevents runaway tuning
