@@ -322,12 +322,14 @@ class CycleMetrics:
         inter_cycle_drift: Optional[float] = None,
         dead_time: Optional[float] = None,
         mode: Optional[str] = None,
+        controllable_overshoot: Optional[float] = None,
+        committed_overshoot: Optional[float] = None,
     ):
         """
         Initialize cycle metrics.
 
         Args:
-            overshoot: Maximum overshoot in °C
+            overshoot: Maximum overshoot in °C (total overshoot)
             undershoot: Maximum undershoot in °C
             settling_time: Settling time in minutes
             oscillations: Number of temperature oscillations around target
@@ -345,6 +347,8 @@ class CycleMetrics:
             inter_cycle_drift: Temperature drift between cycles in °C
             dead_time: Transport delay from heater to sensor in minutes
             mode: HVAC mode during cycle ("heating", "cooling", or None for backwards compatibility)
+            controllable_overshoot: Overshoot that could have been prevented in °C
+            committed_overshoot: Overshoot from in-flight heat (unavoidable) in °C
         """
         self.overshoot = overshoot
         self.undershoot = undershoot
@@ -364,6 +368,8 @@ class CycleMetrics:
         self.inter_cycle_drift = inter_cycle_drift
         self.dead_time = dead_time
         self.mode = mode
+        self.controllable_overshoot = controllable_overshoot
+        self.committed_overshoot = committed_overshoot
 
     @property
     def is_disturbed(self) -> bool:
@@ -659,3 +665,61 @@ def calculate_settling_mae(
     # Calculate mean absolute error from target
     errors = [abs(temp - target_temp) for temp in settling_temps]
     return sum(errors) / len(errors)
+
+
+def calculate_overshoot_components(
+    peak_temp: float,
+    setpoint: float,
+    committed_heat_seconds: float,
+    heating_rate: float,
+) -> tuple[float, float]:
+    """Split overshoot into controllable and committed portions.
+
+    When a heater is turned off, there is often heat "in-flight" (committed heat)
+    that will continue to raise the temperature. This function separates total
+    overshoot into:
+    1. Committed overshoot: Temperature rise from in-flight heat (unavoidable)
+    2. Controllable overshoot: Temperature rise that could have been prevented
+       by turning off the heater earlier
+
+    This separation is critical for learning - we should only penalize the
+    controller for controllable overshoot, not for committed heat which is
+    a physical property of the system.
+
+    Args:
+        peak_temp: Maximum temperature reached in °C
+        setpoint: Target temperature in °C
+        committed_heat_seconds: Duration of heat in-flight when setpoint reached (seconds)
+        heating_rate: Temperature rise rate in °C/second
+
+    Returns:
+        Tuple of (controllable_overshoot, committed_overshoot) in °C
+
+    Example:
+        >>> # System peaks at 21.5°C (0.5°C above 21°C setpoint)
+        >>> # 2 minutes of committed heat, heating at 0.1°C/min
+        >>> controllable, committed = calculate_overshoot_components(
+        ...     peak_temp=21.5,
+        ...     setpoint=21.0,
+        ...     committed_heat_seconds=120,
+        ...     heating_rate=0.1 / 60,  # Convert to °C/second
+        ... )
+        >>> # committed = 120s × (0.1/60) = 0.2°C
+        >>> # controllable = 0.5 - 0.2 = 0.3°C
+    """
+    total_overshoot = max(0.0, peak_temp - setpoint)
+
+    if total_overshoot == 0.0:
+        return 0.0, 0.0
+
+    # Calculate overshoot from committed heat
+    # This is the temperature rise that would occur from the in-flight heat
+    committed_overshoot = min(
+        committed_heat_seconds * heating_rate,
+        total_overshoot,
+    )
+
+    # Remaining overshoot is controllable (could have been prevented)
+    controllable_overshoot = total_overshoot - committed_overshoot
+
+    return controllable_overshoot, committed_overshoot

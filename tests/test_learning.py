@@ -3222,6 +3222,60 @@ class TestClampedOvershootMultipliers:
                 was_clamped=True,
             )
             learner.add_cycle_metrics(cycle)
+
+    def test_controllable_overshoot_preferred_over_total(self):
+        """Test that learning uses controllable overshoot when available.
+
+        When both total overshoot and controllable_overshoot are present,
+        learning should use controllable_overshoot to avoid penalizing
+        unavoidable committed heat from valve actuation time.
+        """
+        learner = AdaptiveLearner(heating_type="radiator")
+
+        # Add cycles with both total and controllable overshoot
+        # Total overshoot is 0.5°C, but controllable is only 0.3°C
+        # (0.2°C was committed heat from valve actuation time)
+        for _ in range(6):
+            cycle = CycleMetrics(
+                overshoot=0.5,  # Total overshoot
+                controllable_overshoot=0.3,  # Controllable portion only
+                committed_overshoot=0.2,  # Committed heat (should be ignored)
+                undershoot=0.0,
+                settling_time=30.0,
+                oscillations=0,
+                rise_time=20.0,
+            )
+            learner.add_cycle_metrics(cycle)
+
+        assert learner.get_cycle_count() == 6
+        # Verify all cycles have the split overshoot data
+        assert all(c.controllable_overshoot == 0.3 for c in learner.cycle_history)
+        assert all(c.committed_overshoot == 0.2 for c in learner.cycle_history)
+
+    def test_controllable_overshoot_backwards_compatible(self):
+        """Test that learning falls back to total overshoot when split not available.
+
+        For backward compatibility with cycles recorded before the
+        controllable_overshoot field was added.
+        """
+        learner = AdaptiveLearner(heating_type="radiator")
+
+        # Add cycles with only total overshoot (old format)
+        for _ in range(6):
+            cycle = CycleMetrics(
+                overshoot=0.4,  # Total overshoot only
+                # controllable_overshoot and committed_overshoot not set (None)
+                undershoot=0.0,
+                settling_time=30.0,
+                oscillations=0,
+                rise_time=20.0,
+            )
+            learner.add_cycle_metrics(cycle)
+
+        assert learner.get_cycle_count() == 6
+        # Verify cycles don't have split data
+        assert all(c.controllable_overshoot is None for c in learner.cycle_history)
+        assert all(c.committed_overshoot is None for c in learner.cycle_history)
         assert learner.get_cycle_count() == 6
 
     def test_mixed_clamped_and_non_clamped_cycles(self):
