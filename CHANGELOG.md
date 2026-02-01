@@ -1,6 +1,24 @@
 # CHANGELOG
 
 
+## v0.57.0 (2026-02-01)
+
+### Refactoring
+
+- Rename min_cycle_duration to min_open_time
+  ([`42964d2`](https://github.com/afewyards/ha-adaptive-climate/commit/42964d2a3ba3547ac403d09bff2f1d203d6dd999))
+
+BREAKING CHANGE: YAML config keys renamed: - min_cycle_duration → min_open_time -
+  min_off_cycle_duration → min_closed_time - min_cycle_duration_pid_off → min_open_time_pid_off -
+  min_off_cycle_duration_pid_off → min_closed_time_pid_off
+
+Internal variables and methods also renamed for consistency.
+
+### Breaking Changes
+
+- Yaml config keys renamed:
+
+
 ## v0.56.0 (2026-02-01)
 
 ### Bug Fixes
