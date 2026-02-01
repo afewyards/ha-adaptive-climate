@@ -340,43 +340,50 @@ adaptive_climate:
 
 ### State Attributes
 
-Exposed via `extra_state_attributes`. Minimized for clarity - only restoration + critical diagnostics.
+Exposed via `extra_state_attributes`. Structure: flat restoration fields + grouped objects for diagnostics.
 
-**Core attributes:**
+**Full structure:**
 ```python
 {
-    # Preset temps (standard)
-    "away_temp", "eco_temp", "boost_temp", "comfort_temp",
-    "home_temp", "sleep_temp", "activity_temp",
+    # Flat restoration (required for RestoreEntity)
+    "integral": 5.2,
+    "pid_history": [...],
+    "outdoor_temp_lagged": 8.5,
+    "cycle_count": 52,              # or {"heater": 42, "cooler": 10}
+    "control_output": 65.3,
 
-    # Restoration (PID state)
-    "kp", "ki", "kd", "ke", "integral",
-    "pid_mode", "outdoor_temp_lagged",
-    "heater_cycle_count", "cooler_cycle_count",
+    # Preset temps (standard HA)
+    "away_temp": 16.0,
+    "eco_temp": 18.0,
+    "boost_temp": 22.0,
+    "comfort_temp": 20.0,
+    "home_temp": 20.0,
+    "sleep_temp": 18.0,
+    "activity_temp": 21.0,
 
-    # Critical diagnostics
-    "control_output",        # Current PID output %
-
-    # Learning status
-    "learning_status",           # "idle" | "collecting" | "stable" | "tuned" | "optimized"
-    "pid_history",               # List of PID adjustments (when non-empty)
-
-    # Operational status
+    # Grouped objects
     "status": {
-        "state": str,            # idle | heating | cooling | paused | preheating | settling
-        "conditions": list[str], # Always present, list of active conditions
-        "resume_at": str,        # ISO8601 timestamp when pause ends (optional)
-        "setback_delta": float,  # °C adjustment during night_setback (optional)
-        "setback_end": str,      # ISO8601 timestamp when night period ends (optional)
-        "allowed_setback": float, # °C effective delta when limited by learning gate (optional)
-        # Debug-only fields (when debug: true in domain config):
-        "humidity_peak": float,  # Peak humidity % during spike (optional)
-        "open_sensors": list[str], # Contact sensor entity IDs that triggered (optional)
-    }
+        "activity": "heating",      # idle | heating | cooling | settling
+        "overrides": [              # ordered by priority, first = in control
+            {"type": "contact_open", "sensors": [...], "since": "..."},
+            {"type": "night_setback", "delta": -2.0, "ends_at": "07:00"}
+        ]
+    },
+    "learning": {
+        "status": "stable",         # idle | collecting | stable | tuned | optimized
+        "confidence": 45            # 0-100%
+    },
+    "debug": {...}                  # only when debug: true
 }
 ```
 
-**Conditions:** contact_open, humidity_spike, open_window, night_setback, learning_grace
+**Override types and fields:**
+- `contact_open` - `sensors` (list of entity IDs), `since` (ISO8601 timestamp)
+- `humidity` - `state` (paused|stabilizing), `resume_at` (ISO8601), `peak` (% humidity, debug only)
+- `open_window` - `since` (ISO8601), `resume_at` (ISO8601)
+- `preheating` - `target_time` (ISO8601), `started_at` (ISO8601), `target_delta` (°C)
+- `night_setback` - `delta` (°C), `ends_at` (ISO8601), `limited_to` (°C, when learning gate active)
+- `learning_grace` - `until` (ISO8601 timestamp)
 
 **Learning status states:**
 - `idle` - Learning paused (contact_open, humidity_spike, or learning_grace active)
@@ -396,14 +403,14 @@ Exposed via `extra_state_attributes`. Minimized for clarity - only restoration +
 
 *Base values: Tier 1=40%, Tier 2=70%, Tier 3=95%. Scaling: floor 0.8x, radiator 0.9x, convector 1.0x, forced_air 1.1x (capped at 95%)*
 
-**Debug-only attributes** (require `debug: true` in domain config):
-- `duty_accumulator_pct` - PWM accumulation as % of threshold
-- `cycles_collected` - Count of complete cycles
-- `convergence_confidence_pct` - 0-100%
-- `current_cycle_state` - Cycle tracker state (idle/heating/settling)
-- `cycles_required_for_learning` - Minimum cycles needed (constant: 6)
-- `preheat_*` - Preheat learning/scheduling details
-- `humidity_detection_state`, `humidity_resume_in` - Detailed humidity state
+**Debug groups** (when `debug: true` in domain config):
+- `pwm` - `duty_accumulator_pct` (% of threshold)
+- `cycle` - `state` (idle/heating/settling), `cycles_collected`, `cycles_required`
+- `preheat` - `heating_rate_learned` (°C/h), `observation_count`
+- `humidity` - `state` (normal/paused/stabilizing), `peak` (% humidity)
+- `undershoot` - `thermal_debt` (°C·min), `consecutive_failures`, `ki_boost_applied`
+- `ke` - `observations`, `current_ke`
+- `pid` - `p_term`, `i_term`, `d_term`, `e_term`, `f_term` (all % control output)
 
 ### Persistence
 
