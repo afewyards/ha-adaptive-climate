@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections import deque
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum
 from typing import TYPE_CHECKING, Awaitable, Callable, Deque
 
@@ -266,6 +266,35 @@ class CycleTrackerManager:
     def _transport_delay_minutes(self) -> float | None:
         """Return transport delay (for testing)."""
         return self._metrics_recorder._transport_delay_minutes
+
+    def get_heat_arrival_offset(self) -> float:
+        """Return the transport delay in minutes.
+
+        This represents the time between valve opening and heat actually
+        arriving at the zone. Used by HeaterController for demand timing.
+
+        Returns:
+            Transport delay in minutes (0 if not set)
+        """
+        return self._metrics_recorder._transport_delay_minutes or 0.0
+
+    def get_heat_arrival_time(self) -> datetime | None:
+        """Return the time when heat actually arrives at the zone.
+
+        This is calculated as device_on_time + transport_delay.
+        Returns None if device hasn't started yet.
+
+        Returns:
+            Heat arrival time or None if device not started
+        """
+        if self._metrics_recorder._device_on_time is None:
+            return None
+
+        transport_delay = self._metrics_recorder._transport_delay_minutes or 0.0
+        if transport_delay <= 0:
+            return self._metrics_recorder._device_on_time
+
+        return self._metrics_recorder._device_on_time + timedelta(minutes=transport_delay)
 
     def get_state_name(self) -> str:
         """Return current cycle state as lowercase string.

@@ -4,6 +4,10 @@ This module provides functions to calculate initial PID parameters based on
 thermal properties of zones and heating system characteristics.
 """
 
+from __future__ import annotations
+
+from collections import deque
+from dataclasses import dataclass
 from typing import Tuple, Optional, Dict, List
 
 try:
@@ -17,6 +21,79 @@ from .floor_physics import (
     validate_floor_construction,
     calculate_floor_thermal_properties,
 )
+
+
+@dataclass
+class HeatingObservation:
+    """Single heating observation for rolling window calculation."""
+
+    timestamp: float
+    temp_delta: float
+    heat_seconds: float
+
+
+class RollingWindowHeatingRate:
+    """Track heating rate over rolling time window.
+
+    For slow systems (floor, radiator) where per-cycle rise time
+    isn't meaningful due to thermal lag.
+    """
+
+    def __init__(self, window_seconds: float) -> None:
+        """Initialize rolling window heating rate tracker.
+
+        Args:
+            window_seconds: Time window in seconds for observations.
+        """
+        self._window = window_seconds
+        self._observations: deque[HeatingObservation] = deque()
+
+    def add_observation(
+        self,
+        timestamp: float,
+        temp_delta: float,
+        heat_seconds: float,
+    ) -> None:
+        """Add a heating observation.
+
+        Args:
+            timestamp: Timestamp of observation (monotonic time).
+            temp_delta: Temperature change in °C.
+            heat_seconds: Amount of heat delivered in seconds.
+        """
+        self._observations.append(HeatingObservation(
+            timestamp=timestamp,
+            temp_delta=temp_delta,
+            heat_seconds=heat_seconds,
+        ))
+        self._prune_old(timestamp)
+
+    def _prune_old(self, now: float) -> None:
+        """Remove observations outside window.
+
+        Args:
+            now: Current timestamp (monotonic time).
+        """
+        cutoff = now - self._window
+        while self._observations and self._observations[0].timestamp < cutoff:
+            self._observations.popleft()
+
+    def get_heating_rate(self) -> float | None:
+        """Get heating rate in °C per second.
+
+        Returns:
+            Heating rate in °C per second, or None if insufficient observations.
+        """
+        if not self._observations:
+            return None
+
+        total_temp = sum(o.temp_delta for o in self._observations)
+        total_heat = sum(o.heat_seconds for o in self._observations)
+
+        if total_heat == 0:
+            return None
+
+        return total_temp / total_heat
 
 
 # Energy rating to insulation quality mapping

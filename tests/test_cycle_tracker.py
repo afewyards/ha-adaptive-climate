@@ -3924,3 +3924,111 @@ class TestCycleTrackerModePassingToCycleMetrics:
         assert metrics2.mode == "cooling"
 
 
+class TestTransportDelayTracking:
+    """Tests for transport delay tracking in cycle manager."""
+
+    def test_get_heat_arrival_offset_returns_transport_delay(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
+    ):
+        """Test get_heat_arrival_offset returns the configured transport delay."""
+        tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            dispatcher=dispatcher,
+            **mock_callbacks,
+        )
+        tracker.set_restoration_complete()
+
+        # Set transport delay to 5 minutes
+        tracker.set_transport_delay(5.0)
+
+        # Verify get_heat_arrival_offset returns the delay
+        assert tracker.get_heat_arrival_offset() == 5.0
+
+    def test_get_heat_arrival_offset_returns_zero_when_no_delay(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
+    ):
+        """Test get_heat_arrival_offset returns 0 when no transport delay set."""
+        tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            dispatcher=dispatcher,
+            **mock_callbacks,
+        )
+        tracker.set_restoration_complete()
+
+        # Don't set transport delay
+        # Verify get_heat_arrival_offset returns 0
+        assert tracker.get_heat_arrival_offset() == 0.0
+
+    @pytest.mark.asyncio
+    async def test_cycle_tracking_accounts_for_heat_arrival_time(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
+    ):
+        """Test that cycle tracking distinguishes valve open time from heat arrival time."""
+        from custom_components.adaptive_climate.managers.events import (
+            CycleStartedEvent,
+            HeatingStartedEvent,
+        )
+
+        tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            dispatcher=dispatcher,
+            **mock_callbacks,
+        )
+        tracker.set_restoration_complete()
+
+        # Start cycle
+        cycle_start_time = datetime(2025, 1, 14, 10, 0, 0)
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat",
+                timestamp=cycle_start_time,
+                target_temp=20.0,
+                current_temp=18.0,
+            )
+        )
+
+        # Set transport delay to 5 minutes (must be after cycle starts)
+        tracker.set_transport_delay(5.0)
+
+        # Device turns on 2 minutes after cycle start
+        device_on_time = datetime(2025, 1, 14, 10, 2, 0)
+        dispatcher.emit(
+            HeatingStartedEvent(
+                hvac_mode="heat",
+                timestamp=device_on_time,
+            )
+        )
+
+        # Verify device_on_time is tracked
+        assert tracker._device_on_time == device_on_time
+
+        # Heat arrival time should be device_on_time + transport_delay (5 min)
+        expected_heat_arrival = datetime(2025, 1, 14, 10, 7, 0)
+        assert tracker.get_heat_arrival_time() == expected_heat_arrival
+
+    def test_get_heat_arrival_time_returns_none_when_device_not_started(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
+    ):
+        """Test get_heat_arrival_time returns None when device hasn't started."""
+        tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=mock_adaptive_learner,
+            dispatcher=dispatcher,
+            **mock_callbacks,
+        )
+        tracker.set_restoration_complete()
+
+        # Set transport delay but don't start device
+        tracker.set_transport_delay(5.0)
+
+        # Verify get_heat_arrival_time returns None
+        assert tracker.get_heat_arrival_time() is None
+
+
