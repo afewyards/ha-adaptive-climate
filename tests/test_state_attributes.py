@@ -43,6 +43,18 @@ from custom_components.adaptive_climate.const import (
 )
 
 
+def test_override_type_enum_exists():
+    """Override types should be defined as enum."""
+    from custom_components.adaptive_climate.const import OverrideType
+
+    assert OverrideType.CONTACT_OPEN.value == "contact_open"
+    assert OverrideType.HUMIDITY.value == "humidity"
+    assert OverrideType.OPEN_WINDOW.value == "open_window"
+    assert OverrideType.PREHEATING.value == "preheating"
+    assert OverrideType.NIGHT_SETBACK.value == "night_setback"
+    assert OverrideType.LEARNING_GRACE.value == "learning_grace"
+
+
 class TestComputeLearningStatus:
     """Test _compute_learning_status helper function."""
 
