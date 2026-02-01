@@ -43,6 +43,8 @@ pytest --cov=custom_components/adaptive_climate  # coverage
 | `adaptive/learning.py` | Cycle analysis, rule-based PID adjustments |
 | `adaptive/validation.py` | ValidationManager for auto-apply safety checks |
 | `adaptive/confidence.py` | ConfidenceTracker for convergence confidence |
+| `adaptive/cycle_weight.py` | Cycle classification and weight calculation |
+| `adaptive/confidence_contribution.py` | Confidence contribution tracking with caps |
 | `adaptive/learner_serialization.py` | Serialization/deserialization for AdaptiveLearner |
 | `adaptive/undershoot_detector.py` | Real-time thermal debt + cycle-based undershoot detection |
 | `adaptive/physics.py` | Thermal time constant, Ziegler-Nichols init |
@@ -96,6 +98,54 @@ Rules adjust Kp/Ki/Kd based on overshoot, undershoot, drift, oscillations. `auto
 - **First auto-apply:** Requires "tuned" status (tier 2 confidence threshold)
 - **Subsequent auto-applies:** Require "optimized" status (tier 3 confidence threshold)
 - Includes safety limits and auto-rollback on degradation
+
+### Weighted Cycle Learning
+
+Cycles are weighted by difficulty to prevent premature "tuned" status from maintenance-only operation.
+
+**Cycle classification:**
+- Recovery: starting delta ≥ threshold (0.5-0.8°C depending on type/status)
+- Maintenance: starting delta < threshold
+
+**Weight formula:**
+```
+weight = (base × delta_multiplier × outcome_factor) + bonuses
+```
+
+- Base: 1.0 (recovery) or 0.3 (maintenance)
+- Delta multiplier: 1.0 + (delta - threshold) × 0.5, capped at 2.0
+- Outcome factor: 1.0 (clean), 0.7 (overshoot), 0.5 (undershoot)
+- Bonuses: +0.15 (duty >60%), +0.15 (outdoor <5°C), +0.2 (night setback recovery)
+
+**Confidence caps by heating type:**
+| Type | Maintenance Cap | Heating Rate Cap |
+|------|-----------------|------------------|
+| floor_hydronic | 25% | 30% |
+| radiator | 30% | 20% |
+| convector | 35% | 10% |
+| forced_air | 35% | 5% |
+
+**Recovery cycle requirements:**
+- Tier progression requires recovery cycles, not just confidence %
+- floor_hydronic: 12 for stable, 20 for tuned
+- radiator: 8 for stable, 15 for tuned
+- convector: 6 for stable, 12 for tuned
+- forced_air: 6 for stable, 10 for tuned
+
+**Auto-learning setback:**
+- Triggers after 7 days stuck at maintenance cap
+- Applies 0.5°C setback during 3-5am window
+- 7-day cooldown between activations
+- Disabled if user has night setback configured
+- Domain config: `auto_learning_setback: true` (default)
+
+**Extended settling windows:**
+| Type | Settling Window |
+|------|-----------------|
+| floor_hydronic | 60 min |
+| radiator | 30 min |
+| convector | 15 min |
+| forced_air | 10 min |
 
 ### Multi-Zone
 
@@ -452,4 +502,4 @@ Exposed via `extra_state_attributes`. Structure: flat restoration fields + group
 
 ## Tests
 
-`test_pid_controller.py`, `test_physics.py`, `test_learning.py`, `test_cycle_tracker.py`, `test_integration_cycle_learning.py`, `test_coordinator.py`, `test_central_controller.py`, `test_thermal_groups.py`, `test_night_setback.py`, `test_contact_sensors.py`, `test_preheat_learner.py`, `test_humidity_detector.py`, `test_setpoint_boost.py`, `test_auto_mode_switching.py`, `test_undershoot_detector.py`
+`test_pid_controller.py`, `test_physics.py`, `test_learning.py`, `test_cycle_tracker.py`, `test_integration_cycle_learning.py`, `test_coordinator.py`, `test_central_controller.py`, `test_thermal_groups.py`, `test_night_setback.py`, `test_contact_sensors.py`, `test_preheat_learner.py`, `test_humidity_detector.py`, `test_setpoint_boost.py`, `test_auto_mode_switching.py`, `test_undershoot_detector.py`, `test_cycle_weight.py`, `test_confidence_contribution.py`, `test_auto_learning_setback.py`, `test_integration_weighted_learning.py`
