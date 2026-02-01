@@ -378,6 +378,7 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
         self._preheat_cycle_unsub = None  # H7 fix - store unsub handle
 
         self._pwm = kwargs.get('pwm').seconds
+        self._valve_actuation_time = kwargs.get('valve_actuation_time', 0)
         self._p = self._i = self._d = self._e = self._dt = 0
         self._control_output = self._output_min
         self._force_on = False

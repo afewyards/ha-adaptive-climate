@@ -129,6 +129,10 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Optional(const.CONF_SETPOINT_BOOST, default=True): cv.boolean,
         vol.Optional(const.CONF_SETPOINT_BOOST_FACTOR): vol.Coerce(float),
         vol.Optional(const.CONF_SETPOINT_DEBOUNCE, default=const.DEFAULT_SETPOINT_DEBOUNCE): cv.positive_int,
+        # Valve actuation time
+        vol.Optional(const.CONF_VALVE_ACTUATION_TIME): vol.All(
+            cv.time_period, cv.positive_timedelta
+        ),
     }
 )
 
@@ -302,6 +306,18 @@ async def async_setup_platform(hass: HomeAssistant, config: ConfigType, async_ad
         'setpoint_boost_factor': config.get(const.CONF_SETPOINT_BOOST_FACTOR),
         'setpoint_debounce': config.get(const.CONF_SETPOINT_DEBOUNCE),
     }
+
+    # Get valve actuation time from config or heating type default
+    heating_type = config.get(const.CONF_HEATING_TYPE)
+    valve_actuation_config = config.get(const.CONF_VALVE_ACTUATION_TIME)
+    if valve_actuation_config is not None:
+        valve_actuation_seconds = valve_actuation_config.total_seconds()
+    else:
+        valve_actuation_seconds = const.HEATING_TYPE_VALVE_DEFAULTS.get(
+            heating_type, 0
+        )
+
+    parameters["valve_actuation_time"] = valve_actuation_seconds
 
     thermostat = AdaptiveThermostat(**parameters)
 
