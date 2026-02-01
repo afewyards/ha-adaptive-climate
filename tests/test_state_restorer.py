@@ -198,6 +198,93 @@ class TestInitialPidCalculation:
         assert mock_thermostat._cooling_gains is None
 
 
+class TestCycleCountRestoration:
+    """Tests for cycle_count restoration handling new and old structures."""
+
+    def test_restore_cycle_count_from_new_dict_structure(self, state_restorer, mock_thermostat):
+        """StateRestorer should handle new cycle_count dict structure."""
+        old_state = MagicMock()
+        old_state.state = "heat"
+        old_state.attributes = {
+            "cycle_count": {"heater": 42, "cooler": 10},
+            "integral": 5.0,
+            "pid_integral_migrated": True,
+        }
+
+        state_restorer.restore(old_state)
+
+        # Should restore both heater and cooler counts from dict
+        mock_thermostat._heater_controller.set_heater_cycle_count.assert_called_once_with(42)
+        mock_thermostat._heater_controller.set_cooler_cycle_count.assert_called_once_with(10)
+
+    def test_restore_cycle_count_from_int(self, state_restorer, mock_thermostat):
+        """StateRestorer should handle int cycle_count (demand_switch)."""
+        old_state = MagicMock()
+        old_state.state = "heat"
+        old_state.attributes = {
+            "cycle_count": 52,
+            "integral": 5.0,
+            "pid_integral_migrated": True,
+        }
+
+        state_restorer.restore(old_state)
+
+        # Should restore heater count from int, cooler count should be 0
+        mock_thermostat._heater_controller.set_heater_cycle_count.assert_called_once_with(52)
+        mock_thermostat._heater_controller.set_cooler_cycle_count.assert_called_once_with(0)
+
+    def test_restore_cycle_count_from_old_structure(self, state_restorer, mock_thermostat):
+        """StateRestorer should handle old heater_cycle_count/cooler_cycle_count structure."""
+        old_state = MagicMock()
+        old_state.state = "heat"
+        old_state.attributes = {
+            "heater_cycle_count": 150,
+            "cooler_cycle_count": 50,
+            "integral": 5.0,
+            "pid_integral_migrated": True,
+        }
+
+        state_restorer.restore(old_state)
+
+        # Should restore both counts from old structure
+        mock_thermostat._heater_controller.set_heater_cycle_count.assert_called_once_with(150)
+        mock_thermostat._heater_controller.set_cooler_cycle_count.assert_called_once_with(50)
+
+    def test_restore_cycle_count_mixed_new_dict_overrides_old(self, state_restorer, mock_thermostat):
+        """When both new and old structures exist, new should take precedence."""
+        old_state = MagicMock()
+        old_state.state = "heat"
+        old_state.attributes = {
+            "cycle_count": {"heater": 100, "cooler": 20},  # New structure
+            "heater_cycle_count": 150,  # Old structure (should be ignored)
+            "cooler_cycle_count": 50,   # Old structure (should be ignored)
+            "integral": 5.0,
+            "pid_integral_migrated": True,
+        }
+
+        state_restorer.restore(old_state)
+
+        # Should use new structure values, not old
+        mock_thermostat._heater_controller.set_heater_cycle_count.assert_called_once_with(100)
+        mock_thermostat._heater_controller.set_cooler_cycle_count.assert_called_once_with(20)
+
+    def test_restore_cycle_count_missing_cooler_in_dict(self, state_restorer, mock_thermostat):
+        """Handle incomplete dict structure gracefully."""
+        old_state = MagicMock()
+        old_state.state = "heat"
+        old_state.attributes = {
+            "cycle_count": {"heater": 75},  # No cooler key
+            "integral": 5.0,
+            "pid_integral_migrated": True,
+        }
+
+        state_restorer.restore(old_state)
+
+        # Should restore heater count, cooler should default to 0
+        mock_thermostat._heater_controller.set_heater_cycle_count.assert_called_once_with(75)
+        mock_thermostat._heater_controller.set_cooler_cycle_count.assert_called_once_with(0)
+
+
 class TestInitialPhysicsGainsRecording:
     """Tests for initial physics gains recording to pid_history."""
 
