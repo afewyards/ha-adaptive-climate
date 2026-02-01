@@ -714,15 +714,15 @@ class PID:
         # Cooling: temp beyond hot_tolerance below setpoint (error > hot_tolerance) → no cooling
         # This allows gentle coasting through the tolerance band without abrupt cutoff
         if self._error < -self._cold_tolerance:  # Beyond tolerance above setpoint - no heating needed
+            if output > 0:  # Only track if clamp actually affects output
+                self._was_clamped = True
+                self._clamp_reason = 'tolerance'
             output = min(output, 0)
-            # Track tolerance clamping for learning feedback
-            self._was_clamped = True
-            self._clamp_reason = 'tolerance'
         elif self._error > self._hot_tolerance:  # Beyond tolerance below setpoint - no cooling needed
+            if output < 0:  # Only track if clamp actually affects output
+                self._was_clamped = True
+                self._clamp_reason = 'tolerance'
             output = max(output, 0)
-            # Track tolerance clamping for learning feedback
-            self._was_clamped = True
-            self._clamp_reason = 'tolerance'
 
         self._output = max(min(output, self._out_max), self._out_min)
         return self._output, True

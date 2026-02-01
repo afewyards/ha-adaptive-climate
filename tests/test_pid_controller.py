@@ -2472,12 +2472,13 @@ class TestPIDClampingStateTracking:
         assert pid.clamp_reason == 'tolerance'
 
     def test_no_clamping_sets_no_state(self):
-        """Test that normal operation without clamping doesn't set was_clamped."""
+        """Test that when tolerance clamp doesn't change output, was_clamped is not set."""
+        # Use positive Kp to ensure output stays positive (no clamping needed)
         pid = PID(kp=10, ki=0.5, kd=0, out_min=0, out_max=100)
 
-        # Normal operation within tolerance
+        # Heating scenario: temp rising toward setpoint, output remains positive
         pid.calc(19.5, 20.0, input_time=100.0, last_input_time=None)
-        pid.calc(19.7, 20.0, input_time=200.0, last_input_time=100.0)
+        pid.calc(19.5, 20.0, input_time=200.0, last_input_time=100.0)  # Same temp, no P term
 
         assert pid.was_clamped is False
         assert pid.clamp_reason is None
@@ -2822,6 +2823,279 @@ class TestDecayIntegral:
         assert pid.integral < 0, "Integral should still be negative"
         assert abs(pid.integral - expected) < 0.001, \
             f"Expected integral {expected}, got {pid.integral}"
+
+
+class TestETermSuppressionAboveSetpoint:
+    """Test E term suppression when temperature is above setpoint."""
+
+    def test_e_term_zero_when_above_setpoint(self):
+        """Test E term is 0 when current temp > setpoint (error < 0).
+
+        When temperature is above setpoint, outdoor compensation should not apply
+        because we don't need heating. This prevents wasteful heating when already
+        warm.
+        """
+        # Create PID with Ke enabled
+        pid = PID(kp=10, ki=1.0, kd=2.0, ke=0.25, out_min=0, out_max=100)
+
+        # Scenario: Indoor temp above setpoint
+        # Setpoint = 20°C, Current temp = 21°C (error = -1°C)
+        # Outdoor temp = 5°C (would normally suggest high E term)
+        indoor_temp = 21.0
+        setpoint = 20.0
+        outdoor_temp = 5.0
+
+        output, _ = pid.calc(input_val=indoor_temp, set_point=setpoint,
+                            input_time=0.0, last_input_time=None, ext_temp=outdoor_temp)
+
+        # E term should be 0 when above setpoint
+        assert pid.external == 0.0, f"E term should be 0 when above setpoint, got {pid.external}"
+
+        # Verify error is negative (above setpoint)
+        assert pid.error < 0, f"Error should be negative (above setpoint), got {pid.error}"
+
+    def test_e_term_applies_when_below_setpoint(self):
+        """Test E term applies normally when current temp < setpoint (error > 0).
+
+        When temperature is below setpoint, outdoor compensation should apply
+        to adjust heating based on outdoor conditions.
+        """
+        # Create PID with Ke enabled
+        pid = PID(kp=10, ki=1.0, kd=2.0, ke=0.25, out_min=0, out_max=100)
+
+        # Scenario: Indoor temp below setpoint
+        # Setpoint = 20°C, Current temp = 19°C (error = +1°C)
+        # Outdoor temp = 5°C
+        indoor_temp = 19.0
+        setpoint = 20.0
+        outdoor_temp = 5.0
+
+        output, _ = pid.calc(input_val=indoor_temp, set_point=setpoint,
+                            input_time=0.0, last_input_time=None, ext_temp=outdoor_temp)
+
+        # E term should be Ke * (setpoint - outdoor) = 0.25 * (20 - 5) = 3.75
+        expected_e_term = 0.25 * (setpoint - outdoor_temp)
+        assert pid.external == expected_e_term, \
+            f"E term should be {expected_e_term} when below setpoint, got {pid.external}"
+
+        # Verify error is positive (below setpoint)
+        assert pid.error > 0, f"Error should be positive (below setpoint), got {pid.error}"
+
+    def test_e_term_applies_when_at_setpoint(self):
+        """Test E term applies when current temp = setpoint (error = 0).
+
+        When at setpoint, outdoor compensation should still apply to maintain
+        temperature against heat loss.
+        """
+        # Create PID with Ke enabled
+        pid = PID(kp=10, ki=1.0, kd=2.0, ke=0.25, out_min=0, out_max=100)
+
+        # Scenario: Indoor temp at setpoint
+        # Setpoint = 20°C, Current temp = 20°C (error = 0°C)
+        # Outdoor temp = 5°C
+        indoor_temp = 20.0
+        setpoint = 20.0
+        outdoor_temp = 5.0
+
+        output, _ = pid.calc(input_val=indoor_temp, set_point=setpoint,
+                            input_time=0.0, last_input_time=None, ext_temp=outdoor_temp)
+
+        # E term should apply when error = 0
+        # E = Ke * (setpoint - outdoor) = 0.25 * (20 - 5) = 3.75
+        expected_e_term = 0.25 * (setpoint - outdoor_temp)
+        assert pid.external == expected_e_term, \
+            f"E term should be {expected_e_term} when at setpoint, got {pid.external}"
+
+        # Verify error is zero
+        assert pid.error == 0, f"Error should be 0 (at setpoint), got {pid.error}"
+
+    def test_e_term_suppression_edge_case(self):
+        """Test E term suppression at error boundary (-0.1°C).
+
+        Even a small negative error (slightly above setpoint) should suppress E term.
+        """
+        # Create PID with Ke enabled
+        pid = PID(kp=10, ki=1.0, kd=2.0, ke=0.25, out_min=0, out_max=100)
+
+        # Scenario: Indoor temp just barely above setpoint
+        # Setpoint = 20°C, Current temp = 20.1°C (error = -0.1°C)
+        # Outdoor temp = 0°C (very cold, would normally give high E term)
+        indoor_temp = 20.1
+        setpoint = 20.0
+        outdoor_temp = 0.0
+
+        output, _ = pid.calc(input_val=indoor_temp, set_point=setpoint,
+                            input_time=0.0, last_input_time=None, ext_temp=outdoor_temp)
+
+        # E term should be 0 even for tiny negative error
+        assert pid.external == 0.0, \
+            f"E term should be 0 for any negative error, got {pid.external}"
+
+        # Verify error is negative (above setpoint)
+        assert pid.error < 0, f"Error should be negative, got {pid.error}"
+
+
+class TestToleranceClampingWithNegativeIntegral:
+    """Test tolerance clamping works correctly with negative integral.
+
+    This tests the fix for a bug where tolerance clamping only checked positive
+    integral, allowing negative integral to produce positive output when beyond
+    cold_tolerance (wrong-side heating).
+    """
+
+    def test_negative_integral_clamped_beyond_cold_tolerance(self):
+        """Test output clamped to ≤0 when error < -cold_tolerance with negative integral.
+
+        This is the actual bug fix: previously, with negative integral, the code
+        would skip clamping because it only checked `integral > 0`. This allowed
+        wrong-side heating (positive output when already above setpoint).
+
+        Bug scenario:
+        - Integral = -5 (cooling history)
+        - Setpoint = 20°C, cold_tolerance = 0.5°C
+        - Current temp = 20.6°C (error = -0.6°C, beyond tolerance)
+        - Old code: would NOT clamp (integral not > 0)
+        - Fixed code: SHOULD clamp to ≤0 (beyond tolerance threshold)
+        """
+        # Create PID with cold_tolerance (Kp=0 to isolate integral term)
+        pid = PID(kp=0, ki=10, kd=0, out_min=-100, out_max=100, cold_tolerance=0.5)
+
+        # Build up negative integral (cooling scenario)
+        base_time = 1000.0
+        for i in range(30):
+            t = base_time + i * 100
+            # Error = -1 (temp > setpoint) to build negative integral
+            pid.calc(21.0, 20.0, input_time=t, last_input_time=t - 100 if i > 0 else None)
+
+        # Verify negative integral exists
+        assert pid.integral < -5, f"Expected negative integral < -5, got {pid.integral}"
+
+        # Now test clamping: temp beyond cold_tolerance
+        # Setpoint = 20.0, cold_tolerance = 0.5, temp = 20.6
+        # Error = -0.6 (beyond -0.5 tolerance)
+        # Even with negative integral, output should be clamped to ≤0
+        output, _ = pid.calc(20.6, 20.0, input_time=base_time + 3100,
+                            last_input_time=base_time + 3000)
+
+        # Output MUST be ≤ 0 (no heating when beyond cold_tolerance)
+        assert output <= 0, \
+            f"Output should be ≤ 0 when beyond cold_tolerance, got {output} (integral={pid.integral})"
+
+    def test_negative_integral_not_clamped_within_cold_tolerance(self):
+        """Test output NOT clamped when error within cold_tolerance with negative integral.
+
+        When error is between -cold_tolerance and 0, output should NOT be clamped
+        even with negative integral. This allows coasting through tolerance band.
+        """
+        # Create PID with cold_tolerance (Kp=0 to isolate integral term)
+        pid = PID(kp=0, ki=10, kd=0, out_min=-100, out_max=100, cold_tolerance=0.5)
+
+        # Build up negative integral (cooling scenario)
+        base_time = 1000.0
+        for i in range(30):
+            t = base_time + i * 100
+            pid.calc(21.0, 20.0, input_time=t, last_input_time=t - 100 if i > 0 else None)
+
+        # Verify negative integral
+        assert pid.integral < -5, f"Expected negative integral < -5, got {pid.integral}"
+
+        # Test within tolerance: temp = 20.2°C
+        # Error = -0.2 (within -0.5 tolerance)
+        # With Kp=0, output is purely integral (negative)
+        output, _ = pid.calc(20.2, 20.0, input_time=base_time + 3100,
+                            last_input_time=base_time + 3000)
+
+        # Output should NOT be clamped (can be negative from integral)
+        # We just verify it's not artificially forced to 0
+        assert output < 0, \
+            f"Output should reflect negative integral when within tolerance, got {output}"
+
+    def test_positive_integral_clamped_beyond_cold_tolerance(self):
+        """Test output clamped when error < -cold_tolerance with positive integral.
+
+        This is the original working case - verifying it still works after the fix.
+        """
+        # Create PID with cold_tolerance (Kp=0 to isolate integral, higher Ki)
+        pid = PID(kp=0, ki=10, kd=0, out_min=-100, out_max=100, cold_tolerance=0.5)
+
+        # Build up positive integral (heating history)
+        base_time = 1000.0
+        for i in range(60):
+            t = base_time + i * 100
+            pid.calc(19.0, 20.0, input_time=t, last_input_time=t - 100 if i > 0 else None)
+
+        # Verify positive integral
+        assert pid.integral > 10, f"Expected positive integral > 10, got {pid.integral}"
+
+        # Test beyond cold_tolerance: temp = 20.6°C
+        # Error = -0.6 (beyond -0.5 tolerance)
+        output, _ = pid.calc(20.6, 20.0, input_time=base_time + 6100,
+                            last_input_time=base_time + 6000)
+
+        # Output should be clamped to ≤0
+        assert output <= 0, \
+            f"Output should be ≤ 0 when beyond cold_tolerance, got {output}"
+
+    def test_hot_tolerance_with_negative_integral(self):
+        """Test hot_tolerance clamping works with negative integral (cooling mode).
+
+        Mirror test for cooling: when error > hot_tolerance with negative integral,
+        output should be clamped to ≥0 (no cooling when too cold).
+        """
+        # Create PID with hot_tolerance (cooling mode, Kp=0 to isolate integral)
+        pid = PID(kp=0, ki=10, kd=0, out_min=-100, out_max=100, hot_tolerance=0.5)
+
+        # Build up negative integral (cooling history)
+        base_time = 1000.0
+        for i in range(60):
+            t = base_time + i * 100
+            # Error = -1 (temp > setpoint) to build negative integral for cooling
+            pid.calc(21.0, 20.0, input_time=t, last_input_time=t - 100 if i > 0 else None)
+
+        # Verify negative integral
+        assert pid.integral < -10, f"Expected negative integral < -10, got {pid.integral}"
+
+        # Test beyond hot_tolerance: temp = 19.4°C
+        # Error = +0.6 (beyond +0.5 hot_tolerance)
+        # Even with negative integral wanting to cool, should clamp to ≥0 (no cooling)
+        output, _ = pid.calc(19.4, 20.0, input_time=base_time + 6100,
+                            last_input_time=base_time + 6000)
+
+        # Output should be clamped to ≥0 (no cooling when below setpoint + hot_tolerance)
+        assert output >= 0, \
+            f"Output should be ≥ 0 when beyond hot_tolerance, got {output}"
+
+    def test_clamping_state_tracked_with_positive_integral(self):
+        """Test was_clamped flag set only when tolerance clamp actually affects output.
+
+        Scenario: Build up large positive integral from heating, then temperature rises
+        above setpoint beyond cold_tolerance. The positive integral wants to continue
+        heating, but tolerance clamp prevents it. This tests that we correctly track
+        the clamp only when it actually changes the output.
+        """
+        # Build up large positive integral, then rise above tolerance
+        pid = PID(kp=5, ki=5, kd=0, out_min=-100, out_max=100, cold_tolerance=0.5)
+
+        base_time = 1000.0
+        # Build up positive integral (below setpoint)
+        for i in range(50):
+            t = base_time + i * 100
+            pid.calc(18.0, 20.0, input_time=t, last_input_time=t - 100 if i > 0 else None)
+
+        assert pid.integral > 10, f"Expected positive integral > 10, got {pid.integral}"
+
+        # Gradually approach setpoint
+        pid.calc(19.9, 20.0, input_time=base_time + 5100, last_input_time=base_time + 5000)
+
+        # Temperature rises above setpoint beyond cold_tolerance (residual integral still positive)
+        output, _ = pid.calc(20.6, 20.0, input_time=base_time + 5200,
+                            last_input_time=base_time + 5100)
+
+        # Verify clamping state tracked (positive output clamped to 0)
+        assert pid.was_clamped is True, "was_clamped should be True when clamp affects output"
+        assert pid.clamp_reason == "tolerance", \
+            f"clamp_reason should be 'tolerance', got '{pid.clamp_reason}'"
+        assert output <= 0, f"Output should be clamped to ≤ 0, got {output}"
 
 
 if __name__ == "__main__":
