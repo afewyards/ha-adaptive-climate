@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v0.53.3 (2026-02-01)
+
+### Bug Fixes
+
+- Add missing event handler mocks to MockThermostat
+  ([`720b436`](https://github.com/afewyards/ha-adaptive-climate/commit/720b436149b0d5c56cb750f540161dd368378a1d))
+
+MockThermostat in test_climate_init.py was missing the _on_heating_started_event and
+  _on_heating_ended_event attributes that async_setup_managers now subscribes to.
+
+
 ## v0.53.2 (2026-02-01)
 
 ### Bug Fixes
