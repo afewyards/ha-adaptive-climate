@@ -855,3 +855,112 @@ class TestStatusManagerBuildStatus:
         assert result["conditions"] == ["contact_open", "humidity_spike"]
         assert result["humidity_peak"] == 88.0
         assert result["open_sensors"] == ["binary_sensor.window_1", "binary_sensor.window_2"]
+
+
+class TestBuildOverride:
+    """Test build_override() function."""
+
+    def test_build_contact_open_override(self):
+        """Contact open override should have correct structure."""
+        from custom_components.adaptive_climate.managers.status_manager import build_override
+        from custom_components.adaptive_climate.const import OverrideType
+
+        override = build_override(
+            OverrideType.CONTACT_OPEN,
+            sensors=["binary_sensor.window_1", "binary_sensor.door_1"],
+            since="2024-01-15T10:30:00+00:00",
+        )
+
+        assert override["type"] == "contact_open"
+        assert override["sensors"] == ["binary_sensor.window_1", "binary_sensor.door_1"]
+        assert override["since"] == "2024-01-15T10:30:00+00:00"
+
+    def test_build_night_setback_override(self):
+        """Night setback override should have correct structure."""
+        from custom_components.adaptive_climate.managers.status_manager import build_override
+        from custom_components.adaptive_climate.const import OverrideType
+
+        override = build_override(
+            OverrideType.NIGHT_SETBACK,
+            delta=-2.0,
+            ends_at="07:00",
+            limited_to=1.0,
+        )
+
+        assert override["type"] == "night_setback"
+        assert override["delta"] == -2.0
+        assert override["ends_at"] == "07:00"
+        assert override["limited_to"] == 1.0
+
+    def test_build_night_setback_override_without_limited(self):
+        """Night setback override without limited_to should omit field."""
+        from custom_components.adaptive_climate.managers.status_manager import build_override
+        from custom_components.adaptive_climate.const import OverrideType
+
+        override = build_override(
+            OverrideType.NIGHT_SETBACK,
+            delta=-2.0,
+            ends_at="07:00",
+        )
+
+        assert "limited_to" not in override
+
+    def test_build_humidity_override(self):
+        """Humidity override should have state and resume_at."""
+        from custom_components.adaptive_climate.managers.status_manager import build_override
+        from custom_components.adaptive_climate.const import OverrideType
+
+        override = build_override(
+            OverrideType.HUMIDITY,
+            state="paused",
+            resume_at="2024-01-15T10:45:00+00:00",
+        )
+
+        assert override["type"] == "humidity"
+        assert override["state"] == "paused"
+        assert override["resume_at"] == "2024-01-15T10:45:00+00:00"
+
+    def test_build_preheating_override(self):
+        """Preheating override should have target_time, started_at, target_delta."""
+        from custom_components.adaptive_climate.managers.status_manager import build_override
+        from custom_components.adaptive_climate.const import OverrideType
+
+        override = build_override(
+            OverrideType.PREHEATING,
+            target_time="07:00",
+            started_at="2024-01-15T05:30:00+00:00",
+            target_delta=2.0,
+        )
+
+        assert override["type"] == "preheating"
+        assert override["target_time"] == "07:00"
+        assert override["started_at"] == "2024-01-15T05:30:00+00:00"
+        assert override["target_delta"] == 2.0
+
+    def test_build_open_window_override(self):
+        """Open window override should have since and resume_at."""
+        from custom_components.adaptive_climate.managers.status_manager import build_override
+        from custom_components.adaptive_climate.const import OverrideType
+
+        override = build_override(
+            OverrideType.OPEN_WINDOW,
+            since="2024-01-15T10:30:00+00:00",
+            resume_at="2024-01-15T10:45:00+00:00",
+        )
+
+        assert override["type"] == "open_window"
+        assert override["since"] == "2024-01-15T10:30:00+00:00"
+        assert override["resume_at"] == "2024-01-15T10:45:00+00:00"
+
+    def test_build_learning_grace_override(self):
+        """Learning grace override should have until."""
+        from custom_components.adaptive_climate.managers.status_manager import build_override
+        from custom_components.adaptive_climate.const import OverrideType
+
+        override = build_override(
+            OverrideType.LEARNING_GRACE,
+            until="2024-01-15T11:00:00+00:00",
+        )
+
+        assert override["type"] == "learning_grace"
+        assert override["until"] == "2024-01-15T11:00:00+00:00"

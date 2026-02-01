@@ -7,13 +7,13 @@ for checking status state and retrieving detailed status information.
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, TypedDict
+from typing import TYPE_CHECKING, Any, TypedDict
 
 from typing_extensions import NotRequired
 
 from homeassistant.util import dt as dt_util
 
-from ..const import ThermostatCondition, ThermostatState
+from ..const import OverrideType, ThermostatCondition, ThermostatState
 
 if TYPE_CHECKING:
     from ..adaptive.contact_sensors import ContactAction, ContactSensorHandler
@@ -342,3 +342,20 @@ def derive_state(
 
     # 6. Default
     return ThermostatState.IDLE
+
+
+def build_override(override_type: OverrideType, **kwargs) -> dict[str, Any]:
+    """Build an override dict with type and provided fields.
+
+    Args:
+        override_type: The type of override
+        **kwargs: Fields specific to this override type
+
+    Returns:
+        Dict with "type" and all non-None kwargs
+    """
+    result: dict[str, Any] = {"type": override_type.value}
+    for key, value in kwargs.items():
+        if value is not None:
+            result[key] = value
+    return result
