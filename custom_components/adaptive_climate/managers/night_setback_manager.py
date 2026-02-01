@@ -17,6 +17,13 @@ except ImportError:
 
 from ..adaptive.night_setback import NightSetback
 from .night_setback_calculator import NightSetbackCalculator
+from ..const import (
+    AUTO_LEARNING_SETBACK_DELTA,
+    AUTO_LEARNING_SETBACK_WINDOW_START,
+    AUTO_LEARNING_SETBACK_WINDOW_END,
+    AUTO_LEARNING_SETBACK_TRIGGER_DAYS,
+    AUTO_LEARNING_SETBACK_COOLDOWN_DAYS,
+)
 
 if TYPE_CHECKING:
     from ..climate import AdaptiveThermostat
@@ -47,6 +54,7 @@ class NightSetbackManager:
         manifold_transport_delay: float = 0.0,
         get_learning_status: Callable[[], str] | None = None,
         get_allowed_setback_delta: Callable[[], float | None] | None = None,
+        auto_learning_enabled: bool = True,
     ):
         """Initialize the NightSetbackManager.
 
@@ -64,10 +72,12 @@ class NightSetbackManager:
             manifold_transport_delay: Manifold transport delay in minutes (default: 0.0)
             get_learning_status: Optional callback to get current learning status (DEPRECATED - use get_allowed_setback_delta)
             get_allowed_setback_delta: Optional callback to get allowed setback delta based on learning progress
+            auto_learning_enabled: Whether auto-learning setback is enabled (default: True)
         """
         self._entity_id = entity_id
         self._get_learning_status = get_learning_status
         self._get_allowed_setback_delta = get_allowed_setback_delta
+        self._auto_learning_enabled = auto_learning_enabled
 
         # Initialize the calculator for pure calculation logic
         self._calculator = NightSetbackCalculator(
@@ -87,6 +97,10 @@ class NightSetbackManager:
         self._learning_grace_until: Optional[datetime] = None
         self._night_setback_was_active: Optional[bool] = None
         self._learning_suppressed: bool = False
+
+        # Auto-learning setback tracking
+        self._days_at_maintenance_cap: int = 0
+        self._last_auto_setback: Optional[datetime] = None
 
     @property
     def calculator(self) -> NightSetbackCalculator:
@@ -140,6 +154,70 @@ class NightSetbackManager:
             self._entity_id, minutes, self._learning_grace_until.strftime("%H:%M")
         )
 
+    def update_days_at_maintenance_cap(self, at_cap: bool) -> None:
+        """Update tracking of days stuck at maintenance cap.
+
+        Args:
+            at_cap: Whether the zone is currently stuck at the maintenance cap
+        """
+        if at_cap:
+            self._days_at_maintenance_cap += 1
+            _LOGGER.debug(
+                "%s: Days at maintenance cap: %d",
+                self._entity_id, self._days_at_maintenance_cap
+            )
+        else:
+            if self._days_at_maintenance_cap > 0:
+                _LOGGER.debug(
+                    "%s: Resetting days at maintenance cap (was %d)",
+                    self._entity_id, self._days_at_maintenance_cap
+                )
+            self._days_at_maintenance_cap = 0
+
+    def should_apply_auto_learning_setback(self) -> bool:
+        """Check if auto-learning setback should be applied.
+
+        Returns:
+            True if all conditions are met for auto-learning setback
+        """
+        # Feature must be enabled
+        if not self._auto_learning_enabled:
+            return False
+
+        # Don't apply if user has configured night setback
+        if self._calculator.is_configured:
+            return False
+
+        # Don't apply if already tuned or optimized
+        if self._get_learning_status is not None:
+            status = self._get_learning_status()
+            if status in ("tuned", "optimized"):
+                return False
+
+        # Check if we've been at cap for trigger days
+        if self._days_at_maintenance_cap < AUTO_LEARNING_SETBACK_TRIGGER_DAYS:
+            return False
+
+        # Check cooldown period
+        if self._last_auto_setback is not None:
+            days_since_last = (dt_util.utcnow() - self._last_auto_setback).days
+            if days_since_last < AUTO_LEARNING_SETBACK_COOLDOWN_DAYS:
+                return False
+
+        return True
+
+    def _is_in_auto_learning_window(self, current_time: datetime) -> bool:
+        """Check if current time is within auto-learning setback window (3-5am).
+
+        Args:
+            current_time: Current datetime
+
+        Returns:
+            True if within the auto-learning window
+        """
+        hour = current_time.hour
+        return AUTO_LEARNING_SETBACK_WINDOW_START <= hour < AUTO_LEARNING_SETBACK_WINDOW_END
+
     def calculate_night_setback_adjustment(
         self,
         current_time: Optional[datetime] = None
@@ -151,6 +229,8 @@ class NightSetbackManager:
 
         Applies graduated setback delta based on learning progress when callback is provided.
 
+        Also applies auto-learning setback when conditions are met.
+
         Args:
             current_time: Optional datetime for testing; defaults to dt_util.utcnow()
 
@@ -160,6 +240,32 @@ class NightSetbackManager:
             - in_night_period: Whether we are currently in the night setback period
             - night_setback_info: Dict with additional info for state attributes
         """
+        if current_time is None:
+            current_time = dt_util.utcnow()
+
+        # Check if auto-learning setback should apply
+        if self.should_apply_auto_learning_setback() and self._is_in_auto_learning_window(current_time):
+            target_temp = self._calculator._get_target_temp()
+            if target_temp is None:
+                target_temp = 20.0  # Fallback
+
+            effective_target = target_temp - AUTO_LEARNING_SETBACK_DELTA
+            info = {
+                "night_setback_delta": AUTO_LEARNING_SETBACK_DELTA,
+                "effective_delta": AUTO_LEARNING_SETBACK_DELTA,
+                "auto_learning": True,
+            }
+
+            # Update last auto setback time when we first enter the window
+            if self._last_auto_setback is None or (current_time - self._last_auto_setback).days > 0:
+                self._last_auto_setback = current_time
+                _LOGGER.info(
+                    "%s: Auto-learning setback activated (stuck at cap for %d days)",
+                    self._entity_id, self._days_at_maintenance_cap
+                )
+
+            return effective_target, True, info
+
         # First calculate what the full setback would be
         effective_target, in_night_period, info = self._calculator.calculate_night_setback_adjustment(
             current_time
@@ -304,12 +410,18 @@ class NightSetbackManager:
         self,
         learning_grace_until: Optional[datetime] = None,
         night_setback_was_active: Optional[bool] = None,
+        days_at_maintenance_cap: int = 0,
+        last_auto_setback: Optional[datetime] = None,
     ) -> None:
         """Restore state from saved data.
 
         Args:
             learning_grace_until: Restored learning grace until time
             night_setback_was_active: Restored night setback active state
+            days_at_maintenance_cap: Restored days at maintenance cap counter
+            last_auto_setback: Restored last auto setback datetime
         """
         self._learning_grace_until = learning_grace_until
         self._night_setback_was_active = night_setback_was_active
+        self._days_at_maintenance_cap = days_at_maintenance_cap
+        self._last_auto_setback = last_auto_setback
