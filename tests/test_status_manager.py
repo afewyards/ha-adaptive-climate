@@ -1030,6 +1030,39 @@ class TestBuildOverrides:
         assert overrides[1]["type"] == "night_setback"
 
 
+class TestDeriveStateNoLegacyStates:
+    """Test that derive_state no longer returns PAUSED/PREHEATING states."""
+
+    def test_derive_state_no_paused_state(self):
+        """derive_state should not return PAUSED - that's now an override."""
+        from custom_components.adaptive_climate.managers.status_manager import derive_state
+        from custom_components.adaptive_climate.const import ThermostatState
+
+        # Even when paused, activity should reflect what it would be doing
+        # is_paused is no longer a parameter - it doesn't affect activity
+        state = derive_state(
+            hvac_mode="heat",
+            heater_on=True,
+        )
+
+        # Activity is heating (the override handles pause)
+        assert state == ThermostatState.HEATING
+
+    def test_derive_state_no_preheating_state(self):
+        """derive_state should not return PREHEATING - that's now an override."""
+        from custom_components.adaptive_climate.managers.status_manager import derive_state
+        from custom_components.adaptive_climate.const import ThermostatState
+
+        # preheat_active is no longer a parameter - it doesn't affect activity
+        state = derive_state(
+            hvac_mode="heat",
+            heater_on=True,
+        )
+
+        # Activity is heating (preheating is an override)
+        assert state == ThermostatState.HEATING
+
+
 class TestBuildStatusNewStructure:
     """Test StatusManager.build_status() new structure (activity + overrides)."""
 

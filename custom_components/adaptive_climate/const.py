@@ -43,12 +43,10 @@ class ThermostatCondition(StrEnum):
 
 
 class ThermostatState(StrEnum):
-    """Thermostat operational states."""
+    """Operational states for thermostat status."""
     IDLE = "idle"
     HEATING = "heating"
     COOLING = "cooling"
-    PAUSED = "paused"
-    PREHEATING = "preheating"
     SETTLING = "settling"
 
 
