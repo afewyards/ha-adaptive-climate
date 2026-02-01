@@ -2389,3 +2389,94 @@ def test_build_cycle_count_demand_switch():
     )
 
     assert result == 52
+
+
+def test_build_state_attributes_new_structure():
+    """build_state_attributes should return new grouped structure."""
+    from custom_components.adaptive_climate.managers.state_attributes import (
+        build_state_attributes,
+    )
+
+    # Create minimal mock thermostat
+    thermostat = MagicMock()
+    thermostat._control_output = 45.0
+    thermostat.pid_control_i = 5.0
+
+    # PID controller
+    thermostat._pid_controller = MagicMock()
+    thermostat._pid_controller.outdoor_temp_lagged = 10.0
+
+    # Heater controller with cycle counts
+    thermostat._heater_controller = MagicMock()
+    thermostat._heater_controller.heater_cycle_count = 42
+    thermostat._heater_controller.cooler_cycle_count = 10
+
+    # Not a demand_switch configuration
+    thermostat._demand_switch_entity_id = None
+
+    # Gains manager with empty history
+    thermostat._gains_manager = MagicMock()
+    thermostat._gains_manager.get_history.return_value = []
+
+    # Mock coordinator for learning status
+    coordinator = MagicMock()
+    adaptive_learner = MagicMock()
+    adaptive_learner.get_cycle_count.return_value = 8
+    adaptive_learner.get_convergence_confidence.return_value = 0.65
+    cycle_tracker = MagicMock()
+    zone_data = {
+        "adaptive_learner": adaptive_learner,
+        "cycle_tracker": cycle_tracker,
+    }
+    coordinator.get_zone_by_climate_entity.return_value = ("zone1", zone_data)
+    thermostat._coordinator = coordinator
+    thermostat.entity_id = "climate.test_zone"
+    thermostat._heating_type = "convector"
+
+    # No optional features
+    thermostat._night_setback_controller = None
+    thermostat._contact_sensor_handler = None
+    thermostat._humidity_detector = None
+
+    # Hass with debug=False
+    thermostat.hass = MagicMock()
+    thermostat.hass.data = {"adaptive_climate": {"debug": False}}
+
+    # Mock _build_status_attribute since Task 10 is not done yet
+    with patch('custom_components.adaptive_climate.managers.state_attributes._build_status_attribute') as mock_status:
+        mock_status.return_value = {
+            "activity": "heating",
+            "overrides": [],
+        }
+
+        attrs = build_state_attributes(thermostat)
+
+    # Flat restoration fields should be present
+    assert "integral" in attrs
+    assert attrs["integral"] == 5.0
+    assert "outdoor_temp_lagged" in attrs
+    assert attrs["outdoor_temp_lagged"] == 10.0
+    assert "control_output" in attrs
+    assert attrs["control_output"] == 45.0
+
+    # NEW structure: cycle_count should be object (not heater_cycle_count/cooler_cycle_count)
+    assert "cycle_count" in attrs
+    assert attrs["cycle_count"] == {"heater": 42, "cooler": 10}
+
+    # Grouped objects should be present
+    assert "status" in attrs
+    assert "activity" in attrs["status"]
+    assert "overrides" in attrs["status"]
+
+    assert "learning" in attrs
+    assert "status" in attrs["learning"]
+    assert "confidence" in attrs["learning"]
+
+    # Old flat fields should NOT be present
+    assert "heater_cycle_count" not in attrs
+    assert "cooler_cycle_count" not in attrs
+    assert "learning_status" not in attrs
+
+    # Old status structure should NOT be present
+    assert "state" not in attrs.get("status", {})
+    assert "conditions" not in attrs.get("status", {})
