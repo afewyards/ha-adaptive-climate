@@ -52,6 +52,27 @@ class ThermostatState(StrEnum):
     SETTLING = "settling"
 
 
+class OverrideType(StrEnum):
+    """Override types for status attribute."""
+    CONTACT_OPEN = "contact_open"
+    HUMIDITY = "humidity"
+    OPEN_WINDOW = "open_window"
+    PREHEATING = "preheating"
+    NIGHT_SETBACK = "night_setback"
+    LEARNING_GRACE = "learning_grace"
+
+
+# Override priority order (highest first)
+OVERRIDE_PRIORITY = [
+    OverrideType.CONTACT_OPEN,
+    OverrideType.HUMIDITY,
+    OverrideType.OPEN_WINDOW,
+    OverrideType.PREHEATING,
+    OverrideType.NIGHT_SETBACK,
+    OverrideType.LEARNING_GRACE,
+]
+
+
 class PIDChangeActor(StrEnum):
     """Actor that initiated a PID gain change."""
     USER = "user"          # Manual action (service call, UI, reset button)
