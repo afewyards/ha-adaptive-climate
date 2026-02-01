@@ -324,6 +324,7 @@ class CycleMetrics:
         mode: Optional[str] = None,
         controllable_overshoot: Optional[float] = None,
         committed_overshoot: Optional[float] = None,
+        starting_delta: Optional[float] = None,
     ):
         """
         Initialize cycle metrics.
@@ -349,6 +350,7 @@ class CycleMetrics:
             mode: HVAC mode during cycle ("heating", "cooling", or None for backwards compatibility)
             controllable_overshoot: Overshoot that could have been prevented in °C
             committed_overshoot: Overshoot from in-flight heat (unavoidable) in °C
+            starting_delta: Temperature delta at cycle start (target - actual) in °C
         """
         self.overshoot = overshoot
         self.undershoot = undershoot
@@ -370,6 +372,7 @@ class CycleMetrics:
         self.mode = mode
         self.controllable_overshoot = controllable_overshoot
         self.committed_overshoot = committed_overshoot
+        self.starting_delta = starting_delta
 
     @property
     def is_disturbed(self) -> bool:

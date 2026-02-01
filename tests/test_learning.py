@@ -798,6 +798,146 @@ class TestConvergenceDetection:
         # At boundary values should be considered converged (<=)
         assert result is None
 
+
+# ============================================================================
+# Weighted Cycle Learning Tests
+# ============================================================================
+
+
+class TestWeightedCycleLearning:
+    """Test weighted cycle learning integration."""
+
+    def test_maintenance_cycle_weighted(self):
+        """Maintenance cycles get reduced confidence gain."""
+        from homeassistant.components.climate import HVACMode
+
+        learner = AdaptiveLearner(heating_type="floor_hydronic")
+        initial_confidence = learner.get_convergence_confidence(HVACMode.HEAT)
+
+        # Create a maintenance cycle (small delta, good metrics)
+        # For floor_hydronic, maintenance threshold is 0.5°C
+        # All metrics must be within convergence thresholds for floor_hydronic
+        cycle = CycleMetrics(
+            overshoot=0.15,  # Below 0.3°C threshold for floor
+            undershoot=0.0,  # No undershoot
+            oscillations=0,  # Below 1 threshold
+            settling_time=30,  # Below 90 threshold for floor
+            rise_time=20,  # Below 60 threshold for floor
+            settling_mae=0.2,  # Below 0.3 threshold for floor
+            inter_cycle_drift=0.1,  # Below 0.3 threshold for floor
+            starting_delta=0.3,  # Below 0.5°C threshold = maintenance
+        )
+
+        learner.update_convergence_confidence(cycle, HVACMode.HEAT)
+
+        # Confidence should increase but by less than normal good cycle
+        new_confidence = learner.get_convergence_confidence(HVACMode.HEAT)
+        confidence_gain = new_confidence - initial_confidence
+
+        # Maintenance cycles should have ~30% weight, so gain should be ~30% of normal
+        # Normal gain is 0.1 (CONFIDENCE_INCREASE_PER_GOOD_CYCLE)
+        # Expected gain: 0.1 * 0.3 = 0.03
+        assert confidence_gain > 0, "Confidence should increase"
+        assert confidence_gain < 0.1, "Confidence gain should be reduced"
+        assert confidence_gain == pytest.approx(0.03, abs=0.005)
+
+    def test_recovery_cycle_full_weight(self):
+        """Recovery cycles get full confidence gain."""
+        from homeassistant.components.climate import HVACMode
+
+        learner = AdaptiveLearner(heating_type="floor_hydronic")
+        initial_confidence = learner.get_convergence_confidence(HVACMode.HEAT)
+
+        # Create a recovery cycle (at threshold, good metrics)
+        # For floor_hydronic, recovery threshold is 0.5°C
+        # All metrics must be within convergence thresholds
+        cycle = CycleMetrics(
+            overshoot=0.15,
+            undershoot=0.0,  # No undershoot
+            oscillations=0,
+            settling_time=30,
+            rise_time=20,
+            settling_mae=0.2,
+            inter_cycle_drift=0.1,
+            starting_delta=0.5,  # At 0.5°C threshold = recovery with base weight
+        )
+
+        learner.update_convergence_confidence(cycle, HVACMode.HEAT)
+
+        # Confidence should increase by normal amount
+        new_confidence = learner.get_convergence_confidence(HVACMode.HEAT)
+        confidence_gain = new_confidence - initial_confidence
+
+        # Recovery cycles at threshold should have 100% weight (base = 1.0, no delta multiplier yet)
+        # Normal gain is 0.1 (CONFIDENCE_INCREASE_PER_GOOD_CYCLE)
+        assert confidence_gain == pytest.approx(0.1, abs=0.001)
+
+    def test_recovery_cycle_counted(self):
+        """Recovery cycles increment counter."""
+        from homeassistant.components.climate import HVACMode
+
+        learner = AdaptiveLearner(heating_type="floor_hydronic")
+
+        # Add a recovery cycle
+        cycle = CycleMetrics(
+            overshoot=0.15,
+            undershoot=0.0,  # No undershoot
+            oscillations=0,
+            settling_time=30,
+            rise_time=20,
+            settling_mae=0.2,
+            inter_cycle_drift=0.1,
+            starting_delta=2.0,  # Recovery cycle
+        )
+
+        learner.add_cycle_metrics(cycle, HVACMode.HEAT)
+        learner.update_convergence_confidence(cycle, HVACMode.HEAT)
+
+        # Check recovery counter incremented
+        assert learner._contribution_tracker.get_recovery_cycle_count(HVACMode.HEAT) == 1
+
+    def test_tier_blocked_without_recovery_cycles(self):
+        """Can't reach tier 1 without enough recovery cycles."""
+        from homeassistant.components.climate import HVACMode
+
+        learner = AdaptiveLearner(heating_type="floor_hydronic")
+
+        # Add many maintenance cycles to boost confidence artificially
+        for _ in range(100):
+            cycle = CycleMetrics(
+                overshoot=0.15,
+                undershoot=0.0,  # No undershoot
+                oscillations=0,
+                settling_time=30,
+                rise_time=20,
+                settling_mae=0.2,
+                inter_cycle_drift=0.1,
+                starting_delta=0.3,  # Maintenance cycle
+            )
+            learner.update_convergence_confidence(cycle, HVACMode.HEAT)
+
+        # Even with high raw confidence, tier 1 should be blocked
+        # For floor_hydronic, tier 1 requires 12 recovery cycles
+        assert not learner.can_reach_learning_tier(1, HVACMode.HEAT)
+
+        # Add 12 recovery cycles
+        for _ in range(12):
+            cycle = CycleMetrics(
+                overshoot=0.15,
+                undershoot=0.0,  # No undershoot
+                oscillations=0,
+                settling_time=30,
+                rise_time=20,
+                settling_mae=0.2,
+                inter_cycle_drift=0.1,
+                starting_delta=2.0,  # Recovery cycle
+            )
+            learner.add_cycle_metrics(cycle, HVACMode.HEAT)
+            learner.update_convergence_confidence(cycle, HVACMode.HEAT)
+
+        # Now tier 1 should be reachable
+        assert learner.can_reach_learning_tier(1, HVACMode.HEAT)
+
     def test_convergence_passes_with_new_metrics_within_bounds(self):
         """Test that convergence passes when all metrics including new ones are within bounds."""
         learner = AdaptiveLearner()
@@ -4059,15 +4199,15 @@ class TestChronicApproachDetectorSerialization:
 
         result = learner.to_dict()
 
-        # Verify unified detector state is serialized in v8 format
+        # Verify unified detector state is serialized in v9 format
         assert "undershoot_detector" in result
         detector_state = result["undershoot_detector"]
         assert detector_state["consecutive_failures"] == 3
         assert detector_state["cumulative_ki_multiplier"] == 1.5
-        assert result["format_version"] == 8
+        assert result["format_version"] == 9
 
     def test_serialize_chronic_approach_detector_empty_state(self):
-        """Test to_dict serializes empty unified detector state (v8 format)."""
+        """Test to_dict serializes empty unified detector state (v9 format)."""
         learner = AdaptiveLearner()
 
         result = learner.to_dict()
@@ -4077,7 +4217,7 @@ class TestChronicApproachDetectorSerialization:
         detector_state = result["undershoot_detector"]
         assert detector_state["consecutive_failures"] == 0
         assert detector_state["cumulative_ki_multiplier"] == 1.0
-        assert result["format_version"] == 8
+        assert result["format_version"] == 9
 
     def test_restore_chronic_approach_detector_state(self):
         """Test restore_from_dict migrates v7 format to unified detector."""
