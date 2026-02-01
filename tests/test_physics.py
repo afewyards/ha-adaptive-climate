@@ -9,6 +9,7 @@ from custom_components.adaptive_climate.adaptive.physics import (
     calculate_power_scaling_factor,
     calculate_floor_thermal_properties,
     validate_floor_construction,
+    RollingWindowHeatingRate,
     GLAZING_U_VALUES,
     ENERGY_RATING_TO_INSULATION,
 )
@@ -2556,3 +2557,62 @@ class TestCoolingPIDCalculations:
         assert kp == pytest.approx(round(kp, 4), abs=1e-4)
         assert ki == pytest.approx(round(ki, 5), abs=1e-5)
         assert kd == pytest.approx(round(kd, 2), abs=1e-2)
+
+
+class TestRollingWindowHeatingRate:
+    """Tests for RollingWindowHeatingRate class."""
+
+    def test_rolling_window_heating_rate(self):
+        """Calculate heating rate from rolling window of observations."""
+        from custom_components.adaptive_climate.adaptive.physics import (
+            RollingWindowHeatingRate,
+        )
+
+        tracker = RollingWindowHeatingRate(window_seconds=7200)  # 2 hours
+
+        # Add observations: (timestamp, temp_delta, heat_delivered_seconds)
+        tracker.add_observation(0, temp_delta=0.1, heat_seconds=60)
+        tracker.add_observation(900, temp_delta=0.15, heat_seconds=90)
+        tracker.add_observation(1800, temp_delta=0.12, heat_seconds=72)
+
+        # Total: 0.37°C from 222 seconds of heat
+        rate = tracker.get_heating_rate()
+        assert rate == pytest.approx(0.37 / 222, rel=0.01)  # °C per second
+
+    def test_rolling_window_expires_old_observations(self):
+        """Old observations outside window are dropped."""
+        from custom_components.adaptive_climate.adaptive.physics import (
+            RollingWindowHeatingRate,
+        )
+
+        tracker = RollingWindowHeatingRate(window_seconds=3600)  # 1 hour
+
+        tracker.add_observation(0, temp_delta=1.0, heat_seconds=600)
+        tracker.add_observation(3700, temp_delta=0.1, heat_seconds=60)  # Outside window
+
+        rate = tracker.get_heating_rate()
+        # Only second observation counts (first one expired)
+        assert rate == pytest.approx(0.1 / 60, rel=0.01)
+
+    def test_rolling_window_returns_none_when_empty(self):
+        """Returns None when no observations available."""
+        from custom_components.adaptive_climate.adaptive.physics import (
+            RollingWindowHeatingRate,
+        )
+
+        tracker = RollingWindowHeatingRate(window_seconds=3600)
+        rate = tracker.get_heating_rate()
+        assert rate is None
+
+    def test_rolling_window_returns_none_when_no_heat_delivered(self):
+        """Returns None when total heat delivered is zero."""
+        from custom_components.adaptive_climate.adaptive.physics import (
+            RollingWindowHeatingRate,
+        )
+
+        tracker = RollingWindowHeatingRate(window_seconds=3600)
+        tracker.add_observation(0, temp_delta=0.1, heat_seconds=0)
+        tracker.add_observation(100, temp_delta=0.2, heat_seconds=0)
+
+        rate = tracker.get_heating_rate()
+        assert rate is None
