@@ -1,6 +1,25 @@
 # CHANGELOG
 
 
+## v0.56.0 (2026-02-01)
+
+### Bug Fixes
+
+- Send valve close command early to prevent heat over-delivery
+  ([`bd947b8`](https://github.com/afewyards/ha-adaptive-climate/commit/bd947b84328a6ef271b0fc850348455a1c36863b))
+
+Close command now sent valve_actuation_time/2 earlier so the valve is half-closed when heat delivery
+  should end. Prevents delivering ~actuator_time/2 extra heat per cycle.
+
+### Features
+
+- Add manifold transport delay to PWM on-time calculation
+  ([`8662d52`](https://github.com/afewyards/ha-adaptive-climate/commit/8662d52f850f3a77b4030423e8ddf8913ff1dfc2))
+
+Query transport delay from coordinator before PWM calculation and include it in on-time formula
+  alongside valve actuation time.
+
+
 ## v0.55.1 (2026-02-01)
 
 ### Bug Fixes
