@@ -1,6 +1,18 @@
 # CHANGELOG
 
 
+## v0.57.1 (2026-02-01)
+
+### Bug Fixes
+
+- Add missing consecutive_undershoot_cycles property to UndershootDetector
+  ([`2bb041d`](https://github.com/afewyards/ha-adaptive-climate/commit/2bb041d084d556e0e9fa7365f2d59401ff3d0793))
+
+Debug mode failed to boot climate entities because state_attributes.py accessed
+  detector.consecutive_undershoot_cycles, but only the private _consecutive_failures attribute
+  existed.
+
+
 ## v0.57.0 (2026-02-01)
 
 ### Refactoring
