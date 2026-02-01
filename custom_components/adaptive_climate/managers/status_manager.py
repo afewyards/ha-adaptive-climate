@@ -359,3 +359,98 @@ def build_override(override_type: OverrideType, **kwargs) -> dict[str, Any]:
         if value is not None:
             result[key] = value
     return result
+
+
+def build_overrides(
+    *,
+    # Contact open
+    contact_open: bool = False,
+    contact_sensors: list[str] | None = None,
+    contact_since: str | None = None,
+    # Humidity
+    humidity_active: bool = False,
+    humidity_state: str | None = None,
+    humidity_resume_at: str | None = None,
+    # Open window
+    open_window_active: bool = False,
+    open_window_since: str | None = None,
+    open_window_resume_at: str | None = None,
+    # Preheating
+    preheating_active: bool = False,
+    preheating_target_time: str | None = None,
+    preheating_started_at: str | None = None,
+    preheating_target_delta: float | None = None,
+    # Night setback
+    night_setback_active: bool = False,
+    night_setback_delta: float | None = None,
+    night_setback_ends_at: str | None = None,
+    night_setback_limited_to: float | None = None,
+    # Learning grace
+    learning_grace_active: bool = False,
+    learning_grace_until: str | None = None,
+) -> list[dict[str, Any]]:
+    """Build priority-ordered list of active overrides.
+
+    Priority order (highest first):
+    1. contact_open
+    2. humidity
+    3. open_window
+    4. preheating
+    5. night_setback
+    6. learning_grace
+
+    Returns:
+        List of override dicts, ordered by priority
+    """
+    overrides: list[dict[str, Any]] = []
+
+    # 1. Contact open (highest priority)
+    if contact_open:
+        overrides.append(build_override(
+            OverrideType.CONTACT_OPEN,
+            sensors=contact_sensors,
+            since=contact_since,
+        ))
+
+    # 2. Humidity
+    if humidity_active:
+        overrides.append(build_override(
+            OverrideType.HUMIDITY,
+            state=humidity_state,
+            resume_at=humidity_resume_at,
+        ))
+
+    # 3. Open window
+    if open_window_active:
+        overrides.append(build_override(
+            OverrideType.OPEN_WINDOW,
+            since=open_window_since,
+            resume_at=open_window_resume_at,
+        ))
+
+    # 4. Preheating
+    if preheating_active:
+        overrides.append(build_override(
+            OverrideType.PREHEATING,
+            target_time=preheating_target_time,
+            started_at=preheating_started_at,
+            target_delta=preheating_target_delta,
+        ))
+
+    # 5. Night setback
+    if night_setback_active:
+        overrides.append(build_override(
+            OverrideType.NIGHT_SETBACK,
+            delta=night_setback_delta,
+            ends_at=night_setback_ends_at,
+            limited_to=night_setback_limited_to,
+        ))
+
+    # 6. Learning grace (lowest priority)
+    if learning_grace_active:
+        overrides.append(build_override(
+            OverrideType.LEARNING_GRACE,
+            until=learning_grace_until,
+        ))
+
+    return overrides

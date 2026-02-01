@@ -964,3 +964,67 @@ class TestBuildOverride:
 
         assert override["type"] == "learning_grace"
         assert override["until"] == "2024-01-15T11:00:00+00:00"
+
+
+class TestBuildOverrides:
+    """Test build_overrides() function."""
+
+    def test_build_overrides_empty_when_no_conditions(self):
+        """Overrides should be empty list when no conditions active."""
+        from custom_components.adaptive_climate.managers.status_manager import build_overrides
+
+        overrides = build_overrides()
+        assert overrides == []
+
+    def test_build_overrides_single_contact_open(self):
+        """Single contact_open override should be in list."""
+        from custom_components.adaptive_climate.managers.status_manager import build_overrides
+
+        overrides = build_overrides(
+            contact_open=True,
+            contact_sensors=["binary_sensor.window"],
+            contact_since="2024-01-15T10:30:00+00:00",
+        )
+
+        assert len(overrides) == 1
+        assert overrides[0]["type"] == "contact_open"
+        assert overrides[0]["sensors"] == ["binary_sensor.window"]
+
+    def test_build_overrides_priority_order(self):
+        """Multiple overrides should be in priority order."""
+        from custom_components.adaptive_climate.managers.status_manager import build_overrides
+
+        overrides = build_overrides(
+            contact_open=True,
+            contact_sensors=["binary_sensor.window"],
+            contact_since="2024-01-15T10:30:00+00:00",
+            night_setback_active=True,
+            night_setback_delta=-2.0,
+            night_setback_ends_at="07:00",
+            learning_grace_active=True,
+            learning_grace_until="2024-01-15T11:00:00+00:00",
+        )
+
+        # Priority: contact_open > night_setback > learning_grace
+        assert len(overrides) == 3
+        assert overrides[0]["type"] == "contact_open"
+        assert overrides[1]["type"] == "night_setback"
+        assert overrides[2]["type"] == "learning_grace"
+
+    def test_build_overrides_preheating_before_night_setback(self):
+        """Preheating should come before night_setback in priority."""
+        from custom_components.adaptive_climate.managers.status_manager import build_overrides
+
+        overrides = build_overrides(
+            preheating_active=True,
+            preheating_target_time="07:00",
+            preheating_started_at="2024-01-15T05:30:00+00:00",
+            preheating_target_delta=2.0,
+            night_setback_active=True,
+            night_setback_delta=-2.0,
+            night_setback_ends_at="07:00",
+        )
+
+        assert len(overrides) == 2
+        assert overrides[0]["type"] == "preheating"
+        assert overrides[1]["type"] == "night_setback"
