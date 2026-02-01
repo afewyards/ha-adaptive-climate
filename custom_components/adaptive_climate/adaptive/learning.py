@@ -82,6 +82,10 @@ from .auto_apply import AutoApplyManager, get_auto_apply_thresholds
 # Import undershoot detector for persistent temperature deficit detection
 from .undershoot_detector import UndershootDetector
 
+# Import weighted learning components
+from .cycle_weight import CycleWeightCalculator, CycleOutcome
+from .confidence_contribution import ConfidenceContributionTracker
+
 # Import HVAC mode helpers
 from ..helpers.hvac_mode import mode_to_str, get_hvac_heat_mode, get_hvac_cool_mode
 
@@ -174,6 +178,10 @@ class AdaptiveLearner:
 
         # Store historic scan flag (used by unified detector)
         self._chronic_approach_historic_scan = chronic_approach_historic_scan
+
+        # Weighted learning components
+        self._weight_calculator = CycleWeightCalculator(undershoot_heating_type)
+        self._contribution_tracker = ConfidenceContributionTracker(undershoot_heating_type)
 
     @property
     def cycle_history(self) -> List[CycleMetrics]:
@@ -1036,16 +1044,105 @@ class AdaptiveLearner:
         return self._confidence.get_auto_apply_count(mode)
 
     def update_convergence_confidence(self, metrics: CycleMetrics, mode: "HVACMode" = None) -> None:
-        """Update convergence confidence based on cycle performance.
+        """Update convergence confidence based on cycle performance with weighted learning.
 
         Confidence increases when cycles meet convergence criteria, and is used
-        to scale learning rate adjustments.
+        to scale learning rate adjustments. Uses weighted cycle learning to give
+        different weight to maintenance vs recovery cycles.
 
         Args:
             metrics: CycleMetrics from the latest completed cycle
             mode: HVACMode (HEAT or COOL) to update (defaults to HEAT)
         """
-        self._confidence.update_convergence_confidence(metrics, mode)
+        if mode is None:
+            mode = get_hvac_heat_mode()
+
+        # Get current confidence for determining if system is stable
+        if mode == get_hvac_cool_mode():
+            current_confidence = self._confidence._cooling_convergence_confidence
+        else:
+            current_confidence = self._confidence._heating_convergence_confidence
+
+        # Check if this cycle meets convergence criteria
+        is_good_cycle = (
+            (metrics.overshoot is None or metrics.overshoot <= self._convergence_thresholds["overshoot_max"]) and
+            (metrics.undershoot is None or metrics.undershoot <= self._convergence_thresholds.get("undershoot_max", 0.2)) and
+            metrics.oscillations <= self._convergence_thresholds["oscillations_max"] and
+            (metrics.settling_time is None or metrics.settling_time <= self._convergence_thresholds["settling_time_max"]) and
+            (metrics.rise_time is None or metrics.rise_time <= self._convergence_thresholds["rise_time_max"])
+        )
+
+        # Determine cycle outcome from metrics
+        if is_good_cycle:
+            outcome = CycleOutcome.CLEAN
+        elif metrics.overshoot is not None and metrics.overshoot > self._convergence_thresholds["overshoot_max"]:
+            outcome = CycleOutcome.OVERSHOOT
+        elif metrics.undershoot is not None and metrics.undershoot > self._convergence_thresholds.get("undershoot_max", 0.2):
+            outcome = CycleOutcome.UNDERSHOOT
+        elif metrics.rise_time is None:
+            outcome = CycleOutcome.UNDERSHOOT
+        else:
+            # Shouldn't reach here, but default to clean
+            outcome = CycleOutcome.CLEAN
+
+        # Calculate weight for this cycle (requires starting_delta)
+        weight = 1.0  # Default weight if no starting_delta
+        if metrics.starting_delta is not None:
+            # Determine if system is stable based on confidence
+            # Stable = at least tier 1 threshold (40% base, scaled by heating type)
+            # Simplified: Use 0.4 as approximation (floor_hydronic scaled to ~0.32)
+            tier1_base = 0.4
+            is_stable = current_confidence >= (tier1_base * 0.8)  # Floor scaling approximation
+
+            weight = self._weight_calculator.calculate_weight(
+                starting_delta=metrics.starting_delta,
+                is_stable=is_stable,
+                outcome=outcome,
+                effective_duty=None,  # TODO: Add effective_duty to metrics
+                outdoor_temp=metrics.outdoor_temp_avg,
+                is_night_setback_recovery=False,  # TODO: Add night setback tracking
+            )
+
+            # Track recovery cycles for tier gating
+            if self._weight_calculator.is_recovery_cycle(metrics.starting_delta, is_stable):
+                self._contribution_tracker.add_recovery_cycle(mode)
+
+        if is_good_cycle:
+            # Apply weighted confidence gain
+            weighted_gain = CONFIDENCE_INCREASE_PER_GOOD_CYCLE * weight
+            current_confidence = min(
+                CONVERGENCE_CONFIDENCE_HIGH,
+                current_confidence + weighted_gain
+            )
+            _LOGGER.debug(
+                f"Convergence confidence ({mode_to_str(mode)} mode) increased to {current_confidence:.2f} "
+                f"(good cycle with weight {weight:.2f}, outcome={outcome.value}: overshoot={metrics.overshoot or 0.0:.2f}°C, "
+                f"oscillations={metrics.oscillations}, "
+                f"settling={metrics.settling_time or 0.0:.1f}min, "
+                f"starting_delta={metrics.starting_delta or 0.0:.2f}°C)"
+            )
+        else:
+            # Poor cycle - reduce confidence slightly (no weighting on penalties)
+            current_confidence = max(
+                0.0,
+                current_confidence - CONFIDENCE_INCREASE_PER_GOOD_CYCLE * 0.5
+            )
+            _LOGGER.debug(
+                f"Convergence confidence ({mode_to_str(mode)} mode) decreased to {current_confidence:.2f} "
+                f"(poor cycle detected, outcome={outcome.value})"
+            )
+
+        # Store updated confidence back
+        if mode == get_hvac_cool_mode():
+            self._confidence._cooling_convergence_confidence = current_confidence
+        else:
+            self._confidence._heating_convergence_confidence = current_confidence
+
+        # Also increment cycle count
+        if mode == get_hvac_cool_mode():
+            self._confidence._cooling_cycle_count += 1
+        else:
+            self._confidence._heating_cycle_count += 1
 
     def check_performance_degradation(self, baseline_window: int = 10, mode: "HVACMode" = None) -> bool:
         """Check if recent performance has degraded compared to baseline.
@@ -1294,14 +1391,27 @@ class AdaptiveLearner:
         """
         return self._undershoot_detector
 
+    def can_reach_learning_tier(self, tier: int, mode: "HVACMode") -> bool:
+        """Check if the system has enough recovery cycles to reach a learning tier.
+
+        Args:
+            tier: Learning tier (1, 2, or 3)
+            mode: HVACMode (HEAT or COOL) to check
+
+        Returns:
+            True if the system has enough recovery cycles for this tier, False otherwise
+        """
+        return self._contribution_tracker.can_reach_tier(tier, mode)
+
 
     def to_dict(self) -> Dict[str, Any]:
-        """Serialize AdaptiveLearner state to a dictionary in v8 format with backward compatibility.
+        """Serialize AdaptiveLearner state to a dictionary in v9 format with backward compatibility.
 
         Delegates to learner_serialization module for actual serialization logic.
 
         Returns:
             Dictionary containing:
+            - v9 structure with contribution_tracker state
             - v8 structure with unified undershoot detector state (real-time + cycle modes)
             - v7 structure with separate undershoot and chronic approach detector states
             - v6 structure with undershoot detector state only
@@ -1323,6 +1433,7 @@ class AdaptiveLearner:
             pid_converged_for_ke=self._pid_converged_for_ke,
             undershoot_detector=self._undershoot_detector,
             chronic_approach_detector=None,  # No longer used (merged into unified detector)
+            contribution_tracker=self._contribution_tracker,
         )
 
     def restore_from_dict(self, data: Dict[str, Any]) -> None:
@@ -1333,7 +1444,8 @@ class AdaptiveLearner:
 
         Delegates to learner_serialization module for actual deserialization logic.
 
-        Supports v4 (flat), v5 (mode-keyed), v6 (undershoot), v7 (chronic approach), and v8 (unified) formats.
+        Supports v4 (flat), v5 (mode-keyed), v6 (undershoot), v7 (chronic approach), v8 (unified),
+        and v9 (contribution tracker) formats.
 
         Args:
             data: Dictionary containing either:
@@ -1342,6 +1454,7 @@ class AdaptiveLearner:
                 v6 format: v5 + undershoot_detector state
                 v7 format: v6 + chronic_approach_detector state (separate)
                 v8 format: v7 + unified_detector state (merged)
+                v9 format: v8 + contribution_tracker state
         """
         # Delegate to serialization module for parsing
         restored = restore_learner_from_dict(data)
@@ -1372,6 +1485,15 @@ class AdaptiveLearner:
             self._undershoot_detector._consecutive_failures = undershoot_state.get("consecutive_failures", 0)
             # Shared state
             self._undershoot_detector.cumulative_ki_multiplier = undershoot_state.get("cumulative_ki_multiplier", 1.0)
+
+        # Restore contribution tracker state (serialization module handles v8->v9 migration)
+        from .confidence_contribution import ConfidenceContributionTracker
+        contribution_state = restored.get("contribution_tracker_state", {})
+        if contribution_state:
+            # Use from_dict to restore state
+            self._contribution_tracker = ConfidenceContributionTracker.from_dict(
+                contribution_state, self._heating_type
+            )
 
         # Perform historic scan if enabled
         if self._chronic_approach_historic_scan:
