@@ -31,6 +31,7 @@ from custom_components.adaptive_climate.managers.state_attributes import (
     _compute_learning_status,
     _add_learning_status_attributes,
     _build_status_attribute,
+    build_cycle_count,
     ATTR_LEARNING_STATUS,
     ATTR_CYCLES_COLLECTED,
     ATTR_CONVERGENCE_CONFIDENCE,
@@ -2366,3 +2367,25 @@ def test_build_debug_object_all_groups():
     assert "undershoot" in debug
     assert "ke" in debug
     assert "pid" in debug
+
+
+def test_build_cycle_count_heater_cooler():
+    """cycle_count should be object when heater/cooler configured."""
+    result = build_cycle_count(
+        heater_count=42,
+        cooler_count=10,
+        is_demand_switch=False,
+    )
+
+    assert result == {"heater": 42, "cooler": 10}
+
+
+def test_build_cycle_count_demand_switch():
+    """cycle_count should be int when demand_switch configured."""
+    result = build_cycle_count(
+        heater_count=52,
+        cooler_count=0,
+        is_demand_switch=True,
+    )
+
+    assert result == 52
