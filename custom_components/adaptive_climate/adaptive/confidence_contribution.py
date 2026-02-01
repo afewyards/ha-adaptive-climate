@@ -55,6 +55,43 @@ class ConfidenceContributionTracker:
             return self._cooling_recovery_cycle_count
         return self._heating_recovery_cycle_count
 
+    # Backward-compatible properties (default to HEAT mode)
+    @property
+    def maintenance_contribution(self) -> float:
+        """Maintenance contribution (HEAT mode for backward compatibility)."""
+        return self._heating_maintenance_contribution
+
+    @property
+    def heating_rate_contribution(self) -> float:
+        """Heating rate contribution (backward compatibility)."""
+        return self._heating_rate_contribution
+
+    @property
+    def recovery_cycle_count(self) -> int:
+        """Recovery cycle count (HEAT mode for backward compatibility)."""
+        return self._heating_recovery_cycle_count
+
+    # Backward-compatible internal attributes for tests that access them directly
+    @property
+    def _maintenance_contribution(self) -> float:
+        """Internal maintenance contribution (HEAT mode for backward compatibility)."""
+        return self._heating_maintenance_contribution
+
+    @_maintenance_contribution.setter
+    def _maintenance_contribution(self, value: float) -> None:
+        """Set internal maintenance contribution (HEAT mode for backward compatibility)."""
+        self._heating_maintenance_contribution = value
+
+    @property
+    def _recovery_cycle_count(self) -> int:
+        """Internal recovery cycle count (HEAT mode for backward compatibility)."""
+        return self._heating_recovery_cycle_count
+
+    @_recovery_cycle_count.setter
+    def _recovery_cycle_count(self, value: int) -> None:
+        """Set internal recovery cycle count (HEAT mode for backward compatibility)."""
+        self._heating_recovery_cycle_count = value
+
     def apply_maintenance_gain(self, gain: float, mode: "HVACMode" = None) -> float:
         """Apply maintenance confidence gain with cap and diminishing returns.
 
