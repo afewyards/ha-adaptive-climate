@@ -47,6 +47,8 @@ class CycleMetricsRecorder:
         on_auto_apply_check: Callable[[], Awaitable[None]] | None = None,
         dispatcher: "CycleEventDispatcher | None" = None,
         cold_tolerance: float | None = None,
+        heating_type: str | None = None,
+        valve_actuation_time: float = 0.0,
     ) -> None:
         """Initialize the cycle metrics recorder.
 
@@ -64,6 +66,8 @@ class CycleMetricsRecorder:
             on_auto_apply_check: Async callback for auto-apply check after cycle completion
             dispatcher: Optional CycleEventDispatcher for event-driven operation
             cold_tolerance: Cold tolerance threshold for integral tracking
+            heating_type: Heating system type for settling window calculation
+            valve_actuation_time: Valve actuation time in seconds (default: 0.0)
         """
         self._hass = hass
         self._zone_id = zone_id
@@ -78,6 +82,8 @@ class CycleMetricsRecorder:
         self._dispatcher = dispatcher
         self._min_cycle_duration_minutes = min_cycle_duration_minutes
         self._cold_tolerance = cold_tolerance
+        self._heating_type = heating_type
+        self._valve_actuation_time = valve_actuation_time
 
         # Metrics tracking state
         self._interruption_history: list[tuple[datetime, str]] = []
@@ -590,3 +596,56 @@ class CycleMetricsRecorder:
         # Store end_temp for next cycle's inter_cycle_drift calculation
         if end_temp is not None:
             self._prev_cycle_end_temp = end_temp
+
+    def get_settling_window_minutes(self) -> int:
+        """Get the settling window duration in minutes for the heating type.
+
+        The settling window is the period after heat delivery ends where the
+        system is expected to reach thermal equilibrium. Duration varies by
+        heating type thermal mass.
+
+        Returns:
+            Settling window duration in minutes
+        """
+        from ..const import SETTLING_WINDOW_MINUTES
+
+        if self._heating_type and self._heating_type in SETTLING_WINDOW_MINUTES:
+            return SETTLING_WINDOW_MINUTES[self._heating_type]
+
+        # Default to 30 minutes (radiator-like default)
+        return 30
+
+    def get_settling_start_time(self) -> datetime | None:
+        """Calculate when the settling window actually starts.
+
+        The settling window starts after:
+        1. Valve actuation time (half, as valve closes midway)
+        2. Transport delay (heat in transit after valve closes)
+
+        This ensures we're measuring settling behavior after all heat delivery
+        has completed, not while residual heat is still arriving.
+
+        Returns:
+            Datetime when settling starts, or None if device_off_time not set
+        """
+        if self._device_off_time is None:
+            return None
+
+        # Start with device off time
+        settling_start = self._device_off_time
+        total_delay_seconds = 0.0
+
+        # Add half valve actuation time (valve closes midway)
+        if self._valve_actuation_time > 0:
+            total_delay_seconds += self._valve_actuation_time / 2.0
+
+        # Add transport delay (heat in transit)
+        if self._transport_delay_minutes and self._transport_delay_minutes > 0:
+            total_delay_seconds += self._transport_delay_minutes * 60.0
+
+        # Apply delay if any
+        if total_delay_seconds > 0:
+            from datetime import timedelta
+            settling_start = settling_start + timedelta(seconds=total_delay_seconds)
+
+        return settling_start
