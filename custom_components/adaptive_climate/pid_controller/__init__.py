@@ -545,7 +545,12 @@ class PID:
         # Compensate losses due to external temperature and wind
         # Formula: external = Ke * dext + Ke_wind * wind_speed * dext
         # Wind increases heat loss proportionally to temperature difference
-        self._external = self._Ke * self._dext + self._Ke_wind * self._wind_speed * self._dext
+        # Only apply outdoor compensation when at or below setpoint
+        # When above setpoint (error < 0), the room has enough thermal energy
+        if self._error >= 0:
+            self._external = self._Ke * self._dext + self._Ke_wind * self._wind_speed * self._dext
+        else:
+            self._external = 0.0
 
         # Calculate proportional term using P-on-M (proportional-on-measurement)
         # P-on-M: proportional term based on negative derivative of measurement
@@ -705,16 +710,15 @@ class PID:
         output = self._proportional + self._integral + self._derivative + self._external - self._feedforward
 
         # Clamp output to 0 when beyond tolerance threshold
-        # Uses integral sign to detect mode (positive = heating history, negative = cooling history)
         # Heating: temp beyond cold_tolerance above setpoint (error < -cold_tolerance) → no heating
         # Cooling: temp beyond hot_tolerance below setpoint (error > hot_tolerance) → no cooling
         # This allows gentle coasting through the tolerance band without abrupt cutoff
-        if self._integral > 0 and self._error < -self._cold_tolerance:  # Was heating, now beyond tolerance above setpoint
+        if self._error < -self._cold_tolerance:  # Beyond tolerance above setpoint - no heating needed
             output = min(output, 0)
             # Track tolerance clamping for learning feedback
             self._was_clamped = True
             self._clamp_reason = 'tolerance'
-        elif self._integral < 0 and self._error > self._hot_tolerance:  # Was cooling, now beyond tolerance below setpoint
+        elif self._error > self._hot_tolerance:  # Beyond tolerance below setpoint - no cooling needed
             output = max(output, 0)
             # Track tolerance clamping for learning feedback
             self._was_clamped = True
