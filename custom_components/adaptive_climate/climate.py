@@ -1003,6 +1003,11 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
         return self._loops
 
     @property
+    def heating_type(self) -> const.HeatingType:
+        """Return the heating system type."""
+        return self._heating_type
+
+    @property
     def pid_mode(self):
         """Return the PID operating mode."""
         if getattr(self, '_pid_controller', None) is not None:
