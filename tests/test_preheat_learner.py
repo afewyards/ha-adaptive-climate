@@ -3,6 +3,8 @@
 import pytest
 from datetime import datetime, timedelta
 
+from homeassistant.util import dt as dt_util
+
 from custom_components.adaptive_climate.adaptive.preheat import (
     HeatingObservation,
     PreheatLearner,
@@ -345,3 +347,74 @@ class TestPreheatLearner:
         # Should be limited to 100 observations per bin
         observations = learner._observations.get(("2-4", "mild"), [])
         assert len(observations) <= 100
+
+
+class TestHeatingRateConsistency:
+    """Test heating rate consistency scoring."""
+
+    def test_no_observations_returns_zero(self):
+        """No observations means zero consistency."""
+        learner = PreheatLearner(heating_type=HEATING_TYPE_FLOOR_HYDRONIC)
+        assert learner.get_rate_consistency_score() == 0.0
+
+    def test_few_observations_low_score(self):
+        """Few observations give low score compared to many."""
+        learner = PreheatLearner(heating_type=HEATING_TYPE_FLOOR_HYDRONIC)
+        # Add 3 observations (consistent but few)
+        for i in range(3):
+            learner.add_observation(
+                start_temp=18.0,
+                end_temp=20.0,
+                outdoor_temp=5.0,
+                duration_minutes=60,
+                timestamp=dt_util.utcnow(),
+            )
+        score = learner.get_rate_consistency_score()
+        # With perfect consistency but only 3 obs, score should be moderate
+        # count_score = 0.3, consistency_score = 1.0 (perfect)
+        # combined = 0.3 * 0.4 + 1.0 * 0.6 = 0.72
+        assert 0.7 <= score < 0.8
+
+    def test_many_consistent_observations_high_score(self):
+        """Many consistent observations give high score."""
+        learner = PreheatLearner(heating_type=HEATING_TYPE_FLOOR_HYDRONIC)
+        # Add 15 consistent observations (same rate)
+        for i in range(15):
+            learner.add_observation(
+                start_temp=18.0,
+                end_temp=20.0,  # 2°C rise
+                outdoor_temp=5.0,
+                duration_minutes=60,  # 2°C/hr consistent
+                timestamp=dt_util.utcnow(),
+            )
+        score = learner.get_rate_consistency_score()
+        assert score >= 0.8
+
+    def test_inconsistent_observations_lower_score(self):
+        """Inconsistent observations reduce score compared to consistent ones."""
+        learner = PreheatLearner(heating_type=HEATING_TYPE_FLOOR_HYDRONIC)
+        # Add observations with varying rates
+        for i, duration in enumerate([30, 60, 90, 45, 75, 120, 40, 80, 55, 65]):
+            learner.add_observation(
+                start_temp=18.0,
+                end_temp=20.0,
+                outdoor_temp=5.0,
+                duration_minutes=duration,  # Varying rates
+                timestamp=dt_util.utcnow(),
+            )
+        inconsistent_score = learner.get_rate_consistency_score()
+
+        # Now test with consistent observations
+        learner2 = PreheatLearner(heating_type=HEATING_TYPE_FLOOR_HYDRONIC)
+        for i in range(10):
+            learner2.add_observation(
+                start_temp=18.0,
+                end_temp=20.0,
+                outdoor_temp=5.0,
+                duration_minutes=60,  # Consistent rate
+                timestamp=dt_util.utcnow(),
+            )
+        consistent_score = learner2.get_rate_consistency_score()
+
+        # Inconsistent should score lower than consistent
+        assert inconsistent_score < consistent_score
