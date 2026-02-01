@@ -1,6 +1,33 @@
 # CHANGELOG
 
 
+## v0.53.2 (2026-02-01)
+
+### Bug Fixes
+
+- Apply manifold transport delay via event subscriptions
+  ([`92117ae`](https://github.com/afewyards/ha-adaptive-climate/commit/92117aede414b998a4b4d22d86562df4197b8968))
+
+_query_and_mark_manifold() was dead code after Phase 4 refactoring - never called because
+  _async_heater_turn_on() was unused. Now subscribe to HEATING_STARTED/HEATING_ENDED events to
+  properly set and reset transport delay. Bathroom cycles will now include the transport delay
+  (e.g., 25 min instead of 15 min for 10 min pipe distance).
+
+### Chores
+
+- Add .worktrees to gitignore
+  ([`37ebd41`](https://github.com/afewyards/ha-adaptive-climate/commit/37ebd41dec55349370e3709d7e57ab052ca6c529))
+
+### Documentation
+
+- Add state attributes refactor design
+  ([`5d60f6c`](https://github.com/afewyards/ha-adaptive-climate/commit/5d60f6cb707925feb15957f4a7601cfc25ea7620))
+
+Separate attributes into clear top-level groups: - Flat restoration fields (integral, pid_history,
+  cycle_count, etc.) - status: activity + priority-ordered overrides array - learning: status +
+  confidence - debug: grouped by feature (pwm, cycle, preheat, humidity, undershoot, ke, pid)
+
+
 ## v0.53.1 (2026-01-31)
 
 ### Bug Fixes
