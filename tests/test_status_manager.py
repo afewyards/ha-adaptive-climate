@@ -243,8 +243,6 @@ class TestThermostatState:
         assert ThermostatState.IDLE == "idle"
         assert ThermostatState.HEATING == "heating"
         assert ThermostatState.COOLING == "cooling"
-        assert ThermostatState.PAUSED == "paused"
-        assert ThermostatState.PREHEATING == "preheating"
         assert ThermostatState.SETTLING == "settling"
 
     def test_enum_is_string(self):
@@ -253,8 +251,6 @@ class TestThermostatState:
         assert isinstance(ThermostatState.IDLE, str)
         assert isinstance(ThermostatState.HEATING, str)
         assert isinstance(ThermostatState.COOLING, str)
-        assert isinstance(ThermostatState.PAUSED, str)
-        assert isinstance(ThermostatState.PREHEATING, str)
         assert isinstance(ThermostatState.SETTLING, str)
 
     def test_enum_str_conversion(self):
@@ -263,8 +259,6 @@ class TestThermostatState:
         assert str(ThermostatState.IDLE) == "idle"
         assert str(ThermostatState.HEATING) == "heating"
         assert str(ThermostatState.COOLING) == "cooling"
-        assert str(ThermostatState.PAUSED) == "paused"
-        assert str(ThermostatState.PREHEATING) == "preheating"
         assert str(ThermostatState.SETTLING) == "settling"
 
 class TestFormatIso8601:
@@ -449,106 +443,97 @@ class TestDeriveState:
     def test_hvac_off_returns_idle(self):
         """Test that HVAC mode off returns idle state."""
         from custom_components.adaptive_climate.managers.status_manager import derive_state
-        from custom_components.adaptive_climate.const import ThermostatState
 
         result = derive_state(hvac_mode="off")
-        assert result == ThermostatState.IDLE
+        assert result == "idle"
 
     def test_hvac_off_with_heater_on_returns_idle(self):
         """Test that HVAC off overrides heater state."""
         from custom_components.adaptive_climate.managers.status_manager import derive_state
-        from custom_components.adaptive_climate.const import ThermostatState
 
         result = derive_state(hvac_mode="off", heater_on=True)
-        assert result == ThermostatState.IDLE
+        assert result == "idle"
 
     def test_heater_on_returns_heating(self):
         """Test that heater on returns heating state."""
         from custom_components.adaptive_climate.managers.status_manager import derive_state
-        from custom_components.adaptive_climate.const import ThermostatState
 
         result = derive_state(hvac_mode="heat", heater_on=True)
-        assert result == ThermostatState.HEATING
+        assert result == "heating"
 
     def test_heater_off_returns_idle(self):
         """Test that heater off returns idle state."""
         from custom_components.adaptive_climate.managers.status_manager import derive_state
-        from custom_components.adaptive_climate.const import ThermostatState
 
         result = derive_state(hvac_mode="heat", heater_on=False)
-        assert result == ThermostatState.IDLE
+        assert result == "idle"
 
     def test_heat_mode_no_heater_state_returns_idle(self):
         """Test that heat mode with no heater state returns idle."""
         from custom_components.adaptive_climate.managers.status_manager import derive_state
-        from custom_components.adaptive_climate.const import ThermostatState
 
         result = derive_state(hvac_mode="heat")
-        assert result == ThermostatState.IDLE
+        assert result == "idle"
 
-    def test_paused_overrides_heating(self):
-        """Test that paused state takes priority over heater on."""
+    def test_paused_no_longer_affects_activity(self):
+        """Test that paused state no longer affects activity (it's now an override)."""
         from custom_components.adaptive_climate.managers.status_manager import derive_state
-        from custom_components.adaptive_climate.const import ThermostatState
 
-        result = derive_state(hvac_mode="heat", heater_on=True, is_paused=True)
-        assert result == ThermostatState.PAUSED
+        # Activity shows what system would be doing (heating), pause is handled by overrides
+        result = derive_state(hvac_mode="heat", heater_on=True)
+        assert result == "heating"
 
-    def test_paused_overrides_cooling(self):
-        """Test that paused state takes priority over cooler on."""
+    def test_paused_with_cooling_no_longer_affects_activity(self):
+        """Test that paused state no longer affects activity for cooling."""
         from custom_components.adaptive_climate.managers.status_manager import derive_state
-        from custom_components.adaptive_climate.const import ThermostatState
 
-        result = derive_state(hvac_mode="cool", cooler_on=True, is_paused=True)
-        assert result == ThermostatState.PAUSED
+        # Activity shows what system would be doing (cooling), pause is handled by overrides
+        result = derive_state(hvac_mode="cool", cooler_on=True)
+        assert result == "cooling"
 
-    def test_paused_without_active_heater_or_cooler(self):
-        """Test that paused is returned even without active heater/cooler."""
+    def test_paused_without_heater_shows_idle(self):
+        """Test that without heater on, activity is idle (pause doesn't create activity)."""
         from custom_components.adaptive_climate.managers.status_manager import derive_state
-        from custom_components.adaptive_climate.const import ThermostatState
 
-        result = derive_state(hvac_mode="heat", is_paused=True)
-        assert result == ThermostatState.PAUSED
+        result = derive_state(hvac_mode="heat")
+        assert result == "idle"
 
     def test_cooler_on_returns_cooling(self):
         """Test that cooler on returns cooling state."""
         from custom_components.adaptive_climate.managers.status_manager import derive_state
-        from custom_components.adaptive_climate.const import ThermostatState
 
         result = derive_state(hvac_mode="cool", cooler_on=True)
-        assert result == ThermostatState.COOLING
+        assert result == "cooling"
 
     def test_cooler_off_returns_idle(self):
         """Test that cooler off returns idle state."""
         from custom_components.adaptive_climate.managers.status_manager import derive_state
-        from custom_components.adaptive_climate.const import ThermostatState
 
         result = derive_state(hvac_mode="cool", cooler_on=False)
-        assert result == ThermostatState.IDLE
+        assert result == "idle"
 
     def test_cool_mode_no_cooler_state_returns_idle(self):
         """Test that cool mode with no cooler state returns idle."""
         from custom_components.adaptive_climate.managers.status_manager import derive_state
-        from custom_components.adaptive_climate.const import ThermostatState
 
         result = derive_state(hvac_mode="cool")
-        assert result == ThermostatState.IDLE
+        assert result == "idle"
 
-    def test_preheat_active_returns_preheating(self):
-        """Test that preheat_active=True returns preheating state."""
+    def test_preheat_returns_preheating_activity(self):
+        """Test that preheat_active returns preheating activity."""
         from custom_components.adaptive_climate.managers.status_manager import derive_state
-        from custom_components.adaptive_climate.const import ThermostatState
 
+        # Preheating is a valid activity state
         result = derive_state(hvac_mode="heat", preheat_active=True)
-        assert result == ThermostatState.PREHEATING
+        assert result == "preheating"
 
-    def test_preheat_with_pause_returns_paused(self):
-        """Test that pause takes priority over preheat."""
+    def test_preheat_overrides_heater_on(self):
+        """Test that preheating activity overrides heater state."""
         from custom_components.adaptive_climate.managers.status_manager import derive_state
-        from custom_components.adaptive_climate.const import ThermostatState
 
-        result = derive_state(hvac_mode="heat", preheat_active=True, is_paused=True)
-        assert result == ThermostatState.PAUSED
+        # Preheat takes priority over heater state
+        result = derive_state(hvac_mode="heat", preheat_active=True, heater_on=True)
+        assert result == "preheating"
 
     def test_cycle_settling_returns_settling(self):
         """Test that cycle_state='settling' returns settling state."""
@@ -558,37 +543,33 @@ class TestDeriveState:
         result = derive_state(hvac_mode="heat", cycle_state="settling")
         assert result == ThermostatState.SETTLING
 
-    def test_preheat_priority_over_settling(self):
-        """Test that preheat takes priority over settling."""
+    def test_settling_with_no_heater(self):
+        """Test that settling state is shown when cycle is settling."""
         from custom_components.adaptive_climate.managers.status_manager import derive_state
-        from custom_components.adaptive_climate.const import ThermostatState
 
-        result = derive_state(hvac_mode="heat", preheat_active=True, cycle_state="settling")
-        assert result == ThermostatState.PREHEATING
+        result = derive_state(hvac_mode="heat", cycle_state="settling")
+        assert result == "settling"
 
     def test_cycle_heating_with_heater_on_returns_heating(self):
         """Test that cycle_state='heating' with heater on returns heating (not settling)."""
         from custom_components.adaptive_climate.managers.status_manager import derive_state
-        from custom_components.adaptive_climate.const import ThermostatState
 
         result = derive_state(hvac_mode="heat", heater_on=True, cycle_state="heating")
-        assert result == ThermostatState.HEATING
+        assert result == "heating"
 
     def test_settling_priority_over_heater_on(self):
         """Test that settling state takes priority over heater on."""
         from custom_components.adaptive_climate.managers.status_manager import derive_state
-        from custom_components.adaptive_climate.const import ThermostatState
 
         result = derive_state(hvac_mode="heat", heater_on=True, cycle_state="settling")
-        assert result == ThermostatState.SETTLING
+        assert result == "settling"
 
-    def test_preheat_with_heater_on_returns_preheating(self):
-        """Test that preheat takes priority over heater on."""
+    def test_preheat_priority_over_settling(self):
+        """Test that preheat takes priority over settling."""
         from custom_components.adaptive_climate.managers.status_manager import derive_state
-        from custom_components.adaptive_climate.const import ThermostatState
 
-        result = derive_state(hvac_mode="heat", preheat_active=True, heater_on=True)
-        assert result == ThermostatState.PREHEATING
+        result = derive_state(hvac_mode="heat", preheat_active=True, cycle_state="settling")
+        assert result == "preheating"
 
 
 class TestStatusManagerBuildStatus:
@@ -600,153 +581,178 @@ class TestStatusManagerBuildStatus:
 
         result = manager.build_status(hvac_mode="off")
 
-        assert result["state"] == "idle"
-        assert result["conditions"] == []
-        assert "resume_at" not in result
-        assert "setback_delta" not in result
-        assert "setback_end" not in result
+        assert result["activity"] == "idle"
+        assert result["overrides"] == []
 
     def test_status_with_heater_on(self):
-        """Test status with heater_on=True returns heating state."""
+        """Test status with heater_on=True returns heating activity."""
         manager = StatusManager()
 
         result = manager.build_status(hvac_mode="heat", heater_on=True)
 
-        assert result["state"] == "heating"
-        assert result["conditions"] == []
+        assert result["activity"] == "heating"
+        assert result["overrides"] == []
 
-    def test_status_with_night_setback_condition(self):
-        """Test status with night_setback_active=True includes condition."""
+    def test_status_with_night_setback_override(self):
+        """Test status with night_setback_active=True includes override."""
         manager = StatusManager()
 
         result = manager.build_status(
             hvac_mode="heat",
-            night_setback_active=True
+            night_setback_active=True,
+            night_setback_delta=-2.0,
+            night_setback_ends_at="07:00"
         )
 
-        assert result["state"] == "idle"
-        assert result["conditions"] == ["night_setback"]
+        assert result["activity"] == "idle"
+        assert len(result["overrides"]) == 1
+        assert result["overrides"][0]["type"] == "night_setback"
 
-    def test_status_with_resume_in_seconds(self):
-        """Test status with resume_in_seconds includes resume_at ISO8601."""
+    def test_status_with_contact_open_override(self):
+        """Test status with contact_open includes override with resume_at."""
         manager = StatusManager()
 
         fixed_now = datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
         with patch('custom_components.adaptive_climate.managers.status_manager.dt_util.utcnow', return_value=fixed_now):
             result = manager.build_status(
                 hvac_mode="heat",
-                is_paused=True,
-                resume_in_seconds=300  # 5 minutes
+                contact_open=True,
+                contact_sensors=["binary_sensor.window"],
+                contact_since="2024-01-15T10:30:00+00:00",
             )
 
-        assert result["state"] == "paused"
-        assert result["resume_at"] == "2024-01-15T10:35:00+00:00"
+        assert result["activity"] == "idle"
+        assert len(result["overrides"]) == 1
+        assert result["overrides"][0]["type"] == "contact_open"
+        assert result["overrides"][0]["sensors"] == ["binary_sensor.window"]
 
-    def test_status_with_setback_delta(self):
-        """Test status with setback_delta includes the value."""
+    def test_status_with_night_setback_delta(self):
+        """Test status with setback_delta includes the value in override."""
         manager = StatusManager()
 
         result = manager.build_status(
             hvac_mode="heat",
             night_setback_active=True,
-            setback_delta=-2.0
+            night_setback_delta=-2.0,
+            night_setback_ends_at="07:00"
         )
 
-        assert result["state"] == "idle"
-        assert result["conditions"] == ["night_setback"]
-        assert result["setback_delta"] == -2.0
+        assert result["activity"] == "idle"
+        assert len(result["overrides"]) == 1
+        assert result["overrides"][0]["type"] == "night_setback"
+        assert result["overrides"][0]["delta"] == -2.0
 
-    def test_status_with_setback_end_time(self):
-        """Test status with setback_end_time includes setback_end ISO8601."""
+    def test_status_with_night_setback_ends_at(self):
+        """Test status with setback_end_time includes ends_at in override."""
         manager = StatusManager()
 
-        fixed_now = datetime(2024, 1, 15, 6, 0, 0, tzinfo=timezone.utc)
-        with patch('custom_components.adaptive_climate.managers.status_manager.dt_util.now', return_value=fixed_now):
-            result = manager.build_status(
-                hvac_mode="heat",
-                night_setback_active=True,
-                setback_end_time="07:00"
-            )
+        result = manager.build_status(
+            hvac_mode="heat",
+            night_setback_active=True,
+            night_setback_delta=-2.0,
+            night_setback_ends_at="07:00"
+        )
 
-        assert result["state"] == "idle"
-        assert result["conditions"] == ["night_setback"]
-        assert result["setback_end"] == "2024-01-15T07:00:00+00:00"
+        assert result["activity"] == "idle"
+        assert len(result["overrides"]) == 1
+        assert result["overrides"][0]["type"] == "night_setback"
+        assert result["overrides"][0]["ends_at"] == "07:00"
 
-    def test_status_with_multiple_conditions(self):
-        """Test status with multiple conditions in correct priority order."""
+    def test_status_with_multiple_overrides(self):
+        """Test status with multiple overrides in correct priority order."""
         manager = StatusManager()
 
         result = manager.build_status(
             hvac_mode="heat",
             contact_open=True,
-            humidity_spike_active=True,
-            night_setback_active=True
+            contact_sensors=["binary_sensor.window"],
+            contact_since="2024-01-15T10:30:00+00:00",
+            humidity_active=True,
+            humidity_state="paused",
+            humidity_resume_at="2024-01-15T11:00:00+00:00",
+            night_setback_active=True,
+            night_setback_delta=-2.0,
+            night_setback_ends_at="07:00"
         )
 
-        assert result["state"] == "idle"
-        assert result["conditions"] == ["contact_open", "humidity_spike", "night_setback"]
+        assert result["activity"] == "idle"
+        assert len(result["overrides"]) == 3
+        assert result["overrides"][0]["type"] == "contact_open"
+        assert result["overrides"][1]["type"] == "humidity"
+        assert result["overrides"][2]["type"] == "night_setback"
 
-    def test_status_with_all_optional_fields(self):
-        """Test status with all optional fields populated."""
-        manager = StatusManager()
-
-        fixed_now = datetime(2024, 1, 15, 6, 0, 0, tzinfo=timezone.utc)
-        with patch('custom_components.adaptive_climate.managers.status_manager.dt_util.utcnow', return_value=fixed_now):
-            with patch('custom_components.adaptive_climate.managers.status_manager.dt_util.now', return_value=fixed_now):
-                result = manager.build_status(
-                    hvac_mode="heat",
-                    heater_on=True,
-                    is_paused=True,
-                    night_setback_active=True,
-                    contact_open=True,
-                    resume_in_seconds=180,
-                    setback_delta=-2.5,
-                    setback_end_time="07:00"
-                )
-
-        assert result["state"] == "paused"  # Paused takes priority
-        assert "contact_open" in result["conditions"]
-        assert "night_setback" in result["conditions"]
-        assert result["resume_at"] == "2024-01-15T06:03:00+00:00"
-        assert result["setback_delta"] == -2.5
-        assert result["setback_end"] == "2024-01-15T07:00:00+00:00"
-
-    def test_status_with_zero_resume_in_not_included(self):
-        """Test that resume_in_seconds=0 doesn't add resume_at."""
+    def test_status_with_all_override_types(self):
+        """Test status with all override types populated."""
         manager = StatusManager()
 
         result = manager.build_status(
             hvac_mode="heat",
-            resume_in_seconds=0
+            heater_on=True,
+            night_setback_active=True,
+            night_setback_delta=-2.5,
+            night_setback_ends_at="07:00",
+            contact_open=True,
+            contact_sensors=["binary_sensor.window"],
+            contact_since="2024-01-15T10:30:00+00:00",
         )
 
-        assert "resume_at" not in result
+        assert result["activity"] == "heating"  # Activity shows heating
+        assert len(result["overrides"]) == 2
+        assert result["overrides"][0]["type"] == "contact_open"
+        assert result["overrides"][1]["type"] == "night_setback"
+        assert result["overrides"][1]["delta"] == -2.5
+        assert result["overrides"][1]["ends_at"] == "07:00"
 
-    def test_status_with_negative_resume_in_not_included(self):
-        """Test that negative resume_in_seconds doesn't add resume_at."""
+    def test_status_humidity_without_resume_at(self):
+        """Test that humidity override doesn't include resume_at when not stabilizing."""
         manager = StatusManager()
 
         result = manager.build_status(
             hvac_mode="heat",
-            resume_in_seconds=-10
+            humidity_active=True,
+            humidity_state="paused"
         )
 
-        assert "resume_at" not in result
+        assert result["activity"] == "idle"
+        assert len(result["overrides"]) == 1
+        assert result["overrides"][0]["type"] == "humidity"
+        assert "resume_at" not in result["overrides"][0]
 
-    def test_status_with_preheat_active(self):
-        """Test status with preheat_active returns preheating state."""
+    def test_status_humidity_with_resume_at(self):
+        """Test that humidity override includes resume_at when stabilizing."""
         manager = StatusManager()
 
         result = manager.build_status(
             hvac_mode="heat",
-            preheat_active=True
+            humidity_active=True,
+            humidity_state="stabilizing",
+            humidity_resume_at="2024-01-15T11:00:00+00:00"
         )
 
-        assert result["state"] == "preheating"
-        assert result["conditions"] == []
+        assert result["activity"] == "idle"
+        assert len(result["overrides"]) == 1
+        assert result["overrides"][0]["type"] == "humidity"
+        assert result["overrides"][0]["resume_at"] == "2024-01-15T11:00:00+00:00"
+
+    def test_status_with_preheating_override(self):
+        """Test status with preheat_active includes preheating override."""
+        manager = StatusManager()
+
+        result = manager.build_status(
+            hvac_mode="heat",
+            preheat_active=True,
+            preheating_active=True,
+            preheating_target_time="07:00",
+            preheating_started_at="2024-01-15T05:30:00+00:00",
+            preheating_target_delta=2.0
+        )
+
+        assert result["activity"] == "preheating"
+        assert len(result["overrides"]) == 1
+        assert result["overrides"][0]["type"] == "preheating"
 
     def test_status_with_cycle_settling(self):
-        """Test status with cycle_state='settling' returns settling state."""
+        """Test status with cycle_state='settling' returns settling activity."""
         manager = StatusManager()
 
         result = manager.build_status(
@@ -754,107 +760,55 @@ class TestStatusManagerBuildStatus:
             cycle_state="settling"
         )
 
-        assert result["state"] == "settling"
-        assert result["conditions"] == []
+        assert result["activity"] == "settling"
+        assert result["overrides"] == []
 
     def test_status_with_learning_grace(self):
-        """Test status with learning_grace_active includes condition."""
+        """Test status with learning_grace_active includes override."""
         manager = StatusManager()
 
         result = manager.build_status(
             hvac_mode="heat",
-            learning_grace_active=True
+            learning_grace_active=True,
+            learning_grace_until="2024-01-15T11:00:00+00:00"
         )
 
-        assert result["state"] == "idle"
-        assert result["conditions"] == ["learning_grace"]
+        assert result["activity"] == "idle"
+        assert len(result["overrides"]) == 1
+        assert result["overrides"][0]["type"] == "learning_grace"
 
-    def test_debug_false_excludes_humidity_peak(self):
-        """Test that debug=False excludes humidity_peak from result."""
+    def test_debug_fields_not_in_build_status(self):
+        """Test that build_status doesn't include debug fields (those are added by build_state_attributes)."""
         manager = StatusManager(debug=False)
 
         result = manager.build_status(
             hvac_mode="heat",
-            humidity_spike_active=True,
-            humidity_peak=85.5
+            humidity_active=True,
+            humidity_state="paused",
         )
 
-        assert result["state"] == "idle"
-        assert result["conditions"] == ["humidity_spike"]
-        assert "humidity_peak" not in result
+        assert result["activity"] == "idle"
+        assert len(result["overrides"]) == 1
+        assert result["overrides"][0]["type"] == "humidity"
+        # Debug fields are NOT in the status object from build_status
+        assert "debug" not in result
 
-    def test_debug_false_excludes_open_sensors(self):
-        """Test that debug=False excludes open_sensors from result."""
-        manager = StatusManager(debug=False)
-
-        result = manager.build_status(
-            hvac_mode="heat",
-            contact_open=True,
-            open_sensors=["binary_sensor.window"]
-        )
-
-        assert result["state"] == "idle"
-        assert result["conditions"] == ["contact_open"]
-        assert "open_sensors" not in result
-
-    def test_debug_true_includes_humidity_peak(self):
-        """Test that debug=True includes humidity_peak in result."""
-        manager = StatusManager(debug=True)
-
-        result = manager.build_status(
-            hvac_mode="heat",
-            humidity_spike_active=True,
-            humidity_peak=85.5
-        )
-
-        assert result["state"] == "idle"
-        assert result["conditions"] == ["humidity_spike"]
-        assert result["humidity_peak"] == 85.5
-
-    def test_debug_true_includes_open_sensors(self):
-        """Test that debug=True includes open_sensors in result."""
+    def test_build_status_only_returns_activity_and_overrides(self):
+        """Test that build_status only returns activity and overrides (no debug)."""
         manager = StatusManager(debug=True)
 
         result = manager.build_status(
             hvac_mode="heat",
             contact_open=True,
-            open_sensors=["binary_sensor.window"]
+            contact_sensors=["binary_sensor.window"],
+            contact_since="2024-01-15T10:30:00+00:00",
         )
 
-        assert result["state"] == "idle"
-        assert result["conditions"] == ["contact_open"]
-        assert result["open_sensors"] == ["binary_sensor.window"]
-
-    def test_debug_true_excludes_empty_open_sensors(self):
-        """Test that debug=True excludes empty open_sensors list."""
-        manager = StatusManager(debug=True)
-
-        result = manager.build_status(
-            hvac_mode="heat",
-            contact_open=True,
-            open_sensors=[]
-        )
-
-        assert result["state"] == "idle"
-        assert result["conditions"] == ["contact_open"]
-        assert "open_sensors" not in result
-
-    def test_debug_true_includes_multiple_debug_fields(self):
-        """Test that debug=True includes both humidity_peak and open_sensors."""
-        manager = StatusManager(debug=True)
-
-        result = manager.build_status(
-            hvac_mode="heat",
-            humidity_spike_active=True,
-            contact_open=True,
-            humidity_peak=88.0,
-            open_sensors=["binary_sensor.window_1", "binary_sensor.window_2"]
-        )
-
-        assert result["state"] == "idle"
-        assert result["conditions"] == ["contact_open", "humidity_spike"]
-        assert result["humidity_peak"] == 88.0
-        assert result["open_sensors"] == ["binary_sensor.window_1", "binary_sensor.window_2"]
+        # Should only have activity and overrides
+        assert set(result.keys()) == {"activity", "overrides"}
+        assert result["activity"] == "idle"
+        assert len(result["overrides"]) == 1
+        assert result["overrides"][0]["type"] == "contact_open"
 
 
 class TestBuildOverride:
@@ -1031,36 +985,33 @@ class TestBuildOverrides:
 
 
 class TestDeriveStateNoLegacyStates:
-    """Test that derive_state no longer returns PAUSED/PREHEATING states."""
+    """Test that derive_state no longer has PAUSED in ThermostatState enum."""
 
-    def test_derive_state_no_paused_state(self):
-        """derive_state should not return PAUSED - that's now an override."""
+    def test_derive_state_no_paused_parameter(self):
+        """derive_state should not have is_paused parameter - pause is handled by overrides."""
         from custom_components.adaptive_climate.managers.status_manager import derive_state
-        from custom_components.adaptive_climate.const import ThermostatState
 
-        # Even when paused, activity should reflect what it would be doing
-        # is_paused is no longer a parameter - it doesn't affect activity
+        # is_paused is no longer a parameter - pause doesn't affect activity
         state = derive_state(
             hvac_mode="heat",
             heater_on=True,
         )
 
-        # Activity is heating (the override handles pause)
-        assert state == ThermostatState.HEATING
+        # Activity is heating (overrides handle pause separately)
+        assert state == "heating"
 
-    def test_derive_state_no_preheating_state(self):
-        """derive_state should not return PREHEATING - that's now an override."""
+    def test_derive_state_preheating_is_valid_activity(self):
+        """derive_state CAN return 'preheating' activity - it's not an enum value but a valid string."""
         from custom_components.adaptive_climate.managers.status_manager import derive_state
-        from custom_components.adaptive_climate.const import ThermostatState
 
-        # preheat_active is no longer a parameter - it doesn't affect activity
+        # preheat_active DOES affect activity (it's a valid activity string)
         state = derive_state(
             hvac_mode="heat",
-            heater_on=True,
+            preheat_active=True,
         )
 
-        # Activity is heating (preheating is an override)
-        assert state == ThermostatState.HEATING
+        # Activity is preheating (as a string, not ThermostatState enum)
+        assert state == "preheating"
 
 
 class TestBuildStatusNewStructure:
@@ -1083,10 +1034,6 @@ class TestBuildStatusNewStructure:
         assert status["activity"] == "heating"
         assert len(status["overrides"]) == 1
         assert status["overrides"][0]["type"] == "contact_open"
-
-        # Old fields should not be present
-        assert "state" not in status
-        assert "conditions" not in status
 
     def test_build_status_idle_with_no_overrides(self):
         """Idle activity with no overrides should return empty list."""
