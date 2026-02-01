@@ -1,6 +1,22 @@
 # CHANGELOG
 
 
+## v0.57.3 (2026-02-01)
+
+### Bug Fixes
+
+- Include valve actuation and transport delay in min cycle protection
+  ([`fe97af8`](https://github.com/afewyards/ha-adaptive-climate/commit/fe97af8c1ed5d3330746fb46330cc0a68899a601))
+
+min_open_time check in async_turn_off() only considered the configured min_open_time, ignoring
+  valve_actuation_time and transport_delay. This caused premature turn-off before heat actually
+  reached the zone.
+
+Added effective_min_open_time property that sums all three delays and use it for cycle protection.
+  For a floor hydronic zone with 2min min_open_time, 3min valve actuation, and 1min transport delay,
+  the effective minimum is now 6 minutes instead of 2.
+
+
 ## v0.57.2 (2026-02-01)
 
 ### Bug Fixes
