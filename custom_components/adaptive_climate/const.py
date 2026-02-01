@@ -317,6 +317,16 @@ PID_LIMITS = {
     "ke_max": 2.0,  # Restored from 0.02 to 2.0 in v0.7.1 (100x restoration)
 }
 
+CONF_VALVE_ACTUATION_TIME = "valve_actuation_time"
+
+# Valve actuation time defaults by heating type (seconds)
+HEATING_TYPE_VALVE_DEFAULTS: dict[HeatingType, int] = {
+    HeatingType.FLOOR_HYDRONIC: 120,
+    HeatingType.RADIATOR: 90,
+    HeatingType.CONVECTOR: 0,
+    HeatingType.FORCED_AIR: 30,
+}
+
 # Convergence thresholds for adaptive learning
 # System is considered "tuned" when ALL metrics are within these bounds
 # Default thresholds (used for unknown heating types)
