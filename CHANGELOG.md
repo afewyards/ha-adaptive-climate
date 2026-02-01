@@ -1,6 +1,23 @@
 # CHANGELOG
 
 
+## v0.55.1 (2026-02-01)
+
+### Bug Fixes
+
+- Correct PWM on-time to include full actuator open delay
+  ([`7333619`](https://github.com/afewyards/ha-adaptive-climate/commit/733361918b90415c3b3382456f95989dc6ce24c9))
+
+The previous formula added only half the valve actuation time, which meant short duty cycles never
+  delivered the requested heat. The valve takes the full actuator_time to open, so heat delivery
+  can't begin until the valve is fully open.
+
+Fixed formula: on_time = actuator_time + max(heat_duration, min_on_cycle)
+
+Also separated heat duration calculation from adjusted on-time to preserve correct accumulation
+  logic for sub-threshold outputs.
+
+
 ## v0.55.0 (2026-02-01)
 
 ### Documentation
