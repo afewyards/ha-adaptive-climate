@@ -1,6 +1,114 @@
 # CHANGELOG
 
 
+## v0.54.0 (2026-02-01)
+
+### Documentation
+
+- Add state attributes refactor implementation plan
+  ([`e379a75`](https://github.com/afewyards/ha-adaptive-climate/commit/e379a75ec3a991158a3fcbdfb46a48254a60de69))
+
+- Update CLAUDE.md state attributes section
+  ([`48781fc`](https://github.com/afewyards/ha-adaptive-climate/commit/48781fcd06e172d16978c5c848283aafbb18728d))
+
+Update State Attributes documentation to reflect new structure: - Flat restoration fields (integral,
+  pid_history, outdoor_temp_lagged, cycle_count, control_output) - Grouped objects (status,
+  learning, debug) - status.overrides array with priority ordering and type-specific fields -
+  Override types: contact_open, humidity, open_window, preheating, night_setback, learning_grace -
+  Debug groups: pwm, cycle, preheat, humidity, undershoot, ke, pid
+
+Removes old flat structure with scattered debug fields. New structure provides better organization
+  and clear separation between restoration data and diagnostics.
+
+### Features
+
+- Add build_cycle_count for unified cycle count field
+  ([`33f6de8`](https://github.com/afewyards/ha-adaptive-climate/commit/33f6de8f704a207a83c74f4cf2c56e818fdfd0ca))
+
+- Add build_debug_object function with feature grouping
+  ([`1122383`](https://github.com/afewyards/ha-adaptive-climate/commit/112238312cf0bf90b9f94e91d3c592b63fd66101))
+
+- Add build_learning_object function
+  ([`ec6553f`](https://github.com/afewyards/ha-adaptive-climate/commit/ec6553f91abc6149fd052710ac5571d5dae8f9ee))
+
+- Add build_override function for override dicts
+  ([`6d22684`](https://github.com/afewyards/ha-adaptive-climate/commit/6d22684eb208935790ce2a8632f66d844ce5c9c6))
+
+- Add build_overrides function for priority-ordered override list
+  ([`5187df5`](https://github.com/afewyards/ha-adaptive-climate/commit/5187df5364bced1eb4cb38c3478450234898fe83))
+
+- Add OverrideType enum and priority order
+  ([`4048077`](https://github.com/afewyards/ha-adaptive-climate/commit/40480772c92a9c119be385b1829ea98f984901a2))
+
+- Staterestorer handles new cycle_count structure
+  ([`409dd04`](https://github.com/afewyards/ha-adaptive-climate/commit/409dd04a340c499ca7082ba3fb1e772a6c10df03))
+
+- Add support for new cycle_count dict structure: {"heater": N, "cooler": M} - Add support for
+  demand_switch int structure: single int value - Maintain backward compatibility with old
+  heater_cycle_count/cooler_cycle_count fields - New structure takes precedence when both new and
+  old exist - Add comprehensive tests covering all restoration scenarios
+
+### Refactoring
+
+- _build_status_attribute uses overrides structure
+  ([`04b2a4b`](https://github.com/afewyards/ha-adaptive-climate/commit/04b2a4b923ab668d5a5d7d150aae81f7c431fc13))
+
+Collect override-specific data from thermostat and pass to StatusManager.build_status with new
+  parameter names. This bridges the gap between thermostat data sources and the new StatusManager
+  interface.
+
+Changes: - Collect contact sensor data (sensors list, since timestamp) - Collect humidity data
+  (state, resume timestamp) - Collect night setback data (delta, ends_at, limited_to) - Collect
+  learning grace data (until timestamp) - Remove old parameter mappings (resume_in_seconds, etc.) -
+  Call StatusManager.build_status with new override parameters
+
+Note: Tests intentionally failing - Task 12 will fix them.
+
+- Build_state_attributes uses new grouped structure
+  ([`3dc4ccf`](https://github.com/afewyards/ha-adaptive-climate/commit/3dc4ccf04d046c8779d99937e28b83d8bdadf8c9))
+
+- Replace flat heater_cycle_count/cooler_cycle_count with grouped cycle_count - Add learning object
+  with status, confidence, pid_history - Add debug object grouped by feature (pwm, cycle,
+  undershoot) - Add preset temperatures to root level - Use build_cycle_count helper for
+  demand_switch vs heater/cooler - Create _add_learning_object helper to compute and build learning
+  data - Create _add_debug_object helper to build grouped debug attributes - Old learning_status
+  attribute moved into learning.status - Test verifies new structure and absence of old flat fields
+
+- Remove PAUSED/PREHEATING from ThermostatState - now overrides
+  ([`15f6b9b`](https://github.com/afewyards/ha-adaptive-climate/commit/15f6b9bf3c751b49e1d6b611aa97665f12bbf0a4))
+
+- Remove ThermostatState.PAUSED and ThermostatState.PREHEATING from enum - Update derive_state to
+  remove is_paused and preheat_active parameters - Activity now reflects actual system state
+  (heating/cooling/idle/settling) - Pause and preheat states are communicated via overrides, not
+  activity - Add tests confirming derive_state no longer returns legacy states
+
+Breaking: derive_state() signature changed - removed is_paused and preheat_active
+
+- Statusmanager.build_status returns activity + overrides
+  ([`7009997`](https://github.com/afewyards/ha-adaptive-climate/commit/7009997f44c6b24954f3fda38cc9ea714a00d5c9))
+
+Updated StatusManager.build_status() to return new structure: - StatusInfo now has "activity" (str)
+  and "overrides" (list[dict]) - Removed old "state" and "conditions" fields - Method signature
+  expanded to accept all override-related parameters - Calls derive_state() for activity,
+  build_overrides() for overrides list - Added 4 passing tests for new structure in
+  TestBuildStatusNewStructure
+
+Breaking change: Old tests in TestStatusManagerBuildStatus now fail. Will be updated in Task 12.
+
+### Testing
+
+- Update tests for new state attributes structure
+  ([`b9757dc`](https://github.com/afewyards/ha-adaptive-climate/commit/b9757dc4e40b9259569aa4871fda7e28a3a9fad0))
+
+- Update tests for new state attributes structure (part 1)
+  ([`f5fef3e`](https://github.com/afewyards/ha-adaptive-climate/commit/f5fef3e86e4966215ed4355d45ca17516d1f36ed))
+
+- Update test_status_manager.py for new activity/overrides structure - Update derive_state to return
+  strings and handle preheat_active - Update test_state_attributes.py for new debug and status
+  structure - Fix duty_accumulator tests to expect debug.pwm.duty_accumulator_pct - Fix status tests
+  to expect activity + overrides instead of state + conditions
+
+
 ## v0.53.3 (2026-02-01)
 
 ### Bug Fixes
