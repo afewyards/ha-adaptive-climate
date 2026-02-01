@@ -1,6 +1,142 @@
 # CHANGELOG
 
 
+## v0.55.0 (2026-02-01)
+
+### Documentation
+
+- Add valve actuation time design
+  ([`a23288f`](https://github.com/afewyards/ha-adaptive-climate/commit/a23288f687bc67f83e0a22fc8cd661525fa3422e))
+
+Configurable valve delay for PWM timing compensation, committed heat tracking, and physics-based
+  learning for slow hydronic systems.
+
+- Add valve actuation time implementation plan
+  ([`a1216e3`](https://github.com/afewyards/ha-adaptive-climate/commit/a1216e3a785f327e25304f5a0574941ba86107ae))
+
+9 tasks covering config, HeatPipeline, PWM timing, demand signaling, cycle tracking, overshoot
+  split, rolling window heating rate, and wiring.
+
+- Add valve_actuation_time to CLAUDE.md
+  ([`77c4eeb`](https://github.com/afewyards/ha-adaptive-climate/commit/77c4eeb1fe80906d77bff4272f2c52a7edc47d42))
+
+### Features
+
+- Add HeatPipeline for committed heat tracking
+  ([`021a854`](https://github.com/afewyards/ha-adaptive-climate/commit/021a854a9a1ae8eee5e5e275ba41e0a396381dcb))
+
+Implements Task 2 from valve actuation time implementation plan.
+
+HeatPipeline tracks heat in-flight through hydronic manifold pipes: - Accumulates committed heat
+  while valve opens (capped at transport_delay) - Drains committed heat after valve closes -
+  Calculates valve open duration accounting for in-flight heat - Adds half valve_time to compensate
+  for valve close delay
+
+TDD approach: tests written first, verified to fail, then implementation created to pass all tests.
+
+- Add rolling window heating rate for slow systems
+  ([`11a96cd`](https://github.com/afewyards/ha-adaptive-climate/commit/11a96cd0243e3a4d5232e348e7041f69b8fd0f71))
+
+- Add RollingWindowHeatingRate class to track heating rate over time - For slow systems (floor,
+  radiator) where per-cycle rise time isn't meaningful due to thermal lag - Maintains rolling window
+  of observations (timestamp, temp_delta, heat_seconds) - Calculates heating rate as
+  total_temp_delta / total_heat_seconds - Auto-prunes old observations outside time window - Returns
+  None when no observations or no heat delivered - Add comprehensive tests for calculation,
+  expiration, and edge cases
+
+- Add valve_actuation_time config with heating type defaults
+  ([`354fbb5`](https://github.com/afewyards/ha-adaptive-climate/commit/354fbb5d3698f323a3185539057d394989e219b6))
+
+Add valve_actuation_time configuration parameter with heating type defaults: - floor_hydronic: 120s
+  - radiator: 90s - convector: 0s (no valve delay) - forced_air: 30s
+
+Changes: - Add CONF_VALVE_ACTUATION_TIME and HEATING_TYPE_VALVE_DEFAULTS to const.py - Add schema
+  entry in climate_setup.py for valve_actuation_time - Pass valve_actuation_time from config or
+  heating type default to thermostat - Store valve_actuation_time in climate entity __init__ - Add
+  comprehensive test coverage in tests/test_climate_setup.py
+
+Tests verify: - Heating type defaults are correct - PWM validation with climate entities
+
+- Adjust cycle tracking for transport delay
+  ([`889fc2d`](https://github.com/afewyards/ha-adaptive-climate/commit/889fc2df6bb6d512140c5ccbafd12712acfac420))
+
+Add methods to CycleTrackerManager to distinguish valve open time from heat arrival time: -
+  get_heat_arrival_offset(): Returns transport delay in minutes - get_heat_arrival_time(): Returns
+  device_on_time + transport_delay
+
+These methods enable HeaterController to signal demand based on when heat actually arrives at the
+  zone, not when the valve opens.
+
+Transport delay is already tracked via set_transport_delay() and used to exclude dead time from rise
+  time calculations.
+
+Also fix physics.py to use PEP 604 union syntax (requires from __future__ import annotations).
+
+Tests: 115 passed (4 new tests added)
+
+- Delay demand signaling for valve actuation time
+  ([`0e2baaf`](https://github.com/afewyards/ha-adaptive-climate/commit/0e2baafcf3952740ba2c3d697bcc0a8396a9da01))
+
+Updated HeaterController to delay HEATING_STARTED/ENDED events in PWM mode when valve_actuation_time
+  > 0. This models the physical reality that zone demand should only be signaled to the central
+  controller after the zone valve has fully opened (not when the command is sent).
+
+Key changes: - Added valve_actuation_time parameter to HeaterController.__init__ - HEATING_STARTED
+  delayed by valve_actuation_time on turn_on - HEATING_ENDED delayed by half valve_actuation_time on
+  turn_off - Pending open timer cancelled when turning off - Delays only apply to PWM mode (valve
+  mode signals immediately)
+
+Added 5 comprehensive tests covering: - Delayed demand signal on turn_on - Immediate signal when
+  valve_actuation_time=0 - Delayed demand removal on turn_off - Timer cancellation - Valve mode
+  behavior (no delays)
+
+All 58 existing tests pass.
+
+- Integrate valve actuation time into PWM timing
+  ([`a288f84`](https://github.com/afewyards/ha-adaptive-climate/commit/a288f845427dc7a47e734851306cb6a64c6586ae))
+
+Add valve_actuation_time parameter to PWMController to account for valve open/close delays. Extends
+  valve-on duration by half valve time to ensure desired heat delivery, as close command is sent
+  early while valve continues delivering heat during closure.
+
+- Add valve_actuation_time param to __init__ (defaults 0.0) - Add calculate_adjusted_on_time()
+  method for valve-aware timing - Add get_close_command_offset() to return half valve time - Update
+  async_pwm_switch() to use adjusted timing - Add comprehensive unit tests in test_pwm_controller.py
+
+Tests verify timing adjustments for various duty cycles with/without valve delays, and edge cases
+  (zero output, zero difference).
+
+- Split overshoot into controllable vs committed
+  ([`c2da403`](https://github.com/afewyards/ha-adaptive-climate/commit/c2da4039967973b7508b6762914fa05f0d3615d9))
+
+Add calculate_overshoot_components() to separate total overshoot into: - Controllable overshoot:
+  Could have been prevented by earlier cutoff - Committed overshoot: From in-flight heat (valve
+  actuation time)
+
+Update CycleMetrics with optional controllable_overshoot and committed_overshoot fields for backward
+  compatibility.
+
+Update learning.py to prefer controllable_overshoot when available, ensuring PID rules only penalize
+  controllable overshoot, not unavoidable committed heat from valve actuation time.
+
+This prevents over-aggressive Kd increases in systems with high valve actuation times where some
+  overshoot is inevitable.
+
+Tests: - calculate_overshoot_components() with various scenarios - CycleMetrics fields backward
+  compatible - Learning prefers controllable when available, falls back to total
+
+- Wire valve_actuation_time through climate entity initialization
+  ([`866b735`](https://github.com/afewyards/ha-adaptive-climate/commit/866b7350d9c224eb698240e5f1a4cc5c389626b6))
+
+- Pass valve_actuation_time from climate entity to HeaterController - HeaterController creates
+  PWMController with valve_actuation_time - HeaterController creates HeatPipeline when
+  valve_actuation_time > 0 - Add integration tests for end-to-end valve timing flow - Update
+  MockThermostat in test_climate_init.py to include valve_actuation_time
+
+Implements Task 8: valve actuation time now flows through entire initialization chain from config to
+  HeaterController, PWMController, and HeatPipeline.
+
+
 ## v0.54.0 (2026-02-01)
 
 ### Documentation
