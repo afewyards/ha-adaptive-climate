@@ -695,11 +695,15 @@ def _build_status_attribute(thermostat: SmartThermostat) -> dict[str, Any]:
     Returns:
         Dictionary with structure (new format):
         {
-            "state": str,              # "idle" | "heating" | "cooling" | "paused" | "preheating" | "settling"
-            "conditions": list[str],   # List of active conditions (e.g., ["contact_open", "humidity_spike"])
-            "resume_at": str,          # Optional ISO8601 timestamp when pause ends
-            "setback_delta": float,    # Optional temperature delta (night_setback only)
-            "setback_end": str,        # Optional ISO8601 timestamp when night period ends
+            "activity": str,  # "idle" | "heating" | "cooling" | "preheating" | "settling"
+            "overrides": {
+                "contact_open": {...} | None,
+                "humidity": {...} | None,
+                "open_window": {...} | None,
+                "preheating": {...} | None,
+                "night_setback": {...} | None,
+                "learning_grace": {...} | None,
+            }
         }
     """
     from ..const import DOMAIN
@@ -753,73 +757,86 @@ def _build_status_attribute(thermostat: SmartThermostat) -> dict[str, Any]:
         except (TypeError, AttributeError):
             pass
 
-    # Determine active conditions
+    # === Contact open override data ===
+    contact_open = False
+    contact_sensors = None
+    contact_since = None
+    if thermostat._contact_sensor_handler:
+        contact_open = thermostat._contact_sensor_handler.is_any_contact_open()
+        if contact_open:
+            contact_sensors = thermostat._contact_sensor_handler.get_open_sensor_ids()
+            # Get timestamp when first contact opened
+            try:
+                first_open_time = thermostat._contact_sensor_handler.get_first_open_time()
+                if first_open_time:
+                    contact_since = first_open_time.isoformat()
+            except (TypeError, AttributeError):
+                pass
+
+    # === Humidity override data ===
+    humidity_active = False
+    humidity_state = None
+    humidity_resume_at = None
+    if thermostat._humidity_detector:
+        humidity_active = thermostat._humidity_detector.should_pause()
+        if humidity_active:
+            humidity_state = thermostat._humidity_detector.get_state()
+            # Calculate resume timestamp
+            resume_in_seconds = thermostat._humidity_detector.get_time_until_resume()
+            if resume_in_seconds and resume_in_seconds > 0:
+                from datetime import timedelta
+                resume_time = dt_util.utcnow() + timedelta(seconds=resume_in_seconds)
+                humidity_resume_at = resume_time.isoformat()
+
+    # === Open window override data ===
+    open_window_active = False
+    open_window_since = None
+    open_window_resume_at = None
+    # TODO: Get from open window detector when implemented
+
+    # === Preheating override data ===
+    preheating_active = preheat_active
+    preheating_target_time = None
+    preheating_started_at = None
+    preheating_target_delta = None
+    # TODO: Extract preheat details from night setback controller when available
+
+    # === Night setback override data ===
     night_setback_active = False
+    night_setback_delta = None
+    night_setback_ends_at = None
+    night_setback_limited_to = None
     if thermostat._night_setback_controller:
         try:
-            _, in_night, _ = thermostat._night_setback_controller.calculate_night_setback_adjustment()
+            _, in_night, info = thermostat._night_setback_controller.calculate_night_setback_adjustment()
             night_setback_active = in_night
+            if night_setback_active:
+                night_setback_delta = info.get("night_setback_delta")
+                setback_end_time = info.get("night_setback_end")
+                # Convert "HH:MM" to ISO8601
+                if setback_end_time:
+                    from ..managers.status_manager import convert_setback_end
+                    night_setback_ends_at = convert_setback_end(setback_end_time)
+                # Check if limited by learning gate
+                suppressed_reason = info.get("suppressed_reason")
+                if suppressed_reason == "limited" and night_setback_delta is not None:
+                    night_setback_limited_to = night_setback_delta
         except (TypeError, AttributeError, ValueError):
             pass
 
-    open_window_detected = False
-    # TODO: Get from open window detector when implemented
-
-    humidity_spike_active = False
-    if thermostat._humidity_detector:
-        humidity_spike_active = thermostat._humidity_detector.should_pause()
-
-    contact_open = False
-    if thermostat._contact_sensor_handler:
-        contact_open = thermostat._contact_sensor_handler.is_any_contact_open()
-
+    # === Learning grace override data ===
     learning_grace_active = False
+    learning_grace_until = None
     if thermostat._night_setback_controller:
         try:
             learning_grace_active = thermostat._night_setback_controller.in_learning_grace_period
+            if learning_grace_active:
+                # Get grace period end time if available
+                grace_end = getattr(thermostat._night_setback_controller, '_learning_grace_end', None)
+                if grace_end:
+                    learning_grace_until = grace_end.isoformat()
         except (TypeError, AttributeError):
             pass
-
-    # Get resume time (if any pause is active)
-    resume_in_seconds = None
-    if humidity_spike_active and thermostat._humidity_detector:
-        resume_in_seconds = thermostat._humidity_detector.get_time_until_resume()
-    elif contact_open and thermostat._contact_sensor_handler:
-        # If contact is open but not yet causing pause, get countdown
-        if not thermostat._contact_sensor_handler.should_take_action():
-            resume_in_seconds = thermostat._contact_sensor_handler.get_time_until_action()
-
-    # Get night setback info
-    setback_delta = None
-    setback_end_time = None
-    suppressed_reason = None
-    allowed_setback = None
-    if night_setback_active and thermostat._night_setback_controller:
-        try:
-            _, _, info = thermostat._night_setback_controller.calculate_night_setback_adjustment()
-            setback_delta = info.get("night_setback_delta")
-            setback_end_time = info.get("night_setback_end")
-            suppressed_reason = info.get("suppressed_reason")
-            # When suppressed_reason is "limited", setback_delta IS the allowed amount
-            if suppressed_reason == "limited" and setback_delta is not None:
-                allowed_setback = setback_delta
-        except (TypeError, AttributeError, ValueError):
-            pass
-
-    # Debug fields
-    humidity_peak = None
-    open_sensors = None
-    if debug:
-        if thermostat._humidity_detector and humidity_spike_active:
-            try:
-                humidity_peak = getattr(thermostat._humidity_detector, '_peak_humidity', None)
-            except (TypeError, AttributeError):
-                pass
-        if thermostat._contact_sensor_handler and contact_open:
-            try:
-                open_sensors = thermostat._contact_sensor_handler.get_open_sensor_ids()
-            except (TypeError, AttributeError):
-                pass
 
     # Build status using StatusManager
     return status_manager.build_status(
@@ -829,16 +846,23 @@ def _build_status_attribute(thermostat: SmartThermostat) -> dict[str, Any]:
         is_paused=is_paused,
         preheat_active=preheat_active,
         cycle_state=cycle_state,
-        night_setback_active=night_setback_active,
-        open_window_detected=open_window_detected,
-        humidity_spike_active=humidity_spike_active,
         contact_open=contact_open,
+        contact_sensors=contact_sensors,
+        contact_since=contact_since,
+        humidity_active=humidity_active,
+        humidity_state=humidity_state,
+        humidity_resume_at=humidity_resume_at,
+        open_window_active=open_window_active,
+        open_window_since=open_window_since,
+        open_window_resume_at=open_window_resume_at,
+        preheating_active=preheating_active,
+        preheating_target_time=preheating_target_time,
+        preheating_started_at=preheating_started_at,
+        preheating_target_delta=preheating_target_delta,
+        night_setback_active=night_setback_active,
+        night_setback_delta=night_setback_delta,
+        night_setback_ends_at=night_setback_ends_at,
+        night_setback_limited_to=night_setback_limited_to,
         learning_grace_active=learning_grace_active,
-        resume_in_seconds=resume_in_seconds,
-        setback_delta=setback_delta,
-        setback_end_time=setback_end_time,
-        suppressed_reason=suppressed_reason,
-        allowed_setback=allowed_setback,
-        humidity_peak=humidity_peak,
-        open_sensors=open_sensors,
+        learning_grace_until=learning_grace_until,
     )
