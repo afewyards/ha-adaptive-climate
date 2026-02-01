@@ -113,6 +113,7 @@ class StatusManager:
             hvac_mode=hvac_mode,
             heater_on=heater_on,
             cooler_on=cooler_on,
+            preheat_active=preheat_active,
             cycle_state=cycle_state,
         )
 
@@ -139,7 +140,7 @@ class StatusManager:
         )
 
         return {
-            "activity": activity.value,
+            "activity": activity,
             "overrides": overrides,
         }
 
@@ -270,36 +271,42 @@ def derive_state(
     hvac_mode: str,
     heater_on: bool = False,
     cooler_on: bool = False,
+    preheat_active: bool = False,
     cycle_state: str | None = None,
-) -> ThermostatState:
+) -> str:
     """Derive operational activity from thermostat conditions.
 
     Args:
         hvac_mode: Current HVAC mode ("off", "heat", "cool", etc.)
         heater_on: Whether heater is currently active
         cooler_on: Whether cooler is currently active
+        preheat_active: Whether preheating is currently active
         cycle_state: Cycle tracker state ("idle", "heating", "settling", etc.)
 
     Returns:
-        ThermostatState enum value (idle, heating, cooling, settling)
+        Activity string (idle, heating, cooling, settling, preheating)
     """
     # 1. HVAC off
     if hvac_mode == "off":
-        return ThermostatState.IDLE
+        return ThermostatState.IDLE.value
 
-    # 2. Cycle settling
+    # 2. Preheating (highest priority for activity display)
+    if preheat_active:
+        return "preheating"
+
+    # 3. Cycle settling
     if cycle_state == "settling":
-        return ThermostatState.SETTLING
+        return ThermostatState.SETTLING.value
 
-    # 3. Active heating/cooling
+    # 4. Active heating/cooling
     if heater_on:
-        return ThermostatState.HEATING
+        return ThermostatState.HEATING.value
 
     if cooler_on:
-        return ThermostatState.COOLING
+        return ThermostatState.COOLING.value
 
-    # 4. Default
-    return ThermostatState.IDLE
+    # 5. Default
+    return ThermostatState.IDLE.value
 
 
 def build_override(override_type: OverrideType, **kwargs) -> dict[str, Any]:

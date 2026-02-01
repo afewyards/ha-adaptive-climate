@@ -824,9 +824,11 @@ class TestDutyAccumulatorAttributes:
 
         attrs = build_state_attributes(thermostat)
 
-        # duty_accumulator_pct present in debug mode
+        # duty_accumulator_pct present in debug.pwm in debug mode
         assert "duty_accumulator" not in attrs
-        assert "duty_accumulator_pct" in attrs
+        assert "debug" in attrs
+        assert "pwm" in attrs["debug"]
+        assert "duty_accumulator_pct" in attrs["debug"]["pwm"]
 
     def test_accumulator_pct_attribute(self):
         """Test duty_accumulator_pct shows percentage of threshold in debug mode."""
@@ -872,8 +874,10 @@ class TestDutyAccumulatorAttributes:
 
         attrs = build_state_attributes(thermostat)
 
-        assert "duty_accumulator_pct" in attrs
-        assert attrs["duty_accumulator_pct"] == 50.0
+        assert "debug" in attrs
+        assert "pwm" in attrs["debug"]
+        assert "duty_accumulator_pct" in attrs["debug"]["pwm"]
+        assert attrs["debug"]["pwm"]["duty_accumulator_pct"] == 50.0
 
     def test_accumulator_pct_at_threshold(self):
         """Test duty_accumulator_pct shows 100% when at threshold."""
@@ -1371,8 +1375,8 @@ class TestHumidityDetectionAttributes:
         status_attr = _build_status_attribute(thermostat)
 
         # Status should be idle with no conditions
-        assert status_attr["state"] == "idle"
-        assert status_attr["conditions"] == []
+        assert status_attr["activity"] == "idle"
+        assert status_attr["overrides"] == []
         # humidity_detection_state and humidity_resume_in should not be in status attribute
         assert "humidity_detection_state" not in status_attr
         assert "humidity_resume_in" not in status_attr
@@ -1401,8 +1405,8 @@ class TestHumidityDetectionAttributes:
         status_attr = _build_status_attribute(thermostat)
 
         # Status should be idle with no conditions
-        assert status_attr["state"] == "idle"
-        assert status_attr["conditions"] == []
+        assert status_attr["activity"] == "idle"
+        assert status_attr["overrides"] == []
 
     def test_status_active_humidity_paused_state(self):
         """Test status attribute when humidity detector is in paused state."""
@@ -1428,8 +1432,9 @@ class TestHumidityDetectionAttributes:
         status_attr = _build_status_attribute(thermostat)
 
         # Status should be paused with humidity_spike condition
-        assert status_attr["state"] == "paused"
-        assert "humidity_spike" in status_attr["conditions"]
+        assert status_attr["activity"] == "idle"
+        assert len(status_attr["overrides"]) == 1
+        assert status_attr["overrides"][0]["type"] == "humidity"
         assert "resume_at" not in status_attr
 
     def test_status_active_humidity_stabilizing_with_countdown(self):
@@ -1456,8 +1461,9 @@ class TestHumidityDetectionAttributes:
         status_attr = _build_status_attribute(thermostat)
 
         # Status should be paused with humidity_spike condition and resume_at
-        assert status_attr["state"] == "paused"
-        assert "humidity_spike" in status_attr["conditions"]
+        assert status_attr["activity"] == "idle"
+        assert len(status_attr["overrides"]) == 1
+        assert status_attr["overrides"][0]["type"] == "humidity"
         assert "resume_at" in status_attr
 
     def test_status_active_humidity_stabilizing_with_zero_resume_time(self):
@@ -1484,8 +1490,9 @@ class TestHumidityDetectionAttributes:
         status_attr = _build_status_attribute(thermostat)
 
         # Status should be paused with humidity_spike condition, but no resume_at since it's 0
-        assert status_attr["state"] == "paused"
-        assert "humidity_spike" in status_attr["conditions"]
+        assert status_attr["activity"] == "idle"
+        assert len(status_attr["overrides"]) == 1
+        assert status_attr["overrides"][0]["type"] == "humidity"
         # 0 should not be included in resume_at
         assert "resume_at" not in status_attr
 
@@ -1531,7 +1538,7 @@ class TestStatusAttribute:
 
         status_attr = _build_status_attribute(thermostat)
 
-        assert status_attr == {"state": "idle", "conditions": []}
+        assert status_attr == {"activity": "idle", "overrides": []}
 
     def test_status_not_active_contact_closed(self):
         """Test status attribute when contact sensor exists but is closed."""
@@ -1556,7 +1563,7 @@ class TestStatusAttribute:
 
         status_attr = _build_status_attribute(thermostat)
 
-        assert status_attr == {"state": "idle", "conditions": []}
+        assert status_attr == {"activity": "idle", "overrides": []}
 
     def test_status_active_contact(self):
         """Test status attribute when contact sensor status is active."""
@@ -1584,7 +1591,9 @@ class TestStatusAttribute:
 
         status_attr = _build_status_attribute(thermostat)
 
-        assert status_attr == {"state": "paused", "conditions": ["contact_open"]}
+        assert status_attr["activity"] == "idle"
+        assert len(status_attr["overrides"]) == 1
+        assert status_attr["overrides"][0]["type"] == "contact_open"
 
     def test_status_pending_contact(self):
         """Test status attribute when contact is open but not paused yet (in delay)."""
@@ -1609,11 +1618,10 @@ class TestStatusAttribute:
 
         status_attr = _build_status_attribute(thermostat)
 
-        # Contact is open but not paused yet - should show contact_open condition but idle state
-        # Resume_at should be in ISO8601 format
-        assert status_attr["state"] == "idle"
-        assert "contact_open" in status_attr["conditions"]
-        assert "resume_at" in status_attr
+        # Contact is open but not paused yet - should show contact_open override but idle activity
+        assert status_attr["activity"] == "idle"
+        assert len(status_attr["overrides"]) == 1
+        assert status_attr["overrides"][0]["type"] == "contact_open"
 
     def test_status_active_humidity(self):
         """Test status attribute when humidity status is active."""
@@ -1638,7 +1646,9 @@ class TestStatusAttribute:
 
         status_attr = _build_status_attribute(thermostat)
 
-        assert status_attr == {"state": "paused", "conditions": ["humidity_spike"]}
+        assert status_attr ["activity"] == "idle"
+        assert len(status_attr["overrides"]) == 1
+        assert status_attr["overrides"][0]["type"] == "humidity"
 
     def test_status_humidity_stabilizing_with_countdown(self):
         """Test status attribute when humidity is stabilizing with countdown."""
@@ -1663,8 +1673,9 @@ class TestStatusAttribute:
 
         status_attr = _build_status_attribute(thermostat)
 
-        assert status_attr["state"] == "paused"
-        assert "humidity_spike" in status_attr["conditions"]
+        assert status_attr["activity"] == "idle"
+        assert len(status_attr["overrides"]) == 1
+        assert status_attr["overrides"][0]["type"] == "humidity"
         assert "resume_at" in status_attr
 
     def test_status_contact_priority_over_humidity(self):
@@ -1699,8 +1710,10 @@ class TestStatusAttribute:
         status_attr = _build_status_attribute(thermostat)
 
         # Contact should take priority - both conditions shown but contact first
-        assert status_attr["state"] == "paused"
-        assert status_attr["conditions"] == ["contact_open", "humidity_spike"]
+        assert status_attr["activity"] == "idle"
+        assert len(status_attr["overrides"]) == 2
+        assert status_attr["overrides"][0]["type"] == "contact_open"
+        assert status_attr["overrides"][1]["type"] == "humidity"
 
     def test_status_humidity_only_when_no_contact(self):
         """Test humidity detector works when no contact sensor configured."""
@@ -1725,8 +1738,9 @@ class TestStatusAttribute:
 
         status_attr = _build_status_attribute(thermostat)
 
-        assert status_attr["state"] == "paused"
-        assert "humidity_spike" in status_attr["conditions"]
+        assert status_attr["activity"] == "idle"
+        assert len(status_attr["overrides"]) == 1
+        assert status_attr["overrides"][0]["type"] == "humidity"
         assert "resume_at" in status_attr
 
 
@@ -1777,8 +1791,8 @@ class TestStatusAttributeIntegration:
         attrs = build_state_attributes(thermostat)
 
         assert "status" in attrs
-        assert attrs["status"]["state"] == "idle"
-        assert attrs["status"]["conditions"] == []
+        assert attrs["status"]["activity"] == "idle"
+        assert attrs["status"]["overrides"] == []
 
     def test_heating_thermostat_status(self):
         """Test status when thermostat is actively heating."""
@@ -1824,8 +1838,8 @@ class TestStatusAttributeIntegration:
         attrs = build_state_attributes(thermostat)
 
         assert "status" in attrs
-        assert attrs["status"]["state"] == "heating"
-        assert attrs["status"]["conditions"] == []
+        assert attrs["status"]["activity"] == "heating"
+        assert attrs["status"]["overrides"] == []
 
     def test_paused_by_contact_sensor_status(self):
         """Test status when paused by open contact sensor."""
@@ -1880,8 +1894,8 @@ class TestStatusAttributeIntegration:
         attrs = build_state_attributes(thermostat)
 
         assert "status" in attrs
-        assert attrs["status"]["state"] == "paused"
-        assert "contact_open" in attrs["status"]["conditions"]
+        assert attrs["status"]["activity"] == "paused"
+        assert "contact_open" in attrs["status"]["overrides"]
         # No resume_at since contact sensors don't have timed resume
         assert "resume_at" not in attrs["status"]
 
@@ -1936,8 +1950,8 @@ class TestStatusAttributeIntegration:
         attrs = build_state_attributes(thermostat)
 
         assert "status" in attrs
-        assert attrs["status"]["state"] == "paused"
-        assert "humidity_spike" in attrs["status"]["conditions"]
+        assert attrs["status"]["activity"] == "paused"
+        assert "humidity_spike" in attrs["status"]["overrides"]
 
     def test_night_setback_status(self):
         """Test status during night setback period."""
@@ -1994,7 +2008,7 @@ class TestStatusAttributeIntegration:
             attrs = build_state_attributes(thermostat)
 
             assert "status" in attrs
-            assert "night_setback" in attrs["status"]["conditions"]
+            assert "night_setback" in attrs["status"]["overrides"]
             assert attrs["status"]["setback_delta"] == 3.0
             # setback_end should be ISO8601 format
             assert "setback_end" in attrs["status"]
@@ -2055,10 +2069,10 @@ class TestStatusAttributeIntegration:
             attrs = build_state_attributes(thermostat)
 
             assert "status" in attrs
-            assert "night_setback" in attrs["status"]["conditions"]
-            assert "learning_grace" in attrs["status"]["conditions"]
+            assert "night_setback" in attrs["status"]["overrides"]
+            assert "learning_grace" in attrs["status"]["overrides"]
             # Both conditions should be present
-            assert len(attrs["status"]["conditions"]) == 2
+            assert len(attrs["status"]["overrides"]) == 2
 
     def test_preheating_status(self):
         """Test status when preheating before night setback ends."""
@@ -2118,9 +2132,9 @@ class TestStatusAttributeIntegration:
             attrs = build_state_attributes(thermostat)
 
             assert "status" in attrs
-            assert attrs["status"]["state"] == "preheating"
+            assert attrs["status"]["activity"] == "preheating"
             # Night setback condition should still be present
-            assert "night_setback" in attrs["status"]["conditions"]
+            assert "night_setback" in attrs["status"]["overrides"]
 
     def test_settling_status(self):
         """Test status during settling phase after heating cycle."""
@@ -2169,8 +2183,8 @@ class TestStatusAttributeIntegration:
         attrs = build_state_attributes(thermostat)
 
         assert "status" in attrs
-        assert attrs["status"]["state"] == "settling"
-        assert attrs["status"]["conditions"] == []
+        assert attrs["status"]["activity"] == "settling"
+        assert attrs["status"]["overrides"] == []
 
     def test_status_in_extra_state_attributes(self):
         """Test that status appears correctly in build_state_attributes."""
@@ -2218,7 +2232,7 @@ class TestStatusAttributeIntegration:
         assert isinstance(attrs["status"], dict)
         assert "state" in attrs["status"]
         assert "conditions" in attrs["status"]
-        assert isinstance(attrs["status"]["conditions"], list)
+        assert isinstance(attrs["status"]["overrides"], list)
 
     def test_resume_at_is_iso8601_format(self):
         """Test that resume_at timestamps are in ISO8601 format."""
@@ -2317,7 +2331,7 @@ def test_build_debug_object_cycle_group():
     )
 
     assert "cycle" in debug
-    assert debug["cycle"]["state"] == "heating"
+    assert debug["cycle"]["activity"] == "heating"
     assert debug["cycle"]["cycles_collected"] == 4
     assert debug["cycle"]["cycles_required"] == 6
 
