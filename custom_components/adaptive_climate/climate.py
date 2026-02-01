@@ -59,6 +59,8 @@ from .managers.events import (
     ContactPauseEvent,
     ContactResumeEvent,
     TemperatureUpdateEvent,
+    HeatingStartedEvent,
+    HeatingEndedEvent,
 )
 from .managers.state_attributes import build_state_attributes
 from .climate_init import async_setup_managers
@@ -1636,26 +1638,19 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
         if manifold_registry:
             manifold_registry.mark_manifold_active(self.entity_id)
 
-    async def _async_heater_turn_on(self):
-        """Turn heater toggleable device on.
-
-        Delegates to HeaterController for the actual turn on operation.
-        """
-        # Query transport delay and mark manifold active
-        action = "cooling" if self.hvac_mode == HVACMode.COOL else "heating"
+    @callback
+    def _on_heating_started_event(self, event: HeatingStartedEvent) -> None:
+        """Handle HEATING_STARTED event - query manifold transport delay."""
+        action = "cooling" if event.hvac_mode == "cool" else "heating"
         self._query_and_mark_manifold(action)
 
-        # Update cycle durations in case PID mode changed
-        self._heater_controller.update_cycle_durations(
-            self._effective_min_on_seconds,
-            self._min_off_cycle_duration.seconds,
-        )
-        await self._heater_controller.async_turn_on(
-            hvac_mode=self.hvac_mode,
-            get_cycle_start_time=self._get_cycle_start_time,
-            set_is_heating=self._set_is_heating,
-            set_last_heat_cycle_time=self._set_last_heat_cycle_time,
-        )
+    @callback
+    def _on_heating_ended_event(self, event: HeatingEndedEvent) -> None:
+        """Handle HEATING_ENDED event - reset transport delay."""
+        if self._transport_delay is not None:
+            self._pid_controller.reset_dead_time()
+            self._transport_delay = None
+            _LOGGER.debug("%s: Reset transport delay on heating stop", self.entity_id)
 
     async def _async_heater_turn_off(self, force=False):
         """Turn heater toggleable device off.

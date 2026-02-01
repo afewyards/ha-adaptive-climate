@@ -78,6 +78,16 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
     # Create cycle event dispatcher for decoupled event communication
     thermostat._cycle_dispatcher = CycleEventDispatcher()
 
+    # Subscribe to heating events for manifold transport delay
+    thermostat._cycle_dispatcher.subscribe(
+        CycleEventType.HEATING_STARTED,
+        thermostat._on_heating_started_event
+    )
+    thermostat._cycle_dispatcher.subscribe(
+        CycleEventType.HEATING_ENDED,
+        thermostat._on_heating_ended_event
+    )
+
     # Initialize heater controller now that hass is available
     thermostat._heater_controller = HeaterController(
         hass=thermostat.hass,

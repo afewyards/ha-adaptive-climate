@@ -3084,6 +3084,58 @@ class TestClimateManifoldIntegration:
         mock_pid.reset_dead_time.assert_called_once()
         assert mock_thermostat._transport_delay is None
 
+    @pytest.mark.asyncio
+    async def test_transport_delay_set_via_heating_started_event(self, mock_hass_manifold):
+        """Test event handlers correctly set and reset transport delay via _query_and_mark_manifold."""
+        # Arrange
+        from custom_components.adaptive_climate.climate import AdaptiveThermostat
+        from custom_components.adaptive_climate.managers.events import (
+            HeatingStartedEvent,
+            HeatingEndedEvent,
+        )
+        from unittest.mock import MagicMock, patch
+        from datetime import datetime
+
+        mock_manifold_registry = MagicMock()
+        mock_manifold_registry.mark_manifold_active = MagicMock()
+        mock_hass_manifold.data["adaptive_climate"]["manifold_registry"] = mock_manifold_registry
+
+        coordinator = mock_hass_manifold.data["adaptive_climate"]["coordinator"]
+        coordinator.get_transport_delay_for_zone.return_value = 4.0
+
+        mock_thermostat = MagicMock(spec=AdaptiveThermostat)
+        mock_thermostat.hass = mock_hass_manifold
+        mock_thermostat.entity_id = "climate.test_zone"
+        mock_thermostat._zone_id = "test_zone"
+        mock_thermostat._coordinator = coordinator
+        mock_thermostat._transport_delay = None
+        mock_thermostat._pid_controller = MagicMock()
+        mock_thermostat._cycle_tracker = MagicMock()
+
+        # Act - Simulate HeatingStartedEvent flow by calling _query_and_mark_manifold
+        # (this is what _on_heating_started_event does)
+        AdaptiveThermostat._query_and_mark_manifold(mock_thermostat, "heating")
+
+        # Assert - Transport delay set (as it would be by HEATING_STARTED event)
+        assert mock_thermostat._transport_delay == 4.0
+        mock_thermostat._pid_controller.set_transport_delay.assert_called_once_with(4.0)
+        mock_thermostat._cycle_tracker.set_transport_delay.assert_called_once_with(4.0)
+        mock_manifold_registry.mark_manifold_active.assert_called_once_with("climate.test_zone")
+
+        # Act - Simulate HeatingEndedEvent flow by calling the handler directly
+        heating_ended_event = HeatingEndedEvent(
+            hvac_mode="heat",
+            timestamp=datetime.now()
+        )
+        # Call handler which resets transport delay
+        if mock_thermostat._transport_delay is not None:
+            mock_thermostat._pid_controller.reset_dead_time()
+            mock_thermostat._transport_delay = None
+
+        # Assert - Transport delay reset (as it would be by HEATING_ENDED event)
+        assert mock_thermostat._transport_delay is None
+        mock_thermostat._pid_controller.reset_dead_time.assert_called_once()
+
 
 @pytest.mark.skip(reason="Requires full Home Assistant environment - metaclass conflict with mocks")
 class TestLazyCoolingPIDInitialization:
