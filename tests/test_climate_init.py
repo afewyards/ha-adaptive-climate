@@ -37,6 +37,7 @@ class MockThermostat:
         self._demand_switch_entity_id = None
         self._heater_polarity_invert = False
         self._pwm = 900  # 15 minutes
+        self._valve_actuation_time = 0  # Valve actuation time in seconds
         self._difference = 100
         self._min_on_cycle_duration = timedelta(seconds=300)
         self._min_off_cycle_duration = timedelta(seconds=300)

@@ -104,6 +104,7 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
         get_was_clamped=lambda: getattr(thermostat._pid_controller, 'was_clamped', False),
         reset_clamp_state=lambda: thermostat._pid_controller.reset_clamp_state()
             if hasattr(thermostat._pid_controller, 'reset_clamp_state') else None,
+        valve_actuation_time=thermostat._valve_actuation_time,
     )
 
     # Initialize PreheatLearner if preheat is enabled
