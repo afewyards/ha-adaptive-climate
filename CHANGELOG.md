@@ -1,6 +1,33 @@
 # CHANGELOG
 
 
+## v0.58.1 (2026-02-01)
+
+### Bug Fixes
+
+- Suppress E term when above setpoint and fix tolerance clamping
+  ([`2cd3f8f`](https://github.com/afewyards/ha-adaptive-climate/commit/2cd3f8f4660a0928acf11c47891042dc9cfde4f0))
+
+Two PID controller fixes:
+
+1. E term suppression: Only apply outdoor compensation (Ke) when at or below setpoint. When above
+  setpoint (error < 0), room has enough thermal energy - no outdoor compensation needed.
+
+2. Tolerance clamping: Remove flawed integral sign check. When beyond tolerance threshold,
+  heating/cooling should stop regardless of integral state. Previous logic failed once integral went
+  negative from sustained above-setpoint time.
+
+### Testing
+
+- Add tests for E term suppression and tolerance clamping fixes
+  ([`0855d91`](https://github.com/afewyards/ha-adaptive-climate/commit/0855d91ac9574c0a9dac8c963a308fd301cb65d6))
+
+- Add TestETermSuppressionAboveSetpoint: 4 tests verifying E term is suppressed when room is above
+  setpoint (error < 0) - Add TestToleranceClampingWithNegativeIntegral: 5 tests verifying tolerance
+  clamping works regardless of integral sign - Fix clamp state tracking to only set _was_clamped
+  when clamp actually changes output value (prevents false positives)
+
+
 ## v0.58.0 (2026-02-01)
 
 ### Bug Fixes

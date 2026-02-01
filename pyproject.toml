@@ -23,7 +23,7 @@ testpaths = ["tests"]
 
 [project]
 name = "adaptive-climate"
-version = "0.58.0"
+version = "0.58.1"
 description = "Home Assistant custom component for PID-based thermostat control with adaptive learning"
 readme = "README.md"
 license = {text = "MIT"}
