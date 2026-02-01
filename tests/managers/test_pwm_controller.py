@@ -186,3 +186,64 @@ class TestPWMControllerValveActuation:
         # Large duty (50% = 450s) exceeds min, so use calculated
         time_on = controller.calculate_adjusted_on_time(50, 100)
         assert time_on == 450.0 + 120.0  # calculated heat + actuator
+
+    def test_set_transport_delay_updates_internal_state(self, mock_thermostat):
+        """set_transport_delay updates internal transport delay."""
+        controller = PWMController(
+            thermostat=mock_thermostat,
+            pwm_duration=900,
+            difference=100,
+            min_on_cycle_duration=0,
+            min_off_cycle_duration=0,
+            valve_actuation_time=120.0,
+        )
+
+        controller.set_transport_delay(180.0)
+        assert controller._transport_delay == 180.0
+
+    def test_calculate_adjusted_on_time_includes_transport_delay(self, mock_thermostat):
+        """Adjusted on-time includes transport delay + valve time + heat duration."""
+        controller = PWMController(
+            thermostat=mock_thermostat,
+            pwm_duration=900,
+            difference=100,
+            min_on_cycle_duration=0,
+            min_off_cycle_duration=0,
+            valve_actuation_time=120.0,
+        )
+
+        # Set transport delay (manifold pipes cold)
+        controller.set_transport_delay(180.0)
+
+        time_on = controller.calculate_adjusted_on_time(
+            control_output=50,
+            difference=100,
+        )
+
+        # 50% of 900s = 450s heat
+        # + 180s transport delay
+        # + 120s valve actuation
+        # = 750s total
+        assert time_on == 750.0
+
+    def test_calculate_adjusted_on_time_zero_transport_delay(self, mock_thermostat):
+        """Zero transport delay is ignored in calculation."""
+        controller = PWMController(
+            thermostat=mock_thermostat,
+            pwm_duration=900,
+            difference=100,
+            min_on_cycle_duration=0,
+            min_off_cycle_duration=0,
+            valve_actuation_time=120.0,
+        )
+
+        # No transport delay set (manifold already warm)
+        controller.set_transport_delay(0.0)
+
+        time_on = controller.calculate_adjusted_on_time(
+            control_output=50,
+            difference=100,
+        )
+
+        # 50% of 900s = 450s heat + 120s valve = 570s
+        assert time_on == 570.0

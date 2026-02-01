@@ -256,6 +256,15 @@ class HeaterController:
                 min_on_cycle_duration, min_off_cycle_duration
             )
 
+    def set_transport_delay(self, delay_seconds: float) -> None:
+        """Set the manifold transport delay.
+
+        Args:
+            delay_seconds: Transport delay in seconds (0 if manifold warm)
+        """
+        if self._pwm_controller:
+            self._pwm_controller.set_transport_delay(delay_seconds)
+
     @property
     def heater_control_failed(self) -> bool:
         """Return True if the last heater control operation failed."""

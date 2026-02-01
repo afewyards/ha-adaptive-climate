@@ -236,6 +236,14 @@ class ClimateControlMixin:
             self._effective_min_on_seconds,
             self._min_off_cycle_duration.seconds,
         )
+
+        # Query transport delay from coordinator and set on heater controller
+        # This must happen BEFORE async_set_control_value for PWM calculation
+        coordinator = self.hass.data.get(DOMAIN, {}).get("coordinator") if self._zone_id else None
+        if coordinator:
+            transport_delay_minutes = coordinator.get_transport_delay_for_zone(self._zone_id)
+            self._heater_controller.set_transport_delay(transport_delay_minutes * 60)
+
         await self._heater_controller.async_set_control_value(
             control_output=self._control_output,
             hvac_mode=self.hvac_mode,

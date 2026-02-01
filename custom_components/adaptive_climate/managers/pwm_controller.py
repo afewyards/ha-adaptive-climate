@@ -55,6 +55,7 @@ class PWMController:
         self._min_on_cycle_duration = min_on_cycle_duration
         self._min_off_cycle_duration = min_off_cycle_duration
         self._valve_actuation_time = valve_actuation_time
+        self._transport_delay: float = 0.0
 
         # Duty accumulator for sub-threshold outputs
         self._duty_accumulator_seconds: float = 0.0
@@ -76,6 +77,14 @@ class PWMController:
         """
         self._min_on_cycle_duration = min_on_cycle_duration
         self._min_off_cycle_duration = min_off_cycle_duration
+
+    def set_transport_delay(self, delay_seconds: float) -> None:
+        """Set the manifold transport delay.
+
+        Args:
+            delay_seconds: Transport delay in seconds (0 if manifold warm)
+        """
+        self._transport_delay = delay_seconds
 
     @property
     def _max_accumulator(self) -> float:
@@ -139,10 +148,11 @@ class PWMController:
         control_output: float,
         difference: float,
     ) -> float:
-        """Calculate valve-on duration accounting for actuation delay.
+        """Calculate valve-on duration accounting for actuation and transport delays.
 
-        For valves with actuation time, the valve must first fully open before
-        heat delivery begins. The total on-time is:
+        For valves with actuation time and manifold transport delay, heat doesn't
+        arrive until pipes fill and valve opens. The total on-time is:
+        - transport_delay: time for hot water to reach zone (0 if warm)
         - actuator_time: time for valve to fully open
         - heat_duration: actual heat delivery time (≥ min_on_cycle_duration)
 
@@ -157,9 +167,9 @@ class PWMController:
         if heat_duration == 0:
             return 0.0
 
-        # Total on-time = valve open time + max(heat_duration, min_on_cycle)
-        # This ensures the valve is fully open before heat delivery begins
-        return self._valve_actuation_time + max(
+        # Total on-time = transport delay + valve open time + max(heat_duration, min_on_cycle)
+        # This ensures heat arrives and valve is fully open before heat delivery begins
+        return self._transport_delay + self._valve_actuation_time + max(
             heat_duration,
             self._min_on_cycle_duration,
         )
