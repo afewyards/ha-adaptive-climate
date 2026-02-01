@@ -1028,3 +1028,76 @@ class TestBuildOverrides:
         assert len(overrides) == 2
         assert overrides[0]["type"] == "preheating"
         assert overrides[1]["type"] == "night_setback"
+
+
+class TestBuildStatusNewStructure:
+    """Test StatusManager.build_status() new structure (activity + overrides)."""
+
+    def test_build_status_new_structure(self):
+        """build_status should return activity + overrides structure."""
+        manager = StatusManager()
+        status = manager.build_status(
+            hvac_mode="heat",
+            heater_on=True,
+            contact_open=True,
+            contact_sensors=["binary_sensor.window"],
+            contact_since="2024-01-15T10:30:00+00:00",
+        )
+
+        # New structure
+        assert "activity" in status
+        assert "overrides" in status
+        assert status["activity"] == "heating"
+        assert len(status["overrides"]) == 1
+        assert status["overrides"][0]["type"] == "contact_open"
+
+        # Old fields should not be present
+        assert "state" not in status
+        assert "conditions" not in status
+
+    def test_build_status_idle_with_no_overrides(self):
+        """Idle activity with no overrides should return empty list."""
+        manager = StatusManager()
+        status = manager.build_status(hvac_mode="off")
+
+        assert status["activity"] == "idle"
+        assert status["overrides"] == []
+
+    def test_build_status_multiple_overrides_in_priority_order(self):
+        """Multiple overrides should be in priority order."""
+        manager = StatusManager()
+        status = manager.build_status(
+            hvac_mode="heat",
+            heater_on=True,
+            contact_open=True,
+            contact_sensors=["binary_sensor.window"],
+            contact_since="2024-01-15T10:30:00+00:00",
+            humidity_active=True,
+            humidity_state="paused",
+            humidity_resume_at="2024-01-15T11:00:00+00:00",
+            night_setback_active=True,
+            night_setback_delta=-2.0,
+            night_setback_ends_at="2024-01-15T07:00:00+00:00",
+        )
+
+        assert status["activity"] == "heating"
+        assert len(status["overrides"]) == 3
+        assert status["overrides"][0]["type"] == "contact_open"
+        assert status["overrides"][1]["type"] == "humidity"
+        assert status["overrides"][2]["type"] == "night_setback"
+
+    def test_build_status_preheating_activity(self):
+        """Preheating activity should show in status."""
+        manager = StatusManager()
+        status = manager.build_status(
+            hvac_mode="heat",
+            preheat_active=True,
+            preheating_active=True,
+            preheating_target_time="07:00",
+            preheating_started_at="2024-01-15T05:30:00+00:00",
+            preheating_target_delta=2.0,
+        )
+
+        assert status["activity"] == "preheating"
+        assert len(status["overrides"]) == 1
+        assert status["overrides"][0]["type"] == "preheating"

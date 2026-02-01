@@ -24,29 +24,12 @@ if TYPE_CHECKING:
 class StatusInfo(TypedDict):
     """Status attribute structure for thermostat entity.
 
-    Minimal (default):
-        state: Current operational state
-        conditions: List of active conditions (always present, may be empty)
-        resume_at: ISO8601 timestamp when pause ends (optional)
-        setback_delta: Temperature adjustment in °C during night_setback (optional)
-        setback_end: ISO8601 timestamp when night period ends (optional)
-        suppressed_reason: Reason night setback was suppressed (optional)
-        allowed_setback: Maximum allowed setback delta when limited (optional)
-
-    Rich (debug mode):
-        humidity_peak: Peak humidity % when humidity_spike active (optional)
-        open_sensors: List of contact sensor entity IDs that triggered (optional)
+    New structure (v2):
+        activity: Current activity (idle|heating|cooling|settling)
+        overrides: Priority-ordered list of active overrides
     """
-    state: str
-    conditions: list[str]
-    resume_at: NotRequired[str]
-    setback_delta: NotRequired[float]
-    setback_end: NotRequired[str]
-    suppressed_reason: NotRequired[str]
-    allowed_setback: NotRequired[float]
-    # Debug fields
-    humidity_peak: NotRequired[float]
-    open_sensors: NotRequired[list[str]]
+    activity: str
+    overrides: list[dict[str, Any]]
 
 
 class StatusManager:
@@ -95,28 +78,38 @@ class StatusManager:
         is_paused: bool = False,
         preheat_active: bool = False,
         cycle_state: str | None = None,
-        # Condition inputs
-        night_setback_active: bool = False,
-        open_window_detected: bool = False,
-        humidity_spike_active: bool = False,
+        # Contact open override
         contact_open: bool = False,
+        contact_sensors: list[str] | None = None,
+        contact_since: str | None = None,
+        # Humidity override
+        humidity_active: bool = False,
+        humidity_state: str | None = None,
+        humidity_resume_at: str | None = None,
+        # Open window override
+        open_window_active: bool = False,
+        open_window_since: str | None = None,
+        open_window_resume_at: str | None = None,
+        # Preheating override
+        preheating_active: bool = False,
+        preheating_target_time: str | None = None,
+        preheating_started_at: str | None = None,
+        preheating_target_delta: float | None = None,
+        # Night setback override
+        night_setback_active: bool = False,
+        night_setback_delta: float | None = None,
+        night_setback_ends_at: str | None = None,
+        night_setback_limited_to: float | None = None,
+        # Learning grace override
         learning_grace_active: bool = False,
-        # Optional values for status info
-        resume_in_seconds: int | None = None,
-        setback_delta: float | None = None,
-        setback_end_time: str | None = None,  # "HH:MM" format
-        suppressed_reason: str | None = None,
-        allowed_setback: float | None = None,
-        # Debug values (only used when debug=True)
-        humidity_peak: float | None = None,
-        open_sensors: list[str] | None = None,
+        learning_grace_until: str | None = None,
     ) -> StatusInfo:
         """Build complete status attribute.
 
         Returns:
-            StatusInfo dict with state, conditions, and optional fields
+            StatusInfo dict with activity and overrides
         """
-        state = derive_state(
+        activity = derive_state(
             hvac_mode=hvac_mode,
             heater_on=heater_on,
             cooler_on=cooler_on,
@@ -125,45 +118,32 @@ class StatusManager:
             cycle_state=cycle_state,
         )
 
-        conditions = build_conditions(
-            night_setback_active=night_setback_active,
-            open_window_detected=open_window_detected,
-            humidity_spike_active=humidity_spike_active,
+        overrides = build_overrides(
             contact_open=contact_open,
+            contact_sensors=contact_sensors,
+            contact_since=contact_since,
+            humidity_active=humidity_active,
+            humidity_state=humidity_state,
+            humidity_resume_at=humidity_resume_at,
+            open_window_active=open_window_active,
+            open_window_since=open_window_since,
+            open_window_resume_at=open_window_resume_at,
+            preheating_active=preheating_active,
+            preheating_target_time=preheating_target_time,
+            preheating_started_at=preheating_started_at,
+            preheating_target_delta=preheating_target_delta,
+            night_setback_active=night_setback_active,
+            night_setback_delta=night_setback_delta,
+            night_setback_ends_at=night_setback_ends_at,
+            night_setback_limited_to=night_setback_limited_to,
             learning_grace_active=learning_grace_active,
+            learning_grace_until=learning_grace_until,
         )
 
-        result: StatusInfo = {
-            "state": state.value,
-            "conditions": conditions,
+        return {
+            "activity": activity.value,
+            "overrides": overrides,
         }
-
-        # Add optional fields if present
-        resume_at = calculate_resume_at(resume_in_seconds)
-        if resume_at:
-            result["resume_at"] = resume_at
-
-        if setback_delta is not None:
-            result["setback_delta"] = setback_delta
-
-        setback_end = convert_setback_end(setback_end_time)
-        if setback_end:
-            result["setback_end"] = setback_end
-
-        if suppressed_reason is not None:
-            result["suppressed_reason"] = suppressed_reason
-
-        if allowed_setback is not None:
-            result["allowed_setback"] = allowed_setback
-
-        # Debug fields only when debug mode enabled
-        if self._debug:
-            if humidity_peak is not None:
-                result["humidity_peak"] = humidity_peak
-            if open_sensors is not None and len(open_sensors) > 0:
-                result["open_sensors"] = open_sensors
-
-        return result
 
     def is_paused(self) -> bool:
         """Check if heating should be paused.
