@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v0.57.2 (2026-02-01)
+
+### Bug Fixes
+
+- Add missing heating_type property to AdaptiveThermostat
+  ([`d3dcaf6`](https://github.com/afewyards/ha-adaptive-climate/commit/d3dcaf6eeb0310beb343c3ebd0041818c53efec5))
+
+The ThermostatState protocol defines heating_type as public, but only _heating_type (private)
+  existed, causing clear_learning service to fail.
+
+
 ## v0.57.1 (2026-02-01)
 
 ### Bug Fixes
