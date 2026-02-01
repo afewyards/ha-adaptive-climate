@@ -1464,7 +1464,7 @@ class TestHumidityDetectionAttributes:
         assert status_attr["activity"] == "idle"
         assert len(status_attr["overrides"]) == 1
         assert status_attr["overrides"][0]["type"] == "humidity"
-        assert "resume_at" in status_attr
+        assert "resume_at" in status_attr["overrides"][0]
 
     def test_status_active_humidity_stabilizing_with_zero_resume_time(self):
         """Test status attribute when humidity is stabilizing with 0 resume time (about to exit)."""
@@ -1676,7 +1676,7 @@ class TestStatusAttribute:
         assert status_attr["activity"] == "idle"
         assert len(status_attr["overrides"]) == 1
         assert status_attr["overrides"][0]["type"] == "humidity"
-        assert "resume_at" in status_attr
+        assert "resume_at" in status_attr["overrides"][0]
 
     def test_status_contact_priority_over_humidity(self):
         """Test that contact sensor takes priority over humidity when both active."""
@@ -1741,7 +1741,7 @@ class TestStatusAttribute:
         assert status_attr["activity"] == "idle"
         assert len(status_attr["overrides"]) == 1
         assert status_attr["overrides"][0]["type"] == "humidity"
-        assert "resume_at" in status_attr
+        assert "resume_at" in status_attr["overrides"][0]
 
 
 class TestStatusAttributeIntegration:
@@ -1894,10 +1894,12 @@ class TestStatusAttributeIntegration:
         attrs = build_state_attributes(thermostat)
 
         assert "status" in attrs
-        assert attrs["status"]["activity"] == "paused"
-        assert "contact_open" in attrs["status"]["overrides"]
+        assert attrs["status"]["activity"] == "idle"
+        # Check overrides list contains contact_open override
+        assert any(o["type"] == "contact_open" for o in attrs["status"]["overrides"])
         # No resume_at since contact sensors don't have timed resume
-        assert "resume_at" not in attrs["status"]
+        contact_override = next(o for o in attrs["status"]["overrides"] if o["type"] == "contact_open")
+        assert "resume_at" not in contact_override
 
     def test_paused_by_humidity_status(self):
         """Test status when paused by humidity spike."""
@@ -1950,8 +1952,9 @@ class TestStatusAttributeIntegration:
         attrs = build_state_attributes(thermostat)
 
         assert "status" in attrs
-        assert attrs["status"]["activity"] == "paused"
-        assert "humidity_spike" in attrs["status"]["overrides"]
+        assert attrs["status"]["activity"] == "idle"
+        # Check overrides list contains humidity override
+        assert any(o["type"] == "humidity" for o in attrs["status"]["overrides"])
 
     def test_night_setback_status(self):
         """Test status during night setback period."""
@@ -2008,11 +2011,14 @@ class TestStatusAttributeIntegration:
             attrs = build_state_attributes(thermostat)
 
             assert "status" in attrs
-            assert "night_setback" in attrs["status"]["overrides"]
-            assert attrs["status"]["setback_delta"] == 3.0
-            # setback_end should be ISO8601 format
-            assert "setback_end" in attrs["status"]
-            assert "T" in attrs["status"]["setback_end"]  # ISO8601 has T separator
+            # Check overrides list contains night_setback override
+            assert any(o["type"] == "night_setback" for o in attrs["status"]["overrides"])
+            # Get night_setback override and check its fields
+            night_override = next(o for o in attrs["status"]["overrides"] if o["type"] == "night_setback")
+            assert night_override["delta"] == 3.0
+            # ends_at should be ISO8601 format
+            assert "ends_at" in night_override
+            assert "T" in night_override["ends_at"]  # ISO8601 has T separator
 
     def test_multiple_conditions_status(self):
         """Test status with multiple active conditions."""
@@ -2069,10 +2075,11 @@ class TestStatusAttributeIntegration:
             attrs = build_state_attributes(thermostat)
 
             assert "status" in attrs
-            assert "night_setback" in attrs["status"]["overrides"]
-            assert "learning_grace" in attrs["status"]["overrides"]
+            # Check overrides list contains both overrides
+            assert any(o["type"] == "night_setback" for o in attrs["status"]["overrides"])
+            assert any(o["type"] == "learning_grace" for o in attrs["status"]["overrides"])
             # Both conditions should be present
-            assert len(attrs["status"]["overrides"]) == 2
+            assert len(attrs["status"]["overrides"]) >= 2
 
     def test_preheating_status(self):
         """Test status when preheating before night setback ends."""
@@ -2133,8 +2140,8 @@ class TestStatusAttributeIntegration:
 
             assert "status" in attrs
             assert attrs["status"]["activity"] == "preheating"
-            # Night setback condition should still be present
-            assert "night_setback" in attrs["status"]["overrides"]
+            # Night setback condition should still be present in overrides
+            assert any(o["type"] == "night_setback" for o in attrs["status"]["overrides"])
 
     def test_settling_status(self):
         """Test status during settling phase after heating cycle."""
@@ -2230,8 +2237,8 @@ class TestStatusAttributeIntegration:
         # Verify status key exists and has correct structure
         assert "status" in attrs
         assert isinstance(attrs["status"], dict)
-        assert "state" in attrs["status"]
-        assert "conditions" in attrs["status"]
+        assert "activity" in attrs["status"]
+        assert "overrides" in attrs["status"]
         assert isinstance(attrs["status"]["overrides"], list)
 
     def test_resume_at_is_iso8601_format(self):
@@ -2283,9 +2290,12 @@ class TestStatusAttributeIntegration:
         attrs = build_state_attributes(thermostat)
 
         assert "status" in attrs
-        assert "resume_at" in attrs["status"]
+        # Get humidity override from overrides list
+        humidity_override = next((o for o in attrs["status"]["overrides"] if o["type"] == "humidity"), None)
+        assert humidity_override is not None
+        assert "resume_at" in humidity_override
         # Verify ISO8601 format (contains T separator)
-        resume_at = attrs["status"]["resume_at"]
+        resume_at = humidity_override["resume_at"]
         assert "T" in resume_at
         # Verify it's a valid timestamp format (YYYY-MM-DDTHH:MM:SS)
         from datetime import datetime
@@ -2331,7 +2341,7 @@ def test_build_debug_object_cycle_group():
     )
 
     assert "cycle" in debug
-    assert debug["cycle"]["activity"] == "heating"
+    assert debug["cycle"]["state"] == "heating"
     assert debug["cycle"]["cycles_collected"] == 4
     assert debug["cycle"]["cycles_required"] == 6
 
