@@ -21,6 +21,13 @@ OPTIMIZED_CONFIDENCE_THRESHOLD = 0.95
 def build_state_attributes(thermostat: SmartThermostat) -> dict[str, Any]:
     """Build the extra state attributes dictionary for a thermostat entity.
 
+    New grouped structure:
+    - Flat restoration fields: integral, outdoor_temp_lagged, cycle_count, control_output
+    - Preset temperatures: away_temp, eco_temp, etc. (if present)
+    - status: grouped operational status (activity, overrides)
+    - learning: grouped learning metrics (status, confidence, pid_history)
+    - debug: grouped debug info (only if debug mode)
+
     Args:
         thermostat: The SmartThermostat instance to build attributes for.
 
@@ -29,42 +36,53 @@ def build_state_attributes(thermostat: SmartThermostat) -> dict[str, Any]:
     """
     from ..const import DOMAIN
 
-    # Core attributes - always present
+    # Flat restoration fields
+    heater_count = (
+        thermostat._heater_controller.heater_cycle_count
+        if thermostat._heater_controller
+        else 0
+    )
+    cooler_count = (
+        thermostat._heater_controller.cooler_cycle_count
+        if thermostat._heater_controller
+        else 0
+    )
+    is_demand_switch = hasattr(thermostat, '_demand_switch_entity_id') and thermostat._demand_switch_entity_id is not None
+
     attrs: dict[str, Any] = {
         "integration": DOMAIN,
         "control_output": thermostat._control_output,
-        # Outdoor temperature lag state
         "outdoor_temp_lagged": thermostat._pid_controller.outdoor_temp_lagged,
-        # Actuator wear tracking - cycle counts
-        "heater_cycle_count": (
-            thermostat._heater_controller.heater_cycle_count
-            if thermostat._heater_controller
-            else 0
-        ),
-        "cooler_cycle_count": (
-            thermostat._heater_controller.cooler_cycle_count
-            if thermostat._heater_controller
-            else 0
-        ),
-        # PID integral - always persisted for restoration
+        "cycle_count": build_cycle_count(heater_count, cooler_count, is_demand_switch),
         "integral": thermostat.pid_control_i,
     }
 
-    # Debug-only core attributes
-    debug_mode = thermostat.hass.data.get(DOMAIN, {}).get("debug", False)
-    if debug_mode:
-        attrs["duty_accumulator_pct"] = _compute_duty_accumulator_pct(thermostat)
+    # Add preset temperatures if they exist
+    preset_attrs = [
+        "_away_temp", "_eco_temp", "_boost_temp", "_comfort_temp",
+        "_home_temp", "_sleep_temp", "_activity_temp"
+    ]
+    for attr_name in preset_attrs:
+        if hasattr(thermostat, attr_name):
+            value = getattr(thermostat, attr_name, None)
+            if value is not None:
+                attrs[attr_name[1:]] = value  # Remove leading underscore
 
-    # Consolidated status attribute
+    # Consolidated status attribute (using new structure from StatusManager)
     attrs["status"] = _build_status_attribute(thermostat)
 
-    # Learning/adaptation status
-    _add_learning_status_attributes(thermostat, attrs)
+    # Learning object (grouped: status, confidence, pid_history)
+    _add_learning_object(thermostat, attrs)
 
-    # Preheat status
+    # Debug object (grouped by feature)
+    debug_mode = thermostat.hass.data.get(DOMAIN, {}).get("debug", False)
+    if debug_mode:
+        _add_debug_object(thermostat, attrs)
+
+    # Preheat status (legacy - will be moved to debug later)
     _add_preheat_attributes(thermostat, attrs)
 
-    # Humidity detection status
+    # Humidity detection status (legacy - will be moved to debug later)
     _add_humidity_detection_attributes(thermostat, attrs)
 
     # Auto mode switching status (coordinator-level)
@@ -251,6 +269,144 @@ def _add_learning_status_attributes(
             for entry in pid_history
         ]
         attrs[ATTR_PID_HISTORY] = formatted_history
+
+
+def _add_learning_object(
+    thermostat: SmartThermostat, attrs: dict[str, Any]
+) -> None:
+    """Add learning object with status, confidence, and pid_history.
+
+    Args:
+        thermostat: The SmartThermostat instance
+        attrs: Dictionary to update with learning object
+    """
+    from ..const import DOMAIN, MIN_CYCLES_FOR_LEARNING
+
+    # Get adaptive learner and cycle tracker from coordinator
+    coordinator = thermostat._coordinator
+    if not coordinator:
+        # No coordinator means no learning - create empty learning object
+        attrs["learning"] = build_learning_object(status="idle", confidence=0)
+        return
+
+    # Use typed coordinator method to get zone data
+    zone_info = coordinator.get_zone_by_climate_entity(thermostat.entity_id)
+    if zone_info is None:
+        attrs["learning"] = build_learning_object(status="idle", confidence=0)
+        return
+
+    _, zone_data = zone_info
+    adaptive_learner = zone_data.get("adaptive_learner")
+    cycle_tracker = zone_data.get("cycle_tracker")
+
+    if not adaptive_learner or not cycle_tracker:
+        attrs["learning"] = build_learning_object(status="idle", confidence=0)
+        return
+
+    # Get cycle count and convergence confidence
+    cycle_count = adaptive_learner.get_cycle_count()
+    convergence_confidence = adaptive_learner.get_convergence_confidence()
+
+    # Get heating type from thermostat
+    heating_type = thermostat._heating_type if hasattr(thermostat, '_heating_type') else None
+
+    # Detect all pause conditions
+    is_paused = False
+
+    # Check learning grace period
+    if thermostat._night_setback_controller:
+        try:
+            is_paused = thermostat._night_setback_controller.in_learning_grace_period
+        except (TypeError, AttributeError):
+            pass
+
+    # Check contact sensor pause
+    if not is_paused and thermostat._contact_sensor_handler:
+        try:
+            is_paused = thermostat._contact_sensor_handler.is_any_contact_open()
+        except (TypeError, AttributeError):
+            pass
+
+    # Check humidity pause
+    if not is_paused and thermostat._humidity_detector:
+        try:
+            is_paused = thermostat._humidity_detector.should_pause()
+        except (TypeError, AttributeError):
+            pass
+
+    # Compute learning status
+    learning_status = _compute_learning_status(
+        cycle_count, convergence_confidence, heating_type, is_paused
+    )
+
+    # Build learning object
+    attrs["learning"] = build_learning_object(
+        status=learning_status,
+        confidence=round(convergence_confidence * 100)
+    )
+
+    # Add PID history to learning object (if non-empty)
+    pid_history = thermostat._gains_manager.get_history() if thermostat._gains_manager else []
+    if pid_history:
+        formatted_history = [
+            {
+                "timestamp": entry["timestamp"],
+                "kp": round(entry["kp"], 2),
+                "ki": round(entry["ki"], 4),
+                "kd": round(entry["kd"], 2),
+                "ke": round(entry.get("ke", 0.0), 2),
+                "reason": entry["reason"],
+            }
+            for entry in pid_history
+        ]
+        attrs["learning"]["pid_history"] = formatted_history
+
+
+def _add_debug_object(
+    thermostat: SmartThermostat, attrs: dict[str, Any]
+) -> None:
+    """Add debug object grouped by feature.
+
+    Args:
+        thermostat: The SmartThermostat instance
+        attrs: Dictionary to update with debug object
+    """
+    from ..const import MIN_CYCLES_FOR_LEARNING
+
+    # Get adaptive learner from coordinator
+    coordinator = thermostat._coordinator
+    adaptive_learner = None
+    cycle_tracker = None
+    if coordinator:
+        zone_info = coordinator.get_zone_by_climate_entity(thermostat.entity_id)
+        if zone_info:
+            _, zone_data = zone_info
+            adaptive_learner = zone_data.get("adaptive_learner")
+            cycle_tracker = zone_data.get("cycle_tracker")
+
+    # Collect debug kwargs
+    debug_kwargs = {}
+
+    # PWM group
+    if thermostat._heater_controller:
+        debug_kwargs["pwm_duty_accumulator_pct"] = _compute_duty_accumulator_pct(thermostat)
+
+    # Cycle group
+    if cycle_tracker:
+        debug_kwargs["cycle_state"] = cycle_tracker.get_state_name()
+    if adaptive_learner:
+        debug_kwargs["cycle_cycles_collected"] = adaptive_learner.get_cycle_count()
+    debug_kwargs["cycle_cycles_required"] = MIN_CYCLES_FOR_LEARNING
+
+    # Undershoot group
+    if adaptive_learner and hasattr(adaptive_learner, '_undershoot_detector') and adaptive_learner._undershoot_detector:
+        detector = adaptive_learner._undershoot_detector
+        debug_kwargs["undershoot_thermal_debt"] = round(detector.thermal_debt, 2)
+        debug_kwargs["undershoot_consecutive_failures"] = detector.consecutive_undershoot_cycles
+        debug_kwargs["undershoot_ki_boost_applied"] = round(detector.cumulative_ki_multiplier, 3)
+
+    # Build debug object
+    attrs["debug"] = build_debug_object(**debug_kwargs)
 
 
 def _add_preheat_attributes(
