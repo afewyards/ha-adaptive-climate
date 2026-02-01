@@ -113,8 +113,6 @@ class StatusManager:
             hvac_mode=hvac_mode,
             heater_on=heater_on,
             cooler_on=cooler_on,
-            is_paused=is_paused,
-            preheat_active=preheat_active,
             cycle_state=cycle_state,
         )
 
@@ -272,55 +270,35 @@ def derive_state(
     hvac_mode: str,
     heater_on: bool = False,
     cooler_on: bool = False,
-    is_paused: bool = False,
-    preheat_active: bool = False,
     cycle_state: str | None = None,
 ) -> ThermostatState:
-    """Derive operational state from thermostat conditions.
-
-    Priority order:
-    1. HVAC off → idle
-    2. Any pause → paused
-    3. Preheat active → preheating
-    4. Cycle settling → settling
-    5. Heater/cooler on → heating/cooling
-    6. Default → idle
+    """Derive operational activity from thermostat conditions.
 
     Args:
         hvac_mode: Current HVAC mode ("off", "heat", "cool", etc.)
         heater_on: Whether heater is currently active
         cooler_on: Whether cooler is currently active
-        is_paused: Whether heating/cooling is paused by any condition
-        preheat_active: Whether predictive preheat is running
         cycle_state: Cycle tracker state ("idle", "heating", "settling", etc.)
 
     Returns:
-        ThermostatState enum value
+        ThermostatState enum value (idle, heating, cooling, settling)
     """
     # 1. HVAC off
     if hvac_mode == "off":
         return ThermostatState.IDLE
 
-    # 2. Any pause condition blocks heating/cooling
-    if is_paused:
-        return ThermostatState.PAUSED
-
-    # 3. Preheat active
-    if preheat_active:
-        return ThermostatState.PREHEATING
-
-    # 4. Cycle settling
+    # 2. Cycle settling
     if cycle_state == "settling":
         return ThermostatState.SETTLING
 
-    # 5. Active heating/cooling
+    # 3. Active heating/cooling
     if heater_on:
         return ThermostatState.HEATING
 
     if cooler_on:
         return ThermostatState.COOLING
 
-    # 6. Default
+    # 4. Default
     return ThermostatState.IDLE
 
 
