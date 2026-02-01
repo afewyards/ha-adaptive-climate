@@ -309,8 +309,8 @@ class ControlOutputManager:
         force_off: bool,
         set_force_on: Callable[[bool], None],
         set_force_off: Callable[[bool], None],
-        min_on_cycle_duration_seconds: float,
-        min_off_cycle_duration_seconds: float,
+        min_open_time_seconds: float,
+        min_closed_time_seconds: float,
     ) -> None:
         """Set output value for heater by delegating to HeaterController.
 
@@ -323,11 +323,11 @@ class ControlOutputManager:
             time_changed: Last time state changed
             set_time_changed: Callback to set time changed
             force_on: Force turn on flag
-            force_off: Force turn off flag
+            force_off: Force off flag
             set_force_on: Callback to set force on flag
             set_force_off: Callback to set force off flag
-            min_on_cycle_duration_seconds: Minimum on cycle duration in seconds
-            min_off_cycle_duration_seconds: Minimum off cycle duration in seconds
+            min_open_time_seconds: Minimum open time in seconds
+            min_closed_time_seconds: Minimum closed time in seconds
         """
         if self._heater_controller is None:
             _LOGGER.warning(
@@ -336,10 +336,10 @@ class ControlOutputManager:
             )
             return
 
-        # Update cycle durations in case PID mode changed
-        self._heater_controller.update_cycle_durations(
-            min_on_cycle_duration_seconds,
-            min_off_cycle_duration_seconds,
+        # Update open/closed times in case PID mode changed
+        self._heater_controller.update_open_closed_times(
+            min_open_time_seconds,
+            min_closed_time_seconds,
         )
 
         await self._heater_controller.async_set_control_value(
@@ -370,8 +370,8 @@ class ControlOutputManager:
         force_off: bool,
         set_force_on: Callable[[bool], None],
         set_force_off: Callable[[bool], None],
-        min_on_cycle_duration_seconds: float,
-        min_off_cycle_duration_seconds: float,
+        min_open_time_seconds: float,
+        min_closed_time_seconds: float,
     ) -> None:
         """Turn off and on the heater proportionally to control_value.
 
@@ -389,8 +389,8 @@ class ControlOutputManager:
             force_off: Force turn off flag
             set_force_on: Callback to set force on flag
             set_force_off: Callback to set force off flag
-            min_on_cycle_duration_seconds: Minimum on cycle duration in seconds
-            min_off_cycle_duration_seconds: Minimum off cycle duration in seconds
+            min_open_time_seconds: Minimum open time in seconds
+            min_closed_time_seconds: Minimum closed time in seconds
         """
         if self._heater_controller is None:
             _LOGGER.warning(
@@ -399,10 +399,10 @@ class ControlOutputManager:
             )
             return
 
-        # Update cycle durations in case PID mode changed
-        self._heater_controller.update_cycle_durations(
-            min_on_cycle_duration_seconds,
-            min_off_cycle_duration_seconds,
+        # Update open/closed times in case PID mode changed
+        self._heater_controller.update_open_closed_times(
+            min_open_time_seconds,
+            min_closed_time_seconds,
         )
 
         await self._heater_controller.async_pwm_switch(

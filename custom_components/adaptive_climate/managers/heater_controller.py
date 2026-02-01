@@ -95,8 +95,8 @@ class HeaterController:
         heater_polarity_invert: bool,
         pwm: int,  # PWM duration in seconds
         difference: float,  # output_max - output_min
-        min_on_cycle_duration: float,  # in seconds
-        min_off_cycle_duration: float,  # in seconds
+        min_open_time: float,  # in seconds
+        min_closed_time: float,  # in seconds
         dispatcher: Optional[CycleEventDispatcher] = None,
         cooling_type: Optional[str] = None,
         get_was_clamped: Optional[Callable[[], bool]] = None,
@@ -114,8 +114,8 @@ class HeaterController:
             heater_polarity_invert: Whether to invert heater polarity
             pwm: PWM duration in seconds
             difference: Output range (max - min)
-            min_on_cycle_duration: Minimum on cycle duration in seconds
-            min_off_cycle_duration: Minimum off cycle duration in seconds
+            min_open_time: Minimum open time in seconds
+            min_closed_time: Minimum closed time in seconds
             dispatcher: Optional event dispatcher for cycle events
             cooling_type: Type of cooling system for compressor protection (forced_air, mini_split, chilled_water)
             get_was_clamped: Callback to get PID was_clamped state
@@ -130,8 +130,8 @@ class HeaterController:
         self._heater_polarity_invert = heater_polarity_invert
         self._pwm = pwm
         self._difference = difference
-        self._min_on_cycle_duration = min_on_cycle_duration
-        self._min_off_cycle_duration = min_off_cycle_duration
+        self._min_open_time = min_open_time
+        self._min_closed_time = min_closed_time
         self._dispatcher = dispatcher
         self._cooling_type = cooling_type
         self._get_was_clamped = get_was_clamped
@@ -161,8 +161,8 @@ class HeaterController:
             thermostat=thermostat,
             pwm_duration=pwm,
             difference=difference,
-            min_on_cycle_duration=min_on_cycle_duration,
-            min_off_cycle_duration=min_off_cycle_duration,
+            min_open_time=min_open_time,
+            min_closed_time=min_closed_time,
             valve_actuation_time=valve_actuation_time,
         ) if pwm else None
 
@@ -235,10 +235,10 @@ class HeaterController:
             ))
         self._valve_close_timer = None
 
-    def update_cycle_durations(
+    def update_open_closed_times(
         self,
-        min_on_cycle_duration: float,
-        min_off_cycle_duration: float,
+        min_open_time: float,
+        min_closed_time: float,
     ) -> None:
         """Update the minimum cycle durations.
 
@@ -246,14 +246,14 @@ class HeaterController:
         may have different minimum cycle requirements.
 
         Args:
-            min_on_cycle_duration: Minimum on cycle duration in seconds
-            min_off_cycle_duration: Minimum off cycle duration in seconds
+            min_open_time: Minimum open time in seconds
+            min_closed_time: Minimum closed time in seconds
         """
-        self._min_on_cycle_duration = min_on_cycle_duration
-        self._min_off_cycle_duration = min_off_cycle_duration
+        self._min_open_time = min_open_time
+        self._min_closed_time = min_closed_time
         if self._pwm_controller:
-            self._pwm_controller.update_cycle_durations(
-                min_on_cycle_duration, min_off_cycle_duration
+            self._pwm_controller.update_open_closed_times(
+                min_open_time, min_closed_time
             )
 
     def set_transport_delay(self, delay_seconds: float) -> None:
@@ -287,10 +287,10 @@ class HeaterController:
 
     @property
     def _max_accumulator(self) -> float:
-        """Return maximum accumulator value (2x min_on_cycle_duration)."""
+        """Return maximum accumulator value (2x min_open_time)."""
         if self._pwm_controller:
             return self._pwm_controller._max_accumulator
-        return 2.0 * self._min_on_cycle_duration
+        return 2.0 * self._min_open_time
 
     @property
     def _duty_accumulator_seconds(self) -> float:
@@ -326,11 +326,11 @@ class HeaterController:
         return 0.0
 
     @property
-    def min_on_cycle_duration(self) -> float:
-        """Return the minimum on cycle duration in seconds."""
+    def min_open_time(self) -> float:
+        """Return the minimum open time in seconds."""
         if self._pwm_controller:
-            return self._pwm_controller.min_on_cycle_duration
-        return self._min_on_cycle_duration
+            return self._pwm_controller.min_open_time
+        return self._min_open_time
 
     @property
     def cooling_type(self) -> Optional[str]:
@@ -612,7 +612,7 @@ class HeaterController:
                 self._emit_cycle_started(hvac_mode)
             # Device already in correct state - skip redundant service call
             return
-        elif time.monotonic() - get_cycle_start_time() >= self._min_off_cycle_duration:
+        elif time.monotonic() - get_cycle_start_time() >= self._min_closed_time:
             _LOGGER.info(
                 "%s: Turning ON %s",
                 thermostat_entity_id,
@@ -701,8 +701,8 @@ class HeaterController:
             )
             # Device already in correct state - skip redundant service call
             return
-        elif time.monotonic() - get_cycle_start_time() >= self._min_on_cycle_duration or force:
-            # Minimum cycle protection: Only turn off if min_on_cycle_duration has elapsed
+        elif time.monotonic() - get_cycle_start_time() >= self._min_open_time or force:
+            # Minimum cycle protection: Only turn off if min_open_time has elapsed
             # or force=True (for emergency shutdowns). This protects compressors from
             # short-cycling which can damage equipment.
             _LOGGER.info(

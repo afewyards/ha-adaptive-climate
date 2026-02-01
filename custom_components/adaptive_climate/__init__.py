@@ -87,8 +87,8 @@ from .const import (
     CONF_COLD_TOLERANCE,
     CONF_PRECISION,
     CONF_PWM,
-    CONF_MIN_CYCLE_DURATION,
-    CONF_MIN_OFF_CYCLE_DURATION,
+    CONF_MIN_OPEN_TIME,
+    CONF_MIN_CLOSED_TIME,
     DEFAULT_DEBUG,
     DEFAULT_SOURCE_STARTUP_DELAY,
     DEFAULT_SYNC_MODES,
@@ -324,8 +324,8 @@ if HAS_HOMEASSISTANT:
                 vol.Optional(CONF_COLD_TOLERANCE): vol.Coerce(float),
                 vol.Optional(CONF_PRECISION): vol.In([0.1, 0.5, 1.0]),
                 vol.Optional(CONF_PWM): vol.All(cv.time_period, cv.positive_timedelta),
-                vol.Optional(CONF_MIN_CYCLE_DURATION): vol.All(cv.time_period, cv.positive_timedelta),
-                vol.Optional(CONF_MIN_OFF_CYCLE_DURATION): vol.All(cv.time_period, cv.positive_timedelta),
+                vol.Optional(CONF_MIN_OPEN_TIME): vol.All(cv.time_period, cv.positive_timedelta),
+                vol.Optional(CONF_MIN_CLOSED_TIME): vol.All(cv.time_period, cv.positive_timedelta),
 
                 # Thermal groups for static multi-zone coordination
                 vol.Optional(CONF_THERMAL_GROUPS): vol.All(
@@ -694,8 +694,8 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     hass.data[DOMAIN]["cold_tolerance"] = domain_config.get(CONF_COLD_TOLERANCE)
     hass.data[DOMAIN]["precision"] = domain_config.get(CONF_PRECISION)
     hass.data[DOMAIN]["pwm"] = domain_config.get(CONF_PWM)
-    hass.data[DOMAIN]["min_cycle_duration"] = domain_config.get(CONF_MIN_CYCLE_DURATION)
-    hass.data[DOMAIN]["min_off_cycle_duration"] = domain_config.get(CONF_MIN_OFF_CYCLE_DURATION)
+    hass.data[DOMAIN]["min_open_time"] = domain_config.get(CONF_MIN_OPEN_TIME)
+    hass.data[DOMAIN]["min_closed_time"] = domain_config.get(CONF_MIN_CLOSED_TIME)
 
     if supply_temp_sensor and return_temp_sensor:
         _LOGGER.info(

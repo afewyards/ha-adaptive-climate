@@ -34,8 +34,8 @@ class MockThermostat:
         self._pwm = 900  # 15 minutes
         self._valve_actuation_time = valve_actuation_time  # NEW: valve timing
         self._difference = 100
-        self._min_on_cycle_duration = timedelta(seconds=300)
-        self._min_off_cycle_duration = timedelta(seconds=300)
+        self._min_open_time = timedelta(seconds=300)
+        self._min_closed_time = timedelta(seconds=300)
 
         # Temperature configuration
         self._target_temp = 20.0

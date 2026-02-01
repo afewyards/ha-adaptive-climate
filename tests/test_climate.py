@@ -43,10 +43,10 @@ class MockAdaptiveThermostat:
         self._unique_id = "test_thermostat"
         self._is_device_active = False
         self._last_heat_cycle_time = 0
-        self._min_off_cycle_duration = Mock()
-        self._min_off_cycle_duration.seconds = 0
-        self._min_on_cycle_duration = Mock()
-        self._min_on_cycle_duration.seconds = 0
+        self._min_closed_time = Mock()
+        self._min_closed_time.seconds = 0
+        self._min_open_time = Mock()
+        self._min_open_time.seconds = 0
         self._is_heating = False
 
     @property
@@ -1930,8 +1930,8 @@ class TestClimateDispatcherIntegration:
             heater_polarity_invert=False,
             pwm=600,
             difference=100.0,
-            min_on_cycle_duration=0.0,
-            min_off_cycle_duration=0.0,
+            min_open_time=0.0,
+            min_closed_time=0.0,
             dispatcher=dispatcher,
         )
 
@@ -2887,7 +2887,7 @@ class TestClimateManifoldIntegration:
 
     @pytest.mark.asyncio
     async def test_transport_delay_added_to_min_cycle(self, mock_hass_manifold):
-        """Test transport delay is added to min_on_cycle_duration on heating start.
+        """Test transport delay is added to min_open_time on heating start.
 
         When manifold pipes are cold, the transport delay is added to the minimum
         cycle duration to prevent turning off before hot water arrives.
@@ -2899,28 +2899,28 @@ class TestClimateManifoldIntegration:
         transport_delay = 5.0  # 5 minutes
 
         mock_heater_controller = MagicMock()
-        mock_heater_controller.update_cycle_durations = MagicMock()
+        mock_heater_controller.update_open_closed_times = MagicMock()
 
         # Create mock thermostat with transport delay set
         mock_thermostat = MagicMock()
-        mock_thermostat._min_on_cycle_duration = base_min_cycle
-        mock_thermostat._min_off_cycle_duration = base_min_cycle
+        mock_thermostat._min_open_time = base_min_cycle
+        mock_thermostat._min_closed_time = base_min_cycle
         mock_thermostat._transport_delay = transport_delay
         mock_thermostat._heater_controller = mock_heater_controller
 
         # Act - Calculate effective min_on as done in _async_heater_turn_on
-        effective_min_on = mock_thermostat._min_on_cycle_duration.seconds
+        effective_min_on = mock_thermostat._min_open_time.seconds
         if mock_thermostat._transport_delay and mock_thermostat._transport_delay > 0:
             effective_min_on += mock_thermostat._transport_delay * 60  # minutes to seconds
 
-        mock_heater_controller.update_cycle_durations(
+        mock_heater_controller.update_open_closed_times(
             effective_min_on,
-            mock_thermostat._min_off_cycle_duration.seconds,
+            mock_thermostat._min_closed_time.seconds,
         )
 
         # Assert - effective min_on should be base (60s) + transport delay (300s) = 360s
         expected_min_on = 60 + (5.0 * 60)  # 360 seconds
-        mock_heater_controller.update_cycle_durations.assert_called_once_with(
+        mock_heater_controller.update_open_closed_times.assert_called_once_with(
             expected_min_on,
             base_min_cycle.seconds,
         )
@@ -2935,26 +2935,26 @@ class TestClimateManifoldIntegration:
         transport_delay = 0.0  # Warm manifold
 
         mock_heater_controller = MagicMock()
-        mock_heater_controller.update_cycle_durations = MagicMock()
+        mock_heater_controller.update_open_closed_times = MagicMock()
 
         mock_thermostat = MagicMock()
-        mock_thermostat._min_on_cycle_duration = base_min_cycle
-        mock_thermostat._min_off_cycle_duration = base_min_cycle
+        mock_thermostat._min_open_time = base_min_cycle
+        mock_thermostat._min_closed_time = base_min_cycle
         mock_thermostat._transport_delay = transport_delay
         mock_thermostat._heater_controller = mock_heater_controller
 
         # Act - Calculate effective min_on
-        effective_min_on = mock_thermostat._min_on_cycle_duration.seconds
+        effective_min_on = mock_thermostat._min_open_time.seconds
         if mock_thermostat._transport_delay and mock_thermostat._transport_delay > 0:
             effective_min_on += mock_thermostat._transport_delay * 60
 
-        mock_heater_controller.update_cycle_durations(
+        mock_heater_controller.update_open_closed_times(
             effective_min_on,
-            mock_thermostat._min_off_cycle_duration.seconds,
+            mock_thermostat._min_closed_time.seconds,
         )
 
         # Assert - effective min_on should be base only (60s)
-        mock_heater_controller.update_cycle_durations.assert_called_once_with(
+        mock_heater_controller.update_open_closed_times.assert_called_once_with(
             60,  # No transport delay added
             60,
         )

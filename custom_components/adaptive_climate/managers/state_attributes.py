@@ -98,12 +98,12 @@ def _compute_duty_accumulator_pct(thermostat: SmartThermostat) -> float:
         thermostat: The SmartThermostat instance.
 
     Returns:
-        Percentage of min_on_cycle_duration (0.0-200.0, since max is 2x threshold).
+        Percentage of min_open_time (0.0-200.0, since max is 2x threshold).
     """
     if not thermostat._heater_controller:
         return 0.0
 
-    min_on = thermostat._heater_controller.min_on_cycle_duration
+    min_on = thermostat._heater_controller.min_open_time
     if min_on <= 0:
         return 0.0
 

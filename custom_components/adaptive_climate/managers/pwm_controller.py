@@ -26,7 +26,7 @@ class PWMController:
     """Controller for PWM (Pulse Width Modulation) operations.
 
     Handles duty accumulation for sub-threshold PID outputs and PWM switching.
-    When PID output is too small to sustain min_on_cycle_duration, the controller
+    When PID output is too small to sustain min_open_time, the controller
     accumulates "duty credit" over time until enough accumulates to fire a minimum pulse.
     """
 
@@ -35,8 +35,8 @@ class PWMController:
         thermostat: AdaptiveThermostat,
         pwm_duration: int,
         difference: float,
-        min_on_cycle_duration: float,
-        min_off_cycle_duration: float,
+        min_open_time: float,
+        min_closed_time: float,
         valve_actuation_time: float = 0.0,
     ):
         """Initialize the PWMController.
@@ -45,15 +45,15 @@ class PWMController:
             thermostat: Reference to the parent thermostat entity
             pwm_duration: PWM period in seconds
             difference: Output range (max - min)
-            min_on_cycle_duration: Minimum on cycle duration in seconds
-            min_off_cycle_duration: Minimum off cycle duration in seconds
+            min_open_time: Minimum open time in seconds
+            min_closed_time: Minimum closed time in seconds
             valve_actuation_time: Valve actuation time in seconds (default: 0.0)
         """
         self._thermostat = thermostat
         self._pwm = pwm_duration
         self._difference = difference
-        self._min_on_cycle_duration = min_on_cycle_duration
-        self._min_off_cycle_duration = min_off_cycle_duration
+        self._min_open_time = min_open_time
+        self._min_closed_time = min_closed_time
         self._valve_actuation_time = valve_actuation_time
         self._transport_delay: float = 0.0
 
@@ -61,22 +61,22 @@ class PWMController:
         self._duty_accumulator_seconds: float = 0.0
         self._last_accumulator_calc_time: float | None = None
 
-    def update_cycle_durations(
+    def update_open_closed_times(
         self,
-        min_on_cycle_duration: float,
-        min_off_cycle_duration: float,
+        min_open_time: float,
+        min_closed_time: float,
     ) -> None:
-        """Update the minimum cycle durations.
+        """Update the minimum open/closed times.
 
         This is used when the PID mode changes, as different modes
         may have different minimum cycle requirements.
 
         Args:
-            min_on_cycle_duration: Minimum on cycle duration in seconds
-            min_off_cycle_duration: Minimum off cycle duration in seconds
+            min_open_time: Minimum open time in seconds
+            min_closed_time: Minimum closed time in seconds
         """
-        self._min_on_cycle_duration = min_on_cycle_duration
-        self._min_off_cycle_duration = min_off_cycle_duration
+        self._min_open_time = min_open_time
+        self._min_closed_time = min_closed_time
 
     def set_transport_delay(self, delay_seconds: float) -> None:
         """Set the manifold transport delay.
@@ -88,8 +88,8 @@ class PWMController:
 
     @property
     def _max_accumulator(self) -> float:
-        """Return maximum accumulator value (2x min_on_cycle_duration)."""
-        return 2.0 * self._min_on_cycle_duration
+        """Return maximum accumulator value (2x min_open_time)."""
+        return 2.0 * self._min_open_time
 
     @property
     def duty_accumulator_seconds(self) -> float:
@@ -97,9 +97,9 @@ class PWMController:
         return self._duty_accumulator_seconds
 
     @property
-    def min_on_cycle_duration(self) -> float:
-        """Return the minimum on cycle duration in seconds."""
-        return self._min_on_cycle_duration
+    def min_open_time(self) -> float:
+        """Return the minimum open time in seconds."""
+        return self._min_open_time
 
     def set_duty_accumulator(self, seconds: float) -> None:
         """Set the duty accumulator value (used during state restoration).
@@ -154,7 +154,7 @@ class PWMController:
         arrive until pipes fill and valve opens. The total on-time is:
         - transport_delay: time for hot water to reach zone (0 if warm)
         - actuator_time: time for valve to fully open
-        - heat_duration: actual heat delivery time (≥ min_on_cycle_duration)
+        - heat_duration: actual heat delivery time (≥ min_open_time)
 
         Args:
             control_output: Current PID control output
@@ -167,11 +167,11 @@ class PWMController:
         if heat_duration == 0:
             return 0.0
 
-        # Total on-time = transport delay + valve open time + max(heat_duration, min_on_cycle)
+        # Total on-time = transport delay + valve open time + max(heat_duration, min_open_time)
         # This ensures heat arrives and valve is fully open before heat delivery begins
         return self._transport_delay + self._valve_actuation_time + max(
             heat_duration,
-            self._min_on_cycle_duration,
+            self._min_open_time,
         )
 
     def get_close_command_offset(self) -> float:
@@ -249,8 +249,8 @@ class PWMController:
             difference=self._difference,
         )
 
-        # If calculated heat duration < min_on_cycle_duration, accumulate duty
-        if 0 < heat_duration < self._min_on_cycle_duration:
+        # If calculated heat duration < min_open_time, accumulate duty
+        if 0 < heat_duration < self._min_open_time:
             # If heater is already ON (e.g., during minimum pulse), don't accumulate
             # but DO try to turn off (respects min_cycle protection internally)
             if heater_controller.is_active(hvac_mode):
@@ -272,7 +272,7 @@ class PWMController:
                 return
 
             # Check if accumulator has already reached threshold to fire minimum pulse
-            if self._duty_accumulator_seconds >= self._min_on_cycle_duration:
+            if self._duty_accumulator_seconds >= self._min_open_time:
                 # Safety check: don't fire if heating would be counterproductive
                 # (This can happen after restart when PID integral keeps output positive
                 # even though temperature is already above setpoint)
@@ -323,7 +323,7 @@ class PWMController:
                     "%s: Accumulator threshold reached (%.0fs >= %.0fs). Firing minimum pulse.",
                     thermostat_entity_id,
                     self._duty_accumulator_seconds,
-                    self._min_on_cycle_duration,
+                    self._min_open_time,
                 )
                 # Set demand state before turning on
                 heater_controller._has_demand = True
@@ -340,7 +340,7 @@ class PWMController:
                 set_time_changed(time.monotonic())
 
                 # Subtract minimum pulse duration from accumulator
-                self._duty_accumulator_seconds -= self._min_on_cycle_duration
+                self._duty_accumulator_seconds -= self._min_open_time
 
                 set_force_on(False)
                 set_force_off(False)
@@ -367,7 +367,7 @@ class PWMController:
                 thermostat_entity_id,
                 duty_to_add,
                 self._duty_accumulator_seconds,
-                self._min_on_cycle_duration,
+                self._min_open_time,
             )
             await heater_controller.async_turn_off(
                 hvac_mode=hvac_mode,
@@ -383,10 +383,10 @@ class PWMController:
         self._duty_accumulator_seconds = 0.0
         self._last_accumulator_calc_time = None
 
-        if 0 < time_off < self._min_off_cycle_duration:
+        if 0 < time_off < self._min_closed_time:
             # time_off is too short, increase time_on and time_off
-            time_on *= self._min_off_cycle_duration / time_off
-            time_off = self._min_off_cycle_duration
+            time_on *= self._min_closed_time / time_off
+            time_off = self._min_closed_time
 
         is_device_active = heater_controller.is_active(hvac_mode)
 

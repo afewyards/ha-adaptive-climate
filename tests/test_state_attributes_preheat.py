@@ -36,7 +36,7 @@ class TestPreheatStateAttributes:
         thermostat._heater_controller.heater_cycle_count = 100
         thermostat._heater_controller.cooler_cycle_count = 50
         thermostat._heater_controller.duty_accumulator_seconds = 120.5
-        thermostat._heater_controller.min_on_cycle_duration = 300.0
+        thermostat._heater_controller.min_open_time = 300.0
         thermostat._night_setback = None
         thermostat._night_setback_config = None
         thermostat._night_setback_controller = None

@@ -105,16 +105,16 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
         self._temp_precision = kwargs.get('precision')
         self._target_temperature_step = kwargs.get('target_temp_step')
         self._last_heat_cycle_time = None  # None means use device's last_changed time
-        self._min_on_cycle_duration_pid_on = kwargs.get('min_cycle_duration')
-        self._min_off_cycle_duration_pid_on = kwargs.get('min_off_cycle_duration')
-        self._min_on_cycle_duration_pid_off = kwargs.get('min_cycle_duration_pid_off')
-        self._min_off_cycle_duration_pid_off = kwargs.get('min_off_cycle_duration_pid_off')
-        if self._min_off_cycle_duration_pid_on is None:
-            self._min_off_cycle_duration_pid_on = self._min_on_cycle_duration_pid_on
-        if self._min_on_cycle_duration_pid_off is None:
-            self._min_on_cycle_duration_pid_off = self._min_on_cycle_duration_pid_on
-        if self._min_off_cycle_duration_pid_off is None:
-            self._min_off_cycle_duration_pid_off = self._min_on_cycle_duration_pid_off
+        self._min_open_time_pid_on = kwargs.get('min_open_time')
+        self._min_closed_time_pid_on = kwargs.get('min_closed_time')
+        self._min_open_time_pid_off = kwargs.get('min_open_time_pid_off')
+        self._min_closed_time_pid_off = kwargs.get('min_closed_time_pid_off')
+        if self._min_closed_time_pid_on is None:
+            self._min_closed_time_pid_on = self._min_open_time_pid_on
+        if self._min_open_time_pid_off is None:
+            self._min_open_time_pid_off = self._min_open_time_pid_on
+        if self._min_closed_time_pid_off is None:
+            self._min_closed_time_pid_off = self._min_open_time_pid_off
         self._active = False
         self._trigger_source = None
         self._current_temp = None
@@ -941,16 +941,16 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
         return self._target_temp, False, {"night_setback_active": False}
 
     @property
-    def _min_on_cycle_duration(self):
+    def _min_open_time(self):
         if self.pid_mode == 'off':
-            return self._min_on_cycle_duration_pid_off
-        return self._min_on_cycle_duration_pid_on
+            return self._min_open_time_pid_off
+        return self._min_open_time_pid_on
 
     @property
-    def _min_off_cycle_duration(self):
+    def _min_closed_time(self):
         if self.pid_mode == 'off':
-            return self._min_off_cycle_duration_pid_off
-        return self._min_off_cycle_duration_pid_on
+            return self._min_closed_time_pid_off
+        return self._min_closed_time_pid_on
 
     @property
     def _kp(self) -> float:
@@ -1608,8 +1608,8 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
 
     @property
     def _effective_min_on_seconds(self) -> int:
-        """Minimum on-cycle duration including manifold transport delay."""
-        base = self._min_on_cycle_duration.seconds
+        """Minimum open time including manifold transport delay."""
+        base = self._min_open_time.seconds
         if self._transport_delay and self._transport_delay > 0:
             base += int(self._transport_delay * 60)
         return base
@@ -1664,10 +1664,10 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
             self._transport_delay = None
             _LOGGER.debug("%s: Reset transport delay on heating stop", self.entity_id)
 
-        # Update cycle durations in case PID mode changed
-        self._heater_controller.update_cycle_durations(
+        # Update open/closed times in case PID mode changed
+        self._heater_controller.update_open_closed_times(
             self._effective_min_on_seconds,
-            self._min_off_cycle_duration.seconds,
+            self._min_closed_time.seconds,
         )
         await self._heater_controller.async_turn_off(
             hvac_mode=self.hvac_mode,

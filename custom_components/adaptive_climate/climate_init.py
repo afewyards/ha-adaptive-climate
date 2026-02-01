@@ -98,8 +98,8 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
         heater_polarity_invert=thermostat._heater_polarity_invert,
         pwm=thermostat._pwm,
         difference=thermostat._difference,
-        min_on_cycle_duration=thermostat._min_on_cycle_duration.seconds,
-        min_off_cycle_duration=thermostat._min_off_cycle_duration.seconds,
+        min_open_time=thermostat._min_open_time.seconds,
+        min_closed_time=thermostat._min_closed_time.seconds,
         dispatcher=thermostat._cycle_dispatcher,
         get_was_clamped=lambda: getattr(thermostat._pid_controller, 'was_clamped', False),
         reset_clamp_state=lambda: thermostat._pid_controller.reset_clamp_state()

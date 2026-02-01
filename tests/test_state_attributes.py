@@ -761,7 +761,7 @@ class TestDutyAccumulatorAttributes:
         thermostat._heater_controller.heater_cycle_count = 100
         thermostat._heater_controller.cooler_cycle_count = 50
         thermostat._heater_controller.duty_accumulator_seconds = 120.5
-        thermostat._heater_controller.min_on_cycle_duration = 300.0
+        thermostat._heater_controller.min_open_time = 300.0
         thermostat._night_setback = None
         thermostat._night_setback_config = None
         thermostat._night_setback_controller = None
@@ -808,7 +808,7 @@ class TestDutyAccumulatorAttributes:
         thermostat._heater_controller.heater_cycle_count = 100
         thermostat._heater_controller.cooler_cycle_count = 50
         thermostat._heater_controller.duty_accumulator_seconds = 120.5
-        thermostat._heater_controller.min_on_cycle_duration = 300.0
+        thermostat._heater_controller.min_open_time = 300.0
         thermostat._night_setback = None
         thermostat._night_setback_config = None
         thermostat._night_setback_controller = None
@@ -858,7 +858,7 @@ class TestDutyAccumulatorAttributes:
         thermostat._heater_controller.heater_cycle_count = 100
         thermostat._heater_controller.cooler_cycle_count = 50
         thermostat._heater_controller.duty_accumulator_seconds = 150.0  # 50% of 300s
-        thermostat._heater_controller.min_on_cycle_duration = 300.0
+        thermostat._heater_controller.min_open_time = 300.0
         thermostat._night_setback = None
         thermostat._night_setback_config = None
         thermostat._night_setback_controller = None
@@ -888,7 +888,7 @@ class TestDutyAccumulatorAttributes:
         thermostat = MagicMock()
         thermostat._heater_controller = MagicMock()
         thermostat._heater_controller.duty_accumulator_seconds = 300.0
-        thermostat._heater_controller.min_on_cycle_duration = 300.0
+        thermostat._heater_controller.min_open_time = 300.0
 
         pct = _compute_duty_accumulator_pct(thermostat)
 
@@ -903,7 +903,7 @@ class TestDutyAccumulatorAttributes:
         thermostat = MagicMock()
         thermostat._heater_controller = MagicMock()
         thermostat._heater_controller.duty_accumulator_seconds = 500.0
-        thermostat._heater_controller.min_on_cycle_duration = 300.0
+        thermostat._heater_controller.min_open_time = 300.0
 
         pct = _compute_duty_accumulator_pct(thermostat)
 
@@ -923,7 +923,7 @@ class TestDutyAccumulatorAttributes:
         assert pct == 0.0
 
     def test_accumulator_pct_zero_with_zero_min_on(self):
-        """Test duty_accumulator_pct handles zero min_on_cycle_duration."""
+        """Test duty_accumulator_pct handles zero min_open_time."""
         from custom_components.adaptive_climate.managers.state_attributes import (
             _compute_duty_accumulator_pct,
         )
@@ -931,7 +931,7 @@ class TestDutyAccumulatorAttributes:
         thermostat = MagicMock()
         thermostat._heater_controller = MagicMock()
         thermostat._heater_controller.duty_accumulator_seconds = 100.0
-        thermostat._heater_controller.min_on_cycle_duration = 0.0
+        thermostat._heater_controller.min_open_time = 0.0
 
         pct = _compute_duty_accumulator_pct(thermostat)
 
@@ -974,7 +974,7 @@ class TestPerModeConvergenceConfidence:
         thermostat._heater_controller.heater_cycle_count = 100
         thermostat._heater_controller.cooler_cycle_count = 50
         thermostat._heater_controller.duty_accumulator_seconds = 120.5
-        thermostat._heater_controller.min_on_cycle_duration = 300.0
+        thermostat._heater_controller.min_open_time = 300.0
         thermostat._transport_delay = 0
         thermostat._night_setback = None
         thermostat._night_setback_config = None
@@ -1031,7 +1031,7 @@ class TestPerModeConvergenceConfidence:
         thermostat._heater_controller.heater_cycle_count = 100
         thermostat._heater_controller.cooler_cycle_count = 50
         thermostat._heater_controller.duty_accumulator_seconds = 120.5
-        thermostat._heater_controller.min_on_cycle_duration = 300.0
+        thermostat._heater_controller.min_open_time = 300.0
         thermostat._night_setback = None
         thermostat._night_setback_config = None
         thermostat._night_setback_controller = None
@@ -1080,7 +1080,7 @@ class TestPerModeConvergenceConfidence:
         thermostat._heater_controller.heater_cycle_count = 100
         thermostat._heater_controller.cooler_cycle_count = 50
         thermostat._heater_controller.duty_accumulator_seconds = 120.5
-        thermostat._heater_controller.min_on_cycle_duration = 300.0
+        thermostat._heater_controller.min_open_time = 300.0
         thermostat._transport_delay = 0
         thermostat._night_setback = None
         thermostat._night_setback_config = None
@@ -1142,7 +1142,7 @@ class TestPerModeConvergenceConfidence:
         thermostat._heater_controller.heater_cycle_count = 100
         thermostat._heater_controller.cooler_cycle_count = 50
         thermostat._heater_controller.duty_accumulator_seconds = 120.5
-        thermostat._heater_controller.min_on_cycle_duration = 300.0
+        thermostat._heater_controller.min_open_time = 300.0
         thermostat._transport_delay = 0
         thermostat._night_setback = None
         thermostat._night_setback_config = None
@@ -1212,7 +1212,7 @@ class TestPerModeConvergenceConfidence:
         thermostat._heater_controller.heater_cycle_count = 100
         thermostat._heater_controller.cooler_cycle_count = 50
         thermostat._heater_controller.duty_accumulator_seconds = 120.5
-        thermostat._heater_controller.min_on_cycle_duration = 300.0
+        thermostat._heater_controller.min_open_time = 300.0
         thermostat._transport_delay = 0
         thermostat._night_setback = None
         thermostat._night_setback_config = None
@@ -1262,7 +1262,7 @@ class TestPerModeConvergenceConfidence:
         thermostat._heater_controller.heater_cycle_count = 100
         thermostat._heater_controller.cooler_cycle_count = 50
         thermostat._heater_controller.duty_accumulator_seconds = 120.5
-        thermostat._heater_controller.min_on_cycle_duration = 300.0
+        thermostat._heater_controller.min_open_time = 300.0
         thermostat._transport_delay = 0
         thermostat._night_setback = None
         thermostat._night_setback_config = None
@@ -1321,7 +1321,7 @@ class TestPerModeConvergenceConfidence:
         thermostat._heater_controller.heater_cycle_count = 100
         thermostat._heater_controller.cooler_cycle_count = 50
         thermostat._heater_controller.duty_accumulator_seconds = 120.5
-        thermostat._heater_controller.min_on_cycle_duration = 300.0
+        thermostat._heater_controller.min_open_time = 300.0
         thermostat._transport_delay = 0
         thermostat._night_setback = None
         thermostat._night_setback_config = None
@@ -1775,7 +1775,7 @@ class TestStatusAttributeIntegration:
         thermostat._heater_controller.heater_cycle_count = 10
         thermostat._heater_controller.cooler_cycle_count = 0
         thermostat._heater_controller.duty_accumulator_seconds = 0.0
-        thermostat._heater_controller.min_on_cycle_duration = 300.0
+        thermostat._heater_controller.min_open_time = 300.0
         thermostat._heater_controller.heater_on = False
         thermostat._heater_controller.cooler_on = False
         thermostat._night_setback = None
@@ -1822,7 +1822,7 @@ class TestStatusAttributeIntegration:
         thermostat._heater_controller.heater_cycle_count = 10
         thermostat._heater_controller.cooler_cycle_count = 0
         thermostat._heater_controller.duty_accumulator_seconds = 150.0
-        thermostat._heater_controller.min_on_cycle_duration = 300.0
+        thermostat._heater_controller.min_open_time = 300.0
         thermostat._heater_controller.heater_on = True  # Heater actively on
         thermostat._heater_controller.cooler_on = False
         thermostat._night_setback = None
@@ -1870,7 +1870,7 @@ class TestStatusAttributeIntegration:
         thermostat._heater_controller.heater_cycle_count = 10
         thermostat._heater_controller.cooler_cycle_count = 0
         thermostat._heater_controller.duty_accumulator_seconds = 0.0
-        thermostat._heater_controller.min_on_cycle_duration = 300.0
+        thermostat._heater_controller.min_open_time = 300.0
         thermostat._heater_controller.heater_on = False  # Paused, so not heating
         thermostat._heater_controller.cooler_on = False
 
@@ -1929,7 +1929,7 @@ class TestStatusAttributeIntegration:
         thermostat._heater_controller.heater_cycle_count = 10
         thermostat._heater_controller.cooler_cycle_count = 0
         thermostat._heater_controller.duty_accumulator_seconds = 0.0
-        thermostat._heater_controller.min_on_cycle_duration = 300.0
+        thermostat._heater_controller.min_open_time = 300.0
         thermostat._heater_controller.heater_on = False
         thermostat._heater_controller.cooler_on = False
 
@@ -1987,7 +1987,7 @@ class TestStatusAttributeIntegration:
             thermostat._heater_controller.heater_cycle_count = 10
             thermostat._heater_controller.cooler_cycle_count = 0
             thermostat._heater_controller.duty_accumulator_seconds = 50.0
-            thermostat._heater_controller.min_on_cycle_duration = 300.0
+            thermostat._heater_controller.min_open_time = 300.0
             thermostat._heater_controller.heater_on = False
             thermostat._heater_controller.cooler_on = False
 
@@ -2051,7 +2051,7 @@ class TestStatusAttributeIntegration:
             thermostat._heater_controller.heater_cycle_count = 10
             thermostat._heater_controller.cooler_cycle_count = 0
             thermostat._heater_controller.duty_accumulator_seconds = 0.0
-            thermostat._heater_controller.min_on_cycle_duration = 300.0
+            thermostat._heater_controller.min_open_time = 300.0
             thermostat._heater_controller.heater_on = False
             thermostat._heater_controller.cooler_on = False
 
@@ -2112,7 +2112,7 @@ class TestStatusAttributeIntegration:
             thermostat._heater_controller.heater_cycle_count = 10
             thermostat._heater_controller.cooler_cycle_count = 0
             thermostat._heater_controller.duty_accumulator_seconds = 100.0
-            thermostat._heater_controller.min_on_cycle_duration = 300.0
+            thermostat._heater_controller.min_open_time = 300.0
             thermostat._heater_controller.heater_on = True
             thermostat._heater_controller.cooler_on = False
 
@@ -2171,7 +2171,7 @@ class TestStatusAttributeIntegration:
         thermostat._heater_controller.heater_cycle_count = 10
         thermostat._heater_controller.cooler_cycle_count = 0
         thermostat._heater_controller.duty_accumulator_seconds = 0.0
-        thermostat._heater_controller.min_on_cycle_duration = 300.0
+        thermostat._heater_controller.min_open_time = 300.0
         thermostat._heater_controller.heater_on = False
         thermostat._heater_controller.cooler_on = False
 
@@ -2221,7 +2221,7 @@ class TestStatusAttributeIntegration:
         thermostat._heater_controller.heater_cycle_count = 10
         thermostat._heater_controller.cooler_cycle_count = 0
         thermostat._heater_controller.duty_accumulator_seconds = 0.0
-        thermostat._heater_controller.min_on_cycle_duration = 300.0
+        thermostat._heater_controller.min_open_time = 300.0
         thermostat._heater_controller.heater_on = True
         thermostat._heater_controller.cooler_on = False
         thermostat._contact_sensor_handler = None
@@ -2269,7 +2269,7 @@ class TestStatusAttributeIntegration:
         thermostat._heater_controller.heater_cycle_count = 10
         thermostat._heater_controller.cooler_cycle_count = 0
         thermostat._heater_controller.duty_accumulator_seconds = 0.0
-        thermostat._heater_controller.min_on_cycle_duration = 300.0
+        thermostat._heater_controller.min_open_time = 300.0
         thermostat._heater_controller.heater_on = False
         thermostat._heater_controller.cooler_on = False
 

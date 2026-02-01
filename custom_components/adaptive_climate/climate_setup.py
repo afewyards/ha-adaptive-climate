@@ -42,13 +42,13 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Optional(const.CONF_TARGET_TEMP): vol.Coerce(float),
         vol.Optional(const.CONF_HOT_TOLERANCE): vol.Coerce(float),
         vol.Optional(const.CONF_COLD_TOLERANCE): vol.Coerce(float),
-        vol.Optional(const.CONF_MIN_CYCLE_DURATION): vol.All(
+        vol.Optional(const.CONF_MIN_OPEN_TIME): vol.All(
             cv.time_period, cv.positive_timedelta),
-        vol.Optional(const.CONF_MIN_OFF_CYCLE_DURATION): vol.All(
+        vol.Optional(const.CONF_MIN_CLOSED_TIME): vol.All(
             cv.time_period, cv.positive_timedelta),
-        vol.Optional(const.CONF_MIN_CYCLE_DURATION_PID_OFF): vol.All(
+        vol.Optional(const.CONF_MIN_OPEN_TIME_PID_OFF): vol.All(
             cv.time_period, cv.positive_timedelta),
-        vol.Optional(const.CONF_MIN_OFF_CYCLE_DURATION_PID_OFF): vol.All(
+        vol.Optional(const.CONF_MIN_CLOSED_TIME_PID_OFF): vol.All(
             cv.time_period, cv.positive_timedelta),
         vol.Optional(const.CONF_CONTROL_INTERVAL): vol.All(cv.time_period, cv.positive_timedelta),
         vol.Optional(const.CONF_SAMPLING_PERIOD, default=const.DEFAULT_SAMPLING_PERIOD): vol.All(
@@ -249,10 +249,10 @@ async def async_setup_platform(hass: HomeAssistant, config: ConfigType, async_ad
         'ac_mode': bool(cooler) or bool(hass.data.get(DOMAIN, {}).get("main_cooler_switch")),
         'force_off_state': config.get(const.CONF_FORCE_OFF_STATE),
         # Cycle durations: entity → domain → default
-        'min_cycle_duration': config.get(const.CONF_MIN_CYCLE_DURATION) or hass.data.get(DOMAIN, {}).get("min_cycle_duration") or timedelta(0),
-        'min_off_cycle_duration': config.get(const.CONF_MIN_OFF_CYCLE_DURATION) or hass.data.get(DOMAIN, {}).get("min_off_cycle_duration"),
-        'min_cycle_duration_pid_off': config.get(const.CONF_MIN_CYCLE_DURATION_PID_OFF),
-        'min_off_cycle_duration_pid_off': config.get(const.CONF_MIN_OFF_CYCLE_DURATION_PID_OFF),
+        'min_open_time': config.get(const.CONF_MIN_OPEN_TIME) or hass.data.get(DOMAIN, {}).get("min_open_time") or timedelta(0),
+        'min_closed_time': config.get(const.CONF_MIN_CLOSED_TIME) or hass.data.get(DOMAIN, {}).get("min_closed_time"),
+        'min_open_time_pid_off': config.get(const.CONF_MIN_OPEN_TIME_PID_OFF),
+        'min_closed_time_pid_off': config.get(const.CONF_MIN_CLOSED_TIME_PID_OFF),
         'control_interval': config.get(const.CONF_CONTROL_INTERVAL),
         'sampling_period': config.get(const.CONF_SAMPLING_PERIOD),
         'sensor_stall': config.get(const.CONF_SENSOR_STALL),

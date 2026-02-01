@@ -231,10 +231,10 @@ class ClimateControlMixin:
             )
             return
 
-        # Update cycle durations in case PID mode changed
-        self._heater_controller.update_cycle_durations(
+        # Update open/closed times in case PID mode changed
+        self._heater_controller.update_open_closed_times(
             self._effective_min_on_seconds,
-            self._min_off_cycle_duration.seconds,
+            self._min_closed_time.seconds,
         )
 
         # Query transport delay from coordinator and set on heater controller
@@ -270,10 +270,10 @@ class ClimateControlMixin:
             )
             return
 
-        # Update cycle durations in case PID mode changed
-        self._heater_controller.update_cycle_durations(
+        # Update open/closed times in case PID mode changed
+        self._heater_controller.update_open_closed_times(
             self._effective_min_on_seconds,
-            self._min_off_cycle_duration.seconds,
+            self._min_closed_time.seconds,
         )
         await self._heater_controller.async_pwm_switch(
             control_output=self._control_output,

@@ -22,8 +22,8 @@ class TestPWMControllerValveActuation:
             thermostat=mock_thermostat,
             pwm_duration=900,
             difference=100,
-            min_on_cycle_duration=0,
-            min_off_cycle_duration=0,
+            min_open_time=0,
+            min_closed_time=0,
             valve_actuation_time=120.0,
         )
         assert controller is not None
@@ -34,8 +34,8 @@ class TestPWMControllerValveActuation:
             thermostat=mock_thermostat,
             pwm_duration=900,
             difference=100,
-            min_on_cycle_duration=0,
-            min_off_cycle_duration=0,
+            min_open_time=0,
+            min_closed_time=0,
         )
         assert controller._valve_actuation_time == 0.0
 
@@ -45,8 +45,8 @@ class TestPWMControllerValveActuation:
             thermostat=mock_thermostat,
             pwm_duration=900,
             difference=100,
-            min_on_cycle_duration=0,
-            min_off_cycle_duration=0,
+            min_open_time=0,
+            min_closed_time=0,
             valve_actuation_time=0.0,
         )
 
@@ -64,8 +64,8 @@ class TestPWMControllerValveActuation:
             thermostat=mock_thermostat,
             pwm_duration=900,
             difference=100,
-            min_on_cycle_duration=0,
-            min_off_cycle_duration=0,
+            min_open_time=0,
+            min_closed_time=0,
             valve_actuation_time=120.0,
         )
 
@@ -83,8 +83,8 @@ class TestPWMControllerValveActuation:
             thermostat=mock_thermostat,
             pwm_duration=900,
             difference=100,
-            min_on_cycle_duration=0,
-            min_off_cycle_duration=0,
+            min_open_time=0,
+            min_closed_time=0,
             valve_actuation_time=120.0,
         )
 
@@ -101,8 +101,8 @@ class TestPWMControllerValveActuation:
             thermostat=mock_thermostat,
             pwm_duration=900,
             difference=100,
-            min_on_cycle_duration=0,
-            min_off_cycle_duration=0,
+            min_open_time=0,
+            min_closed_time=0,
             valve_actuation_time=120.0,
         )
 
@@ -119,8 +119,8 @@ class TestPWMControllerValveActuation:
             thermostat=mock_thermostat,
             pwm_duration=900,
             difference=100,
-            min_on_cycle_duration=0,
-            min_off_cycle_duration=0,
+            min_open_time=0,
+            min_closed_time=0,
             valve_actuation_time=120.0,
         )
 
@@ -133,8 +133,8 @@ class TestPWMControllerValveActuation:
             thermostat=mock_thermostat,
             pwm_duration=900,
             difference=100,
-            min_on_cycle_duration=0,
-            min_off_cycle_duration=0,
+            min_open_time=0,
+            min_closed_time=0,
             valve_actuation_time=0.0,
         )
 
@@ -147,8 +147,8 @@ class TestPWMControllerValveActuation:
             thermostat=mock_thermostat,
             pwm_duration=900,
             difference=100,
-            min_on_cycle_duration=0,
-            min_off_cycle_duration=0,
+            min_open_time=0,
+            min_closed_time=0,
             valve_actuation_time=120.0,
         )
 
@@ -165,13 +165,13 @@ class TestPWMControllerValveActuation:
         assert time_on == 900.0 + 120.0  # 900s heat + 120s actuator
 
     def test_calculate_adjusted_on_time_respects_min_on_cycle(self, mock_thermostat):
-        """Short duty cycles are extended to min_on_cycle_duration."""
+        """Short duty cycles are extended to min_open_time."""
         controller = PWMController(
             thermostat=mock_thermostat,
             pwm_duration=900,
             difference=100,
-            min_on_cycle_duration=300,  # 5 minutes minimum
-            min_off_cycle_duration=0,
+            min_open_time=300,  # 5 minutes minimum
+            min_closed_time=0,
             valve_actuation_time=120.0,
         )
 
@@ -193,8 +193,8 @@ class TestPWMControllerValveActuation:
             thermostat=mock_thermostat,
             pwm_duration=900,
             difference=100,
-            min_on_cycle_duration=0,
-            min_off_cycle_duration=0,
+            min_open_time=0,
+            min_closed_time=0,
             valve_actuation_time=120.0,
         )
 
@@ -207,8 +207,8 @@ class TestPWMControllerValveActuation:
             thermostat=mock_thermostat,
             pwm_duration=900,
             difference=100,
-            min_on_cycle_duration=0,
-            min_off_cycle_duration=0,
+            min_open_time=0,
+            min_closed_time=0,
             valve_actuation_time=120.0,
         )
 
@@ -232,8 +232,8 @@ class TestPWMControllerValveActuation:
             thermostat=mock_thermostat,
             pwm_duration=900,
             difference=100,
-            min_on_cycle_duration=0,
-            min_off_cycle_duration=0,
+            min_open_time=0,
+            min_closed_time=0,
             valve_actuation_time=120.0,
         )
 
@@ -262,8 +262,8 @@ class TestPWMControllerEarlyValveClose:
             thermostat=mock_thermostat,
             pwm_duration=900,
             difference=100,
-            min_on_cycle_duration=0,
-            min_off_cycle_duration=0,
+            min_open_time=0,
+            min_closed_time=0,
             valve_actuation_time=120.0,
         )
 
@@ -316,8 +316,8 @@ class TestPWMControllerEarlyValveClose:
             thermostat=mock_thermostat,
             pwm_duration=900,
             difference=100,
-            min_on_cycle_duration=0,
-            min_off_cycle_duration=0,
+            min_open_time=0,
+            min_closed_time=0,
             valve_actuation_time=0.0,
         )
 
@@ -369,8 +369,8 @@ class TestPWMControllerEarlyValveClose:
             thermostat=mock_thermostat,
             pwm_duration=900,
             difference=100,
-            min_on_cycle_duration=0,
-            min_off_cycle_duration=0,
+            min_open_time=0,
+            min_closed_time=0,
             valve_actuation_time=120.0,
         )
 

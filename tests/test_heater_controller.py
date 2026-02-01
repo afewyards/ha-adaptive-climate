@@ -69,8 +69,8 @@ def heater_controller(mock_hass, mock_thermostat):
         heater_polarity_invert=False,
         pwm=600,  # 10 minutes
         difference=100.0,
-        min_on_cycle_duration=300.0,  # 5 minutes
-        min_off_cycle_duration=300.0,  # 5 minutes
+        min_open_time=300.0,  # 5 minutes
+        min_closed_time=300.0,  # 5 minutes
     )
 
 
@@ -404,7 +404,7 @@ class TestHeaterControllerPWMThreshold:
 
     @pytest.mark.asyncio
     async def test_pwm_skip_tiny_output(self, heater_controller, mock_thermostat):
-        """Test that PWM skips activation when on-time < min_on_cycle_duration.
+        """Test that PWM skips activation when on-time < min_open_time.
 
         With fixture config: pwm=600s, min_on=300s → threshold = 50%
         Output 25% → on-time = 150s < 300s → should NOT turn on
@@ -456,7 +456,7 @@ class TestHeaterControllerPWMThreshold:
 
     @pytest.mark.asyncio
     async def test_pwm_activates_above_threshold(self, heater_controller, mock_thermostat):
-        """Test that PWM activates normally when on-time >= min_on_cycle_duration.
+        """Test that PWM activates normally when on-time >= min_open_time.
 
         With fixture config: pwm=600s, min_on=300s → threshold = 50%
         Output 60% → on-time = 360s >= 300s → should turn on
@@ -475,7 +475,7 @@ class TestHeaterControllerPWMThreshold:
         heater_controller._hass.states.is_state = MagicMock(return_value=False)
 
         # Mock required callbacks
-        # get_cycle_start_time must be at least min_off_cycle_duration in the past
+        # get_cycle_start_time must be at least min_closed_time in the past
         cycle_start_time = time_module.monotonic() - 600  # 600s ago (>= 300s min_off)
         get_cycle_start_time = MagicMock(return_value=cycle_start_time)
         set_is_heating = MagicMock()
@@ -606,8 +606,8 @@ class TestHeaterControllerBackwardCompatibility:
             heater_polarity_invert=False,
             pwm=600,
             difference=100.0,
-            min_on_cycle_duration=300.0,
-            min_off_cycle_duration=300.0,
+            min_open_time=300.0,
+            min_closed_time=300.0,
             dispatcher=None,  # Explicitly None
         )
 
@@ -687,8 +687,8 @@ class TestHeaterControllerEventEmission:
             heater_polarity_invert=False,
             pwm=600,  # 10 minutes
             difference=100.0,
-            min_on_cycle_duration=300.0,  # 5 minutes
-            min_off_cycle_duration=300.0,  # 5 minutes
+            min_open_time=300.0,  # 5 minutes
+            min_closed_time=300.0,  # 5 minutes
             dispatcher=dispatcher,
         )
         return controller, dispatcher
@@ -706,8 +706,8 @@ class TestHeaterControllerEventEmission:
             heater_polarity_invert=False,
             pwm=0,  # Valve mode
             difference=100.0,
-            min_on_cycle_duration=0.0,
-            min_off_cycle_duration=0.0,
+            min_open_time=0.0,
+            min_closed_time=0.0,
             dispatcher=dispatcher,
         )
         return controller, dispatcher
@@ -749,7 +749,7 @@ class TestHeaterControllerEventEmission:
 
         # Mock callbacks
         import time
-        cycle_start_time = time.monotonic() - 600  # 600 seconds ago (>= min_off_cycle_duration)
+        cycle_start_time = time.monotonic() - 600  # 600 seconds ago (>= min_closed_time)
         get_cycle_start_time = MagicMock(return_value=cycle_start_time)
         set_is_heating = MagicMock()
         set_last_heat_cycle_time = MagicMock()
@@ -792,8 +792,8 @@ class TestHeaterControllerEventEmission:
 
         # Mock callbacks
         import time
-        # Set cycle start time to be at least min_off_cycle_duration in the past
-        # to satisfy the condition: time.monotonic() - get_cycle_start_time() >= min_off_cycle_duration
+        # Set cycle start time to be at least min_closed_time in the past
+        # to satisfy the condition: time.monotonic() - get_cycle_start_time() >= min_closed_time
         cycle_start_time = time.monotonic() - 600  # 600 seconds ago (>= 300s min_off)
         get_cycle_start_time = MagicMock(return_value=cycle_start_time)
         set_is_heating = MagicMock()
@@ -830,7 +830,7 @@ class TestHeaterControllerEventEmission:
 
         # Mock callbacks
         import time
-        cycle_start_time = time.monotonic() - 600  # 600 seconds ago (>= min_on_cycle_duration)
+        cycle_start_time = time.monotonic() - 600  # 600 seconds ago (>= min_open_time)
         get_cycle_start_time = MagicMock(return_value=cycle_start_time)
         set_is_heating = MagicMock()
         set_last_heat_cycle_time = MagicMock()
@@ -973,7 +973,7 @@ class TestHeaterControllerEventEmission:
 
         # Mock callbacks
         import time
-        cycle_start_time = time.monotonic() - 600  # 600 seconds ago (>= min_on_cycle_duration)
+        cycle_start_time = time.monotonic() - 600  # 600 seconds ago (>= min_open_time)
         get_cycle_start_time = MagicMock(return_value=cycle_start_time)
         set_is_heating = MagicMock()
         set_last_heat_cycle_time = MagicMock()
@@ -1062,12 +1062,12 @@ class TestDutyAccumulator:
         assert heater_controller._duty_accumulator_seconds == 0.0
 
     def test_max_accumulator_is_2x_min_cycle(self, heater_controller):
-        """Test that max_accumulator = 2 * min_on_cycle_duration.
+        """Test that max_accumulator = 2 * min_open_time.
 
-        With fixture min_on_cycle_duration=300s, max_accumulator should be 600s.
+        With fixture min_open_time=300s, max_accumulator should be 600s.
         """
         assert hasattr(heater_controller, '_max_accumulator')
-        expected = 2.0 * 300.0  # 2 * min_on_cycle_duration from fixture
+        expected = 2.0 * 300.0  # 2 * min_open_time from fixture
         assert heater_controller._max_accumulator == expected
 
     def test_duty_accumulator_property_exposed(self, heater_controller):
@@ -1288,8 +1288,8 @@ class TestCompressorMinCycleProtection:
             heater_polarity_invert=False,
             pwm=180,  # 3 minutes PWM for forced_air
             difference=100.0,
-            min_on_cycle_duration=180.0,  # 3 minutes min cycle for compressor protection
-            min_off_cycle_duration=180.0,
+            min_open_time=180.0,  # 3 minutes min cycle for compressor protection
+            min_closed_time=180.0,
             dispatcher=None,
         )
 
@@ -1305,8 +1305,8 @@ class TestCompressorMinCycleProtection:
             heater_polarity_invert=False,
             pwm=300,  # 5 minutes PWM for mini_split
             difference=100.0,
-            min_on_cycle_duration=300.0,  # 5 minutes min cycle for compressor protection
-            min_off_cycle_duration=300.0,
+            min_open_time=300.0,  # 5 minutes min cycle for compressor protection
+            min_closed_time=300.0,
             dispatcher=None,
         )
 
@@ -1322,14 +1322,14 @@ class TestCompressorMinCycleProtection:
             heater_polarity_invert=False,
             pwm=0,  # Valve mode for chilled_water
             difference=100.0,
-            min_on_cycle_duration=0.0,  # No min cycle for chilled water
-            min_off_cycle_duration=0.0,
+            min_open_time=0.0,  # No min cycle for chilled water
+            min_closed_time=0.0,
             dispatcher=None,
         )
 
     @pytest.mark.asyncio
     async def test_forced_air_compressor_respects_min_cycle(self, cooler_controller_forced_air):
-        """Test forced_air compressor cannot turn off before min_on_cycle_duration (180s).
+        """Test forced_air compressor cannot turn off before min_open_time (180s).
 
         This protects compressor from short-cycling which can damage the equipment.
         """
@@ -1366,7 +1366,7 @@ class TestCompressorMinCycleProtection:
 
     @pytest.mark.asyncio
     async def test_forced_air_compressor_allows_turn_off_after_min_cycle(self, cooler_controller_forced_air):
-        """Test forced_air compressor CAN turn off after min_on_cycle_duration (180s)."""
+        """Test forced_air compressor CAN turn off after min_open_time (180s)."""
         controller = cooler_controller_forced_air
 
         # Mock service calls and state
@@ -1400,7 +1400,7 @@ class TestCompressorMinCycleProtection:
 
     @pytest.mark.asyncio
     async def test_mini_split_compressor_respects_min_cycle(self, cooler_controller_mini_split):
-        """Test mini_split compressor cannot turn off before min_on_cycle_duration (300s)."""
+        """Test mini_split compressor cannot turn off before min_open_time (300s)."""
         controller = cooler_controller_mini_split
 
         # Mock service calls and state
@@ -1434,7 +1434,7 @@ class TestCompressorMinCycleProtection:
 
     @pytest.mark.asyncio
     async def test_mini_split_compressor_allows_turn_off_after_min_cycle(self, cooler_controller_mini_split):
-        """Test mini_split compressor CAN turn off after min_on_cycle_duration (300s)."""
+        """Test mini_split compressor CAN turn off after min_open_time (300s)."""
         controller = cooler_controller_mini_split
 
         # Mock service calls
@@ -1475,8 +1475,8 @@ class TestCompressorMinCycleProtection:
         """
         controller = cooler_controller_chilled_water
 
-        # Verify min_on_cycle_duration is 0
-        assert controller.min_on_cycle_duration == 0.0
+        # Verify min_open_time is 0
+        assert controller.min_open_time == 0.0
 
         # Mock service calls (valve mode)
         async def mock_async_call(*args, **kwargs):
@@ -1623,8 +1623,8 @@ class TestWasClampedCallback:
             heater_polarity_invert=False,
             pwm=600,  # 10 minutes
             difference=100.0,
-            min_on_cycle_duration=300.0,  # 5 minutes
-            min_off_cycle_duration=300.0,  # 5 minutes
+            min_open_time=300.0,  # 5 minutes
+            min_closed_time=300.0,  # 5 minutes
             dispatcher=dispatcher,
             get_was_clamped=lambda: mock_pid.was_clamped,
             reset_clamp_state=lambda: mock_pid.reset_clamp_state(),
@@ -1665,8 +1665,8 @@ class TestWasClampedCallback:
             heater_polarity_invert=False,
             pwm=600,
             difference=100.0,
-            min_on_cycle_duration=300.0,
-            min_off_cycle_duration=300.0,
+            min_open_time=300.0,
+            min_closed_time=300.0,
         )
 
         # Should return False (graceful fallback)
@@ -1688,8 +1688,8 @@ class TestWasClampedCallback:
             heater_polarity_invert=False,
             pwm=600,
             difference=100.0,
-            min_on_cycle_duration=300.0,
-            min_off_cycle_duration=300.0,
+            min_open_time=300.0,
+            min_closed_time=300.0,
         )
 
         # Should return False (graceful fallback)
@@ -1722,8 +1722,8 @@ class TestWasClampedCallback:
             heater_polarity_invert=False,
             pwm=600,
             difference=100.0,
-            min_on_cycle_duration=300.0,
-            min_off_cycle_duration=300.0,
+            min_open_time=300.0,
+            min_closed_time=300.0,
         )
 
         # Should not raise an error
@@ -1744,8 +1744,8 @@ class TestWasClampedCallback:
             heater_polarity_invert=False,
             pwm=600,
             difference=100.0,
-            min_on_cycle_duration=300.0,
-            min_off_cycle_duration=300.0,
+            min_open_time=300.0,
+            min_closed_time=300.0,
         )
 
         # Should not raise an error
@@ -1896,8 +1896,8 @@ class TestWasClampedCallback:
             heater_polarity_invert=False,
             pwm=0,  # Valve mode
             difference=100.0,
-            min_on_cycle_duration=0.0,
-            min_off_cycle_duration=0.0,
+            min_open_time=0.0,
+            min_closed_time=0.0,
             dispatcher=dispatcher,
             get_was_clamped=lambda: mock_pid.was_clamped,
             reset_clamp_state=lambda: None,
@@ -1935,7 +1935,7 @@ class TestDutyAccumulatorPulse:
     async def test_accumulator_fires_minimum_pulse(self, heater_controller):
         """Test that accumulator fires min pulse when reaching threshold.
 
-        Fixture: min_on_cycle_duration=300s
+        Fixture: min_open_time=300s
         Pre-set accumulator to 300s → should fire pulse and subtract 300s
         """
         import time
@@ -1974,7 +1974,7 @@ class TestDutyAccumulatorPulse:
 
         # Verify turn_on was called (device state should be updated)
         # Since we can't check async_call directly, verify accumulator was reduced
-        # Accumulator should be reduced by min_on_cycle_duration (300 - 300 = 0)
+        # Accumulator should be reduced by min_open_time (300 - 300 = 0)
         assert controller._duty_accumulator_seconds == 0.0
 
     @pytest.mark.asyncio
@@ -2118,8 +2118,8 @@ class TestValveActuationTimeDelays:
             heater_polarity_invert=False,
             pwm=600,  # 10 minutes
             difference=100.0,
-            min_on_cycle_duration=300.0,  # 5 minutes
-            min_off_cycle_duration=300.0,  # 5 minutes
+            min_open_time=300.0,  # 5 minutes
+            min_closed_time=300.0,  # 5 minutes
             dispatcher=dispatcher,
             valve_actuation_time=120.0,  # 2 minutes
         )
@@ -2189,8 +2189,8 @@ class TestValveActuationTimeDelays:
             heater_polarity_invert=False,
             pwm=600,
             difference=100.0,
-            min_on_cycle_duration=300.0,
-            min_off_cycle_duration=300.0,
+            min_open_time=300.0,
+            min_closed_time=300.0,
             dispatcher=dispatcher,
             valve_actuation_time=0.0,  # No delay
         )
@@ -2344,8 +2344,8 @@ class TestValveActuationTimeDelays:
             heater_polarity_invert=False,
             pwm=0,  # Valve mode
             difference=100.0,
-            min_on_cycle_duration=0.0,
-            min_off_cycle_duration=0.0,
+            min_open_time=0.0,
+            min_closed_time=0.0,
             dispatcher=dispatcher,
             valve_actuation_time=120.0,  # Should be ignored in valve mode
         )

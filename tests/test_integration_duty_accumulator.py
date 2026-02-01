@@ -74,8 +74,8 @@ def heater_controller_with_dispatcher(mock_hass, mock_thermostat, dispatcher):
         heater_polarity_invert=False,
         pwm=600,  # 10 minutes PWM period
         difference=100.0,
-        min_on_cycle_duration=75.0,  # 75s = 12.5% of 600s PWM period
-        min_off_cycle_duration=75.0,
+        min_open_time=75.0,  # 75s = 12.5% of 600s PWM period
+        min_closed_time=75.0,
         dispatcher=dispatcher,
     )
 
@@ -91,7 +91,7 @@ class TestAccumulatorFiresAfterMultiplePeriods:
 
         Configuration:
         - PWM period: 600s (10 min)
-        - min_on_cycle_duration: 75s (12.5% threshold)
+        - min_open_time: 75s (12.5% threshold)
         - 10% output: time_on = 60s per period (< 75s threshold)
 
         Expected behavior:
@@ -228,8 +228,8 @@ class TestAccumulatorRestartContinuity:
             heater_polarity_invert=False,
             pwm=600,
             difference=100.0,
-            min_on_cycle_duration=75.0,
-            min_off_cycle_duration=75.0,
+            min_open_time=75.0,
+            min_closed_time=75.0,
             dispatcher=dispatcher,
         )
 
@@ -278,8 +278,8 @@ class TestAccumulatorRestartContinuity:
             heater_polarity_invert=False,
             pwm=600,
             difference=100.0,
-            min_on_cycle_duration=75.0,
-            min_off_cycle_duration=75.0,
+            min_open_time=75.0,
+            min_closed_time=75.0,
             dispatcher=dispatcher,
         )
 
