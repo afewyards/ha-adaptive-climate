@@ -125,6 +125,10 @@ class MockThermostat:
         self._cycle_tracker = None
         self._setpoint_boost_manager = None
 
+        # Event handlers for manifold transport delay
+        self._on_heating_started_event = Mock()
+        self._on_heating_ended_event = Mock()
+
         # Apply overrides
         if config_overrides:
             for key, value in config_overrides.items():
