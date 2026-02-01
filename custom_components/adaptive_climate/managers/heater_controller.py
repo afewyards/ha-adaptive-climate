@@ -137,6 +137,7 @@ class HeaterController:
         self._get_was_clamped = get_was_clamped
         self._reset_clamp_state = reset_clamp_state
         self._valve_actuation_time = valve_actuation_time
+        self._transport_delay: float = 0.0  # Updated dynamically via set_transport_delay
 
         # State tracking (owned by thermostat, but accessed here)
         self._heater_control_failed = False
@@ -262,6 +263,7 @@ class HeaterController:
         Args:
             delay_seconds: Transport delay in seconds (0 if manifold warm)
         """
+        self._transport_delay = delay_seconds
         if self._pwm_controller:
             self._pwm_controller.set_transport_delay(delay_seconds)
 
@@ -331,6 +333,21 @@ class HeaterController:
         if self._pwm_controller:
             return self._pwm_controller.min_open_time
         return self._min_open_time
+
+    @property
+    def effective_min_open_time(self) -> float:
+        """Return effective minimum open time including valve and transport delays.
+
+        For floor hydronic systems with motorized valves and manifold transport delay,
+        the valve must remain open long enough for:
+        1. Valve to fully open (valve_actuation_time)
+        2. Hot water to reach the zone (transport_delay)
+        3. Actual heat delivery (min_open_time)
+
+        Returns:
+            Total minimum cycle time in seconds
+        """
+        return self._min_open_time + self._valve_actuation_time + self._transport_delay
 
     @property
     def cooling_type(self) -> Optional[str]:
@@ -701,10 +718,11 @@ class HeaterController:
             )
             # Device already in correct state - skip redundant service call
             return
-        elif time.monotonic() - get_cycle_start_time() >= self._min_open_time or force:
-            # Minimum cycle protection: Only turn off if min_open_time has elapsed
-            # or force=True (for emergency shutdowns). This protects compressors from
-            # short-cycling which can damage equipment.
+        elif time.monotonic() - get_cycle_start_time() >= self.effective_min_open_time or force:
+            # Minimum cycle protection: Only turn off if effective_min_open_time has elapsed
+            # (includes valve_actuation_time + transport_delay + min_open_time) or force=True
+            # (for emergency shutdowns). This ensures heat actually reaches the zone before
+            # turning off, and protects compressors from short-cycling damage.
             _LOGGER.info(
                 "%s: Turning OFF %s",
                 thermostat_entity_id,
@@ -749,10 +767,13 @@ class HeaterController:
             # Reset heating state for zone linking
             set_is_heating(False)
         else:
+            elapsed = time.monotonic() - get_cycle_start_time()
             _LOGGER.info(
-                "%s: Reject request turning OFF %s: Cycle is too short",
+                "%s: Reject turning OFF %s: Cycle too short (%.0fs < %.0fs effective min)",
                 thermostat_entity_id,
-                ", ".join(entities)
+                ", ".join(entities),
+                elapsed,
+                self.effective_min_open_time,
             )
             return
 
