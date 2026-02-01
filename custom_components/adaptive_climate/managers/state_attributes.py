@@ -400,6 +400,19 @@ def _add_auto_mode_switching_attributes(
     attrs.update(auto_mode_mgr.get_state_attributes(debug=debug))
 
 
+def build_learning_object(status: str, confidence: int) -> dict[str, Any]:
+    """Build learning status object.
+
+    Args:
+        status: Learning status ("idle"|"collecting"|"stable"|"tuned"|"optimized")
+        confidence: Convergence confidence 0-100%
+
+    Returns:
+        Dict with status and confidence
+    """
+    return {"status": status, "confidence": confidence}
+
+
 def _build_status_attribute(thermostat: SmartThermostat) -> dict[str, Any]:
     """Build consolidated status attribute using StatusManager.
 

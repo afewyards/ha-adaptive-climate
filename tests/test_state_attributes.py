@@ -2279,3 +2279,15 @@ class TestStatusAttributeIntegration:
             datetime.fromisoformat(resume_at)
         except ValueError:
             pytest.fail(f"resume_at is not valid ISO8601: {resume_at}")
+
+
+def test_build_learning_object():
+    """Learning object should have status and confidence."""
+    from custom_components.adaptive_climate.managers.state_attributes import build_learning_object
+
+    learning = build_learning_object(
+        status="stable",
+        confidence=45,
+    )
+
+    assert learning == {"status": "stable", "confidence": 45}
