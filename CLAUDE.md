@@ -104,6 +104,33 @@ Rules adjust Kp/Ki/Kd based on overshoot, undershoot, drift, oscillations. `auto
 - **Thermal groups:** Leader zones + feedforward for heat transfer
 - **Manifolds:** Transport delay = `pipe_volume / (active_loops × flow_per_loop)`
 
+### Valve Actuation Time
+
+Configurable delay for motorized valve travel time. Affects PWM timing compensation and cycle tracking.
+
+**Configuration (entity-level):**
+```yaml
+climate:
+  - platform: adaptive_climate
+    valve_actuation_time: 150  # seconds, optional
+```
+
+**Defaults by heating type:**
+| Type | Default |
+|------|---------|
+| floor_hydronic | 120s |
+| radiator | 90s |
+| convector | 0s |
+| forced_air | 30s |
+
+**Timing behavior:**
+- Demand ON: signaled when valve fully open (not at command)
+- Demand OFF: signaled when valve half-closed
+- PWM duty adjusted to account for valve travel
+
+**Committed heat tracking:**
+When transport delay exists, tracks in-flight heat and subtracts from next cycle's duty calculation. Learning splits overshoot into controllable vs committed portions.
+
 ### Open Window Detection
 
 Algorithmic detection of open windows based on rapid temperature drops (Danfoss Ally algorithm). Module: `adaptive/open_window_detection.py` (`OpenWindowDetector`).
