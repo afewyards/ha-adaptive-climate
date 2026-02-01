@@ -168,17 +168,36 @@ class StateRestorer:
 
         # Restore actuator cycle counts for wear tracking
         if thermostat._heater_controller:
-            heater_cycles = old_state.attributes.get('heater_cycle_count')
-            if heater_cycles is not None:
-                thermostat._heater_controller.set_heater_cycle_count(int(heater_cycles))
-                _LOGGER.info("%s: Restored heater_cycle_count=%d",
-                            thermostat.entity_id, int(heater_cycles))
+            # Handle cycle_count - new structure (dict or int) or old structure (separate fields)
+            cycle_count = old_state.attributes.get("cycle_count")
+            if cycle_count is not None:
+                if isinstance(cycle_count, dict):
+                    # New structure: {"heater": N, "cooler": M}
+                    heater_count = cycle_count.get("heater", 0)
+                    cooler_count = cycle_count.get("cooler", 0)
+                else:
+                    # New structure for demand_switch: single int
+                    heater_count = cycle_count
+                    cooler_count = 0
 
-            cooler_cycles = old_state.attributes.get('cooler_cycle_count')
-            if cooler_cycles is not None:
-                thermostat._heater_controller.set_cooler_cycle_count(int(cooler_cycles))
-                _LOGGER.info("%s: Restored cooler_cycle_count=%d",
-                            thermostat.entity_id, int(cooler_cycles))
+                # Apply counts from new structure
+                thermostat._heater_controller.set_heater_cycle_count(int(heater_count))
+                thermostat._heater_controller.set_cooler_cycle_count(int(cooler_count))
+                _LOGGER.info("%s: Restored cycle_count heater=%d, cooler=%d",
+                            thermostat.entity_id, int(heater_count), int(cooler_count))
+            else:
+                # Old structure: separate fields (backward compatibility)
+                heater_count = old_state.attributes.get("heater_cycle_count")
+                if heater_count is not None:
+                    thermostat._heater_controller.set_heater_cycle_count(int(heater_count))
+                    _LOGGER.info("%s: Restored heater_cycle_count=%d",
+                                thermostat.entity_id, int(heater_count))
+
+                cooler_count = old_state.attributes.get("cooler_cycle_count")
+                if cooler_count is not None:
+                    thermostat._heater_controller.set_cooler_cycle_count(int(cooler_count))
+                    _LOGGER.info("%s: Restored cooler_cycle_count=%d",
+                                thermostat.entity_id, int(cooler_count))
 
             # NOTE: duty_accumulator is intentionally NOT restored across restarts.
             # The accumulator handles sub-threshold duty within a single session, but
