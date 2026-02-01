@@ -2291,3 +2291,78 @@ def test_build_learning_object():
     )
 
     assert learning == {"status": "stable", "confidence": 45}
+
+
+def test_build_debug_object_pwm_group():
+    """Debug object should have pwm group."""
+    from custom_components.adaptive_climate.managers.state_attributes import build_debug_object
+
+    debug = build_debug_object(
+        pwm_duty_accumulator_pct=45.2,
+    )
+
+    assert "pwm" in debug
+    assert debug["pwm"]["duty_accumulator_pct"] == 45.2
+
+
+def test_build_debug_object_cycle_group():
+    """Debug object should have cycle group."""
+    from custom_components.adaptive_climate.managers.state_attributes import build_debug_object
+
+    debug = build_debug_object(
+        cycle_state="heating",
+        cycle_cycles_collected=4,
+        cycle_cycles_required=6,
+    )
+
+    assert "cycle" in debug
+    assert debug["cycle"]["state"] == "heating"
+    assert debug["cycle"]["cycles_collected"] == 4
+    assert debug["cycle"]["cycles_required"] == 6
+
+
+def test_build_debug_object_omits_empty_groups():
+    """Debug object should omit groups with no data."""
+    from custom_components.adaptive_climate.managers.state_attributes import build_debug_object
+
+    debug = build_debug_object(
+        pwm_duty_accumulator_pct=45.2,
+        # No cycle data
+    )
+
+    assert "pwm" in debug
+    assert "cycle" not in debug
+
+
+def test_build_debug_object_all_groups():
+    """Debug object should include all configured groups."""
+    from custom_components.adaptive_climate.managers.state_attributes import build_debug_object
+
+    debug = build_debug_object(
+        pwm_duty_accumulator_pct=45.2,
+        cycle_state="heating",
+        cycle_cycles_collected=4,
+        cycle_cycles_required=6,
+        preheat_heating_rate_learned=0.5,
+        preheat_observation_count=3,
+        humidity_state="normal",
+        humidity_peak=85.2,
+        undershoot_thermal_debt=12.5,
+        undershoot_consecutive_failures=2,
+        undershoot_ki_boost_applied=1.2,
+        ke_observations=15,
+        ke_current_ke=0.5,
+        pid_p_term=1.2,
+        pid_i_term=3.5,
+        pid_d_term=-0.3,
+        pid_e_term=0.8,
+        pid_f_term=0.0,
+    )
+
+    assert "pwm" in debug
+    assert "cycle" in debug
+    assert "preheat" in debug
+    assert "humidity" in debug
+    assert "undershoot" in debug
+    assert "ke" in debug
+    assert "pid" in debug
