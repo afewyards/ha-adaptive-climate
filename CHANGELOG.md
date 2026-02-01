@@ -1,6 +1,99 @@
 # CHANGELOG
 
 
+## v0.58.0 (2026-02-01)
+
+### Bug Fixes
+
+- Restore backward-compatible properties in ConfidenceContributionTracker
+  ([`d915b96`](https://github.com/afewyards/ha-adaptive-climate/commit/d915b966aa1e8f94f48eaea5c0aba515062c166e))
+
+### Documentation
+
+- Add weighted cycle learning design
+  ([`dcf960f`](https://github.com/afewyards/ha-adaptive-climate/commit/dcf960fc791aaf72166cbc138753cd4065418b5e))
+
+Addresses premature "tuned" status from maintenance-only cycles. Key features: cycle weighting by
+  difficulty, confidence caps by heating type, recovery cycle requirements, auto-learning setback.
+
+- Add weighted cycle learning implementation plan
+  ([`dd0c639`](https://github.com/afewyards/ha-adaptive-climate/commit/dd0c63913bfdbdfbcd9aea7a91f5831fcaefc44d))
+
+11 tasks covering cycle weighting, confidence caps, recovery cycle requirements, extended settling
+  windows, and auto-learning setback.
+
+- Add weighted cycle learning to CLAUDE.md
+  ([`0c42b78`](https://github.com/afewyards/ha-adaptive-climate/commit/0c42b789b3dadb4e330c2e55488e647768cc87f2))
+
+- Update README with weighted cycle learning
+  ([`500249e`](https://github.com/afewyards/ha-adaptive-climate/commit/500249ea23ea28f87ac5934b3de8d4feb2116c51))
+
+### Features
+
+- Add auto-learning setback for zones stuck at cap
+  ([`be9b249`](https://github.com/afewyards/ha-adaptive-climate/commit/be9b2492c4863823bea5c1fba9c2ec8c3ae0586a))
+
+- Add confidence contribution tracker with caps
+  ([`e44150e`](https://github.com/afewyards/ha-adaptive-climate/commit/e44150e6499f3245f673dd78de13046f42277ffb))
+
+- Add cycle weight calculator with tests
+  ([`8fc7288`](https://github.com/afewyards/ha-adaptive-climate/commit/8fc72883d54e4eb529f4634434406bbfd080ffb5))
+
+Implements weighted cycle learning foundation with CycleWeightCalculator: - Classifies cycles as
+  maintenance vs recovery based on starting delta - Recovery thresholds scale with learning status
+  (collecting vs stable) - Weight formula: (base × delta_multiplier × outcome) + bonuses - Bonuses
+  for high duty, cold outdoor temp, night setback recovery - All 15 tests pass covering
+  classification, weight calculation, bonuses
+
+- Add extended settling window for slow systems
+  ([`9642845`](https://github.com/afewyards/ha-adaptive-climate/commit/96428454a15af40a40a4a7c9104c76ca2d0da0f0))
+
+- Add heating rate consistency score to PreheatLearner
+  ([`9293731`](https://github.com/afewyards/ha-adaptive-climate/commit/9293731ff67564facdf251e5d56856b0877dd77c))
+
+Add get_rate_consistency_score() method that calculates a 0-1 score based on: - Observation count
+  (more observations = higher base score) - Coefficient of variation across all rates (lower
+  variance = higher score)
+
+Score formula: - count_score: caps at 1.0 with 10+ observations - consistency_score: 1.0 -
+  (stdev/mean) for rates - combined: count_score * 0.4 + consistency_score * 0.6
+
+This enables preheat learning to contribute to overall confidence tracking in weighted cycle
+  learning system.
+
+- Add weighted cycle learning constants
+  ([`bf3e823`](https://github.com/afewyards/ha-adaptive-climate/commit/bf3e82325a0e68ec97dc07bfa7b4723347f08ea1))
+
+- Integrate weighted learning into AdaptiveLearner
+  ([`d1a8af7`](https://github.com/afewyards/ha-adaptive-climate/commit/d1a8af760d042391ec7a1b13ce95ba664695c4f9))
+
+- Add starting_delta field to CycleMetrics for tracking temperature delta at cycle start - Update
+  AdaptiveLearner.update_convergence_confidence() to use weighted cycle learning - Calculate cycle
+  weight based on starting_delta, outcome, and learning status - Track recovery cycles for tier
+  gating - Apply weighted confidence gains - Make ConfidenceContributionTracker mode-aware
+  (heating/cooling) - Track maintenance contribution per mode - Track recovery cycle count per mode
+  - Update serialization to v9 format with backward compatibility - Add can_reach_learning_tier()
+  method to check tier requirements - Add comprehensive tests for weighted learning integration -
+  Update serialization format version to 9
+
+- Update serialization to v9 with contribution tracking
+  ([`c06ea0c`](https://github.com/afewyards/ha-adaptive-climate/commit/c06ea0c2c4ff0fc939f485849a48bc9988576002))
+
+### Testing
+
+- Add integration tests for weighted learning infrastructure
+  ([`6008577`](https://github.com/afewyards/ha-adaptive-climate/commit/6008577bce1ce070d8da0d38bff7f43a0b504bfa))
+
+Tests verify: - CycleWeightCalculator correctly distinguishes maintenance vs recovery cycles - Cycle
+  outcomes (overshoot/undershoot) affect weights appropriately - ConfidenceContributionTracker caps
+  and counts correctly - Tier unlocking based on recovery cycle counts - Constants are properly
+  defined for all heating types
+
+These tests verify the weighted learning infrastructure is working correctly. Full integration into
+  AdaptiveLearner.update_convergence_confidence() is the next step for complete weighted learning
+  functionality.
+
+
 ## v0.57.3 (2026-02-01)
 
 ### Bug Fixes
