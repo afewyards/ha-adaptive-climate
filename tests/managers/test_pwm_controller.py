@@ -59,7 +59,7 @@ class TestPWMControllerValveActuation:
         assert time_on == 450.0
 
     def test_calculate_adjusted_on_time_with_valve_delay(self, mock_thermostat):
-        """With valve delay, on-time is extended by half valve time."""
+        """With valve delay, on-time is actuator_time + max(heat_duration, min_on_cycle)."""
         controller = PWMController(
             thermostat=mock_thermostat,
             pwm_duration=900,
@@ -74,8 +74,8 @@ class TestPWMControllerValveActuation:
             difference=100,
         )
 
-        # 50% of 900s = 450s, plus half of 120s = 510s
-        assert time_on == 510.0
+        # 50% of 900s = 450s, plus full actuator time of 120s = 570s
+        assert time_on == 570.0
 
     def test_calculate_adjusted_on_time_zero_output(self, mock_thermostat):
         """Zero control output produces zero on-time."""
@@ -154,12 +154,35 @@ class TestPWMControllerValveActuation:
 
         # 25% duty
         time_on = controller.calculate_adjusted_on_time(25, 100)
-        assert time_on == 225.0 + 60.0  # 225s + 60s half-valve
+        assert time_on == 225.0 + 120.0  # 225s heat + 120s actuator
 
         # 75% duty
         time_on = controller.calculate_adjusted_on_time(75, 100)
-        assert time_on == 675.0 + 60.0  # 675s + 60s half-valve
+        assert time_on == 675.0 + 120.0  # 675s heat + 120s actuator
 
         # 100% duty
         time_on = controller.calculate_adjusted_on_time(100, 100)
-        assert time_on == 900.0 + 60.0  # 900s + 60s half-valve
+        assert time_on == 900.0 + 120.0  # 900s heat + 120s actuator
+
+    def test_calculate_adjusted_on_time_respects_min_on_cycle(self, mock_thermostat):
+        """Short duty cycles are extended to min_on_cycle_duration."""
+        controller = PWMController(
+            thermostat=mock_thermostat,
+            pwm_duration=900,
+            difference=100,
+            min_on_cycle_duration=300,  # 5 minutes minimum
+            min_off_cycle_duration=0,
+            valve_actuation_time=120.0,
+        )
+
+        # Very small duty (5% = 45s) should be extended to min_on_cycle
+        time_on = controller.calculate_adjusted_on_time(5, 100)
+        assert time_on == 300.0 + 120.0  # min_on_cycle + actuator
+
+        # Medium duty (20% = 180s) should be extended to min_on_cycle
+        time_on = controller.calculate_adjusted_on_time(20, 100)
+        assert time_on == 300.0 + 120.0  # min_on_cycle + actuator
+
+        # Large duty (50% = 450s) exceeds min, so use calculated
+        time_on = controller.calculate_adjusted_on_time(50, 100)
+        assert time_on == 450.0 + 120.0  # calculated heat + actuator

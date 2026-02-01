@@ -111,6 +111,29 @@ class PWMController:
         self._duty_accumulator_seconds = 0.0
         self._last_accumulator_calc_time = None
 
+    def _calculate_heat_duration(
+        self,
+        control_output: float,
+        difference: float,
+    ) -> float:
+        """Calculate raw heat delivery duration from PID output.
+
+        This is the heat delivery time without any valve actuation or minimum
+        cycle adjustments. Used for accumulation logic.
+
+        Args:
+            control_output: Current PID control output
+            difference: Output range (max - min)
+
+        Returns:
+            Raw heat duration in seconds
+        """
+        if difference == 0 or control_output == 0:
+            return 0.0
+
+        duty = control_output / difference
+        return self._pwm * duty
+
     def calculate_adjusted_on_time(
         self,
         control_output: float,
@@ -118,9 +141,10 @@ class PWMController:
     ) -> float:
         """Calculate valve-on duration accounting for actuation delay.
 
-        For valves with actuation time, we need to keep the valve open longer
-        to account for the time it takes to fully open/close. The valve command
-        is sent early (by half valve time) before the desired heat delivery should end.
+        For valves with actuation time, the valve must first fully open before
+        heat delivery begins. The total on-time is:
+        - actuator_time: time for valve to fully open
+        - heat_duration: actual heat delivery time (≥ min_on_cycle_duration)
 
         Args:
             control_output: Current PID control output
@@ -129,16 +153,16 @@ class PWMController:
         Returns:
             Adjusted on-time in seconds
         """
-        if difference == 0 or control_output == 0:
+        heat_duration = self._calculate_heat_duration(control_output, difference)
+        if heat_duration == 0:
             return 0.0
 
-        # Base heat delivery time from duty cycle
-        duty = control_output / difference
-        heat_duration = self._pwm * duty
-
-        # Add half valve time to account for close delay
-        # (we send close command early, so valve keeps delivering during close)
-        return heat_duration + (self._valve_actuation_time / 2)
+        # Total on-time = valve open time + max(heat_duration, min_on_cycle)
+        # This ensures the valve is fully open before heat delivery begins
+        return self._valve_actuation_time + max(
+            heat_duration,
+            self._min_on_cycle_duration,
+        )
 
     def get_close_command_offset(self) -> float:
         """Get offset in seconds to send close command early.
@@ -209,8 +233,14 @@ class PWMController:
         )
         time_off = self._pwm - time_on
 
-        # If calculated on-time < min_on_cycle_duration, accumulate duty
-        if 0 < time_on < self._min_on_cycle_duration:
+        # For accumulation check, use raw heat duration (not adjusted on-time)
+        heat_duration = self._calculate_heat_duration(
+            control_output=abs(control_output),
+            difference=self._difference,
+        )
+
+        # If calculated heat duration < min_on_cycle_duration, accumulate duty
+        if 0 < heat_duration < self._min_on_cycle_duration:
             # If heater is already ON (e.g., during minimum pulse), don't accumulate
             # but DO try to turn off (respects min_cycle protection internally)
             if heater_controller.is_active(hvac_mode):
@@ -307,12 +337,12 @@ class PWMController:
                 return
 
             # Below threshold - accumulate duty scaled by actual elapsed time
-            # time_on is for the full PWM period; scale by actual interval
+            # heat_duration is for the full PWM period; scale by actual interval
             current_time = time.monotonic()
             if self._last_accumulator_calc_time is not None:
                 actual_dt = current_time - self._last_accumulator_calc_time
-                # duty_to_add = actual_dt * (time_on / pwm) = actual_dt * duty_fraction
-                duty_to_add = actual_dt * time_on / self._pwm
+                # duty_to_add = actual_dt * (heat_duration / pwm) = actual_dt * duty_fraction
+                duty_to_add = actual_dt * heat_duration / self._pwm
             else:
                 # First calculation - don't accumulate, just set baseline
                 duty_to_add = 0.0
