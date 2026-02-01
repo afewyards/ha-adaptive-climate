@@ -268,6 +268,44 @@ class PreheatLearner:
         rates = [obs.rate for obs in observations]
         return statistics.median(rates)
 
+    def get_rate_consistency_score(self) -> float:
+        """Calculate heating rate consistency score for confidence contribution.
+
+        Score based on:
+        - Number of observations (more = higher base score)
+        - Consistency of rates within bins (lower variance = higher score)
+
+        Returns:
+            Score from 0.0 to 1.0.
+        """
+        all_rates: list[float] = []
+        for observations in self._observations.values():
+            all_rates.extend(obs.rate for obs in observations)
+
+        if not all_rates:
+            return 0.0
+
+        # Base score from observation count (caps at 1.0 with 10+ observations)
+        count_score = min(len(all_rates) / 10.0, 1.0)
+
+        if len(all_rates) < 3:
+            # Not enough for consistency check
+            return count_score * 0.3
+
+        # Calculate coefficient of variation (lower = more consistent)
+        mean_rate = statistics.mean(all_rates)
+        if mean_rate == 0:
+            return count_score * 0.5
+
+        stdev = statistics.stdev(all_rates)
+        cv = stdev / mean_rate  # Coefficient of variation
+
+        # Convert CV to consistency score (CV of 0 = 1.0, CV of 1 = 0.0)
+        consistency_score = max(0.0, 1.0 - cv)
+
+        # Combine count and consistency (weighted average)
+        return count_score * 0.4 + consistency_score * 0.6
+
     def to_dict(self) -> dict:
         """Serialize learner state to dict.
 
