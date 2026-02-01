@@ -90,6 +90,11 @@ class UndershootDetector:
         """Set thermal debt (for backward compatibility)."""
         self._thermal_debt = value
 
+    @property
+    def consecutive_undershoot_cycles(self) -> int:
+        """Get consecutive undershoot cycle count."""
+        return self._consecutive_failures
+
     def update_realtime(
         self,
         temp: float,
