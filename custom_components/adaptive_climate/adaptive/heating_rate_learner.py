@@ -52,6 +52,10 @@ class HeatingRateLearner:
     MIN_OBSERVATIONS_FOR_RATE = 3
     PROGRESS_THRESHOLD = 0.1  # Minimum temp rise to count as progress
     STALL_CYCLES = 3  # Cycles without progress to declare stall
+    OUTDOOR_RESET_THRESHOLD = 5.0  # degrees C change to reset counter
+    SETPOINT_RESET_THRESHOLD = 1.0  # degrees C change to reset counter
+    DUTY_CAPACITY_THRESHOLD = 0.85  # above this = capacity limited
+    STALLS_FOR_BOOST = 2  # consecutive stalls before Ki boost
 
     # Fallback rates by heating type (degrees C per hour)
     FALLBACK_RATES: dict[str, float] = {
@@ -230,6 +234,10 @@ class HeatingRateLearner:
         session = self._active_session
         self._active_session = None
 
+        # Store avg duty before clearing session
+        if session.cycle_duties:
+            self._last_session_avg_duty = sum(session.cycle_duties) / len(session.cycle_duties)
+
         # Discard if override interrupted
         if reason == "override":
             return None
@@ -249,6 +257,12 @@ class HeatingRateLearner:
 
         # Determine if stalled
         stalled = reason == "stalled"
+
+        # Update stall counter
+        if stalled:
+            self._record_stall(session.outdoor_temp, session.target_setpoint)
+        else:
+            self._record_success()
 
         # Bank observation
         delta = session.target_setpoint - session.start_temp
@@ -295,3 +309,40 @@ class HeatingRateLearner:
         if self._active_session is None or not self._active_session.cycle_duties:
             return None
         return sum(self._active_session.cycle_duties) / len(self._active_session.cycle_duties)
+
+    def _check_reset_conditions(self, outdoor_temp: float, setpoint: float) -> None:
+        """Check if conditions changed enough to reset stall counter."""
+        if self._last_stall_outdoor is not None:
+            if abs(outdoor_temp - self._last_stall_outdoor) > self.OUTDOOR_RESET_THRESHOLD:
+                self._stall_counter = 0
+
+        if self._last_stall_setpoint is not None:
+            if abs(setpoint - self._last_stall_setpoint) > self.SETPOINT_RESET_THRESHOLD:
+                self._stall_counter = 0
+
+    def _record_stall(self, outdoor_temp: float, setpoint: float) -> None:
+        """Record a stall and update tracking."""
+        self._check_reset_conditions(outdoor_temp, setpoint)
+        self._stall_counter += 1
+        self._last_stall_outdoor = outdoor_temp
+        self._last_stall_setpoint = setpoint
+
+    def _record_success(self) -> None:
+        """Record a successful session."""
+        self._stall_counter = 0
+        self._last_stall_outdoor = None
+        self._last_stall_setpoint = None
+
+    def should_boost_ki(self) -> bool:
+        """Check if Ki should be boosted based on stall pattern."""
+        if self._stall_counter < self.STALLS_FOR_BOOST:
+            return False
+
+        if not hasattr(self, "_last_session_avg_duty"):
+            return False
+
+        return self._last_session_avg_duty < self.DUTY_CAPACITY_THRESHOLD
+
+    def acknowledge_ki_boost(self) -> None:
+        """Acknowledge that Ki boost was applied, reset counter."""
+        self._stall_counter = 0
