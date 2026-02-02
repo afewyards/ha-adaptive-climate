@@ -57,13 +57,15 @@ class ClimateControlMixin:
                 _LOGGER.info("%s: Heating paused", self.entity_id)
 
                 # Discard any active heating rate session on override
+                zone_data = coordinator.get_zone_data(self._zone_id) if coordinator else None
+                adaptive_learner = zone_data.get("adaptive_learner") if zone_data else None
                 if (
-                    self._learner
-                    and hasattr(self._learner, "_heating_rate_learner")
-                    and self._learner._heating_rate_learner._active_session is not None
+                    adaptive_learner
+                    and hasattr(adaptive_learner, "_heating_rate_learner")
+                    and adaptive_learner._heating_rate_learner._active_session is not None
                 ):
-                    self._learner._heating_rate_learner.end_session(
-                        end_temp=self._cur_temp,
+                    adaptive_learner._heating_rate_learner.end_session(
+                        end_temp=self._current_temp,
                         reason="override",
                     )
                     _LOGGER.debug(

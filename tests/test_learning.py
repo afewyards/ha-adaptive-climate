@@ -4204,7 +4204,7 @@ class TestChronicApproachDetectorSerialization:
         detector_state = result["undershoot_detector"]
         assert detector_state["consecutive_failures"] == 3
         assert detector_state["cumulative_ki_multiplier"] == 1.5
-        assert result["format_version"] == 9
+        assert result["format_version"] == 10
 
     def test_serialize_chronic_approach_detector_empty_state(self):
         """Test to_dict serializes empty unified detector state (v9 format)."""
@@ -4217,7 +4217,7 @@ class TestChronicApproachDetectorSerialization:
         detector_state = result["undershoot_detector"]
         assert detector_state["consecutive_failures"] == 0
         assert detector_state["cumulative_ki_multiplier"] == 1.0
-        assert result["format_version"] == 9
+        assert result["format_version"] == 10
 
     def test_restore_chronic_approach_detector_state(self):
         """Test restore_from_dict migrates v7 format to unified detector."""
