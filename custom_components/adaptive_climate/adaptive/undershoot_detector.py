@@ -1,6 +1,6 @@
 """Unified undershoot detector for persistent temperature deficit conditions.
 
-Detects when the heating system is too weak to reach the setpoint using two modes:
+Detects when the heating system is too weak to reach the setpoint using three modes:
 
 1. Real-time mode: Tracks time below target and thermal debt accumulation during
    normal operation. Triggers Ki boost when system is persistently below setpoint.
@@ -9,13 +9,20 @@ Detects when the heating system is too weak to reach the setpoint using two mode
    system never reaches setpoint during rise phase. Indicates insufficient
    integral gain.
 
-Both modes share cumulative multiplier tracking and cooldown enforcement to
+3. Rate mode: Compares actual heating rate to expected rate from HeatingRateLearner.
+   Triggers Ki boost when rate is <60% of expected, with 2 consecutive stalls,
+   and duty <85% (system has headroom).
+
+All modes share cumulative multiplier tracking and cooldown enforcement to
 prevent runaway integral gain.
 """
 import logging
 import time
 from datetime import datetime
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from .heating_rate_learner import HeatingRateLearner
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -69,6 +76,9 @@ class UndershootDetector:
 
         # Cycle mode state
         self._consecutive_failures: int = 0
+
+        # Rate mode state
+        self._heating_rate_learner: Optional["HeatingRateLearner"] = None
 
     @property
     def time_below_target(self) -> float:
@@ -407,3 +417,87 @@ class UndershootDetector:
         has successfully reached target and undershoot condition has cleared.
         """
         self.reset_realtime()
+
+    def set_heating_rate_learner(self, learner: "HeatingRateLearner") -> None:
+        """Set the HeatingRateLearner for rate-based undershoot detection.
+
+        Args:
+            learner: HeatingRateLearner instance to use for rate comparisons.
+        """
+        self._heating_rate_learner = learner
+
+    def check_rate_based_undershoot(
+        self,
+        current_rate: float,
+        delta: float,
+        outdoor_temp: float,
+    ) -> Optional[float]:
+        """Check for rate-based undershoot using HeatingRateLearner.
+
+        Triggers when ALL conditions are met:
+        1. Current rate < 60% of expected rate (is_underperforming)
+        2. 2 consecutive stalled sessions (should_boost_ki)
+        3. Average duty < 85% (system has headroom, not capacity limited)
+        4. Sufficient observations (≥5) for reliable comparison
+
+        Args:
+            current_rate: Current observed heating rate in °C/h.
+            delta: Temperature delta (setpoint - current_temp) in °C.
+            outdoor_temp: Current outdoor temperature in °C.
+
+        Returns:
+            Ki multiplier if conditions met, None otherwise.
+        """
+        # Must have heating rate learner
+        if self._heating_rate_learner is None:
+            return None
+
+        # Check if rate is underperforming (< 60% of expected)
+        if not self._heating_rate_learner.is_underperforming(
+            current_rate, delta, outdoor_temp
+        ):
+            return None
+
+        # Check if learner recommends Ki boost (2 stalls + duty < 85%)
+        if not self._heating_rate_learner.should_boost_ki():
+            return None
+
+        # All conditions met - return Ki multiplier
+        multiplier = self._thresholds["ki_multiplier"]
+
+        # Clamp to respect cumulative cap
+        max_allowed = MAX_UNDERSHOOT_KI_MULTIPLIER / self.cumulative_ki_multiplier
+        return min(multiplier, max_allowed)
+
+    def apply_rate_adjustment(self) -> float:
+        """Apply rate-based Ki adjustment and update state.
+
+        Updates cumulative multiplier, records adjustment time, and
+        acknowledges the boost in the heating rate learner (resets stall counter).
+
+        Returns:
+            The multiplier that was applied.
+        """
+        multiplier = self._thresholds["ki_multiplier"]
+
+        # Clamp to respect cumulative cap
+        max_allowed = MAX_UNDERSHOOT_KI_MULTIPLIER / self.cumulative_ki_multiplier
+        multiplier = min(multiplier, max_allowed)
+
+        # Update shared cumulative multiplier
+        self.cumulative_ki_multiplier *= multiplier
+
+        # Record adjustment time for cooldown enforcement
+        self.last_adjustment_time = time.monotonic()
+
+        # Acknowledge boost in heating rate learner (resets stall counter)
+        if self._heating_rate_learner is not None:
+            self._heating_rate_learner.acknowledge_ki_boost()
+
+        _LOGGER.info(
+            "Applied rate-based undershoot Ki adjustment: %.3fx (cumulative: %.3fx)",
+            multiplier,
+            self.cumulative_ki_multiplier,
+        )
+
+        return multiplier
