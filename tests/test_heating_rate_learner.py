@@ -322,3 +322,117 @@ class TestSessionUpdates:
         learner.update_session(temp=19.5, duty=0.90)
 
         assert learner.get_avg_session_duty() == pytest.approx(0.80)
+
+
+class TestStallCounter:
+    """Tests for consecutive stall tracking and Ki boost trigger."""
+
+    def test_stall_increments_counter(self):
+        """Test stalled session increments stall counter."""
+        learner = HeatingRateLearner(HeatingType.RADIATOR)
+        start = datetime(2026, 1, 15, 10, 0, tzinfo=timezone.utc)
+        end = datetime(2026, 1, 15, 11, 0, tzinfo=timezone.utc)
+
+        learner.start_session(temp=18.0, setpoint=21.0, outdoor_temp=5.0, timestamp=start)
+        learner.end_session(end_temp=19.0, reason="stalled", timestamp=end)
+
+        assert learner._stall_counter == 1
+
+    def test_success_resets_counter(self):
+        """Test successful session resets stall counter."""
+        learner = HeatingRateLearner(HeatingType.RADIATOR)
+        start = datetime(2026, 1, 15, 10, 0, tzinfo=timezone.utc)
+        end = datetime(2026, 1, 15, 11, 0, tzinfo=timezone.utc)
+
+        # First session stalls
+        learner.start_session(temp=18.0, setpoint=21.0, outdoor_temp=5.0, timestamp=start)
+        learner.end_session(end_temp=19.0, reason="stalled", timestamp=end)
+        assert learner._stall_counter == 1
+
+        # Second session succeeds
+        start2 = datetime(2026, 1, 15, 12, 0, tzinfo=timezone.utc)
+        end2 = datetime(2026, 1, 15, 13, 0, tzinfo=timezone.utc)
+        learner.start_session(temp=18.0, setpoint=21.0, outdoor_temp=5.0, timestamp=start2)
+        learner.end_session(end_temp=20.8, reason="reached_setpoint", timestamp=end2)
+
+        assert learner._stall_counter == 0
+
+    def test_outdoor_change_resets_counter(self):
+        """Test significant outdoor temp change resets stall counter."""
+        learner = HeatingRateLearner(HeatingType.RADIATOR)
+        start = datetime(2026, 1, 15, 10, 0, tzinfo=timezone.utc)
+        end = datetime(2026, 1, 15, 11, 0, tzinfo=timezone.utc)
+
+        # First stall at outdoor=5
+        learner.start_session(temp=18.0, setpoint=21.0, outdoor_temp=5.0, timestamp=start)
+        learner.end_session(end_temp=19.0, reason="stalled", timestamp=end)
+        assert learner._stall_counter == 1
+
+        # Second stall at outdoor=-2 (>5 degree change)
+        start2 = datetime(2026, 1, 15, 12, 0, tzinfo=timezone.utc)
+        end2 = datetime(2026, 1, 15, 13, 0, tzinfo=timezone.utc)
+        learner.start_session(temp=18.0, setpoint=21.0, outdoor_temp=-2.0, timestamp=start2)
+        learner.end_session(end_temp=19.0, reason="stalled", timestamp=end2)
+
+        # Counter reset due to outdoor change, then incremented
+        assert learner._stall_counter == 1
+
+    def test_setpoint_change_resets_counter(self):
+        """Test significant setpoint change resets stall counter."""
+        learner = HeatingRateLearner(HeatingType.RADIATOR)
+        start = datetime(2026, 1, 15, 10, 0, tzinfo=timezone.utc)
+        end = datetime(2026, 1, 15, 11, 0, tzinfo=timezone.utc)
+
+        # First stall at setpoint=21
+        learner.start_session(temp=18.0, setpoint=21.0, outdoor_temp=5.0, timestamp=start)
+        learner.end_session(end_temp=19.0, reason="stalled", timestamp=end)
+
+        # Second stall at setpoint=23 (>1 degree change)
+        start2 = datetime(2026, 1, 15, 12, 0, tzinfo=timezone.utc)
+        end2 = datetime(2026, 1, 15, 13, 0, tzinfo=timezone.utc)
+        learner.start_session(temp=18.0, setpoint=23.0, outdoor_temp=5.0, timestamp=start2)
+        learner.end_session(end_temp=19.0, reason="stalled", timestamp=end2)
+
+        assert learner._stall_counter == 1  # Reset then incremented
+
+    def test_should_boost_ki_after_2_stalls_with_low_duty(self):
+        """Test Ki boost triggered after 2 consecutive stalls with headroom."""
+        learner = HeatingRateLearner(HeatingType.RADIATOR)
+
+        for i in range(2):
+            start = datetime(2026, 1, 15, 10 + i * 2, 0, tzinfo=timezone.utc)
+            end = datetime(2026, 1, 15, 11 + i * 2, 0, tzinfo=timezone.utc)
+            learner.start_session(temp=18.0, setpoint=21.0, outdoor_temp=5.0, timestamp=start)
+            learner.update_session(temp=18.5, duty=0.60)  # Low duty
+            learner.end_session(end_temp=19.0, reason="stalled", timestamp=end)
+
+        assert learner.should_boost_ki() is True
+
+    def test_no_boost_when_high_duty(self):
+        """Test no Ki boost when duty is high (capacity limited)."""
+        learner = HeatingRateLearner(HeatingType.RADIATOR)
+
+        for i in range(2):
+            start = datetime(2026, 1, 15, 10 + i * 2, 0, tzinfo=timezone.utc)
+            end = datetime(2026, 1, 15, 11 + i * 2, 0, tzinfo=timezone.utc)
+            learner.start_session(temp=18.0, setpoint=21.0, outdoor_temp=5.0, timestamp=start)
+            learner.update_session(temp=18.5, duty=0.90)  # High duty
+            learner.end_session(end_temp=19.0, reason="stalled", timestamp=end)
+
+        assert learner.should_boost_ki() is False  # Capacity limited
+
+    def test_acknowledge_boost_resets_counter(self):
+        """Test acknowledging Ki boost resets the stall counter."""
+        learner = HeatingRateLearner(HeatingType.RADIATOR)
+
+        for i in range(2):
+            start = datetime(2026, 1, 15, 10 + i * 2, 0, tzinfo=timezone.utc)
+            end = datetime(2026, 1, 15, 11 + i * 2, 0, tzinfo=timezone.utc)
+            learner.start_session(temp=18.0, setpoint=21.0, outdoor_temp=5.0, timestamp=start)
+            learner.update_session(temp=18.5, duty=0.60)
+            learner.end_session(end_temp=19.0, reason="stalled", timestamp=end)
+
+        assert learner.should_boost_ki() is True
+        learner.acknowledge_ki_boost()
+        assert learner._stall_counter == 0
+        assert learner.should_boost_ki() is False
