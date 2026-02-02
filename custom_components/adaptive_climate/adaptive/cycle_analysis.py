@@ -580,7 +580,7 @@ def calculate_rise_time(
     temperature_history: List[Tuple[datetime, float]],
     start_temp: float,
     target_temp: float,
-    threshold: float = 0.05,
+    threshold: float = 0.2,
     skip_seconds: float = 0.0,
 ) -> Optional[float]:
     """

@@ -433,12 +433,17 @@ class CycleMetricsRecorder:
         undershoot = calculate_undershoot(temperature_history, target_temp)
         settling_time = calculate_settling_time(temperature_history, target_temp, reference_time=self._device_off_time)
         oscillations = count_oscillations(temperature_history, target_temp)
+        # Use cold_tolerance if available, else default (0.2) from calculate_rise_time
+        rise_time_kwargs = {
+            "skip_seconds": transport_delay_seconds,
+        }
+        if self._cold_tolerance is not None:
+            rise_time_kwargs["threshold"] = self._cold_tolerance
         rise_time = calculate_rise_time(
             temperature_history,
             start_temp,
             target_temp,
-            threshold=rise_threshold,
-            skip_seconds=transport_delay_seconds
+            **rise_time_kwargs
         )
 
         # Detect disturbances (requires environmental sensor data - not yet wired up)

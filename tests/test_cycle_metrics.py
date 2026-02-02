@@ -239,7 +239,7 @@ class TestRiseTimeThreshold:
     def test_rise_time_uses_floor_hydronic_threshold(
         self, mock_hass, mock_adaptive_learner, mock_callbacks
     ):
-        """Rise time calculation uses 0.3°C threshold for floor_hydronic."""
+        """Rise time calculation uses 0.5°C threshold for floor_hydronic."""
         from datetime import timedelta
         from unittest.mock import patch
 
@@ -252,10 +252,11 @@ class TestRiseTimeThreshold:
             get_hvac_mode=mock_callbacks["get_hvac_mode"],
             get_in_grace_period=mock_callbacks["get_in_grace_period"],
             min_cycle_duration_minutes=5,
+            cold_tolerance=0.5,
             heating_type=HeatingType.FLOOR_HYDRONIC,
         )
 
-        # Create temperature history reaching target within 0.3°C (but not 0.05°C)
+        # Create temperature history reaching target within 0.5°C (but not 0.05°C)
         cycle_start = datetime(2025, 1, 15, 10, 0, 0)
         target_temp = 20.0
         start_temp = 18.0
@@ -265,7 +266,7 @@ class TestRiseTimeThreshold:
             (cycle_start + timedelta(minutes=10), 18.5),
             (cycle_start + timedelta(minutes=20), 19.0),
             (cycle_start + timedelta(minutes=30), 19.5),
-            (cycle_start + timedelta(minutes=40), 19.75),  # Within 0.3°C of target
+            (cycle_start + timedelta(minutes=40), 19.75),  # Within 0.5°C of target
             (cycle_start + timedelta(minutes=50), 19.8),
         ]
 
@@ -282,11 +283,11 @@ class TestRiseTimeThreshold:
                 outdoor_temp_history=[],
             )
 
-            # Verify calculate_rise_time was called with 0.3°C threshold (floor_hydronic)
+            # Verify calculate_rise_time was called with 0.5°C threshold (floor_hydronic)
             mock_calc.assert_called_once()
             call_kwargs = mock_calc.call_args[1]
             assert 'threshold' in call_kwargs
-            assert call_kwargs['threshold'] == 0.3
+            assert call_kwargs['threshold'] == 0.5
 
     def test_rise_time_uses_forced_air_threshold(
         self, mock_hass, mock_adaptive_learner, mock_callbacks
@@ -304,6 +305,7 @@ class TestRiseTimeThreshold:
             get_hvac_mode=mock_callbacks["get_hvac_mode"],
             get_in_grace_period=mock_callbacks["get_in_grace_period"],
             min_cycle_duration_minutes=5,
+            cold_tolerance=0.15,
             heating_type=HeatingType.FORCED_AIR,
         )
 
@@ -338,10 +340,10 @@ class TestRiseTimeThreshold:
             assert 'threshold' in call_kwargs
             assert call_kwargs['threshold'] == 0.15
 
-    def test_rise_time_defaults_to_0_05_when_no_heating_type(
+    def test_rise_time_defaults_to_0_2_when_no_cold_tolerance(
         self, mock_hass, mock_adaptive_learner, mock_callbacks
     ):
-        """Rise time calculation defaults to 0.05°C threshold when heating_type is None."""
+        """Rise time calculation defaults to 0.2°C threshold when cold_tolerance is None."""
         from datetime import timedelta
         from unittest.mock import patch
 
@@ -382,11 +384,11 @@ class TestRiseTimeThreshold:
                 outdoor_temp_history=[],
             )
 
-            # Verify calculate_rise_time was called with default 0.2°C threshold (from DEFAULT_CONVERGENCE_THRESHOLDS)
+            # Verify calculate_rise_time was called without threshold parameter
+            # (will use default 0.2°C from calculate_rise_time function)
             mock_calc.assert_called_once()
             call_kwargs = mock_calc.call_args[1]
-            assert 'threshold' in call_kwargs
-            assert call_kwargs['threshold'] == 0.2
+            assert 'threshold' not in call_kwargs
 
 
 class TestStartingDeltaCalculation:

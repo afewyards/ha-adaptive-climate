@@ -1064,13 +1064,30 @@ class AdaptiveLearner:
         else:
             current_confidence = self._confidence._heating_convergence_confidence
 
+        # Determine if this is a recovery cycle (needs rise_time) or maintenance cycle (rise_time optional)
+        # Use simplified stability check for determining recovery threshold
+        tier1_base = 0.4
+        is_stable = current_confidence >= (tier1_base * 0.8)  # Floor scaling approximation
+        is_recovery = (
+            metrics.starting_delta is not None and
+            self._weight_calculator.is_recovery_cycle(metrics.starting_delta, is_stable)
+        )
+
         # Check if this cycle meets convergence criteria
+        # For recovery cycles: require rise_time to be measured (cycle must reach target)
+        # For maintenance cycles: rise_time=None is acceptable (already at target)
+        rise_time_ok = (
+            metrics.rise_time is not None and metrics.rise_time <= self._convergence_thresholds["rise_time_max"]
+        ) if is_recovery else (
+            metrics.rise_time is None or metrics.rise_time <= self._convergence_thresholds["rise_time_max"]
+        )
+
         is_good_cycle = (
             (metrics.overshoot is None or metrics.overshoot <= self._convergence_thresholds["overshoot_max"]) and
             (metrics.undershoot is None or metrics.undershoot <= self._convergence_thresholds.get("undershoot_max", 0.2)) and
             metrics.oscillations <= self._convergence_thresholds["oscillations_max"] and
             (metrics.settling_time is None or metrics.settling_time <= self._convergence_thresholds["settling_time_max"]) and
-            (metrics.rise_time is None or metrics.rise_time <= self._convergence_thresholds["rise_time_max"])
+            rise_time_ok
         )
 
         # Determine cycle outcome from metrics
@@ -1080,7 +1097,8 @@ class AdaptiveLearner:
             outcome = CycleOutcome.OVERSHOOT
         elif metrics.undershoot is not None and metrics.undershoot > self._convergence_thresholds.get("undershoot_max", 0.2):
             outcome = CycleOutcome.UNDERSHOOT
-        elif metrics.rise_time is None:
+        elif is_recovery and metrics.rise_time is None:
+            # Recovery cycle that failed to reach target
             outcome = CycleOutcome.UNDERSHOOT
         else:
             # Shouldn't reach here, but default to clean

@@ -127,13 +127,29 @@ class ConfidenceTracker:
         else:
             current_confidence = self._heating_convergence_confidence
 
+        # Determine if this is a recovery cycle based on starting_delta
+        # Recovery cycles (large starting_delta) must have rise_time measured
+        # Maintenance cycles (small starting_delta or None) can have rise_time=None
+        recovery_threshold = 0.3  # Default threshold for most heating types
+        is_recovery = (
+            metrics.starting_delta is not None and
+            metrics.starting_delta >= recovery_threshold
+        )
+
+        # Check rise_time requirement based on cycle type
+        rise_time_ok = (
+            metrics.rise_time is not None and metrics.rise_time <= self._convergence_thresholds["rise_time_max"]
+        ) if is_recovery else (
+            metrics.rise_time is None or metrics.rise_time <= self._convergence_thresholds["rise_time_max"]
+        )
+
         # Check if this cycle meets convergence criteria
         is_good_cycle = (
             (metrics.overshoot is None or metrics.overshoot <= self._convergence_thresholds["overshoot_max"]) and
             (metrics.undershoot is None or metrics.undershoot <= self._convergence_thresholds.get("undershoot_max", 0.2)) and
             metrics.oscillations <= self._convergence_thresholds["oscillations_max"] and
             (metrics.settling_time is None or metrics.settling_time <= self._convergence_thresholds["settling_time_max"]) and
-            (metrics.rise_time is None or metrics.rise_time <= self._convergence_thresholds["rise_time_max"])
+            rise_time_ok
         )
 
         if is_good_cycle:

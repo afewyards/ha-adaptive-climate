@@ -34,6 +34,7 @@ from custom_components.adaptive_climate.const import (
     CONFIDENCE_INCREASE_PER_GOOD_CYCLE,
     VALIDATION_CYCLE_COUNT,
     HEATING_TYPE_CONVECTOR,
+    HeatingType,
 )
 
 # Module-level patches for dt_util and time
@@ -217,6 +218,7 @@ class TestFullAutoApplyFlow:
         tracker = CycleTrackerManager(
             hass=mock_hass,
             zone_id="test_zone",
+            heating_type=HeatingType.CONVECTOR,
             adaptive_learner=adaptive_learner,
             get_target_temp=mock_callbacks["get_target_temp"],
             get_current_temp=mock_callbacks["get_current_temp"],
@@ -236,14 +238,21 @@ class TestFullAutoApplyFlow:
             current_time = start_time + timedelta(hours=cycle_num * 2)
             _set_test_time(current_time)
 
-            # Start heating via event (start closer to setpoint to keep undershoot < 0.2°C)
-            start_temp = 20.85  # starting_delta = 0.15°C (maintenance cycle, undershoot within threshold)
+            # Start heating via event
+            # For convector: cold_tolerance=0.3, undershoot_max=0.2
+            # Temperature pattern: 20.85 -> overshoot to 21.15 -> settle at 21.0
+            # undershoot = 21.0 - 20.85 = 0.15°C (within 0.2 threshold)
+            # overshoot = 21.15 - 21.0 = 0.15°C (within 0.2 threshold)
+            # rise_time: 20.85 >= 20.7 (target-threshold), so rise_time=None - this is a maintenance cycle
+            # starting_delta = 0.15°C (< 0.3 recovery threshold) - maintenance cycle, rise_time=None OK
+            start_temp = 20.85
             dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=current_time, target_temp=21.0, current_temp=start_temp))
             assert tracker.state == CycleState.HEATING
 
-            # Collect temperature samples during heating (20 samples = 10 min)
-            for i in range(20):
-                temp = start_temp + min(i * 0.01, 0.15)  # Rise gradually to 21.0°C
+            # Temperature pattern with slight overshoot then settling
+            temps = [20.85, 20.90, 20.95, 21.0, 21.05, 21.10, 21.15, 21.12, 21.08, 21.05,
+                     21.03, 21.02, 21.01, 21.00, 21.00, 21.00, 21.00, 21.00, 21.00, 21.00]
+            for temp in temps:
                 await tracker.update_temperature(current_time, temp)
                 current_time += timedelta(seconds=30)
                 _set_test_time(current_time)
@@ -454,6 +463,7 @@ class TestValidationFailureAndRollback:
         tracker = CycleTrackerManager(
             hass=mock_hass,
             zone_id="test_zone",
+            heating_type=HeatingType.CONVECTOR,
             adaptive_learner=adaptive_learner,
             get_target_temp=mock_callbacks["get_target_temp"],
             get_current_temp=mock_callbacks["get_current_temp"],
@@ -551,6 +561,7 @@ class TestValidationFailureAndRollback:
         tracker = CycleTrackerManager(
             hass=mock_hass,
             zone_id="test_zone",
+            heating_type=HeatingType.CONVECTOR,
             adaptive_learner=adaptive_learner,
             get_target_temp=mock_callbacks["get_target_temp"],
             get_current_temp=mock_callbacks["get_current_temp"],
@@ -992,6 +1003,7 @@ class TestAutoApplyDisabled:
         tracker = CycleTrackerManager(
             hass=mock_hass,
             zone_id="test_zone",
+            heating_type=HeatingType.CONVECTOR,
             adaptive_learner=adaptive_learner,
             get_target_temp=mock_callbacks["get_target_temp"],
             get_current_temp=mock_callbacks["get_current_temp"],
@@ -1084,6 +1096,7 @@ class TestMultiZoneAutoApply:
         zone1_tracker = CycleTrackerManager(
             hass=mock_hass,
             zone_id="zone1",
+            heating_type=HeatingType.CONVECTOR,
             adaptive_learner=zone1_learner,
             get_target_temp=zone1_callbacks["get_target_temp"],
             get_current_temp=zone1_callbacks["get_current_temp"],
@@ -1097,6 +1110,7 @@ class TestMultiZoneAutoApply:
         zone2_tracker = CycleTrackerManager(
             hass=mock_hass,
             zone_id="zone2",
+            heating_type=HeatingType.RADIATOR,
             adaptive_learner=zone2_learner,
             get_target_temp=zone2_callbacks["get_target_temp"],
             get_current_temp=zone2_callbacks["get_current_temp"],
@@ -1107,17 +1121,20 @@ class TestMultiZoneAutoApply:
         )
         zone2_tracker.set_restoration_complete()
 
-        # Phase 1: Build confidence in zone1 to 60% (12 good maintenance cycles for convector)
-        # Maintenance cycles go through cap (35%), need more cycles to reach 60%
+        # Phase 1: Build confidence in zone1 (12 good maintenance cycles for convector)
+        # Maintenance cycles (starting_delta < 0.3) with rise_time=None are OK
         start_time = datetime(2024, 1, 1, 10, 0, 0)
         for cycle_num in range(12):
             current_time = start_time + timedelta(hours=cycle_num * 2)
             _set_test_time(current_time)
-            start_temp_z1 = 20.85  # starting_delta = 0.15°C (maintenance cycle)
+            # starting_delta = 0.15°C (maintenance cycle, < 0.3 recovery threshold)
+            start_temp_z1 = 20.85
             zone1_dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=current_time, target_temp=21.0, current_temp=start_temp_z1))
 
-            for i in range(20):
-                temp = start_temp_z1 + min(i * 0.01, 0.15)
+            # Temperature pattern: slight overshoot then settle
+            temps = [20.85, 20.90, 20.95, 21.0, 21.05, 21.10, 21.15, 21.12, 21.08, 21.05,
+                     21.03, 21.02, 21.01, 21.00, 21.00, 21.00, 21.00, 21.00, 21.00, 21.00]
+            for temp in temps:
                 await zone1_tracker.update_temperature(current_time, temp)
                 current_time += timedelta(seconds=30)
                 _set_test_time(current_time)
@@ -1129,20 +1146,23 @@ class TestMultiZoneAutoApply:
                 current_time += timedelta(seconds=30)
                 _set_test_time(current_time)
 
-        # Verify zone1 confidence reached maintenance cap (35% for convector)
+        # Verify zone1 confidence built up (maintenance cycles with good metrics)
         assert zone1_learner.get_convergence_confidence() >= 0.35
 
-        # Phase 2: Build confidence in zone2 to 70% (15 good maintenance cycles for radiator)
-        # Maintenance cycles go through cap (30%), need more cycles to reach 70%
+        # Phase 2: Build confidence in zone2 (15 good maintenance cycles for radiator)
+        # Maintenance cycles (starting_delta < 0.3) with rise_time=None are OK
         start_time = datetime(2024, 1, 1, 10, 0, 0)
         for cycle_num in range(15):
             current_time = start_time + timedelta(hours=cycle_num * 2)
             _set_test_time(current_time)
-            start_temp_z2 = 19.85  # starting_delta = 0.15°C (maintenance cycle)
+            # starting_delta = 0.15°C (maintenance cycle, < 0.3 recovery threshold)
+            start_temp_z2 = 19.85
             zone2_dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=current_time, target_temp=20.0, current_temp=start_temp_z2))
 
-            for i in range(20):
-                temp = start_temp_z2 + min(i * 0.01, 0.15)
+            # Temperature pattern: slight overshoot then settle
+            temps = [19.85, 19.90, 19.95, 20.0, 20.05, 20.10, 20.15, 20.12, 20.08, 20.05,
+                     20.03, 20.02, 20.01, 20.00, 20.00, 20.00, 20.00, 20.00, 20.00, 20.00]
+            for temp in temps:
                 await zone2_tracker.update_temperature(current_time, temp)
                 current_time += timedelta(seconds=30)
                 _set_test_time(current_time)
@@ -1154,7 +1174,7 @@ class TestMultiZoneAutoApply:
                 current_time += timedelta(seconds=30)
                 _set_test_time(current_time)
 
-        # Verify zone2 confidence reached maintenance cap (30% for radiator)
+        # Verify zone2 confidence built up (maintenance cycles with good metrics)
         assert zone2_learner.get_convergence_confidence() >= 0.30
 
         # Phase 3: Finalize cycles in both zones "simultaneously" (same event loop iteration)
@@ -1163,11 +1183,12 @@ class TestMultiZoneAutoApply:
         zone2_time = datetime(2024, 1, 2, 10, 0, 0)
         _set_test_time(zone1_time)
 
-        # Zone1 cycle
+        # Zone1 cycle (maintenance cycle with good metrics)
         start_temp_z1 = 20.85
         zone1_dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=zone1_time, target_temp=21.0, current_temp=start_temp_z1))
-        for i in range(20):
-            temp = start_temp_z1 + min(i * 0.01, 0.15)
+        temps_z1 = [20.85, 20.90, 20.95, 21.0, 21.05, 21.10, 21.15, 21.12, 21.08, 21.05,
+                    21.03, 21.02, 21.01, 21.00, 21.00, 21.00, 21.00, 21.00, 21.00, 21.00]
+        for temp in temps_z1:
             await zone1_tracker.update_temperature(zone1_time, temp)
             zone1_time += timedelta(seconds=30)
             _set_test_time(zone1_time)
@@ -1177,12 +1198,13 @@ class TestMultiZoneAutoApply:
             zone1_time += timedelta(seconds=30)
             _set_test_time(zone1_time)
 
-        # Zone2 cycle
+        # Zone2 cycle (maintenance cycle with good metrics)
         _set_test_time(zone2_time)
         start_temp_z2 = 19.85
         zone2_dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=zone2_time, target_temp=20.0, current_temp=start_temp_z2))
-        for i in range(20):
-            temp = start_temp_z2 + min(i * 0.01, 0.15)
+        temps_z2 = [19.85, 19.90, 19.95, 20.0, 20.05, 20.10, 20.15, 20.12, 20.08, 20.05,
+                    20.03, 20.02, 20.01, 20.00, 20.00, 20.00, 20.00, 20.00, 20.00, 20.00]
+        for temp in temps_z2:
             await zone2_tracker.update_temperature(zone2_time, temp)
             zone2_time += timedelta(seconds=30)
             _set_test_time(zone2_time)
@@ -1236,6 +1258,7 @@ class TestValidationModeBlocking:
         tracker = CycleTrackerManager(
             hass=mock_hass,
             zone_id="test_zone",
+            heating_type=HeatingType.CONVECTOR,
             adaptive_learner=adaptive_learner,
             get_target_temp=mock_callbacks["get_target_temp"],
             get_current_temp=mock_callbacks["get_current_temp"],
