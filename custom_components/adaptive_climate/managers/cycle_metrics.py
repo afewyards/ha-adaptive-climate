@@ -411,8 +411,16 @@ class CycleMetricsRecorder:
 
         start_temp = temperature_history[0][1]
 
+        # Calculate starting delta for weighted learning (target - actual)
+        starting_delta = target_temp - start_temp
+
         # Calculate transport delay in seconds for metric calculations
         transport_delay_seconds = (self._transport_delay_minutes or 0) * 60
+
+        # Get convergence thresholds for heating type
+        from ..const import get_convergence_thresholds
+        convergence = get_convergence_thresholds(self._heating_type)
+        rise_threshold = convergence.get("undershoot_max", 0.05)
 
         # Calculate all 5 metrics
         # Overshoot: use filtered history to exclude dead time
@@ -429,6 +437,7 @@ class CycleMetricsRecorder:
             temperature_history,
             start_temp,
             target_temp,
+            threshold=rise_threshold,
             skip_seconds=transport_delay_seconds
         )
 
@@ -511,6 +520,7 @@ class CycleMetricsRecorder:
             inter_cycle_drift=inter_cycle_drift,
             dead_time=dead_time,
             mode=mode,
+            starting_delta=starting_delta,
         )
 
         # Record metrics with adaptive learner

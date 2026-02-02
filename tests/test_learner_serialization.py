@@ -271,6 +271,154 @@ class TestV8ToV9Migration:
         assert restored["contribution_tracker_state"]["maintenance_contribution"] == 0.0
 
 
+class TestStartingDeltaSerialization:
+    """Test that starting_delta is properly serialized and restored."""
+
+    def test_starting_delta_is_serialized(self):
+        """Test that starting_delta field is included in serialized cycle data."""
+        cycle = CycleMetrics(
+            overshoot=0.2,
+            undershoot=0.1,
+            settling_time=25.0,
+            oscillations=1,
+            rise_time=15.0,
+            starting_delta=1.5,  # Set a specific starting_delta
+        )
+
+        learner = AdaptiveLearner(heating_type=HeatingType.RADIATOR)
+        learner.add_cycle_metrics(cycle)
+
+        # Serialize
+        data = learner.to_dict()
+
+        # Check that starting_delta is in the serialized cycle
+        assert len(data["heating"]["cycle_history"]) == 1
+        serialized_cycle = data["heating"]["cycle_history"][0]
+        assert "starting_delta" in serialized_cycle
+        assert serialized_cycle["starting_delta"] == 1.5
+
+    def test_starting_delta_is_deserialized(self):
+        """Test that starting_delta is restored from serialized data."""
+        # Create serialized data with starting_delta
+        v9_data = {
+            "format_version": 9,
+            "heating": {
+                "cycle_history": [
+                    {
+                        "overshoot": 0.2,
+                        "undershoot": 0.1,
+                        "settling_time": 25.0,
+                        "oscillations": 1,
+                        "rise_time": 15.0,
+                        "starting_delta": 2.3,
+                        "mode": "heating",
+                    }
+                ],
+                "auto_apply_count": 0,
+                "convergence_confidence": 0.0,
+            },
+            "cooling": {
+                "cycle_history": [],
+                "auto_apply_count": 0,
+                "convergence_confidence": 0.0,
+            },
+            "contribution_tracker": {
+                "maintenance_contribution": 0.0,
+                "heating_rate_contribution": 0.0,
+                "recovery_cycle_count": 0,
+            },
+            "undershoot_detector": {},
+            "cycle_history": [],
+            "auto_apply_count": 0,
+            "convergence_confidence": 0.0,
+            "last_adjustment_time": None,
+            "consecutive_converged_cycles": 0,
+            "pid_converged_for_ke": False,
+        }
+
+        # Deserialize
+        restored = restore_learner_from_dict(v9_data)
+
+        # Check that starting_delta was restored
+        assert len(restored["heating_cycle_history"]) == 1
+        cycle = restored["heating_cycle_history"][0]
+        assert cycle.starting_delta == 2.3
+
+    def test_starting_delta_round_trip(self):
+        """Test that starting_delta survives serialization round-trip."""
+        learner1 = AdaptiveLearner(heating_type=HeatingType.FLOOR_HYDRONIC)
+
+        # Add cycle with specific starting_delta
+        cycle = CycleMetrics(
+            overshoot=0.15,
+            undershoot=0.08,
+            settling_time=45.0,
+            oscillations=0,
+            rise_time=30.0,
+            starting_delta=0.8,
+        )
+        learner1.add_cycle_metrics(cycle)
+
+        # Serialize
+        data = learner1.to_dict()
+
+        # Deserialize into new learner
+        learner2 = AdaptiveLearner(heating_type=HeatingType.FLOOR_HYDRONIC)
+        learner2.restore_from_dict(data)
+
+        # Check that starting_delta was preserved
+        assert len(learner2._heating_cycle_history) == 1
+        restored_cycle = learner2._heating_cycle_history[0]
+        assert restored_cycle.starting_delta == 0.8
+
+    def test_missing_starting_delta_defaults_to_none(self):
+        """Test that missing starting_delta in old data defaults to None."""
+        # Create v9 data without starting_delta (simulating old persisted data)
+        v9_data = {
+            "format_version": 9,
+            "heating": {
+                "cycle_history": [
+                    {
+                        "overshoot": 0.2,
+                        "undershoot": 0.1,
+                        "settling_time": 25.0,
+                        "oscillations": 1,
+                        "rise_time": 15.0,
+                        "mode": "heating",
+                        # No starting_delta field
+                    }
+                ],
+                "auto_apply_count": 0,
+                "convergence_confidence": 0.0,
+            },
+            "cooling": {
+                "cycle_history": [],
+                "auto_apply_count": 0,
+                "convergence_confidence": 0.0,
+            },
+            "contribution_tracker": {
+                "maintenance_contribution": 0.0,
+                "heating_rate_contribution": 0.0,
+                "recovery_cycle_count": 0,
+            },
+            "undershoot_detector": {},
+            "cycle_history": [],
+            "auto_apply_count": 0,
+            "convergence_confidence": 0.0,
+            "last_adjustment_time": None,
+            "consecutive_converged_cycles": 0,
+            "pid_converged_for_ke": False,
+        }
+
+        # Deserialize
+        restored = restore_learner_from_dict(v9_data)
+
+        # Check that starting_delta defaults to None
+        assert len(restored["heating_cycle_history"]) == 1
+        cycle = restored["heating_cycle_history"][0]
+        assert cycle.starting_delta is None
+
+
 class TestBackwardCompatibility:
     """Test backward compatibility with existing serialization."""
 

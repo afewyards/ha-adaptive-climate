@@ -108,6 +108,34 @@ class TestRecoveryCycles:
         assert tracker.can_reach_tier(2) is True
 
 
+class TestIntegrationWithLearning:
+    """Test integration with learning.py."""
+
+    def test_heating_rate_gain_applied_with_rise_time(self):
+        """Heating rate gain is applied when rise_time is present."""
+        tracker = ConfidenceContributionTracker(HeatingType.FLOOR_HYDRONIC)
+
+        # Simulate a weighted gain being passed through
+        weighted_gain = 0.08
+        actual_gain = tracker.apply_heating_rate_gain(weighted_gain)
+
+        # Below cap, so should be fully applied
+        assert actual_gain == pytest.approx(0.08, rel=0.01)
+        assert tracker.heating_rate_contribution == pytest.approx(0.08, rel=0.01)
+
+    def test_heating_rate_gain_respects_cap(self):
+        """Heating rate gain respects cap when applied multiple times."""
+        tracker = ConfidenceContributionTracker(HeatingType.FLOOR_HYDRONIC)
+
+        # Floor cap is 30%, apply multiple gains
+        tracker.apply_heating_rate_gain(0.15)
+        tracker.apply_heating_rate_gain(0.15)
+        tracker.apply_heating_rate_gain(0.15)
+
+        # Total should be capped at 30%
+        assert tracker.heating_rate_contribution == pytest.approx(0.30, rel=0.01)
+
+
 class TestSerialization:
     """Test serialization/deserialization."""
 

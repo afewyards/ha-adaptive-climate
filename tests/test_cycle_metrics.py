@@ -231,3 +231,266 @@ class TestExtendedSettlingWindow:
         settling_start = recorder.get_settling_start_time()
 
         assert settling_start is None
+
+
+class TestRiseTimeThreshold:
+    """Test rise_time calculation uses heating-type-specific thresholds."""
+
+    def test_rise_time_uses_floor_hydronic_threshold(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks
+    ):
+        """Rise time calculation uses 0.3°C threshold for floor_hydronic."""
+        from datetime import timedelta
+        from unittest.mock import patch
+
+        recorder = CycleMetricsRecorder(
+            hass=mock_hass,
+            zone_id="test_floor",
+            adaptive_learner=mock_adaptive_learner,
+            get_target_temp=mock_callbacks["get_target_temp"],
+            get_current_temp=mock_callbacks["get_current_temp"],
+            get_hvac_mode=mock_callbacks["get_hvac_mode"],
+            get_in_grace_period=mock_callbacks["get_in_grace_period"],
+            min_cycle_duration_minutes=5,
+            heating_type=HeatingType.FLOOR_HYDRONIC,
+        )
+
+        # Create temperature history reaching target within 0.3°C (but not 0.05°C)
+        cycle_start = datetime(2025, 1, 15, 10, 0, 0)
+        target_temp = 20.0
+        start_temp = 18.0
+
+        temperature_history = [
+            (cycle_start, 18.0),
+            (cycle_start + timedelta(minutes=10), 18.5),
+            (cycle_start + timedelta(minutes=20), 19.0),
+            (cycle_start + timedelta(minutes=30), 19.5),
+            (cycle_start + timedelta(minutes=40), 19.75),  # Within 0.3°C of target
+            (cycle_start + timedelta(minutes=50), 19.8),
+        ]
+
+        # Mock calculate_rise_time to capture the threshold parameter
+        with patch('custom_components.adaptive_climate.adaptive.cycle_analysis.calculate_rise_time') as mock_calc:
+            mock_calc.return_value = 40.0  # 40 minutes to reach target
+
+            # Record cycle metrics (this calls calculate_rise_time internally)
+            recorder.record_cycle_metrics(
+                cycle_start_time=cycle_start,
+                cycle_target_temp=target_temp,
+                cycle_state_value="settling",
+                temperature_history=temperature_history,
+                outdoor_temp_history=[],
+            )
+
+            # Verify calculate_rise_time was called with 0.3°C threshold (floor_hydronic)
+            mock_calc.assert_called_once()
+            call_kwargs = mock_calc.call_args[1]
+            assert 'threshold' in call_kwargs
+            assert call_kwargs['threshold'] == 0.3
+
+    def test_rise_time_uses_forced_air_threshold(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks
+    ):
+        """Rise time calculation uses 0.15°C threshold for forced_air."""
+        from datetime import timedelta
+        from unittest.mock import patch
+
+        recorder = CycleMetricsRecorder(
+            hass=mock_hass,
+            zone_id="test_forced",
+            adaptive_learner=mock_adaptive_learner,
+            get_target_temp=mock_callbacks["get_target_temp"],
+            get_current_temp=mock_callbacks["get_current_temp"],
+            get_hvac_mode=mock_callbacks["get_hvac_mode"],
+            get_in_grace_period=mock_callbacks["get_in_grace_period"],
+            min_cycle_duration_minutes=5,
+            heating_type=HeatingType.FORCED_AIR,
+        )
+
+        # Create temperature history
+        cycle_start = datetime(2025, 1, 15, 10, 0, 0)
+        target_temp = 20.0
+
+        temperature_history = [
+            (cycle_start, 18.0),
+            (cycle_start + timedelta(minutes=5), 18.5),
+            (cycle_start + timedelta(minutes=10), 19.0),
+            (cycle_start + timedelta(minutes=15), 19.5),
+            (cycle_start + timedelta(minutes=20), 19.9),  # Within 0.15°C of target
+        ]
+
+        # Mock calculate_rise_time to capture the threshold parameter
+        with patch('custom_components.adaptive_climate.adaptive.cycle_analysis.calculate_rise_time') as mock_calc:
+            mock_calc.return_value = 20.0  # 20 minutes to reach target
+
+            # Record cycle metrics
+            recorder.record_cycle_metrics(
+                cycle_start_time=cycle_start,
+                cycle_target_temp=target_temp,
+                cycle_state_value="settling",
+                temperature_history=temperature_history,
+                outdoor_temp_history=[],
+            )
+
+            # Verify calculate_rise_time was called with 0.15°C threshold (forced_air)
+            mock_calc.assert_called_once()
+            call_kwargs = mock_calc.call_args[1]
+            assert 'threshold' in call_kwargs
+            assert call_kwargs['threshold'] == 0.15
+
+    def test_rise_time_defaults_to_0_05_when_no_heating_type(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks
+    ):
+        """Rise time calculation defaults to 0.05°C threshold when heating_type is None."""
+        from datetime import timedelta
+        from unittest.mock import patch
+
+        recorder = CycleMetricsRecorder(
+            hass=mock_hass,
+            zone_id="test_no_type",
+            adaptive_learner=mock_adaptive_learner,
+            get_target_temp=mock_callbacks["get_target_temp"],
+            get_current_temp=mock_callbacks["get_current_temp"],
+            get_hvac_mode=mock_callbacks["get_hvac_mode"],
+            get_in_grace_period=mock_callbacks["get_in_grace_period"],
+            min_cycle_duration_minutes=5,
+            heating_type=None,
+        )
+
+        # Create temperature history (need at least 5 samples)
+        cycle_start = datetime(2025, 1, 15, 10, 0, 0)
+        target_temp = 20.0
+
+        temperature_history = [
+            (cycle_start, 18.0),
+            (cycle_start + timedelta(minutes=5), 18.5),
+            (cycle_start + timedelta(minutes=10), 19.0),
+            (cycle_start + timedelta(minutes=15), 19.5),
+            (cycle_start + timedelta(minutes=20), 20.0),
+        ]
+
+        # Mock calculate_rise_time to capture the threshold parameter
+        with patch('custom_components.adaptive_climate.adaptive.cycle_analysis.calculate_rise_time') as mock_calc:
+            mock_calc.return_value = 20.0
+
+            # Record cycle metrics
+            recorder.record_cycle_metrics(
+                cycle_start_time=cycle_start,
+                cycle_target_temp=target_temp,
+                cycle_state_value="settling",
+                temperature_history=temperature_history,
+                outdoor_temp_history=[],
+            )
+
+            # Verify calculate_rise_time was called with default 0.2°C threshold (from DEFAULT_CONVERGENCE_THRESHOLDS)
+            mock_calc.assert_called_once()
+            call_kwargs = mock_calc.call_args[1]
+            assert 'threshold' in call_kwargs
+            assert call_kwargs['threshold'] == 0.2
+
+
+class TestStartingDeltaCalculation:
+    """Test starting_delta calculation for weighted learning."""
+
+    def test_starting_delta_calculated_and_passed_to_cycle_metrics(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks
+    ):
+        """Starting delta is calculated from target_temp - start_temp and passed to CycleMetrics."""
+        recorder = CycleMetricsRecorder(
+            hass=mock_hass,
+            zone_id="test_starting_delta",
+            adaptive_learner=mock_adaptive_learner,
+            get_target_temp=mock_callbacks["get_target_temp"],
+            get_current_temp=mock_callbacks["get_current_temp"],
+            get_hvac_mode=mock_callbacks["get_hvac_mode"],
+            get_in_grace_period=mock_callbacks["get_in_grace_period"],
+            min_cycle_duration_minutes=5,
+            heating_type=HeatingType.FLOOR_HYDRONIC,
+        )
+
+        # Create temperature history starting at 18.0°C
+        start_time = datetime(2025, 1, 15, 10, 0, 0)
+        temperature_history = [
+            (datetime(2025, 1, 15, 10, 0, 0), 18.0),
+            (datetime(2025, 1, 15, 10, 5, 0), 18.5),
+            (datetime(2025, 1, 15, 10, 10, 0), 19.0),
+            (datetime(2025, 1, 15, 10, 15, 0), 19.5),
+            (datetime(2025, 1, 15, 10, 20, 0), 20.0),
+            (datetime(2025, 1, 15, 10, 25, 0), 20.2),
+        ]
+
+        # Target temp is 20.0 (from mock_callbacks)
+        # Start temp is 18.0
+        # Expected starting_delta = 20.0 - 18.0 = 2.0
+
+        # Record cycle
+        recorder.record_cycle_metrics(
+            cycle_start_time=start_time,
+            cycle_target_temp=20.0,
+            cycle_state_value="heating",
+            temperature_history=temperature_history,
+            outdoor_temp_history=[],
+        )
+
+        # Verify add_cycle_metrics was called
+        assert mock_adaptive_learner.add_cycle_metrics.call_count == 1
+
+        # Extract the CycleMetrics object that was passed
+        call_args = mock_adaptive_learner.add_cycle_metrics.call_args
+        cycle_metrics = call_args[0][0]
+
+        # Verify starting_delta is calculated correctly
+        assert cycle_metrics.starting_delta == 2.0
+
+    def test_starting_delta_with_cooling_mode(
+        self, mock_hass, mock_adaptive_learner, mock_callbacks
+    ):
+        """Starting delta is calculated for cooling mode (temp - target)."""
+        # Modify callbacks for cooling mode
+        mock_callbacks["get_hvac_mode"].return_value = "cool"
+
+        recorder = CycleMetricsRecorder(
+            hass=mock_hass,
+            zone_id="test_cooling_delta",
+            adaptive_learner=mock_adaptive_learner,
+            get_target_temp=mock_callbacks["get_target_temp"],
+            get_current_temp=mock_callbacks["get_current_temp"],
+            get_hvac_mode=mock_callbacks["get_hvac_mode"],
+            get_in_grace_period=mock_callbacks["get_in_grace_period"],
+            min_cycle_duration_minutes=5,
+            heating_type=HeatingType.FORCED_AIR,
+        )
+
+        # Create temperature history starting at 22.0°C (above target)
+        start_time = datetime(2025, 1, 15, 10, 0, 0)
+        temperature_history = [
+            (datetime(2025, 1, 15, 10, 0, 0), 22.0),
+            (datetime(2025, 1, 15, 10, 5, 0), 21.5),
+            (datetime(2025, 1, 15, 10, 10, 0), 21.0),
+            (datetime(2025, 1, 15, 10, 15, 0), 20.5),
+            (datetime(2025, 1, 15, 10, 20, 0), 20.0),
+            (datetime(2025, 1, 15, 10, 25, 0), 19.8),
+        ]
+
+        # Target temp is 20.0
+        # Start temp is 22.0
+        # Expected starting_delta = 20.0 - 22.0 = -2.0 (negative because cooling)
+
+        # Record cycle
+        recorder.record_cycle_metrics(
+            cycle_start_time=start_time,
+            cycle_target_temp=20.0,
+            cycle_state_value="cooling",
+            temperature_history=temperature_history,
+            outdoor_temp_history=[],
+        )
+
+        # Verify add_cycle_metrics was called
+        assert mock_adaptive_learner.add_cycle_metrics.call_count == 1
+
+        # Extract the CycleMetrics object that was passed
+        call_args = mock_adaptive_learner.add_cycle_metrics.call_args
+        cycle_metrics = call_args[0][0]
+
+        # Verify starting_delta is calculated correctly (target - actual = negative for cooling)
+        assert cycle_metrics.starting_delta == -2.0

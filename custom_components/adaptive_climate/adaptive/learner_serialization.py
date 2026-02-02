@@ -37,6 +37,7 @@ def serialize_cycle(cycle: CycleMetrics) -> Dict[str, Any]:
         "integral_at_setpoint_cross": cycle.integral_at_setpoint_cross,
         "decay_contribution": cycle.decay_contribution,
         "mode": cycle.mode,
+        "starting_delta": cycle.starting_delta,
     }
 
 
@@ -159,6 +160,7 @@ def _deserialize_cycle(cycle_dict: Dict[str, Any]) -> CycleMetrics:
         integral_at_setpoint_cross=cycle_dict.get("integral_at_setpoint_cross"),
         decay_contribution=cycle_dict.get("decay_contribution"),
         mode=cycle_dict.get("mode"),
+        starting_delta=cycle_dict.get("starting_delta"),
     )
 
 

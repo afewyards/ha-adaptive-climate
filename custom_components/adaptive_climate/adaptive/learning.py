@@ -1134,6 +1134,10 @@ class AdaptiveLearner:
                 # Recovery cycles or unknown (no starting_delta): add gain directly
                 actual_gain = weighted_gain
 
+            # Track heating rate contribution if rise_time was measured (separate from main confidence)
+            if metrics.rise_time is not None:
+                self._contribution_tracker.apply_heating_rate_gain(actual_gain)
+
             current_confidence = min(
                 CONVERGENCE_CONFIDENCE_HIGH,
                 current_confidence + actual_gain
