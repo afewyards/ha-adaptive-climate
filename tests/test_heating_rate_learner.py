@@ -6,6 +6,7 @@ from custom_components.adaptive_climate.adaptive.heating_rate_learner import (
     HeatingRateObservation,
     RecoverySession,
     HeatingRateLearner,
+    MIN_SESSION_DURATION,
 )
 from custom_components.adaptive_climate.const import HeatingType
 
@@ -167,3 +168,84 @@ class TestGetHeatingRate:
 
         rate, source = learner.get_heating_rate(delta=3.0, outdoor_temp=8.0)
         assert source == "fallback"  # Only 2 observations, not enough
+
+
+class TestSessionTracking:
+    """Tests for recovery session tracking."""
+
+    def test_start_session_creates_active_session(self):
+        """Test start_session creates tracking state."""
+        learner = HeatingRateLearner(HeatingType.RADIATOR)
+        now = datetime(2026, 1, 15, 10, 0, tzinfo=timezone.utc)
+
+        learner.start_session(
+            temp=18.0, setpoint=21.0, outdoor_temp=5.0, timestamp=now
+        )
+
+        assert learner._active_session is not None
+        assert learner._active_session.start_temp == 18.0
+        assert learner._active_session.target_setpoint == 21.0
+        assert learner._active_session.outdoor_temp == 5.0
+
+    def test_end_session_success_banks_observation(self):
+        """Test successful session banks rate observation."""
+        learner = HeatingRateLearner(HeatingType.RADIATOR)
+        start = datetime(2026, 1, 15, 10, 0, tzinfo=timezone.utc)
+        end = datetime(2026, 1, 15, 10, 45, tzinfo=timezone.utc)  # 45 min
+
+        learner.start_session(temp=18.0, setpoint=21.0, outdoor_temp=5.0, timestamp=start)
+        obs = learner.end_session(
+            end_temp=20.8, reason="reached_setpoint", timestamp=end
+        )
+
+        assert obs is not None
+        # Rate = (20.8 - 18.0) / (45/60) = 2.8 / 0.75 = 3.73 C/h
+        assert obs.rate == pytest.approx(3.73, rel=0.01)
+        assert obs.stalled is False
+        assert learner._active_session is None
+        assert learner.get_observation_count() == 1
+
+    def test_end_session_stalled_banks_observation(self):
+        """Test stalled session banks observation with stalled=True."""
+        learner = HeatingRateLearner(HeatingType.RADIATOR)
+        start = datetime(2026, 1, 15, 10, 0, tzinfo=timezone.utc)
+        end = datetime(2026, 1, 15, 11, 0, tzinfo=timezone.utc)  # 60 min
+
+        learner.start_session(temp=18.0, setpoint=21.0, outdoor_temp=5.0, timestamp=start)
+        obs = learner.end_session(end_temp=19.5, reason="stalled", timestamp=end)
+
+        assert obs is not None
+        assert obs.stalled is True
+        # Rate = (19.5 - 18.0) / 1.0 = 1.5 C/h
+        assert obs.rate == pytest.approx(1.5)
+
+    def test_end_session_too_short_discards(self):
+        """Test session shorter than minimum is discarded."""
+        learner = HeatingRateLearner(HeatingType.RADIATOR)
+        start = datetime(2026, 1, 15, 10, 0, tzinfo=timezone.utc)
+        end = datetime(2026, 1, 15, 10, 15, tzinfo=timezone.utc)  # 15 min (radiator min is 30)
+
+        learner.start_session(temp=18.0, setpoint=21.0, outdoor_temp=5.0, timestamp=start)
+        obs = learner.end_session(end_temp=19.0, reason="reached_setpoint", timestamp=end)
+
+        assert obs is None  # Discarded
+        assert learner.get_observation_count() == 0
+
+    def test_end_session_override_discards(self):
+        """Test session interrupted by override is discarded."""
+        learner = HeatingRateLearner(HeatingType.RADIATOR)
+        start = datetime(2026, 1, 15, 10, 0, tzinfo=timezone.utc)
+        end = datetime(2026, 1, 15, 11, 0, tzinfo=timezone.utc)
+
+        learner.start_session(temp=18.0, setpoint=21.0, outdoor_temp=5.0, timestamp=start)
+        obs = learner.end_session(end_temp=19.0, reason="override", timestamp=end)
+
+        assert obs is None
+        assert learner.get_observation_count() == 0
+
+    def test_min_session_duration_by_heating_type(self):
+        """Test minimum duration varies by heating type."""
+        assert MIN_SESSION_DURATION["floor_hydronic"] == 60
+        assert MIN_SESSION_DURATION["radiator"] == 30
+        assert MIN_SESSION_DURATION["convector"] == 15
+        assert MIN_SESSION_DURATION["forced_air"] == 10
