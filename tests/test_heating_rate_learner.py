@@ -436,3 +436,59 @@ class TestStallCounter:
         learner.acknowledge_ki_boost()
         assert learner._stall_counter == 0
         assert learner.should_boost_ki() is False
+
+
+class TestRateComparison:
+    """Tests for comparing current rate against learned rate."""
+
+    def test_get_rate_ratio_with_sufficient_data(self):
+        """Test rate ratio calculation with enough observations."""
+        learner = HeatingRateLearner(HeatingType.RADIATOR)
+
+        # Add 5 session observations (enough for comparison)
+        for _ in range(5):
+            learner.add_observation(
+                rate=1.0, duration_min=60, source="session",
+                stalled=False, delta=3.0, outdoor_temp=8.0
+            )
+
+        # Current rate is 0.4, expected is 1.0 -> ratio = 0.4
+        ratio = learner.get_rate_ratio(
+            current_rate=0.4, delta=3.0, outdoor_temp=8.0
+        )
+        assert ratio == pytest.approx(0.4)
+
+    def test_get_rate_ratio_insufficient_data(self):
+        """Test rate ratio returns None with insufficient observations."""
+        learner = HeatingRateLearner(HeatingType.RADIATOR)
+
+        # Only 3 observations (need 5 for comparison)
+        for _ in range(3):
+            learner.add_observation(
+                rate=1.0, duration_min=60, source="session",
+                stalled=False, delta=3.0, outdoor_temp=8.0
+            )
+
+        ratio = learner.get_rate_ratio(
+            current_rate=0.4, delta=3.0, outdoor_temp=8.0
+        )
+        assert ratio is None
+
+    def test_is_underperforming_at_60_percent(self):
+        """Test underperforming detection at 60% threshold."""
+        learner = HeatingRateLearner(HeatingType.RADIATOR)
+
+        for _ in range(5):
+            learner.add_observation(
+                rate=1.0, duration_min=60, source="session",
+                stalled=False, delta=3.0, outdoor_temp=8.0
+            )
+
+        # 0.5 is 50% of expected 1.0 -> underperforming
+        assert learner.is_underperforming(0.5, delta=3.0, outdoor_temp=8.0) is True
+
+        # 0.7 is 70% of expected 1.0 -> not underperforming
+        assert learner.is_underperforming(0.7, delta=3.0, outdoor_temp=8.0) is False
+
+        # 0.6 is exactly 60% -> not underperforming (threshold is <60%)
+        assert learner.is_underperforming(0.6, delta=3.0, outdoor_temp=8.0) is False
