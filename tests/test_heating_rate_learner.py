@@ -492,3 +492,79 @@ class TestRateComparison:
 
         # 0.6 is exactly 60% -> not underperforming (threshold is <60%)
         assert learner.is_underperforming(0.6, delta=3.0, outdoor_temp=8.0) is False
+
+
+class TestSerialization:
+    """Tests for HeatingRateLearner serialization."""
+
+    def test_to_dict_includes_all_state(self):
+        """Test to_dict captures complete state."""
+        learner = HeatingRateLearner(HeatingType.RADIATOR)
+
+        # Add some observations
+        learner.add_observation(
+            rate=0.5, duration_min=60, source="session",
+            stalled=False, delta=3.0, outdoor_temp=8.0
+        )
+
+        data = learner.to_dict()
+
+        assert data["heating_type"] == "radiator"
+        assert "bins" in data
+        assert "delta_2_4_mild" in data["bins"]
+        assert len(data["bins"]["delta_2_4_mild"]) == 1
+        assert data["stall_counter"] == 0
+
+    def test_from_dict_restores_state(self):
+        """Test from_dict restores complete state."""
+        learner = HeatingRateLearner(HeatingType.RADIATOR)
+
+        # Add observations and create state
+        for _ in range(3):
+            learner.add_observation(
+                rate=0.5, duration_min=60, source="session",
+                stalled=False, delta=3.0, outdoor_temp=8.0
+            )
+
+        # Serialize and restore
+        data = learner.to_dict()
+        restored = HeatingRateLearner.from_dict(data)
+
+        assert restored._heating_type == learner._heating_type
+        assert restored.get_observation_count() == learner.get_observation_count()
+        assert len(restored._bins["delta_2_4_mild"]) == 3
+
+    def test_observation_serialization(self):
+        """Test observation round-trips correctly."""
+        learner = HeatingRateLearner(HeatingType.RADIATOR)
+        ts = datetime(2026, 1, 15, 10, 0, tzinfo=timezone.utc)
+
+        learner.add_observation(
+            rate=0.5, duration_min=60, source="session",
+            stalled=True, delta=3.0, outdoor_temp=8.0, timestamp=ts
+        )
+
+        data = learner.to_dict()
+        restored = HeatingRateLearner.from_dict(data)
+
+        obs = restored._bins["delta_2_4_mild"][0]
+        assert obs.rate == 0.5
+        assert obs.duration_min == 60
+        assert obs.source == "session"
+        assert obs.stalled is True
+
+    def test_stall_counter_persists(self):
+        """Test stall counter survives serialization."""
+        learner = HeatingRateLearner(HeatingType.RADIATOR)
+        start = datetime(2026, 1, 15, 10, 0, tzinfo=timezone.utc)
+        end = datetime(2026, 1, 15, 11, 0, tzinfo=timezone.utc)
+
+        learner.start_session(temp=18.0, setpoint=21.0, outdoor_temp=5.0, timestamp=start)
+        learner.end_session(end_temp=19.0, reason="stalled", timestamp=end)
+
+        data = learner.to_dict()
+        restored = HeatingRateLearner.from_dict(data)
+
+        assert restored._stall_counter == 1
+        assert restored._last_stall_outdoor == 5.0
+        assert restored._last_stall_setpoint == 21.0
