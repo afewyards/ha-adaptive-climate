@@ -1,6 +1,23 @@
 # CHANGELOG
 
 
+## v0.58.2 (2026-02-02)
+
+### Bug Fixes
+
+- Wire up weighted learning caps and tier gates
+  ([`f4a0872`](https://github.com/afewyards/ha-adaptive-climate/commit/f4a08727c5f3489d8cda532958e9feb69cb09d04))
+
+Route maintenance cycle confidence gains through ConfidenceContributionTracker to enforce
+  maintenance caps. Add tier gate checks to _compute_learning_status so zones cannot reach "stable"
+  or "tuned" without sufficient recovery cycles.
+
+Changes: - learning.py: Route maintenance cycles through apply_maintenance_gain() -
+  state_attributes.py: Pass contribution_tracker to _compute_learning_status - auto_apply.py: Add
+  contribution_tracker parameter for tier gate checks - Tests: Add integration tests for cap
+  enforcement and tier gates
+
+
 ## v0.58.1 (2026-02-01)
 
 ### Bug Fixes
