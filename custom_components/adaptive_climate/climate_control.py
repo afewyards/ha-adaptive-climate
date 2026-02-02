@@ -56,6 +56,21 @@ class ClimateControlMixin:
             if self._status_manager.is_paused():
                 _LOGGER.info("%s: Heating paused", self.entity_id)
 
+                # Discard any active heating rate session on override
+                if (
+                    self._learner
+                    and hasattr(self._learner, "_heating_rate_learner")
+                    and self._learner._heating_rate_learner._active_session is not None
+                ):
+                    self._learner._heating_rate_learner.end_session(
+                        end_temp=self._cur_temp,
+                        reason="override",
+                    )
+                    _LOGGER.debug(
+                        "%s: Discarded heating rate session due to override",
+                        self.entity_id,
+                    )
+
                 # Decay integral for humidity pauses (~10%/min to prevent stale buildup)
                 if self._humidity_detector and self._humidity_detector.should_pause():
                     elapsed = time.monotonic() - self._last_control_time
@@ -189,17 +204,6 @@ class ClimateControlMixin:
                                         self._target_temp - self._current_temp,
                                         self._ext_temp,
                                     )
-
-                            # Check if we should discard active session due to override
-                            if heating_rate_learner._active_session and self._status_manager.is_paused():
-                                heating_rate_learner.end_session(
-                                    end_temp=self._current_temp,
-                                    reason="override",
-                                )
-                                _LOGGER.debug(
-                                    "%s: Discarded heating rate session due to pause/override",
-                                    self.entity_id,
-                                )
 
                 # Record temperature for cycle tracking
                 if self._cycle_tracker and self._current_temp is not None:
