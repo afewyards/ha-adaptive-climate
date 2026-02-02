@@ -222,6 +222,9 @@ class MockThermostat:
     async def _handle_cycle_ended_for_preheat(self, *args: Any, **kwargs: Any) -> None:
         pass
 
+    async def _handle_cycle_ended_for_heating_rate(self, *args: Any, **kwargs: Any) -> None:
+        pass
+
 
 class TestHasRecoveryDeadline:
     """Tests for _has_recovery_deadline helper function."""

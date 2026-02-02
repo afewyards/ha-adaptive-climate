@@ -190,6 +190,28 @@ class MockThermostat:
     def _set_dt(self, value: float) -> None:
         pass
 
+    @property
+    def in_learning_grace_period(self) -> bool:
+        return False
+
+    def _is_device_active(self) -> bool:
+        return True
+
+    def _handle_validation_failure(self, *args: Any, **kwargs: Any) -> None:
+        pass
+
+    def _check_auto_apply_pid(self, *args: Any, **kwargs: Any) -> None:
+        pass
+
+    def _is_pid_converged_for_ke(self) -> bool:
+        return True
+
+    async def _handle_cycle_ended_for_preheat(self, *args: Any, **kwargs: Any) -> None:
+        pass
+
+    async def _handle_cycle_ended_for_heating_rate(self, *args: Any, **kwargs: Any) -> None:
+        pass
+
 
 @pytest.mark.asyncio
 async def test_valve_timing_passed_to_heater_controller():
