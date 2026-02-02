@@ -16,7 +16,7 @@ class TestV9FormatSerialization:
     """Test v9 format with contribution tracker persistence."""
 
     def test_v9_includes_contribution_tracker_data(self):
-        """Test that v9 format includes contribution_tracker data."""
+        """Test that v10 format includes contribution_tracker data (v9 legacy)."""
         learner = AdaptiveLearner(heating_type=HeatingType.RADIATOR)
 
         # Add a cycle to populate history
@@ -32,8 +32,8 @@ class TestV9FormatSerialization:
         # Serialize
         data = learner.to_dict()
 
-        # Should be v9 format
-        assert data["format_version"] == 9
+        # Should be v10 format
+        assert data["format_version"] == 10
 
         # Should include contribution_tracker at top level
         assert "contribution_tracker" in data
@@ -419,12 +419,106 @@ class TestStartingDeltaSerialization:
         assert cycle.starting_delta is None
 
 
+class TestV9ToV10Migration:
+    """Test migration from v9 to v10 format."""
+
+    def test_v9_to_v10_migration(self):
+        """Test v9 state migrates to v10 with heating_rate_learner."""
+        v9_data = {
+            "format_version": 9,
+            "heating": {
+                "cycle_history": [],
+                "auto_apply_count": 0,
+                "convergence_confidence": 0.0,
+            },
+            "cooling": {
+                "cycle_history": [],
+                "auto_apply_count": 0,
+                "convergence_confidence": 0.0,
+            },
+            "contribution_tracker": {
+                "maintenance_contribution": 0.0,
+                "heating_rate_contribution": 0.0,
+                "recovery_cycle_count": 0,
+            },
+            "undershoot_detector": {
+                "cumulative_ki_multiplier": 1.0,
+                "last_adjustment_time": None,
+                "time_below_target": 0.0,
+                "thermal_debt": 0.0,
+                "consecutive_failures": 0,
+            },
+            "cycle_history": [],
+            "auto_apply_count": 0,
+            "convergence_confidence": 0.0,
+            "last_adjustment_time": None,
+            "consecutive_converged_cycles": 0,
+            "pid_converged_for_ke": False,
+            # No heating_rate_learner in v9
+        }
+
+        # Deserialize - should migrate to v10
+        restored = restore_learner_from_dict(v9_data)
+
+        # Should detect v9 format and include empty heating_rate_learner_state
+        assert restored["format_version"] == "v9"
+        assert "heating_rate_learner_state" in restored
+
+        # Restored from v9 should have empty state (will create fresh learner during restore)
+        learner_state = restored["heating_rate_learner_state"]
+        assert learner_state == {}
+
+        # Verify that when restored into AdaptiveLearner, a fresh learner is created
+        learner = AdaptiveLearner(heating_type=HeatingType.RADIATOR)
+        learner.restore_from_dict(v9_data)
+        assert hasattr(learner, "_heating_rate_learner")
+        assert learner._heating_rate_learner is not None
+        assert learner._heating_rate_learner._heating_type == HeatingType.RADIATOR
+
+    def test_v10_round_trip(self):
+        """Test v10 state serializes and restores correctly."""
+        learner = AdaptiveLearner(heating_type=HeatingType.RADIATOR)
+
+        # Add heating rate data
+        if hasattr(learner, "_heating_rate_learner"):
+            from datetime import datetime, timezone
+            learner._heating_rate_learner.add_observation(
+                rate=0.5,
+                duration_min=60,
+                source="session",
+                stalled=False,
+                delta=3.0,
+                outdoor_temp=8.0,
+                timestamp=datetime.now(timezone.utc)
+            )
+
+        # Serialize
+        data = learner.to_dict()
+        assert data["format_version"] == 10
+        assert "heating_rate_learner" in data
+
+        # Restore
+        restored = restore_learner_from_dict(data)
+        assert "heating_rate_learner_state" in restored
+
+        # Verify observation was preserved
+        learner_state = restored["heating_rate_learner_state"]
+        assert learner_state is not None
+
+        # Restore into new learner to verify
+        learner2 = AdaptiveLearner(heating_type=HeatingType.RADIATOR)
+        learner2.restore_from_dict(data)
+
+        if hasattr(learner2, "_heating_rate_learner"):
+            assert learner2._heating_rate_learner.get_observation_count() == 1
+
+
 class TestBackwardCompatibility:
     """Test backward compatibility with existing serialization."""
 
-    def test_current_version_is_9(self):
-        """Test that CURRENT_VERSION constant is set to 9."""
-        assert CURRENT_VERSION == 9
+    def test_current_version_is_10(self):
+        """Test that CURRENT_VERSION constant is set to 10."""
+        assert CURRENT_VERSION == 10
 
     def test_v9_includes_all_v8_fields(self):
         """Test that v9 format includes all v8 fields for compatibility."""
