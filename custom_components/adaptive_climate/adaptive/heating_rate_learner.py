@@ -387,3 +387,56 @@ class HeatingRateLearner:
         if ratio is None:
             return False
         return ratio < self.UNDERPERFORMING_THRESHOLD
+
+    def to_dict(self) -> dict:
+        """Serialize learner state to dictionary."""
+        bins_data = {}
+        for key, observations in self._bins.items():
+            bins_data[key] = [
+                {
+                    "rate": obs.rate,
+                    "duration_min": obs.duration_min,
+                    "source": obs.source,
+                    "stalled": obs.stalled,
+                    "timestamp": obs.timestamp.isoformat(),
+                }
+                for obs in observations
+            ]
+
+        return {
+            "heating_type": self._heating_type,
+            "bins": bins_data,
+            "stall_counter": self._stall_counter,
+            "last_stall_outdoor": self._last_stall_outdoor,
+            "last_stall_setpoint": self._last_stall_setpoint,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "HeatingRateLearner":
+        """Restore learner from serialized state."""
+        from datetime import datetime
+
+        heating_type = data.get("heating_type", "radiator")
+        learner = cls(heating_type)
+
+        # Restore bins
+        bins_data = data.get("bins", {})
+        for key, obs_list in bins_data.items():
+            if key in learner._bins:
+                learner._bins[key] = [
+                    HeatingRateObservation(
+                        rate=obs["rate"],
+                        duration_min=obs["duration_min"],
+                        source=obs["source"],
+                        stalled=obs["stalled"],
+                        timestamp=datetime.fromisoformat(obs["timestamp"]),
+                    )
+                    for obs in obs_list
+                ]
+
+        # Restore stall tracking
+        learner._stall_counter = data.get("stall_counter", 0)
+        learner._last_stall_outdoor = data.get("last_stall_outdoor")
+        learner._last_stall_setpoint = data.get("last_stall_setpoint")
+
+        return learner
