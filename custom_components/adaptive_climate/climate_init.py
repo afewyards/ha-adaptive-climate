@@ -397,3 +397,14 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
             "%s: Subscribed to CYCLE_ENDED events for preheat learning",
             thermostat.entity_id
         )
+
+    # Subscribe to CYCLE_ENDED events for heating rate session tracking
+    if thermostat._cycle_dispatcher:
+        thermostat._heating_rate_cycle_unsub = thermostat._cycle_dispatcher.subscribe(
+            CycleEventType.CYCLE_ENDED,
+            thermostat._handle_cycle_ended_for_heating_rate,
+        )
+        _LOGGER.debug(
+            "%s: Subscribed to CYCLE_ENDED events for heating rate learning",
+            thermostat.entity_id
+        )
