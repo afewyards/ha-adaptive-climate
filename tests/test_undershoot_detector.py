@@ -933,3 +933,298 @@ class TestCycleModeDetection:
         assert detector._consecutive_failures == 4
         # Should trigger after MIN_CYCLES_FOR_LEARNING
         assert detector.should_adjust_ki(cycles_completed=MIN_CYCLES_FOR_LEARNING) is True
+
+
+class TestRateModeDetection:
+    """Test rate-based undershoot detection using HeatingRateLearner."""
+
+    @pytest.fixture
+    def heating_rate_learner(self):
+        """Create a HeatingRateLearner for testing."""
+        from custom_components.adaptive_climate.adaptive.heating_rate_learner import (
+            HeatingRateLearner,
+        )
+        return HeatingRateLearner("floor_hydronic")
+
+    @pytest.fixture
+    def detector_with_rate_learner(self, heating_rate_learner):
+        """Create detector with heating rate learner."""
+        detector = UndershootDetector(HeatingType.FLOOR_HYDRONIC)
+        detector.set_heating_rate_learner(heating_rate_learner)
+        return detector
+
+    def test_detector_can_accept_heating_rate_learner(self, detector, heating_rate_learner):
+        """Test that detector accepts HeatingRateLearner instance."""
+        detector.set_heating_rate_learner(heating_rate_learner)
+        assert detector._heating_rate_learner is heating_rate_learner
+
+    def test_check_rate_based_undershoot_returns_none_without_learner(self, detector):
+        """Test that rate check returns None when no learner is set."""
+        result = detector.check_rate_based_undershoot(
+            current_rate=0.1,
+            delta=2.0,
+            outdoor_temp=5.0,
+        )
+        assert result is None
+
+    def test_check_rate_based_undershoot_returns_none_when_rate_ok(
+        self, detector_with_rate_learner, heating_rate_learner
+    ):
+        """Test that rate check returns None when performing well."""
+        # Add observations showing expected rate of 0.15 C/h
+        for _ in range(5):
+            heating_rate_learner.add_observation(
+                rate=0.15,
+                duration_min=90,
+                source="session",
+                stalled=False,
+                delta=2.0,
+                outdoor_temp=5.0,
+            )
+
+        # Current rate is good (90% of expected)
+        result = detector_with_rate_learner.check_rate_based_undershoot(
+            current_rate=0.135,
+            delta=2.0,
+            outdoor_temp=5.0,
+        )
+        assert result is None
+
+    def test_check_rate_based_undershoot_returns_none_without_sufficient_observations(
+        self, detector_with_rate_learner, heating_rate_learner
+    ):
+        """Test that rate check returns None without sufficient observations."""
+        # Add only 2 observations (need 5 for comparison)
+        for _ in range(2):
+            heating_rate_learner.add_observation(
+                rate=0.15,
+                duration_min=90,
+                source="session",
+                stalled=False,
+                delta=2.0,
+                outdoor_temp=5.0,
+            )
+
+        # Current rate is poor but not enough data
+        result = detector_with_rate_learner.check_rate_based_undershoot(
+            current_rate=0.05,
+            delta=2.0,
+            outdoor_temp=5.0,
+        )
+        assert result is None
+
+    def test_check_rate_based_undershoot_returns_none_without_stalls(
+        self, detector_with_rate_learner, heating_rate_learner
+    ):
+        """Test that rate check returns None without sufficient stall count."""
+        # Add observations showing expected rate
+        for _ in range(5):
+            heating_rate_learner.add_observation(
+                rate=0.15,
+                duration_min=90,
+                source="session",
+                stalled=False,
+                delta=2.0,
+                outdoor_temp=5.0,
+            )
+
+        # Current rate is poor but no stalls recorded
+        result = detector_with_rate_learner.check_rate_based_undershoot(
+            current_rate=0.05,
+            delta=2.0,
+            outdoor_temp=5.0,
+        )
+        assert result is None
+
+    def test_check_rate_based_undershoot_returns_none_when_capacity_limited(
+        self, detector_with_rate_learner, heating_rate_learner
+    ):
+        """Test that rate check returns None when duty shows capacity limit."""
+        from datetime import datetime, timedelta
+        from homeassistant.util import dt as dt_util
+
+        # Add observations and simulate stalls
+        for _ in range(5):
+            heating_rate_learner.add_observation(
+                rate=0.15,
+                duration_min=90,
+                source="session",
+                stalled=False,
+                delta=2.0,
+                outdoor_temp=5.0,
+            )
+
+        # Start session and record 2 stalls with high duty (capacity limited)
+        base_time = dt_util.utcnow()
+        for i in range(2):
+            start_time = base_time + timedelta(hours=i * 2)
+            end_time = start_time + timedelta(minutes=65)
+            heating_rate_learner.start_session(18.0, 20.0, 5.0, timestamp=start_time)
+            heating_rate_learner.update_session(18.5, duty=0.90)  # High duty
+            heating_rate_learner.end_session(19.0, "stalled", timestamp=end_time)
+
+        # Current rate is poor but system is capacity limited
+        result = detector_with_rate_learner.check_rate_based_undershoot(
+            current_rate=0.05,
+            delta=2.0,
+            outdoor_temp=5.0,
+        )
+        assert result is None
+
+    def test_check_rate_based_undershoot_returns_multiplier_when_underperforming(
+        self, detector_with_rate_learner, heating_rate_learner
+    ):
+        """Test that rate check returns Ki multiplier when underperforming."""
+        from datetime import datetime, timedelta
+        from homeassistant.util import dt as dt_util
+
+        # Add observations showing expected rate of 0.15 C/h
+        for _ in range(5):
+            heating_rate_learner.add_observation(
+                rate=0.15,
+                duration_min=90,
+                source="session",
+                stalled=False,
+                delta=2.0,
+                outdoor_temp=5.0,
+            )
+
+        # Record 2 stalls with low duty (not capacity limited)
+        # Need sessions to be >= 60 min for floor_hydronic
+        base_time = dt_util.utcnow()
+        for i in range(2):
+            start_time = base_time + timedelta(hours=i * 2)
+            end_time = start_time + timedelta(minutes=65)
+            heating_rate_learner.start_session(18.0, 20.0, 5.0, timestamp=start_time)
+            heating_rate_learner.update_session(18.5, duty=0.50)  # Low duty
+            heating_rate_learner.end_session(19.0, "stalled", timestamp=end_time)
+
+        # Current rate is poor (50% of expected)
+        result = detector_with_rate_learner.check_rate_based_undershoot(
+            current_rate=0.075,
+            delta=2.0,
+            outdoor_temp=5.0,
+        )
+
+        # Should return Ki multiplier (1.20 for floor_hydronic)
+        assert result == 1.20
+
+    def test_check_rate_based_undershoot_respects_cumulative_cap(
+        self, detector_with_rate_learner, heating_rate_learner
+    ):
+        """Test that rate-based detection respects cumulative Ki cap."""
+        from datetime import datetime, timedelta
+        from homeassistant.util import dt as dt_util
+
+        # Add observations and stalls
+        for _ in range(5):
+            heating_rate_learner.add_observation(
+                rate=0.15,
+                duration_min=90,
+                source="session",
+                stalled=False,
+                delta=2.0,
+                outdoor_temp=5.0,
+            )
+
+        base_time = dt_util.utcnow()
+        for i in range(2):
+            start_time = base_time + timedelta(hours=i * 2)
+            end_time = start_time + timedelta(minutes=65)
+            heating_rate_learner.start_session(18.0, 20.0, 5.0, timestamp=start_time)
+            heating_rate_learner.update_session(18.5, duty=0.50)
+            heating_rate_learner.end_session(19.0, "stalled", timestamp=end_time)
+
+        # Set cumulative multiplier near cap
+        detector_with_rate_learner.cumulative_ki_multiplier = 1.9
+
+        # Current rate is poor but near cap
+        result = detector_with_rate_learner.check_rate_based_undershoot(
+            current_rate=0.075,
+            delta=2.0,
+            outdoor_temp=5.0,
+        )
+
+        # Should return clamped multiplier
+        expected = MAX_UNDERSHOOT_KI_MULTIPLIER / 1.9  # 2.0 / 1.9 = 1.053
+        assert result == pytest.approx(expected, abs=0.001)
+
+    def test_rate_mode_applies_adjustment_and_resets_stall_counter(
+        self, detector_with_rate_learner, heating_rate_learner
+    ):
+        """Test that applying rate-based adjustment resets stall counter."""
+        from datetime import datetime, timedelta
+        from homeassistant.util import dt as dt_util
+
+        # Add observations and stalls
+        for _ in range(5):
+            heating_rate_learner.add_observation(
+                rate=0.15,
+                duration_min=90,
+                source="session",
+                stalled=False,
+                delta=2.0,
+                outdoor_temp=5.0,
+            )
+
+        base_time = dt_util.utcnow()
+        for i in range(2):
+            start_time = base_time + timedelta(hours=i * 2)
+            end_time = start_time + timedelta(minutes=65)
+            heating_rate_learner.start_session(18.0, 20.0, 5.0, timestamp=start_time)
+            heating_rate_learner.update_session(18.5, duty=0.50)
+            heating_rate_learner.end_session(19.0, "stalled", timestamp=end_time)
+
+        # Check returns multiplier
+        result = detector_with_rate_learner.check_rate_based_undershoot(
+            current_rate=0.075,
+            delta=2.0,
+            outdoor_temp=5.0,
+        )
+        assert result == 1.20
+
+        # Apply adjustment (should acknowledge learner)
+        detector_with_rate_learner.apply_rate_adjustment()
+
+        # Stall counter should be reset
+        assert heating_rate_learner._stall_counter == 0
+
+    def test_rate_mode_updates_cumulative_multiplier(
+        self, detector_with_rate_learner, heating_rate_learner
+    ):
+        """Test that rate-based adjustment updates cumulative multiplier."""
+        from datetime import datetime, timedelta
+        from homeassistant.util import dt as dt_util
+
+        # Setup underperforming scenario
+        for _ in range(5):
+            heating_rate_learner.add_observation(
+                rate=0.15,
+                duration_min=90,
+                source="session",
+                stalled=False,
+                delta=2.0,
+                outdoor_temp=5.0,
+            )
+
+        base_time = dt_util.utcnow()
+        for i in range(2):
+            start_time = base_time + timedelta(hours=i * 2)
+            end_time = start_time + timedelta(minutes=65)
+            heating_rate_learner.start_session(18.0, 20.0, 5.0, timestamp=start_time)
+            heating_rate_learner.update_session(18.5, duty=0.50)
+            heating_rate_learner.end_session(19.0, "stalled", timestamp=end_time)
+
+        initial_cumulative = detector_with_rate_learner.cumulative_ki_multiplier
+        multiplier = detector_with_rate_learner.check_rate_based_undershoot(
+            current_rate=0.075,
+            delta=2.0,
+            outdoor_temp=5.0,
+        )
+
+        detector_with_rate_learner.apply_rate_adjustment()
+
+        expected = initial_cumulative * multiplier
+        assert detector_with_rate_learner.cumulative_ki_multiplier == pytest.approx(
+            expected, abs=0.001
+        )
