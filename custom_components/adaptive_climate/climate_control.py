@@ -165,6 +165,42 @@ class ClimateControlMixin:
                                     new_ki,
                                 )
 
+                            # Check if we should start a heating rate session
+                            heating_rate_learner = adaptive_learner._heating_rate_learner
+                            if (
+                                heating_rate_learner._active_session is None
+                                and not self._status_manager.is_paused()
+                                and self._ext_temp is not None
+                            ):
+                                # Determine recovery threshold by heating type
+                                from .const import HeatingType
+                                threshold = 0.3 if self._heating_type == HeatingType.FLOOR_HYDRONIC else 0.5
+
+                                # Start session if temp is below threshold
+                                if self._current_temp < self._target_temp - threshold:
+                                    heating_rate_learner.start_session(
+                                        temp=self._current_temp,
+                                        setpoint=self._target_temp,
+                                        outdoor_temp=self._ext_temp,
+                                    )
+                                    _LOGGER.debug(
+                                        "%s: Started heating rate session (delta=%.1f°C, outdoor=%.1f°C)",
+                                        self.entity_id,
+                                        self._target_temp - self._current_temp,
+                                        self._ext_temp,
+                                    )
+
+                            # Check if we should discard active session due to override
+                            if heating_rate_learner._active_session and self._status_manager.is_paused():
+                                heating_rate_learner.end_session(
+                                    end_temp=self._current_temp,
+                                    reason="override",
+                                )
+                                _LOGGER.debug(
+                                    "%s: Discarded heating rate session due to pause/override",
+                                    self.entity_id,
+                                )
+
                 # Record temperature for cycle tracking
                 if self._cycle_tracker and self._current_temp is not None:
                     await self._cycle_tracker.update_temperature(dt_util.utcnow(), self._current_temp)

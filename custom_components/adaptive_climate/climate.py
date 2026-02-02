@@ -376,6 +376,7 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
         # Initialize PreheatLearner (will be configured properly in async_added_to_hass)
         self._preheat_learner: Optional[PreheatLearner] = None
         self._preheat_cycle_unsub = None  # H7 fix - store unsub handle
+        self._heating_rate_cycle_unsub = None  # Heating rate session lifecycle unsub handle
 
         self._pwm = kwargs.get('pwm').seconds
         self._valve_actuation_time = kwargs.get('valve_actuation_time', 0)
@@ -569,6 +570,10 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
         if self._preheat_cycle_unsub:
             self._preheat_cycle_unsub()
             self._preheat_cycle_unsub = None
+
+        if self._heating_rate_cycle_unsub:
+            self._heating_rate_cycle_unsub()
+            self._heating_rate_cycle_unsub = None
 
         # Clean up cycle tracker subscriptions and timers
         if self._cycle_tracker:
@@ -1349,6 +1354,75 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
                             preheat_data=self._preheat_learner.to_dict(),
                         )
                         learning_store.schedule_zone_save()
+
+    def _handle_cycle_ended_for_heating_rate(self, event: CycleEndedEvent) -> None:
+        """Handle CYCLE_ENDED event to update heating rate session.
+
+        Called when a heating cycle completes. Updates the active session with
+        cycle data and checks for session end conditions (reached setpoint or stalled).
+
+        Args:
+            event: The CycleEndedEvent containing cycle metrics
+        """
+        # Get heating rate learner from adaptive learner
+        coordinator = self._coordinator
+        if not coordinator or not self._zone_id:
+            return
+
+        zone_data = coordinator.get_zone_data(self._zone_id)
+        if not zone_data:
+            return
+
+        adaptive_learner = zone_data.get("adaptive_learner")
+        if not adaptive_learner:
+            return
+
+        heating_rate_learner = adaptive_learner._heating_rate_learner
+
+        # Skip if no active session
+        if not heating_rate_learner._active_session:
+            return
+
+        # Skip if cycle was interrupted
+        if not event.metrics or event.metrics.get("interrupted"):
+            return
+
+        # Update session with cycle data
+        duty = event.metrics.get("duty")
+        if duty is not None and self._current_temp is not None:
+            heating_rate_learner.update_session(
+                temp=self._current_temp,
+                duty=duty,
+            )
+
+        # Check for session end conditions
+        if self._current_temp is not None and self._target_temp is not None:
+            # Check if reached setpoint
+            if self._current_temp >= self._target_temp - self._cold_tolerance:
+                obs = heating_rate_learner.end_session(
+                    end_temp=self._current_temp,
+                    reason="reached_setpoint",
+                )
+                if obs:
+                    _LOGGER.info(
+                        "%s: Heating rate session ended (reached setpoint): rate=%.2f°C/h, duration=%.0fmin",
+                        self.entity_id,
+                        obs.rate,
+                        obs.duration_min,
+                    )
+            # Check if stalled
+            elif heating_rate_learner.is_stalled():
+                obs = heating_rate_learner.end_session(
+                    end_temp=self._current_temp,
+                    reason="stalled",
+                )
+                if obs:
+                    _LOGGER.warning(
+                        "%s: Heating rate session ended (stalled): rate=%.2f°C/h, duration=%.0fmin",
+                        self.entity_id,
+                        obs.rate,
+                        obs.duration_min,
+                    )
 
     async def _handle_validation_failure(self) -> None:
         """Handle validation failure by rolling back PID values.
