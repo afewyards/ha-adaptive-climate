@@ -36,6 +36,14 @@ DELTA_BIN_NAMES = ["delta_0_2", "delta_2_4", "delta_4_6", "delta_6_plus"]
 OUTDOOR_BINS = [(-float("inf"), 5), (5, 15), (15, float("inf"))]
 OUTDOOR_BIN_NAMES = ["cold", "mild", "moderate"]
 
+# Minimum session duration by heating type (minutes)
+MIN_SESSION_DURATION: dict[str, int] = {
+    "floor_hydronic": 60,
+    "radiator": 30,
+    "convector": 15,
+    "forced_air": 10,
+}
+
 
 class HeatingRateLearner:
     """Unified heating rate learning from cycle and session data."""
@@ -164,3 +172,92 @@ class HeatingRateLearner:
         # Fallback to heating type default
         fallback = self.FALLBACK_RATES.get(self._heating_type, 0.3)
         return (fallback, "fallback")
+
+    def start_session(
+        self,
+        temp: float,
+        setpoint: float,
+        outdoor_temp: float,
+        timestamp: datetime | None = None,
+    ) -> None:
+        """Start tracking a recovery session.
+
+        Args:
+            temp: Current temperature
+            setpoint: Target setpoint
+            outdoor_temp: Current outdoor temperature
+            timestamp: Session start time (defaults to now)
+        """
+        from homeassistant.util import dt as dt_util
+
+        if timestamp is None:
+            timestamp = dt_util.utcnow()
+
+        self._active_session = RecoverySession(
+            start_temp=temp,
+            start_time=timestamp,
+            target_setpoint=setpoint,
+            outdoor_temp=outdoor_temp,
+        )
+        self._active_session.last_temp = temp
+
+    def end_session(
+        self,
+        end_temp: float,
+        reason: str,
+        timestamp: datetime | None = None,
+    ) -> HeatingRateObservation | None:
+        """End the current recovery session.
+
+        Args:
+            end_temp: Final temperature at session end
+            reason: End reason ("reached_setpoint", "stalled", "override")
+            timestamp: Session end time (defaults to now)
+
+        Returns:
+            HeatingRateObservation if session was valid and banked, None if discarded
+        """
+        from homeassistant.util import dt as dt_util
+
+        if self._active_session is None:
+            return None
+
+        if timestamp is None:
+            timestamp = dt_util.utcnow()
+
+        session = self._active_session
+        self._active_session = None
+
+        # Discard if override interrupted
+        if reason == "override":
+            return None
+
+        # Calculate duration
+        duration_min = (timestamp - session.start_time).total_seconds() / 60.0
+
+        # Discard if too short
+        min_duration = MIN_SESSION_DURATION.get(self._heating_type, 30)
+        if duration_min < min_duration:
+            return None
+
+        # Calculate rate
+        temp_rise = end_temp - session.start_temp
+        duration_hours = duration_min / 60.0
+        rate = temp_rise / duration_hours if duration_hours > 0 else 0.0
+
+        # Determine if stalled
+        stalled = reason == "stalled"
+
+        # Bank observation
+        delta = session.target_setpoint - session.start_temp
+        self.add_observation(
+            rate=rate,
+            duration_min=duration_min,
+            source="session",
+            stalled=stalled,
+            delta=delta,
+            outdoor_temp=session.outdoor_temp,
+            timestamp=timestamp,
+        )
+
+        return self._bins[self._get_bin_key(delta, session.outdoor_temp)][-1]
