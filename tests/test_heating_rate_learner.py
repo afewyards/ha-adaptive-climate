@@ -108,3 +108,62 @@ class TestAddObservation:
         learner.add_observation(rate=0.5, duration_min=60, source="session", stalled=False, delta=1.0, outdoor_temp=3.0)
         learner.add_observation(rate=0.6, duration_min=60, source="session", stalled=False, delta=3.0, outdoor_temp=10.0)
         assert learner.get_observation_count() == 2
+
+
+class TestGetHeatingRate:
+    """Tests for querying learned heating rate."""
+
+    def test_get_rate_from_session_observations(self):
+        """Test returns average rate from session observations."""
+        learner = HeatingRateLearner(HeatingType.RADIATOR)
+        # Add 3 session observations
+        for rate in [0.4, 0.5, 0.6]:
+            learner.add_observation(rate=rate, duration_min=60, source="session", stalled=False, delta=3.0, outdoor_temp=8.0)
+
+        rate, source = learner.get_heating_rate(delta=3.5, outdoor_temp=10.0)
+        assert rate == pytest.approx(0.5)
+        assert source == "learned_session"
+
+    def test_get_rate_prefers_session_over_cycle(self):
+        """Test session observations preferred over cycle."""
+        learner = HeatingRateLearner(HeatingType.RADIATOR)
+        # Add cycle observations
+        for rate in [0.3, 0.3, 0.3]:
+            learner.add_observation(rate=rate, duration_min=30, source="cycle", stalled=False, delta=3.0, outdoor_temp=8.0)
+        # Add session observations
+        for rate in [0.5, 0.5, 0.5]:
+            learner.add_observation(rate=rate, duration_min=90, source="session", stalled=False, delta=3.0, outdoor_temp=8.0)
+
+        rate, source = learner.get_heating_rate(delta=3.0, outdoor_temp=8.0)
+        assert rate == pytest.approx(0.5)
+        assert source == "learned_session"
+
+    def test_get_rate_falls_back_to_cycle(self):
+        """Test falls back to cycle when <3 session observations."""
+        learner = HeatingRateLearner(HeatingType.RADIATOR)
+        # Add only 2 session observations (not enough)
+        learner.add_observation(rate=0.5, duration_min=90, source="session", stalled=False, delta=3.0, outdoor_temp=8.0)
+        learner.add_observation(rate=0.5, duration_min=90, source="session", stalled=False, delta=3.0, outdoor_temp=8.0)
+        # Add 3 cycle observations
+        for rate in [0.3, 0.3, 0.3]:
+            learner.add_observation(rate=rate, duration_min=30, source="cycle", stalled=False, delta=3.0, outdoor_temp=8.0)
+
+        rate, source = learner.get_heating_rate(delta=3.0, outdoor_temp=8.0)
+        assert rate == pytest.approx(0.3)
+        assert source == "learned_cycle"
+
+    def test_get_rate_returns_fallback(self):
+        """Test returns fallback when insufficient data."""
+        learner = HeatingRateLearner(HeatingType.RADIATOR)
+        rate, source = learner.get_heating_rate(delta=3.0, outdoor_temp=8.0)
+        assert source == "fallback"
+        assert rate > 0  # Should return some fallback rate
+
+    def test_min_observations_for_learned_rate(self):
+        """Test requires 3 observations for learned rate."""
+        learner = HeatingRateLearner(HeatingType.RADIATOR)
+        learner.add_observation(rate=0.5, duration_min=90, source="session", stalled=False, delta=3.0, outdoor_temp=8.0)
+        learner.add_observation(rate=0.5, duration_min=90, source="session", stalled=False, delta=3.0, outdoor_temp=8.0)
+
+        rate, source = learner.get_heating_rate(delta=3.0, outdoor_temp=8.0)
+        assert source == "fallback"  # Only 2 observations, not enough
