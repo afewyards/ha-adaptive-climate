@@ -78,3 +78,48 @@ class HeatingRateLearner:
                 break
 
         return f"{delta_name}_{outdoor_name}"
+
+    def add_observation(
+        self,
+        rate: float,
+        duration_min: float,
+        source: str,
+        stalled: bool,
+        delta: float,
+        outdoor_temp: float,
+        timestamp: datetime | None = None,
+    ) -> None:
+        """Add a heating rate observation to the appropriate bin.
+
+        Args:
+            rate: Heating rate in degrees C per hour
+            duration_min: Duration of session/cycle in minutes
+            source: "session" or "cycle"
+            stalled: True if session ended without reaching setpoint
+            delta: Temperature delta (setpoint - start_temp)
+            outdoor_temp: Outdoor temperature at session start
+            timestamp: Observation timestamp (defaults to now)
+        """
+        from homeassistant.util import dt as dt_util
+
+        if timestamp is None:
+            timestamp = dt_util.utcnow()
+
+        obs = HeatingRateObservation(
+            rate=rate,
+            duration_min=duration_min,
+            source=source,
+            stalled=stalled,
+            timestamp=timestamp,
+        )
+
+        bin_key = self._get_bin_key(delta, outdoor_temp)
+        self._bins[bin_key].append(obs)
+
+        # Cap at max observations, keep newest
+        if len(self._bins[bin_key]) > self.MAX_OBSERVATIONS_PER_BIN:
+            self._bins[bin_key] = self._bins[bin_key][-self.MAX_OBSERVATIONS_PER_BIN :]
+
+    def get_observation_count(self) -> int:
+        """Get total observation count across all bins."""
+        return sum(len(obs_list) for obs_list in self._bins.values())
