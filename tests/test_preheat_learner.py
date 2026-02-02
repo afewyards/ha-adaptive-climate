@@ -418,3 +418,32 @@ class TestHeatingRateConsistency:
 
         # Inconsistent should score lower than consistent
         assert inconsistent_score < consistent_score
+
+
+class TestPreheatLearnerDelegation:
+    """Test PreheatLearner delegation to HeatingRateLearner."""
+
+    def test_preheat_learner_delegates_to_heating_rate_learner(self):
+        """Test PreheatLearner uses HeatingRateLearner when provided."""
+        from custom_components.adaptive_climate.adaptive.heating_rate_learner import (
+            HeatingRateLearner,
+        )
+
+        # Use floor_hydronic which has max_hours=8.0, allowing longer preheat times
+        hr_learner = HeatingRateLearner("floor_hydronic")
+        # Pre-populate with data
+        for _ in range(3):
+            hr_learner.add_observation(
+                rate=0.6, duration_min=60, source="session",
+                stalled=False, delta=3.0, outdoor_temp=8.0
+            )
+
+        preheat = PreheatLearner("floor_hydronic", heating_rate_learner=hr_learner)
+
+        # estimate_time_to_target should use the learned rate
+        time_min = preheat.estimate_time_to_target(
+            current_temp=18.0, target_temp=21.0, outdoor_temp=8.0
+        )
+
+        # delta=3, rate=0.6 C/h -> time = 3/0.6 = 5 hours = 300 min
+        assert time_min == pytest.approx(300, rel=0.1)
