@@ -1504,6 +1504,7 @@ class AdaptiveLearner:
             undershoot_detector=self._undershoot_detector,
             chronic_approach_detector=None,  # No longer used (merged into unified detector)
             contribution_tracker=self._contribution_tracker,
+            heating_rate_learner=self._heating_rate_learner,
         )
 
     def restore_from_dict(self, data: Dict[str, Any]) -> None:
@@ -1515,7 +1516,7 @@ class AdaptiveLearner:
         Delegates to learner_serialization module for actual deserialization logic.
 
         Supports v4 (flat), v5 (mode-keyed), v6 (undershoot), v7 (chronic approach), v8 (unified),
-        and v9 (contribution tracker) formats.
+        v9 (contribution tracker), and v10 (heating rate learner) formats.
 
         Args:
             data: Dictionary containing either:
@@ -1525,6 +1526,7 @@ class AdaptiveLearner:
                 v7 format: v6 + chronic_approach_detector state (separate)
                 v8 format: v7 + unified_detector state (merged)
                 v9 format: v8 + contribution_tracker state
+                v10 format: v9 + heating_rate_learner state
         """
         # Delegate to serialization module for parsing
         restored = restore_learner_from_dict(data)
@@ -1564,6 +1566,16 @@ class AdaptiveLearner:
             self._contribution_tracker = ConfidenceContributionTracker.from_dict(
                 contribution_state, self._heating_type
             )
+
+        # Restore heating rate learner state (serialization module handles v9->v10 migration)
+        from .heating_rate_learner import HeatingRateLearner
+        heating_rate_learner_state = restored.get("heating_rate_learner_state", {})
+        if heating_rate_learner_state:
+            # Use from_dict to restore state
+            self._heating_rate_learner = HeatingRateLearner.from_dict(heating_rate_learner_state)
+        else:
+            # Migration from v9 and earlier: create fresh learner
+            self._heating_rate_learner = HeatingRateLearner(self._heating_type)
 
         # Perform historic scan if enabled
         if self._chronic_approach_historic_scan:

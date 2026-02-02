@@ -11,11 +11,12 @@ from typing import Dict, List, Any, Optional
 import logging
 
 from .cycle_analysis import CycleMetrics
+from .heating_rate_learner import HeatingRateLearner
 
 _LOGGER = logging.getLogger(__name__)
 
 # Current serialization format version
-CURRENT_VERSION = 9
+CURRENT_VERSION = 10
 
 
 def serialize_cycle(cycle: CycleMetrics) -> Dict[str, Any]:
@@ -54,8 +55,9 @@ def learner_to_dict(
     undershoot_detector: Optional[Any] = None,
     chronic_approach_detector: Optional[Any] = None,
     contribution_tracker: Optional[Any] = None,
+    heating_rate_learner: Optional[HeatingRateLearner] = None,
 ) -> Dict[str, Any]:
-    """Serialize AdaptiveLearner state to a dictionary in v9 format with backward compatibility.
+    """Serialize AdaptiveLearner state to a dictionary in v10 format with backward compatibility.
 
     Args:
         heating_cycle_history: List of heating cycle metrics
@@ -70,9 +72,11 @@ def learner_to_dict(
         undershoot_detector: UndershootDetector instance for state serialization
         chronic_approach_detector: Deprecated, kept for backward compatibility (ignored)
         contribution_tracker: ConfidenceContributionTracker instance for state serialization
+        heating_rate_learner: HeatingRateLearner instance for state serialization
 
     Returns:
         Dictionary containing:
+        - v10 structure with heating_rate_learner state
         - v9 structure with contribution_tracker state
         - v8 structure with unified undershoot_detector state
         - v5 mode-keyed structure (heating/cooling sub-dicts)
@@ -106,7 +110,14 @@ def learner_to_dict(
     if contribution_tracker is not None:
         contribution_tracker_state = contribution_tracker.to_dict()
 
+    # Serialize heating rate learner state (v10 format)
+    heating_rate_learner_state = {}
+    if heating_rate_learner is not None:
+        heating_rate_learner_state = heating_rate_learner.to_dict()
+
     return {
+        # V10 heating rate learner state
+        "heating_rate_learner": heating_rate_learner_state,
         # V9 contribution tracker state
         "contribution_tracker": contribution_tracker_state,
         # V8 unified undershoot detector state
@@ -168,7 +179,7 @@ def restore_learner_from_dict(data: Dict[str, Any]) -> Dict[str, Any]:
     """Restore AdaptiveLearner state from a dictionary.
 
     Supports v4 (flat), v5 (mode-keyed), v6 (undershoot detector), v7 (chronic approach detector),
-    v8 (unified detector), and v9 (contribution tracker) formats.
+    v8 (unified detector), v9 (contribution tracker), and v10 (heating rate learner) formats.
 
     Args:
         data: Dictionary containing either:
@@ -178,6 +189,7 @@ def restore_learner_from_dict(data: Dict[str, Any]) -> Dict[str, Any]:
             v7 format: v6 + chronic_approach_detector state (separate)
             v8 format: v5 + unified undershoot_detector state (merged)
             v9 format: v8 + contribution_tracker state
+            v10 format: v9 + heating_rate_learner state
 
     Returns:
         Dictionary with restored state containing:
@@ -193,18 +205,20 @@ def restore_learner_from_dict(data: Dict[str, Any]) -> Dict[str, Any]:
         - pid_converged_for_ke: Whether PID has converged for Ke learning
         - undershoot_detector_state: Dict with unified detector state
         - contribution_tracker_state: Dict with contribution tracker state
-        - format_version: 'v9', 'v8', 'v7', 'v6', 'v5', or 'v4' to indicate which format was detected
+        - heating_rate_learner_state: Dict with heating rate learner state
+        - format_version: 'v10', 'v9', 'v8', 'v7', 'v6', 'v5', or 'v4' to indicate which format was detected
     """
     # Detect format version by checking for version-specific keys
     stored_version = data.get("format_version", 0)
-    is_v9_format = stored_version == 9
-    is_v8_format = stored_version == 8 and not is_v9_format
-    is_v7_format = "chronic_approach_detector" in data and not is_v8_format and not is_v9_format
-    is_v6_format = "undershoot_detector" in data and not is_v7_format and not is_v8_format and not is_v9_format
-    is_v5_format = "heating" in data and not is_v6_format and not is_v7_format and not is_v8_format and not is_v9_format
+    is_v10_format = stored_version == 10
+    is_v9_format = stored_version == 9 and not is_v10_format
+    is_v8_format = stored_version == 8 and not is_v9_format and not is_v10_format
+    is_v7_format = "chronic_approach_detector" in data and not is_v8_format and not is_v9_format and not is_v10_format
+    is_v6_format = "undershoot_detector" in data and not is_v7_format and not is_v8_format and not is_v9_format and not is_v10_format
+    is_v5_format = "heating" in data and not is_v6_format and not is_v7_format and not is_v8_format and not is_v9_format and not is_v10_format
 
-    if is_v9_format or is_v8_format or is_v7_format or is_v6_format or is_v5_format:
-        # V9/V8/V7/V6/V5 format: mode-keyed structure
+    if is_v10_format or is_v9_format or is_v8_format or is_v7_format or is_v6_format or is_v5_format:
+        # V10/V9/V8/V7/V6/V5 format: mode-keyed structure
         heating_cycle_history = [
             _deserialize_cycle(cycle_dict)
             for cycle_dict in data.get("heating", {}).get("cycle_history", [])
@@ -226,8 +240,15 @@ def restore_learner_from_dict(data: Dict[str, Any]) -> Dict[str, Any]:
         # For backward compatibility, we ignore it if it exists in old persisted data
         pid_history = []
 
+        # Restore heating rate learner state (v10)
+        if is_v10_format:
+            heating_rate_learner_state = data.get("heating_rate_learner", {})
+        else:
+            # Migration from v9 and earlier: default to empty state (will create fresh learner)
+            heating_rate_learner_state = {}
+
         # Restore contribution tracker state (v9)
-        if is_v9_format:
+        if is_v10_format or is_v9_format:
             contribution_tracker_state = data.get("contribution_tracker", {
                 "maintenance_contribution": 0.0,
                 "heating_rate_contribution": 0.0,
@@ -242,10 +263,15 @@ def restore_learner_from_dict(data: Dict[str, Any]) -> Dict[str, Any]:
             }
 
         # Restore unified undershoot detector state
-        if is_v9_format or is_v8_format:
-            # V9/V8 format: unified detector state
+        if is_v10_format or is_v9_format or is_v8_format:
+            # V10/V9/V8 format: unified detector state
             undershoot_detector_state = data.get("undershoot_detector", {})
-            format_version = 'v9' if is_v9_format else 'v8'
+            if is_v10_format:
+                format_version = 'v10'
+            elif is_v9_format:
+                format_version = 'v9'
+            else:
+                format_version = 'v8'
         elif is_v7_format:
             # Migration from v7: merge undershoot and chronic approach detector states
             undershoot_state = data.get("undershoot_detector", {})
@@ -337,6 +363,7 @@ def restore_learner_from_dict(data: Dict[str, Any]) -> Dict[str, Any]:
             "heating_rate_contribution": 0.0,
             "recovery_cycle_count": 0,
         }
+        heating_rate_learner_state = {}
 
         _LOGGER.info(
             "AdaptiveLearner state restored (v4 compat): %d cycles, auto_apply=%d",
@@ -370,5 +397,6 @@ def restore_learner_from_dict(data: Dict[str, Any]) -> Dict[str, Any]:
         "pid_converged_for_ke": pid_converged_for_ke,
         "undershoot_detector_state": undershoot_detector_state,
         "contribution_tracker_state": contribution_tracker_state,
+        "heating_rate_learner_state": heating_rate_learner_state,
         "format_version": format_version,
     }
