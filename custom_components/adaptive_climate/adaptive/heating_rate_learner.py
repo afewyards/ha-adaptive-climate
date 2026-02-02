@@ -50,6 +50,8 @@ class HeatingRateLearner:
 
     MAX_OBSERVATIONS_PER_BIN = 20
     MIN_OBSERVATIONS_FOR_RATE = 3
+    MIN_OBSERVATIONS_FOR_COMPARISON = 5
+    UNDERPERFORMING_THRESHOLD = 0.6  # Below 60% of expected = underperforming
     PROGRESS_THRESHOLD = 0.1  # Minimum temp rise to count as progress
     STALL_CYCLES = 3  # Cycles without progress to declare stall
     OUTDOOR_RESET_THRESHOLD = 5.0  # degrees C change to reset counter
@@ -346,3 +348,42 @@ class HeatingRateLearner:
     def acknowledge_ki_boost(self) -> None:
         """Acknowledge that Ki boost was applied, reset counter."""
         self._stall_counter = 0
+
+    def get_rate_ratio(
+        self, current_rate: float, delta: float, outdoor_temp: float
+    ) -> float | None:
+        """Get ratio of current rate to expected rate.
+
+        Args:
+            current_rate: Current observed heating rate (C/h)
+            delta: Temperature delta for binning
+            outdoor_temp: Outdoor temp for binning
+
+        Returns:
+            Ratio (0.0-1.0+) if sufficient data, None otherwise
+        """
+        bin_key = self._get_bin_key(delta, outdoor_temp)
+        observations = self._bins[bin_key]
+
+        # Need minimum observations for reliable comparison
+        session_obs = [o for o in observations if o.source == "session"]
+        if len(session_obs) < self.MIN_OBSERVATIONS_FOR_COMPARISON:
+            return None
+
+        expected_rate = sum(o.rate for o in session_obs) / len(session_obs)
+        if expected_rate <= 0:
+            return None
+
+        return current_rate / expected_rate
+
+    def is_underperforming(
+        self, current_rate: float, delta: float, outdoor_temp: float
+    ) -> bool:
+        """Check if current rate is significantly below expected.
+
+        Returns True if rate < 60% of expected AND we have sufficient data.
+        """
+        ratio = self.get_rate_ratio(current_rate, delta, outdoor_temp)
+        if ratio is None:
+            return False
+        return ratio < self.UNDERPERFORMING_THRESHOLD
