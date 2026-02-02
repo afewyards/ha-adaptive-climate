@@ -249,3 +249,76 @@ class TestSessionTracking:
         assert MIN_SESSION_DURATION["radiator"] == 30
         assert MIN_SESSION_DURATION["convector"] == 15
         assert MIN_SESSION_DURATION["forced_air"] == 10
+
+
+class TestSessionUpdates:
+    """Tests for session progress tracking."""
+
+    def test_update_session_tracks_progress(self):
+        """Test update_session records cycle data."""
+        learner = HeatingRateLearner(HeatingType.RADIATOR)
+        now = datetime(2026, 1, 15, 10, 0, tzinfo=timezone.utc)
+
+        learner.start_session(temp=18.0, setpoint=21.0, outdoor_temp=5.0, timestamp=now)
+        learner.update_session(temp=18.5, duty=0.75)
+
+        assert learner._active_session.cycles_in_session == 1
+        assert learner._active_session.cycle_duties == [0.75]
+        assert learner._active_session.last_temp == 18.5
+        assert learner._active_session.last_progress_cycle == 1
+
+    def test_update_session_detects_no_progress(self):
+        """Test stall detection when temp doesn't rise."""
+        learner = HeatingRateLearner(HeatingType.RADIATOR)
+        now = datetime(2026, 1, 15, 10, 0, tzinfo=timezone.utc)
+
+        learner.start_session(temp=18.0, setpoint=21.0, outdoor_temp=5.0, timestamp=now)
+        learner.update_session(temp=18.05, duty=0.75)  # <0.1 rise = no progress
+        learner.update_session(temp=18.08, duty=0.75)  # still no progress
+        learner.update_session(temp=18.09, duty=0.75)  # still no progress
+
+        # last_progress_cycle should still be 0 (no progress recorded)
+        assert learner._active_session.last_progress_cycle == 0
+        assert learner._active_session.cycles_in_session == 3
+
+    def test_is_stalled_after_3_no_progress_cycles(self):
+        """Test is_stalled returns True after 3 cycles without progress."""
+        learner = HeatingRateLearner(HeatingType.RADIATOR)
+        now = datetime(2026, 1, 15, 10, 0, tzinfo=timezone.utc)
+
+        learner.start_session(temp=18.0, setpoint=21.0, outdoor_temp=5.0, timestamp=now)
+        assert learner.is_stalled() is False
+
+        learner.update_session(temp=18.05, duty=0.75)
+        assert learner.is_stalled() is False
+
+        learner.update_session(temp=18.08, duty=0.75)
+        assert learner.is_stalled() is False
+
+        learner.update_session(temp=18.09, duty=0.75)
+        assert learner.is_stalled() is True  # 3 cycles with no progress
+
+    def test_progress_resets_stall_detection(self):
+        """Test making progress resets the stall counter."""
+        learner = HeatingRateLearner(HeatingType.RADIATOR)
+        now = datetime(2026, 1, 15, 10, 0, tzinfo=timezone.utc)
+
+        learner.start_session(temp=18.0, setpoint=21.0, outdoor_temp=5.0, timestamp=now)
+        learner.update_session(temp=18.05, duty=0.75)  # no progress
+        learner.update_session(temp=18.08, duty=0.75)  # no progress
+        learner.update_session(temp=18.3, duty=0.75)   # progress! (0.22 rise)
+
+        assert learner._active_session.last_progress_cycle == 3
+        assert learner.is_stalled() is False
+
+    def test_get_avg_session_duty(self):
+        """Test calculating average duty for session."""
+        learner = HeatingRateLearner(HeatingType.RADIATOR)
+        now = datetime(2026, 1, 15, 10, 0, tzinfo=timezone.utc)
+
+        learner.start_session(temp=18.0, setpoint=21.0, outdoor_temp=5.0, timestamp=now)
+        learner.update_session(temp=18.5, duty=0.70)
+        learner.update_session(temp=19.0, duty=0.80)
+        learner.update_session(temp=19.5, duty=0.90)
+
+        assert learner.get_avg_session_duty() == pytest.approx(0.80)
