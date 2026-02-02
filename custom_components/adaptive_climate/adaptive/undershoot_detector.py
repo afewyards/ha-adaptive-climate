@@ -21,6 +21,8 @@ import time
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
+from homeassistant.util import dt as dt_util
+
 if TYPE_CHECKING:
     from .heating_rate_learner import HeatingRateLearner
 
@@ -387,8 +389,7 @@ class UndershootDetector:
 
         # Check history datetime (cross-restart)
         if last_history_adjustment_utc is not None:
-            from datetime import timezone
-            elapsed = (datetime.now(timezone.utc) - last_history_adjustment_utc).total_seconds()
+            elapsed = (dt_util.utcnow() - last_history_adjustment_utc).total_seconds()
             if elapsed < cooldown_seconds:
                 remaining_hours = (cooldown_seconds - elapsed) / 3600.0
                 _LOGGER.debug(
