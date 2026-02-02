@@ -41,6 +41,15 @@ class HeatingRateLearner:
     """Unified heating rate learning from cycle and session data."""
 
     MAX_OBSERVATIONS_PER_BIN = 20
+    MIN_OBSERVATIONS_FOR_RATE = 3
+
+    # Fallback rates by heating type (degrees C per hour)
+    FALLBACK_RATES: dict[str, float] = {
+        "floor_hydronic": 0.15,
+        "radiator": 0.3,
+        "convector": 0.6,
+        "forced_air": 1.0,
+    }
 
     def __init__(self, heating_type: str) -> None:
         """Initialize learner.
@@ -123,3 +132,35 @@ class HeatingRateLearner:
     def get_observation_count(self) -> int:
         """Get total observation count across all bins."""
         return sum(len(obs_list) for obs_list in self._bins.values())
+
+    def get_heating_rate(
+        self, delta: float, outdoor_temp: float
+    ) -> tuple[float, str]:
+        """Get heating rate for given conditions.
+
+        Args:
+            delta: Temperature delta (setpoint - current_temp)
+            outdoor_temp: Current outdoor temperature
+
+        Returns:
+            Tuple of (rate in degrees C/hour, source string)
+            source: "learned_session", "learned_cycle", or "fallback"
+        """
+        bin_key = self._get_bin_key(delta, outdoor_temp)
+        observations = self._bins[bin_key]
+
+        # Try session observations first (≥3 required)
+        session_obs = [o for o in observations if o.source == "session"]
+        if len(session_obs) >= self.MIN_OBSERVATIONS_FOR_RATE:
+            avg_rate = sum(o.rate for o in session_obs) / len(session_obs)
+            return (avg_rate, "learned_session")
+
+        # Try cycle observations (≥3 required)
+        cycle_obs = [o for o in observations if o.source == "cycle"]
+        if len(cycle_obs) >= self.MIN_OBSERVATIONS_FOR_RATE:
+            avg_rate = sum(o.rate for o in cycle_obs) / len(cycle_obs)
+            return (avg_rate, "learned_cycle")
+
+        # Fallback to heating type default
+        fallback = self.FALLBACK_RATES.get(self._heating_type, 0.3)
+        return (fallback, "fallback")
