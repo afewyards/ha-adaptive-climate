@@ -5,7 +5,9 @@ from datetime import datetime, timezone
 from custom_components.adaptive_climate.adaptive.heating_rate_learner import (
     HeatingRateObservation,
     RecoverySession,
+    HeatingRateLearner,
 )
+from custom_components.adaptive_climate.const import HeatingType
 
 
 def test_heating_rate_observation_creation():
@@ -36,3 +38,32 @@ def test_recovery_session_creation():
     assert session.cycles_in_session == 0
     assert session.cycle_duties == []
     assert session.last_progress_cycle == 0
+
+
+class TestBinning:
+    """Tests for observation binning."""
+
+    def test_get_bin_key_delta_0_2_cold(self):
+        """Test bin key for small delta, cold outdoor."""
+        learner = HeatingRateLearner(HeatingType.RADIATOR)
+        key = learner._get_bin_key(delta=1.5, outdoor_temp=3.0)
+        assert key == "delta_0_2_cold"
+
+    def test_get_bin_key_delta_4_6_mild(self):
+        """Test bin key for medium delta, mild outdoor."""
+        learner = HeatingRateLearner(HeatingType.RADIATOR)
+        key = learner._get_bin_key(delta=5.0, outdoor_temp=10.0)
+        assert key == "delta_4_6_mild"
+
+    def test_get_bin_key_delta_6_plus_moderate(self):
+        """Test bin key for large delta, warm outdoor."""
+        learner = HeatingRateLearner(HeatingType.FLOOR_HYDRONIC)
+        key = learner._get_bin_key(delta=8.0, outdoor_temp=18.0)
+        assert key == "delta_6_plus_moderate"
+
+    def test_all_12_bins_exist(self):
+        """Test learner initializes all 12 bins."""
+        learner = HeatingRateLearner(HeatingType.RADIATOR)
+        assert len(learner._bins) == 12
+        assert "delta_0_2_cold" in learner._bins
+        assert "delta_6_plus_moderate" in learner._bins
