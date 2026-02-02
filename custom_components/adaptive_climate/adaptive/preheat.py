@@ -6,7 +6,7 @@ then estimates time-to-target for early start scheduling.
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
 import statistics
 
 from homeassistant.util import dt as dt_util
@@ -17,6 +17,9 @@ from ..const import (
     PREHEAT_MAX_OBSERVATIONS_PER_BIN,
     PREHEAT_MIN_OBSERVATIONS_FOR_LEARNING,
 )
+
+if TYPE_CHECKING:
+    from .heating_rate_learner import HeatingRateLearner
 
 
 @dataclass
@@ -45,12 +48,14 @@ class PreheatLearner:
         self,
         heating_type: str,
         max_hours: Optional[float] = None,
+        heating_rate_learner: Optional["HeatingRateLearner"] = None,
     ):
         """Initialize preheat learner.
 
         Args:
             heating_type: Heating system type (from HEATING_TYPE_*)
             max_hours: Maximum preheat hours (defaults to config value)
+            heating_rate_learner: Optional HeatingRateLearner to delegate to
         """
         self.heating_type = heating_type
         config = HEATING_TYPE_PREHEAT_CONFIG[heating_type]
@@ -58,6 +63,9 @@ class PreheatLearner:
         self.max_hours = max_hours if max_hours is not None else config["max_hours"]
         self.cold_soak_margin = config["cold_soak_margin"]
         self.fallback_rate = config["fallback_rate"]
+
+        # Optional HeatingRateLearner for delegation
+        self._heating_rate_learner = heating_rate_learner
 
         # Observations keyed by (delta_bin, outdoor_bin)
         self._observations: Dict[Tuple[str, str], List[HeatingObservation]] = {}
@@ -196,29 +204,45 @@ class PreheatLearner:
         if delta <= 0:
             return 0.0
 
-        # Get bin
-        delta_bin = self.get_delta_bin(delta)
-        outdoor_bin = self.get_outdoor_bin(outdoor_temp)
-        bin_key = (delta_bin, outdoor_bin)
+        # Delegate to HeatingRateLearner if available
+        if self._heating_rate_learner is not None:
+            rate, source = self._heating_rate_learner.get_heating_rate(
+                delta, outdoor_temp
+            )
+            if rate <= 0:
+                return float("inf")
 
-        # Get observations for this bin
-        observations = self._observations.get(bin_key, [])
-
-        # Determine rate
-        if len(observations) >= PREHEAT_MIN_OBSERVATIONS_FOR_LEARNING:
-            # Use median of last 10 observations
-            recent_rates = [obs.rate for obs in observations[-10:]]
-            base_rate = statistics.median(recent_rates)
+            # Use rate directly without margin
+            # (HeatingRateLearner already provides conservative estimates)
+            time_minutes = (delta / rate) * 60.0
         else:
-            # Use fallback rate
-            base_rate = self.fallback_rate
+            # Use internal binned learning
+            # Get bin
+            delta_bin = self.get_delta_bin(delta)
+            outdoor_bin = self.get_outdoor_bin(outdoor_temp)
+            bin_key = (delta_bin, outdoor_bin)
 
-        # Calculate margin (scales with delta)
-        # margin = (1.0 + delta/10 * 0.3) * cold_soak_margin
-        margin = (1.0 + delta / 10.0 * 0.3) * self.cold_soak_margin
+            # Get observations for this bin
+            observations = self._observations.get(bin_key, [])
 
-        # Calculate time
-        time_minutes = (delta / base_rate) * 60.0 * margin
+            # Determine rate
+            if len(observations) >= PREHEAT_MIN_OBSERVATIONS_FOR_LEARNING:
+                # Use median of last 10 observations
+                recent_rates = [obs.rate for obs in observations[-10:]]
+                rate = statistics.median(recent_rates)
+            else:
+                # Use fallback rate
+                rate = self.fallback_rate
+
+            if rate <= 0:
+                return float("inf")
+
+            # Calculate margin (scales with delta)
+            # margin = (1.0 + delta/10 * 0.3) * cold_soak_margin
+            margin = (1.0 + delta / 10.0 * 0.3) * self.cold_soak_margin
+
+            # Calculate time
+            time_minutes = (delta / rate) * 60.0 * margin
 
         # Clamp to max_hours
         max_minutes = self.max_hours * 60.0
