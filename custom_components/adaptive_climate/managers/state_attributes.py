@@ -116,14 +116,18 @@ def _compute_learning_status(
     convergence_confidence: float,
     heating_type: str,
     is_paused: bool = False,
+    contribution_tracker: Any = None,
+    mode: Any = None,
 ) -> str:
-    """Compute learning status based on cycle metrics.
+    """Compute learning status based on cycle metrics and recovery cycle requirements.
 
     Args:
         cycle_count: Number of cycles collected
         convergence_confidence: Convergence confidence (0.0-1.0)
         heating_type: HeatingType value (e.g., "floor_hydronic", "radiator")
         is_paused: Whether any pause condition is active (contact_open, humidity_spike, learning_grace)
+        contribution_tracker: Optional ConfidenceContributionTracker for tier gate checks
+        mode: Optional HVACMode for tier gate checks (defaults to HEAT)
 
     Returns:
         Learning status string: "idle" | "collecting" | "stable" | "tuned" | "optimized"
@@ -152,16 +156,30 @@ def _compute_learning_status(
     scaled_tier_2 = min(CONFIDENCE_TIER_2 * scale / 100.0, 0.95)  # Cap at 95%
     tier_3 = CONFIDENCE_TIER_3 / 100.0  # Always 95%
 
-    # Collecting: not enough cycles OR confidence below tier 1
-    # Stable: confidence >= tier 1 AND < tier 2
-    # Tuned: confidence >= tier 2 AND < tier 3
+    # Check tier gates (recovery cycle requirements) if tracker provided
+    can_reach_tier_1 = True
+    can_reach_tier_2 = True
+    if contribution_tracker is not None:
+        can_reach_tier_1 = contribution_tracker.can_reach_tier(1, mode)
+        can_reach_tier_2 = contribution_tracker.can_reach_tier(2, mode)
+
+    # Collecting: not enough cycles OR confidence below tier 1 OR not enough recovery cycles
+    # Stable: confidence >= tier 1 AND < tier 2 AND enough recovery cycles for tier 1
+    # Tuned: confidence >= tier 2 AND < tier 3 AND enough recovery cycles for tier 2
     # Optimized: confidence >= tier 3
     if cycle_count < MIN_CYCLES_FOR_LEARNING or convergence_confidence < scaled_tier_1:
+        return "collecting"
+    elif not can_reach_tier_1:
+        # Confidence threshold met but not enough recovery cycles for tier 1
         return "collecting"
     elif convergence_confidence >= tier_3:
         return "optimized"
     elif convergence_confidence >= scaled_tier_2:
-        return "tuned"
+        if can_reach_tier_2:
+            return "tuned"
+        else:
+            # Confidence threshold met but not enough recovery cycles for tier 2
+            return "stable"
     else:
         return "stable"
 
@@ -233,9 +251,13 @@ def _add_learning_status_attributes(
         except (TypeError, AttributeError):
             pass
 
-    # Compute learning status
+    # Get contribution tracker for tier gate checks
+    contribution_tracker = getattr(adaptive_learner, '_contribution_tracker', None)
+
+    # Compute learning status with tier gate checks
     attrs[ATTR_LEARNING_STATUS] = _compute_learning_status(
-        cycle_count, convergence_confidence, heating_type, is_paused
+        cycle_count, convergence_confidence, heating_type, is_paused,
+        contribution_tracker=contribution_tracker,
     )
 
     # Debug-only attributes
@@ -334,9 +356,13 @@ def _add_learning_object(
         except (TypeError, AttributeError):
             pass
 
-    # Compute learning status
+    # Get contribution tracker for tier gate checks
+    contribution_tracker = getattr(adaptive_learner, '_contribution_tracker', None)
+
+    # Compute learning status with tier gate checks
     learning_status = _compute_learning_status(
-        cycle_count, convergence_confidence, heating_type, is_paused
+        cycle_count, convergence_confidence, heating_type, is_paused,
+        contribution_tracker=contribution_tracker,
     )
 
     # Build learning object

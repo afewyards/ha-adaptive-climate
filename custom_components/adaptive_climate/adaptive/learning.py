@@ -585,6 +585,7 @@ class AdaptiveLearner:
                     outdoor_temp=outdoor_temp,
                     pid_history=[],  # Empty list - history is now managed by PIDGainsManager
                     mode=mode,
+                    contribution_tracker=self._contribution_tracker,
                 )
             )
 
@@ -1108,15 +1109,40 @@ class AdaptiveLearner:
                 self._contribution_tracker.add_recovery_cycle(mode)
 
         if is_good_cycle:
-            # Apply weighted confidence gain
+            # Apply weighted confidence gain with caps for maintenance cycles
             weighted_gain = CONFIDENCE_INCREASE_PER_GOOD_CYCLE * weight
+
+            # Route through contribution tracker caps based on cycle type
+            # Only apply maintenance cap if we can definitively identify the cycle type
+            is_recovery = None  # None means unknown
+            is_maintenance = False
+            if metrics.starting_delta is not None:
+                # Determine if system is stable for threshold selection
+                tier1_base = 0.4
+                is_stable = current_confidence >= (tier1_base * 0.8)
+                is_recovery = self._weight_calculator.is_recovery_cycle(
+                    metrics.starting_delta, is_stable
+                )
+                is_maintenance = not is_recovery
+
+            if is_maintenance:
+                # Maintenance cycles: route through cap with diminishing returns
+                actual_gain = self._contribution_tracker.apply_maintenance_gain(
+                    weighted_gain, mode
+                )
+            else:
+                # Recovery cycles or unknown (no starting_delta): add gain directly
+                actual_gain = weighted_gain
+
             current_confidence = min(
                 CONVERGENCE_CONFIDENCE_HIGH,
-                current_confidence + weighted_gain
+                current_confidence + actual_gain
             )
             _LOGGER.debug(
                 f"Convergence confidence ({mode_to_str(mode)} mode) increased to {current_confidence:.2f} "
-                f"(good cycle with weight {weight:.2f}, outcome={outcome.value}: overshoot={metrics.overshoot or 0.0:.2f}°C, "
+                f"(good cycle with weight {weight:.2f}, actual_gain={actual_gain:.3f}, "
+                f"is_recovery={is_recovery}, outcome={outcome.value}: "
+                f"overshoot={metrics.overshoot or 0.0:.2f}°C, "
                 f"oscillations={metrics.oscillations}, "
                 f"settling={metrics.settling_time or 0.0:.1f}min, "
                 f"starting_delta={metrics.starting_delta or 0.0:.2f}°C)"

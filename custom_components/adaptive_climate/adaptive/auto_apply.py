@@ -64,14 +64,21 @@ class AutoApplyManager:
         self._heating_type = heating_type
 
     def _compute_learning_status(
-        self, cycle_count: int, confidence: float, heating_type: str
+        self,
+        cycle_count: int,
+        confidence: float,
+        heating_type: str,
+        contribution_tracker: Any = None,
+        mode: "HVACMode" = None,
     ) -> str:
-        """Compute learning status based on cycle metrics.
+        """Compute learning status based on cycle metrics and recovery cycle requirements.
 
         Args:
             cycle_count: Number of cycles collected
             confidence: Convergence confidence (0.0-1.0)
             heating_type: HeatingType value (e.g., "floor_hydronic", "radiator")
+            contribution_tracker: Optional ConfidenceContributionTracker for tier gate checks
+            mode: Optional HVACMode for tier gate checks (defaults to HEAT)
 
         Returns:
             Learning status string: "collecting" | "stable" | "tuned" | "optimized"
@@ -90,16 +97,30 @@ class AutoApplyManager:
         scaled_tier_2 = min(CONFIDENCE_TIER_2 * scale / 100.0, 0.95)  # Cap at 95%
         tier_3 = CONFIDENCE_TIER_3 / 100.0  # Always 95%
 
-        # Collecting: not enough cycles OR confidence below tier 1
-        # Stable: confidence >= tier 1 AND < tier 2
-        # Tuned: confidence >= tier 2 AND < tier 3
+        # Check tier gates (recovery cycle requirements) if tracker provided
+        can_reach_tier_1 = True
+        can_reach_tier_2 = True
+        if contribution_tracker is not None:
+            can_reach_tier_1 = contribution_tracker.can_reach_tier(1, mode)
+            can_reach_tier_2 = contribution_tracker.can_reach_tier(2, mode)
+
+        # Collecting: not enough cycles OR confidence below tier 1 OR not enough recovery cycles
+        # Stable: confidence >= tier 1 AND < tier 2 AND enough recovery cycles for tier 1
+        # Tuned: confidence >= tier 2 AND < tier 3 AND enough recovery cycles for tier 2
         # Optimized: confidence >= tier 3
         if cycle_count < MIN_CYCLES_FOR_LEARNING or convergence_confidence < scaled_tier_1:
+            return "collecting"
+        elif not can_reach_tier_1:
+            # Confidence threshold met but not enough recovery cycles for tier 1
             return "collecting"
         elif convergence_confidence >= tier_3:
             return "optimized"
         elif convergence_confidence >= scaled_tier_2:
-            return "tuned"
+            if can_reach_tier_2:
+                return "tuned"
+            else:
+                # Confidence threshold met but not enough recovery cycles for tier 2
+                return "stable"
         else:
             return "stable"
 
@@ -113,6 +134,7 @@ class AutoApplyManager:
         outdoor_temp: Optional[float],
         pid_history: List[Dict[str, Any]],
         mode: "HVACMode" = None,
+        contribution_tracker: Any = None,  # ConfidenceContributionTracker for tier gates
     ) -> tuple[bool, Optional[int], Optional[int], Optional[int]]:
         """Check all auto-apply safety gates and return adjusted parameters.
 
@@ -122,6 +144,7 @@ class AutoApplyManager:
         2. Safety limits (lifetime, seasonal, drift, shift cooldown)
         3. Seasonal shift detection
         4. Confidence threshold (first apply vs subsequent)
+        5. Recovery cycle requirements (tier gates)
 
         Args:
             validation_manager: ValidationManager instance for safety checks
@@ -132,6 +155,7 @@ class AutoApplyManager:
             outdoor_temp: Current outdoor temperature for seasonal shift detection
             pid_history: List of PID history snapshots
             mode: HVACMode (HEAT or COOL) for mode-specific thresholds
+            contribution_tracker: Optional ConfidenceContributionTracker for tier gate checks
 
         Returns:
             Tuple of:
@@ -184,9 +208,10 @@ class AutoApplyManager:
         # Get cycle count from confidence tracker
         cycle_count = confidence_tracker.get_cycle_count(mode)
 
-        # Compute learning status based on tier thresholds
+        # Compute learning status based on tier thresholds and recovery cycle gates
         learning_status = self._compute_learning_status(
-            cycle_count, convergence_confidence, self._heating_type
+            cycle_count, convergence_confidence, self._heating_type,
+            contribution_tracker=contribution_tracker, mode=mode
         )
 
         # First auto-apply requires "tuned" or "optimized"

@@ -2467,6 +2467,12 @@ class TestPIDControllerHeatingTypeTolerance:
         # Reset cycles_since_last_adjustment to ensure rate limit passes
         adaptive_learner._cycles_since_last_adjustment = 12
 
+        # Add recovery cycles to pass tier gates (radiator needs 8 for tier 1, 15 for tier 2)
+        # First auto-apply needs "tuned" status (tier 2)
+        from custom_components.adaptive_climate.helpers.hvac_mode import get_hvac_heat_mode
+        for _ in range(16):
+            adaptive_learner._contribution_tracker.add_recovery_cycle(get_hvac_heat_mode())
+
         # Verify initial state: auto_apply_count should be 0
         assert adaptive_learner._heating_auto_apply_count == 0
         assert pid_controller._auto_apply_count == 0
