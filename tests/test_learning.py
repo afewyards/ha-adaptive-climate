@@ -4369,3 +4369,39 @@ class TestChronicApproachDetectorSerialization:
         # Verify cycle history is preserved
         assert len(learner2._heating_cycle_history) == 1
         assert learner2._heating_cycle_history[0].overshoot == 0.5
+
+
+class TestHeatingRateLearnerIntegration:
+    """Tests for HeatingRateLearner integration with AdaptiveLearner."""
+
+    def test_adaptive_learner_owns_heating_rate_learner(self):
+        """Test AdaptiveLearner creates HeatingRateLearner."""
+        from custom_components.adaptive_climate.adaptive.heating_rate_learner import (
+            HeatingRateLearner,
+        )
+
+        learner = AdaptiveLearner(heating_type="radiator")
+        assert hasattr(learner, "_heating_rate_learner")
+        assert isinstance(learner._heating_rate_learner, HeatingRateLearner)
+
+    def test_heating_rate_learner_uses_correct_type(self):
+        """Test HeatingRateLearner uses same heating type."""
+        learner = AdaptiveLearner(heating_type="floor_hydronic")
+        assert learner._heating_rate_learner._heating_type == "floor_hydronic"
+
+    def test_get_heating_rate_delegates(self):
+        """Test AdaptiveLearner.get_heating_rate delegates to HeatingRateLearner."""
+        import pytest
+
+        learner = AdaptiveLearner(heating_type="radiator")
+
+        # Add observations via heating_rate_learner
+        for _ in range(3):
+            learner._heating_rate_learner.add_observation(
+                rate=0.5, duration_min=60, source="session",
+                stalled=False, delta=3.0, outdoor_temp=8.0
+            )
+
+        rate, source = learner.get_heating_rate(delta=3.0, outdoor_temp=8.0)
+        assert rate == pytest.approx(0.5)
+        assert source == "learned_session"

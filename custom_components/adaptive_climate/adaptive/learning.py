@@ -86,6 +86,9 @@ from .undershoot_detector import UndershootDetector
 from .cycle_weight import CycleWeightCalculator, CycleOutcome
 from .confidence_contribution import ConfidenceContributionTracker
 
+# Import heating rate learner for unified heating rate learning
+from .heating_rate_learner import HeatingRateLearner
+
 # Import HVAC mode helpers
 from ..helpers.hvac_mode import mode_to_str, get_hvac_heat_mode, get_hvac_cool_mode
 
@@ -182,6 +185,9 @@ class AdaptiveLearner:
         # Weighted learning components
         self._weight_calculator = CycleWeightCalculator(undershoot_heating_type)
         self._contribution_tracker = ConfidenceContributionTracker(undershoot_heating_type)
+
+        # Heating rate learner for unified heating rate learning
+        self._heating_rate_learner = HeatingRateLearner(heating_type or "radiator")
 
     @property
     def cycle_history(self) -> List[CycleMetrics]:
@@ -1244,6 +1250,22 @@ class AdaptiveLearner:
             - High confidence (1.0): 0.5x slower learning
         """
         return self._confidence.get_learning_rate_multiplier(confidence)
+
+    def get_heating_rate(
+        self, delta: float, outdoor_temp: float
+    ) -> tuple[float, str]:
+        """Get learned heating rate for given conditions.
+
+        Delegates to HeatingRateLearner.
+
+        Args:
+            delta: Temperature delta (setpoint - current)
+            outdoor_temp: Current outdoor temperature
+
+        Returns:
+            Tuple of (rate in C/hour, source string)
+        """
+        return self._heating_rate_learner.get_heating_rate(delta, outdoor_temp)
 
     def start_validation_mode(self, baseline_overshoot: float) -> None:
         """Start validation mode after auto-applying PID changes.
