@@ -50,6 +50,8 @@ class HeatingRateLearner:
 
     MAX_OBSERVATIONS_PER_BIN = 20
     MIN_OBSERVATIONS_FOR_RATE = 3
+    PROGRESS_THRESHOLD = 0.1  # Minimum temp rise to count as progress
+    STALL_CYCLES = 3  # Cycles without progress to declare stall
 
     # Fallback rates by heating type (degrees C per hour)
     FALLBACK_RATES: dict[str, float] = {
@@ -261,3 +263,35 @@ class HeatingRateLearner:
         )
 
         return self._bins[self._get_bin_key(delta, session.outdoor_temp)][-1]
+
+    def update_session(self, temp: float, duty: float) -> None:
+        """Update session with cycle completion data."""
+        if self._active_session is None:
+            return
+
+        session = self._active_session
+        session.cycles_in_session += 1
+        session.cycle_duties.append(duty)
+
+        # Check for progress
+        if session.last_temp is not None:
+            temp_rise = temp - session.last_temp
+            if temp_rise >= self.PROGRESS_THRESHOLD:
+                session.last_progress_cycle = session.cycles_in_session
+
+        session.last_temp = temp
+
+    def is_stalled(self) -> bool:
+        """Check if current session is stalled (no progress for 3 cycles)."""
+        if self._active_session is None:
+            return False
+
+        session = self._active_session
+        cycles_since_progress = session.cycles_in_session - session.last_progress_cycle
+        return cycles_since_progress >= self.STALL_CYCLES
+
+    def get_avg_session_duty(self) -> float | None:
+        """Get average duty for current session."""
+        if self._active_session is None or not self._active_session.cycle_duties:
+            return None
+        return sum(self._active_session.cycle_duties) / len(self._active_session.cycle_duties)
