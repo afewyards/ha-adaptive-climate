@@ -67,3 +67,44 @@ class TestBinning:
         assert len(learner._bins) == 12
         assert "delta_0_2_cold" in learner._bins
         assert "delta_6_plus_moderate" in learner._bins
+
+
+class TestAddObservation:
+    """Tests for adding observations to bins."""
+
+    def test_add_observation_to_correct_bin(self):
+        """Test observation lands in correct bin."""
+        learner = HeatingRateLearner(HeatingType.RADIATOR)
+        learner.add_observation(
+            rate=0.5,
+            duration_min=60.0,
+            source="session",
+            stalled=False,
+            delta=3.0,
+            outdoor_temp=8.0,
+        )
+        assert len(learner._bins["delta_2_4_mild"]) == 1
+        assert learner._bins["delta_2_4_mild"][0].rate == 0.5
+
+    def test_max_observations_per_bin(self):
+        """Test bin is capped at MAX_OBSERVATIONS_PER_BIN."""
+        learner = HeatingRateLearner(HeatingType.RADIATOR)
+        for i in range(25):
+            learner.add_observation(
+                rate=0.1 * i,
+                duration_min=60.0,
+                source="session",
+                stalled=False,
+                delta=1.0,
+                outdoor_temp=3.0,
+            )
+        assert len(learner._bins["delta_0_2_cold"]) == 20
+        # Oldest should be dropped, newest kept
+        assert learner._bins["delta_0_2_cold"][-1].rate == pytest.approx(2.4)
+
+    def test_get_observation_count(self):
+        """Test total observation count across all bins."""
+        learner = HeatingRateLearner(HeatingType.RADIATOR)
+        learner.add_observation(rate=0.5, duration_min=60, source="session", stalled=False, delta=1.0, outdoor_temp=3.0)
+        learner.add_observation(rate=0.6, duration_min=60, source="session", stalled=False, delta=3.0, outdoor_temp=10.0)
+        assert learner.get_observation_count() == 2
