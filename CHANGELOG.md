@@ -1,6 +1,33 @@
 # CHANGELOG
 
 
+## v0.60.0 (2026-02-03)
+
+### Bug Fixes
+
+- Reset undershoot detector when clearing learning history
+  ([`7ddf3c9`](https://github.com/afewyards/ha-adaptive-climate/commit/7ddf3c9e3fa639ceff7bd949bf8567db0b26390d))
+
+The clear_history() method was not resetting the undershoot detector, causing stale
+  consecutive_failures count and ki_boost_applied multiplier to persist after a learning reset. This
+  prevented fresh Ki adjustments.
+
+### Features
+
+- Add physics-based heating rate comparison for Ki auto-boost
+  ([`2909ab3`](https://github.com/afewyards/ha-adaptive-climate/commit/2909ab30dc548bd3ab88f9d08fd3fc39fa5108de))
+
+Adds comparison of learned heating rate against physics-predicted rates. When learned rate is <50%
+  of expected, suggests and applies Ki boost.
+
+- calculate_expected_heating_rate() in physics.py with per-type baselines -
+  check_physics_underperformance() in HeatingRateLearner - Auto-boost Ki when session ends with
+  underperforming rate - Respects 2.0x cumulative boost cap from undershoot detector
+
+Physics baselines (°C/h): floor_hydronic 0.3, radiator 1.0, convector 2.0 Scaled by tau, power
+  density, and supply temperature.
+
+
 ## v0.59.1 (2026-02-03)
 
 ### Bug Fixes
