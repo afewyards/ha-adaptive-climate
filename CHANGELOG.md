@@ -1,6 +1,184 @@
 # CHANGELOG
 
 
+## v0.59.0 (2026-02-03)
+
+### Bug Fixes
+
+- Align rise_time threshold with convergence tolerance
+  ([`285c0dc`](https://github.com/afewyards/ha-adaptive-climate/commit/285c0dc86790218cf05bb2e95dcd7fd54a2f2c5b))
+
+Problem: Two issues causing false 100% confidence despite chronic undershoot: 1. rise_time used
+  0.05°C threshold vs convergence 0.2°C tolerance 2. Convergence check used `is None or` which
+  passed when rise_time missing
+
+Changes: - Change calculate_rise_time default threshold from 0.05 to 0.2 - Pass cold_tolerance to
+  calculate_rise_time from cycle_metrics - Require rise_time for RECOVERY cycles only
+  (starting_delta >= threshold) - Allow rise_time=None for MAINTENANCE cycles (already at
+  temperature) - Update tests to use realistic maintenance cycle patterns
+
+- Correct coordinator access pattern and variable names
+  ([`69dffdb`](https://github.com/afewyards/ha-adaptive-climate/commit/69dffdb4a4ea8fa8e4becb5d35df76a2abc66a95))
+
+- Use coordinator.get_zone_data() pattern instead of non-existent self._learner - Fix wrong variable
+  name: self._cur_temp -> self._current_temp - Update MockThermostat in test files to include
+  _handle_cycle_ended_for_heating_rate method - Update serialization tests to expect format_version
+  10 instead of 9
+
+- Move heating rate session discard before early return
+  ([`c211896`](https://github.com/afewyards/ha-adaptive-climate/commit/c211896e8c00e4a005e4ee7dfef57fb7a66248cd))
+
+The session discard logic was unreachable because it checked is_paused() after the early return at
+  line 77. This meant sessions would never be discarded when a pause occurred.
+
+Fix by moving the discard logic to execute BEFORE the early return, so that when pause is detected
+  we first discard any active session and then return early.
+
+- Move session discard from lines 193-202 to lines 59-72 - Occurs immediately after is_paused()
+  check and before integral decay - Remove dead code that was never executed - No functional changes
+  to pause behavior itself
+
+- Use homeassistant.util.dt.utcnow() instead of datetime.now()
+  ([`904c144`](https://github.com/afewyards/ha-adaptive-climate/commit/904c144c157914045cfb57ed8b893b51a9ba750e))
+
+Replace inline datetime.now(timezone.utc) call with dt_util.utcnow() to follow CLAUDE.md timestamp
+  conventions. Adds import for dt_util at module level and removes inline timezone import.
+
+Fixes code review violation in undershoot_detector.py line 391.
+
+- Wire up weighted learning system
+  ([`720c683`](https://github.com/afewyards/ha-adaptive-climate/commit/720c68332f428703b380a95f1e4dabea462f25d0))
+
+Three issues were preventing proper weighted learning:
+
+1. rise_time threshold too tight (0.05°C hardcoded) - Now uses heating-type-specific undershoot_max
+  threshold - floor_hydronic uses 0.3°C, convector 0.2°C, etc.
+
+2. starting_delta never passed to CycleMetrics - Now calculated as target_temp - start_temp -
+  Enables recovery vs maintenance cycle classification - Enables weighted confidence gain
+  calculations
+
+3. apply_heating_rate_gain never called - Now called when rise_time is measured - Tracks
+  heating_rate_contribution separately
+
+Also adds starting_delta to serialization for persistence.
+
+Updates test expectations to account for maintenance cap behavior when starting_delta is properly
+  classified.
+
+### Documentation
+
+- Add design for fixing weighted learning system
+  ([`3edbc4b`](https://github.com/afewyards/ha-adaptive-climate/commit/3edbc4b767276dfd07ff7a46bb38f9fd7115819b))
+
+Three issues identified blocking learning progression: - rise_time threshold too tight (0.05°C vs
+  heating-type tolerance) - starting_delta never passed to CycleMetrics - apply_heating_rate_gain
+  defined but never called
+
+- Add HeatingRateLearner design
+  ([`a32de39`](https://github.com/afewyards/ha-adaptive-climate/commit/a32de3926d3db993078e9b696dbe9eeebb78d4e9))
+
+Unified heating rate learning replacing PreheatLearner: - Session-level tracking for slow systems
+  (multi-cycle recovery) - Rate comparison for smarter undershoot detection - Capacity check
+  prevents Ki boost when system maxed out
+
+- Add HeatingRateLearner implementation plan
+  ([`24f5367`](https://github.com/afewyards/ha-adaptive-climate/commit/24f5367e9ed2a68d5f81a3f048d142892a207993))
+
+15 tasks with TDD approach: - Tasks 1-9: Core HeatingRateLearner module - Tasks 10-14: Integration
+  with existing systems - Task 15: Full test suite verification
+
+### Features
+
+- Add heating rate session lifecycle hooks
+  ([`545abb5`](https://github.com/afewyards/ha-adaptive-climate/commit/545abb580fb57e8c9cbdc8c4b7cfa3f08732c336))
+
+Integrate HeatingRateLearner session tracking into climate entity control flow.
+
+Session lifecycle: - Start: Triggered in _async_control_heating when temp < setpoint - threshold
+  (0.5°C radiator/convector/forced_air, 0.3°C floor_hydronic) and no override active - Update:
+  Called on cycle completion with duty and current temp - End: Triggered when setpoint reached (temp
+  >= target - cold_tolerance) or stalled (3 cycles without 0.1°C progress) - Discard: Triggered when
+  override occurs (contact open, humidity pause, etc.)
+
+Integration points: - _async_control_heating: session start detection and override discard -
+  _handle_cycle_ended_for_heating_rate: cycle completion updates and end conditions -
+  climate_init.py: event subscription setup
+
+Tests: test_integration_heating_rate.py covers all session lifecycle scenarios
+
+- Add rate-based undershoot detection to UndershootDetector
+  ([`8413c51`](https://github.com/afewyards/ha-adaptive-climate/commit/8413c51ab85a8ac2f7eac289051769c16c4cf3a8))
+
+Wire up HeatingRateLearner integration to detect underperforming heating rates. Triggers Ki boost
+  when: - Current rate < 60% of expected rate (is_underperforming) - 2 consecutive stalled sessions
+  (should_boost_ki) - Average duty < 85% (system has headroom) - ≥5 observations for reliable
+  comparison
+
+Shares cooldown and cumulative cap with real-time and cycle modes. Ki boost applied via
+  apply_rate_adjustment() method.
+
+- **heating-rate**: Add binning logic with 12 bins
+  ([`180cf4b`](https://github.com/afewyards/ha-adaptive-climate/commit/180cf4bb3c469dec9dd4d3e0d70292d5c16c7f4d))
+
+- Add HeatingRateLearner class with 12-bin structure - 4 delta bins: 0-2°C, 2-4°C, 4-6°C, 6+°C - 3
+  outdoor bins: cold (<5°C), mild (5-15°C), moderate (>15°C) - Add _get_bin_key() method for
+  observation classification - Initialize empty lists for all 12 bins on construction - Add
+  comprehensive tests for bin key calculation
+
+- **heating-rate**: Add observation and session dataclasses
+  ([`b0edfed`](https://github.com/afewyards/ha-adaptive-climate/commit/b0edfed8ee357d3aced9af92400a3233b50eeeb0))
+
+- **heating-rate**: Add observation storage with bin capping
+  ([`1e48409`](https://github.com/afewyards/ha-adaptive-climate/commit/1e48409bc17544b04af9b8da7adcd02a7383a9de))
+
+- **heating-rate**: Add rate comparison for undershoot detection
+  ([`1fd9dd1`](https://github.com/afewyards/ha-adaptive-climate/commit/1fd9dd19e67bc4ed55875811d6811bbfa3206865))
+
+- **heating-rate**: Add rate query with session/cycle/fallback priority
+  ([`66bc031`](https://github.com/afewyards/ha-adaptive-climate/commit/66bc0311f51f2d09d1cb0b058286184136ba3b5f))
+
+- **heating-rate**: Add serialization to_dict/from_dict
+  ([`443f570`](https://github.com/afewyards/ha-adaptive-climate/commit/443f5707d8da6221749fa643d1b0065b8e0c36a2))
+
+Add to_dict and from_dict methods to HeatingRateLearner for state persistence across restarts.
+  Serializes all bins, observations, and stall tracking state.
+
+- to_dict: Serializes heating type, bins with observations, and stall counter state - from_dict:
+  Restores complete state from serialized format - Observation timestamps use ISO 8601 format for
+  portability - Tests cover full round-trip, observation details, and stall counter persistence
+
+- **heating-rate**: Add session start/end with min duration check
+  ([`fe7aae8`](https://github.com/afewyards/ha-adaptive-climate/commit/fe7aae84af6e78a4683b193bc38adb9d6a90e69a))
+
+- **heating-rate**: Add session update with stall detection
+  ([`6e89b72`](https://github.com/afewyards/ha-adaptive-climate/commit/6e89b724f3fda2e38a64e613e632058ccc3fb5ce))
+
+- **heating-rate**: Add stall counter with Ki boost trigger
+  ([`8ef589f`](https://github.com/afewyards/ha-adaptive-climate/commit/8ef589f366a316cd8b0f1033432b9675ee596090))
+
+- **heating-rate**: Add v10 serialization with migration from v9
+  ([`eb56b46`](https://github.com/afewyards/ha-adaptive-climate/commit/eb56b46ac8bf4383a155bd84550752e7ef839202))
+
+- Update CURRENT_VERSION to 10 - Add heating_rate_learner parameter to learner_to_dict() - Serialize
+  HeatingRateLearner state via to_dict() - Restore from heating_rate_learner_state in
+  restore_from_dict() - v9 migration creates empty state, fresh learner created on restore - Update
+  AdaptiveLearner.to_dict() to pass heating_rate_learner - Update
+  AdaptiveLearner.restore_from_dict() to restore learner state - Add tests for v9->v10 migration and
+  v10 round-trip - All serialization tests pass
+
+- **heating-rate**: Integrate HeatingRateLearner into AdaptiveLearner
+  ([`2635b20`](https://github.com/afewyards/ha-adaptive-climate/commit/2635b204d11a24b0e3b30ed55ea6f224d0c92c0c))
+
+- **heating-rate**: Update PreheatLearner to delegate to HeatingRateLearner
+  ([`93b024e`](https://github.com/afewyards/ha-adaptive-climate/commit/93b024e5414abc86c392a8d17f6b54d5651c89bc))
+
+- Add optional heating_rate_learner parameter to PreheatLearner.__init__ - Delegate heating rate
+  queries to HeatingRateLearner when provided - Skip margin application when using
+  HeatingRateLearner (already conservative) - Add test coverage for delegation behavior - Maintains
+  backward compatibility with internal binned learning
+
+
 ## v0.58.2 (2026-02-02)
 
 ### Bug Fixes
