@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v0.59.1 (2026-02-03)
+
+### Bug Fixes
+
+- Hide night_setback override when delta is zero
+  ([`7ef5596`](https://github.com/afewyards/ha-adaptive-climate/commit/7ef5596263f4e4e70d56f98040c450a24adb6912))
+
+Don't show night_setback in status overrides when learning gate fully suppresses setback (delta =
+  0). Override only appears when an actual temperature reduction is being applied.
+
+
 ## v0.59.0 (2026-02-03)
 
 ### Bug Fixes
