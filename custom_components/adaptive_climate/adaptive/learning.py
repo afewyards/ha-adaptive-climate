@@ -1454,6 +1454,60 @@ class AdaptiveLearner:
 
         return new_ki
 
+    def check_physics_rate_underperformance(
+        self,
+        tau: Optional[float] = None,
+        area_m2: Optional[float] = None,
+        max_power_w: Optional[float] = None,
+        supply_temperature: Optional[float] = None,
+    ) -> Optional[dict]:
+        """Check if learned heating rate is below physics-based expectations.
+
+        Compares the learned heating rate from HeatingRateLearner against
+        physics-predicted rates for the configured system. Returns adjustment
+        recommendation if significantly underperforming.
+
+        This is separate from the real-time/cycle-based undershoot detection
+        and provides a physics-grounded baseline for expected performance.
+
+        Args:
+            tau: Thermal time constant in hours.
+            area_m2: Zone floor area in square meters.
+            max_power_w: Total heater power in watts.
+            supply_temperature: Supply water temperature in °C.
+
+        Returns:
+            Dict with comparison results if underperforming, None otherwise:
+                - learned_rate: Average learned rate (°C/h)
+                - expected_rate: Physics-based expected rate (°C/h)
+                - ratio: learned/expected
+                - suggested_ki_boost: Suggested Ki multiplier
+                - observation_count: Number of observations used
+        """
+        result = self._heating_rate_learner.check_physics_underperformance(
+            tau=tau,
+            area_m2=area_m2,
+            max_power_w=max_power_w,
+            supply_temperature=supply_temperature,
+        )
+
+        if result is None:
+            return None
+
+        if not result.get("is_underperforming", False):
+            return None
+
+        _LOGGER.warning(
+            "Physics-based rate check: learned=%.3f°C/h, expected=%.3f°C/h (%.0f%% of expected). "
+            "System is underperforming - consider Ki boost of %.2fx",
+            result["learned_rate"],
+            result["expected_rate"],
+            result["ratio"] * 100,
+            result.get("suggested_ki_boost", 1.0),
+        )
+
+        return result
+
     @property
     def undershoot_detector(self) -> UndershootDetector:
         """Expose undershoot detector for serialization access.

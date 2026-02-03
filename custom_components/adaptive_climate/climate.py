@@ -1410,6 +1410,8 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
                         obs.rate,
                         obs.duration_min,
                     )
+                    # Check physics-based rate underperformance after session
+                    self._check_physics_rate_and_boost_ki(adaptive_learner)
             # Check if stalled
             elif heating_rate_learner.is_stalled():
                 obs = heating_rate_learner.end_session(
@@ -1423,6 +1425,84 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
                         obs.rate,
                         obs.duration_min,
                     )
+                    # Check physics-based rate underperformance after session
+                    self._check_physics_rate_and_boost_ki(adaptive_learner)
+
+    def _check_physics_rate_and_boost_ki(self, adaptive_learner) -> None:
+        """Check if learned heating rate is below physics expectations and boost Ki if needed.
+
+        Called after heating rate sessions end. Compares learned rate against
+        physics-predicted rate and applies Ki boost if significantly underperforming.
+
+        Args:
+            adaptive_learner: The AdaptiveLearner instance for this zone.
+        """
+        from .const import PIDChangeReason
+
+        # Check physics-based rate underperformance
+        result = adaptive_learner.check_physics_rate_underperformance(
+            tau=getattr(self, '_thermal_time_constant', None),
+            area_m2=self._area_m2,
+            max_power_w=self._max_power_w,
+            supply_temperature=self._supply_temperature,
+        )
+
+        if result is None:
+            return  # Not enough data yet
+
+        if not result.get("is_underperforming", False):
+            return  # Performing adequately
+
+        # Check if we've already boosted Ki recently (cooldown)
+        # Use undershoot detector's cumulative multiplier to track total boosts
+        cumulative = adaptive_learner.undershoot_detector.cumulative_ki_multiplier
+        if cumulative >= 2.0:
+            _LOGGER.debug(
+                "%s: Physics rate check: underperforming but Ki already boosted %.1fx (max 2.0x)",
+                self.entity_id,
+                cumulative,
+            )
+            return
+
+        # Apply the suggested Ki boost
+        suggested_boost = result.get("suggested_ki_boost", 1.2)
+        old_ki = self._pid_controller.ki
+        new_ki = old_ki * suggested_boost
+
+        # Scale integral to prevent output spike
+        if old_ki > 0:
+            scale_factor = old_ki / new_ki
+            self._pid_controller.scale_integral(scale_factor)
+
+        # Update Ki via PIDGainsManager
+        self._gains_manager.set_gains(
+            PIDChangeReason.UNDERSHOOT_BOOST,
+            ki=new_ki,
+            metrics={
+                "reason": "physics_rate_underperformance",
+                "learned_rate": result["learned_rate"],
+                "expected_rate": result["expected_rate"],
+                "ratio": result["ratio"],
+                "observation_count": result["observation_count"],
+            },
+        )
+
+        # Update cumulative multiplier in undershoot detector
+        adaptive_learner.undershoot_detector.cumulative_ki_multiplier *= suggested_boost
+
+        _LOGGER.warning(
+            "%s: Physics rate check triggered Ki boost: learned=%.3f°C/h vs expected=%.3f°C/h "
+            "(%.0f%%). Ki: %.5f -> %.5f (%.0f%% increase)",
+            self.entity_id,
+            result["learned_rate"],
+            result["expected_rate"],
+            result["ratio"] * 100,
+            old_ki,
+            new_ki,
+            (suggested_boost - 1.0) * 100,
+        )
+
+        self.schedule_update_ha_state()
 
     async def _handle_validation_failure(self) -> None:
         """Handle validation failure by rolling back PID values.

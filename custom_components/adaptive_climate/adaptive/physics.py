@@ -696,6 +696,110 @@ def calculate_initial_cooling_pid(
     return (round(Kp, 4), round(Ki, 5), round(Kd, 2))
 
 
+# Expected heating rates by type (°C/h) - empirical data from real-world systems
+# These represent typical performance for properly sized systems
+EXPECTED_HEATING_RATES = {
+    HeatingType.FLOOR_HYDRONIC: {
+        "min": 0.15,      # Thick slab, low supply temp
+        "baseline": 0.30,  # Standard floor heating
+        "max": 0.60,      # Thin screed, high supply temp
+        "reference_tau": 4.0,  # Reference tau for baseline rate
+    },
+    HeatingType.RADIATOR: {
+        "min": 0.50,
+        "baseline": 1.00,
+        "max": 2.00,
+        "reference_tau": 3.0,
+    },
+    HeatingType.CONVECTOR: {
+        "min": 1.00,
+        "baseline": 2.00,
+        "max": 4.00,
+        "reference_tau": 2.5,
+    },
+    HeatingType.FORCED_AIR: {
+        "min": 2.00,
+        "baseline": 4.00,
+        "max": 8.00,
+        "reference_tau": 1.5,
+    },
+}
+
+
+def calculate_expected_heating_rate(
+    heating_type: str,
+    tau: Optional[float] = None,
+    area_m2: Optional[float] = None,
+    max_power_w: Optional[float] = None,
+    supply_temperature: Optional[float] = None,
+) -> Dict[str, float]:
+    """Calculate expected heating rate based on physics and system configuration.
+
+    This provides a physics-based baseline for comparison against learned rates.
+    When learned rate is significantly below expected, it indicates either:
+    - Undersized heating system
+    - Low supply temperature
+    - Poor heat transfer (blocked pipes, air in system)
+    - Building has more thermal mass than expected
+
+    Args:
+        heating_type: Type of heating system (floor_hydronic, radiator, etc.)
+        tau: Thermal time constant in hours. If provided, adjusts expected rate.
+        area_m2: Zone floor area in square meters. Required for power scaling.
+        max_power_w: Total heater power in watts. If provided, adjusts expected rate.
+        supply_temperature: Supply water temperature in °C. If provided, adjusts rate.
+
+    Returns:
+        Dict with keys:
+            - baseline: Expected rate for properly sized system (°C/h)
+            - min: Minimum reasonable rate (°C/h)
+            - max: Maximum expected rate (°C/h)
+            - adjustment_factor: Combined scaling factor applied
+    """
+    # Get expected rates for heating type
+    rates = EXPECTED_HEATING_RATES.get(
+        heating_type,
+        EXPECTED_HEATING_RATES[HeatingType.RADIATOR]
+    )
+
+    baseline = rates["baseline"]
+    min_rate = rates["min"]
+    max_rate = rates["max"]
+    ref_tau = rates["reference_tau"]
+
+    adjustment_factor = 1.0
+
+    # Adjust for thermal time constant (tau)
+    # Higher tau = slower system = lower expected rate
+    if tau is not None and tau > 0:
+        tau_factor = ref_tau / tau
+        # Clamp tau factor to 0.5 - 2.0 range
+        tau_factor = max(0.5, min(2.0, tau_factor))
+        adjustment_factor *= tau_factor
+
+    # Adjust for power density and supply temperature
+    # Uses same logic as PID initialization
+    power_scaling = calculate_power_scaling_factor(
+        heating_type, area_m2, max_power_w, supply_temperature
+    )
+    # Invert the factor: power_scaling > 1 means undersized = lower expected rate
+    # power_scaling < 1 means oversized = higher expected rate
+    power_factor = 1.0 / power_scaling
+    adjustment_factor *= power_factor
+
+    # Apply adjustment to all rates
+    adjusted_baseline = baseline * adjustment_factor
+    adjusted_min = min_rate * adjustment_factor
+    adjusted_max = max_rate * adjustment_factor
+
+    return {
+        "baseline": round(adjusted_baseline, 3),
+        "min": round(adjusted_min, 3),
+        "max": round(adjusted_max, 3),
+        "adjustment_factor": round(adjustment_factor, 3),
+    }
+
+
 def calculate_ke_wind(
     energy_rating: Optional[str] = None,
     window_area_m2: Optional[float] = None,
