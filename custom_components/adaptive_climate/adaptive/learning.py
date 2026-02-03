@@ -883,6 +883,7 @@ class AdaptiveLearner:
         - Last adjustment time and cycle counter
         - Convergence confidence (both heating and cooling)
         - Validation mode state and collected validation cycles
+        - Undershoot detector state (consecutive failures, Ki multiplier)
         """
         self._heating_cycle_history.clear()
         self._cooling_cycle_history.clear()
@@ -890,6 +891,7 @@ class AdaptiveLearner:
         self._cycles_since_last_adjustment = 0
         self._confidence.reset_confidence()  # Reset both modes
         self._validation.reset_validation_state()
+        self._undershoot_detector.reset_all()  # Reset all undershoot state
 
     def get_previous_pid(self) -> Optional[Dict[str, float]]:
         """Get the previous PID configuration for rollback.

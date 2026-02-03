@@ -419,6 +419,23 @@ class UndershootDetector:
         """
         self.reset_realtime()
 
+    def reset_all(self) -> None:
+        """Perform complete reset of all undershoot detector state.
+
+        Called when learning is cleared to ensure fresh start. Resets:
+        - Real-time counters (time_below_target, thermal_debt)
+        - Cycle mode counters (consecutive_failures)
+        - Shared state (cumulative_ki_multiplier, last_adjustment_time)
+        """
+        # Real-time mode
+        self._time_below_target = 0.0
+        self._thermal_debt = 0.0
+        # Cycle mode
+        self._consecutive_failures = 0
+        # Shared state
+        self.cumulative_ki_multiplier = 1.0
+        self.last_adjustment_time = None
+
     def set_heating_rate_learner(self, learner: "HeatingRateLearner") -> None:
         """Set the HeatingRateLearner for rate-based undershoot detection.
 
