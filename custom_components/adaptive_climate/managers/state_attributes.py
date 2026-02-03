@@ -835,18 +835,20 @@ def _build_status_attribute(thermostat: SmartThermostat) -> dict[str, Any]:
     if thermostat._night_setback_controller:
         try:
             _, in_night, info = thermostat._night_setback_controller.calculate_night_setback_adjustment()
-            night_setback_active = in_night
-            if night_setback_active:
+            if in_night:
                 night_setback_delta = info.get("night_setback_delta")
-                setback_end_time = info.get("night_setback_end")
-                # Convert "HH:MM" to ISO8601
-                if setback_end_time:
-                    from ..managers.status_manager import convert_setback_end
-                    night_setback_ends_at = convert_setback_end(setback_end_time)
-                # Check if limited by learning gate
-                suppressed_reason = info.get("suppressed_reason")
-                if suppressed_reason == "limited" and night_setback_delta is not None:
-                    night_setback_limited_to = night_setback_delta
+                # Only show override if delta > 0 (not fully suppressed by learning gate)
+                if night_setback_delta and night_setback_delta > 0:
+                    night_setback_active = True
+                    setback_end_time = info.get("night_setback_end")
+                    # Convert "HH:MM" to ISO8601
+                    if setback_end_time:
+                        from ..managers.status_manager import convert_setback_end
+                        night_setback_ends_at = convert_setback_end(setback_end_time)
+                    # Check if limited by learning gate
+                    suppressed_reason = info.get("suppressed_reason")
+                    if suppressed_reason == "limited":
+                        night_setback_limited_to = night_setback_delta
         except (TypeError, AttributeError, ValueError):
             pass
 
