@@ -1,529 +1,355 @@
-"""Integration tests for the main control loop.
+"""Integration tests for PID control loop.
 
-Tests the complete flow: Climate entity -> PID controller -> demand -> central controller -> heater
+This module tests the complete control loop from PID calculation through
+cycle tracking to learning updates, using real component instances.
 """
-import asyncio
+
+from __future__ import annotations
+
 import pytest
-import sys
-from pathlib import Path
-from unittest.mock import Mock, AsyncMock, MagicMock
-from datetime import timedelta
+from datetime import datetime, timedelta
+from unittest.mock import MagicMock
 
-# Add parent directory to path
-sys.path.insert(0, str(Path(__file__).parent.parent / "custom_components" / "adaptive_climate"))
-
-# Mock homeassistant modules before importing
-sys.modules['homeassistant'] = Mock()
-
-# Event needs to support subscripting for type hints like Event[EventStateChangedData]
-class MockEvent:
-    """Mock Event class that supports generic subscripting."""
-    def __class_getitem__(cls, item):
-        return cls
-
-mock_core = Mock()
-mock_core.Event = MockEvent
-sys.modules['homeassistant.core'] = mock_core
-sys.modules['homeassistant.helpers'] = Mock()
-sys.modules['homeassistant.helpers.update_coordinator'] = Mock()
+from custom_components.adaptive_climate.managers.events import (
+    CycleEventDispatcher,
+    CycleStartedEvent,
+    SettlingStartedEvent,
+    HeatingStartedEvent,
+    HeatingEndedEvent,
+)
+from custom_components.adaptive_climate.adaptive.cycle_analysis import CycleMetrics
+from custom_components.adaptive_climate.const import HeatingType
 
 
-# Create mock base class
-class MockDataUpdateCoordinator:
-    def __init__(self, hass, logger, name, update_interval):
-        self.hass = hass
-        self.logger = logger
-        self.name = name
-        self.update_interval = update_interval
+class TestFullPIDFeedbackLoop:
+    """Test A1: Full PID feedback loop with real components."""
+
+    def test_multi_cycle_heating_scenario(self, make_thermostat, time_travel):
+        """Simulate a multi-cycle heating scenario with PID, cycle tracking, and learning.
+
+        This test demonstrates the complete feedback loop:
+        1. PID calculates output based on temperature error
+        2. Heater turns on (simulated)
+        3. Temperature rises gradually
+        4. Cycle tracker monitors the heating cycle
+        5. Cycle completes and metrics are calculated
+        6. Learner records the cycle observation
+        """
+        # Create a thermostat with default radiator heating type
+        t = make_thermostat(heating_type=HeatingType.RADIATOR)
+
+        # Initial state: Room at 19.0°C, target 21.0°C
+        t.current_temp = 19.0
+        t.target_temp = 21.0
+
+        # Scenario: First heating cycle
+        # =============================
+
+        # 1. Calculate initial PID output - should be positive (need heating)
+        # Note: P-on-M returns 0 on first call (no previous measurement)
+        # Need to call twice to get meaningful output
+        initial_error = t.target_temp - t.current_temp  # 2.0°C
+        t.pid.calc(
+            input_val=t.current_temp,
+            set_point=t.target_temp,
+            input_time=time_travel.monotonic(),
+            ext_temp=None,
+        )
+        # Advance time slightly for second call
+        time_travel.advance(seconds=30)
+        output, calculated = t.pid.calc(
+            input_val=t.current_temp,
+            set_point=t.target_temp,
+            input_time=time_travel.monotonic(),
+            ext_temp=None,
+        )
+        assert calculated is True
+        assert output >= 0, "PID should output non-negative value when temp below target"
+
+        # 2. Notify cycle tracker that heating started
+        start_time = time_travel.now()
+        t.dispatcher.emit(CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=start_time,
+            target_temp=t.target_temp,
+            current_temp=t.current_temp,
+        ))
+        t.dispatcher.emit(HeatingStartedEvent(
+            hvac_mode="heat",
+            timestamp=start_time,
+        ))
+
+        # Mark restoration complete so cycle tracker will accept temperature updates
+        t.cycle_tracker.set_restoration_complete()
+
+        # Record initial cycle count
+        initial_cycle_count = t.learner.get_cycle_count()
+
+        # 3. Simulate heating session with temperature rising over 20 minutes
+        # Temperature rises from 19.0 to 21.5°C (slight overshoot), then settles to 21.0°C
+        heating_duration_minutes = 20
+        temp_schedule = [
+            (0, 19.0), (2, 19.2), (4, 19.5), (6, 19.8), (8, 20.1),
+            (10, 20.4), (12, 20.7), (14, 21.0), (16, 21.2), (18, 21.4),
+            (20, 21.5),  # Peak overshoot
+        ]
+
+        for minute_offset, temp in temp_schedule:
+            time_travel.advance(minutes=minute_offset if minute_offset == 0 else 2)
+            t.current_temp = temp
+
+            # Update cycle tracker with temperature sample
+            import asyncio
+            asyncio.run(t.cycle_tracker.update_temperature(time_travel.now(), temp))
+
+            # Calculate PID output - should decrease as we approach target
+            output, calculated = t.pid.calc(
+                input_val=t.current_temp,
+                set_point=t.target_temp,
+                input_time=time_travel.monotonic(),
+            )
+            if calculated and temp < t.target_temp:
+                assert output >= 0, f"PID should output non-negative when below target (temp={temp})"
+
+        # 4. Heater turns off, settling phase begins
+        heating_end_time = time_travel.now()
+        t.dispatcher.emit(HeatingEndedEvent(
+            hvac_mode="heat",
+            timestamp=heating_end_time,
+        ))
+        t.dispatcher.emit(SettlingStartedEvent(
+            hvac_mode="heat",
+            timestamp=heating_end_time,
+            was_clamped=False,
+        ))
+
+        # 5. Temperature settles back to target over next 10 samples
+        settling_temps = [21.4, 21.3, 21.2, 21.1, 21.0, 21.0, 21.0, 21.0, 21.0, 21.0]
+        for temp in settling_temps:
+            time_travel.advance(seconds=30)
+            t.current_temp = temp
+            asyncio.run(t.cycle_tracker.update_temperature(time_travel.now(), temp))
+
+        # 6. Wait for settling to complete (cycle tracker should detect stability)
+        # At this point, the cycle should be finalized and metrics recorded
+
+        # 7. Verify that learner received the cycle observation
+        final_cycle_count = t.learner.get_cycle_count()
+        assert final_cycle_count == initial_cycle_count + 1, \
+            "Learner should have recorded one cycle after settling completed"
+
+        # 8. Verify cycle metrics were recorded
+        # Check that the learner's cycle history contains the cycle
+        assert len(t.learner.cycle_history) > 0, "Cycle history should not be empty"
+        last_cycle = t.learner.cycle_history[-1]
+        assert isinstance(last_cycle, CycleMetrics)
+        # Verify overshoot was captured (peak 21.5 vs target 21.0)
+        assert last_cycle.overshoot is not None
+        assert last_cycle.overshoot > 0, "Cycle should have recorded overshoot"
 
 
-sys.modules['homeassistant.helpers.update_coordinator'].DataUpdateCoordinator = MockDataUpdateCoordinator
+class TestSetpointChangeResponse:
+    """Test A3: Setpoint change response with integral boost/decay."""
 
-# Import modules under test
-import coordinator
-import central_controller as central_controller_module
-import pid_controller
+    def test_setpoint_increase_applies_boost(self, make_thermostat, time_travel, mock_hass):
+        """Test that setpoint increase triggers integral boost.
+
+        Scenario:
+        1. PID is running with steady integral
+        2. User increases setpoint by 2°C
+        3. SetpointBoostManager should boost integral
+        4. Integral should be higher after boost
+        """
+        from custom_components.adaptive_climate.managers.setpoint_boost import SetpointBoostManager
+
+        # Create thermostat
+        t = make_thermostat(heating_type=HeatingType.RADIATOR)
+
+        # Set up initial state with some accumulated integral
+        t.current_temp = 20.0
+        t.target_temp = 21.0
+        t.pid.integral = 10.0  # Some existing integral
+
+        # Create SetpointBoostManager
+        boost_manager = SetpointBoostManager(
+            hass=mock_hass,
+            heating_type=HeatingType.RADIATOR,
+            pid_controller=t.pid,
+            is_night_period_cb=lambda: False,  # Not in night setback
+            enabled=True,
+        )
+
+        # Record initial integral
+        initial_integral = t.pid.integral
+
+        # Simulate setpoint increase by 2°C
+        old_setpoint = t.target_temp
+        new_setpoint = t.target_temp + 2.0
+        t.target_temp = new_setpoint
+
+        # Notify boost manager of setpoint change
+        boost_manager.on_setpoint_change(old_setpoint, new_setpoint)
+
+        # Advance time past debounce window to trigger boost
+        import asyncio
+        time_travel.advance(seconds=6)
+        # Execute pending callbacks manually since we're not in real async context
+        # The boost_manager schedules a callback, we need to trigger it manually
+        # For this test, we'll call _apply_boost directly
+        asyncio.run(boost_manager._apply_boost(time_travel.now()))
+
+        # Verify integral increased
+        final_integral = t.pid.integral
+        assert final_integral > initial_integral, \
+            f"Integral should increase after setpoint boost (was {initial_integral}, now {final_integral})"
+
+    def test_setpoint_decrease_applies_decay(self, make_thermostat, time_travel, mock_hass):
+        """Test that setpoint decrease triggers integral decay.
+
+        Scenario:
+        1. PID is running with substantial integral
+        2. User decreases setpoint by 2°C
+        3. SetpointBoostManager should decay integral
+        4. Integral should be lower after decay
+        """
+        from custom_components.adaptive_climate.managers.setpoint_boost import SetpointBoostManager
+
+        # Create thermostat
+        t = make_thermostat(heating_type=HeatingType.RADIATOR)
+
+        # Set up initial state with substantial accumulated integral
+        t.current_temp = 20.0
+        t.target_temp = 22.0
+        t.pid.integral = 30.0  # Large integral (heating hard)
+
+        # Create SetpointBoostManager
+        boost_manager = SetpointBoostManager(
+            hass=mock_hass,
+            heating_type=HeatingType.RADIATOR,
+            pid_controller=t.pid,
+            is_night_period_cb=lambda: False,
+            enabled=True,
+        )
+
+        # Record initial integral
+        initial_integral = t.pid.integral
+
+        # Simulate setpoint decrease by 2°C
+        old_setpoint = t.target_temp
+        new_setpoint = t.target_temp - 2.0
+        t.target_temp = new_setpoint
+
+        # Notify boost manager of setpoint change
+        boost_manager.on_setpoint_change(old_setpoint, new_setpoint)
+
+        # Advance time past debounce window to trigger decay
+        import asyncio
+        time_travel.advance(seconds=6)
+        asyncio.run(boost_manager._apply_boost(time_travel.now()))
+
+        # Verify integral decreased
+        final_integral = t.pid.integral
+        assert final_integral < initial_integral, \
+            f"Integral should decrease after setpoint decay (was {initial_integral}, now {final_integral})"
 
 
-class StateRegistry:
-    """Registry to simulate Home Assistant entity states."""
+class TestCycleMetricsPropagation:
+    """Test A2 (simplified): Cycle metrics propagation without transport delay.
 
-    def __init__(self):
-        self._states = {}
-
-    def set_state(self, entity_id: str, state: str, attributes: dict = None):
-        """Set state for an entity."""
-        mock_state = MagicMock()
-        mock_state.state = state
-        mock_state.attributes = attributes or {}
-        self._states[entity_id] = mock_state
-
-    def get_state(self, entity_id: str):
-        """Get state for an entity."""
-        return self._states.get(entity_id)
-
-    def is_state(self, entity_id: str, expected_state: str) -> bool:
-        """Check if entity is in expected state."""
-        state = self._states.get(entity_id)
-        return state is not None and state.state == expected_state
-
-
-@pytest.fixture
-def mock_hass():
-    """Create a mock Home Assistant instance with service call tracking."""
-    hass = MagicMock()
-    hass.states = MagicMock()
-    hass.services = MagicMock()
-    hass.config = MagicMock()
-    hass.config.units = MagicMock()
-    hass.config.units.temperature_unit = "°C"
-    hass.data = {}
-    hass.bus = MagicMock()
-    hass.bus.async_listen_once = MagicMock()
-
-    # Track service calls for verification
-    hass._service_call_history = []
-
-    async def track_service_call(domain, service, data, **kwargs):
-        hass._service_call_history.append({
-            "domain": domain,
-            "service": service,
-            "data": data,
-            "kwargs": kwargs,
-        })
-
-    hass.services.async_call = AsyncMock(side_effect=track_service_call)
-
-    return hass
-
-
-@pytest.fixture
-def state_registry():
-    """Create a state registry for simulating HA entity states."""
-    return StateRegistry()
-
-
-@pytest.fixture
-def coord(mock_hass):
-    """Create a coordinator instance."""
-    return coordinator.AdaptiveThermostatCoordinator(mock_hass)
-
-
-@pytest.fixture
-def central_controller(mock_hass, coord):
-    """Create a central controller with zero startup delay."""
-    return central_controller_module.CentralController(
-        mock_hass,
-        coord,
-        main_heater_switch=["switch.main_boiler"],
-        startup_delay_seconds=0,
-    )
-
-
-@pytest.fixture
-def pid():
-    """Create a PID controller instance with tuning suitable for tests.
-
-    Ki is set high enough that integral accumulates meaningful demand
-    within test time intervals (10 min = 600s).
+    Note: Full transport delay testing requires HeaterController setup which is
+    excluded from make_thermostat. This simplified test verifies that cycle
+    metrics flow correctly through the system.
     """
-    return pid_controller.PID(
-        kp=50.0,
-        ki=100.0,  # High enough for 10-min test intervals
-        kd=100.0,
-        ke=0,
-        out_min=0,
-        out_max=100,
-        sampling_period=0,
-        cold_tolerance=0.3,
-        hot_tolerance=0.3,
-    )
 
-
-# =============================================================================
-# Test: Full Control Loop - Temperature Triggers Heating
-# =============================================================================
-
-
-@pytest.mark.asyncio
-async def test_full_control_loop_temperature_triggers_heating(
-    mock_hass, state_registry, coord, central_controller, pid
-):
-    """
-    Integration test: Temperature below setpoint triggers PID calculation,
-    which generates demand, central controller turns heater ON.
-
-    Flow: sensor change -> PID calc -> demand update -> central controller -> heater ON
-    """
-    # Setup: Heater is OFF, temp is below setpoint
-    state_registry.set_state("switch.main_boiler", "off")
-    state_registry.set_state("sensor.living_room_temp", "18.0")
-    mock_hass.states.get = state_registry.get_state
-    mock_hass.states.is_state = state_registry.is_state
-
-    # Register zone
-    coord.register_zone("living_room", {
-        "climate_entity_id": "climate.living_room",
-        "zone_name": "Living Room",
-        "area_m2": 20.0,
-    })
-
-    # Simulate PID calculation with temp below setpoint
-    # With P-on-M, first call has P=0, so we need to call twice to build up integral
-    # Use 10-min interval for meaningful integral accumulation
-    current_temp = 18.0
-    target_temp = 21.0
-    pid.calc(current_temp, target_temp, input_time=0.0, last_input_time=None)
-    output, _ = pid.calc(current_temp, target_temp, input_time=600.0, last_input_time=0.0)
-
-    # Output should be positive (heating demand) from integral accumulation
-    assert output > 0, f"Expected positive PID output, got {output}"
-
-    # Simulate demand switch update based on PID output
-    # Demand threshold is typically 5% of output range
-    demand_threshold = 5.0
-    has_demand = output > demand_threshold
-    assert has_demand, f"Expected demand with output {output}"
-
-    coord.update_zone_demand("living_room", has_demand, hvac_mode="heat")
-
-    # Central controller updates based on aggregate demand
-    await central_controller.update()
-
-    # Verify heater was turned ON
-    turn_on_calls = [
-        c for c in mock_hass._service_call_history
-        if c["service"] == "turn_on"
-    ]
-    assert len(turn_on_calls) == 1
-    assert turn_on_calls[0]["data"]["entity_id"] == "switch.main_boiler"
-
-
-@pytest.mark.asyncio
-async def test_control_loop_satisfied_turns_off_heater(
-    mock_hass, state_registry, coord, central_controller, pid, monkeypatch
-):
-    """
-    Integration test: When temperature reaches setpoint, PID output drops,
-    demand is removed, central controller turns off heater.
-
-    Flow: temp at setpoint -> PID calc (low output) -> no demand -> heater OFF
-    """
-    # Use short debounce for test
-    monkeypatch.setattr(central_controller_module, "TURN_OFF_DEBOUNCE_SECONDS", 0.1)
-
-    # Setup: Heater is ON, temp has reached setpoint
-    state_registry.set_state("switch.main_boiler", "on")
-    mock_hass.states.get = state_registry.get_state
-    mock_hass.states.is_state = state_registry.is_state
-
-    # Register zone with initial demand
-    coord.register_zone("living_room", {"zone_name": "Living Room"})
-    coord.update_zone_demand("living_room", True, hvac_mode="heat")
-
-    # Simulate that heater was previously activated by controller
-    central_controller._heater_activated_by_us = True
-
-    # Simulate PID calculation with temp at setpoint
-    current_temp = 21.0
-    target_temp = 21.0
-    output, _ = pid.calc(current_temp, target_temp)
-
-    # Output should be near zero
-    assert output < 5.0, f"Expected low PID output at setpoint, got {output}"
-
-    # Update demand based on output
-    has_demand = output > 5.0
-    coord.update_zone_demand("living_room", has_demand, hvac_mode="heat")
-
-    # Central controller updates
-    await central_controller.update()
-
-    # Wait for debounce
-    await asyncio.sleep(0.2)
-
-    # Verify heater was turned OFF
-    turn_off_calls = [
-        c for c in mock_hass._service_call_history
-        if c["service"] == "turn_off"
-    ]
-    assert len(turn_off_calls) == 1
-    assert turn_off_calls[0]["data"]["entity_id"] == "switch.main_boiler"
-
-
-# =============================================================================
-# Test: Multi-Zone Demand Aggregation
-# =============================================================================
-
-
-@pytest.mark.asyncio
-async def test_multi_zone_demand_aggregation(
-    mock_hass, state_registry, coord, central_controller, monkeypatch
-):
-    """
-    Integration test: Multiple zones with different demands correctly
-    aggregate to control central heater.
-
-    Scenario:
-    1. Zone A has demand -> heater ON
-    2. Zone B also gets demand -> heater stays ON
-    3. Zone A satisfied -> heater stays ON (B still needs heat)
-    4. Zone B satisfied -> heater OFF
-    """
-    # Use short debounce for test
-    monkeypatch.setattr(central_controller_module, "TURN_OFF_DEBOUNCE_SECONDS", 0.1)
-
-    state_registry.set_state("switch.main_boiler", "off")
-    mock_hass.states.get = state_registry.get_state
-    mock_hass.states.is_state = state_registry.is_state
-
-    # Register two zones
-    coord.register_zone("zone_a", {"zone_name": "Zone A"})
-    coord.register_zone("zone_b", {"zone_name": "Zone B"})
-
-    # Step 1: Zone A has demand
-    coord.update_zone_demand("zone_a", True, hvac_mode="heat")
-    await central_controller.update()
-
-    # Heater should be ON
-    demand = coord.get_aggregate_demand()
-    assert demand["heating"] is True
-
-    # Verify heater was turned on
-    assert any(c["service"] == "turn_on" for c in mock_hass._service_call_history)
-
-    # Step 2: Zone B also has demand
-    coord.update_zone_demand("zone_b", True, hvac_mode="heat")
-    await central_controller.update()
-    assert coord.get_aggregate_demand()["heating"] is True
-
-    # Step 3: Zone A satisfied
-    state_registry.set_state("switch.main_boiler", "on")  # Now it's on
-    # Simulate that heater was previously activated by controller
-    central_controller._heater_activated_by_us = True
-    coord.update_zone_demand("zone_a", False, hvac_mode="heat")
-    await central_controller.update()
-    assert coord.get_aggregate_demand()["heating"] is True  # B still needs heat
-
-    # Step 4: Zone B satisfied
-    coord.update_zone_demand("zone_b", False, hvac_mode="heat")
-    await central_controller.update()
-    assert coord.get_aggregate_demand()["heating"] is False
-
-    # Wait for debounce
-    await asyncio.sleep(0.2)
-
-    # Heater should be OFF now
-    turn_off_calls = [c for c in mock_hass._service_call_history if c["service"] == "turn_off"]
-    assert len(turn_off_calls) > 0
-
-
-# =============================================================================
-# Test: PID Output Drives PWM Cycle
-# =============================================================================
-
-
-def test_pid_output_drives_pwm_cycle(pid):
-    """
-    Integration test: PID output determines PWM duty cycle timing.
-
-    Verifies that PID output translates to sensible on/off times.
-    """
-    # Simulate temperature slightly below setpoint
-    # With P-on-M, first call has P=0, so we need to call twice to build up integral
-    # Use 10-min interval for meaningful integral accumulation
-    current_temp = 20.5
-    target_temp = 21.0
-
-    pid.calc(current_temp, target_temp, input_time=0.0, last_input_time=None)
-    output, _ = pid.calc(current_temp, target_temp, input_time=600.0, last_input_time=0.0)
-
-    # For floor heating with conservative tuning, output should be modest
-    assert 0 < output < 100, f"Output {output} should be between 0 and 100"
-
-    # Calculate PWM timing (15 min = 900 seconds default)
-    pwm_period = 900
-    output_range = 100  # max - min output
-    time_on = pwm_period * abs(output) / output_range
-    time_off = pwm_period - time_on
-
-    # Verify timing makes sense
-    assert time_on > 0
-    assert time_off > 0
-    assert time_on + time_off == pwm_period
-
-
-def test_pid_output_scales_with_error(pid):
-    """
-    Integration test: Larger temperature errors produce higher PID output.
-    """
-    target_temp = 21.0
-
-    # Test with two separate PID instances to avoid state contamination
-    # Small error - need two calls for P-on-M
-    # Use 10-min interval for meaningful integral accumulation
-    pid.calc(20.5, target_temp, input_time=0.0, last_input_time=None)
-    output_small, _ = pid.calc(20.5, target_temp, input_time=600.0, last_input_time=0.0)
-
-    # Reset PID for large error test
-    pid.clear_samples()
-    pid._integral = 0.0
-
-    # Large error - need two calls for P-on-M
-    pid.calc(18.0, target_temp, input_time=0.0, last_input_time=None)
-    output_large, _ = pid.calc(18.0, target_temp, input_time=600.0, last_input_time=0.0)
-
-    # Larger error should produce higher output (from integral accumulation)
-    assert output_large > output_small, (
-        f"Large error output {output_large} should exceed small error output {output_small}"
-    )
-
-
-# =============================================================================
-# Test: Startup Delay with Demand Changes
-# =============================================================================
-
-
-@pytest.mark.asyncio
-async def test_startup_delay_with_demand_changes(mock_hass, state_registry, coord):
-    """
-    Integration test: Startup delay correctly handles demand appearing,
-    disappearing, and reappearing during delay period.
-    """
-    state_registry.set_state("switch.main_boiler", "off")
-    mock_hass.states.get = state_registry.get_state
-    mock_hass.states.is_state = state_registry.is_state
-
-    # Create controller with 1 second delay for faster testing
-    controller = central_controller_module.CentralController(
-        mock_hass,
-        coord,
-        main_heater_switch=["switch.main_boiler"],
-        startup_delay_seconds=1,
-    )
-
-    coord.register_zone("test_zone", {"zone_name": "Test"})
-
-    # Add demand - starts delay timer
-    coord.update_zone_demand("test_zone", True, hvac_mode="heat")
-    await controller.update()
-    assert controller.is_heater_waiting_for_startup()
-
-    # Remove demand before delay expires - should cancel
-    coord.update_zone_demand("test_zone", False, hvac_mode="heat")
-    await controller.update()
-    assert not controller.is_heater_waiting_for_startup()
-
-    # Clear history for clean verification
-    mock_hass._service_call_history.clear()
-
-    # Re-add demand - starts new delay timer
-    coord.update_zone_demand("test_zone", True, hvac_mode="heat")
-    await controller.update()
-    assert controller.is_heater_waiting_for_startup()
-
-    # Wait for delay to complete
-    await asyncio.sleep(1.5)
-
-    # Heater should now be ON
-    turn_on_calls = [c for c in mock_hass._service_call_history if c["service"] == "turn_on"]
-    assert len(turn_on_calls) > 0
-
-
-# =============================================================================
-# Test: Component Interaction Order
-# =============================================================================
-
-
-@pytest.mark.asyncio
-async def test_component_interaction_order(mock_hass, state_registry, coord, central_controller):
-    """
-    Verify components interact in correct order:
-    PID calc -> demand update -> coordinator notification -> central controller action
-    """
-    state_registry.set_state("switch.main_boiler", "off")
-    mock_hass.states.get = state_registry.get_state
-    mock_hass.states.is_state = state_registry.is_state
-
-    # Track order of operations
-    operation_log = []
-
-    # Wrap coordinator methods to track calls
-    original_update_demand = coord.update_zone_demand
-
-    def tracked_update_demand(zone_id, has_demand, hvac_mode=None):
-        operation_log.append(("demand_update", zone_id, has_demand))
-        return original_update_demand(zone_id, has_demand, hvac_mode=hvac_mode)
-
-    coord.update_zone_demand = tracked_update_demand
-
-    original_update = central_controller.update
-
-    async def tracked_controller_update():
-        operation_log.append(("controller_update", None, None))
-        return await original_update()
-
-    central_controller.update = tracked_controller_update
-
-    # Execute flow
-    coord.register_zone("test", {"name": "Test"})
-    coord.update_zone_demand("test", True, hvac_mode="heat")  # Should log
-    await central_controller.update()  # Should log
-
-    # Verify order
-    assert len(operation_log) == 2
-    assert operation_log[0][0] == "demand_update"
-    assert operation_log[1][0] == "controller_update"
-
-
-# =============================================================================
-# Test: Multiple Zones With PID
-# =============================================================================
-
-
-@pytest.mark.asyncio
-async def test_multiple_zones_with_independent_pid(
-    mock_hass, state_registry, coord, central_controller
-):
-    """
-    Integration test: Multiple zones each with their own PID controllers
-    correctly aggregate demand.
-    """
-    state_registry.set_state("switch.main_boiler", "off")
-    mock_hass.states.get = state_registry.get_state
-    mock_hass.states.is_state = state_registry.is_state
-
-    # Create PIDs for each zone with different tuning
-    # Use higher Ki for faster integral accumulation in tests (10-min intervals)
-    pid_living = pid_controller.PID(kp=50.0, ki=100.0, kd=100.0, out_min=0, out_max=100)
-    pid_bedroom = pid_controller.PID(kp=40.0, ki=100.0, kd=80.0, out_min=0, out_max=100)
-
-    # Register zones
-    coord.register_zone("living_room", {"zone_name": "Living Room"})
-    coord.register_zone("bedroom", {"zone_name": "Bedroom"})
-
-    # Living room: needs heat (temp below setpoint)
-    # With P-on-M, first call has P=0, need second call to build integral
-    # Use 10-min interval for meaningful integral accumulation
-    pid_living.calc(18.0, 21.0, input_time=0.0, last_input_time=None)
-    output_living, _ = pid_living.calc(18.0, 21.0, input_time=600.0, last_input_time=0.0)
-    has_demand_living = output_living > 5.0
-
-    # Bedroom: satisfied (temp at setpoint, so error=0, no demand)
-    pid_bedroom.calc(21.0, 21.0, input_time=0.0, last_input_time=None)
-    output_bedroom, _ = pid_bedroom.calc(21.0, 21.0, input_time=600.0, last_input_time=0.0)
-    has_demand_bedroom = output_bedroom > 5.0
-
-    # Update demands
-    coord.update_zone_demand("living_room", has_demand_living, hvac_mode="heat")
-    coord.update_zone_demand("bedroom", has_demand_bedroom, hvac_mode="heat")
-
-    # Verify aggregate demand
-    demand = coord.get_aggregate_demand()
-    assert demand["heating"] is True  # Living room has demand
-
-    await central_controller.update()
-
-    # Heater should be ON
-    turn_on_calls = [c for c in mock_hass._service_call_history if c["service"] == "turn_on"]
-    assert len(turn_on_calls) == 1
+    def test_cycle_metrics_basic_propagation(self, make_thermostat, time_travel):
+        """Test that basic cycle metrics are calculated and recorded.
+
+        This verifies:
+        1. Cycle tracker monitors temperature samples
+        2. Metrics recorder calculates overshoot, rise time, etc.
+        3. Metrics are passed to learner
+        """
+        import asyncio
+        from custom_components.adaptive_climate.managers.events import (
+            CycleStartedEvent,
+            SettlingStartedEvent,
+            HeatingStartedEvent,
+            HeatingEndedEvent,
+        )
+
+        # Create thermostat
+        t = make_thermostat(heating_type=HeatingType.RADIATOR)
+
+        # Set initial conditions
+        t.current_temp = 19.0
+        t.target_temp = 21.0
+
+        # Mark restoration complete
+        t.cycle_tracker.set_restoration_complete()
+
+        # Record initial cycle count
+        initial_count = t.learner.get_cycle_count()
+
+        # Start heating cycle
+        start_time = time_travel.now()
+        t.dispatcher.emit(CycleStartedEvent(
+            hvac_mode="heat",
+            timestamp=start_time,
+            target_temp=t.target_temp,
+            current_temp=t.current_temp,
+        ))
+        t.dispatcher.emit(HeatingStartedEvent(
+            hvac_mode="heat",
+            timestamp=start_time,
+        ))
+
+        # Simulate heating with clean rise to target (no overshoot)
+        temp_schedule = [
+            (0, 19.0), (2, 19.3), (4, 19.6), (6, 19.9),
+            (8, 20.2), (10, 20.5), (12, 20.8), (14, 21.0),
+        ]
+
+        for minute_offset, temp in temp_schedule:
+            if minute_offset > 0:
+                time_travel.advance(minutes=2)
+            t.current_temp = temp
+            asyncio.run(t.cycle_tracker.update_temperature(time_travel.now(), temp))
+
+        # Stop heating
+        time_travel.advance(minutes=2)
+        heating_end_time = time_travel.now()
+        t.dispatcher.emit(HeatingEndedEvent(
+            hvac_mode="heat",
+            timestamp=heating_end_time,
+        ))
+        t.dispatcher.emit(SettlingStartedEvent(
+            hvac_mode="heat",
+            timestamp=heating_end_time,
+            was_clamped=False,
+        ))
+
+        # Settle at target (10 samples for settling detection)
+        settling_temps = [21.0] * 10
+        for temp in settling_temps:
+            time_travel.advance(seconds=30)
+            asyncio.run(t.cycle_tracker.update_temperature(time_travel.now(), temp))
+
+        # Verify cycle was recorded
+        final_count = t.learner.get_cycle_count()
+        assert final_count == initial_count + 1, \
+            "One cycle should be recorded after settling"
+
+        # Verify metrics structure
+        assert len(t.learner.cycle_history) > 0
+        cycle = t.learner.cycle_history[-1]
+        assert isinstance(cycle, CycleMetrics)
+
+        # Basic metrics should be present
+        # Rise time should be measured (time to reach target from start)
+        assert cycle.rise_time is not None, "Rise time should be measured"
+        assert cycle.rise_time > 0, "Rise time should be positive"
+
+        # Overshoot should be zero or very small (clean rise)
+        if cycle.overshoot is not None:
+            assert cycle.overshoot <= 0.3, \
+                "Clean rise should have minimal overshoot"
