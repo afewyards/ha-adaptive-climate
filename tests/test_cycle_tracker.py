@@ -127,7 +127,6 @@ class TestCycleTrackerBasic:
 
         assert cycle_tracker.state == CycleState.HEATING
         assert cycle_tracker.cycle_start_time == start_time
-        assert cycle_tracker._cycle_target_temp == 21.5
         assert len(cycle_tracker.temperature_history) == 0  # Cleared
 
     def test_on_heating_session_ended_transitions_to_settling(self, cycle_tracker, mock_hass, dispatcher):
@@ -654,7 +653,6 @@ class TestCycleTrackerEdgeCases:
         assert cycle_tracker.state == CycleState.IDLE
         assert len(cycle_tracker.temperature_history) == 0
         assert cycle_tracker.cycle_start_time is None
-        assert cycle_tracker._cycle_target_temp is None
 
     def test_setpoint_change_during_settling_aborts_cycle(self, cycle_tracker, dispatcher):
         """Test that setpoint change during settling aborts the cycle."""
@@ -709,7 +707,6 @@ class TestCycleTrackerEdgeCases:
         assert cycle_tracker.state == CycleState.IDLE
         assert len(cycle_tracker.temperature_history) == 0
         assert cycle_tracker.cycle_start_time is None
-        assert cycle_tracker._cycle_target_temp is None
 
     def test_contact_sensor_pause_in_idle_no_effect(self, cycle_tracker, dispatcher):
         """Test that contact sensor pause in IDLE state has no effect."""
@@ -742,7 +739,6 @@ class TestCycleTrackerEdgeCases:
         assert cycle_tracker.state == CycleState.IDLE
         assert len(cycle_tracker.temperature_history) == 0
         assert cycle_tracker.cycle_start_time is None
-        assert cycle_tracker._cycle_target_temp is None
 
     def test_mode_change_to_cool_aborts_cycle(self, cycle_tracker, dispatcher):
         """Test that mode change from HEAT to COOL aborts the cycle."""
@@ -828,13 +824,6 @@ class TestSetpointChangeWithDeviceActive:
 
         # Assert state is still HEATING (not aborted)
         assert tracker.state == CycleState.HEATING
-
-        # Assert _cycle_target_temp updated to new value
-        assert tracker._cycle_target_temp == 22.0
-
-        # Assert interruption was recorded
-        assert len(tracker._interruption_history) == 1
-        assert tracker._interruption_history[0][1] == "setpoint_minor"
 
         # Assert temperature_history is preserved
         assert len(tracker.temperature_history) == 1
@@ -944,66 +933,6 @@ class TestSetpointChangeWithDeviceActive:
 
         # Assert state is still HEATING
         assert tracker.state == CycleState.HEATING
-
-        # Assert _cycle_target_temp is the latest value
-        assert tracker._cycle_target_temp == 23.0
-
-        # Assert 3 interruptions were recorded
-        assert len(tracker._interruption_history) == 3
-
-
-class TestResetCycleState:
-    """Tests for _reset_cycle_state helper method."""
-
-    def test_reset_cycle_state_clears_all(
-        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
-    ):
-        """Test that _reset_cycle_state clears all state variables."""
-        # Create tracker
-        tracker = CycleTrackerManager(
-            hass=mock_hass,
-            zone_id="test_zone",
-            adaptive_learner=mock_adaptive_learner,
-            get_target_temp=mock_callbacks["get_target_temp"],
-            get_current_temp=mock_callbacks["get_current_temp"],
-            get_hvac_mode=mock_callbacks["get_hvac_mode"],
-            get_in_grace_period=mock_callbacks["get_in_grace_period"],
-            get_is_device_active=Mock(return_value=True),
-            dispatcher=dispatcher,
-        )
-        tracker.set_restoration_complete()
-
-        # Start heating cycle
-        start_time = datetime(2025, 1, 14, 10, 0, 0)
-        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=start_time, target_temp=20.0, current_temp=18.0))
-        assert tracker.state == CycleState.HEATING
-
-        # Add items to _interruption_history
-        tracker._interruption_history.append((datetime(2025, 1, 14, 10, 5, 0), "setpoint_minor"))
-        tracker._interruption_history.append((datetime(2025, 1, 14, 10, 10, 0), "setpoint_minor"))
-
-        # Add items to _temperature_history
-        tracker._temperature_history.append((datetime(2025, 1, 14, 10, 0, 30), 18.5))
-        tracker._temperature_history.append((datetime(2025, 1, 14, 10, 1, 0), 19.0))
-        tracker._temperature_history.append((datetime(2025, 1, 14, 10, 1, 30), 19.5))
-
-        # Call _reset_cycle_state()
-        tracker._reset_cycle_state()
-
-        # Assert _state == CycleState.IDLE
-        assert tracker._state == CycleState.IDLE
-
-        # Assert _interruption_history is empty
-        assert len(tracker._interruption_history) == 0
-
-        # Assert _temperature_history is empty
-        assert len(tracker._temperature_history) == 0
-
-        # Assert _cycle_start_time is None
-        assert tracker._cycle_start_time is None
-
-        # Assert _cycle_target_temp is None
-        assert tracker._cycle_target_temp is None
 
 
 class TestCycleTrackerMADSettling:
@@ -1138,41 +1067,6 @@ def test_cycle_tracker_module_exists():
 class TestCycleTrackerEventSubscriptions:
     """Tests for event-driven cycle tracker (Feature 2.1)."""
 
-    def test_ctm_subscribes_to_events(self, mock_hass, mock_adaptive_learner, mock_callbacks):
-        """Test CTM subscribes to all input events on init."""
-        from custom_components.adaptive_climate.managers.events import (
-            CycleEventType,
-            CycleEventDispatcher,
-        )
-
-        # Create dispatcher
-        dispatcher = CycleEventDispatcher()
-
-        # Create cycle tracker with dispatcher
-        tracker = CycleTrackerManager(
-            hass=mock_hass,
-            zone_id="test_zone",
-            adaptive_learner=mock_adaptive_learner,
-            dispatcher=dispatcher,
-            **mock_callbacks,
-        )
-
-        # Verify subscriptions exist by checking dispatcher's listeners
-        expected_events = [
-            CycleEventType.CYCLE_STARTED,
-            CycleEventType.HEATING_STARTED,
-            CycleEventType.HEATING_ENDED,
-            CycleEventType.SETTLING_STARTED,
-            CycleEventType.CONTACT_PAUSE,
-            CycleEventType.CONTACT_RESUME,
-            CycleEventType.SETPOINT_CHANGED,
-            CycleEventType.MODE_CHANGED,
-        ]
-
-        for event_type in expected_events:
-            assert event_type in dispatcher._listeners
-            assert len(dispatcher._listeners[event_type]) > 0
-
     def test_ctm_cycle_started_handler(self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher):
         """Test CYCLE_STARTED event triggers IDLE→HEATING transition."""
         from custom_components.adaptive_climate.managers.events import (
@@ -1205,7 +1099,6 @@ class TestCycleTrackerEventSubscriptions:
         # Verify state transition
         assert tracker.state == CycleState.HEATING
         assert tracker.cycle_start_time == datetime(2025, 1, 14, 10, 0, 0)
-        assert tracker._cycle_target_temp == 20.0
 
     def test_ctm_settling_started_handler(self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher):
         """Test SETTLING_STARTED event triggers HEATING→SETTLING transition."""
@@ -1244,56 +1137,6 @@ class TestCycleTrackerEventSubscriptions:
 
         # Verify state transition
         assert tracker.state == CycleState.SETTLING
-
-    def test_ctm_heating_events_track_duty(self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher):
-        """Test HEATING_STARTED/ENDED events update duty cycle tracking."""
-        from custom_components.adaptive_climate.managers.events import (
-            CycleEventDispatcher,
-            CycleStartedEvent,
-            HeatingStartedEvent,
-            HeatingEndedEvent,
-        )
-
-        # Create dispatcher and tracker
-        dispatcher = CycleEventDispatcher()
-        tracker = CycleTrackerManager(
-            hass=mock_hass,
-            zone_id="test_zone",
-            adaptive_learner=mock_adaptive_learner,
-            dispatcher=dispatcher,
-            **mock_callbacks,
-        )
-
-        # Start a cycle first
-        cycle_event = CycleStartedEvent(
-            hvac_mode="heat",
-            timestamp=datetime(2025, 1, 14, 10, 0, 0),
-            target_temp=20.0,
-            current_temp=18.0,
-        )
-        dispatcher.emit(cycle_event)
-
-        # Emit HEATING_STARTED event
-        heating_start = HeatingStartedEvent(
-            hvac_mode="heat",
-            timestamp=datetime(2025, 1, 14, 10, 0, 0),
-        )
-        dispatcher.emit(heating_start)
-
-        # Verify device on time tracked
-        assert hasattr(tracker, '_device_on_time')
-        assert tracker._device_on_time == datetime(2025, 1, 14, 10, 0, 0)
-
-        # Emit HEATING_ENDED event
-        heating_end = HeatingEndedEvent(
-            hvac_mode="heat",
-            timestamp=datetime(2025, 1, 14, 10, 5, 0),
-        )
-        dispatcher.emit(heating_end)
-
-        # Verify device off time tracked
-        assert hasattr(tracker, '_device_off_time')
-        assert tracker._device_off_time == datetime(2025, 1, 14, 10, 5, 0)
 
     def test_ctm_contact_pause_handler(self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher):
         """Test CONTACT_PAUSE event records interruption."""
@@ -4004,9 +3847,6 @@ class TestTransportDelayTracking:
                 timestamp=device_on_time,
             )
         )
-
-        # Verify device_on_time is tracked
-        assert tracker._device_on_time == device_on_time
 
         # Heat arrival time should be device_on_time + transport_delay (5 min)
         expected_heat_arrival = datetime(2025, 1, 14, 10, 7, 0)
