@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import math
-from datetime import datetime
 from time import time
 
 _LOGGER = logging.getLogger(__name__)
@@ -29,6 +28,12 @@ except (ImportError, ValueError):
 # Rationale: 5s allows 5s sensor intervals, provides 5:1 SNR for 0.1°C noise, 102x safety margin vs 0.049s spike
 # Balances responsiveness with noise rejection for fast sensor update rates
 MIN_DT_FOR_DERIVATIVE = 5.0
+
+# Threshold (°C) for bumpless transfer: skip if setpoint changed or error exceeds this
+BUMPLESS_TRANSFER_THRESHOLD = 2.0
+
+# Integral accumulation rate during transport delay dead time (25% of normal)
+DEAD_TIME_INTEGRAL_RATE = 0.25
 
 
 # Based on Arduino PID Library
@@ -349,13 +354,13 @@ class PID:
             return
 
         # Skip transfer if setpoint changed significantly or error is large
-        if abs(self._set_point - self._last_set_point) > 2.0:
+        if abs(self._set_point - self._last_set_point) > BUMPLESS_TRANSFER_THRESHOLD:
             _LOGGER.debug("Bumpless transfer skipped: setpoint changed by %.2f°C",
                          abs(self._set_point - self._last_set_point))
             self._last_output_before_off = None
             return
 
-        if abs(self._error) > 2.0:
+        if abs(self._error) > BUMPLESS_TRANSFER_THRESHOLD:
             _LOGGER.debug("Bumpless transfer skipped: error too large (%.2f°C)", abs(self._error))
             self._last_output_before_off = None
             return
@@ -444,6 +449,42 @@ class PID:
                 return False
 
         return True
+
+    def _accumulate_integral(self, dt_hours: float, decay_multiplier: float) -> None:
+        """Accumulate integral term, reducing rate during transport delay dead time.
+
+        During transport delay, integral accumulates at DEAD_TIME_INTEGRAL_RATE (25%)
+        of normal. If an interval spans the dead time boundary, it is split proportionally.
+        """
+        base = self._Ki * self._error * decay_multiplier
+
+        if not self._transport_delay or self._transport_delay <= 0:
+            self._integral += base * dt_hours
+            return
+
+        # Capture start time on first calc() after set_transport_delay()
+        if self._dead_time_start == -1.0:
+            self._dead_time_start = self._input_time
+
+        if self._dead_time_start is None or self._dead_time_start < 0:
+            self._integral += base * dt_hours
+            return
+
+        elapsed_seconds = self._input_time - self._dead_time_start
+        transport_delay_seconds = self._transport_delay * 60.0
+
+        if elapsed_seconds < transport_delay_seconds:
+            # Entirely within dead time
+            self._integral += base * dt_hours * DEAD_TIME_INTEGRAL_RATE
+        elif elapsed_seconds - self._dt < transport_delay_seconds:
+            # Interval spans dead time boundary — split proportionally
+            time_in_dead = transport_delay_seconds - (elapsed_seconds - self._dt)
+            time_normal = self._dt - time_in_dead
+            self._integral += base * (time_in_dead / 3600.0) * DEAD_TIME_INTEGRAL_RATE
+            self._integral += base * (time_normal / 3600.0)
+        else:
+            # Entirely after dead time
+            self._integral += base * dt_hours
 
     def calc(self, input_val, set_point, input_time=None, last_input_time=None, ext_temp=None, wind_speed=None):
         """Adjusts and holds the given setpoint.
@@ -621,44 +662,8 @@ class PID:
                     # effective_decay = 1 + shaped_progress * (decay_multiplier - 1)
                     decay_multiplier = 1.0 + shaped_progress * (self._integral_decay_multiplier - 1.0)
 
-                # Dead time handling: reduce integral accumulation during transport delay
-                # When transport delay is active, split time interval if it spans both
-                # dead time (25% rate) and normal (100% rate) periods
-                if self._transport_delay and self._transport_delay > 0:
-                    # Capture start time on first calc() after set_transport_delay()
-                    if self._dead_time_start == -1.0:
-                        self._dead_time_start = self._input_time
-
-                    if self._dead_time_start is not None and self._dead_time_start >= 0:
-                        # Calculate elapsed time since dead time started (in seconds)
-                        elapsed_seconds = self._input_time - self._dead_time_start
-                        transport_delay_seconds = self._transport_delay * 60.0
-
-                        if elapsed_seconds < transport_delay_seconds:
-                            # Entirely within dead time - use 25% rate
-                            self._integral += self._Ki * self._error * dt_hours * decay_multiplier * 0.25
-                        elif elapsed_seconds - self._dt < transport_delay_seconds:
-                            # Interval spans both dead time and normal periods - split it
-                            # Time remaining in dead time at start of interval
-                            time_in_dead = transport_delay_seconds - (elapsed_seconds - self._dt)
-                            time_normal = self._dt - time_in_dead
-
-                            # Accumulate at 25% rate for dead time portion
-                            dt_dead_hours = time_in_dead / 3600.0
-                            self._integral += self._Ki * self._error * dt_dead_hours * decay_multiplier * 0.25
-
-                            # Accumulate at 100% rate for normal portion
-                            dt_normal_hours = time_normal / 3600.0
-                            self._integral += self._Ki * self._error * dt_normal_hours * decay_multiplier
-                        else:
-                            # Entirely after dead time - use normal rate
-                            self._integral += self._Ki * self._error * dt_hours * decay_multiplier
-                    else:
-                        # No start time yet - use normal rate
-                        self._integral += self._Ki * self._error * dt_hours * decay_multiplier
-                else:
-                    # No dead time - use normal rate
-                    self._integral += self._Ki * self._error * dt_hours * decay_multiplier
+                # Accumulate integral, accounting for transport delay dead time
+                self._accumulate_integral(dt_hours, decay_multiplier)
 
                 # Exponential integral decay during overhang
                 # Provides aggressive decay that naturally slows as integral approaches zero
