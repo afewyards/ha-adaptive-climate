@@ -3,7 +3,7 @@
 import sys
 from abc import ABC, ABCMeta
 from enum import IntFlag
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 # ============================================================================
 # Mock Home Assistant modules before any test imports
@@ -240,3 +240,27 @@ def pytest_runtest_setup(item):
     """
     # Restore the original mock before each test
     sys.modules["homeassistant.components.climate"] = _ORIGINAL_MOCK_CLIMATE
+
+
+@pytest.fixture
+def mock_hass():
+    """Create a shared mock Home Assistant instance.
+
+    Provides the minimum HA interface needed by adaptive_climate components:
+    states, services, event bus, data store, and async helpers.
+    """
+    hass = MagicMock()
+    hass.states = MagicMock()
+    hass.services = MagicMock()
+    hass.services.async_call = AsyncMock()
+    hass.bus = MagicMock()
+    hass.bus.async_fire = AsyncMock()
+    hass.async_create_task = MagicMock(side_effect=lambda coro: coro)
+    hass.async_call_later = MagicMock(return_value=MagicMock())  # returns cancel handle
+    hass.data = {
+        "adaptive_climate": {
+            "coordinator": None,
+            "learning_store": None,
+        }
+    }
+    return hass
