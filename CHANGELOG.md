@@ -1,6 +1,160 @@
 # CHANGELOG
 
 
+## v0.61.0 (2026-02-06)
+
+### Bug Fixes
+
+- Prevent heating rate sessions during night setback
+  ([`fdf5cfc`](https://github.com/afewyards/ha-adaptive-climate/commit/fdf5cfc0341a1cdf737fecb1119b9e4192376f70))
+
+- Reject negative/near-zero heating rate observations
+  ([`6394804`](https://github.com/afewyards/ha-adaptive-climate/commit/6394804a0687fbbdcf1d48d816373ff2fec00fd4))
+
+### Code Style
+
+- Replace Optional[X] with X | None (PEP 604) across codebase
+  ([`7fc9d04`](https://github.com/afewyards/ha-adaptive-climate/commit/7fc9d04b3de1fefc19dd17f504a65df6da8683da))
+
+- Convert 313 Optional[X] → X | None instances in 48 files - Convert 1 Union[X, Y] → X | Y instance
+  in managers/events.py - Add from __future__ import annotations to all 81 source files - Clean up
+  unused Optional/Union typing imports
+
+### Documentation
+
+- Add test strategy rebalance design doc
+  ([`b77d35c`](https://github.com/afewyards/ha-adaptive-climate/commit/b77d35c58c1e03cc2c013c6adbb5964abf4bed3f))
+
+### Features
+
+- **tests**: Add control loop integration tests
+  ([`ebf1cd5`](https://github.com/afewyards/ha-adaptive-climate/commit/ebf1cd58d847298a6a98a31fcaa0140d9c501327))
+
+Implements Phase 1b of test strategy rebalance with 3 integration tests:
+
+- Test A1 (Full PID Feedback Loop): Multi-cycle heating scenario that demonstrates PID calculation →
+  heater on → temperature rise → cycle tracking → metrics recording → learner observation. Uses real
+  component instances to verify complete feedback loop.
+
+- Test A3 (Setpoint Change Response): Tests SetpointBoostManager's integral boost on setpoint
+  increase and decay on decrease. Verifies the PID responds correctly to user setpoint changes.
+
+- Test A2 (Simplified Cycle Metrics Propagation): Verifies cycle metrics flow correctly from cycle
+  tracker to learner without transport delay complications (full transport delay testing would
+  require HeaterController).
+
+All tests use shared fixtures (make_thermostat, time_travel) from conftest.py.
+
+- **tests**: Add make_thermostat factory for real component graphs
+  ([`cf6d3c0`](https://github.com/afewyards/ha-adaptive-climate/commit/cf6d3c0c61654978f8aca4bf18343c9418d87c27))
+
+- **tests**: Add night setback lifecycle integration tests
+  ([`0a2c108`](https://github.com/afewyards/ha-adaptive-climate/commit/0a2c108bd4757dde45cc8c738b5a09837d660a21))
+
+Add comprehensive integration tests for night setback functionality covering: - Full setback →
+  preheat → recovery cycle with HeatingRateLearner and PreheatLearner - Learning gate graduation
+  through learning stages (suppressed → limited → unlimited) - Priority stacking between contact
+  sensors, humidity detection, and night setback
+
+Tests verify component interactions rather than individual behavior, fulfilling Phase 1b of test
+  strategy rebalance.
+
+- **tests**: Add override stacking integration tests
+  ([`49f72f5`](https://github.com/afewyards/ha-adaptive-climate/commit/49f72f5849beb3c15a313fee3bd4ff0f307c6b31))
+
+Add integration tests verifying override priority and coordination:
+
+- Test D1: Override priority stacking - Verifies overrides ordered by priority (contact > humidity >
+  night_setback) - Tests that removing higher-priority overrides reveals next in stack - Validates
+  StatusManager.is_paused() respects priority order
+
+- Test D2: Contact pause + learning resilience - Verifies heating rate sessions are discarded on
+  override - Tests that new sessions can start cleanly after pause clears - Ensures successful
+  sessions save observations correctly
+
+- Test D3: Humidity pause + integral decay - Tests PID integral decay during humidity pause
+  (~10%/min) - Verifies complete state machine: NORMAL → PAUSED → STABILIZING → NORMAL - Confirms
+  PID remains functional after integral reduction
+
+Tests focus on component interactions rather than isolated units, verifying that StatusManager,
+  ContactSensorHandler, HumidityDetector, HeatingRateLearner, and PID work together correctly during
+  override conditions.
+
+Part of Phase 1b test strategy rebalance.
+
+- **tests**: Add persistence round-trip integration tests
+  ([`785bd90`](https://github.com/afewyards/ha-adaptive-climate/commit/785bd909d84abec3f11b9a0e08b78a022176d816))
+
+Implement Phase 1b of test strategy rebalance with 3 integration tests:
+
+- C1: Full save → restore round-trip Tests complete persistence pipeline: build real state via
+  make_thermostat, record cycles, set confidence, add heating rate observations, set custom PID
+  gains, serialize, restore to fresh instance, and verify all state matches (cycle count,
+  confidence, heating rate obs, PID gains).
+
+- C2: Restore with version migration Tests v9 → v10 and v7 → v8 format migrations. Verifies old
+  fields are preserved, new fields get sensible defaults, and detector states are properly migrated
+  (e.g., v7's separate undershoot/chronic detectors merge into v8's unified detector).
+
+- C3: Restore degraded data gracefully Tests resilience to corrupt data: empty dict, missing keys,
+  wrong types in critical fields (raises error), wrong types in nested fields (handled gracefully),
+  and extra unknown keys (forward compatibility). Verifies system remains functional after restore
+  failures.
+
+Key insights: - Tests use real components (make_thermostat) not mocks - Focus on pipeline
+  correctness, not individual field serialization - Tests verify graceful degradation, not specific
+  error messages
+
+- **tests**: Add shared mock_hass fixture to conftest.py
+  ([`7786927`](https://github.com/afewyards/ha-adaptive-climate/commit/778692738b22a87da2c9e8ae6c3fb1380ffa814a))
+
+Add shared mock_hass fixture providing: - states, services, event bus - async helpers
+  (async_call_later, async_create_task) - data structure for adaptive_climate components
+
+Includes test coverage in test_conftest_fixtures.py. Existing local fixtures in test files will
+  shadow this, allowing gradual migration.
+
+- **tests**: Add time_travel fixture for coordinated time control
+  ([`4559905`](https://github.com/afewyards/ha-adaptive-climate/commit/45599054901cdb62ea3e7b957b633a9e00bd1d78))
+
+Add shared time_travel fixture that patches both dt_util.utcnow() and time.monotonic() together,
+  allowing integration tests to simulate time passing in a coordinated way.
+
+- TimeTravelController manages both datetime and monotonic time - advance() method moves both clocks
+  by the same delta - Proper cleanup restores original mocks after test - All existing tests pass
+  without modification
+
+### Refactoring
+
+- **tests**: Remove fragile implementation-detail tests from test_cycle_tracker.py
+  ([`72d8198`](https://github.com/afewyards/ha-adaptive-climate/commit/72d8198ec6ca9626c442e0272b1e365207793f49))
+
+- **tests**: Rewrite test_climate.py around observable behavior
+  ([`cac96ac`](https://github.com/afewyards/ha-adaptive-climate/commit/cac96ac02cb291c41306724cfb10548a9781a15e))
+
+Phase 2a of test strategy rebalance. Rewrite test_climate.py to test observable behavior via public
+  API instead of internal implementation.
+
+Changes: - 3,406 lines → 824 lines (76% reduction) - 117 tests → 27 tests (90 tests deleted) -
+  Reorganized into 7 feature-based test classes - Zero private attribute assertions - Zero
+  mock.call_count checks without outcomes - All assertions via public properties and
+  extra_state_attributes
+
+Tests deleted (90): - Wiring tests (38): listener registration, dispatcher identity, static code
+  analysis - Private attribute tests (52): _integral, _kp, _tolerance, _duty_accumulator, etc.
+
+Tests kept and rewritten (27): - TestHeaterControl (7): service calls, error handling, actuator
+  types - TestPresetModes (3): mode switching, temperature changes - TestStateRestoration (7):
+  RestoreEntity round-trip, fallbacks - TestHVACModes (4): mode transitions, hvac_action states -
+  TestStateAttributes (3): attribute structure validation - TestNightSetback (1): configuration
+  storage - Module imports (2): import verification
+
+Key improvements: - OLD: assert thermostat._heater_control_failed is True - NEW: assert
+  thermostat.hvac_action == "idle"
+
+Test suite: 2,747 tests (unchanged - behavior coverage maintained via integration tests)
+
+
 ## v0.60.0 (2026-02-03)
 
 ### Bug Fixes
