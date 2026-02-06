@@ -182,11 +182,30 @@ class ClimateControlMixin:
                                     new_ki,
                                 )
 
+                            # Check night setback state for heating rate session management
+                            in_night_setback = False
+                            if self._night_setback_controller:
+                                _, in_night_period, _ = self._night_setback_controller.calculate_night_setback_adjustment()
+                                in_night_setback = in_night_period
+
                             # Check if we should start a heating rate session
                             heating_rate_learner = adaptive_learner._heating_rate_learner
+
+                            # If in night setback and there's an active session, end it as override (discard)
+                            if in_night_setback and heating_rate_learner._active_session is not None:
+                                heating_rate_learner.end_session(
+                                    end_temp=self._current_temp,
+                                    reason="override",
+                                )
+                                _LOGGER.debug(
+                                    "%s: Discarded heating rate session due to night setback",
+                                    self.entity_id,
+                                )
+
                             if (
                                 heating_rate_learner._active_session is None
                                 and not self._status_manager.is_paused()
+                                and not in_night_setback
                                 and self._ext_temp is not None
                             ):
                                 # Determine recovery threshold by heating type

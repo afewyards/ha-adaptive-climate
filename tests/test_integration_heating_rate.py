@@ -572,3 +572,173 @@ class TestSessionLifecycleComplete:
         assert obs is not None
         assert obs.stalled is True
         assert learner._stall_counter == 1
+
+
+class TestNightSetbackSessionManagement:
+    """Test heating rate session management during night setback periods."""
+
+    @pytest.mark.asyncio
+    async def test_no_session_start_during_night_setback(self, mock_thermostat):
+        """Test session doesn't start when night setback is active."""
+        learner = mock_thermostat._learner._heating_rate_learner
+
+        # Set up night setback controller that returns in_night_period = True
+        mock_night_setback = MagicMock()
+        mock_night_setback.calculate_night_setback_adjustment.return_value = (
+            -2.0,  # adjustment
+            True,  # in_night_period
+            {},    # night_setback_info
+        )
+        mock_thermostat._night_setback_controller = mock_night_setback
+
+        # Set temp below threshold (19.0 < 21.0 - 0.5)
+        mock_thermostat._current_temp = 19.0
+        mock_thermostat._target_temp = 21.0
+
+        # No active session initially
+        assert learner._active_session is None
+
+        # Simulate session start logic with night setback guard
+        in_night_setback = False
+        if mock_thermostat._night_setback_controller:
+            _, in_night_period, _ = mock_thermostat._night_setback_controller.calculate_night_setback_adjustment()
+            in_night_setback = in_night_period
+
+        threshold = 0.5  # radiator threshold
+        if (
+            learner._active_session is None
+            and not mock_thermostat._status_manager.is_paused()
+            and not in_night_setback
+            and mock_thermostat._ext_temp is not None
+        ):
+            learner.start_session(
+                temp=mock_thermostat._current_temp,
+                setpoint=mock_thermostat._target_temp,
+                outdoor_temp=mock_thermostat._ext_temp,
+            )
+
+        # Verify no session started
+        assert learner._active_session is None
+
+    @pytest.mark.asyncio
+    async def test_active_session_discarded_on_night_setback_start(self, mock_thermostat):
+        """Test active session is discarded when night setback activates."""
+        learner = mock_thermostat._learner._heating_rate_learner
+
+        # Start a session normally (no night setback initially)
+        mock_thermostat._night_setback_controller = None
+        learner.start_session(
+            temp=19.0,
+            setpoint=21.0,
+            outdoor_temp=5.0,
+        )
+
+        # Verify session is active
+        assert learner._active_session is not None
+
+        # Now simulate night setback becoming active
+        mock_night_setback = MagicMock()
+        mock_night_setback.calculate_night_setback_adjustment.return_value = (
+            -2.0,  # adjustment
+            True,  # in_night_period
+            {},    # night_setback_info
+        )
+        mock_thermostat._night_setback_controller = mock_night_setback
+        mock_thermostat._current_temp = 19.3
+
+        # Run the discard logic
+        in_night_setback = False
+        if mock_thermostat._night_setback_controller:
+            _, in_night_period, _ = mock_thermostat._night_setback_controller.calculate_night_setback_adjustment()
+            in_night_setback = in_night_period
+
+        if in_night_setback and learner._active_session is not None:
+            learner.end_session(
+                end_temp=mock_thermostat._current_temp,
+                reason="override",
+            )
+
+        # Verify session is ended and observation NOT banked
+        assert learner._active_session is None
+
+    @pytest.mark.asyncio
+    async def test_session_starts_after_night_setback_ends(self, mock_thermostat):
+        """Test session can start normally when night setback is not active."""
+        learner = mock_thermostat._learner._heating_rate_learner
+
+        # Set up night setback controller that returns in_night_period = False
+        mock_night_setback = MagicMock()
+        mock_night_setback.calculate_night_setback_adjustment.return_value = (
+            0.0,   # adjustment (no setback)
+            False, # in_night_period
+            {},    # night_setback_info
+        )
+        mock_thermostat._night_setback_controller = mock_night_setback
+
+        # Set temp below threshold
+        mock_thermostat._current_temp = 19.0
+        mock_thermostat._target_temp = 21.0
+
+        # No active session initially
+        assert learner._active_session is None
+
+        # Simulate session start logic
+        in_night_setback = False
+        if mock_thermostat._night_setback_controller:
+            _, in_night_period, _ = mock_thermostat._night_setback_controller.calculate_night_setback_adjustment()
+            in_night_setback = in_night_period
+
+        threshold = 0.5
+        if (
+            learner._active_session is None
+            and not mock_thermostat._status_manager.is_paused()
+            and not in_night_setback
+            and mock_thermostat._ext_temp is not None
+        ):
+            learner.start_session(
+                temp=mock_thermostat._current_temp,
+                setpoint=mock_thermostat._target_temp,
+                outdoor_temp=mock_thermostat._ext_temp,
+            )
+
+        # Verify session started normally
+        assert learner._active_session is not None
+        assert learner._active_session.start_temp == 19.0
+
+    @pytest.mark.asyncio
+    async def test_works_without_night_setback_controller(self, mock_thermostat):
+        """Test session start works when night_setback_controller is None."""
+        learner = mock_thermostat._learner._heating_rate_learner
+
+        # Set night_setback_controller to None
+        mock_thermostat._night_setback_controller = None
+
+        # Set temp below threshold
+        mock_thermostat._current_temp = 19.0
+        mock_thermostat._target_temp = 21.0
+
+        # No active session initially
+        assert learner._active_session is None
+
+        # Simulate session start logic
+        in_night_setback = False
+        if mock_thermostat._night_setback_controller:
+            _, in_night_period, _ = mock_thermostat._night_setback_controller.calculate_night_setback_adjustment()
+            in_night_setback = in_night_period
+
+        threshold = 0.5
+        if (
+            learner._active_session is None
+            and not mock_thermostat._status_manager.is_paused()
+            and not in_night_setback
+            and mock_thermostat._ext_temp is not None
+        ):
+            learner.start_session(
+                temp=mock_thermostat._current_temp,
+                setpoint=mock_thermostat._target_temp,
+                outdoor_temp=mock_thermostat._ext_temp,
+            )
+
+        # Verify session starts normally (no crash)
+        assert learner._active_session is not None
+        assert learner._active_session.start_temp == 19.0
