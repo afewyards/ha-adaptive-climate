@@ -89,3 +89,74 @@ class TestTimeTravel:
         time_travel.advance(hours=1, minutes=30, seconds=45)
         expected = start_dt + timedelta(hours=1, minutes=30, seconds=45)
         assert time_travel.now() == expected
+
+
+class TestMakeThermostat:
+    """Tests for the make_thermostat factory fixture."""
+
+    def test_returns_namespace_with_all_components(self, make_thermostat):
+        """Factory returns object with all expected components."""
+        t = make_thermostat()
+        assert hasattr(t, 'learner')
+        assert hasattr(t, 'pid')
+        assert hasattr(t, 'gains_manager')
+        assert hasattr(t, 'cycle_tracker')
+        assert hasattr(t, 'dispatcher')
+        assert hasattr(t, 'heating_rate_learner')
+
+    def test_components_are_real_instances(self, make_thermostat):
+        """Components are real instances, not mocks."""
+        from custom_components.adaptive_climate.adaptive.learning import AdaptiveLearner
+        from custom_components.adaptive_climate.pid_controller import PID
+        from custom_components.adaptive_climate.managers.pid_gains_manager import PIDGainsManager
+        from custom_components.adaptive_climate.managers.events import CycleEventDispatcher
+
+        t = make_thermostat()
+        assert isinstance(t.learner, AdaptiveLearner)
+        assert isinstance(t.pid, PID)
+        assert isinstance(t.gains_manager, PIDGainsManager)
+        assert isinstance(t.dispatcher, CycleEventDispatcher)
+
+    def test_heating_type_override(self, make_thermostat):
+        """Factory accepts heating_type parameter."""
+        from custom_components.adaptive_climate.const import HeatingType
+
+        t = make_thermostat(heating_type=HeatingType.FLOOR_HYDRONIC)
+        assert t.learner._heating_type == HeatingType.FLOOR_HYDRONIC
+        assert t.heating_rate_learner._heating_type == HeatingType.FLOOR_HYDRONIC
+
+    def test_default_heating_type_is_radiator(self, make_thermostat):
+        """Default heating type is radiator."""
+        from custom_components.adaptive_climate.const import HeatingType
+
+        t = make_thermostat()
+        assert t.learner._heating_type == HeatingType.RADIATOR
+
+    def test_independent_instances(self, make_thermostat):
+        """Calling factory twice returns independent instances."""
+        t1 = make_thermostat()
+        t2 = make_thermostat()
+        assert t1.learner is not t2.learner
+        assert t1.pid is not t2.pid
+
+    def test_gains_manager_synced_to_pid(self, make_thermostat):
+        """PIDGainsManager gains are synced to PID controller."""
+        from homeassistant.components.climate import HVACMode
+
+        t = make_thermostat()
+        gains = t.gains_manager.get_gains(HVACMode.HEAT)
+        # Gains should be set and non-zero
+        assert gains.kp > 0
+
+    def test_heating_rate_learner_is_from_learner(self, make_thermostat):
+        """heating_rate_learner is the one from AdaptiveLearner."""
+        t = make_thermostat()
+        assert t.heating_rate_learner is t.learner._heating_rate_learner
+
+    def test_mutable_temperature(self, make_thermostat):
+        """Factory provides mutable target_temp and current_temp."""
+        t = make_thermostat()
+        assert t.target_temp == 21.0  # default
+        assert t.current_temp == 19.0  # default
+        t.target_temp = 22.0
+        assert t.target_temp == 22.0

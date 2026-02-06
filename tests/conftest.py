@@ -320,3 +320,132 @@ def time_travel():
 
     # Restore utcnow to original mock after test
     dt_util.utcnow = original_utcnow
+
+
+# ============================================================================
+# Thermostat Factory Fixture
+# ============================================================================
+
+from types import SimpleNamespace
+from typing import Union, Optional
+
+
+@pytest.fixture
+def make_thermostat(mock_hass):
+    """Factory fixture that creates real component instances wired together.
+
+    Returns a factory function that creates a namespace with:
+    - learner: Real AdaptiveLearner instance
+    - pid: Real PID controller instance
+    - gains_manager: Real PIDGainsManager instance
+    - cycle_tracker: Real CycleTrackerManager instance
+    - dispatcher: Real CycleEventDispatcher instance
+    - heating_rate_learner: Reference to learner._heating_rate_learner
+    - target_temp: Mutable temperature setpoint (default 21.0)
+    - current_temp: Mutable current temperature (default 19.0)
+
+    Usage:
+        def test_something(make_thermostat):
+            t = make_thermostat()  # default radiator
+            t.target_temp = 22.0
+            t.learner.add_cycle_metrics(...)
+
+            t2 = make_thermostat(heating_type=HeatingType.FLOOR_HYDRONIC)
+    """
+    from custom_components.adaptive_climate.adaptive.learning import AdaptiveLearner
+    from custom_components.adaptive_climate.adaptive.physics import calculate_initial_pid
+    from custom_components.adaptive_climate.pid_controller import PID
+    from custom_components.adaptive_climate.managers.pid_gains_manager import PIDGainsManager
+    from custom_components.adaptive_climate.managers.cycle_tracker import CycleTrackerManager
+    from custom_components.adaptive_climate.managers.events import CycleEventDispatcher
+    from custom_components.adaptive_climate.const import HeatingType, PIDGains, HEATING_TYPE_CHARACTERISTICS
+    from homeassistant.components.climate import HVACMode
+
+    def _factory(heating_type: Optional[Union[HeatingType, str]] = None):
+        # Default to radiator if not specified
+        if heating_type is None:
+            heating_type = HeatingType.RADIATOR
+        elif isinstance(heating_type, str):
+            heating_type = HeatingType(heating_type)
+
+        # Create namespace for mutable temps
+        ns = SimpleNamespace(
+            target_temp=21.0,
+            current_temp=19.0,
+            hvac_mode=HVACMode.HEAT,
+        )
+
+        # Create real AdaptiveLearner
+        learner = AdaptiveLearner(
+            heating_type=heating_type.value,
+            chronic_approach_historic_scan=False,
+        )
+
+        # Calculate physics-based PID gains
+        # Use reasonable defaults for thermal time constant based on heating type
+        tau_map = {
+            HeatingType.FLOOR_HYDRONIC: 8.0,
+            HeatingType.RADIATOR: 4.0,
+            HeatingType.CONVECTOR: 2.0,
+            HeatingType.FORCED_AIR: 1.0,
+        }
+        tau = tau_map.get(heating_type, 4.0)
+        kp, ki, kd = calculate_initial_pid(tau, heating_type.value)
+
+        # Get heating type characteristics for derivative filter
+        chars = HEATING_TYPE_CHARACTERISTICS[heating_type]
+
+        # Create real PID controller
+        pid = PID(
+            kp=kp,
+            ki=ki,
+            kd=kd,
+            ke=0.0,
+            out_min=0.0,
+            out_max=100.0,
+            cold_tolerance=chars["cold_tolerance"],
+            hot_tolerance=chars["hot_tolerance"],
+            derivative_filter_alpha=chars["derivative_filter_alpha"],
+            heating_type=heating_type.value,
+        )
+
+        # Create PIDGains for gains manager
+        initial_gains = PIDGains(kp=kp, ki=ki, kd=kd, ke=0.0)
+
+        # Create real PIDGainsManager
+        gains_manager = PIDGainsManager(
+            pid_controller=pid,
+            initial_heating_gains=initial_gains,
+            initial_cooling_gains=None,
+            get_hvac_mode=lambda: ns.hvac_mode,
+        )
+
+        # Create real CycleEventDispatcher
+        dispatcher = CycleEventDispatcher()
+
+        # Create real CycleTrackerManager with minimal callbacks
+        cycle_tracker = CycleTrackerManager(
+            hass=mock_hass,
+            zone_id="test_zone",
+            adaptive_learner=learner,
+            get_target_temp=lambda: ns.target_temp,
+            get_current_temp=lambda: ns.current_temp,
+            get_hvac_mode=lambda: ns.hvac_mode,
+            get_in_grace_period=lambda: False,
+            get_is_device_active=lambda: False,
+            thermal_time_constant=tau,
+            dispatcher=dispatcher,
+            heating_type=heating_type.value,
+        )
+
+        # Populate namespace with components
+        ns.learner = learner
+        ns.pid = pid
+        ns.gains_manager = gains_manager
+        ns.cycle_tracker = cycle_tracker
+        ns.dispatcher = dispatcher
+        ns.heating_rate_learner = learner._heating_rate_learner
+
+        return ns
+
+    return _factory
