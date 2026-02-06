@@ -1,7 +1,9 @@
 """Thermal rate learning and adaptive PID adjustments for Adaptive Climate."""
 
+from __future__ import annotations
+
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional, Any, TYPE_CHECKING
+from typing import Dict, List, Any, TYPE_CHECKING
 import statistics
 import logging
 
@@ -98,7 +100,7 @@ _LOGGER = logging.getLogger(__name__)
 def _get_last_adjustment_time_from_history(
     pid_history: list[dict],
     reason: str,
-) -> Optional[datetime]:
+) -> datetime | None:
     """Get the timestamp of the last Ki adjustment for a given reason.
 
     Args:
@@ -130,7 +132,7 @@ class AdaptiveLearner:
     def __init__(
         self,
         max_history: int = MAX_CYCLE_HISTORY,
-        heating_type: Optional[str] = None,
+        heating_type: str | None = None,
         chronic_approach_historic_scan: bool = False,
     ):
         """
@@ -150,7 +152,7 @@ class AdaptiveLearner:
         self._heating_type = heating_type
         self._convergence_thresholds = get_convergence_thresholds(heating_type)
         self._rule_thresholds = get_rule_thresholds(heating_type)
-        self._last_adjustment_time: Optional[datetime] = None
+        self._last_adjustment_time: datetime | None = None
         # Convergence tracking for Ke learning activation
         self._consecutive_converged_cycles: int = 0
         self._pid_converged_for_ke: bool = False
@@ -283,27 +285,27 @@ class AdaptiveLearner:
         return self._validation._validation_cycles
 
     @property
-    def _validation_baseline_overshoot(self) -> Optional[float]:
+    def _validation_baseline_overshoot(self) -> float | None:
         """Backward-compatible alias for validation manager's baseline overshoot."""
         return self._validation._validation_baseline_overshoot
 
     @property
-    def _last_seasonal_check(self) -> Optional[datetime]:
+    def _last_seasonal_check(self) -> datetime | None:
         """Backward-compatible alias for validation manager's last seasonal check."""
         return self._validation._last_seasonal_check
 
     @_last_seasonal_check.setter
-    def _last_seasonal_check(self, value: Optional[datetime]) -> None:
+    def _last_seasonal_check(self, value: datetime | None) -> None:
         """Backward-compatible alias setter for validation manager's last seasonal check."""
         self._validation._last_seasonal_check = value
 
     @property
-    def _last_seasonal_shift(self) -> Optional[datetime]:
+    def _last_seasonal_shift(self) -> datetime | None:
         """Backward-compatible alias for validation manager's last seasonal shift."""
         return self._validation._last_seasonal_shift
 
     @_last_seasonal_shift.setter
-    def _last_seasonal_shift(self, value: Optional[datetime]) -> None:
+    def _last_seasonal_shift(self, value: datetime | None) -> None:
         """Backward-compatible alias setter for validation manager's last seasonal shift."""
         self._validation._last_seasonal_shift = value
 
@@ -313,17 +315,17 @@ class AdaptiveLearner:
         return self._validation._outdoor_temp_history
 
     @property
-    def _physics_baseline_kp(self) -> Optional[float]:
+    def _physics_baseline_kp(self) -> float | None:
         """Backward-compatible alias for validation manager's physics baseline Kp."""
         return self._validation._physics_baseline_kp
 
     @property
-    def _physics_baseline_ki(self) -> Optional[float]:
+    def _physics_baseline_ki(self) -> float | None:
         """Backward-compatible alias for validation manager's physics baseline Ki."""
         return self._validation._physics_baseline_ki
 
     @property
-    def _physics_baseline_kd(self) -> Optional[float]:
+    def _physics_baseline_kd(self) -> float | None:
         """Backward-compatible alias for validation manager's physics baseline Kd."""
         return self._validation._physics_baseline_kd
 
@@ -528,9 +530,9 @@ class AdaptiveLearner:
         min_adjustment_cycles: int = MIN_ADJUSTMENT_CYCLES,
         pwm_seconds: float = 0,
         check_auto_apply: bool = False,
-        outdoor_temp: Optional[float] = None,
+        outdoor_temp: float | None = None,
         mode: "HVACMode" = None,
-    ) -> Optional[Dict[str, float]]:
+    ) -> Dict[str, float] | None:
         """
         Calculate PID adjustments based on observed cycle performance.
 
@@ -866,7 +868,7 @@ class AdaptiveLearner:
             "kd": new_kd,
         }
 
-    def get_last_adjustment_time(self) -> Optional[datetime]:
+    def get_last_adjustment_time(self) -> datetime | None:
         """
         Get the timestamp of the last PID adjustment.
 
@@ -893,7 +895,7 @@ class AdaptiveLearner:
         self._validation.reset_validation_state()
         self._undershoot_detector.reset_all()  # Reset all undershoot state
 
-    def get_previous_pid(self) -> Optional[Dict[str, float]]:
+    def get_previous_pid(self) -> Dict[str, float] | None:
         """Get the previous PID configuration for rollback.
 
         DEPRECATED: PID history is now managed by PIDGainsManager.
@@ -1217,7 +1219,7 @@ class AdaptiveLearner:
         cycle_history = self._cooling_cycle_history if mode == get_hvac_cool_mode() else self._heating_cycle_history
         return self._validation.check_performance_degradation(cycle_history, baseline_window)
 
-    def check_seasonal_shift(self, outdoor_temp: Optional[float] = None) -> bool:
+    def check_seasonal_shift(self, outdoor_temp: float | None = None) -> bool:
         """Check if outdoor temperature regime has shifted significantly.
 
         Detects seasonal changes (e.g., winter to spring) that may require
@@ -1240,7 +1242,7 @@ class AdaptiveLearner:
         """
         self._confidence.apply_confidence_decay()
 
-    def get_learning_rate_multiplier(self, confidence: Optional[float] = None) -> float:
+    def get_learning_rate_multiplier(self, confidence: float | None = None) -> float:
         """Get learning rate multiplier based on convergence confidence.
 
         Args:
@@ -1281,7 +1283,7 @@ class AdaptiveLearner:
         """
         self._validation.start_validation_mode(baseline_overshoot)
 
-    def add_validation_cycle(self, metrics: CycleMetrics) -> Optional[str]:
+    def add_validation_cycle(self, metrics: CycleMetrics) -> str | None:
         """Add a cycle to validation tracking and check for completion.
 
         Collects cycles during validation mode and evaluates performance
@@ -1310,7 +1312,7 @@ class AdaptiveLearner:
         current_kp: float,
         current_ki: float,
         current_kd: float,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Check if auto-apply is allowed based on safety limits.
 
         Performs four safety checks before allowing auto-apply:
@@ -1370,9 +1372,9 @@ class AdaptiveLearner:
         self,
         cycles_completed: int,
         current_ki: float,
-        pid_history: Optional[list[dict]] = None,
+        pid_history: list[dict] | None = None,
         mode: "HVACMode" = None,
-    ) -> Optional[float]:
+    ) -> float | None:
         """Check if Ki adjustment is needed for persistent undershoot (unified real-time + cycle).
 
         Checks if the unified undershoot detector has identified either:
@@ -1456,11 +1458,11 @@ class AdaptiveLearner:
 
     def check_physics_rate_underperformance(
         self,
-        tau: Optional[float] = None,
-        area_m2: Optional[float] = None,
-        max_power_w: Optional[float] = None,
-        supply_temperature: Optional[float] = None,
-    ) -> Optional[dict]:
+        tau: float | None = None,
+        area_m2: float | None = None,
+        max_power_w: float | None = None,
+        supply_temperature: float | None = None,
+    ) -> dict | None:
         """Check if learned heating rate is below physics-based expectations.
 
         Compares the learned heating rate from HeatingRateLearner against

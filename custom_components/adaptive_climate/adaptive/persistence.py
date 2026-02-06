@@ -1,8 +1,10 @@
 """Persistence layer for adaptive learning data."""
 
+from __future__ import annotations
+
 import asyncio
 from datetime import datetime
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import Any, Dict, List, TYPE_CHECKING
 import json
 import logging
 import os
@@ -153,7 +155,7 @@ class LearningDataStore:
         self._data = data
         return data
 
-    async def _migrate_from_old_storage(self) -> Optional[Dict[str, Any]]:
+    async def _migrate_from_old_storage(self) -> Dict[str, Any] | None:
         """
         Migrate data from old storage key to new storage key.
 
@@ -184,7 +186,7 @@ class LearningDataStore:
 
         return old_data
 
-    def get_zone_data(self, zone_id: str) -> Optional[Dict[str, Any]]:
+    def get_zone_data(self, zone_id: str) -> Dict[str, Any] | None:
         """
         Get learning data for a specific zone.
 
@@ -199,9 +201,9 @@ class LearningDataStore:
     async def async_save_zone(
         self,
         zone_id: str,
-        adaptive_data: Optional[Dict[str, Any]] = None,
-        ke_data: Optional[Dict[str, Any]] = None,
-        preheat_data: Optional[Dict[str, Any]] = None,
+        adaptive_data: Dict[str, Any] | None = None,
+        ke_data: Dict[str, Any] | None = None,
+        preheat_data: Dict[str, Any] | None = None,
     ) -> None:
         """
         Save learning data for a specific zone.
@@ -277,9 +279,9 @@ class LearningDataStore:
     def update_zone_data(
         self,
         zone_id: str,
-        adaptive_data: Optional[Dict[str, Any]] = None,
-        ke_data: Optional[Dict[str, Any]] = None,
-        preheat_data: Optional[Dict[str, Any]] = None,
+        adaptive_data: Dict[str, Any] | None = None,
+        ke_data: Dict[str, Any] | None = None,
+        preheat_data: Dict[str, Any] | None = None,
     ) -> None:
         """
         Update zone data in memory without triggering immediate save.
@@ -320,7 +322,7 @@ class LearningDataStore:
             f"preheat={preheat_data is not None}"
         )
 
-    def load(self) -> Optional[Dict[str, Any]]:
+    def load(self) -> Dict[str, Any] | None:
         """
         Load learning data from storage.
 
@@ -350,7 +352,7 @@ class LearningDataStore:
             _LOGGER.error(f"Failed to load learning data: {e}")
             return None
 
-    def restore_thermal_learner(self, data: Dict[str, Any]) -> Optional["ThermalRateLearner"]:
+    def restore_thermal_learner(self, data: Dict[str, Any]) -> "ThermalRateLearner" | None:
         """
         Restore ThermalRateLearner from saved data.
 
@@ -395,7 +397,7 @@ class LearningDataStore:
             _LOGGER.error(f"Failed to restore ThermalRateLearner: {e}")
             return None
 
-    def restore_adaptive_learner(self, data: Dict[str, Any]) -> Optional[Any]:
+    def restore_adaptive_learner(self, data: Dict[str, Any]) -> Any | None:
         """
         Restore AdaptiveLearner from saved data.
 
@@ -461,7 +463,7 @@ class LearningDataStore:
             _LOGGER.error(f"Failed to restore AdaptiveLearner: {e}")
             return None
 
-    def restore_valve_tracker(self, data: Dict[str, Any]) -> Optional[Any]:
+    def restore_valve_tracker(self, data: Dict[str, Any]) -> Any | None:
         """
         Restore ValveCycleTracker from saved data.
 
@@ -490,7 +492,7 @@ class LearningDataStore:
             _LOGGER.error(f"Failed to restore ValveCycleTracker: {e}")
             return None
 
-    def restore_ke_learner(self, data: Dict[str, Any]) -> Optional[Any]:
+    def restore_ke_learner(self, data: Dict[str, Any]) -> Any | None:
         """
         Restore KeLearner from saved data.
 
@@ -520,7 +522,7 @@ class LearningDataStore:
             _LOGGER.error(f"Failed to restore KeLearner: {e}")
             return None
 
-    def restore_preheat_learner(self, data: Dict[str, Any]) -> Optional[Any]:
+    def restore_preheat_learner(self, data: Dict[str, Any]) -> Any | None:
         """
         Restore PreheatLearner from saved data.
 
@@ -550,7 +552,7 @@ class LearningDataStore:
             _LOGGER.error(f"Failed to restore PreheatLearner: {e}")
             return None
 
-    async def async_load_manifold_state(self) -> Optional[Dict[str, str]]:
+    async def async_load_manifold_state(self) -> Dict[str, str] | None:
         """
         Load manifold state from HA Store.
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 import time
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Callable, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, List
 
 # These imports are only needed when running in Home Assistant
 try:
@@ -97,10 +97,10 @@ class HeaterController:
         difference: float,  # output_max - output_min
         min_open_time: float,  # in seconds
         min_closed_time: float,  # in seconds
-        dispatcher: Optional[CycleEventDispatcher] = None,
-        cooling_type: Optional[str] = None,
-        get_was_clamped: Optional[Callable[[], bool]] = None,
-        reset_clamp_state: Optional[Callable[[], None]] = None,
+        dispatcher: CycleEventDispatcher | None = None,
+        cooling_type: str | None = None,
+        get_was_clamped: Callable[[], bool] | None = None,
+        reset_clamp_state: Callable[[], None] | None = None,
         valve_actuation_time: float = 0.0,
     ):
         """Initialize the HeaterController.
@@ -144,8 +144,8 @@ class HeaterController:
         self._last_heater_error: str | None = None
 
         # Timer handles for delayed demand signaling
-        self._valve_open_timer: Optional[Callable[[], None]] = None
-        self._valve_close_timer: Optional[Callable[[], None]] = None
+        self._valve_open_timer: Callable[[], None] | None = None
+        self._valve_close_timer: Callable[[], None] | None = None
 
         # Cycle counting for actuator wear tracking
         self._heater_cycle_count: int = 0
@@ -350,7 +350,7 @@ class HeaterController:
         return self._min_open_time + self._valve_actuation_time + self._transport_delay
 
     @property
-    def cooling_type(self) -> Optional[str]:
+    def cooling_type(self) -> str | None:
         """Return the cooling system type for compressor protection."""
         return self._cooling_type
 

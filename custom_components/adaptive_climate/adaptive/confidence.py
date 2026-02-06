@@ -5,7 +5,9 @@ Tracks confidence in system convergence (tuning quality) on a per-mode basis
 poor cycles. Used to scale learning rate adjustments and gate auto-apply operations.
 """
 
-from typing import TYPE_CHECKING, Optional
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 import logging
 
 if TYPE_CHECKING:
@@ -199,7 +201,7 @@ class ConfidenceTracker:
             self._cooling_convergence_confidence * (1.0 - CONFIDENCE_DECAY_RATE_DAILY)
         )
 
-    def get_learning_rate_multiplier(self, confidence: Optional[float] = None) -> float:
+    def get_learning_rate_multiplier(self, confidence: float | None = None) -> float:
         """Get learning rate multiplier based on convergence confidence.
 
         Args:

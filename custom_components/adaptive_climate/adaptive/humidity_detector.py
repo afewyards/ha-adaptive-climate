@@ -4,10 +4,12 @@ Detects rapid humidity increases (e.g., from showers) and pauses heating
 to prevent unnecessary heating during temporary humidity spikes.
 """
 
+from __future__ import annotations
+
 import logging
 from collections import deque
 from datetime import datetime, timedelta
-from typing import Literal, Optional
+from typing import Literal
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -59,10 +61,10 @@ class HumidityDetector:
         # State tracking
         self._state: Literal["normal", "paused", "stabilizing"] = "normal"
         self._humidity_history: deque[tuple[datetime, float]] = deque()
-        self._peak_humidity: Optional[float] = None
-        self._stabilization_start: Optional[datetime] = None
-        self._pause_start: Optional[datetime] = None
-        self._last_timestamp: Optional[datetime] = None
+        self._peak_humidity: float | None = None
+        self._stabilization_start: datetime | None = None
+        self._pause_start: datetime | None = None
+        self._last_timestamp: datetime | None = None
 
     def record_humidity(self, ts: datetime, humidity: float) -> None:
         """Record humidity reading and update state.
@@ -200,7 +202,7 @@ class HumidityDetector:
         """
         return self._state in ("paused", "stabilizing")
 
-    def get_time_until_resume(self) -> Optional[int]:
+    def get_time_until_resume(self) -> int | None:
         """Get time remaining until resume from stabilizing state.
 
         Returns:

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List
 
 # These imports are only needed when running in Home Assistant
 try:
@@ -47,21 +47,21 @@ class TemperatureManager:
 
     def __init__(
         self,
-        thermostat: Optional[AdaptiveThermostat],
-        away_temp: Optional[float],
-        eco_temp: Optional[float],
-        boost_temp: Optional[float],
-        comfort_temp: Optional[float],
-        home_temp: Optional[float],
-        sleep_temp: Optional[float],
-        activity_temp: Optional[float],
-        preset_sync_mode: Optional[str],
+        thermostat: AdaptiveThermostat | None,
+        away_temp: float | None,
+        eco_temp: float | None,
+        boost_temp: float | None,
+        comfort_temp: float | None,
+        home_temp: float | None,
+        sleep_temp: float | None,
+        activity_temp: float | None,
+        preset_sync_mode: str | None,
         min_temp: float,
         max_temp: float,
         boost_pid_off: bool,
-        get_target_temp: Callable[[], Optional[float]],
+        get_target_temp: Callable[[], float | None],
         set_target_temp: Callable[[float], None],
-        get_current_temp: Callable[[], Optional[float]],
+        get_current_temp: Callable[[], float | None],
         set_force_on: Callable[[bool], None],
         set_force_off: Callable[[bool], None],
         async_set_pid_mode: Callable[[str], Any],
@@ -113,7 +113,7 @@ class TemperatureManager:
 
         # State
         self._attr_preset_mode = PRESET_NONE
-        self._saved_target_temp: Optional[float] = None
+        self._saved_target_temp: float | None = None
 
     @property
     def preset_mode(self) -> str:
@@ -130,7 +130,7 @@ class TemperatureManager:
         return preset_modes
 
     @property
-    def _preset_modes_temp(self) -> Dict[str, Optional[float]]:
+    def _preset_modes_temp(self) -> Dict[str, float | None]:
         """Return a dict of preset modes and their temperatures."""
         return {
             PRESET_AWAY: self._away_temp,
@@ -143,7 +143,7 @@ class TemperatureManager:
         }
 
     @property
-    def _preset_temp_modes(self) -> Dict[Optional[float], str]:
+    def _preset_temp_modes(self) -> Dict[float | None, str]:
         """Return a dict of preset temperatures and their modes."""
         return {
             self._away_temp: PRESET_AWAY,
@@ -165,7 +165,7 @@ class TemperatureManager:
         return presets
 
     @property
-    def saved_target_temp(self) -> Optional[float]:
+    def saved_target_temp(self) -> float | None:
         """Return the saved target temperature (before preset was applied)."""
         return self._saved_target_temp
 
@@ -183,7 +183,7 @@ class TemperatureManager:
             ]
         )
 
-    def get_preset_temperature(self, preset_mode: str) -> Optional[float]:
+    def get_preset_temperature(self, preset_mode: str) -> float | None:
         """Get the temperature for a specific preset mode.
 
         Args:
@@ -194,7 +194,7 @@ class TemperatureManager:
         """
         return self._preset_modes_temp.get(preset_mode)
 
-    def get_preset_for_temperature(self, temperature: float) -> Optional[str]:
+    def get_preset_for_temperature(self, temperature: float) -> str | None:
         """Get the preset mode that matches a specific temperature.
 
         Args:
@@ -207,8 +207,8 @@ class TemperatureManager:
 
     def restore_state(
         self,
-        preset_mode: Optional[str] = None,
-        saved_target_temp: Optional[float] = None,
+        preset_mode: str | None = None,
+        saved_target_temp: float | None = None,
     ) -> None:
         """Restore state from saved data.
 
@@ -246,7 +246,7 @@ class TemperatureManager:
 
         await self._async_control_heating(True)
 
-    async def async_set_preset_mode(self, preset_mode: str) -> Optional[None]:
+    async def async_set_preset_mode(self, preset_mode: str) -> None | None:
         """Set new preset mode.
 
         Manages target temperature transitions when changing presets.

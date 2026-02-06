@@ -1,7 +1,9 @@
 """Sun position calculations for dynamic solar recovery timing."""
+from __future__ import annotations
+
 from dataclasses import dataclass
 from datetime import datetime, timedelta, time, date
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 import logging
 
 from astral import Observer
@@ -69,7 +71,7 @@ class SunPositionCalculator:
         self._longitude = longitude
 
     @classmethod
-    def from_hass(cls, hass: "HomeAssistant") -> Optional["SunPositionCalculator"]:
+    def from_hass(cls, hass: "HomeAssistant") -> "SunPositionCalculator" | None:
         """Create calculator from Home Assistant config.
 
         Args:
@@ -114,7 +116,7 @@ class SunPositionCalculator:
         target_date: date,
         min_elevation: float = 10.0,
         effective_angle: float = DEFAULT_EFFECTIVE_ANGLE,
-    ) -> Optional[datetime]:
+    ) -> datetime | None:
         """Calculate when sun first effectively illuminates a window.
 
         Finds the time after sunrise when:
@@ -206,7 +208,7 @@ class SunPositionCalculator:
         self,
         target_date: date,
         target_elevation: float,
-    ) -> Optional[datetime]:
+    ) -> datetime | None:
         """Find time when sun reaches target elevation (for skylights).
 
         Args:

@@ -6,8 +6,10 @@ to/from dictionaries for persistence across Home Assistant restarts.
 Supports both v4 (flat) and v5 (mode-keyed) formats for backward compatibility.
 """
 
+from __future__ import annotations
+
 from datetime import datetime
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any
 import logging
 
 from .cycle_analysis import CycleMetrics
@@ -49,13 +51,13 @@ def learner_to_dict(
     cooling_auto_apply_count: int,
     heating_convergence_confidence: float,
     cooling_convergence_confidence: float,
-    last_adjustment_time: Optional[datetime],
+    last_adjustment_time: datetime | None,
     consecutive_converged_cycles: int,
     pid_converged_for_ke: bool,
-    undershoot_detector: Optional[Any] = None,
-    chronic_approach_detector: Optional[Any] = None,
-    contribution_tracker: Optional[Any] = None,
-    heating_rate_learner: Optional[HeatingRateLearner] = None,
+    undershoot_detector: Any | None = None,
+    chronic_approach_detector: Any | None = None,
+    contribution_tracker: Any | None = None,
+    heating_rate_learner: HeatingRateLearner | None = None,
 ) -> Dict[str, Any]:
     """Serialize AdaptiveLearner state to a dictionary in v10 format with backward compatibility.
 

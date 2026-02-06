@@ -1,7 +1,9 @@
 """Validation and safety checks for auto-applied PID adjustments."""
 
+from __future__ import annotations
+
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Any
 import statistics
 import logging
 
@@ -32,18 +34,18 @@ class ValidationManager:
         """Initialize validation manager with clean state."""
         # Validation mode state
         self._validation_mode: bool = False
-        self._validation_baseline_overshoot: Optional[float] = None
+        self._validation_baseline_overshoot: float | None = None
         self._validation_cycles: List[CycleMetrics] = []
 
         # Seasonal tracking
-        self._last_seasonal_check: Optional[datetime] = None
-        self._last_seasonal_shift: Optional[datetime] = None
+        self._last_seasonal_check: datetime | None = None
+        self._last_seasonal_shift: datetime | None = None
         self._outdoor_temp_history: List[float] = []
 
         # Physics baseline for drift calculation
-        self._physics_baseline_kp: Optional[float] = None
-        self._physics_baseline_ki: Optional[float] = None
-        self._physics_baseline_kd: Optional[float] = None
+        self._physics_baseline_kp: float | None = None
+        self._physics_baseline_ki: float | None = None
+        self._physics_baseline_kd: float | None = None
 
     def start_validation_mode(self, baseline_overshoot: float) -> None:
         """Start validation mode after auto-applying PID changes.
@@ -65,7 +67,7 @@ class ValidationManager:
             baseline_overshoot,
         )
 
-    def add_validation_cycle(self, metrics: CycleMetrics) -> Optional[str]:
+    def add_validation_cycle(self, metrics: CycleMetrics) -> str | None:
         """Add a cycle to validation tracking and check for completion.
 
         Collects cycles during validation mode and evaluates performance
@@ -151,7 +153,7 @@ class ValidationManager:
         heating_auto_apply_count: int,
         cooling_auto_apply_count: int,
         pid_history: List[Dict[str, Any]],
-    ) -> Optional[str]:
+    ) -> str | None:
         """Check if auto-apply is allowed based on safety limits.
 
         Performs four safety checks before allowing auto-apply:
@@ -272,7 +274,7 @@ class ValidationManager:
 
         return False
 
-    def check_seasonal_shift(self, outdoor_temp: Optional[float] = None) -> bool:
+    def check_seasonal_shift(self, outdoor_temp: float | None = None) -> bool:
         """Check if outdoor temperature regime has shifted significantly.
 
         Detects seasonal changes (e.g., winter to spring) that may require

@@ -6,7 +6,9 @@ This module contains logic for automatic PID adjustment application, including:
 - Auto-apply decision orchestration
 """
 
-from typing import Dict, List, Optional, Any, TYPE_CHECKING
+from __future__ import annotations
+
+from typing import Dict, List, Any, TYPE_CHECKING
 import logging
 
 if TYPE_CHECKING:
@@ -28,7 +30,7 @@ from ..helpers.hvac_mode import mode_to_str
 _LOGGER = logging.getLogger(__name__)
 
 
-def get_auto_apply_thresholds(heating_type: Optional[str] = None) -> Dict[str, float]:
+def get_auto_apply_thresholds(heating_type: str | None = None) -> Dict[str, float]:
     """
     Get auto-apply thresholds for a specific heating type.
 
@@ -55,7 +57,7 @@ class AutoApplyManager:
     seasonal shift detection, and heating-type-specific confidence thresholds.
     """
 
-    def __init__(self, heating_type: Optional[str] = None):
+    def __init__(self, heating_type: str | None = None):
         """Initialize the AutoApplyManager.
 
         Args:
@@ -131,11 +133,11 @@ class AutoApplyManager:
         current_kp: float,
         current_ki: float,
         current_kd: float,
-        outdoor_temp: Optional[float],
+        outdoor_temp: float | None,
         pid_history: List[Dict[str, Any]],
         mode: "HVACMode" = None,
         contribution_tracker: Any = None,  # ConfidenceContributionTracker for tier gates
-    ) -> tuple[bool, Optional[int], Optional[int], Optional[int]]:
+    ) -> tuple[bool, int | None, int | None, int | None]:
         """Check all auto-apply safety gates and return adjusted parameters.
 
         This method performs a comprehensive safety check before auto-applying

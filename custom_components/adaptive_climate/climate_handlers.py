@@ -4,6 +4,8 @@ This module contains all Home Assistant event handlers for sensor changes,
 contact sensors, humidity detection, and thermal group leader tracking.
 """
 
+from __future__ import annotations
+
 import logging
 import time
 

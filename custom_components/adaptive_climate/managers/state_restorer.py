@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from homeassistant.core import State
@@ -32,7 +32,7 @@ class StateRestorer:
         """
         self._thermostat = thermostat
 
-    def restore(self, old_state: Optional[State]) -> None:
+    def restore(self, old_state: State | None) -> None:
         """Restore all state from a previous session.
 
         This is the main entry point that orchestrates the full restoration
@@ -49,7 +49,7 @@ class StateRestorer:
             # No saved state (fresh start) - ensure initial physics gains are recorded
             self._ensure_initial_gains_recorded()
 
-    def _restore_state(self, old_state: Optional[State]) -> None:
+    def _restore_state(self, old_state: State | None) -> None:
         """Restore climate entity state from Home Assistant's state restoration.
 
         This method restores:

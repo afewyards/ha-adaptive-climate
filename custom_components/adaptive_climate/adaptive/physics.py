@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
-from typing import Tuple, Optional, Dict, List
+from typing import Tuple, Dict, List
 
 try:
     from ..const import HeatingType
@@ -127,14 +127,14 @@ GLAZING_U_VALUES = {
 
 
 def calculate_thermal_time_constant(
-    volume_m3: Optional[float] = None,
-    energy_rating: Optional[str] = None,
-    window_area_m2: Optional[float] = None,
-    floor_area_m2: Optional[float] = None,
+    volume_m3: float | None = None,
+    energy_rating: str | None = None,
+    window_area_m2: float | None = None,
+    floor_area_m2: float | None = None,
     window_rating: str = "hr++",
-    floor_construction: Optional[Dict] = None,
-    area_m2: Optional[float] = None,
-    heating_type: Optional[str] = None,
+    floor_construction: Dict | None = None,
+    area_m2: float | None = None,
+    heating_type: str | None = None,
 ) -> float:
     """Calculate thermal time constant (tau) in hours.
 
@@ -236,9 +236,9 @@ def calculate_thermal_time_constant(
 
 def calculate_power_scaling_factor(
     heating_type: str,
-    area_m2: Optional[float],
-    max_power_w: Optional[float],
-    supply_temperature: Optional[float] = None,
+    area_m2: float | None,
+    max_power_w: float | None,
+    supply_temperature: float | None = None,
 ) -> float:
     """Calculate power scaling factor for PID gains based on heater power and supply temp.
 
@@ -320,9 +320,9 @@ def calculate_power_scaling_factor(
 def calculate_initial_pid(
     thermal_time_constant: float,
     heating_type: str = "floor_hydronic",
-    area_m2: Optional[float] = None,
-    max_power_w: Optional[float] = None,
-    supply_temperature: Optional[float] = None,
+    area_m2: float | None = None,
+    max_power_w: float | None = None,
+    supply_temperature: float | None = None,
 ) -> Tuple[float, float, float]:
     """Calculate initial PID parameters using hybrid multi-point empirical model.
 
@@ -482,9 +482,9 @@ def calculate_initial_pwm_period(heating_type: str = "floor_hydronic") -> int:
 
 
 def calculate_initial_ke(
-    energy_rating: Optional[str] = None,
-    window_area_m2: Optional[float] = None,
-    floor_area_m2: Optional[float] = None,
+    energy_rating: str | None = None,
+    window_area_m2: float | None = None,
+    floor_area_m2: float | None = None,
     window_rating: str = "hr++",
     heating_type: str = "floor_hydronic",
 ) -> float:
@@ -615,8 +615,8 @@ def estimate_cooling_time_constant(
 def calculate_initial_cooling_pid(
     thermal_time_constant: float,
     cooling_type: str = "forced_air",
-    area_m2: Optional[float] = None,
-    max_power_w: Optional[float] = None,
+    area_m2: float | None = None,
+    max_power_w: float | None = None,
 ) -> Tuple[float, float, float]:
     """Calculate initial PID parameters for cooling mode.
 
@@ -728,10 +728,10 @@ EXPECTED_HEATING_RATES = {
 
 def calculate_expected_heating_rate(
     heating_type: str,
-    tau: Optional[float] = None,
-    area_m2: Optional[float] = None,
-    max_power_w: Optional[float] = None,
-    supply_temperature: Optional[float] = None,
+    tau: float | None = None,
+    area_m2: float | None = None,
+    max_power_w: float | None = None,
+    supply_temperature: float | None = None,
 ) -> Dict[str, float]:
     """Calculate expected heating rate based on physics and system configuration.
 
@@ -801,9 +801,9 @@ def calculate_expected_heating_rate(
 
 
 def calculate_ke_wind(
-    energy_rating: Optional[str] = None,
-    window_area_m2: Optional[float] = None,
-    floor_area_m2: Optional[float] = None,
+    energy_rating: str | None = None,
+    window_area_m2: float | None = None,
+    floor_area_m2: float | None = None,
     window_rating: str = "hr++",
 ) -> float:
     """Calculate wind speed compensation coefficient (Ke_wind per m/s).

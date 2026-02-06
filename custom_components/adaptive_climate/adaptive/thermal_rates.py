@@ -4,9 +4,11 @@ This module provides the ThermalRateLearner class for learning thermal heating
 and cooling rates from observed temperature history.
 """
 
+from __future__ import annotations
+
 from collections import deque
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple, Deque
+from typing import Dict, List, Tuple, Deque
 import statistics
 import logging
 
@@ -46,7 +48,7 @@ class ThermalRateLearner:
         self,
         temperature_history: List[Tuple[datetime, float]],
         min_duration_minutes: int = 30,
-    ) -> Optional[float]:
+    ) -> float | None:
         """
         Calculate cooling rate from temperature history when heating is off.
 
@@ -98,7 +100,7 @@ class ThermalRateLearner:
         self,
         temperature_history: List[Tuple[datetime, float]],
         min_duration_minutes: int = 10,
-    ) -> Optional[float]:
+    ) -> float | None:
         """
         Calculate heating rate from temperature history when heating is on.
 
@@ -168,7 +170,7 @@ class ThermalRateLearner:
 
     def get_average_cooling_rate(
         self, reject_outliers: bool = True, max_measurements: int = 50
-    ) -> Optional[float]:
+    ) -> float | None:
         """
         Calculate average cooling rate from stored measurements.
 
@@ -195,7 +197,7 @@ class ThermalRateLearner:
 
     def get_average_heating_rate(
         self, reject_outliers: bool = True, max_measurements: int = 50
-    ) -> Optional[float]:
+    ) -> float | None:
         """
         Calculate average heating rate from stored measurements.
 
@@ -359,7 +361,7 @@ class ThermalRateLearner:
         segment: List[Tuple[datetime, float]],
         min_duration_minutes: int,
         is_cooling: bool,
-    ) -> Optional[List[Tuple[datetime, float]]]:
+    ) -> List[Tuple[datetime, float]] | None:
         """
         Validate a segment meets duration and rate bounds requirements.
 

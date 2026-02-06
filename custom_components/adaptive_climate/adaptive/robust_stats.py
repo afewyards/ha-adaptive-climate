@@ -5,6 +5,8 @@ than traditional mean/stddev approaches. Used by AdaptiveLearner to filter inval
 cycles (e.g., sunny days causing solar gain) from PID tuning calculations.
 """
 
+from __future__ import annotations
+
 from typing import List, Tuple
 import logging
 

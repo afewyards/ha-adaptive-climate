@@ -1,6 +1,8 @@
 """Registry helper utilities for zone discovery."""
 
-from typing import Dict, List, Optional
+from __future__ import annotations
+
+from typing import Dict, List
 
 try:
     from homeassistant.core import HomeAssistant
@@ -16,7 +18,7 @@ except ImportError:
 
 def discover_zone_floors(
     hass: "HomeAssistant", zone_entity_ids: List[str]
-) -> Dict[str, Optional[int]]:
+) -> Dict[str, int | None]:
     """Discover floor levels for zones using entity/area/floor registries.
 
     Args:
@@ -38,7 +40,7 @@ def discover_zone_floors(
             "climate.bedroom": 1,
         }
     """
-    result: Dict[str, Optional[int]] = {}
+    result: Dict[str, int | None] = {}
 
     # Get registry instances
     entity_registry = er.async_get(hass)

@@ -5,10 +5,12 @@ including overshoot detection, undershoot calculation, oscillation counting,
 and settling time analysis.
 """
 
+from __future__ import annotations
+
 from collections import deque
 from datetime import datetime
 from enum import Enum
-from typing import List, Optional, Tuple, Deque
+from typing import List, Tuple, Deque
 import logging
 
 _LOGGER = logging.getLogger(__name__)
@@ -66,7 +68,7 @@ class InterruptionClassifier:
         old_mode: str,
         new_mode: str,
         current_cycle_state: str
-    ) -> Optional[InterruptionType]:
+    ) -> InterruptionType | None:
         """Classify a mode change interruption.
 
         Args:
@@ -95,7 +97,7 @@ class InterruptionClassifier:
     @staticmethod
     def classify_contact_sensor(
         contact_open_duration: float
-    ) -> Optional[InterruptionType]:
+    ) -> InterruptionType | None:
         """Classify a contact sensor interruption.
 
         Args:
@@ -150,12 +152,12 @@ class PhaseAwareOvershootTracker:
         self._transport_delay_seconds = transport_delay_seconds
         self._phase = self.PHASE_RISE
         self._setpoint_crossed = False
-        self._crossing_timestamp: Optional[datetime] = None
-        self._max_settling_temp: Optional[float] = None
+        self._crossing_timestamp: datetime | None = None
+        self._max_settling_temp: float | None = None
         self._settling_temps: Deque[Tuple[datetime, float]] = deque(maxlen=1500)
-        self._heater_stop_time: Optional[datetime] = None
+        self._heater_stop_time: datetime | None = None
         self._peak_window_closed = False
-        self._tracking_start_time: Optional[datetime] = None
+        self._tracking_start_time: datetime | None = None
 
     @property
     def setpoint(self) -> float:
@@ -173,11 +175,11 @@ class PhaseAwareOvershootTracker:
         return self._setpoint_crossed
 
     @property
-    def crossing_timestamp(self) -> Optional[datetime]:
+    def crossing_timestamp(self) -> datetime | None:
         """Get the timestamp when setpoint was first crossed."""
         return self._crossing_timestamp
 
-    def reset(self, new_setpoint: Optional[float] = None) -> None:
+    def reset(self, new_setpoint: float | None = None) -> None:
         """
         Reset tracking state. Call when setpoint changes.
 
@@ -269,7 +271,7 @@ class PhaseAwareOvershootTracker:
                 if self._max_settling_temp is None or temperature > self._max_settling_temp:
                     self._max_settling_temp = temperature
 
-    def get_overshoot(self) -> Optional[float]:
+    def get_overshoot(self) -> float | None:
         """
         Calculate overshoot based on settling phase data.
 
@@ -304,27 +306,27 @@ class CycleMetrics:
 
     def __init__(
         self,
-        overshoot: Optional[float] = None,
-        undershoot: Optional[float] = None,
-        settling_time: Optional[float] = None,
+        overshoot: float | None = None,
+        undershoot: float | None = None,
+        settling_time: float | None = None,
         oscillations: int = 0,
-        rise_time: Optional[float] = None,
-        disturbances: Optional[List[str]] = None,
-        interruption_history: Optional[List[Tuple[datetime, str]]] = None,
+        rise_time: float | None = None,
+        disturbances: List[str] | None = None,
+        interruption_history: List[Tuple[datetime, str]] | None = None,
         heater_cycles: int = 0,
-        outdoor_temp_avg: Optional[float] = None,
-        integral_at_tolerance_entry: Optional[float] = None,
-        integral_at_setpoint_cross: Optional[float] = None,
-        decay_contribution: Optional[float] = None,
+        outdoor_temp_avg: float | None = None,
+        integral_at_tolerance_entry: float | None = None,
+        integral_at_setpoint_cross: float | None = None,
+        decay_contribution: float | None = None,
         was_clamped: bool = False,
-        end_temp: Optional[float] = None,
-        settling_mae: Optional[float] = None,
-        inter_cycle_drift: Optional[float] = None,
-        dead_time: Optional[float] = None,
-        mode: Optional[str] = None,
-        controllable_overshoot: Optional[float] = None,
-        committed_overshoot: Optional[float] = None,
-        starting_delta: Optional[float] = None,
+        end_temp: float | None = None,
+        settling_mae: float | None = None,
+        inter_cycle_drift: float | None = None,
+        dead_time: float | None = None,
+        mode: str | None = None,
+        controllable_overshoot: float | None = None,
+        committed_overshoot: float | None = None,
+        starting_delta: float | None = None,
     ):
         """
         Initialize cycle metrics.
@@ -398,7 +400,7 @@ def calculate_overshoot(
     target_temp: float,
     phase_aware: bool = True,
     transport_delay_seconds: float = 0.0,
-) -> Optional[float]:
+) -> float | None:
     """
     Calculate maximum overshoot beyond target temperature.
 
@@ -437,7 +439,7 @@ def calculate_overshoot(
 
 def calculate_undershoot(
     temperature_history: List[Tuple[datetime, float]], target_temp: float
-) -> Optional[float]:
+) -> float | None:
     """
     Calculate maximum undershoot below target temperature.
 
@@ -508,8 +510,8 @@ def calculate_settling_time(
     temperature_history: List[Tuple[datetime, float]],
     target_temp: float,
     tolerance: float = 0.2,
-    reference_time: Optional[datetime] = None,
-) -> Optional[float]:
+    reference_time: datetime | None = None,
+) -> float | None:
     """
     Calculate time required for temperature to settle within tolerance band.
 
@@ -582,7 +584,7 @@ def calculate_rise_time(
     target_temp: float,
     threshold: float = 0.2,
     skip_seconds: float = 0.0,
-) -> Optional[float]:
+) -> float | None:
     """
     Calculate time required for temperature to rise from start to target.
 
@@ -641,8 +643,8 @@ def calculate_rise_time(
 def calculate_settling_mae(
     temperature_history: List[Tuple[datetime, float]],
     target_temp: float,
-    settling_start_time: Optional[datetime] = None,
-) -> Optional[float]:
+    settling_start_time: datetime | None = None,
+) -> float | None:
     """Calculate Mean Absolute Error during settling phase.
 
     Args:

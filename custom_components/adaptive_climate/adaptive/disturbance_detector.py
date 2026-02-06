@@ -1,6 +1,8 @@
 """Disturbance detection for filtering invalid learning cycles."""
+from __future__ import annotations
+
 import logging
-from typing import List, Optional
+from typing import List
 from datetime import datetime
 
 _LOGGER = logging.getLogger(__name__)
@@ -24,9 +26,9 @@ class DisturbanceDetector:
         self,
         temperature_history: List[tuple[datetime, float]],
         heater_active_periods: List[tuple[datetime, datetime]],
-        outdoor_temps: Optional[List[tuple[datetime, float]]] = None,
-        solar_values: Optional[List[tuple[datetime, float]]] = None,
-        wind_speeds: Optional[List[tuple[datetime, float]]] = None,
+        outdoor_temps: List[tuple[datetime, float]] | None = None,
+        solar_values: List[tuple[datetime, float]] | None = None,
+        wind_speeds: List[tuple[datetime, float]] | None = None,
     ) -> List[str]:
         """Detect all disturbances for a heating cycle.
 

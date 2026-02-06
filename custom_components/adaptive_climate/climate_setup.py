@@ -1,5 +1,7 @@
 """Platform setup for adaptive thermostat climate entities."""
 
+from __future__ import annotations
+
 import logging
 from datetime import timedelta
 

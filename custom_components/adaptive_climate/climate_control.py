@@ -3,6 +3,8 @@
 This module contains the main heating control loop and PID output calculation.
 """
 
+from __future__ import annotations
+
 import logging
 import time
 

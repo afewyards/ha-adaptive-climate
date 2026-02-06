@@ -1,6 +1,8 @@
 """PWM tuning utilities for Adaptive Climate."""
 
-from typing import List, Optional
+from __future__ import annotations
+
+from typing import List
 import statistics
 import logging
 
@@ -13,7 +15,7 @@ def calculate_pwm_adjustment(
     min_pwm_period: float = 180.0,
     max_pwm_period: float = 1800.0,
     short_cycle_threshold: float = 10.0,
-) -> Optional[float]:
+) -> float | None:
     """
     Calculate PWM period adjustment based on observed cycling behavior.
 
@@ -64,7 +66,7 @@ class ValveCycleTracker:
     def __init__(self):
         """Initialize the ValveCycleTracker."""
         self._cycle_count: int = 0
-        self._last_state: Optional[bool] = None
+        self._last_state: bool | None = None
 
     def update(self, valve_open: bool) -> None:
         """

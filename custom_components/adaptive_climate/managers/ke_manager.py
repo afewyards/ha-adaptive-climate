@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional
+from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 # These imports are only needed when running in Home Assistant
 try:
@@ -39,23 +39,23 @@ class KeManager:
     def __init__(
         self,
         state: "KeManagerState" = None,
-        ke_learner: Optional[KeLearner] = None,
-        gains_manager: Optional["PIDGainsManager"] = None,
-        async_control_heating: Optional[Callable[..., Awaitable[None]]] = None,
-        async_write_ha_state: Optional[Callable[[], None]] = None,
+        ke_learner: KeLearner | None = None,
+        gains_manager: "PIDGainsManager" | None = None,
+        async_control_heating: Callable[..., Awaitable[None]] | None = None,
+        async_write_ha_state: Callable[[], None] | None = None,
         # Backward compatibility parameters
-        thermostat: Optional["AdaptiveThermostat"] = None,
-        get_hvac_mode: Optional[callable] = None,
-        get_current_temp: Optional[callable] = None,
-        get_target_temp: Optional[callable] = None,
-        get_ext_temp: Optional[callable] = None,
-        get_control_output: Optional[callable] = None,
-        get_cold_tolerance: Optional[callable] = None,
-        get_hot_tolerance: Optional[callable] = None,
-        get_ke: Optional[callable] = None,
-        set_ke: Optional[callable] = None,
-        get_pid_controller: Optional[callable] = None,
-        get_is_pid_converged: Optional[callable] = None,
+        thermostat: "AdaptiveThermostat" | None = None,
+        get_hvac_mode: callable | None = None,
+        get_current_temp: callable | None = None,
+        get_target_temp: callable | None = None,
+        get_ext_temp: callable | None = None,
+        get_control_output: callable | None = None,
+        get_cold_tolerance: callable | None = None,
+        get_hot_tolerance: callable | None = None,
+        get_ke: callable | None = None,
+        set_ke: callable | None = None,
+        get_pid_controller: callable | None = None,
+        get_is_pid_converged: callable | None = None,
     ):
         """Initialize the KeManager.
 
@@ -119,25 +119,25 @@ class KeManager:
         self._gains_manager = gains_manager
 
         # State tracking
-        self._steady_state_start: Optional[float] = None
-        self._last_ke_observation_time: Optional[float] = None
+        self._steady_state_start: float | None = None
+        self._last_ke_observation_time: float | None = None
 
     @property
-    def ke_learner(self) -> Optional[KeLearner]:
+    def ke_learner(self) -> KeLearner | None:
         """Return the KeLearner instance."""
         return self._ke_learner
 
     @property
-    def steady_state_start(self) -> Optional[float]:
+    def steady_state_start(self) -> float | None:
         """Return the timestamp when steady state began."""
         return self._steady_state_start
 
     @property
-    def last_ke_observation_time(self) -> Optional[float]:
+    def last_ke_observation_time(self) -> float | None:
         """Return the timestamp of the last Ke observation."""
         return self._last_ke_observation_time
 
-    def update_ke_learner(self, ke_learner: Optional[KeLearner]) -> None:
+    def update_ke_learner(self, ke_learner: KeLearner | None) -> None:
         """Update the KeLearner instance.
 
         Args:
@@ -372,8 +372,8 @@ class KeManager:
 
     def restore_state(
         self,
-        steady_state_start: Optional[float] = None,
-        last_ke_observation_time: Optional[float] = None,
+        steady_state_start: float | None = None,
+        last_ke_observation_time: float | None = None,
     ) -> None:
         """Restore state from saved data.
 

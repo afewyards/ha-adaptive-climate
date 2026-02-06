@@ -4,6 +4,8 @@ This module provides functions to validate floor construction configurations
 and calculate thermal properties for floor heating systems.
 """
 
+from __future__ import annotations
+
 from typing import Dict, List
 
 

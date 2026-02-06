@@ -4,6 +4,8 @@ Provides helper functions for working with HVACMode enums,
 including lazy imports and string conversions.
 """
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:

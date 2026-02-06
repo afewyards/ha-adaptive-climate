@@ -13,9 +13,11 @@ Formula:
 
 Once the manifold is warm (active within 5 minutes), delay is zero.
 """
+from __future__ import annotations
+
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Dict, List
 import logging
 
 from homeassistant.util import dt as dt_util
@@ -68,7 +70,7 @@ class ManifoldRegistry:
         # Track last active time per manifold name
         self._last_active_time: Dict[str, datetime] = {}
 
-    def get_manifold_for_zone(self, zone_id: str) -> Optional[Manifold]:
+    def get_manifold_for_zone(self, zone_id: str) -> Manifold | None:
         """Get the manifold serving a specific zone.
 
         Args:

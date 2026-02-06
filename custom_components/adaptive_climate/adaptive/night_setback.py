@@ -3,8 +3,10 @@
 Implements energy-saving night setback with configurable temperature delta,
 sunset support, and recovery deadline overrides.
 """
+from __future__ import annotations
+
 from datetime import datetime, time
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 import logging
 
 _LOGGER = logging.getLogger(__name__)
@@ -22,11 +24,11 @@ class NightSetback:
         start_time: str,
         end_time: str,
         setback_delta: float,
-        recovery_deadline: Optional[str] = None,
+        recovery_deadline: str | None = None,
         sunset_offset_minutes: int = 0,
-        thermal_rate_learner: Optional['ThermalRateLearner'] = None,
-        heating_type: Optional[str] = None,
-        preheat_learner: Optional['PreheatLearner'] = None,
+        thermal_rate_learner: 'ThermalRateLearner' | None = None,
+        heating_type: str | None = None,
+        preheat_learner: 'PreheatLearner' | None = None,
     ):
         """Initialize night setback.
 
@@ -157,7 +159,7 @@ class NightSetback:
     def is_night_period(
         self,
         current_time: datetime,
-        sunset_time: Optional[datetime] = None
+        sunset_time: datetime | None = None
     ) -> bool:
         """Check if current time is within night period.
 
@@ -195,7 +197,7 @@ class NightSetback:
         self,
         base_setpoint: float,
         current_time: datetime,
-        sunset_time: Optional[datetime] = None,
+        sunset_time: datetime | None = None,
         force_recovery: bool = False
     ) -> float:
         """Get adjusted setpoint with night setback applied.
@@ -238,7 +240,7 @@ class NightSetback:
         current_time: datetime,
         current_temp: float,
         base_setpoint: float,
-        outdoor_temp: Optional[float] = None
+        outdoor_temp: float | None = None
     ) -> bool:
         """Check if recovery heating should start.
 
@@ -326,7 +328,7 @@ class NightSetbackManager:
         start_time: str,
         end_time: str,
         setback_delta: float,
-        recovery_deadline: Optional[str] = None
+        recovery_deadline: str | None = None
     ):
         """Configure night setback for a zone.
 
@@ -349,7 +351,7 @@ class NightSetbackManager:
         zone_id: str,
         base_setpoint: float,
         current_time: datetime,
-        sunset_time: Optional[datetime] = None
+        sunset_time: datetime | None = None
     ) -> float:
         """Get adjusted setpoint for a zone.
 
@@ -372,7 +374,7 @@ class NightSetbackManager:
         self,
         zone_id: str,
         current_time: datetime,
-        sunset_time: Optional[datetime] = None
+        sunset_time: datetime | None = None
     ) -> bool:
         """Check if a zone is currently in night setback.
 
@@ -390,7 +392,7 @@ class NightSetbackManager:
         setback = self._zone_setbacks[zone_id]
         return setback.is_night_period(current_time, sunset_time)
 
-    def get_zone_config(self, zone_id: str) -> Optional[Dict[str, Any]]:
+    def get_zone_config(self, zone_id: str) -> Dict[str, Any] | None:
         """Get night setback configuration for a zone.
 
         Args:

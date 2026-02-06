@@ -4,9 +4,11 @@ Learns heating rates based on temperature delta and outdoor conditions,
 then estimates time-to-target for early start scheduling.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import Dict, List, Tuple, TYPE_CHECKING
 import statistics
 
 from homeassistant.util import dt as dt_util
@@ -47,8 +49,8 @@ class PreheatLearner:
     def __init__(
         self,
         heating_type: str,
-        max_hours: Optional[float] = None,
-        heating_rate_learner: Optional["HeatingRateLearner"] = None,
+        max_hours: float | None = None,
+        heating_rate_learner: "HeatingRateLearner" | None = None,
     ):
         """Initialize preheat learner.
 
@@ -113,7 +115,7 @@ class PreheatLearner:
         end_temp: float,
         outdoor_temp: float,
         duration_minutes: float,
-        timestamp: Optional[datetime] = None,
+        timestamp: datetime | None = None,
     ) -> None:
         """Add heating rate observation.
 
@@ -271,7 +273,7 @@ class PreheatLearner:
         self,
         delta: float,
         outdoor_temp: float,
-    ) -> Optional[float]:
+    ) -> float | None:
         """Get learned heating rate for specific conditions.
 
         Args:

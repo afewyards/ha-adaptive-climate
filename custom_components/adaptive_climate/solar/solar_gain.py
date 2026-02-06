@@ -1,8 +1,10 @@
 """Solar gain learning and prediction for adaptive thermostat."""
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from datetime import datetime, time
 from enum import Enum
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 import math
 
 
@@ -386,6 +388,6 @@ class SolarGainManager:
             )
         return fallback_gain_c_per_hour
 
-    def get_learner(self, zone_id: str) -> Optional[SolarGainLearner]:
+    def get_learner(self, zone_id: str) -> SolarGainLearner | None:
         """Get learner for a zone."""
         return self.learners.get(zone_id)

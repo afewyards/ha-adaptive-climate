@@ -1,7 +1,9 @@
 """Constants for Adaptive Climate"""
+from __future__ import annotations
+
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, Optional
+from typing import Dict
 import sys
 
 DOMAIN = "adaptive_climate"
@@ -385,7 +387,7 @@ HEATING_TYPE_CONVERGENCE_THRESHOLDS = {
 CONVERGENCE_THRESHOLDS = DEFAULT_CONVERGENCE_THRESHOLDS
 
 
-def get_convergence_thresholds(heating_type: Optional[str] = None) -> Dict[str, float]:
+def get_convergence_thresholds(heating_type: str | None = None) -> Dict[str, float]:
     """
     Get convergence thresholds for a specific heating type.
 
@@ -430,7 +432,7 @@ RULE_THRESHOLD_FLOORS = {
 }
 
 
-def get_rule_thresholds(heating_type: Optional[str] = None) -> Dict[str, float]:
+def get_rule_thresholds(heating_type: str | None = None) -> Dict[str, float]:
     """
     Get rule activation thresholds for a specific heating type.
 

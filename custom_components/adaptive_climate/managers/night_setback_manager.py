@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, time as dt_time, timedelta
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, Tuple
 
 # These imports are only needed when running in Home Assistant
 try:
@@ -43,13 +43,13 @@ class NightSetbackManager:
         self,
         hass: HomeAssistant,
         entity_id: str,
-        night_setback: Optional[NightSetback],
-        night_setback_config: Optional[Dict[str, Any]],
-        solar_recovery: Optional[Any],
-        window_orientation: Optional[str],
-        get_target_temp: Callable[[], Optional[float]],
-        get_current_temp: Callable[[], Optional[float]],
-        preheat_learner: Optional[Any] = None,
+        night_setback: NightSetback | None,
+        night_setback_config: Dict[str, Any] | None,
+        solar_recovery: Any | None,
+        window_orientation: str | None,
+        get_target_temp: Callable[[], float | None],
+        get_current_temp: Callable[[], float | None],
+        preheat_learner: Any | None = None,
         preheat_enabled: bool = False,
         manifold_transport_delay: float = 0.0,
         get_learning_status: Callable[[], str] | None = None,
@@ -94,13 +94,13 @@ class NightSetbackManager:
         )
 
         # Grace period tracking state variables (state management, not calculation)
-        self._learning_grace_until: Optional[datetime] = None
-        self._night_setback_was_active: Optional[bool] = None
+        self._learning_grace_until: datetime | None = None
+        self._night_setback_was_active: bool | None = None
         self._learning_suppressed: bool = False
 
         # Auto-learning setback tracking
         self._days_at_maintenance_cap: int = 0
-        self._last_auto_setback: Optional[datetime] = None
+        self._last_auto_setback: datetime | None = None
 
     @property
     def calculator(self) -> NightSetbackCalculator:
@@ -138,7 +138,7 @@ class NightSetbackManager:
         return dt_util.utcnow() < self._learning_grace_until
 
     @property
-    def learning_grace_until(self) -> Optional[datetime]:
+    def learning_grace_until(self) -> datetime | None:
         """Return the time until which learning is paused."""
         return self._learning_grace_until
 
@@ -220,7 +220,7 @@ class NightSetbackManager:
 
     def calculate_night_setback_adjustment(
         self,
-        current_time: Optional[datetime] = None
+        current_time: datetime | None = None
     ) -> Tuple[float, bool, Dict[str, Any]]:
         """Calculate night setback adjustment for effective target temperature.
 
@@ -368,7 +368,7 @@ class NightSetbackManager:
 
     def calculate_effective_setpoint(
         self,
-        current_time: Optional[datetime] = None
+        current_time: datetime | None = None
     ) -> float:
         """Calculate the effective setpoint with night setback applied.
 
@@ -383,7 +383,7 @@ class NightSetbackManager:
         effective_target, _, _ = self.calculate_night_setback_adjustment(current_time)
         return effective_target
 
-    def get_state_attributes(self, current_time: Optional[datetime] = None) -> Dict[str, Any]:
+    def get_state_attributes(self, current_time: datetime | None = None) -> Dict[str, Any]:
         """Get state attributes for the night setback status.
 
         Args:
@@ -408,10 +408,10 @@ class NightSetbackManager:
 
     def restore_state(
         self,
-        learning_grace_until: Optional[datetime] = None,
-        night_setback_was_active: Optional[bool] = None,
+        learning_grace_until: datetime | None = None,
+        night_setback_was_active: bool | None = None,
         days_at_maintenance_cap: int = 0,
-        last_auto_setback: Optional[datetime] = None,
+        last_auto_setback: datetime | None = None,
     ) -> None:
         """Restore state from saved data.
 

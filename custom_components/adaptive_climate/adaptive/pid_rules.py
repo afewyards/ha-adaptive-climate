@@ -4,8 +4,10 @@ This module provides rule-based PID adjustment logic extracted from the Adaptive
 It includes rule definitions, evaluation, conflict detection, and resolution.
 """
 
+from __future__ import annotations
+
 from enum import Enum
-from typing import Dict, List, NamedTuple, Optional, Set, Tuple
+from typing import Dict, List, NamedTuple, Set, Tuple
 import logging
 
 from ..const import (
@@ -18,7 +20,7 @@ from ..const import (
 _LOGGER = logging.getLogger(__name__)
 
 
-def calculate_pearson_correlation(x: List[float], y: List[float]) -> Optional[float]:
+def calculate_pearson_correlation(x: List[float], y: List[float]) -> float | None:
     """Calculate Pearson correlation coefficient between two variables.
 
     Args:
@@ -172,12 +174,12 @@ def evaluate_pid_rules(
     avg_oscillations: float,
     avg_rise_time: float,
     avg_settling_time: float,
-    recent_rise_times: Optional[List[float]] = None,
-    recent_outdoor_temps: Optional[List[float]] = None,
-    state_tracker: Optional[RuleStateTracker] = None,
-    rule_thresholds: Optional[Dict[str, float]] = None,
-    decay_contribution: Optional[float] = None,
-    integral_at_tolerance_entry: Optional[float] = None,
+    recent_rise_times: List[float] | None = None,
+    recent_outdoor_temps: List[float] | None = None,
+    state_tracker: RuleStateTracker | None = None,
+    rule_thresholds: Dict[str, float] | None = None,
+    decay_contribution: float | None = None,
+    integral_at_tolerance_entry: float | None = None,
     avg_inter_cycle_drift: float = 0.0,
 ) -> List[PIDRuleResult]:
     """

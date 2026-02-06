@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
 
 
 # Water properties
@@ -116,7 +115,7 @@ class HeatOutputCalculator:
 
     def __init__(
         self,
-        fallback_flow_rate_lpm: Optional[float] = None,
+        fallback_flow_rate_lpm: float | None = None,
     ):
         """
         Initialize heat output calculator.
@@ -130,8 +129,8 @@ class HeatOutputCalculator:
         self,
         supply_temp_c: float,
         return_temp_c: float,
-        measured_flow_rate_lpm: Optional[float] = None,
-    ) -> Optional[float]:
+        measured_flow_rate_lpm: float | None = None,
+    ) -> float | None:
         """
         Calculate heat output using measured or fallback flow rate.
 

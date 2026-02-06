@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, time as dt_time, timedelta
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, Tuple
 
 # These imports are only needed when running in Home Assistant
 try:
@@ -40,12 +40,12 @@ class NightSetbackCalculator:
         self,
         hass: HomeAssistant,
         entity_id: str,
-        night_setback: Optional[NightSetback],
-        night_setback_config: Optional[Dict[str, Any]],
-        window_orientation: Optional[str],
-        get_target_temp: Callable[[], Optional[float]],
-        get_current_temp: Callable[[], Optional[float]],
-        preheat_learner: Optional[Any] = None,
+        night_setback: NightSetback | None,
+        night_setback_config: Dict[str, Any] | None,
+        window_orientation: str | None,
+        get_target_temp: Callable[[], float | None],
+        get_current_temp: Callable[[], float | None],
+        preheat_learner: Any | None = None,
         preheat_enabled: bool = False,
         manifold_transport_delay: float = 0.0,
     ):
@@ -79,7 +79,7 @@ class NightSetbackCalculator:
         """Return True if night setback is configured."""
         return self._night_setback is not None or self._night_setback_config is not None
 
-    def get_sunset_time(self) -> Optional[datetime]:
+    def get_sunset_time(self) -> datetime | None:
         """Get sunset time from Home Assistant sun component (local time)."""
         sun_state = self._hass.states.get("sun.sun")
         if sun_state and sun_state.attributes.get("next_setting"):
@@ -94,7 +94,7 @@ class NightSetbackCalculator:
                 return None
         return None
 
-    def get_sunrise_time(self) -> Optional[datetime]:
+    def get_sunrise_time(self) -> datetime | None:
         """Get sunrise time from Home Assistant sun component (local time)."""
         sun_state = self._hass.states.get("sun.sun")
         if sun_state and sun_state.attributes.get("next_rising"):
@@ -109,7 +109,7 @@ class NightSetbackCalculator:
                 return None
         return None
 
-    def get_weather_condition(self) -> Optional[str]:
+    def get_weather_condition(self) -> str | None:
         """Get current weather condition from coordinator's weather entity."""
         coordinator = self._hass.data.get(DOMAIN, {}).get("coordinator")
         if coordinator and hasattr(coordinator, '_weather_entity'):
@@ -123,7 +123,7 @@ class NightSetbackCalculator:
                 return weather_state.state
         return None
 
-    def calculate_dynamic_night_end(self) -> Optional[dt_time]:
+    def calculate_dynamic_night_end(self) -> dt_time | None:
         """Calculate dynamic night setback end time based on sunrise, orientation, weather.
 
         Returns time object for when night setback should end, or None if cannot calculate.
@@ -242,7 +242,7 @@ class NightSetbackCalculator:
 
     def calculate_night_setback_adjustment(
         self,
-        current_time: Optional[datetime] = None
+        current_time: datetime | None = None
     ) -> Tuple[float, bool, Dict[str, Any]]:
         """Calculate night setback adjustment for effective target temperature.
 
@@ -347,7 +347,7 @@ class NightSetbackCalculator:
         outdoor_temp: float,
         humidity_paused: bool = False,
         effective_delta: float | None = None,
-    ) -> Optional[datetime]:
+    ) -> datetime | None:
         """Calculate when to start preheating before recovery deadline.
 
         Args:

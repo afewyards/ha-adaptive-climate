@@ -16,10 +16,12 @@ Detects when the heating system is too weak to reach the setpoint using three mo
 All modes share cumulative multiplier tracking and cooldown enforcement to
 prevent runaway integral gain.
 """
+from __future__ import annotations
+
 import logging
 import time
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from homeassistant.util import dt as dt_util
 
@@ -70,7 +72,7 @@ class UndershootDetector:
 
         # Shared state
         self.cumulative_ki_multiplier: float = 1.0
-        self.last_adjustment_time: Optional[float] = None
+        self.last_adjustment_time: float | None = None
 
         # Real-time mode state
         self._time_below_target: float = 0.0
@@ -80,7 +82,7 @@ class UndershootDetector:
         self._consecutive_failures: int = 0
 
         # Rate mode state
-        self._heating_rate_learner: Optional["HeatingRateLearner"] = None
+        self._heating_rate_learner: "HeatingRateLearner" | None = None
 
     @property
     def time_below_target(self) -> float:
@@ -160,7 +162,7 @@ class UndershootDetector:
     def add_cycle(
         self,
         cycle: CycleMetrics,
-        cycle_duration_minutes: Optional[float] = None,
+        cycle_duration_minutes: float | None = None,
     ) -> None:
         """Add a cycle for chronic approach failure detection.
 
@@ -196,7 +198,7 @@ class UndershootDetector:
     def _is_chronic_approach_failure(
         self,
         cycle: CycleMetrics,
-        cycle_duration_minutes: Optional[float] = None,
+        cycle_duration_minutes: float | None = None,
     ) -> bool:
         """Check if cycle meets chronic approach failure criteria.
 
@@ -231,7 +233,7 @@ class UndershootDetector:
     def should_adjust_ki(
         self,
         cycles_completed: int,
-        last_history_adjustment_utc: Optional[datetime] = None,
+        last_history_adjustment_utc: datetime | None = None,
     ) -> bool:
         """Check if Ki adjustment should be triggered by either mode.
 
@@ -365,7 +367,7 @@ class UndershootDetector:
 
     def _in_cooldown(
         self,
-        last_history_adjustment_utc: Optional[datetime] = None,
+        last_history_adjustment_utc: datetime | None = None,
     ) -> bool:
         """Check if detector is in cooldown period.
 
@@ -449,7 +451,7 @@ class UndershootDetector:
         current_rate: float,
         delta: float,
         outdoor_temp: float,
-    ) -> Optional[float]:
+    ) -> float | None:
         """Check for rate-based undershoot using HeatingRateLearner.
 
         Triggers when ALL conditions are met:

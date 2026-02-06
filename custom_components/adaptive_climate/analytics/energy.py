@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Optional
 
 
 # Unit conversion constants to kWh
@@ -26,7 +25,7 @@ class EnergyTracker:
         self,
         meter_entity_id: str,
         unit: str = "GJ",
-        price_entity_id: Optional[str] = None,
+        price_entity_id: str | None = None,
     ):
         """
         Initialize energy tracker.
@@ -64,8 +63,8 @@ class EnergyTracker:
     def calculate_cost(
         self,
         energy_kwh: float,
-        price_per_kwh: Optional[float] = None,
-    ) -> Optional[float]:
+        price_per_kwh: float | None = None,
+    ) -> float | None:
         """
         Calculate cost from energy consumption.
 
@@ -102,7 +101,7 @@ class EnergyTracker:
         else:
             raise ValueError(f"Invalid period: {period}")
 
-    def get_daily_consumption(self) -> Optional[float]:
+    def get_daily_consumption(self) -> float | None:
         """
         Calculate daily energy consumption in kWh.
 
@@ -123,7 +122,7 @@ class EnergyTracker:
 
         return self.to_kwh(consumption_native)
 
-    def get_weekly_consumption(self) -> Optional[float]:
+    def get_weekly_consumption(self) -> float | None:
         """
         Calculate weekly energy consumption in kWh.
 
@@ -144,7 +143,7 @@ class EnergyTracker:
 
         return self.to_kwh(consumption_native)
 
-    def get_daily_cost(self, price_per_kwh: Optional[float] = None) -> Optional[float]:
+    def get_daily_cost(self, price_per_kwh: float | None = None) -> float | None:
         """
         Calculate daily energy cost.
 
@@ -160,7 +159,7 @@ class EnergyTracker:
 
         return self.calculate_cost(consumption, price_per_kwh)
 
-    def get_weekly_cost(self, price_per_kwh: Optional[float] = None) -> Optional[float]:
+    def get_weekly_cost(self, price_per_kwh: float | None = None) -> float | None:
         """
         Calculate weekly energy cost.
 

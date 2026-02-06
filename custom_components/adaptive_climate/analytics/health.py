@@ -1,6 +1,8 @@
 """Health monitoring with alerts for adaptive thermostat system."""
+from __future__ import annotations
+
 from enum import Enum
-from typing import Optional, Dict, List, Any
+from typing import Dict, List, Any
 
 
 class HealthStatus(Enum):
@@ -36,7 +38,7 @@ class HealthMonitor:
     WARNING_CYCLE_TIME_MIN = 15   # Minutes
     HIGH_POWER_W_M2 = 20.0        # W/m²
 
-    def __init__(self, zone_name: str, exception_zones: Optional[List[str]] = None):
+    def __init__(self, zone_name: str, exception_zones: List[str] | None = None):
         """Initialize health monitor for a zone.
 
         Args:
@@ -46,7 +48,7 @@ class HealthMonitor:
         self.zone_name = zone_name
         self.exception_zones = exception_zones or []
 
-    def check_cycle_time(self, cycle_time_min: Optional[float]) -> Optional[HealthIssue]:
+    def check_cycle_time(self, cycle_time_min: float | None) -> HealthIssue | None:
         """Check if cycle time is too short.
 
         Args:
@@ -78,7 +80,7 @@ class HealthMonitor:
 
         return None
 
-    def check_power_consumption(self, power_w_m2: Optional[float]) -> Optional[HealthIssue]:
+    def check_power_consumption(self, power_w_m2: float | None) -> HealthIssue | None:
         """Check if power consumption is too high.
 
         Args:
@@ -105,7 +107,7 @@ class HealthMonitor:
 
         return None
 
-    def check_sensor_availability(self, sensor_available: bool) -> Optional[HealthIssue]:
+    def check_sensor_availability(self, sensor_available: bool) -> HealthIssue | None:
         """Check if temperature sensor is available.
 
         Args:
@@ -127,8 +129,8 @@ class HealthMonitor:
 
     def check_all(
         self,
-        cycle_time_min: Optional[float],
-        power_w_m2: Optional[float],
+        cycle_time_min: float | None,
+        power_w_m2: float | None,
         sensor_available: bool
     ) -> List[HealthIssue]:
         """Run all health checks for the zone.
@@ -164,7 +166,7 @@ class HealthMonitor:
 class SystemHealthMonitor:
     """Monitors aggregate health across all zones."""
 
-    def __init__(self, exception_zones: Optional[List[str]] = None):
+    def __init__(self, exception_zones: List[str] | None = None):
         """Initialize system health monitor.
 
         Args:

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
 
 
 class WeeklyReport:
@@ -28,8 +27,8 @@ class WeeklyReport:
         self.start_date = start_date
         self.end_date = end_date
         self.zones: dict[str, dict] = {}
-        self.total_energy_kwh: Optional[float] = None
-        self.total_cost: Optional[float] = None
+        self.total_energy_kwh: float | None = None
+        self.total_cost: float | None = None
 
         # Comfort metrics
         self.comfort_scores: dict[str, float] = {}
@@ -39,8 +38,8 @@ class WeeklyReport:
         self.zone_costs: dict[str, float] = {}
 
         # Week-over-week comparison
-        self.cost_change_pct: Optional[float] = None
-        self.energy_change_pct: Optional[float] = None
+        self.cost_change_pct: float | None = None
+        self.energy_change_pct: float | None = None
 
         # Health summary
         self.health_status: str = "healthy"
@@ -50,11 +49,11 @@ class WeeklyReport:
         self,
         zone_id: str,
         duty_cycle: float,
-        energy_kwh: Optional[float] = None,
-        cost: Optional[float] = None,
-        comfort_score: Optional[float] = None,
-        time_at_target: Optional[float] = None,
-        area_m2: Optional[float] = None,
+        energy_kwh: float | None = None,
+        cost: float | None = None,
+        comfort_score: float | None = None,
+        time_at_target: float | None = None,
+        area_m2: float | None = None,
     ) -> None:
         """
         Add performance data for a zone.
@@ -87,8 +86,8 @@ class WeeklyReport:
 
     def set_totals(
         self,
-        total_energy_kwh: Optional[float] = None,
-        total_cost: Optional[float] = None,
+        total_energy_kwh: float | None = None,
+        total_cost: float | None = None,
     ) -> None:
         """
         Set system-wide totals.
@@ -100,7 +99,7 @@ class WeeklyReport:
         self.total_energy_kwh = total_energy_kwh
         self.total_cost = total_cost
 
-    def get_average_duty_cycle(self) -> Optional[float]:
+    def get_average_duty_cycle(self) -> float | None:
         """
         Calculate the average duty cycle across all zones.
 
@@ -112,7 +111,7 @@ class WeeklyReport:
         total = sum(zone["duty_cycle"] for zone in self.zones.values())
         return total / len(self.zones)
 
-    def get_average_comfort(self) -> Optional[float]:
+    def get_average_comfort(self) -> float | None:
         """
         Calculate the average comfort score across all zones.
 
@@ -123,7 +122,7 @@ class WeeklyReport:
             return None
         return sum(self.comfort_scores.values()) / len(self.comfort_scores)
 
-    def get_best_zone(self) -> Optional[tuple[str, float]]:
+    def get_best_zone(self) -> tuple[str, float] | None:
         """
         Get the zone with the highest comfort score.
 
@@ -137,8 +136,8 @@ class WeeklyReport:
 
     def set_week_over_week(
         self,
-        cost_change_pct: Optional[float] = None,
-        energy_change_pct: Optional[float] = None,
+        cost_change_pct: float | None = None,
+        energy_change_pct: float | None = None,
     ) -> None:
         """
         Set week-over-week comparison data.
@@ -326,8 +325,8 @@ def generate_weekly_report(
     zones_data: dict[str, dict],
     start_date: datetime,
     end_date: datetime,
-    total_energy_kwh: Optional[float] = None,
-    total_cost: Optional[float] = None,
+    total_energy_kwh: float | None = None,
+    total_cost: float | None = None,
 ) -> WeeklyReport:
     """
     Generate a weekly performance report from zone data.
@@ -337,8 +336,8 @@ def generate_weekly_report(
             Format: {
                 "zone_id": {
                     "duty_cycle": float,
-                    "energy_kwh": Optional[float],
-                    "cost": Optional[float],
+                    "energy_kwh": float | None,
+                    "cost": float | None,
                 }
             }
         start_date: Start of reporting period

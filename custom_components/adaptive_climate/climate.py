@@ -2,12 +2,13 @@
 For more details about this platform, please refer to the documentation at
 https://github.com/ScratMan/HASmartThermostat"""
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import time
 # ABC removed - no abstract methods in this class
 from datetime import datetime, timedelta
-from typing import Optional
 
 from homeassistant.core import HomeAssistant
 from homeassistant.const import (
@@ -371,10 +372,10 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
                           self.unique_id, self._outdoor_temp_lag_tau)
 
         # Initialize KeLearner (will be configured properly in async_added_to_hass)
-        self._ke_learner: Optional[KeLearner] = None
+        self._ke_learner: KeLearner | None = None
 
         # Initialize PreheatLearner (will be configured properly in async_added_to_hass)
-        self._preheat_learner: Optional[PreheatLearner] = None
+        self._preheat_learner: PreheatLearner | None = None
         self._preheat_cycle_unsub = None  # H7 fix - store unsub handle
         self._heating_rate_cycle_unsub = None  # Heating rate session lifecycle unsub handle
 

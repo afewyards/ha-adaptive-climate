@@ -1,5 +1,7 @@
 """Adaptive learning module for Adaptive Climate."""
 
+from __future__ import annotations
+
 try:
     from .thermal_rates import ThermalRateLearner
     from .cycle_analysis import (

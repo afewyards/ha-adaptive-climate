@@ -3,9 +3,11 @@
 Pauses or adjusts heating when windows/doors are open to save energy,
 with configurable delays, grace periods, and multiple action types.
 """
+from __future__ import annotations
+
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Optional, List, Dict, Any
+from typing import List, Dict, Any
 
 from homeassistant.util import dt as dt_util
 
@@ -48,16 +50,16 @@ class ContactSensorHandler:
         self.learning_grace_seconds = learning_grace_seconds
 
         # Track when contacts opened
-        self._contact_opened_at: Optional[datetime] = None
+        self._contact_opened_at: datetime | None = None
         self._any_contact_open = False
 
         # Track when handler was created (for grace period)
-        self._created_at: Optional[datetime] = None
+        self._created_at: datetime | None = None
 
     def update_contact_states(
         self,
         contact_states: Dict[str, bool],
-        current_time: Optional[datetime] = None
+        current_time: datetime | None = None
     ):
         """Update contact sensor states.
 
@@ -96,7 +98,7 @@ class ContactSensorHandler:
         """
         return self._any_contact_open
 
-    def should_take_action(self, current_time: Optional[datetime] = None) -> bool:
+    def should_take_action(self, current_time: datetime | None = None) -> bool:
         """Check if action should be taken based on contact state and delay.
 
         Args:
@@ -133,8 +135,8 @@ class ContactSensorHandler:
     def get_adjusted_setpoint(
         self,
         base_setpoint: float,
-        current_time: Optional[datetime] = None
-    ) -> Optional[float]:
+        current_time: datetime | None = None
+    ) -> float | None:
         """Get adjusted setpoint based on contact state.
 
         Args:
@@ -156,7 +158,7 @@ class ContactSensorHandler:
 
         return None
 
-    def get_time_until_action(self, current_time: Optional[datetime] = None) -> Optional[int]:
+    def get_time_until_action(self, current_time: datetime | None = None) -> int | None:
         """Get seconds until action will be taken.
 
         Args:
@@ -177,7 +179,7 @@ class ContactSensorHandler:
 
         return int((delay_end - current_time).total_seconds())
 
-    def get_grace_time_remaining(self, current_time: Optional[datetime] = None) -> int:
+    def get_grace_time_remaining(self, current_time: datetime | None = None) -> int:
         """Get seconds remaining in learning grace period.
 
         Args:
@@ -240,7 +242,7 @@ class ContactSensorManager:
         self,
         zone_id: str,
         contact_states: Dict[str, bool],
-        current_time: Optional[datetime] = None
+        current_time: datetime | None = None
     ):
         """Update contact sensor states for a zone.
 
@@ -258,7 +260,7 @@ class ContactSensorManager:
     def should_take_action(
         self,
         zone_id: str,
-        current_time: Optional[datetime] = None
+        current_time: datetime | None = None
     ) -> bool:
         """Check if action should be taken for a zone.
 
@@ -279,8 +281,8 @@ class ContactSensorManager:
         self,
         zone_id: str,
         base_setpoint: float,
-        current_time: Optional[datetime] = None
-    ) -> Optional[float]:
+        current_time: datetime | None = None
+    ) -> float | None:
         """Get adjusted setpoint for a zone based on contact state.
 
         Args:
@@ -297,7 +299,7 @@ class ContactSensorManager:
         handler = self._zone_handlers[zone_id]
         return handler.get_adjusted_setpoint(base_setpoint, current_time)
 
-    def get_handler(self, zone_id: str) -> Optional[ContactSensorHandler]:
+    def get_handler(self, zone_id: str) -> ContactSensorHandler | None:
         """Get contact sensor handler for a zone.
 
         Args:
@@ -308,7 +310,7 @@ class ContactSensorManager:
         """
         return self._zone_handlers.get(zone_id)
 
-    def get_zone_config(self, zone_id: str) -> Optional[Dict[str, Any]]:
+    def get_zone_config(self, zone_id: str) -> Dict[str, Any] | None:
         """Get contact sensor configuration for a zone.
 
         Args:

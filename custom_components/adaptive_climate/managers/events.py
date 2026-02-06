@@ -10,7 +10,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Any, Callable, Union
+from typing import Any, Callable
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -174,18 +174,7 @@ class TemperatureUpdateEvent:
 
 
 # Type alias for any cycle event
-CycleEvent = Union[
-    CycleStartedEvent,
-    CycleEndedEvent,
-    HeatingStartedEvent,
-    HeatingEndedEvent,
-    SettlingStartedEvent,
-    SetpointChangedEvent,
-    ModeChangedEvent,
-    ContactPauseEvent,
-    ContactResumeEvent,
-    TemperatureUpdateEvent,
-]
+CycleEvent = "CycleStartedEvent | CycleEndedEvent | HeatingStartedEvent | HeatingEndedEvent | SettlingStartedEvent | SetpointChangedEvent | ModeChangedEvent | ContactPauseEvent | ContactResumeEvent | TemperatureUpdateEvent"
 
 
 class CycleEventDispatcher:

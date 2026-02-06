@@ -4,9 +4,11 @@ This module provides automatic tuning of the Ke parameter based on observed
 correlations between outdoor temperature and required heating effort (PID output).
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import List, Optional, Dict, Any
+from typing import List, Dict, Any
 import logging
 import statistics
 
@@ -95,7 +97,7 @@ class KeLearner:
         self._observations: List[KeObservation] = []
         self._max_observations = max_observations
         self._enabled = False  # Disabled until PID converges
-        self._last_adjustment_time: Optional[datetime] = None
+        self._last_adjustment_time: datetime | None = None
 
     @property
     def enabled(self) -> bool:
@@ -130,7 +132,7 @@ class KeLearner:
         pid_output: float,
         indoor_temp: float,
         target_temp: float,
-        timestamp: Optional[datetime] = None,
+        timestamp: datetime | None = None,
     ) -> bool:
         """Add a new observation for Ke learning.
 
@@ -186,7 +188,7 @@ class KeLearner:
         self,
         x_values: List[float],
         y_values: List[float],
-    ) -> Optional[float]:
+    ) -> float | None:
         """Calculate Pearson correlation coefficient between two variables.
 
         Uses the sample correlation formula: r = sum((x-mx)(y-my)) / (n-1) / (sx * sy)
@@ -244,7 +246,7 @@ class KeLearner:
 
         return False
 
-    def calculate_ke_adjustment(self) -> Optional[float]:
+    def calculate_ke_adjustment(self) -> float | None:
         """Calculate recommended Ke adjustment based on observations.
 
         Analyzes the correlation between outdoor temperature and PID output.
@@ -369,7 +371,7 @@ class KeLearner:
             new_ke,
         )
 
-    def get_last_adjustment_time(self) -> Optional[datetime]:
+    def get_last_adjustment_time(self) -> datetime | None:
         """Get the timestamp of the last Ke adjustment."""
         return self._last_adjustment_time
 

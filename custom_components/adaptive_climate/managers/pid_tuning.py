@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 import statistics
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict, Optional
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict
 
 from ..adaptive.physics import calculate_thermal_time_constant, calculate_initial_pid
 from ..adaptive.learning import get_auto_apply_thresholds
@@ -247,7 +247,7 @@ class PIDTuningManager:
         await self._async_write_ha_state()
 
     async def async_auto_apply_adaptive_pid(
-        self, outdoor_temp: Optional[float] = None
+        self, outdoor_temp: float | None = None
     ) -> Dict[str, Any]:
         """Automatically apply adaptive PID values with safety checks.
 
