@@ -264,3 +264,59 @@ def mock_hass():
         }
     }
     return hass
+
+
+# ============================================================================
+# Time Travel Fixture
+# ============================================================================
+
+from datetime import timedelta, timezone
+from unittest.mock import patch
+
+
+class TimeTravelController:
+    """Controls dt_util.utcnow() and time.monotonic() together."""
+
+    def __init__(self):
+        self._current_dt = datetime(2024, 1, 1, 10, 0, 0, tzinfo=timezone.utc)
+        self._current_mono = 1000.0
+
+    def now(self) -> datetime:
+        return self._current_dt
+
+    def monotonic(self) -> float:
+        return self._current_mono
+
+    def advance(self, hours: float = 0, minutes: float = 0, seconds: float = 0) -> None:
+        total_seconds = hours * 3600 + minutes * 60 + seconds
+        self._current_dt += timedelta(seconds=total_seconds)
+        self._current_mono += total_seconds
+
+
+@pytest.fixture
+def time_travel():
+    """Fixture for deterministic time control in tests.
+
+    Patches both dt_util.utcnow() and time.monotonic() to advance together.
+
+    Usage:
+        def test_time_progression(time_travel):
+            start = time_travel.now()
+            time_travel.advance(minutes=30)
+            assert time_travel.now() == start + timedelta(minutes=30)
+    """
+    controller = TimeTravelController()
+
+    # Patch utcnow on the mocked dt_util module
+    # conftest.py sets up sys.modules["homeassistant.util.dt"] as a MagicMock
+    # We set utcnow to return our controlled time
+    from homeassistant.util import dt as dt_util
+    original_utcnow = dt_util.utcnow
+    dt_util.utcnow = controller.now
+
+    # Patch time.monotonic using unittest.mock.patch
+    with patch("time.monotonic", side_effect=lambda: controller.monotonic()):
+        yield controller
+
+    # Restore utcnow to original mock after test
+    dt_util.utcnow = original_utcnow
