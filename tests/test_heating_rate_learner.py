@@ -570,6 +570,95 @@ class TestSerialization:
         assert restored._last_stall_setpoint == 21.0
 
 
+class TestMinimumRateFilter:
+    """Tests for minimum rate filtering."""
+
+    def test_negative_rate_rejected_by_end_session(self):
+        """Test end_session rejects negative rates (temp drop)."""
+        learner = HeatingRateLearner(HeatingType.RADIATOR)
+        start = datetime(2026, 1, 15, 10, 0, tzinfo=timezone.utc)
+        end = datetime(2026, 1, 15, 11, 0, tzinfo=timezone.utc)  # 60 min
+
+        learner.start_session(temp=20.0, setpoint=21.0, outdoor_temp=5.0, timestamp=start)
+        obs = learner.end_session(end_temp=19.5, reason="reached_setpoint", timestamp=end)
+
+        # Negative rate should be rejected
+        assert obs is None
+        assert learner.get_observation_count() == 0
+
+    def test_near_zero_rate_rejected_by_end_session(self):
+        """Test end_session rejects near-zero rates."""
+        learner = HeatingRateLearner(HeatingType.RADIATOR)
+        start = datetime(2026, 1, 15, 10, 0, tzinfo=timezone.utc)
+        end = datetime(2026, 1, 15, 11, 0, tzinfo=timezone.utc)  # 60 min
+
+        # Rate = 0.01°C over 1h = 0.01°C/h (below 0.02 threshold)
+        learner.start_session(temp=20.0, setpoint=21.0, outdoor_temp=5.0, timestamp=start)
+        obs = learner.end_session(end_temp=20.01, reason="reached_setpoint", timestamp=end)
+
+        assert obs is None
+        assert learner.get_observation_count() == 0
+
+    def test_low_but_valid_rate_accepted(self):
+        """Test end_session accepts low but valid rates above threshold."""
+        learner = HeatingRateLearner(HeatingType.RADIATOR)
+        start = datetime(2026, 1, 15, 10, 0, tzinfo=timezone.utc)
+        end = datetime(2026, 1, 15, 11, 0, tzinfo=timezone.utc)  # 60 min
+
+        # Rate = 0.05°C over 1h = 0.05°C/h (above 0.02 threshold)
+        learner.start_session(temp=20.0, setpoint=21.0, outdoor_temp=5.0, timestamp=start)
+        obs = learner.end_session(end_temp=20.05, reason="reached_setpoint", timestamp=end)
+
+        assert obs is not None
+        assert obs.rate == pytest.approx(0.05)
+        assert learner.get_observation_count() == 1
+
+    def test_add_observation_rejects_bad_rate(self):
+        """Test add_observation rejects negative rates."""
+        learner = HeatingRateLearner(HeatingType.RADIATOR)
+
+        learner.add_observation(
+            rate=-0.1,
+            duration_min=60,
+            source="session",
+            stalled=False,
+            delta=3.0,
+            outdoor_temp=8.0,
+        )
+
+        assert learner.get_observation_count() == 0
+
+    def test_add_observation_rejects_near_zero_rate(self):
+        """Test add_observation rejects near-zero rates."""
+        learner = HeatingRateLearner(HeatingType.RADIATOR)
+
+        learner.add_observation(
+            rate=0.01,
+            duration_min=60,
+            source="session",
+            stalled=False,
+            delta=3.0,
+            outdoor_temp=8.0,
+        )
+
+        assert learner.get_observation_count() == 0
+
+    def test_add_observation_accepts_valid_rate(self):
+        """Test add_observation accepts valid rates."""
+        learner = HeatingRateLearner(HeatingType.RADIATOR)
+
+        learner.add_observation(
+            rate=0.05,
+            duration_min=60,
+            source="session",
+            stalled=False,
+            delta=3.0,
+            outdoor_temp=8.0,
+        )
+
+        assert learner.get_observation_count() == 1
+
+
 class TestPhysicsComparison:
     """Tests for physics-based rate comparison."""
 

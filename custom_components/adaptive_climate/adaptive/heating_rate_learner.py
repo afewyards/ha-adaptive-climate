@@ -1,8 +1,11 @@
 """Unified heating rate learning from cycle and session data."""
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime
+
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass
@@ -51,6 +54,7 @@ class HeatingRateLearner:
     MAX_OBSERVATIONS_PER_BIN = 20
     MIN_OBSERVATIONS_FOR_RATE = 3
     MIN_OBSERVATIONS_FOR_COMPARISON = 5
+    MIN_OBSERVATION_RATE = 0.02  # Minimum heating rate (°C/h) to accept observations
     UNDERPERFORMING_THRESHOLD = 0.6  # Below 60% of expected = underperforming
     PROGRESS_THRESHOLD = 0.1  # Minimum temp rise to count as progress
     STALL_CYCLES = 3  # Cycles without progress to declare stall
@@ -129,6 +133,15 @@ class HeatingRateLearner:
 
         if timestamp is None:
             timestamp = dt_util.utcnow()
+
+        # Filter out invalid/poisoned rates
+        if rate < self.MIN_OBSERVATION_RATE:
+            _LOGGER.debug(
+                "Rejecting heating rate observation: rate=%.3f°C/h below minimum %.3f°C/h",
+                rate,
+                self.MIN_OBSERVATION_RATE,
+            )
+            return
 
         obs = HeatingRateObservation(
             rate=rate,
@@ -256,6 +269,18 @@ class HeatingRateLearner:
         temp_rise = end_temp - session.start_temp
         duration_hours = duration_min / 60.0
         rate = temp_rise / duration_hours if duration_hours > 0 else 0.0
+
+        # Reject invalid/poisoned rates
+        if rate < self.MIN_OBSERVATION_RATE:
+            _LOGGER.warning(
+                "Rejecting heating rate session: rate=%.3f°C/h below minimum %.3f°C/h "
+                "(temp_rise=%.2f°C, duration=%.1f min)",
+                rate,
+                self.MIN_OBSERVATION_RATE,
+                temp_rise,
+                duration_min,
+            )
+            return None
 
         # Determine if stalled
         stalled = reason == "stalled"
