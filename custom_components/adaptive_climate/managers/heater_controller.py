@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import datetime
 from typing import TYPE_CHECKING, Any, Callable, List
 
 # These imports are only needed when running in Home Assistant
