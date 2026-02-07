@@ -52,7 +52,11 @@ def build_state_attributes(thermostat: SmartThermostat) -> dict[str, Any]:
     attrs: dict[str, Any] = {
         "integration": DOMAIN,
         "control_output": thermostat._control_output,
-        "outdoor_temp_lagged": thermostat._pid_controller.outdoor_temp_lagged,
+        "outdoor_temp_lagged": (
+            thermostat._coordinator.outdoor_temp_lagged
+            if thermostat._coordinator
+            else thermostat._ext_temp
+        ),
         "cycle_count": build_cycle_count(heater_count, cooler_count, is_demand_switch),
         "integral": thermostat.pid_control_i,
     }

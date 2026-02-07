@@ -159,13 +159,6 @@ class StateRestorer:
             _LOGGER.error("%s: gains_manager not available during restoration - this indicates an initialization order bug",
                          thermostat.entity_id)
 
-        # Restore outdoor temperature lag state
-        if old_state.attributes.get('outdoor_temp_lagged') is not None:
-            outdoor_temp_lagged = float(old_state.attributes.get('outdoor_temp_lagged'))
-            thermostat._pid_controller.outdoor_temp_lagged = outdoor_temp_lagged
-            _LOGGER.info("%s: Restored outdoor_temp_lagged=%.2f°C",
-                        thermostat.entity_id, outdoor_temp_lagged)
-
         # Restore actuator cycle counts for wear tracking
         if thermostat._heater_controller:
             # Handle cycle_count - new structure (dict or int) or old structure (separate fields)
