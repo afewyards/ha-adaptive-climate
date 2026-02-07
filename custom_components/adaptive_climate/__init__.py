@@ -506,6 +506,16 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     persistent_notification = domain_config.get(
         CONF_PERSISTENT_NOTIFICATION, DEFAULT_PERSISTENT_NOTIFICATION
     )
+
+    # Create notification manager for event-driven notifications
+    from .managers.notification_manager import NotificationManager
+    notification_manager = NotificationManager(
+        hass=hass,
+        notify_service=notify_service,
+        persistent_notification=persistent_notification,
+    )
+    coordinator.notification_manager = notification_manager
+    _LOGGER.info("Notification manager initialized")
     energy_meter = domain_config.get(CONF_ENERGY_METER_ENTITY)
     energy_cost = domain_config.get(CONF_ENERGY_COST_ENTITY)
 

@@ -475,6 +475,21 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
             if zone_data:
                 zone_data["climate_entity"] = self
 
+                # Create LearningMilestoneTracker for this zone
+                notification_manager = getattr(coordinator, 'notification_manager', None)
+                if notification_manager:
+                    from .managers.learning_milestone import LearningMilestoneTracker
+                    milestone_tracker = LearningMilestoneTracker(
+                        zone_id=self._zone_id,
+                        zone_name=self._name,
+                        notification_manager=notification_manager,
+                    )
+                    zone_data["milestone_tracker"] = milestone_tracker
+                    _LOGGER.info(
+                        "%s: Learning milestone tracker initialized",
+                        self.entity_id
+                    )
+
         # Set physics baseline for adaptive learning after PID values are finalized
         # (either restored from previous state or calculated from physics in __init__)
         if coordinator and self._zone_id and self._area_m2:
