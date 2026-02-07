@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v0.62.0 (2026-02-07)
+
+### Features
+
+- **contact**: Expose open sensor IDs and first-open timestamp
+  ([`c21150e`](https://github.com/afewyards/ha-adaptive-climate/commit/c21150e31075055b4039b8477b5fe5012bc46dcd))
+
+Add get_open_sensor_ids() and get_first_open_time() to ContactSensorHandler so state_attributes can
+  include sensor details in contact_open overrides.
+
+
 ## v0.61.1 (2026-02-07)
 
 ### Bug Fixes
