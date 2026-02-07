@@ -353,27 +353,23 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
             kp, ki, kd = calculate_initial_pid(
                 self._thermal_time_constant, self._heating_type, self._area_m2, self._max_power_w, self._supply_temperature
             )
-            # Calculate outdoor temperature lag time constant: tau_lag = 2 * tau_building
-            # This models the thermal inertia of the building envelope
-            self._outdoor_temp_lag_tau = 2.0 * self._thermal_time_constant
 
             # Log power and supply temp scaling info if configured
             power_info = f", power={self._max_power_w}W" if self._max_power_w else ""
             supply_info = f", supply={self._supply_temperature}°C" if self._supply_temperature else ""
-            _LOGGER.info("%s: Physics-based PID init (tau=%.2f, type=%s, window=%s%s%s): Kp=%.4f, Ki=%.5f, Kd=%.3f, outdoor_lag_tau=%.2f",
+            _LOGGER.info("%s: Physics-based PID init (tau=%.2f, type=%s, window=%s%s%s): Kp=%.4f, Ki=%.5f, Kd=%.3f",
                          self.unique_id, self._thermal_time_constant, self._heating_type, self._window_rating, power_info, supply_info,
-                         kp, ki, kd, self._outdoor_temp_lag_tau)
+                         kp, ki, kd)
         else:
             # Fallback defaults if no zone properties
             self._thermal_time_constant = None
-            self._outdoor_temp_lag_tau = 4.0  # Default 4 hours if no tau available
 
             # Use fallback defaults
             kp = 0.5
             ki = 0.01
             kd = 5.0
-            _LOGGER.warning("%s: No area_m2 configured, using default PID values and outdoor_lag_tau=%.2f",
-                          self.unique_id, self._outdoor_temp_lag_tau)
+            _LOGGER.warning("%s: No area_m2 configured, using default PID values",
+                          self.unique_id)
 
         # Initialize KeLearner (will be configured properly in async_added_to_hass)
         self._ke_learner: KeLearner | None = None
@@ -422,7 +418,6 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
             cold_tolerance=self._cold_tolerance,
             hot_tolerance=self._hot_tolerance,
             derivative_filter_alpha=self._derivative_filter_alpha,
-            outdoor_temp_lag_tau=self._outdoor_temp_lag_tau,
             integral_decay_multiplier=decay_rate,
             integral_exp_decay_tau=exp_decay_tau,
             heating_type=self._heating_type)

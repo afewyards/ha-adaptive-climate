@@ -190,9 +190,16 @@ class ControlOutputManager:
 
         # Get current values
         current_temp = self._thermostat_state._current_temp
-        ext_temp = self._thermostat_state._ext_temp
         wind_speed = self._thermostat_state._wind_speed
         output_precision = self._thermostat_state._output_precision
+
+        # Use coordinator's shared lagged outdoor temp if available,
+        # otherwise fall back to zone's own ext_temp (for outdoor_sensor zones)
+        coordinator = self._thermostat_state._coordinator
+        if coordinator and coordinator.outdoor_temp_lagged is not None and not self._thermostat_state._ext_sensor_entity_id:
+            ext_temp = coordinator.outdoor_temp_lagged
+        else:
+            ext_temp = self._thermostat_state._ext_temp
 
         # Calculate thermal coupling feedforward compensation
         feedforward = self._calculate_coupling_compensation()
