@@ -1,6 +1,18 @@
 # CHANGELOG
 
 
+## v0.63.1 (2026-02-07)
+
+### Bug Fixes
+
+- Store weather_entity/outdoor_sensor/house_energy_rating before coordinator init
+  ([`2daea8e`](https://github.com/afewyards/ha-adaptive-climate/commit/2daea8e89ec890a94454b3d4fab5cea6192bc818))
+
+Coordinator reads these from hass.data[DOMAIN] during __init__ to set up the outdoor temp EMA
+  listener and tau. They were stored after coordinator creation, so outdoor_temp_lagged was always
+  null on all zones.
+
+
 ## v0.63.0 (2026-02-07)
 
 ### Chores
