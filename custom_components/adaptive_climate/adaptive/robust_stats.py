@@ -7,7 +7,6 @@ cycles (e.g., sunny days causing solar gain) from PID tuning calculations.
 
 from __future__ import annotations
 
-from typing import List, Tuple
 import logging
 
 _LOGGER = logging.getLogger(__name__)

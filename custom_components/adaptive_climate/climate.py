@@ -11,19 +11,16 @@ import time
 # ABC removed - no abstract methods in this class
 from datetime import datetime, timedelta
 
-from homeassistant.core import HomeAssistant
 from homeassistant.const import (
     ATTR_TEMPERATURE,
     EVENT_HOMEASSISTANT_START,
-    SERVICE_TURN_ON,
-    STATE_ON,
     STATE_UNAVAILABLE,
     STATE_UNKNOWN,
 )
 from homeassistant.components.input_number import DOMAIN as INPUT_NUMBER_DOMAIN
 
 NUMBER_DOMAIN = "number"  # Avoid importing from number.const for HA version compatibility
-from homeassistant.core import CoreState, Event, EventStateChangedData, callback
+from homeassistant.core import CoreState, callback
 from homeassistant.util import slugify
 from homeassistant.util import dt as dt_util
 from homeassistant.helpers.event import (
@@ -41,7 +38,6 @@ from .adaptive.preheat import PreheatLearner
 
 from homeassistant.components.climate import ClimateEntity, ClimateEntityFeature
 from homeassistant.components.climate import (
-    ATTR_PRESET_MODE,
     HVACMode,
     HVACAction,
 )
@@ -50,8 +46,6 @@ from . import DOMAIN
 from . import const
 from . import pid_controller
 from .const import PIDGains
-from .adaptive.learning import AdaptiveLearner
-from .adaptive.persistence import LearningDataStore
 from .managers import (
     ControlOutputManager,
     HeaterController,
@@ -69,9 +63,6 @@ from .managers.events import (
     CycleEndedEvent,
     SetpointChangedEvent,
     ModeChangedEvent,
-    ContactPauseEvent,
-    ContactResumeEvent,
-    TemperatureUpdateEvent,
     HeatingStartedEvent,
     HeatingEndedEvent,
 )
@@ -84,7 +75,6 @@ _LOGGER = logging.getLogger(__name__)
 
 # Re-export setup functions and schema from climate_setup module
 # This maintains backward compatibility for any imports expecting these in climate.py
-from .climate_setup import async_setup_platform, PLATFORM_SCHEMA, validate_pwm_compatibility
 
 # Note: The actual implementations are in climate_setup.py
 # These re-exports ensure existing imports continue to work
@@ -1372,7 +1362,6 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
                 zone_data = coordinator.get_zone_data(self._zone_id)
                 if zone_data:
                     # Update preheat data in zone_data for persistence
-                    from .adaptive.persistence import LearningDataStore
 
                     learning_store = self.hass.data.get(DOMAIN, {}).get("learning_store")
                     if learning_store:

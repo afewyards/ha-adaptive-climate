@@ -23,7 +23,6 @@ from .managers import (
     TemperatureManager,
     CycleTrackerManager,
 )
-from .managers.pid_gains_manager import PIDGainsManager
 from .managers.learning_gate import LearningGateManager
 from .managers.events import (
     CycleEventDispatcher,
@@ -32,8 +31,6 @@ from .managers.events import (
 from . import DOMAIN
 from .const import (
     PIDChangeReason,
-    PIDGains,
-    MIN_CYCLES_FOR_LEARNING,
 )
 
 if TYPE_CHECKING:

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import List, Dict, Any
+from typing import Any
 
 from homeassistant.util import dt as dt_util
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Any, TYPE_CHECKING
 
 # These imports are only needed when running in Home Assistant
@@ -17,7 +17,6 @@ except ImportError:
     HomeAssistant = Any
     dt_util = None
 
-from ..const import DOMAIN
 
 if TYPE_CHECKING:
     from ..coordinator import AdaptiveThermostatCoordinator

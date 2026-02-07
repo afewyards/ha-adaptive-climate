@@ -8,7 +8,7 @@ This module contains logic for automatic PID adjustment application, including:
 
 from __future__ import annotations
 
-from typing import Dict, List, Any, TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 import logging
 
 if TYPE_CHECKING:

@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, time as dt_time, timedelta
-from typing import TYPE_CHECKING, Any, Callable, Dict, Tuple
+from datetime import datetime, timedelta
+from typing import TYPE_CHECKING, Any, Callable
 
 # These imports are only needed when running in Home Assistant
 try:
@@ -28,7 +28,7 @@ from ..const import (
 )
 
 if TYPE_CHECKING:
-    from ..climate import AdaptiveThermostat
+    pass
 
 _LOGGER = logging.getLogger(__name__)
 

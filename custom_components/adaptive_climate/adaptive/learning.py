@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Any, TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 import statistics
 import logging
 
@@ -18,20 +18,11 @@ from ..const import (
     MAX_CYCLE_HISTORY,
     MIN_ADJUSTMENT_INTERVAL,
     MIN_ADJUSTMENT_CYCLES,
-    CONVERGENCE_THRESHOLDS,
     MIN_CONVERGENCE_CYCLES_FOR_KE,
     CONVERGENCE_CONFIDENCE_HIGH,
-    CONFIDENCE_DECAY_RATE_DAILY,
     CONFIDENCE_INCREASE_PER_GOOD_CYCLE,
-    PID_HISTORY_SIZE,
-    VALIDATION_CYCLE_COUNT,
-    VALIDATION_DEGRADATION_THRESHOLD,
-    MAX_AUTO_APPLIES_PER_SEASON,
-    MAX_AUTO_APPLIES_LIFETIME,
-    MAX_CUMULATIVE_DRIFT_PCT,
     CLAMPED_OVERSHOOT_MULTIPLIER,
     DEFAULT_CLAMPED_OVERSHOOT_MULTIPLIER,
-    HeatingType,
     get_convergence_thresholds,
     get_rule_thresholds,
 )
@@ -73,7 +64,6 @@ from .confidence import ConfidenceTracker
 
 # Import serialization utilities for state persistence
 from .learner_serialization import (
-    serialize_cycle,
     learner_to_dict,
     restore_learner_from_dict,
 )

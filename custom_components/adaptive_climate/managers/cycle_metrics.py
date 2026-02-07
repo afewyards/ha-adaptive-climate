@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING, Awaitable, Callable
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
     from ..adaptive.learning import AdaptiveLearner
-    from ..adaptive.cycle_analysis import CycleMetrics
     from .events import CycleEventDispatcher
 
 from homeassistant.util import dt as dt_util

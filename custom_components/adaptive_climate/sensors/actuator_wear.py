@@ -11,7 +11,6 @@ from typing import Any
 
 from homeassistant.components.sensor import (
     SensorEntity,
-    SensorDeviceClass,
     SensorStateClass,
 )
 from homeassistant.const import PERCENTAGE

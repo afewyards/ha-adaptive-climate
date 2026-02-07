@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime
-from typing import Any, Dict, List, TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 import json
 import logging
 import os
@@ -14,10 +14,7 @@ from homeassistant.util import dt as dt_util
 from ..const import MAX_CYCLE_HISTORY
 
 if TYPE_CHECKING:
-    from homeassistant.core import HomeAssistant
-    from homeassistant.helpers.storage import Store
     from .thermal_rates import ThermalRateLearner
-    from .cycle_analysis import CycleMetrics
 
 _LOGGER = logging.getLogger(__name__)
 

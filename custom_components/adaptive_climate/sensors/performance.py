@@ -31,7 +31,6 @@ from homeassistant.core import HomeAssistant, callback, Event
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.util import dt as dt_util
 
-from ..const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 

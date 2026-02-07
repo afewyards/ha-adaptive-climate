@@ -18,7 +18,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Dict, List
 import logging
 
 from homeassistant.util import dt as dt_util

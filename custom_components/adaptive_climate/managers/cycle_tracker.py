@@ -10,7 +10,7 @@ from collections import deque
 import logging
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Deque
+from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 from homeassistant.util import dt as dt_util
 
@@ -20,7 +20,6 @@ if TYPE_CHECKING:
     from .events import (
         CycleEventDispatcher,
         CycleStartedEvent,
-        CycleEndedEvent,
         HeatingStartedEvent,
         HeatingEndedEvent,
         SettlingStartedEvent,
@@ -30,7 +29,6 @@ if TYPE_CHECKING:
         ContactResumeEvent,
         TemperatureUpdateEvent,
     )
-    from .cycle_metrics import CycleMetricsRecorder
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -504,7 +502,7 @@ class CycleTrackerManager:
         Args:
             event: ModeChangedEvent with timestamp, old_mode, new_mode
         """
-        from ..adaptive.cycle_analysis import InterruptionClassifier, InterruptionType
+        from ..adaptive.cycle_analysis import InterruptionClassifier
 
         # Only process if we're in an active cycle
         if self._state not in (CycleState.HEATING, CycleState.COOLING, CycleState.SETTLING):
@@ -625,7 +623,6 @@ class CycleTrackerManager:
             should_abort: Whether to abort the cycle (True) or continue tracking (False)
             reason: Human-readable reason for logging
         """
-        from ..adaptive.cycle_analysis import InterruptionType
 
         # Only process if we're in an active cycle
         if self._state not in (CycleState.HEATING, CycleState.COOLING, CycleState.SETTLING):

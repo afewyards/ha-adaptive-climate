@@ -430,7 +430,6 @@ class ControlOutputManager:
 
     def _record_heat_output_for_thermal_groups(self) -> None:
         """Record current heat output for thermal groups transfer history."""
-        from ..const import DOMAIN
 
         # Get coordinator
         coordinator = self._thermostat_state._coordinator
@@ -468,7 +467,6 @@ class ControlOutputManager:
         Returns:
             Compensation in power % (0-100). Positive values reduce output.
         """
-        from ..const import DOMAIN
 
         # Disable in cooling mode
         if self._thermostat_state._hvac_mode == "cool":

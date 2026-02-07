@@ -6,8 +6,6 @@ and calculate thermal properties for floor heating systems.
 
 from __future__ import annotations
 
-from typing import Dict, List
-
 
 def validate_floor_construction(floor_config: dict) -> list[str]:
     """Validate floor heating construction configuration.

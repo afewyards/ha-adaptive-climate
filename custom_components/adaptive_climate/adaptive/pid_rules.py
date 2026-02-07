@@ -7,7 +7,7 @@ It includes rule definitions, evaluation, conflict detection, and resolution.
 from __future__ import annotations
 
 from enum import Enum
-from typing import Dict, List, NamedTuple, Set, Tuple
+from typing import NamedTuple
 import logging
 
 from ..const import (

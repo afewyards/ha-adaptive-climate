@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from homeassistant.core import State
     from ..climate import AdaptiveThermostat
 
-from ..const import PIDGains
 
 _LOGGER = logging.getLogger(__name__)
 

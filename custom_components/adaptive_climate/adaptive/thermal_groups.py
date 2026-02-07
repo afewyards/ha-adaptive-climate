@@ -9,7 +9,7 @@ Provides declarative thermal group configuration for:
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, TYPE_CHECKING
 
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 try:
     from ..const import DOMAIN
 except ImportError:
-    from const import DOMAIN
+    pass
 
 _LOGGER = logging.getLogger(__name__)
 

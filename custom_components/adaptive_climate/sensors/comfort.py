@@ -14,14 +14,12 @@ import logging
 from typing import Any
 
 from homeassistant.components.sensor import (
-    SensorEntity,
     SensorStateClass,
 )
 from homeassistant.const import PERCENTAGE
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
-from ..const import DOMAIN
 from .performance import AdaptiveThermostatSensor
 
 _LOGGER = logging.getLogger(__name__)

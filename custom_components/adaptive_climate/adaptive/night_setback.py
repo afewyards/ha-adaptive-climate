@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, time
-from typing import TYPE_CHECKING, Any, Dict
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .preheat import PreheatLearner

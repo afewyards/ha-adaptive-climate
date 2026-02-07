@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import TYPE_CHECKING, Any, Callable, List
+from typing import TYPE_CHECKING, Any, Callable
 
 # These imports are only needed when running in Home Assistant
 try:
@@ -62,7 +62,7 @@ except ImportError:
     HomeAssistantError = Exception
     ServiceNotFound = Exception
 
-from ..const import DOMAIN, COOLING_TYPE_CHARACTERISTICS
+from ..const import DOMAIN
 from .events import (
     CycleEventDispatcher,
     CycleStartedEvent,

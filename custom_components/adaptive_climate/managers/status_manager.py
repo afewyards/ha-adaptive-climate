@@ -10,14 +10,13 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, TypedDict
 
-from typing_extensions import NotRequired
 
 from homeassistant.util import dt as dt_util
 
 from ..const import OverrideType, ThermostatCondition, ThermostatState
 
 if TYPE_CHECKING:
-    from ..adaptive.contact_sensors import ContactAction, ContactSensorHandler
+    from ..adaptive.contact_sensors import ContactSensorHandler
     from ..adaptive.humidity_detector import HumidityDetector
     from .night_setback_manager import NightSetbackManager
 

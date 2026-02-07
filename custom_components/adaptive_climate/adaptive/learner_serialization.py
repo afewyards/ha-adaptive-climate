@@ -9,7 +9,7 @@ Supports both v4 (flat) and v5 (mode-keyed) formats for backward compatibility.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Dict, List, Any
+from typing import Any
 import logging
 
 from .cycle_analysis import CycleMetrics

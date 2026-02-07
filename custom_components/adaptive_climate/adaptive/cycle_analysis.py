@@ -10,7 +10,6 @@ from __future__ import annotations
 from collections import deque
 from datetime import datetime
 from enum import Enum
-from typing import List, Tuple, Deque
 import logging
 
 _LOGGER = logging.getLogger(__name__)

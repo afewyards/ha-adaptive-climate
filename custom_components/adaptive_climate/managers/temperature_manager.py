@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, Callable, Dict, List
+from typing import TYPE_CHECKING, Any, Callable
 
 # These imports are only needed when running in Home Assistant
 try:

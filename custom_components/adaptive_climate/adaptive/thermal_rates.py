@@ -7,8 +7,7 @@ and cooling rates from observed temperature history.
 from __future__ import annotations
 
 from collections import deque
-from datetime import datetime, timedelta
-from typing import Dict, List, Tuple, Deque
+from datetime import datetime
 import statistics
 import logging
 

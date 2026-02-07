@@ -12,7 +12,6 @@ from typing import Any
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.core import HomeAssistant
 
-from ..const import DOMAIN
 from ..analytics.health import SystemHealthMonitor
 
 _LOGGER = logging.getLogger(__name__)

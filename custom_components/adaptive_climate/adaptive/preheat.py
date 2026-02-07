@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Dict, List, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING
 import statistics
 
 from homeassistant.util import dt as dt_util

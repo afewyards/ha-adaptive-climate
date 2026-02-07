@@ -4,17 +4,15 @@ from __future__ import annotations
 
 import logging
 import statistics
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict
+from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 from ..adaptive.physics import calculate_thermal_time_constant, calculate_initial_pid
-from ..adaptive.learning import get_auto_apply_thresholds
 from ..protocols import PIDTuningManagerState
 from .. import const
 from ..const import VALIDATION_CYCLE_COUNT, PIDChangeReason
 
 if TYPE_CHECKING:
     from ..pid_controller import PIDController
-    from ..adaptive.learning import AdaptiveLearner
 
 _LOGGER = logging.getLogger(__name__)
 

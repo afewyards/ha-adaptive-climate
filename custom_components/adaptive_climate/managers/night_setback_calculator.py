@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, time as dt_time, timedelta
-from typing import TYPE_CHECKING, Any, Callable, Dict, Tuple
+from typing import TYPE_CHECKING, Any, Callable
 
 # These imports are only needed when running in Home Assistant
 try:

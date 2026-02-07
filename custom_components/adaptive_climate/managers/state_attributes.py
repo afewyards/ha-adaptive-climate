@@ -213,7 +213,6 @@ def _add_learning_object(thermostat: SmartThermostat, attrs: dict[str, Any]) -> 
         thermostat: The SmartThermostat instance
         attrs: Dictionary to update with learning object
     """
-    from ..const import DOMAIN, MIN_CYCLES_FOR_LEARNING
 
     # Get adaptive learner and cycle tracker from coordinator
     coordinator = thermostat._coordinator
@@ -381,7 +380,6 @@ def _add_preheat_attributes(thermostat: SmartThermostat, attrs: dict[str, Any]) 
         try:
             # We need to call get_preheat_info with appropriate parameters
             # Need: now, current_temp, target_temp, outdoor_temp, deadline
-            from datetime import datetime
 
             now = dt_util.utcnow()
 

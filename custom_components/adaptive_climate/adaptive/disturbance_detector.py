@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from typing import List
 from datetime import datetime
 
 _LOGGER = logging.getLogger(__name__)
