@@ -1,6 +1,18 @@
 # CHANGELOG
 
 
+## v0.62.1 (2026-02-07)
+
+### Bug Fixes
+
+- **persistence**: Persist cleared learning state to disk on clear_learning
+  ([`d434f63`](https://github.com/afewyards/ha-adaptive-climate/commit/d434f63af7db0eee943b3589b042cd3db225f953))
+
+clear_learning only reset in-memory state but never saved to the LearningDataStore, causing stale
+  confidence to reappear after restart. Also reset contribution tracker and heating rate learner in
+  clear_history.
+
+
 ## v0.62.0 (2026-02-07)
 
 ### Features
