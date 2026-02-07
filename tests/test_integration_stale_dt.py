@@ -85,6 +85,7 @@ class TestIntegralAccumulationRate:
         # Create mock coordinator (no coupling)
         self.coordinator = Mock()
         self.coordinator.thermal_group_manager = None
+        self.coordinator.outdoor_temp_lagged = 5.0
         self.thermostat_state._coordinator = self.coordinator
 
         # Create setter callbacks

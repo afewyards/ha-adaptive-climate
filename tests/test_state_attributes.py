@@ -2001,7 +2001,6 @@ def test_build_state_attributes_new_structure():
 
     # PID controller
     thermostat._pid_controller = MagicMock()
-    thermostat._pid_controller.outdoor_temp_lagged = 10.0
 
     # Heater controller with cycle counts
     thermostat._heater_controller = MagicMock()
@@ -2015,8 +2014,9 @@ def test_build_state_attributes_new_structure():
     thermostat._gains_manager = MagicMock()
     thermostat._gains_manager.get_history.return_value = []
 
-    # Mock coordinator for learning status
+    # Mock coordinator for learning status and shared outdoor temp
     coordinator = MagicMock()
+    coordinator.outdoor_temp_lagged = 10.0
     adaptive_learner = MagicMock()
     adaptive_learner.get_cycle_count.return_value = 8
     adaptive_learner.get_convergence_confidence.return_value = 0.65

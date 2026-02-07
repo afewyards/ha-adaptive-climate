@@ -195,9 +195,10 @@ class ControlOutputManager:
 
         # Use coordinator's shared lagged outdoor temp if available,
         # otherwise fall back to zone's own ext_temp (for outdoor_sensor zones)
-        coordinator = self._thermostat_state._coordinator
-        if coordinator and coordinator.outdoor_temp_lagged is not None and not self._thermostat_state._ext_sensor_entity_id:
-            ext_temp = coordinator.outdoor_temp_lagged
+        coord = getattr(self._thermostat_state, '_coordinator', None)
+        has_own_sensor = getattr(self._thermostat_state, '_ext_sensor_entity_id', None)
+        if coord and coord.outdoor_temp_lagged is not None and not has_own_sensor:
+            ext_temp = coord.outdoor_temp_lagged
         else:
             ext_temp = self._thermostat_state._ext_temp
 
