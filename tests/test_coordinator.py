@@ -838,5 +838,61 @@ def test_get_worst_case_transport_delay_for_zone_unknown_zone(hass):
     mock_registry.get_worst_case_transport_delay.assert_called_once_with("climate.unknown_zone", 1)
 
 
+# --- Shared outdoor temp EMA tests ---
+
+
+@pytest.mark.asyncio
+async def test_outdoor_temp_lagged_defaults_to_none(hass):
+    """outdoor_temp_lagged is None when no weather entity configured."""
+    hass.data = {}  # No weather entity
+    coord = coordinator.AdaptiveThermostatCoordinator(hass)
+    assert coord.outdoor_temp_lagged is None
+
+
+@pytest.mark.asyncio
+async def test_outdoor_temp_lagged_initialized_on_first_reading(hass):
+    """First weather reading sets outdoor_temp_lagged directly."""
+    hass.data = {const.DOMAIN: {"weather_entity": "weather.home", "house_energy_rating": "B"}}
+    hass.states.get.return_value = None  # No state yet
+    coord = coordinator.AdaptiveThermostatCoordinator(hass)
+    coord.update_outdoor_temp_lagged(5.0, dt_seconds=0)
+    assert coord.outdoor_temp_lagged == 5.0
+
+
+@pytest.mark.asyncio
+async def test_outdoor_temp_lagged_ema_filter(hass):
+    """EMA filter smooths outdoor temp with tau from house_energy_rating."""
+    hass.data = {const.DOMAIN: {"weather_entity": "weather.home", "house_energy_rating": "A"}}
+    hass.states.get.return_value = None  # No state yet
+    coord = coordinator.AdaptiveThermostatCoordinator(hass)
+    # tau = 4.0h for rating "A"
+    coord.update_outdoor_temp_lagged(10.0, dt_seconds=0)  # init
+    assert coord.outdoor_temp_lagged == 10.0
+
+    # After 1 hour, temp jumps to 20
+    # alpha = 3600 / (4.0 * 3600) = 0.25
+    # lagged = 0.25 * 20 + 0.75 * 10 = 12.5
+    coord.update_outdoor_temp_lagged(20.0, dt_seconds=3600)
+    assert abs(coord.outdoor_temp_lagged - 12.5) < 0.01
+
+
+@pytest.mark.asyncio
+async def test_outdoor_temp_lagged_default_tau_without_rating(hass):
+    """Uses default tau=4.0h when no house_energy_rating configured."""
+    hass.data = {const.DOMAIN: {"weather_entity": "weather.home"}}
+    hass.states.get.return_value = None
+    coord = coordinator.AdaptiveThermostatCoordinator(hass)
+    assert coord.outdoor_temp_tau == 4.0
+
+
+@pytest.mark.asyncio
+async def test_outdoor_temp_lagged_tau_from_rating(hass):
+    """Tau derived from house_energy_rating."""
+    hass.data = {const.DOMAIN: {"weather_entity": "weather.home", "house_energy_rating": "B"}}
+    hass.states.get.return_value = None
+    coord = coordinator.AdaptiveThermostatCoordinator(hass)
+    assert coord.outdoor_temp_tau == 3.0
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

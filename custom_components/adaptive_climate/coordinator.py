@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 import logging
+import time
 from typing import Any, TYPE_CHECKING
 
 from homeassistant.core import HomeAssistant, Event, callback
@@ -49,16 +50,29 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
         self._config = config or {}
         self._outdoor_temp_unsub = None
 
+        # Shared outdoor temperature EMA filter
+        self._outdoor_temp_lagged: float | None = None
+        self._outdoor_temp_tau = self._resolve_outdoor_temp_tau()
+        self._last_outdoor_temp_update: float | None = None
+
         # Auto mode switching (if configured)
         auto_mode_config = self._config.get("auto_mode_switching")
         if auto_mode_config and auto_mode_config.get("enabled", False):
             self._auto_mode_switching = AutoModeSwitchingManager(
                 hass, auto_mode_config, self
             )
-            # Set up outdoor temperature listener
-            self._setup_outdoor_temp_listener()
         else:
             self._auto_mode_switching: AutoModeSwitchingManager | None = None
+
+        # Always set up outdoor temp listener when weather entity exists
+        # (used for shared EMA filter; also triggers auto mode switching if enabled)
+        self._setup_outdoor_temp_listener()
+
+        # Initialize lagged temp from current weather state
+        initial_temp = self.outdoor_temp
+        if initial_temp is not None:
+            self._outdoor_temp_lagged = initial_temp
+            self._last_outdoor_temp_update = time.monotonic()
 
     def set_central_controller(self, controller: "CentralController") -> None:
         """Set the central controller reference for push-based updates."""
@@ -186,6 +200,41 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
             return float(temp)
         except (ValueError, TypeError):
             return None
+
+    @property
+    def outdoor_temp_lagged(self) -> float | None:
+        """Get the shared EMA-filtered outdoor temperature."""
+        return self._outdoor_temp_lagged
+
+    @property
+    def outdoor_temp_tau(self) -> float:
+        """Get the outdoor temp EMA time constant in hours."""
+        return self._outdoor_temp_tau
+
+    def update_outdoor_temp_lagged(self, temp: float, dt_seconds: float) -> None:
+        """Update the shared outdoor temp EMA filter.
+
+        Args:
+            temp: Current outdoor temperature in °C.
+            dt_seconds: Time since last update in seconds.
+        """
+        if self._outdoor_temp_lagged is None or dt_seconds <= 0:
+            self._outdoor_temp_lagged = temp
+        else:
+            alpha = dt_seconds / (self._outdoor_temp_tau * 3600.0)
+            alpha = max(0.0, min(1.0, alpha))
+            self._outdoor_temp_lagged = alpha * temp + (1.0 - alpha) * self._outdoor_temp_lagged
+
+    def _resolve_outdoor_temp_tau(self) -> float:
+        """Get outdoor temp EMA tau from house_energy_rating, default 4.0h."""
+        rating = self.hass.data.get(DOMAIN, {}).get("house_energy_rating")
+        if not rating:
+            return 4.0
+        rating_map = {
+            "A++++": 10.0, "A+++": 8.0, "A++": 6.0, "A+": 5.0,
+            "A": 4.0, "B": 3.0, "C": 2.5, "D": 2.0,
+        }
+        return rating_map.get(rating.upper(), 4.0)
 
     @property
     def auto_mode_switching_enabled(self) -> bool:
@@ -491,24 +540,38 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
         """Set up listener for outdoor temperature changes."""
         weather_entity_id = self.weather_entity
         if not weather_entity_id:
-            _LOGGER.debug("No weather entity configured for auto mode switching")
+            _LOGGER.debug("No weather entity configured")
             return
 
         @callback
         def _async_outdoor_temp_changed(event: Event) -> None:
             """Handle outdoor temperature change."""
-            # Schedule async evaluation
-            self.hass.async_create_task(self._async_evaluate_auto_mode())
+            new_state = event.data.get("new_state")
+            if new_state is None:
+                return
+            temp_attr = new_state.attributes.get("temperature")
+            if temp_attr is None:
+                return
+            try:
+                temp = float(temp_attr)
+            except (ValueError, TypeError):
+                return
 
-        # Track state changes for weather entity
+            now = time.monotonic()
+            dt_seconds = (now - self._last_outdoor_temp_update) if self._last_outdoor_temp_update else 0
+            self.update_outdoor_temp_lagged(temp, dt_seconds)
+            self._last_outdoor_temp_update = now
+
+            # Auto mode switching (existing behavior)
+            if self._auto_mode_switching:
+                self.hass.async_create_task(self._async_evaluate_auto_mode())
+
         self._outdoor_temp_unsub = async_track_state_change_event(
-            self.hass,
-            weather_entity_id,
-            _async_outdoor_temp_changed,
+            self.hass, weather_entity_id, _async_outdoor_temp_changed,
         )
         _LOGGER.debug(
-            "Auto mode switching: tracking outdoor temp from %s",
-            weather_entity_id,
+            "Tracking outdoor temp from %s (tau=%.1fh)",
+            weather_entity_id, self._outdoor_temp_tau,
         )
 
     async def _async_evaluate_auto_mode(self) -> None:
