@@ -273,10 +273,6 @@ class PIDTuningManager:
                 "recommendation": None,
             }
 
-        # Get heating type and thresholds
-        heating_type = self._state.heating_type
-        thresholds = get_auto_apply_thresholds(heating_type)
-
         # Calculate baseline overshoot from recent cycles
         cycle_history = adaptive_learner.cycle_history
         recent_cycles = cycle_history[-6:] if len(cycle_history) >= 6 else cycle_history

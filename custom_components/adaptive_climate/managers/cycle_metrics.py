@@ -411,12 +411,6 @@ class CycleMetricsRecorder:
         # Calculate transport delay in seconds for metric calculations
         transport_delay_seconds = (self._transport_delay_minutes or 0) * 60
 
-        # Get convergence thresholds for heating type
-        from ..const import get_convergence_thresholds
-
-        convergence = get_convergence_thresholds(self._heating_type)
-        rise_threshold = convergence.get("undershoot_max", 0.05)
-
         # Calculate all 5 metrics
         # Overshoot: use filtered history to exclude dead time
         filtered_history = self._get_temperature_history_excluding_dead_time(temperature_history)

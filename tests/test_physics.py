@@ -335,7 +335,7 @@ class TestKeCalculation:
     def test_ke_magnitude_sanity_check(self):
         """Test that all Ke values are within restored 0.1-2.0 range after 100x restoration."""
         # Test all energy ratings
-        for rating in ENERGY_RATING_TO_INSULATION.keys():
+        for rating in ENERGY_RATING_TO_INSULATION:
             ke = calculate_initial_ke(energy_rating=rating, heating_type="radiator")
             assert ke >= 0.1, f"Ke too low for {rating}: {ke}"
             assert ke <= 2.0, f"Ke too high for {rating}: {ke}"
@@ -1174,7 +1174,7 @@ class TestFloorConstruction:
         """Test that all defined top floor materials work."""
         from custom_components.adaptive_climate.const import TOP_FLOOR_MATERIALS
 
-        for material in TOP_FLOOR_MATERIALS.keys():
+        for material in TOP_FLOOR_MATERIALS:
             layers = [
                 {"type": "top_floor", "material": material, "thickness_mm": 10},
                 {"type": "screed", "material": "cement", "thickness_mm": 50},
@@ -1190,7 +1190,7 @@ class TestFloorConstruction:
         """Test that all defined screed materials work."""
         from custom_components.adaptive_climate.const import SCREED_MATERIALS
 
-        for material in SCREED_MATERIALS.keys():
+        for material in SCREED_MATERIALS:
             layers = [
                 {"type": "top_floor", "material": "ceramic_tile", "thickness_mm": 10},
                 {"type": "screed", "material": material, "thickness_mm": 50},

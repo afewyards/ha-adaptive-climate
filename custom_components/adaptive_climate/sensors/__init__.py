@@ -22,21 +22,18 @@ from .energy import (
 from .health import SystemHealthSensor
 
 __all__ = [
-    # Performance sensors
-    "AdaptiveThermostatSensor",
-    "DutyCycleSensor",
-    "CycleTimeSensor",
-    "OvershootSensor",
-    "SettlingTimeSensor",
-    "OscillationsSensor",
-    "HeaterStateChange",
     "DEFAULT_DUTY_CYCLE_WINDOW",
     "DEFAULT_ROLLING_AVERAGE_SIZE",
-    # Energy sensors
-    "PowerPerM2Sensor",
+    "AdaptiveThermostatSensor",
+    "CycleTimeSensor",
+    "DutyCycleSensor",
     "HeatOutputSensor",
+    "HeaterStateChange",
+    "OscillationsSensor",
+    "OvershootSensor",
+    "PowerPerM2Sensor",
+    "SettlingTimeSensor",
+    "SystemHealthSensor",
     "TotalPowerSensor",
     "WeeklyCostSensor",
-    # Health sensors
-    "SystemHealthSensor",
 ]

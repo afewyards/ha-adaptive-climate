@@ -23,24 +23,21 @@ try:
     from .pwm_tuning import calculate_pwm_adjustment, ValveCycleTracker
 
     __all__ = [
-        "ThermalRateLearner",
-        "PhaseAwareOvershootTracker",
         "CycleMetrics",
-        "calculate_overshoot",
-        "calculate_undershoot",
-        "count_oscillations",
-        "calculate_settling_time",
-        # PID rule engine
+        "LearningDataStore",
         "PIDRule",
         "PIDRuleResult",
-        "evaluate_pid_rules",
-        "detect_rule_conflicts",
-        "resolve_rule_conflicts",
-        # Persistence
-        "LearningDataStore",
-        # PWM tuning
-        "calculate_pwm_adjustment",
+        "PhaseAwareOvershootTracker",
+        "ThermalRateLearner",
         "ValveCycleTracker",
+        "calculate_overshoot",
+        "calculate_pwm_adjustment",
+        "calculate_settling_time",
+        "calculate_undershoot",
+        "count_oscillations",
+        "detect_rule_conflicts",
+        "evaluate_pid_rules",
+        "resolve_rule_conflicts",
     ]
 except ImportError:
     # Handle case where module is imported in unusual way (e.g., test path manipulation)

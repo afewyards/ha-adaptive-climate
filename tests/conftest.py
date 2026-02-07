@@ -382,7 +382,7 @@ def make_thermostat(mock_hass):
     from custom_components.adaptive_climate.const import HeatingType, PIDGains, HEATING_TYPE_CHARACTERISTICS
     from homeassistant.components.climate import HVACMode
 
-    def _factory(heating_type: Optional[Union[HeatingType, str]] = None):
+    def _factory(heating_type: "HeatingType | str | None" = None):
         # Default to radiator if not specified
         if heating_type is None:
             heating_type = HeatingType.RADIATOR

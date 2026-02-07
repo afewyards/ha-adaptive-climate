@@ -441,7 +441,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     try:
         www_dir.mkdir(parents=True, exist_ok=True)
         _LOGGER.debug("Chart directory ready: %s", www_dir)
-    except (OSError, IOError) as e:
+    except OSError as e:
         _LOGGER.warning("Could not create chart directory: %s", e)
 
     # Get configuration options from domain config

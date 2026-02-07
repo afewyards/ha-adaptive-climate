@@ -274,13 +274,19 @@ def evaluate_pid_rules(
                         # Diagnose LOW_KI: increase Ki up to 30%
                         kp_factor = 1.0
                         ki_factor = 1.30
-                        reason = f"Slow rise time ({avg_rise_time:.1f} min, cold correlation r={correlation:.2f}, increase Ki)"
+                        reason = (
+                            f"Slow rise time ({avg_rise_time:.1f} min,"
+                            f" cold correlation r={correlation:.2f}, increase Ki)"
+                        )
                     # Positive or no correlation means issue is not outdoor-dependent -> Kp issue
                     elif correlation >= -SLOW_RESPONSE_CORRELATION_THRESHOLD:
                         # Diagnose LOW_KP: increase Kp by 10% (default behavior)
                         kp_factor = 1.10
                         ki_factor = 1.0
-                        reason = f"Slow rise time ({avg_rise_time:.1f} min, no cold correlation r={correlation:.2f}, increase Kp)"
+                        reason = (
+                            f"Slow rise time ({avg_rise_time:.1f} min,"
+                            f" no cold correlation r={correlation:.2f}, increase Kp)"
+                        )
 
         results.append(
             PIDRuleResult(

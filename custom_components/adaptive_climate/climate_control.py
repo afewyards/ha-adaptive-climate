@@ -183,10 +183,13 @@ class ClimateControlMixin:
                                     ki=new_ki,
                                     metrics={
                                         "undershoot_amount": undershoot_amount,
-                                        "time_below_target_hours": adaptive_learner.undershoot_detector.time_below_target
-                                        / 3600.0,
+                                        "time_below_target_hours": (
+                                            adaptive_learner.undershoot_detector.time_below_target / 3600.0
+                                        ),
                                         "thermal_debt": adaptive_learner.undershoot_detector.thermal_debt,
-                                        "consecutive_failures": adaptive_learner.undershoot_detector._consecutive_failures,
+                                        "consecutive_failures": (
+                                            adaptive_learner.undershoot_detector._consecutive_failures
+                                        ),
                                     },
                                 )
 

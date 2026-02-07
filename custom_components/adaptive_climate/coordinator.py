@@ -24,7 +24,7 @@ except ImportError:
 
 if TYPE_CHECKING:
     from .adaptive.manifold_registry import ManifoldRegistry
-    from .central_controller import CentralController as CentralControllerType
+    from .central_controller import CentralController
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -362,7 +362,7 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
             return False
 
         # Check if any zone has a window with effective sun exposure
-        for zone_id, zone_data in self._zones.items():
+        for _zone_id, zone_data in self._zones.items():
             window_orientation = zone_data.get("window_orientation")
             if not window_orientation or window_orientation.lower() == "none":
                 continue
@@ -480,7 +480,7 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
         from homeassistant.components.climate import HVACMode
 
         setpoints = []
-        for zone_id, zone in self._zones.items():
+        for _zone_id, zone in self._zones.items():
             if zone.get("hvac_mode") != HVACMode.OFF:
                 target = zone.get("target_temp")
                 if target is not None:

@@ -1289,7 +1289,6 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
 
         if result.get("applied"):
             # Send persistent notification about auto-apply
-            recommendation = result.get("recommendation", {})
             old_values = result.get("old_values", {})
             new_values = result.get("new_values", {})
 

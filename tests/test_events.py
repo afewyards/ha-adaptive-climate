@@ -252,7 +252,7 @@ class TestTemperatureUpdateEventDataclass:
     """Tests for TemperatureUpdateEvent dataclass."""
 
     def test_temperature_update_event(self):
-        """Create TemperatureUpdateEvent with timestamp, temperature, setpoint, pid_integral, pid_error; verify event_type=CycleEventType.TEMPERATURE_UPDATE."""
+        """Create TemperatureUpdateEvent with all fields; verify event_type=TEMPERATURE_UPDATE."""
         now = datetime.now()
         event = TemperatureUpdateEvent(
             timestamp=now,

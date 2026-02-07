@@ -589,7 +589,7 @@ class TestCalculateInitialKe:
 
     def test_all_energy_ratings(self):
         """Test all energy ratings produce valid values."""
-        for rating in ENERGY_RATING_TO_INSULATION.keys():
+        for rating in ENERGY_RATING_TO_INSULATION:
             ke = calculate_initial_ke(energy_rating=rating)
             assert 0.0 <= ke <= 2.0
 

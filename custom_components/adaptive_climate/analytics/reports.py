@@ -56,12 +56,10 @@ class ZoneReportData:
             return False
         if self.comfort_score < COMFORT_PROBLEM_THRESHOLD:
             return True
-        if (
+        return (
             self.comfort_score_prev is not None
             and self.comfort_score_prev - self.comfort_score >= COMFORT_DROP_THRESHOLD
-        ):
-            return True
-        return False
+        )
 
     @property
     def has_pause_problems(self) -> bool:

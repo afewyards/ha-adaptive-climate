@@ -685,7 +685,7 @@ class PID:
 
         elif self._dt > 0:
             # dt is positive but below threshold - freeze I and D at last values
-            # This prevents derivative spikes from rapid non-sensor calls (external sensor, contact sensor, periodic loop)
+            # Prevents derivative spikes from rapid non-sensor calls (external, contact, periodic loop)
             # Integral and derivative remain unchanged from previous calculation
             _LOGGER.debug(
                 "PID: dt=%.3fs < %.1fs threshold, freeze I=%.2f D=%.2f (rapid non-sensor call)",

@@ -174,7 +174,11 @@ class TemperatureUpdateEvent:
 
 
 # Type alias for any cycle event
-CycleEvent = "CycleStartedEvent | CycleEndedEvent | HeatingStartedEvent | HeatingEndedEvent | SettlingStartedEvent | SetpointChangedEvent | ModeChangedEvent | ContactPauseEvent | ContactResumeEvent | TemperatureUpdateEvent"
+CycleEvent = (
+    "CycleStartedEvent | CycleEndedEvent | HeatingStartedEvent | HeatingEndedEvent"
+    " | SettlingStartedEvent | SetpointChangedEvent | ModeChangedEvent"
+    " | ContactPauseEvent | ContactResumeEvent | TemperatureUpdateEvent"
+)
 
 
 class CycleEventDispatcher:

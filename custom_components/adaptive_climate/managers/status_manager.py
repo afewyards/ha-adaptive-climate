@@ -164,10 +164,7 @@ class StatusManager:
                 return True
 
         # Check humidity detection
-        if self._humidity_detector and self._humidity_detector.should_pause():
-            return True
-
-        return False
+        return bool(self._humidity_detector and self._humidity_detector.should_pause())
 
 
 def format_iso8601(dt: datetime) -> str:

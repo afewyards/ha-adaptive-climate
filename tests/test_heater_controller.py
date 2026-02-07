@@ -284,7 +284,7 @@ class TestHeaterControllerSessionTracking:
 
     @pytest.mark.asyncio
     async def test_turn_off_no_tracker_notify(self, heater_controller, mock_thermostat):
-        """Test that async_turn_off does not call on_heating_session_ended (session tracking is in async_set_control_value)."""
+        """Test async_turn_off does not call on_heating_session_ended."""
         # Setup mock cycle tracker
         mock_cycle_tracker = MagicMock()
         mock_thermostat._cycle_tracker = mock_cycle_tracker

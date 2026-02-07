@@ -72,7 +72,8 @@ class NightSetbackManager:
             preheat_learner: Optional PreheatLearner instance for time estimation
             preheat_enabled: Whether preheat functionality is enabled
             manifold_transport_delay: Manifold transport delay in minutes (default: 0.0)
-            get_learning_status: Optional callback to get current learning status (DEPRECATED - use get_allowed_setback_delta)
+            get_learning_status: Optional callback to get current learning status
+                (DEPRECATED - use get_allowed_setback_delta)
             get_allowed_setback_delta: Optional callback to get allowed setback delta based on learning progress
             auto_learning_enabled: Whether auto-learning setback is enabled (default: True)
         """

@@ -52,10 +52,7 @@ class ComfortDegradationDetector:
         if current_score < COMFORT_DEGRADATION_THRESHOLD:
             return True
 
-        if avg - current_score >= COMFORT_DROP_THRESHOLD:
-            return True
-
-        return False
+        return avg - current_score >= COMFORT_DROP_THRESHOLD
 
     def build_context(
         self,

@@ -30,7 +30,7 @@ sys.modules["homeassistant.helpers.update_coordinator"] = Mock()
 
 
 # Create mock exception classes
-class MockServiceNotFound(Exception):
+class MockServiceNotFoundError(Exception):
     """Mock ServiceNotFound exception."""
 
     pass
@@ -44,7 +44,7 @@ class MockHomeAssistantError(Exception):
 
 # Set up exceptions module with mock classes
 mock_exceptions_module = Mock()
-mock_exceptions_module.ServiceNotFound = MockServiceNotFound
+mock_exceptions_module.ServiceNotFound = MockServiceNotFoundError
 mock_exceptions_module.HomeAssistantError = MockHomeAssistantError
 sys.modules["homeassistant.exceptions"] = mock_exceptions_module
 
@@ -279,7 +279,7 @@ async def test_heater_and_cooler_independence(mock_hass, coord):
     # Check positional and keyword arguments
     call_args = calls[0]
     assert call_args.args == ("switch", "turn_on", {"entity_id": "switch.boiler"})
-    assert call_args.kwargs.get("blocking") == True
+    assert call_args.kwargs.get("blocking") is True
 
     # Cooler should not have been called
     cooler_calls = [call for call in calls if "switch.chiller" in str(call)]
@@ -597,7 +597,7 @@ async def test_service_not_found_no_retry(mock_hass, coord):
     mock_hass.states.get.return_value = mock_state
 
     # Make service call raise ServiceNotFound
-    mock_hass.services.async_call = AsyncMock(side_effect=MockServiceNotFound("Service not found"))
+    mock_hass.services.async_call = AsyncMock(side_effect=MockServiceNotFoundError("Service not found"))
 
     # Register zone and add demand
     coord.register_zone("living_room", {"name": "Living Room"})
@@ -701,7 +701,7 @@ async def test_consecutive_failure_warning_threshold(mock_hass, coord):
     mock_hass.states.get.return_value = mock_state
 
     # Make service call always fail with ServiceNotFound (immediate failure, no retry)
-    mock_hass.services.async_call = AsyncMock(side_effect=MockServiceNotFound("Service not found"))
+    mock_hass.services.async_call = AsyncMock(side_effect=MockServiceNotFoundError("Service not found"))
 
     # Register zone and add demand
     coord.register_zone("living_room", {"name": "Living Room"})

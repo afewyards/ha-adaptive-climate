@@ -91,7 +91,7 @@ class TestThermalGroupValidation:
             "transfer_factor": 1.5,  # Invalid: > 1.0
         }
 
-        with pytest.raises(ValueError, match="transfer_factor must be between 0.0 and 1.0"):
+        with pytest.raises(ValueError, match=r"transfer_factor must be between 0\.0 and 1\.0"):
             ThermalGroup(**config)
 
     def test_invalid_transfer_factor_negative(self):
@@ -105,7 +105,7 @@ class TestThermalGroupValidation:
             "transfer_factor": -0.2,  # Invalid: negative
         }
 
-        with pytest.raises(ValueError, match="transfer_factor must be between 0.0 and 1.0"):
+        with pytest.raises(ValueError, match=r"transfer_factor must be between 0\.0 and 1\.0"):
             ThermalGroup(**config)
 
     def test_invalid_negative_delay(self):

@@ -326,7 +326,7 @@ class LearningDataStore:
             return None
 
         try:
-            with open(self.storage_file, "r") as f:
+            with open(self.storage_file) as f:
                 data = json.load(f)
 
             # Validate version

@@ -408,7 +408,7 @@ class TestBuildConditions:
         assert len(result) == 1
 
     def test_all_five_conditions_returns_correct_order(self):
-        """Test all five conditions returns in priority order: contact, humidity, open_window, night_setback, learning_grace."""
+        """Test all five conditions returns in correct priority order."""
         from custom_components.adaptive_climate.managers.status_manager import build_conditions
 
         result = build_conditions(

@@ -452,27 +452,22 @@ def async_unregister_services(hass: HomeAssistant) -> None:
 
 # Public API - expose everything that was previously available from services.py
 __all__ = [
-    # Service names
-    "SERVICE_RUN_LEARNING",
     "SERVICE_HEALTH_CHECK",
-    "SERVICE_WEEKLY_REPORT",
-    "SERVICE_SET_VACATION_MODE",
     "SERVICE_PID_RECOMMENDATIONS",
-    # Service handlers
-    "async_handle_run_learning",
-    "async_handle_health_check",
-    "async_handle_weekly_report",
-    "async_handle_set_vacation_mode",
-    "async_handle_pid_recommendations",
-    # Registration functions
-    "async_register_services",
-    "async_unregister_services",
-    # Scheduled task callbacks (from scheduled.py)
-    "async_scheduled_health_check",
-    "async_scheduled_weekly_report",
-    "async_daily_learning",
-    # Helper functions (for internal use)
+    "SERVICE_RUN_LEARNING",
+    "SERVICE_SET_VACATION_MODE",
+    "SERVICE_WEEKLY_REPORT",
+    "_collect_zones_health_data",
     "_run_health_check_core",
     "_run_weekly_report_core",
-    "_collect_zones_health_data",
+    "async_daily_learning",
+    "async_handle_health_check",
+    "async_handle_pid_recommendations",
+    "async_handle_run_learning",
+    "async_handle_set_vacation_mode",
+    "async_handle_weekly_report",
+    "async_register_services",
+    "async_scheduled_health_check",
+    "async_scheduled_weekly_report",
+    "async_unregister_services",
 ]

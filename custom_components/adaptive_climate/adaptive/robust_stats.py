@@ -39,7 +39,7 @@ def calculate_median(values: list[float]) -> float:
         return sorted_values[n // 2]
 
 
-def calculate_mad(values: list[float], median: float = None) -> float:
+def calculate_mad(values: list[float], median: float | None = None) -> float:
     """Calculate Median Absolute Deviation (MAD).
 
     MAD is a robust measure of variability that is less sensitive to outliers

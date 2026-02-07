@@ -29,7 +29,7 @@ from unittest.mock import Mock, AsyncMock, MagicMock, patch
 
 
 # Mock Home Assistant exception classes
-class MockServiceNotFound(Exception):
+class MockServiceNotFoundError(Exception):
     """Mock ServiceNotFound exception."""
 
     pass
@@ -216,7 +216,7 @@ class MockClimateEntity:
             self._last_heater_error = None
             return True
 
-        except MockServiceNotFound as e:
+        except MockServiceNotFoundError as e:
             self._heater_control_failed = True
             self._last_heater_error = f"Service not found: {domain}.{service}"
             self._fire_heater_control_failed_event(entity_id, service, str(e))
@@ -380,7 +380,7 @@ class TestHeaterControl:
     def test_service_not_found_sets_error_state(self):
         """Verify service not found error sets observable error state."""
         hass = _create_mock_hass()
-        hass.services.async_call.side_effect = MockServiceNotFound("Service not found")
+        hass.services.async_call.side_effect = MockServiceNotFoundError("Service not found")
 
         thermostat = MockClimateEntity(hass)
 
@@ -456,7 +456,7 @@ class TestHeaterControl:
         # First call succeeds, second fails
         hass.services.async_call.side_effect = [
             None,  # Success
-            MockServiceNotFound("Not found"),  # Failure
+            MockServiceNotFoundError("Not found"),  # Failure
         ]
 
         _run_async(thermostat._async_heater_turn_on())

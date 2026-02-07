@@ -205,7 +205,7 @@ class PreheatLearner:
 
         # Delegate to HeatingRateLearner if available
         if self._heating_rate_learner is not None:
-            rate, source = self._heating_rate_learner.get_heating_rate(delta, outdoor_temp)
+            rate, _source = self._heating_rate_learner.get_heating_rate(delta, outdoor_temp)
             if rate <= 0:
                 return float("inf")
 

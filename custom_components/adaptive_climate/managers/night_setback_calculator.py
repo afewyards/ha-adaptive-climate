@@ -254,7 +254,6 @@ class NightSetbackCalculator:
             current_time = dt_util.as_local(dt_util.utcnow())
 
         target_temp = self._get_target_temp()
-        current_temp = self._get_current_temp()
         effective_target = target_temp
         in_night_period = False
         info: dict[str, Any] = {}

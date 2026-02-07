@@ -6,9 +6,13 @@ sunset support, and recovery deadline overrides.
 
 from __future__ import annotations
 
-from datetime import datetime, time
-from typing import Dict, Any
 import logging
+from datetime import datetime, time
+from typing import TYPE_CHECKING, Any, Dict
+
+if TYPE_CHECKING:
+    from .preheat import PreheatLearner
+    from .thermal_rates import ThermalRateLearner
 
 _LOGGER = logging.getLogger(__name__)
 

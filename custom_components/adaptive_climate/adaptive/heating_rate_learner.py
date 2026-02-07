@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import ClassVar
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -65,7 +66,7 @@ class HeatingRateLearner:
     STALLS_FOR_BOOST = 2  # consecutive stalls before Ki boost
 
     # Fallback rates by heating type (degrees C per hour)
-    FALLBACK_RATES: dict[str, float] = {
+    FALLBACK_RATES: ClassVar[dict[str, float]] = {
         "floor_hydronic": 0.15,
         "radiator": 0.3,
         "convector": 0.6,

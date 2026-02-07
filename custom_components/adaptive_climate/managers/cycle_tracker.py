@@ -401,10 +401,9 @@ class CycleTrackerManager:
             event: SettlingStartedEvent with hvac_mode, timestamp, was_clamped
         """
         # Verify we're in the correct state for settling
-        if event.hvac_mode == "heat" and self._state != CycleState.HEATING:
-            self._logger.debug("Session ended while in state %s, ignoring", self._state)
-            return
-        elif event.hvac_mode == "cool" and self._state != CycleState.COOLING:
+        if (event.hvac_mode == "heat" and self._state != CycleState.HEATING) or (
+            event.hvac_mode == "cool" and self._state != CycleState.COOLING
+        ):
             self._logger.debug("Session ended while in state %s, ignoring", self._state)
             return
 

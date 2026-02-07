@@ -577,9 +577,6 @@ class AdaptiveLearner:
         if mode is None:
             mode = get_hvac_heat_mode()
         cycle_history = self._cooling_cycle_history if mode == get_hvac_cool_mode() else self._heating_cycle_history
-        auto_apply_count = (
-            self._cooling_auto_apply_count if mode == get_hvac_cool_mode() else self._heating_auto_apply_count
-        )
         convergence_confidence = (
             self._cooling_convergence_confidence
             if mode == get_hvac_cool_mode()
