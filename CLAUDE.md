@@ -38,7 +38,7 @@ pytest --cov=custom_components/adaptive_climate  # coverage
 | `climate.py` | Main entity - orchestrates managers, presets, state |
 | `climate_setup.py` | Platform schema, setup, PWM validation |
 | `climate_init.py` | Manager initialization factory |
-| `coordinator.py` | Zone registry, CentralController, ModeSync, thermal groups |
+| `coordinator.py` | Zone registry, CentralController, ModeSync, thermal groups, shared outdoor temp EMA |
 | `pid_controller/__init__.py` | PID with P, I, D, E (outdoor), F (feedforward) terms |
 | `adaptive/learning.py` | Cycle analysis, rule-based PID adjustments |
 | `adaptive/validation.py` | ValidationManager for auto-apply safety checks |
@@ -153,6 +153,7 @@ weight = (base × delta_multiplier × outcome_factor) + bonuses
 - **Central controller:** Aggregates demand, 30s startup delay
 - **Thermal groups:** Leader zones + feedforward for heat transfer
 - **Manifolds:** Transport delay = `pipe_volume / (active_loops × flow_per_loop)`
+- **Shared outdoor temp:** Coordinator owns single EMA-filtered `outdoor_temp_lagged` (tau from `house_energy_rating`). All zones using shared weather entity read from coordinator. Zones with entity-level `outdoor_sensor` use their own raw value.
 
 ### Valve Actuation Time
 
