@@ -314,6 +314,10 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
         # Contact sensor pause tracking (for calculating pause duration in ContactResumeEvent)
         self._contact_pause_times: dict[str, datetime] = {}
 
+        # Weekly pause counters (for reporting)
+        self._humidity_pause_count: int = 0
+        self._contact_pause_count: int = 0
+
         # Control output manager (initialized in async_added_to_hass when hass is available)
         self._control_output_manager: ControlOutputManager | None = None
 
@@ -464,9 +468,15 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
             self._cycle_tracker.set_restoration_complete()
             _LOGGER.debug("%s: Cycle tracker restoration complete", self.entity_id)
 
+        # Add climate entity reference to zone_data for reporting access
+        coordinator = self._coordinator
+        if coordinator and self._zone_id:
+            zone_data = coordinator.get_zone_data(self._zone_id)
+            if zone_data:
+                zone_data["climate_entity"] = self
+
         # Set physics baseline for adaptive learning after PID values are finalized
         # (either restored from previous state or calculated from physics in __init__)
-        coordinator = self._coordinator
         if coordinator and self._zone_id and self._area_m2:
             zone_data = coordinator.get_zone_data(self._zone_id)
             if zone_data:
@@ -1854,3 +1864,18 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
         self._saved_target_temp = self._temperature_manager.saved_target_temp
 
     # calc_output, set_control_value, and pwm_switch moved to ClimateControlMixin
+
+    @property
+    def humidity_pause_count(self) -> int:
+        """Number of humidity pauses this reporting period."""
+        return self._humidity_pause_count
+
+    @property
+    def contact_pause_count(self) -> int:
+        """Number of contact sensor pauses this reporting period."""
+        return self._contact_pause_count
+
+    def reset_pause_counters(self) -> None:
+        """Reset weekly pause counters (called after report generation)."""
+        self._humidity_pause_count = 0
+        self._contact_pause_count = 0

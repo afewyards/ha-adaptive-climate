@@ -119,6 +119,8 @@ class ClimateHandlersMixin:
             if is_open:
                 # Track pause start time for this sensor
                 self._contact_pause_times[entity_id] = now
+                # Increment contact pause counter
+                self._contact_pause_count += 1
                 self._cycle_dispatcher.emit(
                     ContactPauseEvent(
                         hvac_mode=str(self._hvac_mode.value) if self._hvac_mode else "off",
@@ -157,11 +159,22 @@ class ClimateHandlersMixin:
         try:
             humidity = float(new_state.state)
             now = dt_util.utcnow()
+
+            # Track previous state to detect transitions
+            prev_state = self._humidity_detector.get_state()
+
+            # Record humidity (may trigger state change)
             self._humidity_detector.record_humidity(now, humidity)
+
+            # Detect state transition to "paused"
+            current_state = self._humidity_detector.get_state()
+            if prev_state == "normal" and current_state == "paused":
+                # Increment humidity pause counter
+                self._humidity_pause_count += 1
 
             _LOGGER.debug(
                 "%s: Humidity sensor changed to %.1f%% (state=%s)",
-                self.entity_id, humidity, self._humidity_detector.get_state()
+                self.entity_id, humidity, current_state
             )
 
             # Trigger control heating to potentially pause/resume
