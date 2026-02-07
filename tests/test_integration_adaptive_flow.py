@@ -122,11 +122,11 @@ def test_high_overshoot_reduces_kp():
 
     assert result is not None
     # v0.7.0: Extreme overshoot (>1.0°C): reduce Kp by 10% and Ki by 10%, increase Kd by 20%
-    assert result["kp"] < kp, f"Expected Kp reduction for extreme overshoot"
+    assert result["kp"] < kp, "Expected Kp reduction for extreme overshoot"
     # Extreme overshoot also reduces Ki
-    assert result["ki"] < ki, f"Expected Ki reduction for extreme overshoot"
+    assert result["ki"] < ki, "Expected Ki reduction for extreme overshoot"
     # Extreme overshoot increases Kd to handle thermal lag
-    assert result["kd"] > kd, f"Expected Kd increase for extreme overshoot"
+    assert result["kd"] > kd, "Expected Kd increase for extreme overshoot"
 
 
 def test_undershoot_increases_ki():
@@ -152,7 +152,7 @@ def test_undershoot_increases_ki():
 
     assert result is not None
     # Undershoot: increase Ki by up to 20%
-    assert result["ki"] > ki, f"Expected Ki increase for undershoot"
+    assert result["ki"] > ki, "Expected Ki increase for undershoot"
 
 
 def test_many_oscillations_adjusts_kp_and_kd():
@@ -177,8 +177,8 @@ def test_many_oscillations_adjusts_kp_and_kd():
 
     assert result is not None
     # Many oscillations: reduce Kp by 10%, increase Kd by 20%
-    assert result["kp"] < kp, f"Expected Kp reduction for oscillations"
-    assert result["kd"] > kd, f"Expected Kd increase for oscillations"
+    assert result["kp"] < kp, "Expected Kp reduction for oscillations"
+    assert result["kd"] > kd, "Expected Kd increase for oscillations"
 
 
 def test_slow_settling_increases_kd():
@@ -203,7 +203,7 @@ def test_slow_settling_increases_kd():
 
     assert result is not None
     # Slow settling: increase Kd by 15%
-    assert result["kd"] > kd, f"Expected Kd increase for slow settling"
+    assert result["kd"] > kd, "Expected Kd increase for slow settling"
 
 
 def test_slow_rise_time_increases_kp():
@@ -228,7 +228,7 @@ def test_slow_rise_time_increases_kp():
 
     assert result is not None
     # Slow rise time: increase Kp by 10%
-    assert result["kp"] > kp, f"Expected Kp increase for slow rise time"
+    assert result["kp"] > kp, "Expected Kp increase for slow rise time"
 
 
 # =============================================================================

@@ -83,7 +83,7 @@ class UndershootDetector:
         self._consecutive_failures: int = 0
 
         # Rate mode state
-        self._heating_rate_learner: "HeatingRateLearner" | None = None
+        self._heating_rate_learner: HeatingRateLearner | None = None
 
     @property
     def time_below_target(self) -> float:
@@ -433,7 +433,7 @@ class UndershootDetector:
         self.cumulative_ki_multiplier = 1.0
         self.last_adjustment_time = None
 
-    def set_heating_rate_learner(self, learner: "HeatingRateLearner") -> None:
+    def set_heating_rate_learner(self, learner: HeatingRateLearner) -> None:
         """Set the HeatingRateLearner for rate-based undershoot detection.
 
         Args:

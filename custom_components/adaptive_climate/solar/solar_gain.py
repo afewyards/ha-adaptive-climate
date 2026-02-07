@@ -78,8 +78,8 @@ class SolarGainLearner:
         """
         self.zone_id = zone_id
         self.orientation = orientation
-        self.measurements: List[SolarGainMeasurement] = []
-        self.patterns: Dict[Tuple[int, Season, CloudCoverage], SolarGainPattern] = {}
+        self.measurements: list[SolarGainMeasurement] = []
+        self.patterns: dict[tuple[int, Season, CloudCoverage], SolarGainPattern] = {}
 
     def add_measurement(self, timestamp: datetime, temperature_rise_c: float, cloud_coverage: CloudCoverage) -> None:
         """
@@ -151,7 +151,7 @@ class SolarGainLearner:
     def _update_patterns(self) -> None:
         """Update learned patterns from all measurements."""
         # Group measurements by (hour, season, cloud_coverage)
-        grouped: Dict[Tuple[int, Season, CloudCoverage], List[float]] = {}
+        grouped: dict[tuple[int, Season, CloudCoverage], list[float]] = {}
 
         for m in self.measurements:
             key = (m.hour_of_day, m.season, m.cloud_coverage)
@@ -307,7 +307,7 @@ class SolarGainManager:
 
     def __init__(self):
         """Initialize solar gain manager."""
-        self.learners: Dict[str, SolarGainLearner] = {}
+        self.learners: dict[str, SolarGainLearner] = {}
 
     def configure_zone(self, zone_id: str, orientation: WindowOrientation) -> None:
         """

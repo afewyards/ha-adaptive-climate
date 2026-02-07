@@ -144,7 +144,7 @@ class PhaseAwareOvershootTracker:
         self._setpoint_crossed = False
         self._crossing_timestamp: datetime | None = None
         self._max_settling_temp: float | None = None
-        self._settling_temps: Deque[Tuple[datetime, float]] = deque(maxlen=1500)
+        self._settling_temps: deque[tuple[datetime, float]] = deque(maxlen=1500)
         self._heater_stop_time: datetime | None = None
         self._peak_window_closed = False
         self._tracking_start_time: datetime | None = None
@@ -281,7 +281,7 @@ class PhaseAwareOvershootTracker:
         overshoot = self._max_settling_temp - self._setpoint
         return max(0.0, overshoot)
 
-    def get_settling_temps(self) -> List[Tuple[datetime, float]]:
+    def get_settling_temps(self) -> list[tuple[datetime, float]]:
         """
         Get all temperature readings from the settling phase.
 
@@ -301,8 +301,8 @@ class CycleMetrics:
         settling_time: float | None = None,
         oscillations: int = 0,
         rise_time: float | None = None,
-        disturbances: List[str] | None = None,
-        interruption_history: List[Tuple[datetime, str]] | None = None,
+        disturbances: list[str] | None = None,
+        interruption_history: list[tuple[datetime, str]] | None = None,
         heater_cycles: int = 0,
         outdoor_temp_avg: float | None = None,
         integral_at_tolerance_entry: float | None = None,
@@ -386,7 +386,7 @@ class CycleMetrics:
 
 
 def calculate_overshoot(
-    temperature_history: List[Tuple[datetime, float]],
+    temperature_history: list[tuple[datetime, float]],
     target_temp: float,
     phase_aware: bool = True,
     transport_delay_seconds: float = 0.0,
@@ -424,7 +424,7 @@ def calculate_overshoot(
     return tracker.get_overshoot()
 
 
-def calculate_undershoot(temperature_history: List[Tuple[datetime, float]], target_temp: float) -> float | None:
+def calculate_undershoot(temperature_history: list[tuple[datetime, float]], target_temp: float) -> float | None:
     """
     Calculate maximum undershoot below target temperature.
 
@@ -445,7 +445,7 @@ def calculate_undershoot(temperature_history: List[Tuple[datetime, float]], targ
 
 
 def count_oscillations(
-    temperature_history: List[Tuple[datetime, float]],
+    temperature_history: list[tuple[datetime, float]],
     target_temp: float,
     threshold: float = 0.1,
 ) -> int:
@@ -492,7 +492,7 @@ def count_oscillations(
 
 
 def calculate_settling_time(
-    temperature_history: List[Tuple[datetime, float]],
+    temperature_history: list[tuple[datetime, float]],
     target_temp: float,
     tolerance: float = 0.2,
     reference_time: datetime | None = None,
@@ -560,7 +560,7 @@ def calculate_settling_time(
 
 
 def calculate_rise_time(
-    temperature_history: List[Tuple[datetime, float]],
+    temperature_history: list[tuple[datetime, float]],
     start_temp: float,
     target_temp: float,
     threshold: float = 0.2,
@@ -622,7 +622,7 @@ def calculate_rise_time(
 
 
 def calculate_settling_mae(
-    temperature_history: List[Tuple[datetime, float]],
+    temperature_history: list[tuple[datetime, float]],
     target_temp: float,
     settling_start_time: datetime | None = None,
 ) -> float | None:

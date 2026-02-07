@@ -33,7 +33,7 @@ class VacationMode:
     def __init__(
         self,
         hass: HomeAssistant,
-        coordinator: "AdaptiveThermostatCoordinator",
+        coordinator: AdaptiveThermostatCoordinator,
     ) -> None:
         """Initialize vacation mode handler.
 

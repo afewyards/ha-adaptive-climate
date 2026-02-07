@@ -140,10 +140,10 @@ def validate_floor_construction(floor_config: dict) -> list[str]:
 
 
 def calculate_floor_thermal_properties(
-    layers: List[Dict],
+    layers: list[dict],
     area_m2: float,
     pipe_spacing_mm: int = 150,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """Calculate thermal properties for floor heating construction.
 
     This function calculates thermal mass, thermal resistance, and tau modifier

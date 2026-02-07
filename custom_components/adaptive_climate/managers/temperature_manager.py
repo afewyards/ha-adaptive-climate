@@ -123,7 +123,7 @@ class TemperatureManager:
         return self._attr_preset_mode
 
     @property
-    def preset_modes(self) -> List[str]:
+    def preset_modes(self) -> list[str]:
         """Return a list of available preset modes."""
         preset_modes = [PRESET_NONE]
         for mode, preset_mode_temp in self._preset_modes_temp.items():
@@ -132,7 +132,7 @@ class TemperatureManager:
         return preset_modes
 
     @property
-    def _preset_modes_temp(self) -> Dict[str, float | None]:
+    def _preset_modes_temp(self) -> dict[str, float | None]:
         """Return a dict of preset modes and their temperatures."""
         return {
             PRESET_AWAY: self._away_temp,
@@ -145,7 +145,7 @@ class TemperatureManager:
         }
 
     @property
-    def _preset_temp_modes(self) -> Dict[float | None, str]:
+    def _preset_temp_modes(self) -> dict[float | None, str]:
         """Return a dict of preset temperatures and their modes."""
         return {
             self._away_temp: PRESET_AWAY,
@@ -158,7 +158,7 @@ class TemperatureManager:
         }
 
     @property
-    def presets(self) -> Dict[str, float]:
+    def presets(self) -> dict[str, float]:
         """Return a dict of available presets and their temperatures."""
         presets = {}
         for mode, preset_mode_temp in self._preset_modes_temp.items():

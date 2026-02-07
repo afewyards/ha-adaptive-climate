@@ -41,12 +41,12 @@ class ThermalRateLearner:
         self.outlier_threshold = outlier_threshold
         self.noise_tolerance = noise_tolerance
         self.max_measurements = max_measurements
-        self._cooling_rates: Deque[float] = deque(maxlen=max_measurements)
-        self._heating_rates: Deque[float] = deque(maxlen=max_measurements)
+        self._cooling_rates: deque[float] = deque(maxlen=max_measurements)
+        self._heating_rates: deque[float] = deque(maxlen=max_measurements)
 
     def calculate_cooling_rate(
         self,
-        temperature_history: List[Tuple[datetime, float]],
+        temperature_history: list[tuple[datetime, float]],
         min_duration_minutes: int = 30,
     ) -> float | None:
         """
@@ -96,7 +96,7 @@ class ThermalRateLearner:
 
     def calculate_heating_rate(
         self,
-        temperature_history: List[Tuple[datetime, float]],
+        temperature_history: list[tuple[datetime, float]],
         min_duration_minutes: int = 10,
     ) -> float | None:
         """
@@ -214,7 +214,7 @@ class ThermalRateLearner:
 
         return statistics.mean(recent_rates)
 
-    def _reject_outliers(self, values: List[float]) -> List[float]:
+    def _reject_outliers(self, values: list[float]) -> list[float]:
         """
         Reject statistical outliers using standard deviation threshold.
 
@@ -240,9 +240,9 @@ class ThermalRateLearner:
 
     def _find_cooling_segments(
         self,
-        temperature_history: List[Tuple[datetime, float]],
+        temperature_history: list[tuple[datetime, float]],
         min_duration_minutes: int,
-    ) -> List[List[Tuple[datetime, float]]]:
+    ) -> list[list[tuple[datetime, float]]]:
         """
         Find continuous cooling segments in temperature history.
 
@@ -289,9 +289,9 @@ class ThermalRateLearner:
 
     def _find_heating_segments(
         self,
-        temperature_history: List[Tuple[datetime, float]],
+        temperature_history: list[tuple[datetime, float]],
         min_duration_minutes: int,
-    ) -> List[List[Tuple[datetime, float]]]:
+    ) -> list[list[tuple[datetime, float]]]:
         """
         Find continuous heating segments in temperature history.
 
@@ -338,10 +338,10 @@ class ThermalRateLearner:
 
     def _validate_segment(
         self,
-        segment: List[Tuple[datetime, float]],
+        segment: list[tuple[datetime, float]],
         min_duration_minutes: int,
         is_cooling: bool,
-    ) -> List[Tuple[datetime, float]] | None:
+    ) -> list[tuple[datetime, float]] | None:
         """
         Validate a segment meets duration and rate bounds requirements.
 
@@ -390,7 +390,7 @@ class ThermalRateLearner:
 
         return segment
 
-    def get_measurement_counts(self) -> Dict[str, int]:
+    def get_measurement_counts(self) -> dict[str, int]:
         """
         Get counts of stored measurements.
 

@@ -398,7 +398,7 @@ HEATING_TYPE_CONVERGENCE_THRESHOLDS = {
 CONVERGENCE_THRESHOLDS = DEFAULT_CONVERGENCE_THRESHOLDS
 
 
-def get_convergence_thresholds(heating_type: str | None = None) -> Dict[str, float]:
+def get_convergence_thresholds(heating_type: str | None = None) -> dict[str, float]:
     """
     Get convergence thresholds for a specific heating type.
 
@@ -443,7 +443,7 @@ RULE_THRESHOLD_FLOORS = {
 }
 
 
-def get_rule_thresholds(heating_type: str | None = None) -> Dict[str, float]:
+def get_rule_thresholds(heating_type: str | None = None) -> dict[str, float]:
     """
     Get rule activation thresholds for a specific heating type.
 

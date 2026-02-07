@@ -40,7 +40,7 @@ class HealthMonitor:
     WARNING_CYCLE_TIME_MIN = 15  # Minutes
     HIGH_POWER_W_M2 = 20.0  # W/m²
 
-    def __init__(self, zone_name: str, exception_zones: List[str] | None = None):
+    def __init__(self, zone_name: str, exception_zones: list[str] | None = None):
         """Initialize health monitor for a zone.
 
         Args:
@@ -129,7 +129,7 @@ class HealthMonitor:
 
     def check_all(
         self, cycle_time_min: float | None, power_w_m2: float | None, sensor_available: bool
-    ) -> List[HealthIssue]:
+    ) -> list[HealthIssue]:
         """Run all health checks for the zone.
 
         Args:
@@ -163,7 +163,7 @@ class HealthMonitor:
 class SystemHealthMonitor:
     """Monitors aggregate health across all zones."""
 
-    def __init__(self, exception_zones: List[str] | None = None):
+    def __init__(self, exception_zones: list[str] | None = None):
         """Initialize system health monitor.
 
         Args:
@@ -171,7 +171,7 @@ class SystemHealthMonitor:
         """
         self.exception_zones = exception_zones or []
 
-    def aggregate_health(self, zone_issues: Dict[str, List[HealthIssue]]) -> HealthStatus:
+    def aggregate_health(self, zone_issues: dict[str, list[HealthIssue]]) -> HealthStatus:
         """Determine overall system health from zone issues.
 
         Args:
@@ -197,7 +197,7 @@ class SystemHealthMonitor:
         else:
             return HealthStatus.HEALTHY
 
-    def check_all_zones(self, zones_data: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+    def check_all_zones(self, zones_data: dict[str, dict[str, Any]]) -> dict[str, Any]:
         """Check health of all zones.
 
         Args:

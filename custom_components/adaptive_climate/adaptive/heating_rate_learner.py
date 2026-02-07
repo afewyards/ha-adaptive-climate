@@ -516,7 +516,7 @@ class HeatingRateLearner:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "HeatingRateLearner":
+    def from_dict(cls, data: dict) -> HeatingRateLearner:
         """Restore learner from serialized state."""
         from datetime import datetime
 

@@ -30,7 +30,7 @@ class ContactSensorHandler:
 
     def __init__(
         self,
-        contact_sensors: List[str],
+        contact_sensors: list[str],
         contact_delay_seconds: int = 300,  # 5 minutes default
         action: ContactAction = ContactAction.PAUSE,
         frost_protection_temp: float = 5.0,
@@ -54,12 +54,12 @@ class ContactSensorHandler:
         # Track when contacts opened
         self._contact_opened_at: datetime | None = None
         self._any_contact_open = False
-        self._open_sensor_ids: List[str] = []
+        self._open_sensor_ids: list[str] = []
 
         # Track when handler was created (for grace period)
         self._created_at: datetime | None = None
 
-    def update_contact_states(self, contact_states: Dict[str, bool], current_time: datetime | None = None):
+    def update_contact_states(self, contact_states: dict[str, bool], current_time: datetime | None = None):
         """Update contact sensor states.
 
         Args:
@@ -99,7 +99,7 @@ class ContactSensorHandler:
         """
         return self._any_contact_open
 
-    def get_open_sensor_ids(self) -> List[str]:
+    def get_open_sensor_ids(self) -> list[str]:
         """Get list of currently open contact sensor entity IDs.
 
         Returns:
@@ -219,12 +219,12 @@ class ContactSensorManager:
 
     def __init__(self):
         """Initialize contact sensor manager."""
-        self._zone_handlers: Dict[str, ContactSensorHandler] = {}
+        self._zone_handlers: dict[str, ContactSensorHandler] = {}
 
     def configure_zone(
         self,
         zone_id: str,
-        contact_sensors: List[str],
+        contact_sensors: list[str],
         contact_delay_seconds: int = 300,
         action: str = "pause",
         frost_protection_temp: float = 5.0,
@@ -252,7 +252,7 @@ class ContactSensorManager:
         )
 
     def update_contact_states(
-        self, zone_id: str, contact_states: Dict[str, bool], current_time: datetime | None = None
+        self, zone_id: str, contact_states: dict[str, bool], current_time: datetime | None = None
     ):
         """Update contact sensor states for a zone.
 
@@ -313,7 +313,7 @@ class ContactSensorManager:
         """
         return self._zone_handlers.get(zone_id)
 
-    def get_zone_config(self, zone_id: str) -> Dict[str, Any] | None:
+    def get_zone_config(self, zone_id: str) -> dict[str, Any] | None:
         """Get contact sensor configuration for a zone.
 
         Args:

@@ -40,13 +40,13 @@ class KeManager:
 
     def __init__(
         self,
-        state: "KeManagerState" = None,
+        state: KeManagerState = None,
         ke_learner: KeLearner | None = None,
-        gains_manager: "PIDGainsManager" | None = None,
+        gains_manager: PIDGainsManager | None = None,
         async_control_heating: Callable[..., Awaitable[None]] | None = None,
         async_write_ha_state: Callable[[], None] | None = None,
         # Backward compatibility parameters
-        thermostat: "AdaptiveThermostat" | None = None,
+        thermostat: AdaptiveThermostat | None = None,
         get_hvac_mode: callable | None = None,
         get_current_temp: callable | None = None,
         get_target_temp: callable | None = None,

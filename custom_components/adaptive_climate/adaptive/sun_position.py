@@ -72,7 +72,7 @@ class SunPositionCalculator:
         self._longitude = longitude
 
     @classmethod
-    def from_hass(cls, hass: "HomeAssistant") -> "SunPositionCalculator" | None:
+    def from_hass(cls, hass: HomeAssistant) -> SunPositionCalculator | None:
         """Create calculator from Home Assistant config.
 
         Args:

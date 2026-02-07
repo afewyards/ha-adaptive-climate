@@ -90,7 +90,7 @@ class PIDTuningManager:
         Args:
             **kwargs: Contains 'mode' key with value 'AUTO' or 'OFF'
         """
-        mode = kwargs.get("mode", None)
+        mode = kwargs.get("mode")
         if str(mode).upper() in ["AUTO", "OFF"] and self._pid_controller is not None:
             self._pid_controller.mode = str(mode).upper()
         await self._async_control_heating(calc_pid=True)
@@ -237,7 +237,7 @@ class PIDTuningManager:
         await self._async_control_heating(calc_pid=True)
         await self._async_write_ha_state()
 
-    async def async_auto_apply_adaptive_pid(self, outdoor_temp: float | None = None) -> Dict[str, Any]:
+    async def async_auto_apply_adaptive_pid(self, outdoor_temp: float | None = None) -> dict[str, Any]:
         """Automatically apply adaptive PID values with safety checks.
 
         Unlike async_apply_adaptive_pid(), this method:

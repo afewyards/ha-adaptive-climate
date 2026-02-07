@@ -39,7 +39,7 @@ class CentralController:
     def __init__(
         self,
         hass: HomeAssistant,
-        coordinator: "AdaptiveThermostatCoordinator",
+        coordinator: AdaptiveThermostatCoordinator,
         main_heater_switch: list[str] | None = None,
         main_cooler_switch: list[str] | None = None,
         startup_delay_seconds: int = 0,

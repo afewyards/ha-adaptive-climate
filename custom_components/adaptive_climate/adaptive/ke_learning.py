@@ -41,7 +41,7 @@ class KeObservation:
     indoor_temp: float  # Indoor temperature when observation was taken
     target_temp: float  # Target temperature at time of observation
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert observation to dictionary for persistence."""
         return {
             "timestamp": self.timestamp.isoformat(),
@@ -52,7 +52,7 @@ class KeObservation:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "KeObservation":
+    def from_dict(cls, data: dict[str, Any]) -> KeObservation:
         """Create observation from dictionary."""
         return cls(
             timestamp=datetime.fromisoformat(data["timestamp"]),
@@ -94,7 +94,7 @@ class KeLearner:
             max_observations: Maximum observations to retain (FIFO eviction)
         """
         self._current_ke = initial_ke
-        self._observations: List[KeObservation] = []
+        self._observations: list[KeObservation] = []
         self._max_observations = max_observations
         self._enabled = False  # Disabled until PID converges
         self._last_adjustment_time: datetime | None = None
@@ -185,8 +185,8 @@ class KeLearner:
 
     def _calculate_pearson_correlation(
         self,
-        x_values: List[float],
-        y_values: List[float],
+        x_values: list[float],
+        y_values: list[float],
     ) -> float | None:
         """Calculate Pearson correlation coefficient between two variables.
 
@@ -369,7 +369,7 @@ class KeLearner:
         """Get the timestamp of the last Ke adjustment."""
         return self._last_adjustment_time
 
-    def get_observations_summary(self) -> Dict[str, Any]:
+    def get_observations_summary(self) -> dict[str, Any]:
         """Get a summary of current observations for diagnostics.
 
         Returns:
@@ -406,7 +406,7 @@ class KeLearner:
         self._observations.clear()
         _LOGGER.info("Ke observations cleared (%d removed)", count)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert learner state to dictionary for persistence.
 
         Returns:
@@ -421,7 +421,7 @@ class KeLearner:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "KeLearner":
+    def from_dict(cls, data: dict[str, Any]) -> KeLearner:
         """Restore learner state from dictionary.
 
         Args:

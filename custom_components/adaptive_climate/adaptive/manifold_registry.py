@@ -43,7 +43,7 @@ class Manifold:
     """
 
     name: str
-    zones: List[str]
+    zones: list[str]
     pipe_volume: float
     flow_per_loop: float = DEFAULT_FLOW_PER_LOOP
 
@@ -55,7 +55,7 @@ class ManifoldRegistry:
     (active within cooldown period) or cold (need filling time).
     """
 
-    def __init__(self, manifolds: List[Manifold]) -> None:
+    def __init__(self, manifolds: list[Manifold]) -> None:
         """Initialize registry with manifold definitions.
 
         Args:
@@ -64,13 +64,13 @@ class ManifoldRegistry:
         self._manifolds = manifolds
 
         # Build zone-to-manifold lookup map
-        self._zone_to_manifold: Dict[str, Manifold] = {}
+        self._zone_to_manifold: dict[str, Manifold] = {}
         for manifold in manifolds:
             for zone_id in manifold.zones:
                 self._zone_to_manifold[zone_id] = manifold
 
         # Track last active time per manifold name
-        self._last_active_time: Dict[str, datetime] = {}
+        self._last_active_time: dict[str, datetime] = {}
 
     def get_manifold_for_zone(self, zone_id: str) -> Manifold | None:
         """Get the manifold serving a specific zone.
@@ -96,7 +96,7 @@ class ManifoldRegistry:
         if manifold:
             self._last_active_time[manifold.name] = dt_util.utcnow()
 
-    def get_transport_delay(self, zone_id: str, active_zones: Dict[str, int]) -> float:
+    def get_transport_delay(self, zone_id: str, active_zones: dict[str, int]) -> float:
         """Calculate transport delay for a zone in minutes.
 
         Transport delay is the time for hot water to travel from the heat source
@@ -158,7 +158,7 @@ class ManifoldRegistry:
             return 0.0
         return manifold.pipe_volume / (zone_loops * manifold.flow_per_loop)
 
-    def get_state_for_persistence(self) -> Dict[str, str]:
+    def get_state_for_persistence(self) -> dict[str, str]:
         """Return last_active_time as ISO strings for storage.
 
         Returns:
@@ -166,7 +166,7 @@ class ManifoldRegistry:
         """
         return {name: ts.isoformat() for name, ts in self._last_active_time.items() if ts is not None}
 
-    def restore_state(self, state: Dict[str, str]) -> None:
+    def restore_state(self, state: dict[str, str]) -> None:
         """Restore last_active_time from stored ISO strings.
 
         Args:

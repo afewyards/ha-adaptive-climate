@@ -49,12 +49,12 @@ __all__ = [
     "NightSetbackCalculator",
     "NightSetbackManager",
     "PIDGainsManager",
-    "StatusManager",
     "PIDTuningManager",
     "SetpointBoostManager",
     "SetpointChangedEvent",
     "SettlingStartedEvent",
     "StateRestorer",
+    "StatusManager",
     "TemperatureManager",
     "build_state_attributes",
 ]

@@ -101,7 +101,7 @@ class RollingWindowHeatingRate:
 # Energy rating to insulation quality mapping
 # Higher insulation = less impact from outdoor temperature = lower initial Ke
 # Values restored to correct scale in v0.7.1 (100x from v0.7.0 incorrect scaling)
-ENERGY_RATING_TO_INSULATION: Dict[str, float] = {
+ENERGY_RATING_TO_INSULATION: dict[str, float] = {
     "A++++": 0.1,  # Outstanding insulation - extremely minimal outdoor impact
     "A+++": 0.15,  # Excellent insulation - minimal outdoor impact
     "A++": 0.25,  # Very good insulation
@@ -134,7 +134,7 @@ def calculate_thermal_time_constant(
     window_area_m2: float | None = None,
     floor_area_m2: float | None = None,
     window_rating: str = "hr++",
-    floor_construction: Dict | None = None,
+    floor_construction: dict | None = None,
     area_m2: float | None = None,
     heating_type: str | None = None,
 ) -> float:
@@ -321,7 +321,7 @@ def calculate_initial_pid(
     area_m2: float | None = None,
     max_power_w: float | None = None,
     supply_temperature: float | None = None,
-) -> Tuple[float, float, float]:
+) -> tuple[float, float, float]:
     """Calculate initial PID parameters using hybrid multi-point empirical model.
 
     Implements improved physics-based initialization with better tau scaling:
@@ -607,7 +607,7 @@ def calculate_initial_cooling_pid(
     cooling_type: str = "forced_air",
     area_m2: float | None = None,
     max_power_w: float | None = None,
-) -> Tuple[float, float, float]:
+) -> tuple[float, float, float]:
     """Calculate initial PID parameters for cooling mode.
 
     Similar to calculate_initial_pid but optimized for cooling dynamics.
@@ -719,7 +719,7 @@ def calculate_expected_heating_rate(
     area_m2: float | None = None,
     max_power_w: float | None = None,
     supply_temperature: float | None = None,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """Calculate expected heating rate based on physics and system configuration.
 
     This provides a physics-based baseline for comparison against learned rates.

@@ -146,8 +146,8 @@ class AdaptiveLearner:
                                            chronic approach patterns
         """
         # Mode-specific cycle histories
-        self._heating_cycle_history: List[CycleMetrics] = []
-        self._cooling_cycle_history: List[CycleMetrics] = []
+        self._heating_cycle_history: list[CycleMetrics] = []
+        self._cooling_cycle_history: list[CycleMetrics] = []
         self._max_history = max_history
         self._heating_type = heating_type
         self._convergence_thresholds = get_convergence_thresholds(heating_type)
@@ -193,23 +193,23 @@ class AdaptiveLearner:
         self._heating_rate_learner = HeatingRateLearner(heating_type or "radiator")
 
     @property
-    def cycle_history(self) -> List[CycleMetrics]:
+    def cycle_history(self) -> list[CycleMetrics]:
         """Return cycle history for external access (defaults to heating for backward compatibility)."""
         return self._heating_cycle_history
 
     @cycle_history.setter
-    def cycle_history(self, value: List[CycleMetrics]) -> None:
+    def cycle_history(self, value: list[CycleMetrics]) -> None:
         """Set cycle history (primarily for testing, defaults to heating for backward compatibility)."""
         self._heating_cycle_history = value
 
     # Backward-compatible aliases for private attributes (used by tests)
     @property
-    def _cycle_history(self) -> List[CycleMetrics]:
+    def _cycle_history(self) -> list[CycleMetrics]:
         """Backward-compatible alias for _heating_cycle_history."""
         return self._heating_cycle_history
 
     @_cycle_history.setter
-    def _cycle_history(self, value: List[CycleMetrics]) -> None:
+    def _cycle_history(self, value: list[CycleMetrics]) -> None:
         """Backward-compatible alias setter for _heating_cycle_history."""
         self._heating_cycle_history = value
 
@@ -281,7 +281,7 @@ class AdaptiveLearner:
         return self._validation.is_in_validation_mode()
 
     @property
-    def _validation_cycles(self) -> List[CycleMetrics]:
+    def _validation_cycles(self) -> list[CycleMetrics]:
         """Backward-compatible alias for validation manager's validation cycles."""
         return self._validation._validation_cycles
 
@@ -311,7 +311,7 @@ class AdaptiveLearner:
         self._validation._last_seasonal_shift = value
 
     @property
-    def _outdoor_temp_history(self) -> List[float]:
+    def _outdoor_temp_history(self) -> list[float]:
         """Backward-compatible alias for validation manager's outdoor temp history."""
         return self._validation._outdoor_temp_history
 
@@ -330,7 +330,7 @@ class AdaptiveLearner:
         """Backward-compatible alias for validation manager's physics baseline Kd."""
         return self._validation._physics_baseline_kd
 
-    def add_cycle_metrics(self, metrics: CycleMetrics, mode: "HVACMode" = None) -> None:
+    def add_cycle_metrics(self, metrics: CycleMetrics, mode: HVACMode = None) -> None:
         """
         Add a cycle's performance metrics to history.
 
@@ -401,7 +401,7 @@ class AdaptiveLearner:
                 f"evicted {evicted_count} oldest entries"
             )
 
-    def get_cycle_count(self, mode: "HVACMode" = None) -> int:
+    def get_cycle_count(self, mode: HVACMode = None) -> int:
         """
         Get number of stored cycle metrics.
 
@@ -532,8 +532,8 @@ class AdaptiveLearner:
         pwm_seconds: float = 0,
         check_auto_apply: bool = False,
         outdoor_temp: float | None = None,
-        mode: "HVACMode" = None,
-    ) -> Dict[str, float] | None:
+        mode: HVACMode = None,
+    ) -> dict[str, float] | None:
         """
         Calculate PID adjustments based on observed cycle performance.
 
@@ -906,7 +906,7 @@ class AdaptiveLearner:
 
         self._heating_rate_learner = HeatingRateLearner(self._heating_type or "radiator")
 
-    def get_previous_pid(self) -> Dict[str, float] | None:
+    def get_previous_pid(self) -> dict[str, float] | None:
         """Get the previous PID configuration for rollback.
 
         DEPRECATED: PID history is now managed by PIDGainsManager.
@@ -1040,7 +1040,7 @@ class AdaptiveLearner:
                 old_count,
             )
 
-    def get_convergence_confidence(self, mode: "HVACMode" = None) -> float:
+    def get_convergence_confidence(self, mode: HVACMode = None) -> float:
         """Get current convergence confidence level for specified mode.
 
         Args:
@@ -1051,7 +1051,7 @@ class AdaptiveLearner:
         """
         return self._confidence.get_convergence_confidence(mode)
 
-    def get_auto_apply_count(self, mode: "HVACMode" = None) -> int:
+    def get_auto_apply_count(self, mode: HVACMode = None) -> int:
         """Get number of times PID has been auto-applied for specified mode.
 
         Args:
@@ -1062,7 +1062,7 @@ class AdaptiveLearner:
         """
         return self._confidence.get_auto_apply_count(mode)
 
-    def update_convergence_confidence(self, metrics: CycleMetrics, mode: "HVACMode" = None) -> None:
+    def update_convergence_confidence(self, metrics: CycleMetrics, mode: HVACMode = None) -> None:
         """Update convergence confidence based on cycle performance with weighted learning.
 
         Confidence increases when cycles meet convergence criteria, and is used
@@ -1207,7 +1207,7 @@ class AdaptiveLearner:
         else:
             self._confidence._heating_cycle_count += 1
 
-    def check_performance_degradation(self, baseline_window: int = 10, mode: "HVACMode" = None) -> bool:
+    def check_performance_degradation(self, baseline_window: int = 10, mode: HVACMode = None) -> bool:
         """Check if recent performance has degraded compared to baseline.
 
         Compares recent cycles to earlier baseline to detect if tuning has drifted.
@@ -1378,7 +1378,7 @@ class AdaptiveLearner:
         cycles_completed: int,
         current_ki: float,
         pid_history: list[dict] | None = None,
-        mode: "HVACMode" = None,
+        mode: HVACMode = None,
     ) -> float | None:
         """Check if Ki adjustment is needed for persistent undershoot (unified real-time + cycle).
 
@@ -1520,7 +1520,7 @@ class AdaptiveLearner:
         """
         return self._undershoot_detector
 
-    def can_reach_learning_tier(self, tier: int, mode: "HVACMode") -> bool:
+    def can_reach_learning_tier(self, tier: int, mode: HVACMode) -> bool:
         """Check if the system has enough recovery cycles to reach a learning tier.
 
         Args:
@@ -1532,7 +1532,7 @@ class AdaptiveLearner:
         """
         return self._contribution_tracker.can_reach_tier(tier, mode)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize AdaptiveLearner state to a dictionary in v9 format with backward compatibility.
 
         Delegates to learner_serialization module for actual serialization logic.
@@ -1565,7 +1565,7 @@ class AdaptiveLearner:
             heating_rate_learner=self._heating_rate_learner,
         )
 
-    def restore_from_dict(self, data: Dict[str, Any]) -> None:
+    def restore_from_dict(self, data: dict[str, Any]) -> None:
         """Restore AdaptiveLearner state from a dictionary.
 
         Performs in-place restoration by clearing existing state and

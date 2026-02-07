@@ -27,9 +27,9 @@ class NightSetback:
         setback_delta: float,
         recovery_deadline: str | None = None,
         sunset_offset_minutes: int = 0,
-        thermal_rate_learner: "ThermalRateLearner" | None = None,
+        thermal_rate_learner: ThermalRateLearner | None = None,
         heating_type: str | None = None,
-        preheat_learner: "PreheatLearner" | None = None,
+        preheat_learner: PreheatLearner | None = None,
     ):
         """Initialize night setback.
 
@@ -308,7 +308,7 @@ class NightSetbackManager:
 
     def __init__(self):
         """Initialize night setback manager."""
-        self._zone_setbacks: Dict[str, NightSetback] = {}
+        self._zone_setbacks: dict[str, NightSetback] = {}
 
     def configure_zone(
         self, zone_id: str, start_time: str, end_time: str, setback_delta: float, recovery_deadline: str | None = None
@@ -363,7 +363,7 @@ class NightSetbackManager:
         setback = self._zone_setbacks[zone_id]
         return setback.is_night_period(current_time, sunset_time)
 
-    def get_zone_config(self, zone_id: str) -> Dict[str, Any] | None:
+    def get_zone_config(self, zone_id: str) -> dict[str, Any] | None:
         """Get night setback configuration for a zone.
 
         Args:

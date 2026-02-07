@@ -54,7 +54,7 @@ def _has_recovery_deadline(night_setback_config: dict | None) -> bool:
     return night_setback_config.get("recovery_deadline") is not None if night_setback_config else False
 
 
-async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
+async def async_setup_managers(thermostat: AdaptiveThermostat) -> None:
     """Initialize all manager instances for the thermostat entity.
 
     This function creates and configures:

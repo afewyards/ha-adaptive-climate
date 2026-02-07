@@ -20,7 +20,7 @@ from ..const import (
 _LOGGER = logging.getLogger(__name__)
 
 
-def calculate_pearson_correlation(x: List[float], y: List[float]) -> float | None:
+def calculate_pearson_correlation(x: list[float], y: list[float]) -> float | None:
     """Calculate Pearson correlation coefficient between two variables.
 
     Args:
@@ -106,7 +106,7 @@ class RuleStateTracker:
             hysteresis_band_pct: Percentage hysteresis band (0.20 = 20%)
         """
         self._hysteresis_band_pct = hysteresis_band_pct
-        self._rule_states: Dict[PIDRule, bool] = {}  # True = active, False = inactive
+        self._rule_states: dict[PIDRule, bool] = {}  # True = active, False = inactive
 
     def update_state(self, rule: PIDRule, metric_value: float, activation_threshold: float) -> bool:
         """Update and return the state of a rule with hysteresis logic.
@@ -165,14 +165,14 @@ def evaluate_pid_rules(
     avg_oscillations: float,
     avg_rise_time: float,
     avg_settling_time: float,
-    recent_rise_times: List[float] | None = None,
-    recent_outdoor_temps: List[float] | None = None,
+    recent_rise_times: list[float] | None = None,
+    recent_outdoor_temps: list[float] | None = None,
     state_tracker: RuleStateTracker | None = None,
-    rule_thresholds: Dict[str, float] | None = None,
+    rule_thresholds: dict[str, float] | None = None,
     decay_contribution: float | None = None,
     integral_at_tolerance_entry: float | None = None,
     avg_inter_cycle_drift: float = 0.0,
-) -> List[PIDRuleResult]:
+) -> list[PIDRuleResult]:
     """
     Evaluate all PID tuning rules against current metrics.
 
@@ -209,7 +209,7 @@ def evaluate_pid_rules(
             "some_oscillations": 1,
         }
 
-    results: List[PIDRuleResult] = []
+    results: list[PIDRuleResult] = []
 
     # Helper to check if rule should fire with hysteresis
     def should_fire(rule: PIDRule, metric: float, threshold: float) -> bool:
@@ -394,7 +394,7 @@ def evaluate_pid_rules(
     return results
 
 
-def detect_rule_conflicts(rule_results: List[PIDRuleResult]) -> List[Tuple[PIDRuleResult, PIDRuleResult, str]]:
+def detect_rule_conflicts(rule_results: list[PIDRuleResult]) -> list[tuple[PIDRuleResult, PIDRuleResult, str]]:
     """
     Detect conflicts between applicable rules.
 
@@ -407,7 +407,7 @@ def detect_rule_conflicts(rule_results: List[PIDRuleResult]) -> List[Tuple[PIDRu
     Returns:
         List of (rule1, rule2, parameter_name) tuples for each conflict
     """
-    conflicts: List[Tuple[PIDRuleResult, PIDRuleResult, str]] = []
+    conflicts: list[tuple[PIDRuleResult, PIDRuleResult, str]] = []
 
     for i, r1 in enumerate(rule_results):
         for r2 in rule_results[i + 1 :]:
@@ -427,8 +427,8 @@ def detect_rule_conflicts(rule_results: List[PIDRuleResult]) -> List[Tuple[PIDRu
 
 
 def resolve_rule_conflicts(
-    rule_results: List[PIDRuleResult], conflicts: List[Tuple[PIDRuleResult, PIDRuleResult, str]]
-) -> List[PIDRuleResult]:
+    rule_results: list[PIDRuleResult], conflicts: list[tuple[PIDRuleResult, PIDRuleResult, str]]
+) -> list[PIDRuleResult]:
     """
     Resolve conflicts by applying higher priority rules.
 
@@ -443,7 +443,7 @@ def resolve_rule_conflicts(
         Modified list of rule results with conflicts resolved
     """
     # Track which rules have parameters suppressed
-    suppressed: Dict[PIDRule, Set[str]] = {}
+    suppressed: dict[PIDRule, set[str]] = {}
 
     for r1, r2, param in conflicts:
         # Determine winner (higher priority)
@@ -462,7 +462,7 @@ def resolve_rule_conflicts(
         suppressed[loser.rule].add(param)
 
     # Build resolved results
-    resolved: List[PIDRuleResult] = []
+    resolved: list[PIDRuleResult] = []
     for result in rule_results:
         if result.rule in suppressed:
             # Create new result with suppressed parameters neutralized

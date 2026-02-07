@@ -16,7 +16,7 @@ except ImportError:
     pass
 
 
-def discover_zone_floors(hass: "HomeAssistant", zone_entity_ids: List[str]) -> Dict[str, int | None]:
+def discover_zone_floors(hass: HomeAssistant, zone_entity_ids: list[str]) -> dict[str, int | None]:
     """Discover floor levels for zones using entity/area/floor registries.
 
     Args:
@@ -38,7 +38,7 @@ def discover_zone_floors(hass: "HomeAssistant", zone_entity_ids: List[str]) -> D
             "climate.bedroom": 1,
         }
     """
-    result: Dict[str, int | None] = {}
+    result: dict[str, int | None] = {}
 
     # Get registry instances
     entity_registry = er.async_get(hass)

@@ -71,7 +71,7 @@ class CycleTrackerManager:
         get_outdoor_temp: Callable[[], float | None] | None = None,
         on_validation_failed: Callable[[], Awaitable[None]] | None = None,
         on_auto_apply_check: Callable[[], Awaitable[None]] | None = None,
-        dispatcher: "CycleEventDispatcher | None" = None,
+        dispatcher: CycleEventDispatcher | None = None,
         heating_type: str | None = None,
         valve_actuation_time: float = 0.0,
     ) -> None:
@@ -119,7 +119,7 @@ class CycleTrackerManager:
         self._state: CycleState = CycleState.IDLE
         self._cycle_start_time: datetime | None = None
         self._cycle_target_temp: float | None = None
-        self._temperature_history: Deque[tuple[datetime, float]] = deque(maxlen=2000)
+        self._temperature_history: deque[tuple[datetime, float]] = deque(maxlen=2000)
         self._outdoor_temp_history: list[tuple[datetime, float]] = []
         self._settling_timeout_handle = None
         self._last_interruption_reason: str | None = None  # Persists across cycle resets
@@ -345,7 +345,7 @@ class CycleTrackerManager:
         self._metrics_recorder.set_transport_delay(minutes)
         self._logger.debug("Transport delay set to %.1f minutes for current cycle", minutes)
 
-    def _on_cycle_started(self, event: "CycleStartedEvent") -> None:
+    def _on_cycle_started(self, event: CycleStartedEvent) -> None:
         """Handle CYCLE_STARTED event.
 
         Args:
@@ -394,7 +394,7 @@ class CycleTrackerManager:
             current_temp or 0.0,
         )
 
-    def _on_settling_started(self, event: "SettlingStartedEvent") -> None:
+    def _on_settling_started(self, event: SettlingStartedEvent) -> None:
         """Handle SETTLING_STARTED event.
 
         Args:
@@ -424,7 +424,7 @@ class CycleTrackerManager:
             self._max_settling_time_minutes,
         )
 
-    def _on_heating_started(self, event: "HeatingStartedEvent") -> None:
+    def _on_heating_started(self, event: HeatingStartedEvent) -> None:
         """Handle HEATING_STARTED event for duty cycle tracking.
 
         Args:
@@ -433,7 +433,7 @@ class CycleTrackerManager:
         # Track device on time for duty cycle calculation
         self._metrics_recorder.set_device_on_time(event.timestamp)
 
-    def _on_heating_ended(self, event: "HeatingEndedEvent") -> None:
+    def _on_heating_ended(self, event: HeatingEndedEvent) -> None:
         """Handle HEATING_ENDED event for duty cycle tracking.
 
         Args:
@@ -442,7 +442,7 @@ class CycleTrackerManager:
         # Track device off time for duty cycle calculation
         self._metrics_recorder.set_device_off_time(event.timestamp)
 
-    def _on_contact_pause(self, event: "ContactPauseEvent") -> None:
+    def _on_contact_pause(self, event: ContactPauseEvent) -> None:
         """Handle CONTACT_PAUSE event.
 
         Args:
@@ -455,7 +455,7 @@ class CycleTrackerManager:
             InterruptionType.CONTACT_SENSOR.value, should_abort=True, reason="contact sensor pause (window/door opened)"
         )
 
-    def _on_contact_resume(self, event: "ContactResumeEvent") -> None:
+    def _on_contact_resume(self, event: ContactResumeEvent) -> None:
         """Handle CONTACT_RESUME event.
 
         Args:
@@ -465,7 +465,7 @@ class CycleTrackerManager:
         # Future enhancement: could resume cycle if pause was brief
         pass
 
-    def _on_setpoint_changed_event(self, event: "SetpointChangedEvent") -> None:
+    def _on_setpoint_changed_event(self, event: SetpointChangedEvent) -> None:
         """Handle SETPOINT_CHANGED event.
 
         Args:
@@ -498,7 +498,7 @@ class CycleTrackerManager:
             reason = f"setpoint change: {event.old_target:.2f}°C -> {event.new_target:.2f}°C (device active or minor)"
             self._handle_interruption(interruption_type.value, should_abort=False, reason=reason)
 
-    def _on_mode_changed_event(self, event: "ModeChangedEvent") -> None:
+    def _on_mode_changed_event(self, event: ModeChangedEvent) -> None:
         """Handle MODE_CHANGED event.
 
         Args:
@@ -521,7 +521,7 @@ class CycleTrackerManager:
             reason = f"mode change: {event.old_mode} -> {event.new_mode} (incompatible with {cycle_state_str})"
             self._handle_interruption(interruption_type.value, should_abort=True, reason=reason)
 
-    def _on_temperature_update(self, event: "TemperatureUpdateEvent") -> None:
+    def _on_temperature_update(self, event: TemperatureUpdateEvent) -> None:
         """Handle TEMPERATURE_UPDATE event for integral tracking.
 
         Tracks integral values at two key points during heating:

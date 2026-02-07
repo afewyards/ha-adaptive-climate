@@ -10,7 +10,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 def calculate_pwm_adjustment(
-    cycle_times: List[float],
+    cycle_times: list[float],
     current_pwm_period: float,
     min_pwm_period: float = 180.0,
     max_pwm_period: float = 1800.0,

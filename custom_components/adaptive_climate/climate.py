@@ -98,8 +98,8 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
         self._name = kwargs.get("name")
         self._unique_id = kwargs.get("unique_id")
         self._heater_entity_id = kwargs.get("heater_entity_id")
-        self._cooler_entity_id = kwargs.get("cooler_entity_id", None)
-        self._demand_switch_entity_id = kwargs.get("demand_switch_entity_id", None)
+        self._cooler_entity_id = kwargs.get("cooler_entity_id")
+        self._demand_switch_entity_id = kwargs.get("demand_switch_entity_id")
         self._heater_polarity_invert = kwargs.get("invert_heater")
         self._sensor_entity_id = kwargs.get("sensor_entity_id")
         self._ext_sensor_entity_id = kwargs.get("ext_sensor_entity_id")
@@ -113,8 +113,8 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
         self._sampling_period = kwargs.get("sampling_period").seconds
         self._sensor_stall = kwargs.get("sensor_stall").seconds
         self._output_safety = kwargs.get("output_safety")
-        self._hvac_mode = kwargs.get("initial_hvac_mode", None)
-        self._saved_target_temp = kwargs.get("target_temp", None) or kwargs.get("away_temp", None)
+        self._hvac_mode = kwargs.get("initial_hvac_mode")
+        self._saved_target_temp = kwargs.get("target_temp") or kwargs.get("away_temp")
         self._temp_precision = kwargs.get("precision")
         self._target_temperature_step = kwargs.get("target_temp_step")
         self._last_heat_cycle_time = None  # None means use device's last_changed time
@@ -1551,11 +1551,11 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
                     "notification_id": f"adaptive_climate_rollback_{self._zone_id}",
                     "title": f"⚠️ PID Rolled Back: {self._name}",
                     "message": (
-                        f"The auto-applied PID values caused performance degradation "
-                        f"(>30% worse overshoot). The system has automatically rolled "
-                        f"back to the previous configuration.\n\n"
-                        f"Learning will continue and may recommend new values "
-                        f"when confidence improves."
+                        "The auto-applied PID values caused performance degradation "
+                        "(>30% worse overshoot). The system has automatically rolled "
+                        "back to the previous configuration.\n\n"
+                        "Learning will continue and may recommend new values "
+                        "when confidence improves."
                     ),
                 },
                 blocking=False,

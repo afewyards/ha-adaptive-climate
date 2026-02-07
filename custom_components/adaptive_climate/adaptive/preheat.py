@@ -50,7 +50,7 @@ class PreheatLearner:
         self,
         heating_type: str,
         max_hours: float | None = None,
-        heating_rate_learner: "HeatingRateLearner" | None = None,
+        heating_rate_learner: HeatingRateLearner | None = None,
     ):
         """Initialize preheat learner.
 
@@ -70,7 +70,7 @@ class PreheatLearner:
         self._heating_rate_learner = heating_rate_learner
 
         # Observations keyed by (delta_bin, outdoor_bin)
-        self._observations: Dict[Tuple[str, str], List[HeatingObservation]] = {}
+        self._observations: dict[tuple[str, str], list[HeatingObservation]] = {}
 
         # Counter for optimization: expire old observations every 10 calls
         self._add_observation_counter = 0
@@ -355,7 +355,7 @@ class PreheatLearner:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "PreheatLearner":
+    def from_dict(cls, data: dict) -> PreheatLearner:
         """Deserialize learner state from dict.
 
         Args:

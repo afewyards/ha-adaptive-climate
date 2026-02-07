@@ -30,7 +30,7 @@ from ..helpers.hvac_mode import mode_to_str
 _LOGGER = logging.getLogger(__name__)
 
 
-def get_auto_apply_thresholds(heating_type: str | None = None) -> Dict[str, float]:
+def get_auto_apply_thresholds(heating_type: str | None = None) -> dict[str, float]:
     """
     Get auto-apply thresholds for a specific heating type.
 
@@ -71,7 +71,7 @@ class AutoApplyManager:
         confidence: float,
         heating_type: str,
         contribution_tracker: Any = None,
-        mode: "HVACMode" = None,
+        mode: HVACMode = None,
     ) -> str:
         """Compute learning status based on cycle metrics and recovery cycle requirements.
 
@@ -134,8 +134,8 @@ class AutoApplyManager:
         current_ki: float,
         current_kd: float,
         outdoor_temp: float | None,
-        pid_history: List[Dict[str, Any]],
-        mode: "HVACMode" = None,
+        pid_history: list[dict[str, Any]],
+        mode: HVACMode = None,
         contribution_tracker: Any = None,  # ConfidenceContributionTracker for tier gates
     ) -> tuple[bool, int | None, int | None, int | None]:
         """Check all auto-apply safety gates and return adjusted parameters.

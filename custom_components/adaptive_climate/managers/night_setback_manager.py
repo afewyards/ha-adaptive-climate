@@ -46,7 +46,7 @@ class NightSetbackManager:
         hass: HomeAssistant,
         entity_id: str,
         night_setback: NightSetback | None,
-        night_setback_config: Dict[str, Any] | None,
+        night_setback_config: dict[str, Any] | None,
         solar_recovery: Any | None,
         window_orientation: str | None,
         get_target_temp: Callable[[], float | None],
@@ -220,7 +220,7 @@ class NightSetbackManager:
 
     def calculate_night_setback_adjustment(
         self, current_time: datetime | None = None
-    ) -> Tuple[float, bool, Dict[str, Any]]:
+    ) -> tuple[float, bool, dict[str, Any]]:
         """Calculate night setback adjustment for effective target temperature.
 
         Handles both static end time (NightSetback object) and dynamic end time
@@ -384,7 +384,7 @@ class NightSetbackManager:
         effective_target, _, _ = self.calculate_night_setback_adjustment(current_time)
         return effective_target
 
-    def get_state_attributes(self, current_time: datetime | None = None) -> Dict[str, Any]:
+    def get_state_attributes(self, current_time: datetime | None = None) -> dict[str, Any]:
         """Get state attributes for the night setback status.
 
         Args:
@@ -393,7 +393,7 @@ class NightSetbackManager:
         Returns:
             Dictionary of state attributes
         """
-        attributes: Dict[str, Any] = {}
+        attributes: dict[str, Any] = {}
 
         if self._calculator.is_configured:
             _, _, night_info = self.calculate_night_setback_adjustment(current_time)

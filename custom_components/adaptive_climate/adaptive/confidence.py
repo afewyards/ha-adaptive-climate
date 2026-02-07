@@ -56,7 +56,7 @@ class ConfidenceTracker:
         self._heating_cycle_count: int = 0
         self._cooling_cycle_count: int = 0
 
-    def get_convergence_confidence(self, mode: "HVACMode" = None) -> float:
+    def get_convergence_confidence(self, mode: HVACMode = None) -> float:
         """Get current convergence confidence level for specified mode.
 
         Args:
@@ -72,7 +72,7 @@ class ConfidenceTracker:
         else:
             return self._heating_convergence_confidence
 
-    def get_auto_apply_count(self, mode: "HVACMode" = None) -> int:
+    def get_auto_apply_count(self, mode: HVACMode = None) -> int:
         """Get number of times PID has been auto-applied for specified mode.
 
         Args:
@@ -88,7 +88,7 @@ class ConfidenceTracker:
         else:
             return self._heating_auto_apply_count
 
-    def get_cycle_count(self, mode: "HVACMode" = None) -> int:
+    def get_cycle_count(self, mode: HVACMode = None) -> int:
         """Get number of cycles tracked for specified mode.
 
         Args:
@@ -104,7 +104,7 @@ class ConfidenceTracker:
         else:
             return self._heating_cycle_count
 
-    def update_convergence_confidence(self, metrics, mode: "HVACMode" = None) -> None:
+    def update_convergence_confidence(self, metrics, mode: HVACMode = None) -> None:
         """Update convergence confidence based on cycle performance.
 
         Confidence increases when cycles meet convergence criteria, and is used
@@ -217,7 +217,7 @@ class ConfidenceTracker:
         multiplier = 2.0 - (confidence * 1.5)
         return max(0.5, min(2.0, multiplier))
 
-    def increment_auto_apply_count(self, mode: "HVACMode" = None) -> None:
+    def increment_auto_apply_count(self, mode: HVACMode = None) -> None:
         """Increment the auto-apply count for the specified mode.
 
         Args:
@@ -230,7 +230,7 @@ class ConfidenceTracker:
         else:
             self._heating_auto_apply_count += 1
 
-    def reset_confidence(self, mode: "HVACMode" = None) -> None:
+    def reset_confidence(self, mode: HVACMode = None) -> None:
         """Reset confidence to zero for specified mode.
 
         Args:

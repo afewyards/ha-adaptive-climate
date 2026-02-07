@@ -21,7 +21,7 @@ _LOGGER = logging.getLogger(__name__)
 CURRENT_VERSION = 10
 
 
-def serialize_cycle(cycle: CycleMetrics) -> Dict[str, Any]:
+def serialize_cycle(cycle: CycleMetrics) -> dict[str, Any]:
     """Convert a CycleMetrics object to a dictionary.
 
     Args:
@@ -45,8 +45,8 @@ def serialize_cycle(cycle: CycleMetrics) -> Dict[str, Any]:
 
 
 def learner_to_dict(
-    heating_cycle_history: List[CycleMetrics],
-    cooling_cycle_history: List[CycleMetrics],
+    heating_cycle_history: list[CycleMetrics],
+    cooling_cycle_history: list[CycleMetrics],
     heating_auto_apply_count: int,
     cooling_auto_apply_count: int,
     heating_convergence_confidence: float,
@@ -58,7 +58,7 @@ def learner_to_dict(
     chronic_approach_detector: Any | None = None,
     contribution_tracker: Any | None = None,
     heating_rate_learner: HeatingRateLearner | None = None,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Serialize AdaptiveLearner state to a dictionary in v10 format with backward compatibility.
 
     Args:
@@ -150,7 +150,7 @@ def learner_to_dict(
     }
 
 
-def _deserialize_cycle(cycle_dict: Dict[str, Any]) -> CycleMetrics:
+def _deserialize_cycle(cycle_dict: dict[str, Any]) -> CycleMetrics:
     """Convert a dictionary to a CycleMetrics object.
 
     Args:
@@ -173,7 +173,7 @@ def _deserialize_cycle(cycle_dict: Dict[str, Any]) -> CycleMetrics:
     )
 
 
-def restore_learner_from_dict(data: Dict[str, Any]) -> Dict[str, Any]:
+def restore_learner_from_dict(data: dict[str, Any]) -> dict[str, Any]:
     """Restore AdaptiveLearner state from a dictionary.
 
     Supports v4 (flat), v5 (mode-keyed), v6 (undershoot detector), v7 (chronic approach detector),

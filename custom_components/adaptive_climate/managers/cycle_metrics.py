@@ -45,7 +45,7 @@ class CycleMetricsRecorder:
         get_outdoor_temp: Callable[[], float | None] | None = None,
         on_validation_failed: Callable[[], Awaitable[None]] | None = None,
         on_auto_apply_check: Callable[[], Awaitable[None]] | None = None,
-        dispatcher: "CycleEventDispatcher | None" = None,
+        dispatcher: CycleEventDispatcher | None = None,
         cold_tolerance: float | None = None,
         heating_type: str | None = None,
         valve_actuation_time: float = 0.0,

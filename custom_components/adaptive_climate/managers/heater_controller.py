@@ -90,9 +90,9 @@ class HeaterController:
         self,
         hass: HomeAssistant,
         thermostat: AdaptiveThermostat,
-        heater_entity_id: List[str] | None,
-        cooler_entity_id: List[str] | None,
-        demand_switch_entity_id: List[str] | None,
+        heater_entity_id: list[str] | None,
+        cooler_entity_id: list[str] | None,
+        demand_switch_entity_id: list[str] | None,
         heater_polarity_invert: bool,
         pwm: int,  # PWM duration in seconds
         difference: float,  # output_max - output_min
@@ -429,7 +429,7 @@ class HeaterController:
                 )
             self._last_heater_state = not is_now_off
 
-    def get_entities(self, hvac_mode: HVACMode) -> List[str]:
+    def get_entities(self, hvac_mode: HVACMode) -> list[str]:
         """Return the entities to be controlled based on HVAC MODE.
 
         Returns heater or cooler entities based on mode, plus any demand_switch

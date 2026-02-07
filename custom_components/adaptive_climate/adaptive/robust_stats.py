@@ -13,7 +13,7 @@ import logging
 _LOGGER = logging.getLogger(__name__)
 
 
-def calculate_median(values: List[float]) -> float:
+def calculate_median(values: list[float]) -> float:
     """Calculate median of a list of values.
 
     Args:
@@ -39,7 +39,7 @@ def calculate_median(values: List[float]) -> float:
         return sorted_values[n // 2]
 
 
-def calculate_mad(values: List[float], median: float = None) -> float:
+def calculate_mad(values: list[float], median: float = None) -> float:
     """Calculate Median Absolute Deviation (MAD).
 
     MAD is a robust measure of variability that is less sensitive to outliers
@@ -70,7 +70,7 @@ def calculate_mad(values: List[float], median: float = None) -> float:
     return calculate_median(absolute_deviations)
 
 
-def detect_outliers_modified_zscore(values: List[float], threshold: float = 3.5) -> Tuple[List[int], List[float]]:
+def detect_outliers_modified_zscore(values: list[float], threshold: float = 3.5) -> tuple[list[int], list[float]]:
     """Detect outliers using modified Z-score with MAD.
 
     The modified Z-score uses MAD instead of standard deviation, making it
@@ -122,8 +122,8 @@ def detect_outliers_modified_zscore(values: List[float], threshold: float = 3.5)
 
 
 def robust_average(
-    values: List[float], max_outlier_fraction: float = 0.3, min_valid_count: int = 4, outlier_threshold: float = 3.5
-) -> Tuple[float, List[int]]:
+    values: list[float], max_outlier_fraction: float = 0.3, min_valid_count: int = 4, outlier_threshold: float = 3.5
+) -> tuple[float, list[int]]:
     """Calculate robust average using median with outlier removal.
 
     This function uses the modified Z-score method to detect and remove outliers,

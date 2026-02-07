@@ -43,7 +43,7 @@ class NightSetbackCalculator:
         hass: HomeAssistant,
         entity_id: str,
         night_setback: NightSetback | None,
-        night_setback_config: Dict[str, Any] | None,
+        night_setback_config: dict[str, Any] | None,
         window_orientation: str | None,
         get_target_temp: Callable[[], float | None],
         get_current_temp: Callable[[], float | None],
@@ -235,7 +235,7 @@ class NightSetbackCalculator:
 
     def calculate_night_setback_adjustment(
         self, current_time: datetime | None = None
-    ) -> Tuple[float, bool, Dict[str, Any]]:
+    ) -> tuple[float, bool, dict[str, Any]]:
         """Calculate night setback adjustment for effective target temperature.
 
         Handles both static end time (NightSetback object) and dynamic end time
@@ -257,7 +257,7 @@ class NightSetbackCalculator:
         current_temp = self._get_current_temp()
         effective_target = target_temp
         in_night_period = False
-        info: Dict[str, Any] = {}
+        info: dict[str, Any] = {}
 
         if self._night_setback:
             # Static end time mode - use NightSetback object
@@ -420,7 +420,7 @@ class NightSetbackCalculator:
         deadline: datetime,
         humidity_paused: bool = False,
         effective_delta: float | None = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Get preheat information for state attributes.
 
         Args:

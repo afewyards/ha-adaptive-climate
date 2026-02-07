@@ -35,7 +35,7 @@ class ConfidenceContributionTracker:
         self._heating_recovery_cycle_count: int = 0
         self._cooling_recovery_cycle_count: int = 0
 
-    def get_maintenance_contribution(self, mode: "HVACMode" = None) -> float:
+    def get_maintenance_contribution(self, mode: HVACMode = None) -> float:
         """Get current maintenance confidence contribution for mode."""
         if mode is None:
             mode = get_hvac_heat_mode()
@@ -47,7 +47,7 @@ class ConfidenceContributionTracker:
         """Current heating rate confidence contribution."""
         return self._heating_rate_contribution
 
-    def get_recovery_cycle_count(self, mode: "HVACMode" = None) -> int:
+    def get_recovery_cycle_count(self, mode: HVACMode = None) -> int:
         """Number of recovery cycles completed for mode."""
         if mode is None:
             mode = get_hvac_heat_mode()
@@ -92,7 +92,7 @@ class ConfidenceContributionTracker:
         """Set internal recovery cycle count (HEAT mode for backward compatibility)."""
         self._heating_recovery_cycle_count = value
 
-    def apply_maintenance_gain(self, gain: float, mode: "HVACMode" = None) -> float:
+    def apply_maintenance_gain(self, gain: float, mode: HVACMode = None) -> float:
         """Apply maintenance confidence gain with cap and diminishing returns.
 
         Args:
@@ -161,7 +161,7 @@ class ConfidenceContributionTracker:
         self._heating_rate_contribution += actual_gain
         return actual_gain
 
-    def add_recovery_cycle(self, mode: "HVACMode" = None) -> None:
+    def add_recovery_cycle(self, mode: HVACMode = None) -> None:
         """Record a completed recovery cycle for mode."""
         if mode is None:
             mode = get_hvac_heat_mode()
@@ -170,7 +170,7 @@ class ConfidenceContributionTracker:
         else:
             self._heating_recovery_cycle_count += 1
 
-    def can_reach_tier(self, tier: int, mode: "HVACMode" = None) -> bool:
+    def can_reach_tier(self, tier: int, mode: HVACMode = None) -> bool:
         """Check if tier can be reached based on recovery cycle count for mode.
 
         Args:

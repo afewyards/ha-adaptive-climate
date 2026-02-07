@@ -42,10 +42,10 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
         )
         self._zones: dict[str, dict[str, Any]] = {}
         self._demand_states: dict[str, bool] = {}
-        self._central_controller: "CentralController | None" = None
+        self._central_controller: CentralController | None = None
         self._sun_position_calculator = SunPositionCalculator.from_hass(hass)
         self._thermal_group_manager: Any = None  # ThermalGroupManager or None
-        self._manifold_registry: "ManifoldRegistry | None" = None
+        self._manifold_registry: ManifoldRegistry | None = None
         self._zone_loops: dict[str, int] = {}
         self._update_pending: bool = False
         self._config = config or {}
@@ -73,7 +73,7 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
             self._outdoor_temp_lagged = initial_temp
             self._last_outdoor_temp_update = time.monotonic()
 
-    def set_central_controller(self, controller: "CentralController") -> None:
+    def set_central_controller(self, controller: CentralController) -> None:
         """Set the central controller reference for push-based updates."""
         self._central_controller = controller
 
@@ -102,7 +102,7 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
         """
         return self._manifold_registry is not None
 
-    def set_manifold_registry(self, registry: "ManifoldRegistry") -> None:
+    def set_manifold_registry(self, registry: ManifoldRegistry) -> None:
         """Set the manifold registry reference for transport delay calculations.
 
         Args:

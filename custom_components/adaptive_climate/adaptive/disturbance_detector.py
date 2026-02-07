@@ -25,12 +25,12 @@ class DisturbanceDetector:
 
     def detect_disturbances(
         self,
-        temperature_history: List[tuple[datetime, float]],
-        heater_active_periods: List[tuple[datetime, datetime]],
-        outdoor_temps: List[tuple[datetime, float]] | None = None,
-        solar_values: List[tuple[datetime, float]] | None = None,
-        wind_speeds: List[tuple[datetime, float]] | None = None,
-    ) -> List[str]:
+        temperature_history: list[tuple[datetime, float]],
+        heater_active_periods: list[tuple[datetime, datetime]],
+        outdoor_temps: list[tuple[datetime, float]] | None = None,
+        solar_values: list[tuple[datetime, float]] | None = None,
+        wind_speeds: list[tuple[datetime, float]] | None = None,
+    ) -> list[str]:
         """Detect all disturbances for a heating cycle.
 
         Args:
@@ -69,9 +69,9 @@ class DisturbanceDetector:
 
     def _detect_solar_gain(
         self,
-        temperature_history: List[tuple[datetime, float]],
-        solar_values: List[tuple[datetime, float]],
-        heater_active_periods: List[tuple[datetime, datetime]],
+        temperature_history: list[tuple[datetime, float]],
+        solar_values: list[tuple[datetime, float]],
+        heater_active_periods: list[tuple[datetime, datetime]],
     ) -> bool:
         """Detect solar gain: temperature rise correlated with solar increase.
 
@@ -123,10 +123,10 @@ class DisturbanceDetector:
 
     def _detect_wind_loss(
         self,
-        temperature_history: List[tuple[datetime, float]],
-        outdoor_temps: List[tuple[datetime, float]],
-        wind_speeds: List[tuple[datetime, float]],
-        heater_active_periods: List[tuple[datetime, datetime]],
+        temperature_history: list[tuple[datetime, float]],
+        outdoor_temps: list[tuple[datetime, float]],
+        wind_speeds: list[tuple[datetime, float]],
+        heater_active_periods: list[tuple[datetime, datetime]],
     ) -> bool:
         """Detect wind-driven heat loss: indoor temp drops with stable outdoor but high wind.
 
@@ -179,7 +179,7 @@ class DisturbanceDetector:
 
     def _detect_outdoor_temp_swing(
         self,
-        outdoor_temps: List[tuple[datetime, float]],
+        outdoor_temps: list[tuple[datetime, float]],
     ) -> bool:
         """Detect large outdoor temperature swing during cycle.
 
@@ -202,8 +202,8 @@ class DisturbanceDetector:
 
     def _detect_occupancy(
         self,
-        temperature_history: List[tuple[datetime, float]],
-        heater_active_periods: List[tuple[datetime, datetime]],
+        temperature_history: list[tuple[datetime, float]],
+        heater_active_periods: list[tuple[datetime, datetime]],
     ) -> bool:
         """Detect occupancy-driven temperature rise without heater.
 

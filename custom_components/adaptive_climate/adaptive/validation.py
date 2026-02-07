@@ -35,12 +35,12 @@ class ValidationManager:
         # Validation mode state
         self._validation_mode: bool = False
         self._validation_baseline_overshoot: float | None = None
-        self._validation_cycles: List[CycleMetrics] = []
+        self._validation_cycles: list[CycleMetrics] = []
 
         # Seasonal tracking
         self._last_seasonal_check: datetime | None = None
         self._last_seasonal_shift: datetime | None = None
-        self._outdoor_temp_history: List[float] = []
+        self._outdoor_temp_history: list[float] = []
 
         # Physics baseline for drift calculation
         self._physics_baseline_kp: float | None = None
@@ -146,7 +146,7 @@ class ValidationManager:
         current_kd: float,
         heating_auto_apply_count: int,
         cooling_auto_apply_count: int,
-        pid_history: List[Dict[str, Any]],
+        pid_history: list[dict[str, Any]],
     ) -> str | None:
         """Check if auto-apply is allowed based on safety limits.
 
@@ -228,7 +228,7 @@ class ValidationManager:
 
     def check_performance_degradation(
         self,
-        cycle_history: List[CycleMetrics],
+        cycle_history: list[CycleMetrics],
         baseline_window: int = 10,
     ) -> bool:
         """Check if recent performance has degraded compared to baseline.

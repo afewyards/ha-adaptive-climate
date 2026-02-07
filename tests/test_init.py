@@ -941,8 +941,7 @@ class TestReloadWithoutLeftoverState:
 
         def mock_async_remove(domain, service):
             key = f"{domain}.{service}"
-            if key in registered_services:
-                del registered_services[key]
+            registered_services.pop(key, None)
 
         hass.services.async_register = mock_async_register
         hass.services.has_service = mock_has_service
