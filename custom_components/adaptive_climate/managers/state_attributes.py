@@ -25,7 +25,7 @@ def build_state_attributes(thermostat: SmartThermostat) -> dict[str, Any]:
     - Flat restoration fields: integral, outdoor_temp_lagged, cycle_count, control_output
     - Preset temperatures: away_temp, eco_temp, etc. (if present)
     - status: grouped operational status (activity, overrides)
-    - learning: grouped learning metrics (status, confidence, pid_history)
+    - learning: grouped learning metrics (status, confidence)
     - debug: grouped debug info (only if debug mode)
 
     Args:
@@ -56,6 +56,23 @@ def build_state_attributes(thermostat: SmartThermostat) -> dict[str, Any]:
         "cycle_count": build_cycle_count(heater_count, cooler_count, is_demand_switch),
         "integral": thermostat.pid_control_i,
     }
+
+    # PID history (flat for RestoreEntity round-trip)
+    if thermostat._gains_manager:
+        history = thermostat._gains_manager.get_history()
+        if history:
+            from ..const import ATTR_PID_HISTORY
+            attrs[ATTR_PID_HISTORY] = [
+                {
+                    "timestamp": e["timestamp"],
+                    "kp": round(e["kp"], 2),
+                    "ki": round(e["ki"], 4),
+                    "kd": round(e["kd"], 2),
+                    "ke": round(e.get("ke", 0.0), 2),
+                    "reason": e["reason"],
+                }
+                for e in history
+            ]
 
     # Add preset temperatures if they exist
     preset_attrs = [
@@ -184,113 +201,6 @@ def _compute_learning_status(
         return "stable"
 
 
-def _add_learning_status_attributes(
-    thermostat: SmartThermostat, attrs: dict[str, Any]
-) -> None:
-    """Add learning/adaptation status attributes.
-
-    Exposes only essential learning metrics:
-    - learning_status: overall learning state
-    - pid_history: list of PID adjustments (if any)
-
-    Debug mode adds:
-    - cycles_collected: number of complete cycles observed
-    - convergence_confidence_pct: 0-100% confidence in convergence
-    - current_cycle_state: current cycle tracker state
-    - cycles_required_for_learning: minimum cycles needed
-    """
-    from ..const import DOMAIN, MIN_CYCLES_FOR_LEARNING
-
-    # Get adaptive learner and cycle tracker from coordinator
-    coordinator = thermostat._coordinator
-    if not coordinator:
-        return
-
-    debug_mode = thermostat.hass.data.get(DOMAIN, {}).get("debug", False)
-
-    # Use typed coordinator method to get zone data
-    zone_info = coordinator.get_zone_by_climate_entity(thermostat.entity_id)
-    if zone_info is None:
-        return
-
-    _, zone_data = zone_info
-    adaptive_learner = zone_data.get("adaptive_learner")
-    cycle_tracker = zone_data.get("cycle_tracker")
-
-    if not adaptive_learner or not cycle_tracker:
-        return
-
-    # Get cycle count and convergence confidence (needed for learning_status computation)
-    cycle_count = adaptive_learner.get_cycle_count()
-    convergence_confidence = adaptive_learner.get_convergence_confidence()
-
-    # Get heating type from thermostat
-    heating_type = thermostat._heating_type if hasattr(thermostat, '_heating_type') else None
-
-    # Detect all pause conditions
-    is_paused = False
-
-    # Check learning grace period
-    if thermostat._night_setback_controller:
-        try:
-            is_paused = thermostat._night_setback_controller.in_learning_grace_period
-        except (TypeError, AttributeError):
-            pass
-
-    # Check contact sensor pause
-    if not is_paused and thermostat._contact_sensor_handler:
-        try:
-            is_paused = thermostat._contact_sensor_handler.is_any_contact_open()
-        except (TypeError, AttributeError):
-            pass
-
-    # Check humidity pause
-    if not is_paused and thermostat._humidity_detector:
-        try:
-            is_paused = thermostat._humidity_detector.should_pause()
-        except (TypeError, AttributeError):
-            pass
-
-    # Get contribution tracker for tier gate checks
-    contribution_tracker = getattr(adaptive_learner, '_contribution_tracker', None)
-
-    # Compute learning status with tier gate checks
-    attrs[ATTR_LEARNING_STATUS] = _compute_learning_status(
-        cycle_count, convergence_confidence, heating_type, is_paused,
-        contribution_tracker=contribution_tracker,
-    )
-
-    # Debug-only attributes
-    if debug_mode:
-        attrs[ATTR_CYCLES_COLLECTED] = cycle_count
-        attrs[ATTR_CONVERGENCE_CONFIDENCE] = round(convergence_confidence * 100)
-        attrs["current_cycle_state"] = cycle_tracker.get_state_name()
-        attrs["cycles_required_for_learning"] = MIN_CYCLES_FOR_LEARNING
-
-        # Undershoot detector debug attributes
-        if hasattr(adaptive_learner, '_undershoot_detector') and adaptive_learner._undershoot_detector:
-            detector = adaptive_learner._undershoot_detector
-            attrs["undershoot_time_hours"] = round(detector.time_below_target / 3600.0, 2)
-            attrs["undershoot_thermal_debt"] = round(detector.thermal_debt, 2)
-            attrs["undershoot_ki_multiplier"] = round(detector.cumulative_ki_multiplier, 3)
-
-    # Format PID history (only include if non-empty)
-    # PID history is now managed by PIDGainsManager, not AdaptiveLearner
-    pid_history = thermostat._gains_manager.get_history() if thermostat._gains_manager else []
-    if pid_history:
-        from ..const import ATTR_PID_HISTORY
-        formatted_history = [
-            {
-                "timestamp": entry["timestamp"],  # Already ISO string from PIDGainsManager
-                "kp": round(entry["kp"], 2),
-                "ki": round(entry["ki"], 4),
-                "kd": round(entry["kd"], 2),
-                "ke": round(entry.get("ke", 0.0), 2),
-                "reason": entry["reason"],
-            }
-            for entry in pid_history
-        ]
-        attrs[ATTR_PID_HISTORY] = formatted_history
 
 
 def _add_learning_object(
@@ -370,22 +280,6 @@ def _add_learning_object(
         status=learning_status,
         confidence=round(convergence_confidence * 100)
     )
-
-    # Add PID history to learning object (if non-empty)
-    pid_history = thermostat._gains_manager.get_history() if thermostat._gains_manager else []
-    if pid_history:
-        formatted_history = [
-            {
-                "timestamp": entry["timestamp"],
-                "kp": round(entry["kp"], 2),
-                "ki": round(entry["ki"], 4),
-                "kd": round(entry["kd"], 2),
-                "ke": round(entry.get("ke", 0.0), 2),
-                "reason": entry["reason"],
-            }
-            for entry in pid_history
-        ]
-        attrs["learning"]["pid_history"] = formatted_history
 
 
 def _add_debug_object(

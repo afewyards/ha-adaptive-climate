@@ -279,11 +279,15 @@ class TestRestoreFromState:
         assert len(history) == 2
 
     def test_restore_from_state_applies_to_pid_controller(self, mock_pid_controller, initial_heating_gains):
-        """Restored gains should be applied to PIDController."""
+        """Restored gains from pid_history should be applied to PIDController."""
         manager = PIDGainsManager(mock_pid_controller, initial_heating_gains)
 
         old_state = Mock()
-        old_state.attributes = {"kp": 2.0, "ki": 0.02, "kd": 15.0, "ke": 0.7}
+        old_state.attributes = {
+            "pid_history": [
+                {"timestamp": "2024-01-15T10:00:00", "kp": 2.0, "ki": 0.02, "kd": 15.0, "ke": 0.7, "reason": "auto_apply"},
+            ]
+        }
 
         manager.restore_from_state(old_state)
 
@@ -772,23 +776,18 @@ class TestRestoreDeduplication:
         assert len(history) == 1
         assert history[0]["reason"] == "physics_init"
 
-    def test_restore_empty_history_adds_restore_entry(self, manager):
-        """Restore with empty history should add RESTORE entry."""
+    def test_restore_empty_history_keeps_initial_gains(self, manager):
+        """Restore with empty history should keep initial physics gains."""
         old_state = Mock()
         old_state.attributes = {
-            "kp": 1.8,
-            "ki": 0.015,
-            "kd": 12.0,
-            "ke": 0.6,
             "pid_history": [],  # Empty history
         }
 
         manager.restore_from_state(old_state)
 
+        # No history to restore from → initial gains unchanged, no RESTORE entry
         history = manager.get_history(HVACMode.HEAT)
-        # Should have 1 RESTORE entry
-        assert len(history) == 1
-        assert history[0]["reason"] == "restore"
+        assert len(history) == 0
 
     def test_restore_preserves_history_order(self, manager):
         """Restore should preserve old entries in correct order."""
@@ -1590,28 +1589,19 @@ class TestInitialHistoryRecording:
         """After restore without history, ensure_initial_history_recorded should record PHYSICS_INIT."""
         manager = PIDGainsManager(mock_pid_controller, initial_heating_gains)
 
-        # Create old state without history (but with gains for backward compat)
+        # Restore with no pid_history → no-op, history stays empty
         old_state = Mock()
-        old_state.attributes = {
-            "kp": 1.0,
-            "ki": 0.1,
-            "kd": 10.0,
-            "ke": 0.0,
-        }
+        old_state.attributes = {}
 
-        # Restore
         manager.restore_from_state(old_state)
+        assert len(manager.get_history()) == 0
 
-        # History should have one RESTORE entry (because gains matched, but we call ensure after)
-        # Actually, the restore will add a RESTORE entry. Let's check the actual behavior.
-        history_before = manager.get_history()
-
-        # Call ensure_initial_history_recorded
+        # ensure_initial_history_recorded should add PHYSICS_INIT
         manager.ensure_initial_history_recorded()
 
-        # Since history now has RESTORE entry, ensure should do nothing
-        history_after = manager.get_history()
-        assert len(history_after) == len(history_before)
+        history = manager.get_history()
+        assert len(history) == 1
+        assert history[0]["reason"] == "physics_init"
 
     def test_ensure_initial_history_recorded_mode_specific(self, mock_pid_controller, initial_heating_gains, initial_cooling_gains):
         """ensure_initial_history_recorded should work for current mode."""

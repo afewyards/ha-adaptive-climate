@@ -228,30 +228,18 @@ class PIDGainsManager:
         if old_history:
             self._restore_history(old_history)
 
-        # 2. Get gains from LAST history entry if available, else fall back to attrs
+        # 2. Set gains from last history entry (if history was restored)
         mode_key = "heating"
         if self._pid_history[mode_key]:
             last_entry = self._pid_history[mode_key][-1]
-            kp = last_entry.get("kp", self._heating_gains.kp)
-            ki = last_entry.get("ki", self._heating_gains.ki)
-            kd = last_entry.get("kd", self._heating_gains.kd)
-            ke = last_entry.get("ke", 0.0)
-        else:
-            # Fallback to top-level attrs (backward compat)
-            kp = attrs.get("kp", self._heating_gains.kp)
-            ki = attrs.get("ki", self._heating_gains.ki)
-            kd = attrs.get("kd", self._heating_gains.kd)
-            ke = attrs.get("ke", 0.0)
-
-        # 3. Set gains (will skip recording if unchanged from last entry)
-        self.set_gains(
-            PIDChangeReason.RESTORE,
-            kp=kp,
-            ki=ki,
-            kd=kd,
-            ke=ke,
-            mode=HVACMode.HEAT,
-        )
+            self.set_gains(
+                PIDChangeReason.RESTORE,
+                kp=last_entry.get("kp", self._heating_gains.kp),
+                ki=last_entry.get("ki", self._heating_gains.ki),
+                kd=last_entry.get("kd", self._heating_gains.kd),
+                ke=last_entry.get("ke", 0.0),
+                mode=HVACMode.HEAT,
+            )
 
     def _restore_history(self, old_history: list[dict] | dict) -> None:
         """Restore history from old format, handling migration.

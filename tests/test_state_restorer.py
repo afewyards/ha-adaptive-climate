@@ -382,3 +382,96 @@ class TestInitialPhysicsGainsRecording:
         history = gains_manager.get_history()
         assert len(history) == 1
         assert history[0]["reason"] == "adaptive_apply"
+
+
+class TestPidHistoryPersistence:
+    """PID history survives restart via RestoreEntity round-trip."""
+
+    def test_pid_history_round_trip(self, state_restorer, mock_thermostat):
+        """pid_history in state attrs → restore_from_state → gains_manager has history."""
+        from custom_components.adaptive_climate.managers.pid_gains_manager import PIDGainsManager
+        from custom_components.adaptive_climate.const import PIDGains, PIDChangeReason
+
+        # Setup gains manager with initial gains
+        initial_gains = PIDGains(kp=20.0, ki=0.01, kd=100.0, ke=0.0)
+        gains_manager = PIDGainsManager(mock_thermostat._pid_controller, initial_gains)
+        mock_thermostat._gains_manager = gains_manager
+
+        # Simulate saved state with pid_history at top level (as build_state_attributes produces)
+        saved_history = [
+            {"timestamp": "2024-01-15T10:00:00", "kp": 25.0, "ki": 0.02, "kd": 120.0, "ke": 0.5, "reason": "physics_init", "actor": "system"},
+            {"timestamp": "2024-01-15T12:00:00", "kp": 22.0, "ki": 0.015, "kd": 110.0, "ke": 0.3, "reason": "auto_apply", "actor": "learning"},
+        ]
+        old_state = MagicMock()
+        old_state.state = "heat"
+        old_state.attributes = {
+            "temperature": 21.0,
+            "integral": 5.0,
+            "pid_history": saved_history,
+        }
+
+        state_restorer.restore(old_state)
+
+        # Gains manager should have the history restored
+        history = gains_manager.get_history()
+        assert len(history) >= 2
+        # First entry should be from saved history
+        assert history[0]["kp"] == 25.0
+        assert history[0]["reason"] == "physics_init"
+        # Second entry
+        assert history[1]["kp"] == 22.0
+        assert history[1]["reason"] == "auto_apply"
+
+    def test_pid_history_empty_when_no_history(self, state_restorer, mock_thermostat):
+        """No pid_history in attrs → restore proceeds without error."""
+        from custom_components.adaptive_climate.managers.pid_gains_manager import PIDGainsManager
+        from custom_components.adaptive_climate.const import PIDGains
+
+        initial_gains = PIDGains(kp=20.0, ki=0.01, kd=100.0, ke=0.0)
+        gains_manager = PIDGainsManager(mock_thermostat._pid_controller, initial_gains)
+        mock_thermostat._gains_manager = gains_manager
+
+        old_state = MagicMock()
+        old_state.state = "heat"
+        old_state.attributes = {
+            "temperature": 21.0,
+            "integral": 0.0,
+            # No pid_history key at all
+        }
+
+        # Should not raise
+        state_restorer.restore(old_state)
+
+        # History should still have at least the initial/restore entry
+        history = gains_manager.get_history()
+        assert isinstance(history, list)
+
+    def test_pid_history_restores_gains_from_last_entry(self, state_restorer, mock_thermostat):
+        """Restored gains match last pid_history entry, not initial gains."""
+        from custom_components.adaptive_climate.managers.pid_gains_manager import PIDGainsManager
+        from custom_components.adaptive_climate.const import PIDGains
+
+        # Initial gains differ from what's in history
+        initial_gains = PIDGains(kp=20.0, ki=0.01, kd=100.0, ke=0.0)
+        gains_manager = PIDGainsManager(mock_thermostat._pid_controller, initial_gains)
+        mock_thermostat._gains_manager = gains_manager
+
+        # History has different (learned) gains
+        old_state = MagicMock()
+        old_state.state = "heat"
+        old_state.attributes = {
+            "temperature": 21.0,
+            "integral": 5.0,
+            "pid_history": [
+                {"timestamp": "2024-01-15T10:00:00", "kp": 30.0, "ki": 0.03, "kd": 150.0, "ke": 0.8, "reason": "auto_apply", "actor": "learning"},
+            ],
+        }
+
+        state_restorer.restore(old_state)
+
+        # Active gains should match the last history entry, not initial
+        current_gains = gains_manager.get_gains()
+        assert current_gains.kp == 30.0
+        assert current_gains.ki == 0.03
+        assert current_gains.kd == 150.0
+        assert current_gains.ke == 0.8
