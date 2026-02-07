@@ -34,7 +34,7 @@ def mock_dt_util():
     """Mock dt_util.utcnow() to return a fixed datetime for duration calculations."""
     # Set a far-future datetime to ensure all cycle durations are valid
     fixed_now = datetime(2024, 12, 31, 23, 59, 59)
-    with patch('custom_components.adaptive_climate.managers.cycle_metrics.dt_util.utcnow', return_value=fixed_now):
+    with patch("custom_components.adaptive_climate.managers.cycle_metrics.dt_util.utcnow", return_value=fixed_now):
         yield
 
 
@@ -50,6 +50,7 @@ def mock_hass():
 
     # Patch async_call_later at module level
     import homeassistant.helpers.event
+
     original_call_later = homeassistant.helpers.event.async_call_later
     homeassistant.helpers.event.async_call_later = mock_call_later
 
@@ -100,12 +101,14 @@ class TestCycleTrackerEventOnly:
     def test_cycle_started_event(self, cycle_tracker, dispatcher):
         """Test CYCLE_STARTED event triggers cycle start."""
         # Emit CYCLE_STARTED event
-        dispatcher.emit(CycleStartedEvent(
-            hvac_mode="heat",
-            timestamp=datetime(2024, 1, 1, 10, 0, 0),
-            target_temp=21.0,
-            current_temp=19.0,
-        ))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat",
+                timestamp=datetime(2024, 1, 1, 10, 0, 0),
+                target_temp=21.0,
+                current_temp=19.0,
+            )
+        )
 
         # Verify cycle state changed to HEATING
         assert cycle_tracker.state == CycleState.HEATING
@@ -114,18 +117,22 @@ class TestCycleTrackerEventOnly:
     def test_settling_started_event(self, cycle_tracker, dispatcher):
         """Test SETTLING_STARTED event triggers settling."""
         # Start a cycle first
-        dispatcher.emit(CycleStartedEvent(
-            hvac_mode="heat",
-            timestamp=datetime(2024, 1, 1, 10, 0, 0),
-            target_temp=21.0,
-            current_temp=19.0,
-        ))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat",
+                timestamp=datetime(2024, 1, 1, 10, 0, 0),
+                target_temp=21.0,
+                current_temp=19.0,
+            )
+        )
 
         # Emit SETTLING_STARTED event
-        dispatcher.emit(SettlingStartedEvent(
-            hvac_mode="heat",
-            timestamp=datetime(2024, 1, 1, 10, 0, 0),
-        ))
+        dispatcher.emit(
+            SettlingStartedEvent(
+                hvac_mode="heat",
+                timestamp=datetime(2024, 1, 1, 10, 0, 0),
+            )
+        )
 
         # Verify cycle state changed to SETTLING
         assert cycle_tracker.state == CycleState.SETTLING
@@ -133,22 +140,26 @@ class TestCycleTrackerEventOnly:
     def test_setpoint_changed_event(self, cycle_tracker, dispatcher):
         """Test SETPOINT_CHANGED event is handled."""
         # Start a cycle first
-        dispatcher.emit(CycleStartedEvent(
-            hvac_mode="heat",
-            timestamp=datetime(2024, 1, 1, 10, 0, 0),
-            target_temp=21.0,
-            current_temp=19.0,
-        ))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat",
+                timestamp=datetime(2024, 1, 1, 10, 0, 0),
+                target_temp=21.0,
+                current_temp=19.0,
+            )
+        )
 
         initial_state = cycle_tracker.state
 
         # Emit minor setpoint change (should continue)
-        dispatcher.emit(SetpointChangedEvent(
-            hvac_mode="heat",
-            timestamp=datetime(2024, 1, 1, 10, 0, 0),
-            old_target=21.0,
-            new_target=21.3,
-        ))
+        dispatcher.emit(
+            SetpointChangedEvent(
+                hvac_mode="heat",
+                timestamp=datetime(2024, 1, 1, 10, 0, 0),
+                old_target=21.0,
+                new_target=21.3,
+            )
+        )
 
         # Cycle should still be active (minor change)
         assert cycle_tracker.state == initial_state
@@ -156,19 +167,23 @@ class TestCycleTrackerEventOnly:
     def test_mode_changed_event(self, cycle_tracker, dispatcher):
         """Test MODE_CHANGED event is handled."""
         # Start a cycle first
-        dispatcher.emit(CycleStartedEvent(
-            hvac_mode="heat",
-            timestamp=datetime(2024, 1, 1, 10, 0, 0),
-            target_temp=21.0,
-            current_temp=19.0,
-        ))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat",
+                timestamp=datetime(2024, 1, 1, 10, 0, 0),
+                target_temp=21.0,
+                current_temp=19.0,
+            )
+        )
 
         # Emit mode change event (incompatible)
-        dispatcher.emit(ModeChangedEvent(
-            timestamp=datetime(2024, 1, 1, 10, 0, 0),
-            old_mode="heat",
-            new_mode="off",
-        ))
+        dispatcher.emit(
+            ModeChangedEvent(
+                timestamp=datetime(2024, 1, 1, 10, 0, 0),
+                old_mode="heat",
+                new_mode="off",
+            )
+        )
 
         # Cycle should be aborted
         assert cycle_tracker.state == CycleState.IDLE
@@ -176,19 +191,23 @@ class TestCycleTrackerEventOnly:
     def test_contact_pause_event(self, cycle_tracker, dispatcher):
         """Test CONTACT_PAUSE event is handled."""
         # Start a cycle first
-        dispatcher.emit(CycleStartedEvent(
-            hvac_mode="heat",
-            timestamp=datetime(2024, 1, 1, 10, 0, 0),
-            target_temp=21.0,
-            current_temp=19.0,
-        ))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat",
+                timestamp=datetime(2024, 1, 1, 10, 0, 0),
+                target_temp=21.0,
+                current_temp=19.0,
+            )
+        )
 
         # Emit contact pause event
-        dispatcher.emit(ContactPauseEvent(
-            hvac_mode="heat",
-            timestamp=datetime(2024, 1, 1, 10, 0, 0),
-            entity_id="binary_sensor.window",
-        ))
+        dispatcher.emit(
+            ContactPauseEvent(
+                hvac_mode="heat",
+                timestamp=datetime(2024, 1, 1, 10, 0, 0),
+                entity_id="binary_sensor.window",
+            )
+        )
 
         # Cycle should be aborted
         assert cycle_tracker.state == CycleState.IDLE
@@ -200,13 +219,17 @@ class TestNoLegacyCode:
     def test_heater_controller_no_cycle_tracker_refs(self):
         """Verify HeaterController has no direct _cycle_tracker references."""
         # Read HeaterController source
-        hc_path = Path(__file__).parent.parent / "custom_components" / "adaptive_climate" / "managers" / "heater_controller.py"
+        hc_path = (
+            Path(__file__).parent.parent
+            / "custom_components"
+            / "adaptive_climate"
+            / "managers"
+            / "heater_controller.py"
+        )
         source = hc_path.read_text()
 
         # Check for _cycle_tracker references
-        assert "_cycle_tracker" not in source, (
-            "HeaterController should not have direct _cycle_tracker references"
-        )
+        assert "_cycle_tracker" not in source, "HeaterController should not have direct _cycle_tracker references"
 
     def test_climate_no_legacy_cycle_calls(self):
         """Verify climate.py uses only events for cycle communication."""
@@ -234,9 +257,7 @@ class TestNoLegacyCode:
                     # Check if this is actually a call to the deprecated method
                     # (ignore definitions and docstrings)
                     if isinstance(node.ctx, ast.Load):
-                        pytest.fail(
-                            f"Found deprecated method call: {node.attr} in climate.py"
-                        )
+                        pytest.fail(f"Found deprecated method call: {node.attr} in climate.py")
 
     def test_cycle_tracker_no_public_deprecated_methods(self):
         """Verify deprecated methods are removed from CycleTrackerManager."""
@@ -267,12 +288,14 @@ class TestCycleEventIntegration:
         """Test a complete heating cycle using only events."""
         # Start cycle
         start_time = datetime(2024, 1, 1, 10, 0, 0)
-        dispatcher.emit(CycleStartedEvent(
-            hvac_mode="heat",
-            timestamp=start_time,
-            target_temp=21.0,
-            current_temp=19.0,
-        ))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat",
+                timestamp=start_time,
+                target_temp=21.0,
+                current_temp=19.0,
+            )
+        )
 
         assert cycle_tracker.state == CycleState.HEATING
 
@@ -282,10 +305,12 @@ class TestCycleEventIntegration:
             await cycle_tracker.update_temperature(start_time, temp)
 
         # End heating session
-        dispatcher.emit(SettlingStartedEvent(
-            hvac_mode="heat",
-            timestamp=start_time,
-        ))
+        dispatcher.emit(
+            SettlingStartedEvent(
+                hvac_mode="heat",
+                timestamp=start_time,
+            )
+        )
 
         assert cycle_tracker.state == CycleState.SETTLING
 
@@ -293,21 +318,25 @@ class TestCycleEventIntegration:
     async def test_cycle_interruption_via_events(self, cycle_tracker, dispatcher):
         """Test cycle interruption through events."""
         # Start cycle
-        dispatcher.emit(CycleStartedEvent(
-            hvac_mode="heat",
-            timestamp=datetime(2024, 1, 1, 10, 0, 0),
-            target_temp=21.0,
-            current_temp=19.0,
-        ))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat",
+                timestamp=datetime(2024, 1, 1, 10, 0, 0),
+                target_temp=21.0,
+                current_temp=19.0,
+            )
+        )
 
         assert cycle_tracker.state == CycleState.HEATING
 
         # Interrupt with contact sensor
-        dispatcher.emit(ContactPauseEvent(
-            hvac_mode="heat",
-            timestamp=datetime(2024, 1, 1, 10, 0, 0),
-            entity_id="binary_sensor.window",
-        ))
+        dispatcher.emit(
+            ContactPauseEvent(
+                hvac_mode="heat",
+                timestamp=datetime(2024, 1, 1, 10, 0, 0),
+                entity_id="binary_sensor.window",
+            )
+        )
 
         # Cycle should be aborted
         assert cycle_tracker.state == CycleState.IDLE

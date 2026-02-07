@@ -144,11 +144,7 @@ def learner_to_dict(
         "auto_apply_count": heating_auto_apply_count,
         "convergence_confidence": heating_convergence_confidence,
         # Shared fields
-        "last_adjustment_time": (
-            last_adjustment_time.isoformat()
-            if last_adjustment_time is not None
-            else None
-        ),
+        "last_adjustment_time": (last_adjustment_time.isoformat() if last_adjustment_time is not None else None),
         "consecutive_converged_cycles": consecutive_converged_cycles,
         "pid_converged_for_ke": pid_converged_for_ke,
     }
@@ -216,18 +212,29 @@ def restore_learner_from_dict(data: Dict[str, Any]) -> Dict[str, Any]:
     is_v9_format = stored_version == 9 and not is_v10_format
     is_v8_format = stored_version == 8 and not is_v9_format and not is_v10_format
     is_v7_format = "chronic_approach_detector" in data and not is_v8_format and not is_v9_format and not is_v10_format
-    is_v6_format = "undershoot_detector" in data and not is_v7_format and not is_v8_format and not is_v9_format and not is_v10_format
-    is_v5_format = "heating" in data and not is_v6_format and not is_v7_format and not is_v8_format and not is_v9_format and not is_v10_format
+    is_v6_format = (
+        "undershoot_detector" in data
+        and not is_v7_format
+        and not is_v8_format
+        and not is_v9_format
+        and not is_v10_format
+    )
+    is_v5_format = (
+        "heating" in data
+        and not is_v6_format
+        and not is_v7_format
+        and not is_v8_format
+        and not is_v9_format
+        and not is_v10_format
+    )
 
     if is_v10_format or is_v9_format or is_v8_format or is_v7_format or is_v6_format or is_v5_format:
         # V10/V9/V8/V7/V6/V5 format: mode-keyed structure
         heating_cycle_history = [
-            _deserialize_cycle(cycle_dict)
-            for cycle_dict in data.get("heating", {}).get("cycle_history", [])
+            _deserialize_cycle(cycle_dict) for cycle_dict in data.get("heating", {}).get("cycle_history", [])
         ]
         cooling_cycle_history = [
-            _deserialize_cycle(cycle_dict)
-            for cycle_dict in data.get("cooling", {}).get("cycle_history", [])
+            _deserialize_cycle(cycle_dict) for cycle_dict in data.get("cooling", {}).get("cycle_history", [])
         ]
 
         # Restore mode-specific auto_apply_counts
@@ -251,11 +258,14 @@ def restore_learner_from_dict(data: Dict[str, Any]) -> Dict[str, Any]:
 
         # Restore contribution tracker state (v9)
         if is_v10_format or is_v9_format:
-            contribution_tracker_state = data.get("contribution_tracker", {
-                "maintenance_contribution": 0.0,
-                "heating_rate_contribution": 0.0,
-                "recovery_cycle_count": 0,
-            })
+            contribution_tracker_state = data.get(
+                "contribution_tracker",
+                {
+                    "maintenance_contribution": 0.0,
+                    "heating_rate_contribution": 0.0,
+                    "recovery_cycle_count": 0,
+                },
+            )
         else:
             # Migration from v8 and earlier: default to zero contributions
             contribution_tracker_state = {
@@ -269,11 +279,11 @@ def restore_learner_from_dict(data: Dict[str, Any]) -> Dict[str, Any]:
             # V10/V9/V8 format: unified detector state
             undershoot_detector_state = data.get("undershoot_detector", {})
             if is_v10_format:
-                format_version = 'v10'
+                format_version = "v10"
             elif is_v9_format:
-                format_version = 'v9'
+                format_version = "v9"
             else:
-                format_version = 'v8'
+                format_version = "v8"
         elif is_v7_format:
             # Migration from v7: merge undershoot and chronic approach detector states
             undershoot_state = data.get("undershoot_detector", {})
@@ -295,7 +305,7 @@ def restore_learner_from_dict(data: Dict[str, Any]) -> Dict[str, Any]:
                 "thermal_debt": undershoot_state.get("thermal_debt", 0.0),
                 "consecutive_failures": chronic_state.get("consecutive_failures", 0),
             }
-            format_version = 'v7'
+            format_version = "v7"
             _LOGGER.info(
                 "Migrated v7 to v8: merged cumulative multipliers (%.3f, %.3f) -> %.3f",
                 undershoot_multiplier,
@@ -312,7 +322,7 @@ def restore_learner_from_dict(data: Dict[str, Any]) -> Dict[str, Any]:
                 "thermal_debt": undershoot_state.get("thermal_debt", 0.0),
                 "consecutive_failures": 0,  # New field in v8
             }
-            format_version = 'v6'
+            format_version = "v6"
         else:
             # Migration from v5: initialize with defaults
             undershoot_detector_state = {
@@ -322,7 +332,7 @@ def restore_learner_from_dict(data: Dict[str, Any]) -> Dict[str, Any]:
                 "thermal_debt": 0.0,
                 "consecutive_failures": 0,
             }
-            format_version = 'v5'
+            format_version = "v5"
 
         _LOGGER.info(
             "AdaptiveLearner state restored (%s): heating=%d cycles, cooling=%d cycles, "
@@ -337,10 +347,7 @@ def restore_learner_from_dict(data: Dict[str, Any]) -> Dict[str, Any]:
 
     else:
         # V4 format: flat structure (backward compatibility)
-        heating_cycle_history = [
-            _deserialize_cycle(cycle_dict)
-            for cycle_dict in data.get("cycle_history", [])
-        ]
+        heating_cycle_history = [_deserialize_cycle(cycle_dict) for cycle_dict in data.get("cycle_history", [])]
         cooling_cycle_history = []
 
         # Restore auto_apply_count to heating mode (v4 didn't have mode split)
@@ -373,7 +380,7 @@ def restore_learner_from_dict(data: Dict[str, Any]) -> Dict[str, Any]:
             heating_auto_apply_count,
         )
 
-        format_version = 'v4'
+        format_version = "v4"
 
     # Restore shared fields (present in all versions)
     last_adj_time = data.get("last_adjustment_time")

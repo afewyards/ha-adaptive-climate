@@ -1,4 +1,5 @@
 """Tests for weekly report history storage."""
+
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
@@ -189,14 +190,16 @@ async def test_history_store_prunes_old_data():
     # Create existing data with MAX_WEEKS_TO_KEEP + 1 snapshots
     existing_snapshots = []
     for week in range(1, MAX_WEEKS_TO_KEEP + 2):
-        existing_snapshots.append({
-            "year": 2024,
-            "week_number": week,
-            "total_cost": 40.0 + week,
-            "total_energy_kwh": 140.0 + week,
-            "zones": {},
-            "timestamp": f"2024-01-{7 * week:02d}T10:00:00",
-        })
+        existing_snapshots.append(
+            {
+                "year": 2024,
+                "week_number": week,
+                "total_cost": 40.0 + week,
+                "total_energy_kwh": 140.0 + week,
+                "zones": {},
+                "timestamp": f"2024-01-{7 * week:02d}T10:00:00",
+            }
+        )
 
     # Mock homeassistant module
     mock_ha_storage = MagicMock()
@@ -394,16 +397,28 @@ def test_v1_to_v2_migration():
 def test_confidence_delta_calculation():
     """Current vs previous confidence delta computed correctly."""
     current = ZoneSnapshot(
-        zone_id="living_room", duty_cycle=40.0, comfort_score=80.0,
-        time_at_target=75.0, area_m2=20.0, confidence=0.63,
-        learning_status="tuned", recovery_cycles=3,
-        humidity_pauses=0, contact_pauses=0,
+        zone_id="living_room",
+        duty_cycle=40.0,
+        comfort_score=80.0,
+        time_at_target=75.0,
+        area_m2=20.0,
+        confidence=0.63,
+        learning_status="tuned",
+        recovery_cycles=3,
+        humidity_pauses=0,
+        contact_pauses=0,
     )
     previous = ZoneSnapshot(
-        zone_id="living_room", duty_cycle=38.0, comfort_score=78.0,
-        time_at_target=72.0, area_m2=20.0, confidence=0.55,
-        learning_status="stable", recovery_cycles=2,
-        humidity_pauses=1, contact_pauses=0,
+        zone_id="living_room",
+        duty_cycle=38.0,
+        comfort_score=78.0,
+        time_at_target=72.0,
+        area_m2=20.0,
+        confidence=0.55,
+        learning_status="stable",
+        recovery_cycles=2,
+        humidity_pauses=1,
+        contact_pauses=0,
     )
     delta = None
     if current.confidence is not None and previous.confidence is not None:

@@ -1,4 +1,5 @@
 """Learning milestone notification tracker."""
+
 from __future__ import annotations
 
 import logging
@@ -39,9 +40,7 @@ class LearningMilestoneTracker:
         self._notification_manager = notification_manager
         self._last_status: str | None = None
 
-    async def async_check_milestone(
-        self, new_status: str, confidence: int
-    ) -> bool:
+    async def async_check_milestone(self, new_status: str, confidence: int) -> bool:
         """Check for tier change and send notification if needed.
 
         Args:
@@ -75,9 +74,7 @@ class LearningMilestoneTracker:
 
         context = TIER_CONTEXT.get(new_status, "")
 
-        ios_message = (
-            f'{self._zone_name} {verb} "{new_status}" ({confidence}% confidence)'
-        )
+        ios_message = f'{self._zone_name} {verb} "{new_status}" ({confidence}% confidence)'
         persistent_message = f"{ios_message}. {context}"
 
         if self._notification_manager:

@@ -1,4 +1,5 @@
 """Tests for PIDGains storage and mode switching in Climate entity."""
+
 import pytest
 from unittest.mock import Mock, MagicMock, patch
 from dataclasses import dataclass
@@ -22,6 +23,7 @@ class MockHVACAction:
 @dataclass
 class PIDGains:
     """Dataclass for storing PID gains."""
+
     kp: float
     ki: float
     kd: float
@@ -117,6 +119,7 @@ class MockAdaptiveThermostatPIDGains:
 # Test Cases for PIDGains Storage
 # =============================================================================
 
+
 class TestPIDGainsStorage:
     """Tests for _heating_gains and _cooling_gains storage."""
 
@@ -124,7 +127,7 @@ class TestPIDGainsStorage:
         """Test that _heating_gains is initialized as PIDGains on init."""
         thermostat = MockAdaptiveThermostatPIDGains(heating_kp=1.5, heating_ki=0.2, heating_kd=12.0)
 
-        assert hasattr(thermostat, '_heating_gains')
+        assert hasattr(thermostat, "_heating_gains")
         assert isinstance(thermostat._heating_gains, PIDGains)
         assert thermostat._heating_gains.kp == 1.5
         assert thermostat._heating_gains.ki == 0.2
@@ -134,7 +137,7 @@ class TestPIDGainsStorage:
         """Test that _cooling_gains is None initially (lazy init)."""
         thermostat = MockAdaptiveThermostatPIDGains()
 
-        assert hasattr(thermostat, '_cooling_gains')
+        assert hasattr(thermostat, "_cooling_gains")
         assert thermostat._cooling_gains is None
 
     def test_heating_gains_stores_default_values(self):
@@ -149,15 +152,16 @@ class TestPIDGainsStorage:
         """Test that _heating_gains is a PIDGains dataclass."""
         thermostat = MockAdaptiveThermostatPIDGains()
 
-        assert type(thermostat._heating_gains).__name__ == 'PIDGains'
-        assert hasattr(thermostat._heating_gains, 'kp')
-        assert hasattr(thermostat._heating_gains, 'ki')
-        assert hasattr(thermostat._heating_gains, 'kd')
+        assert type(thermostat._heating_gains).__name__ == "PIDGains"
+        assert hasattr(thermostat._heating_gains, "kp")
+        assert hasattr(thermostat._heating_gains, "ki")
+        assert hasattr(thermostat._heating_gains, "kd")
 
 
 # =============================================================================
 # Test Cases for Mode Switching
 # =============================================================================
+
 
 class TestSwitchPIDGainsMethod:
     """Tests for _switch_pid_gains() method."""
@@ -166,7 +170,7 @@ class TestSwitchPIDGainsMethod:
         """Test that _switch_pid_gains method exists."""
         thermostat = MockAdaptiveThermostatPIDGains()
 
-        assert hasattr(thermostat, '_switch_pid_gains')
+        assert hasattr(thermostat, "_switch_pid_gains")
         assert callable(thermostat._switch_pid_gains)
 
     def test_heat_mode_uses_heating_gains(self):
@@ -253,6 +257,7 @@ class TestSwitchPIDGainsMethod:
 # Test Cases for Integral Reset
 # =============================================================================
 
+
 class TestIntegralResetOnModeSwitch:
     """Tests for integral reset behavior when switching modes."""
 
@@ -323,6 +328,7 @@ class TestIntegralResetOnModeSwitch:
 # Test Cases for Cooling Gains Lazy Initialization
 # =============================================================================
 
+
 class TestCoolingGainsLazyInit:
     """Tests for lazy initialization of cooling gains."""
 
@@ -364,6 +370,7 @@ class TestCoolingGainsLazyInit:
 # =============================================================================
 # Test Cases for Edge Cases
 # =============================================================================
+
 
 class TestPIDGainsSwitchingEdgeCases:
     """Tests for edge cases in PID gains switching."""

@@ -61,8 +61,7 @@ class ValidationManager:
         self._validation_baseline_overshoot = baseline_overshoot
         self._validation_cycles = []
         _LOGGER.info(
-            "Validation mode started: monitoring next %d cycles "
-            "(baseline overshoot: %.2f°C)",
+            "Validation mode started: monitoring next %d cycles (baseline overshoot: %.2f°C)",
             VALIDATION_CYCLE_COUNT,
             baseline_overshoot,
         )
@@ -97,14 +96,10 @@ class ValidationManager:
             return None
 
         # Validation complete - calculate average overshoot
-        overshoot_values = [
-            c.overshoot for c in self._validation_cycles if c.overshoot is not None
-        ]
+        overshoot_values = [c.overshoot for c in self._validation_cycles if c.overshoot is not None]
 
         if not overshoot_values:
-            _LOGGER.warning(
-                "Validation complete but no overshoot data - assuming success"
-            )
+            _LOGGER.warning("Validation complete but no overshoot data - assuming success")
             self._validation_mode = False
             return "success"
 
@@ -128,8 +123,7 @@ class ValidationManager:
             return "rollback"
 
         _LOGGER.info(
-            "Validation SUCCESS: overshoot change %.1f%% within threshold "
-            "(baseline: %.2f°C, validation avg: %.2f°C)",
+            "Validation SUCCESS: overshoot change %.1f%% within threshold (baseline: %.2f°C, validation avg: %.2f°C)",
             degradation_pct * 100,
             baseline,
             avg_overshoot,
@@ -256,13 +250,17 @@ class ValidationManager:
         recent_cycles = cycle_history[-baseline_window:]
 
         # Calculate average overshoot for both windows
-        baseline_overshoot = statistics.mean(
-            [c.overshoot for c in baseline_cycles if c.overshoot is not None]
-        ) if any(c.overshoot is not None for c in baseline_cycles) else 0.0
+        baseline_overshoot = (
+            statistics.mean([c.overshoot for c in baseline_cycles if c.overshoot is not None])
+            if any(c.overshoot is not None for c in baseline_cycles)
+            else 0.0
+        )
 
-        recent_overshoot = statistics.mean(
-            [c.overshoot for c in recent_cycles if c.overshoot is not None]
-        ) if any(c.overshoot is not None for c in recent_cycles) else 0.0
+        recent_overshoot = (
+            statistics.mean([c.overshoot for c in recent_cycles if c.overshoot is not None])
+            if any(c.overshoot is not None for c in recent_cycles)
+            else 0.0
+        )
 
         # Check if recent performance is significantly worse (>50% increase in overshoot)
         if recent_overshoot > baseline_overshoot * 1.5 and recent_overshoot > 0.3:
@@ -314,10 +312,7 @@ class ValidationManager:
 
         # Detect 10°C shift
         if abs(new_avg - old_avg) >= 10.0:
-            _LOGGER.warning(
-                f"Seasonal shift detected: outdoor temp changed from "
-                f"{old_avg:.1f}°C to {new_avg:.1f}°C"
-            )
+            _LOGGER.warning(f"Seasonal shift detected: outdoor temp changed from {old_avg:.1f}°C to {new_avg:.1f}°C")
             return True
 
         return False

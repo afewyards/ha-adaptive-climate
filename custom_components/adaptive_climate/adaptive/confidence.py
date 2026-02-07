@@ -133,32 +133,34 @@ class ConfidenceTracker:
         # Recovery cycles (large starting_delta) must have rise_time measured
         # Maintenance cycles (small starting_delta or None) can have rise_time=None
         recovery_threshold = 0.3  # Default threshold for most heating types
-        is_recovery = (
-            metrics.starting_delta is not None and
-            metrics.starting_delta >= recovery_threshold
-        )
+        is_recovery = metrics.starting_delta is not None and metrics.starting_delta >= recovery_threshold
 
         # Check rise_time requirement based on cycle type
         rise_time_ok = (
-            metrics.rise_time is not None and metrics.rise_time <= self._convergence_thresholds["rise_time_max"]
-        ) if is_recovery else (
-            metrics.rise_time is None or metrics.rise_time <= self._convergence_thresholds["rise_time_max"]
+            (metrics.rise_time is not None and metrics.rise_time <= self._convergence_thresholds["rise_time_max"])
+            if is_recovery
+            else (metrics.rise_time is None or metrics.rise_time <= self._convergence_thresholds["rise_time_max"])
         )
 
         # Check if this cycle meets convergence criteria
         is_good_cycle = (
-            (metrics.overshoot is None or metrics.overshoot <= self._convergence_thresholds["overshoot_max"]) and
-            (metrics.undershoot is None or metrics.undershoot <= self._convergence_thresholds.get("undershoot_max", 0.2)) and
-            metrics.oscillations <= self._convergence_thresholds["oscillations_max"] and
-            (metrics.settling_time is None or metrics.settling_time <= self._convergence_thresholds["settling_time_max"]) and
-            rise_time_ok
+            (metrics.overshoot is None or metrics.overshoot <= self._convergence_thresholds["overshoot_max"])
+            and (
+                metrics.undershoot is None
+                or metrics.undershoot <= self._convergence_thresholds.get("undershoot_max", 0.2)
+            )
+            and metrics.oscillations <= self._convergence_thresholds["oscillations_max"]
+            and (
+                metrics.settling_time is None
+                or metrics.settling_time <= self._convergence_thresholds["settling_time_max"]
+            )
+            and rise_time_ok
         )
 
         if is_good_cycle:
             # Increase confidence, capped at maximum
             current_confidence = min(
-                CONVERGENCE_CONFIDENCE_HIGH,
-                current_confidence + CONFIDENCE_INCREASE_PER_GOOD_CYCLE
+                CONVERGENCE_CONFIDENCE_HIGH, current_confidence + CONFIDENCE_INCREASE_PER_GOOD_CYCLE
             )
             _LOGGER.debug(
                 f"Convergence confidence ({mode_to_str(mode)} mode) increased to {current_confidence:.2f} "
@@ -168,10 +170,7 @@ class ConfidenceTracker:
             )
         else:
             # Poor cycle - reduce confidence slightly
-            current_confidence = max(
-                0.0,
-                current_confidence - CONFIDENCE_INCREASE_PER_GOOD_CYCLE * 0.5
-            )
+            current_confidence = max(0.0, current_confidence - CONFIDENCE_INCREASE_PER_GOOD_CYCLE * 0.5)
             _LOGGER.debug(
                 f"Convergence confidence ({mode_to_str(mode)} mode) decreased to {current_confidence:.2f} "
                 f"(poor cycle detected)"
@@ -192,13 +191,11 @@ class ConfidenceTracker:
         """
         # Decay heating confidence
         self._heating_convergence_confidence = max(
-            0.0,
-            self._heating_convergence_confidence * (1.0 - CONFIDENCE_DECAY_RATE_DAILY)
+            0.0, self._heating_convergence_confidence * (1.0 - CONFIDENCE_DECAY_RATE_DAILY)
         )
         # Decay cooling confidence
         self._cooling_convergence_confidence = max(
-            0.0,
-            self._cooling_convergence_confidence * (1.0 - CONFIDENCE_DECAY_RATE_DAILY)
+            0.0, self._cooling_convergence_confidence * (1.0 - CONFIDENCE_DECAY_RATE_DAILY)
         )
 
     def get_learning_rate_multiplier(self, confidence: float | None = None) -> float:

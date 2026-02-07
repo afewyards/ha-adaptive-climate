@@ -12,12 +12,7 @@ from const import CONF_LOOPS
 
 
 # Schema validator for loops parameter
-LOOPS_SCHEMA = vol.Schema({
-    vol.Optional(CONF_LOOPS, default=1): vol.All(
-        vol.Coerce(int),
-        vol.Range(min=1, max=10)
-    )
-})
+LOOPS_SCHEMA = vol.Schema({vol.Optional(CONF_LOOPS, default=1): vol.All(vol.Coerce(int), vol.Range(min=1, max=10))})
 
 
 class TestLoopsConfig:

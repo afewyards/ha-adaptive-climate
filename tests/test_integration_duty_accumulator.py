@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 class MockHVACMode:
     """Mock HVACMode for testing."""
+
     HEAT = "heat"
     COOL = "cool"
     OFF = "off"
@@ -22,6 +23,7 @@ class MockHVACMode:
 
 # Import and patch the module
 import custom_components.adaptive_climate.managers.heater_controller as heater_controller_module
+
 heater_controller_module.HVACMode = MockHVACMode
 
 from custom_components.adaptive_climate.managers.heater_controller import (
@@ -84,9 +86,7 @@ class TestAccumulatorFiresAfterMultiplePeriods:
     """Test accumulator fires after multiple PWM periods of sub-threshold output."""
 
     @pytest.mark.asyncio
-    async def test_accumulator_fires_after_multiple_periods(
-        self, heater_controller_with_dispatcher, dispatcher
-    ):
+    async def test_accumulator_fires_after_multiple_periods(self, heater_controller_with_dispatcher, dispatcher):
         """Test 10% output fires minimum pulse after ~1.25 PWM periods.
 
         Configuration:
@@ -109,6 +109,7 @@ class TestAccumulatorFiresAfterMultiplePeriods:
 
         async def track_service_call(domain, service, data):
             service_calls.append((domain, service, data))
+
         controller._hass.services.async_call = track_service_call
         controller._hass.states.is_state = MagicMock(return_value=False)
 
@@ -132,7 +133,7 @@ class TestAccumulatorFiresAfterMultiplePeriods:
 
         # Simulate PWM period 1: 10% output (time_on = 60s < 75s threshold)
         # With 600s elapsed and 10% duty, accumulates: 600 * 0.1 = 60s
-        with patch('time.monotonic', return_value=600.0):  # Enough time passed for PWM
+        with patch("time.monotonic", return_value=600.0):  # Enough time passed for PWM
             await controller.async_pwm_switch(
                 control_output=10.0,  # 10% of 100 = 10, time_on = 600 * 10 / 100 = 60s
                 hvac_mode=MockHVACMode.HEAT,
@@ -155,7 +156,7 @@ class TestAccumulatorFiresAfterMultiplePeriods:
         service_calls.clear()
 
         # Simulate PWM period 2: another 10% output
-        with patch('time.monotonic', return_value=1200.0):
+        with patch("time.monotonic", return_value=1200.0):
             await controller.async_pwm_switch(
                 control_output=10.0,
                 hvac_mode=MockHVACMode.HEAT,
@@ -178,7 +179,7 @@ class TestAccumulatorFiresAfterMultiplePeriods:
 
         # Period 3: Now 120s >= 75s at check, so it fires and subtracts 75s
         service_calls.clear()
-        with patch('time.monotonic', return_value=1800.0):
+        with patch("time.monotonic", return_value=1800.0):
             await controller.async_pwm_switch(
                 control_output=10.0,
                 hvac_mode=MockHVACMode.HEAT,
@@ -207,9 +208,7 @@ class TestAccumulatorRestartContinuity:
     """Test accumulator resumes after simulated restart."""
 
     @pytest.mark.asyncio
-    async def test_accumulator_restart_continuity(
-        self, mock_hass, mock_thermostat, dispatcher
-    ):
+    async def test_accumulator_restart_continuity(self, mock_hass, mock_thermostat, dispatcher):
         """Test that accumulator value persists across restart simulation.
 
         Simulates:
@@ -235,6 +234,7 @@ class TestAccumulatorRestartContinuity:
 
         async def mock_async_call(*args, **kwargs):
             pass
+
         controller1._hass.services.async_call = mock_async_call
         controller1._hass.states.is_state = MagicMock(return_value=False)
 
@@ -249,7 +249,7 @@ class TestAccumulatorRestartContinuity:
         controller1._last_accumulator_calc_time = 0.0
 
         # Accumulate some duty (10% output for 600s = 60s)
-        with patch('time.monotonic', return_value=600.0):
+        with patch("time.monotonic", return_value=600.0):
             await controller1.async_pwm_switch(
                 control_output=10.0,
                 hvac_mode=MockHVACMode.HEAT,
@@ -294,7 +294,7 @@ class TestAccumulatorRestartContinuity:
         # Set baseline calc time for time-scaled accumulation (600s ago)
         controller2._last_accumulator_calc_time = 600.0
 
-        with patch('time.monotonic', return_value=1200.0):
+        with patch("time.monotonic", return_value=1200.0):
             await controller2.async_pwm_switch(
                 control_output=10.0,  # 10% for 600s = 60s more
                 hvac_mode=MockHVACMode.HEAT,
@@ -317,9 +317,7 @@ class TestAccumulatorWithChangingOutput:
     """Test accumulator with varying output levels."""
 
     @pytest.mark.asyncio
-    async def test_accumulator_with_changing_output(
-        self, heater_controller_with_dispatcher
-    ):
+    async def test_accumulator_with_changing_output(self, heater_controller_with_dispatcher):
         """Test varying output correctly accumulates duty.
 
         Simulates realistic scenario where PID output varies:
@@ -332,6 +330,7 @@ class TestAccumulatorWithChangingOutput:
 
         async def mock_async_call(*args, **kwargs):
             pass
+
         controller._hass.services.async_call = mock_async_call
         controller._hass.states.is_state = MagicMock(return_value=False)
 
@@ -346,7 +345,7 @@ class TestAccumulatorWithChangingOutput:
         controller._last_accumulator_calc_time = 0.0
 
         # Period 1: 5% output for 600s = 30s accumulated
-        with patch('time.monotonic', return_value=600.0):
+        with patch("time.monotonic", return_value=600.0):
             await controller.async_pwm_switch(
                 control_output=5.0,
                 hvac_mode=MockHVACMode.HEAT,
@@ -365,7 +364,7 @@ class TestAccumulatorWithChangingOutput:
 
         # Period 2: 8% output (time_on = 48s < 75s)
         # Check: 30s >= 75s? NO, accumulate 48s -> 78s
-        with patch('time.monotonic', return_value=1200.0):
+        with patch("time.monotonic", return_value=1200.0):
             await controller.async_pwm_switch(
                 control_output=8.0,
                 hvac_mode=MockHVACMode.HEAT,
@@ -385,7 +384,7 @@ class TestAccumulatorWithChangingOutput:
 
         # Period 3: 12% output (time_on = 72s < 75s)
         # Check at start: 78s >= 75s? YES -> fire, subtract 75s -> 3s
-        with patch('time.monotonic', return_value=1800.0):
+        with patch("time.monotonic", return_value=1800.0):
             await controller.async_pwm_switch(
                 control_output=12.0,
                 hvac_mode=MockHVACMode.HEAT,
@@ -407,7 +406,7 @@ class TestAccumulatorWithChangingOutput:
         # Since time_on >= threshold, this is normal firing, accumulator resets
         # But device is OFF, so it needs time_off elapsed to turn on
         controller._hass.states.is_state = MagicMock(return_value=False)
-        with patch('time.monotonic', return_value=2400.0):
+        with patch("time.monotonic", return_value=2400.0):
             await controller.async_pwm_switch(
                 control_output=15.0,
                 hvac_mode=MockHVACMode.HEAT,
@@ -430,9 +429,7 @@ class TestAccumulatorCycleTrackingCorrect:
     """Test that accumulator pulses emit correct HeatingStarted/HeatingEnded events."""
 
     @pytest.mark.asyncio
-    async def test_accumulator_cycle_tracking_correct(
-        self, heater_controller_with_dispatcher, dispatcher
-    ):
+    async def test_accumulator_cycle_tracking_correct(self, heater_controller_with_dispatcher, dispatcher):
         """Test that fired pulses emit HeatingStarted/HeatingEnded events.
 
         When accumulator fires a minimum pulse:
@@ -449,24 +446,16 @@ class TestAccumulatorCycleTrackingCorrect:
         heating_ended_events = []
         cycle_started_events = []
 
-        dispatcher.subscribe(
-            CycleEventType.HEATING_STARTED,
-            lambda e: heating_started_events.append(e)
-        )
-        dispatcher.subscribe(
-            CycleEventType.HEATING_ENDED,
-            lambda e: heating_ended_events.append(e)
-        )
-        dispatcher.subscribe(
-            CycleEventType.CYCLE_STARTED,
-            lambda e: cycle_started_events.append(e)
-        )
+        dispatcher.subscribe(CycleEventType.HEATING_STARTED, lambda e: heating_started_events.append(e))
+        dispatcher.subscribe(CycleEventType.HEATING_ENDED, lambda e: heating_ended_events.append(e))
+        dispatcher.subscribe(CycleEventType.CYCLE_STARTED, lambda e: cycle_started_events.append(e))
 
         # Track service calls
         service_calls = []
 
         async def track_service_call(domain, service, data):
             service_calls.append((domain, service, data))
+
         controller._hass.services.async_call = track_service_call
 
         # Device starts OFF
@@ -483,7 +472,7 @@ class TestAccumulatorCycleTrackingCorrect:
         controller._duty_accumulator_seconds = 80.0  # >= 75s threshold
 
         # Call with sub-threshold output to trigger accumulator fire
-        with patch('time.monotonic', return_value=600.0):
+        with patch("time.monotonic", return_value=600.0):
             await controller.async_pwm_switch(
                 control_output=10.0,  # 60s < 75s
                 hvac_mode=MockHVACMode.HEAT,
@@ -517,7 +506,7 @@ class TestAccumulatorCycleTrackingCorrect:
         controller._hass.states.is_state = MagicMock(return_value=True)  # Device is ON
 
         # Simulate off time passed
-        with patch('time.monotonic', return_value=700.0):  # 100s later
+        with patch("time.monotonic", return_value=700.0):  # 100s later
             await controller.async_turn_off(
                 hvac_mode=MockHVACMode.HEAT,
                 get_cycle_start_time=MagicMock(return_value=600.0),
@@ -537,14 +526,13 @@ class TestAccumulatorResetBehavior:
     """Test that accumulator resets correctly in various scenarios."""
 
     @pytest.mark.asyncio
-    async def test_accumulator_reset_on_zero_output(
-        self, heater_controller_with_dispatcher
-    ):
+    async def test_accumulator_reset_on_zero_output(self, heater_controller_with_dispatcher):
         """Test accumulator resets when control_output goes to zero."""
         controller = heater_controller_with_dispatcher
 
         async def mock_async_call(*args, **kwargs):
             pass
+
         controller._hass.services.async_call = mock_async_call
         controller._hass.states.is_state = MagicMock(return_value=False)
 
@@ -559,7 +547,7 @@ class TestAccumulatorResetBehavior:
         controller._duty_accumulator_seconds = 50.0
 
         # Call with zero output
-        with patch('time.monotonic', return_value=600.0):
+        with patch("time.monotonic", return_value=600.0):
             await controller.async_pwm_switch(
                 control_output=0.0,
                 hvac_mode=MockHVACMode.HEAT,
@@ -608,9 +596,7 @@ class TestAccumulatorEdgeCases:
     """Test edge cases and boundary conditions."""
 
     @pytest.mark.asyncio
-    async def test_accumulator_exactly_at_threshold(
-        self, heater_controller_with_dispatcher
-    ):
+    async def test_accumulator_exactly_at_threshold(self, heater_controller_with_dispatcher):
         """Test accumulator fires when exactly at threshold."""
         controller = heater_controller_with_dispatcher
 
@@ -618,6 +604,7 @@ class TestAccumulatorEdgeCases:
 
         async def track_service_call(domain, service, data):
             service_calls.append((domain, service, data))
+
         controller._hass.services.async_call = track_service_call
         controller._hass.states.is_state = MagicMock(return_value=False)
 
@@ -631,7 +618,7 @@ class TestAccumulatorEdgeCases:
         # Set accumulator exactly at threshold
         controller._duty_accumulator_seconds = 75.0
 
-        with patch('time.monotonic', return_value=600.0):
+        with patch("time.monotonic", return_value=600.0):
             await controller.async_pwm_switch(
                 control_output=10.0,
                 hvac_mode=MockHVACMode.HEAT,
@@ -651,14 +638,13 @@ class TestAccumulatorEdgeCases:
         assert any(call[1] == "turn_on" for call in service_calls)
 
     @pytest.mark.asyncio
-    async def test_accumulator_negative_output_resets(
-        self, heater_controller_with_dispatcher
-    ):
+    async def test_accumulator_negative_output_resets(self, heater_controller_with_dispatcher):
         """Test negative output resets accumulator."""
         controller = heater_controller_with_dispatcher
 
         async def mock_async_call(*args, **kwargs):
             pass
+
         controller._hass.services.async_call = mock_async_call
         controller._hass.states.is_state = MagicMock(return_value=False)
 
@@ -671,7 +657,7 @@ class TestAccumulatorEdgeCases:
 
         controller._duty_accumulator_seconds = 50.0
 
-        with patch('time.monotonic', return_value=600.0):
+        with patch("time.monotonic", return_value=600.0):
             await controller.async_pwm_switch(
                 control_output=-5.0,  # Negative output
                 hvac_mode=MockHVACMode.HEAT,
@@ -689,9 +675,7 @@ class TestAccumulatorEdgeCases:
         assert controller._duty_accumulator_seconds == 0.0
 
     @pytest.mark.asyncio
-    async def test_multiple_fires_in_sequence(
-        self, heater_controller_with_dispatcher
-    ):
+    async def test_multiple_fires_in_sequence(self, heater_controller_with_dispatcher):
         """Test accumulator fires multiple times with sustained low output."""
         controller = heater_controller_with_dispatcher
 
@@ -701,6 +685,7 @@ class TestAccumulatorEdgeCases:
             nonlocal fire_count
             if service == "turn_on":
                 fire_count += 1
+
         controller._hass.services.async_call = track_service_call
         controller._hass.states.is_state = MagicMock(return_value=False)
 
@@ -716,7 +701,7 @@ class TestAccumulatorEdgeCases:
         controller._duty_accumulator_seconds = 160.0
 
         # First call: 160s >= 75s -> fire, 160 - 75 = 85s
-        with patch('time.monotonic', return_value=600.0):
+        with patch("time.monotonic", return_value=600.0):
             await controller.async_pwm_switch(
                 control_output=10.0,  # 60s
                 hvac_mode=MockHVACMode.HEAT,
@@ -735,7 +720,7 @@ class TestAccumulatorEdgeCases:
         assert fire_count == 1
 
         # Second call: 85s >= 75s -> fire, 85 - 75 = 10s
-        with patch('time.monotonic', return_value=1200.0):
+        with patch("time.monotonic", return_value=1200.0):
             await controller.async_pwm_switch(
                 control_output=10.0,
                 hvac_mode=MockHVACMode.HEAT,
@@ -760,4 +745,5 @@ def test_integration_duty_accumulator_module_exists():
     from custom_components.adaptive_climate.managers.heater_controller import (
         HeaterController,
     )
+
     assert HeaterController is not None

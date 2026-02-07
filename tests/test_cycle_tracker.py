@@ -29,17 +29,17 @@ def mock_dt_util():
     # Tests use various dates in January 2025, so we use end of January
     fixed_now = datetime(2025, 1, 31, 23, 59, 59)
     # Patch both modules that use dt_util.utcnow()
-    with patch('custom_components.adaptive_climate.managers.cycle_metrics.dt_util.utcnow', return_value=fixed_now), \
-         patch('custom_components.adaptive_climate.managers.cycle_tracker.dt_util.utcnow', return_value=fixed_now):
+    with (
+        patch("custom_components.adaptive_climate.managers.cycle_metrics.dt_util.utcnow", return_value=fixed_now),
+        patch("custom_components.adaptive_climate.managers.cycle_tracker.dt_util.utcnow", return_value=fixed_now),
+    ):
         yield
 
 
 @pytest.fixture
 def mock_async_call_later():
     """Mock async_call_later from homeassistant.helpers.event."""
-    with patch(
-        "custom_components.adaptive_climate.managers.cycle_tracker.async_call_later"
-    ) as mock:
+    with patch("custom_components.adaptive_climate.managers.cycle_tracker.async_call_later") as mock:
         mock.return_value = MagicMock()  # Returns cancel handle
         yield mock
 
@@ -111,7 +111,11 @@ class TestCycleTrackerBasic:
         assert cycle_tracker.state == CycleState.IDLE
 
         # IDLE -> HEATING
-        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), target_temp=20.0, current_temp=18.0))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), target_temp=20.0, current_temp=18.0
+            )
+        )
         assert cycle_tracker.state == CycleState.HEATING
 
         # HEATING -> SETTLING
@@ -138,7 +142,11 @@ class TestCycleTrackerBasic:
         mock_async_call_later.reset_mock()
 
         # First start heating
-        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), target_temp=20.0, current_temp=18.0))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), target_temp=20.0, current_temp=18.0
+            )
+        )
         assert cycle_tracker.state == CycleState.HEATING
 
         # Then stop heating
@@ -164,20 +172,17 @@ class TestCycleTrackerBasic:
     def test_settling_started_transitions_to_settling(self, cycle_tracker, dispatcher):
         """Test SETTLING_STARTED event transitions from HEATING to SETTLING state."""
         # Start heating cycle
-        dispatcher.emit(CycleStartedEvent(
-            hvac_mode="heat",
-            timestamp=datetime(2025, 1, 14, 10, 0, 0),
-            target_temp=20.0,
-            current_temp=18.0
-        ))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0), target_temp=20.0, current_temp=18.0
+            )
+        )
         assert cycle_tracker.state == CycleState.HEATING
 
         # Emit SETTLING_STARTED event
-        dispatcher.emit(SettlingStartedEvent(
-            hvac_mode="heat",
-            timestamp=datetime(2025, 1, 14, 10, 5, 0),
-            was_clamped=False
-        ))
+        dispatcher.emit(
+            SettlingStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 5, 0), was_clamped=False)
+        )
 
         # Should transition to SETTLING
         assert cycle_tracker.state == CycleState.SETTLING
@@ -185,20 +190,17 @@ class TestCycleTrackerBasic:
     def test_cooling_settling_started_transitions_to_settling(self, cycle_tracker, dispatcher):
         """Test SETTLING_STARTED event transitions from COOLING to SETTLING state."""
         # Start cooling cycle
-        dispatcher.emit(CycleStartedEvent(
-            hvac_mode="cool",
-            timestamp=datetime(2025, 1, 14, 10, 0, 0),
-            target_temp=20.0,
-            current_temp=22.0
-        ))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="cool", timestamp=datetime(2025, 1, 14, 10, 0, 0), target_temp=20.0, current_temp=22.0
+            )
+        )
         assert cycle_tracker.state == CycleState.COOLING
 
         # Emit SETTLING_STARTED event
-        dispatcher.emit(SettlingStartedEvent(
-            hvac_mode="cool",
-            timestamp=datetime(2025, 1, 14, 10, 5, 0),
-            was_clamped=False
-        ))
+        dispatcher.emit(
+            SettlingStartedEvent(hvac_mode="cool", timestamp=datetime(2025, 1, 14, 10, 5, 0), was_clamped=False)
+        )
 
         # Should transition to SETTLING
         assert cycle_tracker.state == CycleState.SETTLING
@@ -212,19 +214,16 @@ class TestCycleTrackerBasic:
         mock_async_call_later.reset_mock()
 
         # Start heating cycle
-        dispatcher.emit(CycleStartedEvent(
-            hvac_mode="heat",
-            timestamp=datetime(2025, 1, 14, 10, 0, 0),
-            target_temp=20.0,
-            current_temp=18.0
-        ))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0), target_temp=20.0, current_temp=18.0
+            )
+        )
 
         # Emit SETTLING_STARTED event
-        dispatcher.emit(SettlingStartedEvent(
-            hvac_mode="heat",
-            timestamp=datetime(2025, 1, 14, 10, 5, 0),
-            was_clamped=False
-        ))
+        dispatcher.emit(
+            SettlingStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 5, 0), was_clamped=False)
+        )
 
         # Verify timeout was scheduled
         mock_async_call_later.assert_called_once()
@@ -241,7 +240,9 @@ class TestCycleTrackerBasic:
 
         # Start heating again without going through IDLE
         second_start = datetime(2025, 1, 14, 11, 0, 0)
-        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=second_start, target_temp=20.0, current_temp=18.0))
+        dispatcher.emit(
+            CycleStartedEvent(hvac_mode="heat", timestamp=second_start, target_temp=20.0, current_temp=18.0)
+        )
 
         # Should be in HEATING state with new start time
         assert cycle_tracker.state == CycleState.HEATING
@@ -255,7 +256,11 @@ class TestCycleTrackerBasic:
         assert len(cycle_tracker.temperature_history) == 2
 
         # Start heating
-        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), target_temp=20.0, current_temp=18.0))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), target_temp=20.0, current_temp=18.0
+            )
+        )
 
         # History should be cleared
         assert len(cycle_tracker.temperature_history) == 0
@@ -268,7 +273,11 @@ class TestCycleTrackerTemperatureCollection:
     async def test_temperature_collection_during_heating(self, cycle_tracker, dispatcher):
         """Test temperature samples are collected during HEATING state."""
         # Start heating
-        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0), target_temp=20.0, current_temp=18.0))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0), target_temp=20.0, current_temp=18.0
+            )
+        )
 
         # Add temperature samples
         await cycle_tracker.update_temperature(datetime(2025, 1, 14, 10, 0, 30), 18.5)
@@ -286,7 +295,11 @@ class TestCycleTrackerTemperatureCollection:
     async def test_temperature_collection_during_settling(self, cycle_tracker, dispatcher):
         """Test temperature samples are collected during SETTLING state."""
         # Start and stop heating
-        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0), target_temp=20.0, current_temp=18.0))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0), target_temp=20.0, current_temp=18.0
+            )
+        )
         dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 30, 0)))
 
         # Add temperature samples
@@ -323,16 +336,18 @@ class TestCycleTrackerSettling:
         mock_callbacks["get_target_temp"].return_value = 20.0
 
         # Start heating and stop
-        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0), target_temp=20.0, current_temp=18.0))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0), target_temp=20.0, current_temp=18.0
+            )
+        )
         dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 30, 0)))
 
         # Add 10 stable temperature samples near target (variance < 0.01, within 0.5°C)
         base_time = datetime(2025, 1, 14, 10, 30, 0)
         for i in range(10):
             temp = 20.0 + (i % 3) * 0.02  # Very small variations (20.0, 20.02, 20.04)
-            await cycle_tracker.update_temperature(
-                datetime(2025, 1, 14, 10, 30 + i, 0), temp
-            )
+            await cycle_tracker.update_temperature(datetime(2025, 1, 14, 10, 30 + i, 0), temp)
 
         # Should have detected settling and transitioned to IDLE
         assert cycle_tracker.state == CycleState.IDLE
@@ -344,16 +359,18 @@ class TestCycleTrackerSettling:
         mock_callbacks["get_target_temp"].return_value = 20.0
 
         # Start heating and stop
-        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0), target_temp=20.0, current_temp=18.0))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0), target_temp=20.0, current_temp=18.0
+            )
+        )
         dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 30, 0)))
 
         # Add 10 unstable temperature samples (high variance)
         base_time = datetime(2025, 1, 14, 10, 30, 0)
         for i in range(10):
             temp = 20.0 + (i % 2) * 0.5  # Oscillating (20.0, 20.5, 20.0, 20.5, ...)
-            await cycle_tracker.update_temperature(
-                datetime(2025, 1, 14, 10, 30 + i, 0), temp
-            )
+            await cycle_tracker.update_temperature(datetime(2025, 1, 14, 10, 30 + i, 0), temp)
 
         # Should still be in SETTLING (not stable enough)
         assert cycle_tracker.state == CycleState.SETTLING
@@ -365,14 +382,16 @@ class TestCycleTrackerSettling:
         mock_callbacks["get_target_temp"].return_value = 20.0
 
         # Start heating and stop
-        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0), target_temp=20.0, current_temp=18.0))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0), target_temp=20.0, current_temp=18.0
+            )
+        )
         dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 30, 0)))
 
         # Add only 9 stable samples (not enough)
         for i in range(9):
-            await cycle_tracker.update_temperature(
-                datetime(2025, 1, 14, 10, 30 + i, 0), 20.0
-            )
+            await cycle_tracker.update_temperature(datetime(2025, 1, 14, 10, 30 + i, 0), 20.0)
 
         # Should still be in SETTLING (not enough samples)
         assert cycle_tracker.state == CycleState.SETTLING
@@ -384,13 +403,18 @@ class TestCycleTrackerSettling:
         mock_callbacks["get_target_temp"].return_value = 20.0
 
         # Start heating and stop
-        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0), target_temp=20.0, current_temp=18.0))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0), target_temp=20.0, current_temp=18.0
+            )
+        )
         dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 30, 0)))
 
         # Add 10 stable samples but far from target (> 0.5°C away)
         for i in range(10):
             await cycle_tracker.update_temperature(
-                datetime(2025, 1, 14, 10, 30 + i, 0), 19.0  # 1.0°C below target
+                datetime(2025, 1, 14, 10, 30 + i, 0),
+                19.0,  # 1.0°C below target
             )
 
         # Should still be in SETTLING (too far from target)
@@ -406,7 +430,11 @@ class TestCycleTrackerSettling:
         mock_async_call_later.reset_mock()
 
         # Start heating and stop
-        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), target_temp=20.0, current_temp=18.0))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), target_temp=20.0, current_temp=18.0
+            )
+        )
         dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0)))
 
         # Verify timeout was scheduled
@@ -432,7 +460,11 @@ class TestCycleTrackerValidation:
         # Start cycle 4 minutes before that to make duration < 5 min minimum
 
         # Start heating at 23:56 (4 minutes before mock time)
-        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 31, 23, 56, 0), target_temp=20.0, current_temp=18.0))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat", timestamp=datetime(2025, 1, 31, 23, 56, 0), target_temp=20.0, current_temp=18.0
+            )
+        )
 
         # Add some temperature samples
         cycle_tracker._temperature_history.append((datetime(2025, 1, 31, 23, 56, 30), 18.5))
@@ -452,13 +484,15 @@ class TestCycleTrackerValidation:
         mock_callbacks["get_in_grace_period"].return_value = True
 
         # Start heating 10 minutes ago
-        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 9, 50, 0), target_temp=20.0, current_temp=18.0))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat", timestamp=datetime(2025, 1, 14, 9, 50, 0), target_temp=20.0, current_temp=18.0
+            )
+        )
 
         # Add sufficient temperature samples
         for i in range(10):
-            cycle_tracker._temperature_history.append(
-                (datetime(2025, 1, 14, 9, 50 + i, 0), 18.0 + i * 0.2)
-            )
+            cycle_tracker._temperature_history.append((datetime(2025, 1, 14, 9, 50 + i, 0), 18.0 + i * 0.2))
 
         # Check validation with grace period active
         is_valid, reason = cycle_tracker._is_cycle_valid()
@@ -468,13 +502,15 @@ class TestCycleTrackerValidation:
     def test_cycle_validation_insufficient_samples(self, cycle_tracker, dispatcher):
         """Test insufficient samples blocks recording."""
         # Start heating 10 minutes ago
-        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 9, 50, 0), target_temp=20.0, current_temp=18.0))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat", timestamp=datetime(2025, 1, 14, 9, 50, 0), target_temp=20.0, current_temp=18.0
+            )
+        )
 
         # Add only 4 samples (not enough)
         for i in range(4):
-            cycle_tracker._temperature_history.append(
-                (datetime(2025, 1, 14, 9, 50 + i, 0), 18.0 + i * 0.5)
-            )
+            cycle_tracker._temperature_history.append((datetime(2025, 1, 14, 9, 50 + i, 0), 18.0 + i * 0.5))
 
         # Check validation
         is_valid, reason = cycle_tracker._is_cycle_valid()
@@ -484,13 +520,15 @@ class TestCycleTrackerValidation:
     def test_cycle_validation_success(self, cycle_tracker, dispatcher):
         """Test validation passes with all requirements met."""
         # Start heating 10 minutes ago
-        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 9, 50, 0), target_temp=20.0, current_temp=18.0))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat", timestamp=datetime(2025, 1, 14, 9, 50, 0), target_temp=20.0, current_temp=18.0
+            )
+        )
 
         # Add sufficient temperature samples (>= 5)
         for i in range(10):
-            cycle_tracker._temperature_history.append(
-                (datetime(2025, 1, 14, 9, 50 + i, 0), 18.0 + i * 0.2)
-            )
+            cycle_tracker._temperature_history.append((datetime(2025, 1, 14, 9, 50 + i, 0), 18.0 + i * 0.2))
 
         # Check validation
         is_valid, reason = cycle_tracker._is_cycle_valid()
@@ -514,13 +552,13 @@ class TestCycleTrackerMetrics:
         # Simulate realistic heating cycle with overshoot and settling
         # Rise phase: 18.0 -> 20.5 (overshoot)
         temps = [
-            (datetime(2025, 1, 14, 10, 0, 0), 18.0),   # start
+            (datetime(2025, 1, 14, 10, 0, 0), 18.0),  # start
             (datetime(2025, 1, 14, 10, 1, 0), 18.5),
             (datetime(2025, 1, 14, 10, 2, 0), 19.0),
             (datetime(2025, 1, 14, 10, 3, 0), 19.5),
-            (datetime(2025, 1, 14, 10, 4, 0), 20.0),   # reach target
-            (datetime(2025, 1, 14, 10, 5, 0), 20.5),   # overshoot
-            (datetime(2025, 1, 14, 10, 6, 0), 20.3),   # settling
+            (datetime(2025, 1, 14, 10, 4, 0), 20.0),  # reach target
+            (datetime(2025, 1, 14, 10, 5, 0), 20.5),  # overshoot
+            (datetime(2025, 1, 14, 10, 6, 0), 20.3),  # settling
             (datetime(2025, 1, 14, 10, 7, 0), 20.1),
             (datetime(2025, 1, 14, 10, 8, 0), 20.0),
             (datetime(2025, 1, 14, 10, 9, 0), 19.9),
@@ -553,7 +591,11 @@ class TestCycleTrackerMetrics:
     async def test_invalid_cycle_not_recorded(self, cycle_tracker, mock_adaptive_learner, dispatcher):
         """Test invalid cycles are not recorded."""
         # Start heating
-        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0), target_temp=20.0, current_temp=18.0))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0), target_temp=20.0, current_temp=18.0
+            )
+        )
 
         # Add only 2 samples (insufficient)
         await cycle_tracker.update_temperature(datetime(2025, 1, 14, 10, 0, 30), 18.5)
@@ -647,7 +689,11 @@ class TestCycleTrackerEdgeCases:
         ]
 
         # Change setpoint mid-cycle
-        dispatcher.emit(SetpointChangedEvent(hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), old_target=20.0, new_target=22.0))
+        dispatcher.emit(
+            SetpointChangedEvent(
+                hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), old_target=20.0, new_target=22.0
+            )
+        )
 
         # Verify cycle was aborted
         assert cycle_tracker.state == CycleState.IDLE
@@ -669,7 +715,11 @@ class TestCycleTrackerEdgeCases:
         ]
 
         # Change setpoint during settling
-        dispatcher.emit(SetpointChangedEvent(hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), old_target=20.0, new_target=22.0))
+        dispatcher.emit(
+            SetpointChangedEvent(
+                hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), old_target=20.0, new_target=22.0
+            )
+        )
 
         # Verify cycle was aborted
         assert cycle_tracker.state == CycleState.IDLE
@@ -682,7 +732,11 @@ class TestCycleTrackerEdgeCases:
         assert cycle_tracker.state == CycleState.IDLE
 
         # Change setpoint while in IDLE
-        dispatcher.emit(SetpointChangedEvent(hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), old_target=20.0, new_target=22.0))
+        dispatcher.emit(
+            SetpointChangedEvent(
+                hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), old_target=20.0, new_target=22.0
+            )
+        )
 
         # Verify state unchanged
         assert cycle_tracker.state == CycleState.IDLE
@@ -701,7 +755,11 @@ class TestCycleTrackerEdgeCases:
         ]
 
         # Trigger contact sensor pause (window/door opened)
-        dispatcher.emit(ContactPauseEvent(hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), entity_id="binary_sensor.window"))
+        dispatcher.emit(
+            ContactPauseEvent(
+                hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), entity_id="binary_sensor.window"
+            )
+        )
 
         # Verify cycle was aborted
         assert cycle_tracker.state == CycleState.IDLE
@@ -714,7 +772,11 @@ class TestCycleTrackerEdgeCases:
         assert cycle_tracker.state == CycleState.IDLE
 
         # Trigger contact sensor pause while in IDLE
-        dispatcher.emit(ContactPauseEvent(hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), entity_id="binary_sensor.window"))
+        dispatcher.emit(
+            ContactPauseEvent(
+                hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), entity_id="binary_sensor.window"
+            )
+        )
 
         # Verify state unchanged
         assert cycle_tracker.state == CycleState.IDLE
@@ -820,7 +882,11 @@ class TestSetpointChangeWithDeviceActive:
         tracker._temperature_history.append((datetime(2025, 1, 14, 10, 0, 30), 18.5))
 
         # Change setpoint while heater is active
-        dispatcher.emit(SetpointChangedEvent(hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), old_target=20.0, new_target=22.0))
+        dispatcher.emit(
+            SetpointChangedEvent(
+                hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), old_target=20.0, new_target=22.0
+            )
+        )
 
         # Assert state is still HEATING (not aborted)
         assert tracker.state == CycleState.HEATING
@@ -856,7 +922,11 @@ class TestSetpointChangeWithDeviceActive:
         tracker._temperature_history.append((datetime(2025, 1, 14, 10, 0, 30), 18.5))
 
         # Change setpoint while heater is inactive
-        dispatcher.emit(SetpointChangedEvent(hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), old_target=20.0, new_target=22.0))
+        dispatcher.emit(
+            SetpointChangedEvent(
+                hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), old_target=20.0, new_target=22.0
+            )
+        )
 
         # Assert state is IDLE (aborted)
         assert tracker.state == CycleState.IDLE
@@ -891,7 +961,11 @@ class TestSetpointChangeWithDeviceActive:
         tracker._temperature_history.append((datetime(2025, 1, 14, 10, 0, 30), 18.5))
 
         # Change setpoint - should abort cycle (legacy behavior)
-        dispatcher.emit(SetpointChangedEvent(hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), old_target=20.0, new_target=22.0))
+        dispatcher.emit(
+            SetpointChangedEvent(
+                hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), old_target=20.0, new_target=22.0
+            )
+        )
 
         # Assert state is IDLE (aborted - legacy behavior preserved)
         assert tracker.state == CycleState.IDLE
@@ -923,13 +997,25 @@ class TestSetpointChangeWithDeviceActive:
         assert tracker.state == CycleState.HEATING
 
         # First setpoint change
-        dispatcher.emit(SetpointChangedEvent(hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), old_target=20.0, new_target=22.0))
+        dispatcher.emit(
+            SetpointChangedEvent(
+                hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), old_target=20.0, new_target=22.0
+            )
+        )
 
         # Second setpoint change
-        dispatcher.emit(SetpointChangedEvent(hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), old_target=22.0, new_target=21.0))
+        dispatcher.emit(
+            SetpointChangedEvent(
+                hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), old_target=22.0, new_target=21.0
+            )
+        )
 
         # Third setpoint change
-        dispatcher.emit(SetpointChangedEvent(hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), old_target=21.0, new_target=23.0))
+        dispatcher.emit(
+            SetpointChangedEvent(
+                hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), old_target=21.0, new_target=23.0
+            )
+        )
 
         # Assert state is still HEATING
         assert tracker.state == CycleState.HEATING
@@ -941,16 +1027,18 @@ class TestCycleTrackerMADSettling:
     def test_settling_detection_with_noise(self, cycle_tracker, dispatcher):
         """Test settling detection is robust to sensor noise using MAD."""
         # Start heating, then stop
-        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0), target_temp=20.0, current_temp=18.0))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0), target_temp=20.0, current_temp=18.0
+            )
+        )
         dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 15, 0)))
 
         # Add 10 temperature samples with ±0.2°C noise (simulating sensor jitter)
         # Centered around 20.0°C target
         noisy_temps = [20.0, 20.1, 19.9, 20.0, 20.2, 19.8, 20.1, 19.9, 20.0, 20.1]
         for i, temp in enumerate(noisy_temps):
-            cycle_tracker._temperature_history.append(
-                (datetime(2025, 1, 14, 10, 15 + i, 0), temp)
-            )
+            cycle_tracker._temperature_history.append((datetime(2025, 1, 14, 10, 15 + i, 0), temp))
 
         # Calculate expected MAD
         # Median of [20.0, 20.1, 19.9, 20.0, 20.2, 19.8, 20.1, 19.9, 20.0, 20.1] = 20.0
@@ -966,9 +1054,7 @@ class TestCycleTrackerMADSettling:
         stable_temps = [20.0, 20.01, 19.99, 20.0, 20.02, 19.98, 20.01, 19.99, 20.0, 20.01]
         cycle_tracker._temperature_history.clear()
         for i, temp in enumerate(stable_temps):
-            cycle_tracker._temperature_history.append(
-                (datetime(2025, 1, 14, 10, 25 + i, 0), temp)
-            )
+            cycle_tracker._temperature_history.append((datetime(2025, 1, 14, 10, 25 + i, 0), temp))
 
         # MAD should now be < 0.05
         mad = cycle_tracker._calculate_mad(stable_temps)
@@ -980,7 +1066,11 @@ class TestCycleTrackerMADSettling:
     def test_settling_mad_vs_variance(self, cycle_tracker, dispatcher):
         """Test MAD is more robust than variance to outliers."""
         # Start heating, then stop
-        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0), target_temp=20.0, current_temp=18.0))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0), target_temp=20.0, current_temp=18.0
+            )
+        )
         dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 15, 0)))
 
         # Add 9 stable samples + 1 outlier
@@ -988,9 +1078,7 @@ class TestCycleTrackerMADSettling:
         temps_with_outlier = [20.0, 20.01, 19.99, 20.0, 21.0, 20.01, 19.99, 20.0, 20.01, 19.99]
 
         for i, temp in enumerate(temps_with_outlier):
-            cycle_tracker._temperature_history.append(
-                (datetime(2025, 1, 14, 10, 15 + i, 0), temp)
-            )
+            cycle_tracker._temperature_history.append((datetime(2025, 1, 14, 10, 15 + i, 0), temp))
 
         # Calculate MAD (robust to outlier)
         mad = cycle_tracker._calculate_mad(temps_with_outlier)
@@ -1010,16 +1098,18 @@ class TestCycleTrackerMADSettling:
     def test_settling_detection_outlier_robust(self, cycle_tracker, dispatcher):
         """Test settling detection handles single outlier correctly."""
         # Start heating, then stop
-        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0), target_temp=20.0, current_temp=18.0))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0), target_temp=20.0, current_temp=18.0
+            )
+        )
         dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 15, 0)))
 
         # Add 9 very stable samples + 1 moderate outlier
         temps = [20.0, 20.0, 20.0, 20.0, 20.15, 20.0, 20.0, 20.0, 20.0, 20.0]
 
         for i, temp in enumerate(temps):
-            cycle_tracker._temperature_history.append(
-                (datetime(2025, 1, 14, 10, 15 + i, 0), temp)
-            )
+            cycle_tracker._temperature_history.append((datetime(2025, 1, 14, 10, 15 + i, 0), temp))
 
         # Calculate MAD
         # Median = 20.0
@@ -1290,9 +1380,7 @@ class TestCycleTrackerEventSubscriptions:
 
         # Add temperature samples
         for i in range(6):
-            await tracker.update_temperature(
-                datetime(2025, 1, 14, 10, i, 0), 18.0 + i * 0.4
-            )
+            await tracker.update_temperature(datetime(2025, 1, 14, 10, i, 0), 18.0 + i * 0.4)
 
         # Finalize cycle (simulating settling complete)
         await tracker._finalize_cycle()
@@ -1343,9 +1431,7 @@ class TestCycleTrackerEventSubscriptions:
 
         # Add temperature samples
         for i in range(6):
-            await tracker.update_temperature(
-                datetime(2025, 1, 14, 10, i, 0), 18.0 + i * 0.4
-            )
+            await tracker.update_temperature(datetime(2025, 1, 14, 10, i, 0), 18.0 + i * 0.4)
 
         # Finalize cycle (simulating settling complete)
         await tracker._finalize_cycle()
@@ -1372,9 +1458,7 @@ class TestCycleTrackerEventSubscriptions:
 class TestCycleTrackerSettlingTimeout:
     """Tests for dynamic settling timeout based on thermal mass."""
 
-    def test_settling_timeout_floor_hydronic(
-        self, mock_hass, mock_adaptive_learner, mock_callbacks
-    ):
+    def test_settling_timeout_floor_hydronic(self, mock_hass, mock_adaptive_learner, mock_callbacks):
         """Test settling timeout calculation for floor hydronic (high thermal mass).
 
         Floor hydronic systems have tau=8h, should calculate timeout of 240 min (capped at max).
@@ -1394,9 +1478,7 @@ class TestCycleTrackerSettlingTimeout:
         assert "calculated" in cycle_tracker._settling_timeout_source
         assert "tau=8.0h" in cycle_tracker._settling_timeout_source
 
-    def test_settling_timeout_forced_air(
-        self, mock_hass, mock_adaptive_learner, mock_callbacks
-    ):
+    def test_settling_timeout_forced_air(self, mock_hass, mock_adaptive_learner, mock_callbacks):
         """Test settling timeout calculation for forced air (low thermal mass).
 
         Forced air systems have tau=2h, should calculate timeout of 60 min (capped at min).
@@ -1416,9 +1498,7 @@ class TestCycleTrackerSettlingTimeout:
         assert "calculated" in cycle_tracker._settling_timeout_source
         assert "tau=2.0h" in cycle_tracker._settling_timeout_source
 
-    def test_settling_timeout_radiator(
-        self, mock_hass, mock_adaptive_learner, mock_callbacks
-    ):
+    def test_settling_timeout_radiator(self, mock_hass, mock_adaptive_learner, mock_callbacks):
         """Test settling timeout calculation for radiator (medium thermal mass).
 
         Radiator systems have tau=4h, should calculate timeout of 120 min.
@@ -1438,9 +1518,7 @@ class TestCycleTrackerSettlingTimeout:
         assert "calculated" in cycle_tracker._settling_timeout_source
         assert "tau=4.0h" in cycle_tracker._settling_timeout_source
 
-    def test_settling_timeout_override(
-        self, mock_hass, mock_adaptive_learner, mock_callbacks
-    ):
+    def test_settling_timeout_override(self, mock_hass, mock_adaptive_learner, mock_callbacks):
         """Test settling timeout with explicit override."""
         # Create cycle tracker with explicit override
         cycle_tracker = CycleTrackerManager(
@@ -1456,9 +1534,7 @@ class TestCycleTrackerSettlingTimeout:
         assert cycle_tracker._max_settling_time_minutes == 90
         assert cycle_tracker._settling_timeout_source == "override"
 
-    def test_settling_timeout_default_fallback(
-        self, mock_hass, mock_adaptive_learner, mock_callbacks
-    ):
+    def test_settling_timeout_default_fallback(self, mock_hass, mock_adaptive_learner, mock_callbacks):
         """Test settling timeout falls back to default when tau not provided."""
         # Create cycle tracker without tau or override
         cycle_tracker = CycleTrackerManager(
@@ -1484,20 +1560,32 @@ class TestCycleTrackerStateAccess:
 
     def test_get_state_name_heating(self, cycle_tracker, dispatcher):
         """Test get_state_name returns 'heating' in HEATING state."""
-        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), target_temp=20.0, current_temp=18.0))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), target_temp=20.0, current_temp=18.0
+            )
+        )
         assert cycle_tracker.state == CycleState.HEATING
         assert cycle_tracker.get_state_name() == "heating"
 
     def test_get_state_name_settling(self, cycle_tracker, dispatcher):
         """Test get_state_name returns 'settling' in SETTLING state."""
-        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), target_temp=20.0, current_temp=18.0))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), target_temp=20.0, current_temp=18.0
+            )
+        )
         dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0)))
         assert cycle_tracker.state == CycleState.SETTLING
         assert cycle_tracker.get_state_name() == "settling"
 
     def test_get_state_name_cooling(self, cycle_tracker, dispatcher):
         """Test get_state_name returns 'cooling' in COOLING state."""
-        dispatcher.emit(CycleStartedEvent(hvac_mode="cool", timestamp=datetime(2024, 1, 1, 10, 0, 0), target_temp=20.0, current_temp=22.0))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="cool", timestamp=datetime(2024, 1, 1, 10, 0, 0), target_temp=20.0, current_temp=22.0
+            )
+        )
         assert cycle_tracker.state == CycleState.COOLING
         assert cycle_tracker.get_state_name() == "cooling"
 
@@ -1508,11 +1596,19 @@ class TestCycleTrackerStateAccess:
     def test_get_last_interruption_reason_setpoint_major(self, cycle_tracker, mock_callbacks, dispatcher):
         """Test interruption reason for major setpoint change."""
         # Start a cycle
-        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), target_temp=20.0, current_temp=18.0))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), target_temp=20.0, current_temp=18.0
+            )
+        )
 
         # Trigger major setpoint change (device inactive)
         mock_callbacks["get_target_temp"].return_value = 22.0
-        dispatcher.emit(SetpointChangedEvent(hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), old_target=20.0, new_target=22.0))  # >0.5°C change
+        dispatcher.emit(
+            SetpointChangedEvent(
+                hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), old_target=20.0, new_target=22.0
+            )
+        )  # >0.5°C change
 
         # Should map to "setpoint_change"
         assert cycle_tracker.get_last_interruption_reason() == "setpoint_change"
@@ -1520,7 +1616,11 @@ class TestCycleTrackerStateAccess:
     def test_get_last_interruption_reason_setpoint_minor(self, cycle_tracker, mock_callbacks, dispatcher):
         """Test interruption reason for minor setpoint change."""
         # Start a cycle
-        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), target_temp=20.0, current_temp=18.0))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), target_temp=20.0, current_temp=18.0
+            )
+        )
 
         # Create mock for is_device_active
         mock_is_device_active = Mock(return_value=True)
@@ -1528,7 +1628,11 @@ class TestCycleTrackerStateAccess:
 
         # Trigger minor setpoint change (device active)
         mock_callbacks["get_target_temp"].return_value = 20.3
-        dispatcher.emit(SetpointChangedEvent(hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), old_target=20.0, new_target=20.3))  # <0.5°C change
+        dispatcher.emit(
+            SetpointChangedEvent(
+                hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), old_target=20.0, new_target=20.3
+            )
+        )  # <0.5°C change
 
         # Should map to "setpoint_change"
         assert cycle_tracker.get_last_interruption_reason() == "setpoint_change"
@@ -1536,7 +1640,11 @@ class TestCycleTrackerStateAccess:
     def test_get_last_interruption_reason_mode_change(self, cycle_tracker, mock_callbacks, dispatcher):
         """Test interruption reason for mode change."""
         # Start a cycle
-        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), target_temp=20.0, current_temp=18.0))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), target_temp=20.0, current_temp=18.0
+            )
+        )
 
         # Change mode
         mock_callbacks["get_hvac_mode"].return_value = "off"
@@ -1548,10 +1656,18 @@ class TestCycleTrackerStateAccess:
     def test_get_last_interruption_reason_contact_sensor(self, cycle_tracker, dispatcher):
         """Test interruption reason for contact sensor."""
         # Start a cycle
-        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), target_temp=20.0, current_temp=18.0))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), target_temp=20.0, current_temp=18.0
+            )
+        )
 
         # Trigger contact sensor pause
-        dispatcher.emit(ContactPauseEvent(hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), entity_id="binary_sensor.window"))
+        dispatcher.emit(
+            ContactPauseEvent(
+                hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), entity_id="binary_sensor.window"
+            )
+        )
 
         # Should map to "contact_sensor"
         assert cycle_tracker.get_last_interruption_reason() == "contact_sensor"
@@ -1559,8 +1675,16 @@ class TestCycleTrackerStateAccess:
     def test_get_last_interruption_reason_clears_on_reset(self, cycle_tracker, dispatcher):
         """Test interruption reason is cleared when cycle resets."""
         # Start a cycle and interrupt it
-        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), target_temp=20.0, current_temp=18.0))
-        dispatcher.emit(ContactPauseEvent(hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), entity_id="binary_sensor.window"))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), target_temp=20.0, current_temp=18.0
+            )
+        )
+        dispatcher.emit(
+            ContactPauseEvent(
+                hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), entity_id="binary_sensor.window"
+            )
+        )
 
         assert cycle_tracker.get_last_interruption_reason() == "contact_sensor"
 
@@ -1569,23 +1693,37 @@ class TestCycleTrackerStateAccess:
         assert cycle_tracker.state == CycleState.IDLE
 
         # After starting a new cycle, no interruptions yet
-        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), target_temp=20.0, current_temp=18.0))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), target_temp=20.0, current_temp=18.0
+            )
+        )
         assert cycle_tracker.get_last_interruption_reason() is None
 
     def test_get_last_interruption_reason_returns_most_recent(self, cycle_tracker, dispatcher):
         """Test that most recent interruption is returned."""
         # Start a cycle
-        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), target_temp=20.0, current_temp=18.0))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), target_temp=20.0, current_temp=18.0
+            )
+        )
 
         # First interruption (but continue tracking)
         mock_is_device_active = Mock(return_value=True)
         cycle_tracker._get_is_device_active = mock_is_device_active
-        dispatcher.emit(SetpointChangedEvent(hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), old_target=20.0, new_target=20.3))  # Minor change, continues
+        dispatcher.emit(
+            SetpointChangedEvent(
+                hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), old_target=20.0, new_target=20.3
+            )
+        )  # Minor change, continues
 
         assert cycle_tracker.get_last_interruption_reason() == "setpoint_change"
 
         # Second interruption
-        dispatcher.emit(ModeChangedEvent(timestamp=datetime(2024, 1, 1, 10, 0, 0), old_mode="heat", new_mode="off"))  # This aborts
+        dispatcher.emit(
+            ModeChangedEvent(timestamp=datetime(2024, 1, 1, 10, 0, 0), old_mode="heat", new_mode="off")
+        )  # This aborts
 
         # Should return the most recent one
         assert cycle_tracker.get_last_interruption_reason() == "mode_change"
@@ -1595,9 +1733,7 @@ class TestCycleTrackerSettlingTimeoutFinalization:
     """Tests for settling timeout cycle finalization."""
 
     @pytest.mark.asyncio
-    async def test_settling_timeout_records_metrics(
-        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
-    ):
+    async def test_settling_timeout_records_metrics(self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher):
         """Test settling timeout finalizes cycle and records metrics.
 
         This tests the fix for the bug where settling timeout would discard
@@ -1631,9 +1767,7 @@ class TestCycleTrackerSettlingTimeoutFinalization:
 
         # Add temperature samples during heating (rising)
         for i in range(5):
-            await cycle_tracker.update_temperature(
-                start_time + timedelta(minutes=i), 18.0 + i * 0.5
-            )
+            await cycle_tracker.update_temperature(start_time + timedelta(minutes=i), 18.0 + i * 0.5)
 
         # Stop heating
         stop_time = start_time + timedelta(minutes=5)
@@ -1643,7 +1777,8 @@ class TestCycleTrackerSettlingTimeoutFinalization:
         # This simulates the GF bug: temperature stays high and doesn't settle
         for i in range(5):
             await cycle_tracker.update_temperature(
-                stop_time + timedelta(minutes=i), 21.5  # 1.5°C above target
+                stop_time + timedelta(minutes=i),
+                21.5,  # 1.5°C above target
             )
 
         # Verify still in settling (too far from 0.5°C requirement)
@@ -1693,7 +1828,11 @@ class TestCycleTrackerRestoration:
         assert cycle_tracker.state == CycleState.IDLE
 
         # Start heating cycle
-        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0), target_temp=20.0, current_temp=18.0))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0), target_temp=20.0, current_temp=18.0
+            )
+        )
         assert cycle_tracker.state == CycleState.HEATING
 
         # Try to update temperature while restoration incomplete
@@ -1728,7 +1867,11 @@ class TestCycleTrackerRestoration:
         assert cycle_tracker._restoration_complete is True
 
         # Start heating cycle
-        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0), target_temp=20.0, current_temp=18.0))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0), target_temp=20.0, current_temp=18.0
+            )
+        )
         assert cycle_tracker.state == CycleState.HEATING
 
         # Update temperature
@@ -1747,9 +1890,7 @@ class TestCycleTrackerFinalizeSave:
     """Tests for cycle finalization save functionality."""
 
     @pytest.mark.asyncio
-    async def test_finalize_cycle_schedules_save(
-        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
-    ):
+    async def test_finalize_cycle_schedules_save(self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher):
         """Test that finalize_cycle calls schedule_zone_save after adding metrics."""
         # Create mock learning store
         mock_learning_store = MagicMock()
@@ -1764,13 +1905,15 @@ class TestCycleTrackerFinalizeSave:
         }
 
         # Setup adaptive_learner to return dict
-        mock_adaptive_learner.to_dict = MagicMock(return_value={
-            "cycle_history": [],
-            "last_adjustment_time": None,
-            "consecutive_converged_cycles": 0,
-            "pid_converged_for_ke": False,
-            "auto_apply_count": 0,
-        })
+        mock_adaptive_learner.to_dict = MagicMock(
+            return_value={
+                "cycle_history": [],
+                "last_adjustment_time": None,
+                "consecutive_converged_cycles": 0,
+                "pid_converged_for_ke": False,
+                "auto_apply_count": 0,
+            }
+        )
         mock_adaptive_learner.is_in_validation_mode = MagicMock(return_value=False)
         mock_adaptive_learner.update_convergence_confidence = MagicMock()
 
@@ -1793,9 +1936,7 @@ class TestCycleTrackerFinalizeSave:
 
         # Add temperature samples during heating
         for i in range(6):
-            await cycle_tracker.update_temperature(
-                datetime(2025, 1, 14, 10, i, 0), 18.0 + i * 0.4
-            )
+            await cycle_tracker.update_temperature(datetime(2025, 1, 14, 10, i, 0), 18.0 + i * 0.4)
 
         # Finalize cycle
         await cycle_tracker._finalize_cycle()
@@ -1854,9 +1995,7 @@ class TestCycleTrackerFinalizeSave:
 
         # Add temperature samples
         for i in range(6):
-            await cycle_tracker.update_temperature(
-                datetime(2025, 1, 14, 10, i, 0), 18.0 + i * 0.4
-            )
+            await cycle_tracker.update_temperature(datetime(2025, 1, 14, 10, i, 0), 18.0 + i * 0.4)
 
         # Finalize cycle
         await cycle_tracker._finalize_cycle()
@@ -1898,9 +2037,7 @@ class TestCycleTrackerFinalizeSave:
 
         # Add temperature samples
         for i in range(6):
-            await cycle_tracker.update_temperature(
-                datetime(2025, 1, 14, 10, i, 0), 18.0 + i * 0.4
-            )
+            await cycle_tracker.update_temperature(datetime(2025, 1, 14, 10, i, 0), 18.0 + i * 0.4)
 
         # Finalize cycle should not raise exception
         await cycle_tracker._finalize_cycle()
@@ -1947,9 +2084,7 @@ class TestCycleTrackerFinalizeSave:
 
         # Add temperature samples
         for i in range(6):
-            await cycle_tracker.update_temperature(
-                datetime(2025, 1, 14, 10, i, 0), 18.0 + i * 0.4
-            )
+            await cycle_tracker.update_temperature(datetime(2025, 1, 14, 10, i, 0), 18.0 + i * 0.4)
 
         # Mock calculate_settling_time to verify reference_time is passed
         with patch(
@@ -1977,13 +2112,15 @@ class TestCycleTrackerFinalizeSave:
         from datetime import timedelta
 
         # Setup adaptive_learner
-        mock_adaptive_learner.to_dict = MagicMock(return_value={
-            "cycle_history": [],
-            "last_adjustment_time": None,
-            "consecutive_converged_cycles": 0,
-            "pid_converged_for_ke": False,
-            "auto_apply_count": 0,
-        })
+        mock_adaptive_learner.to_dict = MagicMock(
+            return_value={
+                "cycle_history": [],
+                "last_adjustment_time": None,
+                "consecutive_converged_cycles": 0,
+                "pid_converged_for_ke": False,
+                "auto_apply_count": 0,
+            }
+        )
         mock_adaptive_learner.is_in_validation_mode = MagicMock(return_value=False)
         mock_adaptive_learner.update_convergence_confidence = MagicMock()
 
@@ -2002,19 +2139,12 @@ class TestCycleTrackerFinalizeSave:
 
         # Start first cycle
         start_time = datetime(2025, 1, 14, 10, 0, 0)
-        dispatcher.emit(CycleStartedEvent(
-            hvac_mode="heat",
-            timestamp=start_time,
-            target_temp=20.0,
-            current_temp=18.0
-        ))
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=start_time, target_temp=20.0, current_temp=18.0))
         assert cycle_tracker.state == CycleState.HEATING
 
         # Add temperature samples during heating
         for i in range(5):
-            await cycle_tracker.update_temperature(
-                start_time + timedelta(minutes=i), 18.0 + i * 0.4
-            )
+            await cycle_tracker.update_temperature(start_time + timedelta(minutes=i), 18.0 + i * 0.4)
 
         # Stop heating and enter SETTLING
         stop_time = start_time + timedelta(minutes=5)
@@ -2023,21 +2153,16 @@ class TestCycleTrackerFinalizeSave:
 
         # Add settling samples
         for i in range(3):
-            await cycle_tracker.update_temperature(
-                stop_time + timedelta(minutes=i), 20.0 + i * 0.1
-            )
+            await cycle_tracker.update_temperature(stop_time + timedelta(minutes=i), 20.0 + i * 0.1)
 
         # Reset mock to verify new call
         mock_adaptive_learner.add_cycle_metrics.reset_mock()
 
         # Start NEW cycle while still in SETTLING (this is the key scenario)
         new_cycle_time = stop_time + timedelta(minutes=3)
-        dispatcher.emit(CycleStartedEvent(
-            hvac_mode="heat",
-            timestamp=new_cycle_time,
-            target_temp=20.0,
-            current_temp=19.0
-        ))
+        dispatcher.emit(
+            CycleStartedEvent(hvac_mode="heat", timestamp=new_cycle_time, target_temp=20.0, current_temp=19.0)
+        )
 
         # CRITICAL: Verify previous cycle was FINALIZED before new cycle started
         # The cycle should NOT be discarded - metrics should be recorded
@@ -2079,58 +2204,63 @@ class TestTemperatureUpdateIntegralTracking:
 
         # Start a heating cycle
         start_time = datetime(2025, 1, 14, 10, 0, 0)
-        dispatcher.emit(CycleStartedEvent(
-            hvac_mode="heat",
-            timestamp=start_time,
-            target_temp=target_temp,
-            current_temp=18.0
-        ))
+        dispatcher.emit(
+            CycleStartedEvent(hvac_mode="heat", timestamp=start_time, target_temp=target_temp, current_temp=18.0)
+        )
 
         # Get cold_tolerance for radiator (0.3)
         cold_tolerance = HEATING_TYPE_CHARACTERISTICS[HEATING_TYPE_RADIATOR]["cold_tolerance"]
 
         # Dispatch TEMPERATURE_UPDATE events
         # First event: temperature = 19.0, pid_error = 1.0 (outside tolerance)
-        dispatcher.emit(TemperatureUpdateEvent(
-            timestamp=datetime(2025, 1, 14, 10, 1, 0),
-            temperature=19.0,
-            setpoint=target_temp,
-            pid_integral=50.0,
-            pid_error=1.0
-        ))
+        dispatcher.emit(
+            TemperatureUpdateEvent(
+                timestamp=datetime(2025, 1, 14, 10, 1, 0),
+                temperature=19.0,
+                setpoint=target_temp,
+                pid_integral=50.0,
+                pid_error=1.0,
+            )
+        )
         # Integral should not be captured yet
         assert cycle_tracker._integral_at_tolerance_entry is None
 
         # Second event: temperature = 19.5, pid_error = 0.5 (outside tolerance)
-        dispatcher.emit(TemperatureUpdateEvent(
-            timestamp=datetime(2025, 1, 14, 10, 2, 0),
-            temperature=19.5,
-            setpoint=target_temp,
-            pid_integral=75.0,
-            pid_error=0.5
-        ))
+        dispatcher.emit(
+            TemperatureUpdateEvent(
+                timestamp=datetime(2025, 1, 14, 10, 2, 0),
+                temperature=19.5,
+                setpoint=target_temp,
+                pid_integral=75.0,
+                pid_error=0.5,
+            )
+        )
         # Still outside tolerance
         assert cycle_tracker._integral_at_tolerance_entry is None
 
         # Third event: temperature = 19.75, pid_error = 0.25 (inside cold_tolerance of 0.3)
-        dispatcher.emit(TemperatureUpdateEvent(
-            timestamp=datetime(2025, 1, 14, 10, 3, 0),
-            temperature=19.75,
-            setpoint=target_temp,
-            pid_integral=100.0,
-            pid_error=0.25
-        ))
+        dispatcher.emit(
+            TemperatureUpdateEvent(
+                timestamp=datetime(2025, 1, 14, 10, 3, 0),
+                temperature=19.75,
+                setpoint=target_temp,
+                pid_integral=100.0,
+                pid_error=0.25,
+            )
+        )
         # Now integral should be captured
         assert cycle_tracker._integral_at_tolerance_entry == 100.0
 
         # Fourth event: temperature = 19.8, pid_error = 0.2 (still inside tolerance)
-        dispatcher.emit(TemperatureUpdateEvent(
-            timestamp=datetime(2025, 1, 14, 10, 4, 0),
-            temperature=19.8,
-            setpoint=target_temp,
-            pid_integral=110.0,
-            pid_error=0.2
-        ))
+        dispatcher.emit(
+            TemperatureUpdateEvent(
+                timestamp=datetime(2025, 1, 14, 10, 4, 0),
+                temperature=19.8,
+                setpoint=target_temp,
+                pid_integral=110.0,
+                pid_error=0.2,
+            )
+        )
         # Integral should not be overwritten (only capture first entry)
         assert cycle_tracker._integral_at_tolerance_entry == 100.0
 
@@ -2154,61 +2284,64 @@ class TestTemperatureUpdateIntegralTracking:
 
         # Start a heating cycle
         start_time = datetime(2025, 1, 14, 10, 0, 0)
-        dispatcher.emit(CycleStartedEvent(
-            hvac_mode="heat",
-            timestamp=start_time,
-            target_temp=target_temp,
-            current_temp=18.0
-        ))
+        dispatcher.emit(
+            CycleStartedEvent(hvac_mode="heat", timestamp=start_time, target_temp=target_temp, current_temp=18.0)
+        )
 
         # Dispatch TEMPERATURE_UPDATE events
         # First event: pid_error = 0.5 (below setpoint)
-        dispatcher.emit(TemperatureUpdateEvent(
-            timestamp=datetime(2025, 1, 14, 10, 1, 0),
-            temperature=19.5,
-            setpoint=target_temp,
-            pid_integral=80.0,
-            pid_error=0.5
-        ))
+        dispatcher.emit(
+            TemperatureUpdateEvent(
+                timestamp=datetime(2025, 1, 14, 10, 1, 0),
+                temperature=19.5,
+                setpoint=target_temp,
+                pid_integral=80.0,
+                pid_error=0.5,
+            )
+        )
         # Integral should not be captured yet
         assert cycle_tracker._integral_at_setpoint_cross is None
 
         # Second event: pid_error = 0.1 (below setpoint)
-        dispatcher.emit(TemperatureUpdateEvent(
-            timestamp=datetime(2025, 1, 14, 10, 2, 0),
-            temperature=19.9,
-            setpoint=target_temp,
-            pid_integral=95.0,
-            pid_error=0.1
-        ))
+        dispatcher.emit(
+            TemperatureUpdateEvent(
+                timestamp=datetime(2025, 1, 14, 10, 2, 0),
+                temperature=19.9,
+                setpoint=target_temp,
+                pid_integral=95.0,
+                pid_error=0.1,
+            )
+        )
         # Still below setpoint
         assert cycle_tracker._integral_at_setpoint_cross is None
 
         # Third event: pid_error = 0.0 (at setpoint)
-        dispatcher.emit(TemperatureUpdateEvent(
-            timestamp=datetime(2025, 1, 14, 10, 3, 0),
-            temperature=20.0,
-            setpoint=target_temp,
-            pid_integral=100.0,
-            pid_error=0.0
-        ))
+        dispatcher.emit(
+            TemperatureUpdateEvent(
+                timestamp=datetime(2025, 1, 14, 10, 3, 0),
+                temperature=20.0,
+                setpoint=target_temp,
+                pid_integral=100.0,
+                pid_error=0.0,
+            )
+        )
         # Now integral should be captured
         assert cycle_tracker._integral_at_setpoint_cross == 100.0
 
         # Fourth event: pid_error = -0.1 (above setpoint, overshoot)
-        dispatcher.emit(TemperatureUpdateEvent(
-            timestamp=datetime(2025, 1, 14, 10, 4, 0),
-            temperature=20.1,
-            setpoint=target_temp,
-            pid_integral=105.0,
-            pid_error=-0.1
-        ))
+        dispatcher.emit(
+            TemperatureUpdateEvent(
+                timestamp=datetime(2025, 1, 14, 10, 4, 0),
+                temperature=20.1,
+                setpoint=target_temp,
+                pid_integral=105.0,
+                pid_error=-0.1,
+            )
+        )
         # Integral should not be overwritten (only capture first crossing)
         assert cycle_tracker._integral_at_setpoint_cross == 100.0
 
-    def test_cycle_start_resets_integral_tracking(
-        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
-    ):
+    def test_cycle_start_resets_integral_tracking(self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher):
         """Test that starting a new cycle resets integral tracking values."""
         from custom_components.adaptive_climate.const import HEATING_TYPE_RADIATOR
 
@@ -2229,29 +2362,30 @@ class TestTemperatureUpdateIntegralTracking:
 
         # Start first cycle
         start_time = datetime(2025, 1, 14, 10, 0, 0)
-        dispatcher.emit(CycleStartedEvent(
-            hvac_mode="heat",
-            timestamp=start_time,
-            target_temp=target_temp,
-            current_temp=18.0
-        ))
+        dispatcher.emit(
+            CycleStartedEvent(hvac_mode="heat", timestamp=start_time, target_temp=target_temp, current_temp=18.0)
+        )
 
         # Simulate temperature updates that set integral values
-        dispatcher.emit(TemperatureUpdateEvent(
-            timestamp=datetime(2025, 1, 14, 10, 1, 0),
-            temperature=19.75,
-            setpoint=target_temp,
-            pid_integral=100.0,
-            pid_error=0.25  # Within cold tolerance for radiator (0.3)
-        ))
+        dispatcher.emit(
+            TemperatureUpdateEvent(
+                timestamp=datetime(2025, 1, 14, 10, 1, 0),
+                temperature=19.75,
+                setpoint=target_temp,
+                pid_integral=100.0,
+                pid_error=0.25,  # Within cold tolerance for radiator (0.3)
+            )
+        )
 
-        dispatcher.emit(TemperatureUpdateEvent(
-            timestamp=datetime(2025, 1, 14, 10, 2, 0),
-            temperature=20.0,
-            setpoint=target_temp,
-            pid_integral=110.0,
-            pid_error=0.0  # At setpoint
-        ))
+        dispatcher.emit(
+            TemperatureUpdateEvent(
+                timestamp=datetime(2025, 1, 14, 10, 2, 0),
+                temperature=20.0,
+                setpoint=target_temp,
+                pid_integral=110.0,
+                pid_error=0.0,  # At setpoint
+            )
+        )
 
         # Verify both integral values are captured
         assert cycle_tracker._integral_at_tolerance_entry == 100.0
@@ -2259,12 +2393,9 @@ class TestTemperatureUpdateIntegralTracking:
 
         # Start a new cycle
         new_start_time = datetime(2025, 1, 14, 11, 0, 0)
-        dispatcher.emit(CycleStartedEvent(
-            hvac_mode="heat",
-            timestamp=new_start_time,
-            target_temp=target_temp,
-            current_temp=18.5
-        ))
+        dispatcher.emit(
+            CycleStartedEvent(hvac_mode="heat", timestamp=new_start_time, target_temp=target_temp, current_temp=18.5)
+        )
 
         # Verify integral tracking values are reset to None
         assert cycle_tracker._integral_at_tolerance_entry is None
@@ -2296,12 +2427,9 @@ class TestTemperatureUpdateIntegralTracking:
 
         # Start cycle
         start_time = datetime(2025, 1, 14, 10, 0, 0)
-        dispatcher.emit(CycleStartedEvent(
-            hvac_mode="heat",
-            timestamp=start_time,
-            target_temp=target_temp,
-            current_temp=18.0
-        ))
+        dispatcher.emit(
+            CycleStartedEvent(hvac_mode="heat", timestamp=start_time, target_temp=target_temp, current_temp=18.0)
+        )
 
         # Collect samples for valid cycle - stay below tolerance initially
         for i in range(10):
@@ -2310,55 +2438,55 @@ class TestTemperatureUpdateIntegralTracking:
             pid_integral = 50.0 + (i * 10.0)  # Integral increases
 
             # Update via temperature manager (not via event, for legacy support)
-            await cycle_tracker.update_temperature(
-                timestamp=start_time + timedelta(minutes=i),
-                temperature=temp
-            )
+            await cycle_tracker.update_temperature(timestamp=start_time + timedelta(minutes=i), temperature=temp)
 
             # Emit TEMPERATURE_UPDATE event for integral tracking
-            dispatcher.emit(TemperatureUpdateEvent(
-                timestamp=start_time + timedelta(minutes=i),
-                temperature=temp,
-                setpoint=target_temp,
-                pid_integral=pid_integral,
-                pid_error=pid_error
-            ))
+            dispatcher.emit(
+                TemperatureUpdateEvent(
+                    timestamp=start_time + timedelta(minutes=i),
+                    temperature=temp,
+                    setpoint=target_temp,
+                    pid_integral=pid_integral,
+                    pid_error=pid_error,
+                )
+            )
 
         # Emit tolerance entry event (pid_error < 0.3 for radiator)
         # At this point temp is 19.8°C, pid_error = 0.2, which is within tolerance
         tolerance_time = start_time + timedelta(minutes=10)
-        dispatcher.emit(TemperatureUpdateEvent(
-            timestamp=tolerance_time,
-            temperature=19.8,
-            setpoint=target_temp,
-            pid_integral=200.0,
-            pid_error=0.2  # Within tolerance (< 0.3)
-        ))
+        dispatcher.emit(
+            TemperatureUpdateEvent(
+                timestamp=tolerance_time,
+                temperature=19.8,
+                setpoint=target_temp,
+                pid_integral=200.0,
+                pid_error=0.2,  # Within tolerance (< 0.3)
+            )
+        )
         await cycle_tracker.update_temperature(tolerance_time, 19.8)
 
         # Emit setpoint crossing event (pid_error = 0)
         cross_time = start_time + timedelta(minutes=11)
-        dispatcher.emit(TemperatureUpdateEvent(
-            timestamp=cross_time,
-            temperature=20.0,
-            setpoint=target_temp,
-            pid_integral=210.0,
-            pid_error=0.0  # At setpoint
-        ))
+        dispatcher.emit(
+            TemperatureUpdateEvent(
+                timestamp=cross_time,
+                temperature=20.0,
+                setpoint=target_temp,
+                pid_integral=210.0,
+                pid_error=0.0,  # At setpoint
+            )
+        )
         await cycle_tracker.update_temperature(cross_time, 20.0)
 
         # Transition to settling
         settling_time = start_time + timedelta(minutes=17)
-        dispatcher.emit(SettlingStartedEvent(
-            hvac_mode="heat",
-            timestamp=settling_time
-        ))
+        dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=settling_time))
 
         # Add settling samples to reach stability
         for i in range(10):
             await cycle_tracker.update_temperature(
                 timestamp=settling_time + timedelta(minutes=i),
-                temperature=20.0 + (0.01 * i)  # Very stable
+                temperature=20.0 + (0.01 * i),  # Very stable
             )
 
         # Finalize cycle
@@ -2398,36 +2526,30 @@ class TestClampingAwareness:
         tracker.set_restoration_complete()
 
         # Start a cycle
-        dispatcher.emit(CycleStartedEvent(
-            hvac_mode="heat",
-            timestamp=datetime(2024, 1, 1, 10, 0, 0),
-            target_temp=20.0,
-            current_temp=18.0
-        ))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), target_temp=20.0, current_temp=18.0
+            )
+        )
         assert tracker.state == CycleState.HEATING
 
         # Emit settling event with was_clamped=True
-        dispatcher.emit(SettlingStartedEvent(
-            hvac_mode="heat",
-            timestamp=datetime(2024, 1, 1, 10, 0, 0),
-            was_clamped=True
-        ))
+        dispatcher.emit(
+            SettlingStartedEvent(hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), was_clamped=True)
+        )
 
         # Verify the tracker captured the clamping state
         assert tracker._was_clamped is True
 
         # Test with was_clamped=False
-        dispatcher.emit(CycleStartedEvent(
-            hvac_mode="heat",
-            timestamp=datetime(2024, 1, 1, 10, 0, 0),
-            target_temp=20.0,
-            current_temp=18.0
-        ))
-        dispatcher.emit(SettlingStartedEvent(
-            hvac_mode="heat",
-            timestamp=datetime(2024, 1, 1, 10, 0, 0),
-            was_clamped=False
-        ))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), target_temp=20.0, current_temp=18.0
+            )
+        )
+        dispatcher.emit(
+            SettlingStartedEvent(hvac_mode="heat", timestamp=datetime(2024, 1, 1, 10, 0, 0), was_clamped=False)
+        )
         assert tracker._was_clamped is False
 
     @pytest.mark.asyncio
@@ -2452,33 +2574,21 @@ class TestClampingAwareness:
 
         # Start a cycle
         start_time = datetime(2025, 1, 14, 10, 0, 0)
-        dispatcher.emit(CycleStartedEvent(
-            hvac_mode="heat",
-            timestamp=start_time,
-            target_temp=20.0,
-            current_temp=18.0
-        ))
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=start_time, target_temp=20.0, current_temp=18.0))
 
         # Add temperature samples (enough for valid cycle)
         for i in range(15):
-            await tracker.update_temperature(
-                timestamp=start_time + timedelta(minutes=i),
-                temperature=18.0 + (i * 0.2)
-            )
+            await tracker.update_temperature(timestamp=start_time + timedelta(minutes=i), temperature=18.0 + (i * 0.2))
 
         # Emit settling event with was_clamped=True
         settling_time = start_time + timedelta(minutes=15)
-        dispatcher.emit(SettlingStartedEvent(
-            hvac_mode="heat",
-            timestamp=settling_time,
-            was_clamped=True
-        ))
+        dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=settling_time, was_clamped=True))
 
         # Add settling samples to reach stability
         for i in range(10):
             await tracker.update_temperature(
                 timestamp=settling_time + timedelta(minutes=i),
-                temperature=20.0 + (0.01 * i)  # Very stable
+                temperature=20.0 + (0.01 * i),  # Very stable
             )
 
         # Finalize cycle
@@ -2515,33 +2625,20 @@ class TestClampingAwareness:
 
         # Start a cycle
         start_time = datetime(2025, 1, 14, 10, 0, 0)
-        dispatcher.emit(CycleStartedEvent(
-            hvac_mode="heat",
-            timestamp=start_time,
-            target_temp=20.0,
-            current_temp=18.0
-        ))
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=start_time, target_temp=20.0, current_temp=18.0))
 
         # Add temperature samples
         for i in range(15):
-            await tracker.update_temperature(
-                timestamp=start_time + timedelta(minutes=i),
-                temperature=18.0 + (i * 0.2)
-            )
+            await tracker.update_temperature(timestamp=start_time + timedelta(minutes=i), temperature=18.0 + (i * 0.2))
 
         # Emit settling event with was_clamped=True
         settling_time = start_time + timedelta(minutes=15)
-        dispatcher.emit(SettlingStartedEvent(
-            hvac_mode="heat",
-            timestamp=settling_time,
-            was_clamped=True
-        ))
+        dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=settling_time, was_clamped=True))
 
         # Add settling samples
         for i in range(10):
             await tracker.update_temperature(
-                timestamp=settling_time + timedelta(minutes=i),
-                temperature=20.0 + (0.01 * i)
+                timestamp=settling_time + timedelta(minutes=i), temperature=20.0 + (0.01 * i)
             )
 
         # Finalize cycle
@@ -2583,36 +2680,23 @@ class TestEndTemperatureTracking:
 
         # Start cycle
         start_time = datetime(2025, 1, 25, 10, 0, 0)
-        dispatcher.emit(CycleStartedEvent(
-            hvac_mode="heat",
-            timestamp=start_time,
-            target_temp=target_temp,
-            current_temp=18.0
-        ))
+        dispatcher.emit(
+            CycleStartedEvent(hvac_mode="heat", timestamp=start_time, target_temp=target_temp, current_temp=18.0)
+        )
 
         # Collect temperature samples during HEATING phase
         for i in range(10):
             temp = 18.0 + (i * 0.2)  # Gradual rise from 18.0 to 19.8
-            await tracker.update_temperature(
-                timestamp=start_time + timedelta(minutes=i),
-                temperature=temp
-            )
+            await tracker.update_temperature(timestamp=start_time + timedelta(minutes=i), temperature=temp)
 
         # Transition to SETTLING
         settling_time = start_time + timedelta(minutes=15)
-        dispatcher.emit(SettlingStartedEvent(
-            hvac_mode="heat",
-            timestamp=settling_time,
-            was_clamped=False
-        ))
+        dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=settling_time, was_clamped=False))
 
         # Add settling samples to reach stability
         settling_temps = [19.9, 19.95, 20.0, 20.05, 20.02, 20.01, 20.0, 20.0, 20.01, 20.0]
         for i, temp in enumerate(settling_temps):
-            await tracker.update_temperature(
-                timestamp=settling_time + timedelta(minutes=i),
-                temperature=temp
-            )
+            await tracker.update_temperature(timestamp=settling_time + timedelta(minutes=i), temperature=temp)
 
         # Record the last temperature that was added
         expected_end_temp = settling_temps[-1]
@@ -2654,36 +2738,23 @@ class TestEndTemperatureTracking:
 
         # Start cycle
         start_time = datetime(2025, 1, 25, 14, 0, 0)
-        dispatcher.emit(CycleStartedEvent(
-            hvac_mode="heat",
-            timestamp=start_time,
-            target_temp=target_temp,
-            current_temp=19.0
-        ))
+        dispatcher.emit(
+            CycleStartedEvent(hvac_mode="heat", timestamp=start_time, target_temp=target_temp, current_temp=19.0)
+        )
 
         # Collect temperature samples during HEATING phase with varying temps
         heating_temps = [19.0, 19.3, 19.7, 20.1, 20.5, 20.9, 21.2, 21.4, 21.5, 21.6]
         for i, temp in enumerate(heating_temps):
-            await tracker.update_temperature(
-                timestamp=start_time + timedelta(minutes=i),
-                temperature=temp
-            )
+            await tracker.update_temperature(timestamp=start_time + timedelta(minutes=i), temperature=temp)
 
         # Transition to SETTLING
         settling_time = start_time + timedelta(minutes=12)
-        dispatcher.emit(SettlingStartedEvent(
-            hvac_mode="heat",
-            timestamp=settling_time,
-            was_clamped=False
-        ))
+        dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=settling_time, was_clamped=False))
 
         # Add settling samples - final temp is 21.48
         settling_temps = [21.55, 21.52, 21.50, 21.49, 21.48, 21.48, 21.48, 21.48, 21.48, 21.48]
         for i, temp in enumerate(settling_temps):
-            await tracker.update_temperature(
-                timestamp=settling_time + timedelta(minutes=i),
-                temperature=temp
-            )
+            await tracker.update_temperature(timestamp=settling_time + timedelta(minutes=i), temperature=temp)
 
         # The expected end temp is the last temperature we added
         expected_end_temp = settling_temps[-1]
@@ -2719,19 +2790,10 @@ class TestEndTemperatureTracking:
 
         # Start cycle but don't collect any temperature samples
         start_time = datetime(2025, 1, 25, 16, 0, 0)
-        dispatcher.emit(CycleStartedEvent(
-            hvac_mode="heat",
-            timestamp=start_time,
-            target_temp=20.0,
-            current_temp=18.0
-        ))
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=start_time, target_temp=20.0, current_temp=18.0))
 
         # Transition to SETTLING immediately without temperature samples
-        dispatcher.emit(SettlingStartedEvent(
-            hvac_mode="heat",
-            timestamp=start_time,
-            was_clamped=False
-        ))
+        dispatcher.emit(SettlingStartedEvent(hvac_mode="heat", timestamp=start_time, was_clamped=False))
 
         # Finalize cycle (will fail validation due to insufficient samples)
         await tracker._finalize_cycle()
@@ -2745,9 +2807,7 @@ class TestInterCycleDrift:
     """Tests for inter_cycle_drift calculation (Story 3.2)."""
 
     @pytest.mark.asyncio
-    async def test_first_cycle_drift_is_none(
-        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
-    ):
+    async def test_first_cycle_drift_is_none(self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher):
         """Test that first cycle has inter_cycle_drift = None."""
         from datetime import timedelta
 
@@ -2765,19 +2825,11 @@ class TestInterCycleDrift:
 
         # Start first cycle
         start_time = datetime(2025, 1, 25, 10, 0, 0)
-        dispatcher.emit(CycleStartedEvent(
-            hvac_mode="heat",
-            timestamp=start_time,
-            target_temp=20.0,
-            current_temp=18.0
-        ))
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=start_time, target_temp=20.0, current_temp=18.0))
 
         # Add temperature samples
         for i in range(15):
-            await tracker.update_temperature(
-                timestamp=start_time + timedelta(minutes=i),
-                temperature=18.0 + (i * 0.15)
-            )
+            await tracker.update_temperature(timestamp=start_time + timedelta(minutes=i), temperature=18.0 + (i * 0.15))
 
         # Finalize first cycle
         await tracker._finalize_cycle()
@@ -2810,34 +2862,30 @@ class TestInterCycleDrift:
 
         # First cycle: 18.0 -> 20.0 (end temp)
         start_time = datetime(2025, 1, 25, 10, 0, 0)
-        dispatcher.emit(CycleStartedEvent(
-            hvac_mode="heat",
-            timestamp=start_time,
-            target_temp=20.0,
-            current_temp=18.0
-        ))
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=start_time, target_temp=20.0, current_temp=18.0))
 
         for i in range(15):
             await tracker.update_temperature(
                 timestamp=start_time + timedelta(minutes=i),
-                temperature=18.0 + (i * 0.143)  # Ends at 20.0 (14 * 0.143 = 2.002)
+                temperature=18.0 + (i * 0.143),  # Ends at 20.0 (14 * 0.143 = 2.002)
             )
 
         await tracker._finalize_cycle()
 
         # Second cycle: starts at 20.5 (warmer than previous end)
         start_time2 = datetime(2025, 1, 25, 11, 0, 0)
-        dispatcher.emit(CycleStartedEvent(
-            hvac_mode="heat",
-            timestamp=start_time2,
-            target_temp=20.0,
-            current_temp=20.5  # Warmer start
-        ))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat",
+                timestamp=start_time2,
+                target_temp=20.0,
+                current_temp=20.5,  # Warmer start
+            )
+        )
 
         for i in range(15):
             await tracker.update_temperature(
-                timestamp=start_time2 + timedelta(minutes=i),
-                temperature=20.5 + (i * 0.05)
+                timestamp=start_time2 + timedelta(minutes=i), temperature=20.5 + (i * 0.05)
             )
 
         await tracker._finalize_cycle()
@@ -2872,34 +2920,30 @@ class TestInterCycleDrift:
 
         # First cycle: 18.0 -> 20.0 (end temp)
         start_time = datetime(2025, 1, 25, 10, 0, 0)
-        dispatcher.emit(CycleStartedEvent(
-            hvac_mode="heat",
-            timestamp=start_time,
-            target_temp=20.0,
-            current_temp=18.0
-        ))
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=start_time, target_temp=20.0, current_temp=18.0))
 
         for i in range(15):
             await tracker.update_temperature(
                 timestamp=start_time + timedelta(minutes=i),
-                temperature=18.0 + (i * 0.143)  # Ends at 20.0 (14 * 0.143 = 2.002)
+                temperature=18.0 + (i * 0.143),  # Ends at 20.0 (14 * 0.143 = 2.002)
             )
 
         await tracker._finalize_cycle()
 
         # Second cycle: starts at 19.0 (cooler than previous end)
         start_time2 = datetime(2025, 1, 25, 11, 0, 0)
-        dispatcher.emit(CycleStartedEvent(
-            hvac_mode="heat",
-            timestamp=start_time2,
-            target_temp=20.0,
-            current_temp=19.0  # Cooler start - the problematic case
-        ))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat",
+                timestamp=start_time2,
+                target_temp=20.0,
+                current_temp=19.0,  # Cooler start - the problematic case
+            )
+        )
 
         for i in range(15):
             await tracker.update_temperature(
-                timestamp=start_time2 + timedelta(minutes=i),
-                temperature=19.0 + (i * 0.067)
+                timestamp=start_time2 + timedelta(minutes=i), temperature=19.0 + (i * 0.067)
             )
 
         await tracker._finalize_cycle()
@@ -2934,51 +2978,35 @@ class TestInterCycleDrift:
 
         # First cycle: ends at 20.0
         start_time = datetime(2025, 1, 25, 10, 0, 0)
-        dispatcher.emit(CycleStartedEvent(
-            hvac_mode="heat",
-            timestamp=start_time,
-            target_temp=20.0,
-            current_temp=18.0
-        ))
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=start_time, target_temp=20.0, current_temp=18.0))
 
         for i in range(15):
             await tracker.update_temperature(
                 timestamp=start_time + timedelta(minutes=i),
-                temperature=18.0 + (i * 0.143)  # Ends at 20.0 (14 * 0.143 = 2.002)
+                temperature=18.0 + (i * 0.143),  # Ends at 20.0 (14 * 0.143 = 2.002)
             )
 
         await tracker._finalize_cycle()
 
         # Second cycle: ends at 21.0
         start_time2 = datetime(2025, 1, 25, 11, 0, 0)
-        dispatcher.emit(CycleStartedEvent(
-            hvac_mode="heat",
-            timestamp=start_time2,
-            target_temp=21.0,
-            current_temp=20.0
-        ))
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=start_time2, target_temp=21.0, current_temp=20.0))
 
         for i in range(15):
             await tracker.update_temperature(
                 timestamp=start_time2 + timedelta(minutes=i),
-                temperature=20.0 + (i * 0.071)  # Ends at 21.0 (14 * 0.071 = 0.994)
+                temperature=20.0 + (i * 0.071),  # Ends at 21.0 (14 * 0.071 = 0.994)
             )
 
         await tracker._finalize_cycle()
 
         # Third cycle: starts at 20.5
         start_time3 = datetime(2025, 1, 25, 12, 0, 0)
-        dispatcher.emit(CycleStartedEvent(
-            hvac_mode="heat",
-            timestamp=start_time3,
-            target_temp=20.0,
-            current_temp=20.5
-        ))
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=start_time3, target_temp=20.0, current_temp=20.5))
 
         for i in range(15):
             await tracker.update_temperature(
-                timestamp=start_time3 + timedelta(minutes=i),
-                temperature=20.5 - (i * 0.033)
+                timestamp=start_time3 + timedelta(minutes=i), temperature=20.5 - (i * 0.033)
             )
 
         await tracker._finalize_cycle()
@@ -3034,9 +3062,7 @@ class TestCycleTrackerSettlingMAE:
 
         # Add temperature samples (before and after device off)
         for i in range(6):
-            await cycle_tracker.update_temperature(
-                datetime(2025, 1, 14, 10, i, 0), 18.0 + i * 0.4
-            )
+            await cycle_tracker.update_temperature(datetime(2025, 1, 14, 10, i, 0), 18.0 + i * 0.4)
 
         # Mock calculate_settling_mae to verify it's called
         with patch(
@@ -3088,9 +3114,7 @@ class TestCycleTrackerSettlingMAE:
 
         # Add temperature samples
         for i in range(6):
-            await cycle_tracker.update_temperature(
-                datetime(2025, 1, 14, 10, i, 0), 18.0 + i * 0.4
-            )
+            await cycle_tracker.update_temperature(datetime(2025, 1, 14, 10, i, 0), 18.0 + i * 0.4)
 
         # Mock calculate_settling_mae to verify settling_start_time is passed
         with patch(
@@ -3151,9 +3175,7 @@ class TestCycleTrackerSettlingMAE:
         await cycle_tracker_stable.update_temperature(datetime(2025, 1, 14, 10, 7, 0), 20.01)
         await cycle_tracker_stable.update_temperature(datetime(2025, 1, 14, 10, 8, 0), 20.03)
 
-        with patch(
-            "custom_components.adaptive_climate.adaptive.cycle_analysis.calculate_settling_mae"
-        ) as mock_calc:
+        with patch("custom_components.adaptive_climate.adaptive.cycle_analysis.calculate_settling_mae") as mock_calc:
             mock_calc.return_value = 0.05  # Low MAE for stable settling
             await cycle_tracker_stable._finalize_cycle()
             mock_calc.assert_called_once()
@@ -3188,9 +3210,7 @@ class TestCycleTrackerSettlingMAE:
         await cycle_tracker_oscillating.update_temperature(datetime(2025, 1, 14, 11, 8, 0), 20.4)
         await cycle_tracker_oscillating.update_temperature(datetime(2025, 1, 14, 11, 9, 0), 19.6)
 
-        with patch(
-            "custom_components.adaptive_climate.adaptive.cycle_analysis.calculate_settling_mae"
-        ) as mock_calc:
+        with patch("custom_components.adaptive_climate.adaptive.cycle_analysis.calculate_settling_mae") as mock_calc:
             mock_calc.return_value = 0.25  # High MAE for oscillating settling
             await cycle_tracker_oscillating._finalize_cycle()
             mock_calc.assert_called_once()
@@ -3232,9 +3252,7 @@ class TestCycleTrackerSettlingMAE:
 
         # Add temperature samples
         for i in range(6):
-            await cycle_tracker.update_temperature(
-                datetime(2025, 1, 14, 10, i, 0), 18.0 + i * 0.4
-            )
+            await cycle_tracker.update_temperature(datetime(2025, 1, 14, 10, i, 0), 18.0 + i * 0.4)
 
         # Mock calculate_settling_mae to verify it returns None
         with patch(
@@ -3257,12 +3275,11 @@ class TestCycleTrackerDeadTime:
     def test_set_transport_delay_stores_delay_for_current_cycle(self, cycle_tracker, dispatcher):
         """Test set_transport_delay() stores delay for the current cycle."""
         # Start a cycle
-        dispatcher.emit(CycleStartedEvent(
-            hvac_mode="heat",
-            timestamp=datetime(2025, 1, 14, 10, 0, 0),
-            target_temp=20.0,
-            current_temp=18.0
-        ))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0), target_temp=20.0, current_temp=18.0
+            )
+        )
         assert cycle_tracker.state == CycleState.HEATING
 
         # Set transport delay
@@ -3274,12 +3291,11 @@ class TestCycleTrackerDeadTime:
     def test_set_transport_delay_accepts_zero(self, cycle_tracker, dispatcher):
         """Test set_transport_delay() accepts zero delay (manifold warm)."""
         # Start a cycle
-        dispatcher.emit(CycleStartedEvent(
-            hvac_mode="heat",
-            timestamp=datetime(2025, 1, 14, 10, 0, 0),
-            target_temp=20.0,
-            current_temp=18.0
-        ))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0), target_temp=20.0, current_temp=18.0
+            )
+        )
 
         # Set zero delay
         cycle_tracker.set_transport_delay(0.0)
@@ -3287,7 +3303,9 @@ class TestCycleTrackerDeadTime:
         # Verify zero delay is stored
         assert cycle_tracker._transport_delay_minutes == 0.0
 
-    def test_dead_time_tracked_separately_from_rise_time(self, cycle_tracker, dispatcher, mock_hass, mock_adaptive_learner, mock_callbacks):
+    def test_dead_time_tracked_separately_from_rise_time(
+        self, cycle_tracker, dispatcher, mock_hass, mock_adaptive_learner, mock_callbacks
+    ):
         """Test dead_time duration tracked separately from rise_time."""
         # Set up temperature tracking
         mock_callbacks["get_target_temp"].return_value = 20.0
@@ -3295,12 +3313,7 @@ class TestCycleTrackerDeadTime:
 
         # Start cycle
         start_time = datetime(2025, 1, 14, 10, 0, 0)
-        dispatcher.emit(CycleStartedEvent(
-            hvac_mode="heat",
-            timestamp=start_time,
-            target_temp=20.0,
-            current_temp=18.0
-        ))
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=start_time, target_temp=20.0, current_temp=18.0))
 
         # Set transport delay (dead time)
         cycle_tracker.set_transport_delay(2.5)
@@ -3309,7 +3322,9 @@ class TestCycleTrackerDeadTime:
         assert cycle_tracker._transport_delay_minutes == 2.5
 
     @pytest.mark.asyncio
-    async def test_rise_time_excludes_dead_time(self, cycle_tracker, dispatcher, mock_hass, mock_adaptive_learner, mock_callbacks):
+    async def test_rise_time_excludes_dead_time(
+        self, cycle_tracker, dispatcher, mock_hass, mock_adaptive_learner, mock_callbacks
+    ):
         """Test rise_time calculation excludes dead_time (rise_time = total_rise - dead_time)."""
         # Set up for valid cycle
         mock_callbacks["get_target_temp"].return_value = 20.0
@@ -3317,12 +3332,7 @@ class TestCycleTrackerDeadTime:
 
         # Start cycle at 10:00
         start_time = datetime(2025, 1, 14, 10, 0, 0)
-        dispatcher.emit(CycleStartedEvent(
-            hvac_mode="heat",
-            timestamp=start_time,
-            target_temp=20.0,
-            current_temp=18.0
-        ))
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=start_time, target_temp=20.0, current_temp=18.0))
 
         # Set transport delay of 2.5 minutes
         cycle_tracker.set_transport_delay(2.5)
@@ -3350,7 +3360,9 @@ class TestCycleTrackerDeadTime:
         assert metrics.rise_time is not None
 
     @pytest.mark.asyncio
-    async def test_cycle_metrics_populated_with_dead_time_on_completion(self, cycle_tracker, dispatcher, mock_hass, mock_adaptive_learner, mock_callbacks):
+    async def test_cycle_metrics_populated_with_dead_time_on_completion(
+        self, cycle_tracker, dispatcher, mock_hass, mock_adaptive_learner, mock_callbacks
+    ):
         """Test CycleMetrics populated with dead_time on cycle completion."""
         # Set up for valid cycle
         mock_callbacks["get_target_temp"].return_value = 20.0
@@ -3358,22 +3370,14 @@ class TestCycleTrackerDeadTime:
 
         # Start cycle
         start_time = datetime(2025, 1, 14, 10, 0, 0)
-        dispatcher.emit(CycleStartedEvent(
-            hvac_mode="heat",
-            timestamp=start_time,
-            target_temp=20.0,
-            current_temp=18.0
-        ))
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=start_time, target_temp=20.0, current_temp=18.0))
 
         # Set transport delay
         cycle_tracker.set_transport_delay(3.0)
 
         # Add sufficient temperature samples for valid cycle
         for i in range(6):
-            await cycle_tracker.update_temperature(
-                datetime(2025, 1, 14, 10, i, 0),
-                18.0 + i * 0.4
-            )
+            await cycle_tracker.update_temperature(datetime(2025, 1, 14, 10, i, 0), 18.0 + i * 0.4)
 
         # Finalize cycle
         await cycle_tracker._finalize_cycle()
@@ -3384,7 +3388,9 @@ class TestCycleTrackerDeadTime:
         assert metrics.dead_time == 3.0
 
     @pytest.mark.asyncio
-    async def test_dead_time_is_none_when_no_transport_delay_set(self, cycle_tracker, dispatcher, mock_hass, mock_adaptive_learner, mock_callbacks):
+    async def test_dead_time_is_none_when_no_transport_delay_set(
+        self, cycle_tracker, dispatcher, mock_hass, mock_adaptive_learner, mock_callbacks
+    ):
         """Test dead_time is None when no transport delay set."""
         # Set up for valid cycle
         mock_callbacks["get_target_temp"].return_value = 20.0
@@ -3392,22 +3398,14 @@ class TestCycleTrackerDeadTime:
 
         # Start cycle
         start_time = datetime(2025, 1, 14, 10, 0, 0)
-        dispatcher.emit(CycleStartedEvent(
-            hvac_mode="heat",
-            timestamp=start_time,
-            target_temp=20.0,
-            current_temp=18.0
-        ))
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=start_time, target_temp=20.0, current_temp=18.0))
 
         # DO NOT set transport delay
         # cycle_tracker.set_transport_delay() is not called
 
         # Add sufficient temperature samples for valid cycle
         for i in range(6):
-            await cycle_tracker.update_temperature(
-                datetime(2025, 1, 14, 10, i, 0),
-                18.0 + i * 0.4
-            )
+            await cycle_tracker.update_temperature(datetime(2025, 1, 14, 10, i, 0), 18.0 + i * 0.4)
 
         # Finalize cycle
         await cycle_tracker._finalize_cycle()
@@ -3420,56 +3418,55 @@ class TestCycleTrackerDeadTime:
     def test_dead_time_resets_on_new_cycle_start(self, cycle_tracker, dispatcher):
         """Test dead_time resets on new cycle start."""
         # Start first cycle
-        dispatcher.emit(CycleStartedEvent(
-            hvac_mode="heat",
-            timestamp=datetime(2025, 1, 14, 10, 0, 0),
-            target_temp=20.0,
-            current_temp=18.0
-        ))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0), target_temp=20.0, current_temp=18.0
+            )
+        )
 
         # Set transport delay for first cycle
         cycle_tracker.set_transport_delay(2.5)
         assert cycle_tracker._transport_delay_minutes == 2.5
 
         # Start second cycle (should reset dead_time)
-        dispatcher.emit(CycleStartedEvent(
-            hvac_mode="heat",
-            timestamp=datetime(2025, 1, 14, 11, 0, 0),
-            target_temp=21.0,
-            current_temp=19.0
-        ))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat", timestamp=datetime(2025, 1, 14, 11, 0, 0), target_temp=21.0, current_temp=19.0
+            )
+        )
 
         # Verify dead_time was reset to None
         assert cycle_tracker._transport_delay_minutes is None
 
     @pytest.mark.asyncio
-    async def test_dead_time_preserved_during_settling_phase(self, cycle_tracker, dispatcher, mock_hass, mock_callbacks):
+    async def test_dead_time_preserved_during_settling_phase(
+        self, cycle_tracker, dispatcher, mock_hass, mock_callbacks
+    ):
         """Test dead_time value preserved during settling phase."""
         # Start cycle
-        dispatcher.emit(CycleStartedEvent(
-            hvac_mode="heat",
-            timestamp=datetime(2025, 1, 14, 10, 0, 0),
-            target_temp=20.0,
-            current_temp=18.0
-        ))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0), target_temp=20.0, current_temp=18.0
+            )
+        )
 
         # Set transport delay
         cycle_tracker.set_transport_delay(1.5)
         assert cycle_tracker._transport_delay_minutes == 1.5
 
         # Transition to settling
-        dispatcher.emit(SettlingStartedEvent(
-            hvac_mode="heat",
-            timestamp=datetime(2025, 1, 14, 10, 5, 0),
-            was_clamped=False
-        ))
+        dispatcher.emit(
+            SettlingStartedEvent(hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 5, 0), was_clamped=False)
+        )
         assert cycle_tracker.state == CycleState.SETTLING
 
         # Verify dead_time still stored during settling
         assert cycle_tracker._transport_delay_minutes == 1.5
 
     @pytest.mark.asyncio
-    async def test_dead_time_zero_handled_correctly(self, cycle_tracker, dispatcher, mock_hass, mock_adaptive_learner, mock_callbacks):
+    async def test_dead_time_zero_handled_correctly(
+        self, cycle_tracker, dispatcher, mock_hass, mock_adaptive_learner, mock_callbacks
+    ):
         """Test dead_time=0 (warm manifold) handled correctly in CycleMetrics."""
         # Set up for valid cycle
         mock_callbacks["get_target_temp"].return_value = 20.0
@@ -3477,22 +3474,14 @@ class TestCycleTrackerDeadTime:
 
         # Start cycle
         start_time = datetime(2025, 1, 14, 10, 0, 0)
-        dispatcher.emit(CycleStartedEvent(
-            hvac_mode="heat",
-            timestamp=start_time,
-            target_temp=20.0,
-            current_temp=18.0
-        ))
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=start_time, target_temp=20.0, current_temp=18.0))
 
         # Set zero transport delay (manifold is warm)
         cycle_tracker.set_transport_delay(0.0)
 
         # Add sufficient temperature samples
         for i in range(6):
-            await cycle_tracker.update_temperature(
-                datetime(2025, 1, 14, 10, i, 0),
-                18.0 + i * 0.4
-            )
+            await cycle_tracker.update_temperature(datetime(2025, 1, 14, 10, i, 0), 18.0 + i * 0.4)
 
         # Finalize cycle
         await cycle_tracker._finalize_cycle()
@@ -3505,12 +3494,11 @@ class TestCycleTrackerDeadTime:
     def test_set_transport_delay_can_be_called_multiple_times(self, cycle_tracker, dispatcher):
         """Test set_transport_delay() can be updated during a cycle."""
         # Start cycle
-        dispatcher.emit(CycleStartedEvent(
-            hvac_mode="heat",
-            timestamp=datetime(2025, 1, 14, 10, 0, 0),
-            target_temp=20.0,
-            current_temp=18.0
-        ))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0), target_temp=20.0, current_temp=18.0
+            )
+        )
 
         # Set initial delay
         cycle_tracker.set_transport_delay(5.0)
@@ -3524,23 +3512,22 @@ class TestCycleTrackerDeadTime:
     async def test_dead_time_reset_after_cycle_abort(self, cycle_tracker, dispatcher):
         """Test dead_time is cleared when cycle is aborted."""
         # Start cycle
-        dispatcher.emit(CycleStartedEvent(
-            hvac_mode="heat",
-            timestamp=datetime(2025, 1, 14, 10, 0, 0),
-            target_temp=20.0,
-            current_temp=18.0
-        ))
+        dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 0, 0), target_temp=20.0, current_temp=18.0
+            )
+        )
 
         # Set transport delay
         cycle_tracker.set_transport_delay(3.0)
         assert cycle_tracker._transport_delay_minutes == 3.0
 
         # Abort cycle with contact sensor pause
-        dispatcher.emit(ContactPauseEvent(
-            hvac_mode="heat",
-            timestamp=datetime(2025, 1, 14, 10, 10, 0),
-            entity_id="binary_sensor.window"
-        ))
+        dispatcher.emit(
+            ContactPauseEvent(
+                hvac_mode="heat", timestamp=datetime(2025, 1, 14, 10, 10, 0), entity_id="binary_sensor.window"
+            )
+        )
 
         # Cycle should be aborted and reset to IDLE
         assert cycle_tracker.state == CycleState.IDLE
@@ -3583,18 +3570,12 @@ class TestCycleTrackerModePassingToCycleMetrics:
 
         # Start heating cycle
         start_time = datetime(2025, 1, 14, 10, 0, 0)
-        dispatcher.emit(CycleStartedEvent(
-            hvac_mode="heat",
-            timestamp=start_time,
-            target_temp=20.0,
-            current_temp=18.0
-        ))
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=start_time, target_temp=20.0, current_temp=18.0))
 
         # Add sufficient temperature samples for valid cycle
         for i in range(6):
             await cycle_tracker.update_temperature(
-                timestamp=start_time + timedelta(minutes=i),
-                temperature=18.0 + (i * 0.4)
+                timestamp=start_time + timedelta(minutes=i), temperature=18.0 + (i * 0.4)
             )
 
         # Finalize cycle
@@ -3638,18 +3619,12 @@ class TestCycleTrackerModePassingToCycleMetrics:
 
         # Start cooling cycle
         start_time = datetime(2025, 1, 14, 10, 0, 0)
-        dispatcher.emit(CycleStartedEvent(
-            hvac_mode="cool",
-            timestamp=start_time,
-            target_temp=22.0,
-            current_temp=24.0
-        ))
+        dispatcher.emit(CycleStartedEvent(hvac_mode="cool", timestamp=start_time, target_temp=22.0, current_temp=24.0))
 
         # Add sufficient temperature samples for valid cycle
         for i in range(6):
             await cycle_tracker.update_temperature(
-                timestamp=start_time + timedelta(minutes=i),
-                temperature=24.0 - (i * 0.3)
+                timestamp=start_time + timedelta(minutes=i), temperature=24.0 - (i * 0.3)
             )
 
         # Finalize cycle
@@ -3662,9 +3637,7 @@ class TestCycleTrackerModePassingToCycleMetrics:
         assert metrics.mode == "cooling"
 
     @pytest.mark.asyncio
-    async def test_mode_determined_from_hvac_action(
-        self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher
-    ):
+    async def test_mode_determined_from_hvac_action(self, mock_hass, mock_adaptive_learner, mock_callbacks, dispatcher):
         """Test that mode is determined from hvac_action (HEATING vs COOLING)."""
         from datetime import timedelta
 
@@ -3693,18 +3666,12 @@ class TestCycleTrackerModePassingToCycleMetrics:
 
         # Start cycle with hvac_mode="heat" (HEATING action)
         start_time = datetime(2025, 1, 14, 10, 0, 0)
-        dispatcher.emit(CycleStartedEvent(
-            hvac_mode="heat",
-            timestamp=start_time,
-            target_temp=20.0,
-            current_temp=18.0
-        ))
+        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=start_time, target_temp=20.0, current_temp=18.0))
 
         # Add temperature samples
         for i in range(6):
             await cycle_tracker.update_temperature(
-                timestamp=start_time + timedelta(minutes=i),
-                temperature=18.0 + (i * 0.4)
+                timestamp=start_time + timedelta(minutes=i), temperature=18.0 + (i * 0.4)
             )
 
         # Finalize cycle
@@ -3737,6 +3704,7 @@ class TestCycleTrackerModePassingToCycleMetrics:
 
         # Subscribe to events for new tracker
         from custom_components.adaptive_climate.managers.events import CycleEventType
+
         cycle_tracker2._unsubscribe_handles.append(
             dispatcher2.subscribe(CycleEventType.CYCLE_STARTED, cycle_tracker2._on_cycle_started)
         )
@@ -3744,18 +3712,14 @@ class TestCycleTrackerModePassingToCycleMetrics:
             dispatcher2.subscribe(CycleEventType.TEMPERATURE_UPDATE, cycle_tracker2._on_temperature_update)
         )
 
-        dispatcher2.emit(CycleStartedEvent(
-            hvac_mode="cool",
-            timestamp=start_time2,
-            target_temp=22.0,
-            current_temp=24.0
-        ))
+        dispatcher2.emit(
+            CycleStartedEvent(hvac_mode="cool", timestamp=start_time2, target_temp=22.0, current_temp=24.0)
+        )
 
         # Add temperature samples
         for i in range(6):
             await cycle_tracker2.update_temperature(
-                timestamp=start_time2 + timedelta(minutes=i),
-                temperature=24.0 - (i * 0.3)
+                timestamp=start_time2 + timedelta(minutes=i), temperature=24.0 - (i * 0.3)
             )
 
         # Finalize cycle
@@ -3870,5 +3834,3 @@ class TestTransportDelayTracking:
 
         # Verify get_heat_arrival_time returns None
         assert tracker.get_heat_arrival_time() is None
-
-

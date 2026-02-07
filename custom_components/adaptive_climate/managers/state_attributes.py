@@ -1,4 +1,5 @@
 """State attribute builder for Adaptive Climate."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
@@ -37,25 +38,19 @@ def build_state_attributes(thermostat: SmartThermostat) -> dict[str, Any]:
     from ..const import DOMAIN
 
     # Flat restoration fields
-    heater_count = (
-        thermostat._heater_controller.heater_cycle_count
-        if thermostat._heater_controller
-        else 0
+    heater_count = thermostat._heater_controller.heater_cycle_count if thermostat._heater_controller else 0
+    cooler_count = thermostat._heater_controller.cooler_cycle_count if thermostat._heater_controller else 0
+    is_demand_switch = (
+        hasattr(thermostat, "_demand_switch_entity_id") and thermostat._demand_switch_entity_id is not None
     )
-    cooler_count = (
-        thermostat._heater_controller.cooler_cycle_count
-        if thermostat._heater_controller
-        else 0
-    )
-    is_demand_switch = hasattr(thermostat, '_demand_switch_entity_id') and thermostat._demand_switch_entity_id is not None
 
     attrs: dict[str, Any] = {
         "integration": DOMAIN,
         "control_output": thermostat._control_output,
         "outdoor_temp_lagged": (
             coord.outdoor_temp_lagged
-            if (coord := getattr(thermostat, '_coordinator', None)) and hasattr(coord, 'outdoor_temp_lagged')
-            else getattr(thermostat, '_ext_temp', None)
+            if (coord := getattr(thermostat, "_coordinator", None)) and hasattr(coord, "outdoor_temp_lagged")
+            else getattr(thermostat, "_ext_temp", None)
         ),
         "cycle_count": build_cycle_count(heater_count, cooler_count, is_demand_switch),
         "integral": thermostat.pid_control_i,
@@ -66,6 +61,7 @@ def build_state_attributes(thermostat: SmartThermostat) -> dict[str, Any]:
         history = thermostat._gains_manager.get_history()
         if history:
             from ..const import ATTR_PID_HISTORY
+
             attrs[ATTR_PID_HISTORY] = [
                 {
                     "timestamp": e["timestamp"],
@@ -80,8 +76,13 @@ def build_state_attributes(thermostat: SmartThermostat) -> dict[str, Any]:
 
     # Add preset temperatures if they exist
     preset_attrs = [
-        "_away_temp", "_eco_temp", "_boost_temp", "_comfort_temp",
-        "_home_temp", "_sleep_temp", "_activity_temp"
+        "_away_temp",
+        "_eco_temp",
+        "_boost_temp",
+        "_comfort_temp",
+        "_home_temp",
+        "_sleep_temp",
+        "_activity_temp",
     ]
     for attr_name in preset_attrs:
         if hasattr(thermostat, attr_name):
@@ -205,11 +206,7 @@ def _compute_learning_status(
         return "stable"
 
 
-
-
-def _add_learning_object(
-    thermostat: SmartThermostat, attrs: dict[str, Any]
-) -> None:
+def _add_learning_object(thermostat: SmartThermostat, attrs: dict[str, Any]) -> None:
     """Add learning object with status, confidence, and pid_history.
 
     Args:
@@ -244,7 +241,7 @@ def _add_learning_object(
     convergence_confidence = adaptive_learner.get_convergence_confidence()
 
     # Get heating type from thermostat
-    heating_type = thermostat._heating_type if hasattr(thermostat, '_heating_type') else None
+    heating_type = thermostat._heating_type if hasattr(thermostat, "_heating_type") else None
 
     # Detect all pause conditions
     is_paused = False
@@ -271,32 +268,28 @@ def _add_learning_object(
             pass
 
     # Get contribution tracker for tier gate checks
-    contribution_tracker = getattr(adaptive_learner, '_contribution_tracker', None)
+    contribution_tracker = getattr(adaptive_learner, "_contribution_tracker", None)
 
     # Compute learning status with tier gate checks
     learning_status = _compute_learning_status(
-        cycle_count, convergence_confidence, heating_type, is_paused,
+        cycle_count,
+        convergence_confidence,
+        heating_type,
+        is_paused,
         contribution_tracker=contribution_tracker,
     )
 
     # Build learning object
     confidence_pct = round(convergence_confidence * 100)
-    attrs["learning"] = build_learning_object(
-        status=learning_status,
-        confidence=confidence_pct
-    )
+    attrs["learning"] = build_learning_object(status=learning_status, confidence=confidence_pct)
 
     # Fire milestone check (fire-and-forget)
     milestone_tracker = zone_data.get("milestone_tracker")
     if milestone_tracker:
-        thermostat.hass.async_create_task(
-            milestone_tracker.async_check_milestone(learning_status, confidence_pct)
-        )
+        thermostat.hass.async_create_task(milestone_tracker.async_check_milestone(learning_status, confidence_pct))
 
 
-def _add_debug_object(
-    thermostat: SmartThermostat, attrs: dict[str, Any]
-) -> None:
+def _add_debug_object(thermostat: SmartThermostat, attrs: dict[str, Any]) -> None:
     """Add debug object grouped by feature.
 
     Args:
@@ -331,7 +324,7 @@ def _add_debug_object(
     debug_kwargs["cycle_cycles_required"] = MIN_CYCLES_FOR_LEARNING
 
     # Undershoot group
-    if adaptive_learner and hasattr(adaptive_learner, '_undershoot_detector') and adaptive_learner._undershoot_detector:
+    if adaptive_learner and hasattr(adaptive_learner, "_undershoot_detector") and adaptive_learner._undershoot_detector:
         detector = adaptive_learner._undershoot_detector
         debug_kwargs["undershoot_thermal_debt"] = round(detector.thermal_debt, 2)
         debug_kwargs["undershoot_consecutive_failures"] = detector.consecutive_undershoot_cycles
@@ -341,9 +334,7 @@ def _add_debug_object(
     attrs["debug"] = build_debug_object(**debug_kwargs)
 
 
-def _add_preheat_attributes(
-    thermostat: SmartThermostat, attrs: dict[str, Any]
-) -> None:
+def _add_preheat_attributes(thermostat: SmartThermostat, attrs: dict[str, Any]) -> None:
     """Add preheat-related state attributes.
 
     Args:
@@ -366,14 +357,16 @@ def _add_preheat_attributes(
     # Get learned rate for current conditions (if available)
     # We need current temp, target temp, and outdoor temp
     try:
-        current_temp = thermostat._get_current_temp() if hasattr(thermostat, '_get_current_temp') else None
-        target_temp = thermostat._get_target_temp() if hasattr(thermostat, '_get_target_temp') else None
-        outdoor_temp = getattr(thermostat, '_outdoor_sensor_temp', None)
+        current_temp = thermostat._get_current_temp() if hasattr(thermostat, "_get_current_temp") else None
+        target_temp = thermostat._get_target_temp() if hasattr(thermostat, "_get_target_temp") else None
+        outdoor_temp = getattr(thermostat, "_outdoor_sensor_temp", None)
 
         # Ensure we have valid numeric values (not MagicMock)
-        if (isinstance(current_temp, (int, float)) and
-            isinstance(target_temp, (int, float)) and
-            isinstance(outdoor_temp, (int, float))):
+        if (
+            isinstance(current_temp, (int, float))
+            and isinstance(target_temp, (int, float))
+            and isinstance(outdoor_temp, (int, float))
+        ):
             delta = target_temp - current_temp
             if delta > 0:
                 learned_rate = learner.get_learned_rate(delta, outdoor_temp)
@@ -389,31 +382,34 @@ def _add_preheat_attributes(
             # We need to call get_preheat_info with appropriate parameters
             # Need: now, current_temp, target_temp, outdoor_temp, deadline
             from datetime import datetime
+
             now = dt_util.utcnow()
 
             # Get deadline from night setback config
-            if (thermostat._night_setback_config and
-                "recovery_deadline" in thermostat._night_setback_config):
+            if thermostat._night_setback_config and "recovery_deadline" in thermostat._night_setback_config:
                 deadline_str = thermostat._night_setback_config["recovery_deadline"]
                 hour, minute = map(int, deadline_str.split(":"))
                 deadline = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
                 # If deadline is in the past today, it's for tomorrow
                 if deadline < now:
                     from datetime import timedelta
+
                     deadline = deadline + timedelta(days=1)
 
                 # Re-get temps in case they weren't set above
-                current_temp = thermostat._get_current_temp() if hasattr(thermostat, '_get_current_temp') else None
-                target_temp = thermostat._get_target_temp() if hasattr(thermostat, '_get_target_temp') else None
-                outdoor_temp = getattr(thermostat, '_outdoor_sensor_temp', None)
+                current_temp = thermostat._get_current_temp() if hasattr(thermostat, "_get_current_temp") else None
+                target_temp = thermostat._get_target_temp() if hasattr(thermostat, "_get_target_temp") else None
+                outdoor_temp = getattr(thermostat, "_outdoor_sensor_temp", None)
 
-                if (isinstance(current_temp, (int, float)) and
-                    isinstance(target_temp, (int, float)) and
-                    isinstance(outdoor_temp, (int, float))):
+                if (
+                    isinstance(current_temp, (int, float))
+                    and isinstance(target_temp, (int, float))
+                    and isinstance(outdoor_temp, (int, float))
+                ):
                     # Check if humidity detector is paused
                     humidity_paused = (
                         thermostat._humidity_detector.should_pause()
-                        if hasattr(thermostat, '_humidity_detector') and thermostat._humidity_detector
+                        if hasattr(thermostat, "_humidity_detector") and thermostat._humidity_detector
                         else False
                     )
 
@@ -446,9 +442,7 @@ def _add_preheat_attributes(
             pass
 
 
-def _add_humidity_detection_attributes(
-    thermostat: SmartThermostat, attrs: dict[str, Any]
-) -> None:
+def _add_humidity_detection_attributes(thermostat: SmartThermostat, attrs: dict[str, Any]) -> None:
     """Add humidity detection state attributes.
 
     Args:
@@ -465,9 +459,7 @@ def _add_humidity_detection_attributes(
     attrs["humidity_resume_in"] = detector.get_time_until_resume()
 
 
-def _add_auto_mode_switching_attributes(
-    thermostat: SmartThermostat, attrs: dict[str, Any]
-) -> None:
+def _add_auto_mode_switching_attributes(thermostat: SmartThermostat, attrs: dict[str, Any]) -> None:
     """Add auto mode switching state attributes from coordinator.
 
     Args:
@@ -658,32 +650,32 @@ def _build_status_attribute(thermostat: SmartThermostat) -> dict[str, Any]:
     is_paused = status_manager.is_paused()
 
     # Get HVAC mode
-    hvac_mode = thermostat.hvac_mode if hasattr(thermostat, 'hvac_mode') else "off"
-    if hasattr(hvac_mode, 'value'):
+    hvac_mode = thermostat.hvac_mode if hasattr(thermostat, "hvac_mode") else "off"
+    if hasattr(hvac_mode, "value"):
         hvac_mode = hvac_mode.value
 
     # Get heater/cooler state
     heater_on = False
     cooler_on = False
     if thermostat._heater_controller:
-        heater_on = getattr(thermostat._heater_controller, 'heater_on', False)
-        cooler_on = getattr(thermostat._heater_controller, 'cooler_on', False)
+        heater_on = getattr(thermostat._heater_controller, "heater_on", False)
+        cooler_on = getattr(thermostat._heater_controller, "cooler_on", False)
 
     # Get preheat state
     preheat_active = False
-    if hasattr(thermostat, '_night_setback_controller') and thermostat._night_setback_controller:
+    if hasattr(thermostat, "_night_setback_controller") and thermostat._night_setback_controller:
         # Check if preheat is currently active
         try:
-            if hasattr(thermostat._night_setback_controller, 'calculator'):
+            if hasattr(thermostat._night_setback_controller, "calculator"):
                 # Get preheat info - this requires current conditions
                 # For now, just check if preheat learner exists
-                preheat_active = getattr(thermostat, '_preheat_active', False)
+                preheat_active = getattr(thermostat, "_preheat_active", False)
         except (TypeError, AttributeError):
             pass
 
     # Get cycle state
     cycle_state = None
-    if hasattr(thermostat, '_cycle_tracker') and thermostat._cycle_tracker:
+    if hasattr(thermostat, "_cycle_tracker") and thermostat._cycle_tracker:
         try:
             cycle_state = thermostat._cycle_tracker.get_state_name()
         except (TypeError, AttributeError):
@@ -717,6 +709,7 @@ def _build_status_attribute(thermostat: SmartThermostat) -> dict[str, Any]:
             resume_in_seconds = thermostat._humidity_detector.get_time_until_resume()
             if resume_in_seconds and resume_in_seconds > 0:
                 from datetime import timedelta
+
                 resume_time = dt_util.utcnow() + timedelta(seconds=resume_in_seconds)
                 humidity_resume_at = resume_time.isoformat()
 
@@ -750,6 +743,7 @@ def _build_status_attribute(thermostat: SmartThermostat) -> dict[str, Any]:
                     # Convert "HH:MM" to ISO8601
                     if setback_end_time:
                         from ..managers.status_manager import convert_setback_end
+
                         night_setback_ends_at = convert_setback_end(setback_end_time)
                     # Check if limited by learning gate
                     suppressed_reason = info.get("suppressed_reason")
@@ -766,7 +760,7 @@ def _build_status_attribute(thermostat: SmartThermostat) -> dict[str, Any]:
             learning_grace_active = thermostat._night_setback_controller.in_learning_grace_period
             if learning_grace_active:
                 # Get grace period end time if available
-                grace_end = getattr(thermostat._night_setback_controller, '_learning_grace_end', None)
+                grace_end = getattr(thermostat._night_setback_controller, "_learning_grace_end", None)
                 if grace_end:
                     learning_grace_until = grace_end.isoformat()
         except (TypeError, AttributeError):

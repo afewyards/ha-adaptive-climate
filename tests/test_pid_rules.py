@@ -152,13 +152,15 @@ class TestUndershootRuleAggressive:
 
         # Add 6 cycles with significant undershoot (0.6°C)
         for _ in range(6):
-            learner.add_cycle_metrics(CycleMetrics(
-                overshoot=0.0,
-                undershoot=0.6,  # Significant undershoot
-                oscillations=0.0,
-                rise_time=50.0,
-                settling_time=60.0,
-            ))
+            learner.add_cycle_metrics(
+                CycleMetrics(
+                    overshoot=0.0,
+                    undershoot=0.6,  # Significant undershoot
+                    oscillations=0.0,
+                    rise_time=50.0,
+                    settling_time=60.0,
+                )
+            )
 
         # Starting Ki = 2.0
         result = learner.calculate_pid_adjustment(100.0, 2.0, 10.0)
@@ -186,13 +188,15 @@ class TestUndershootRuleAggressive:
 
         # Add cycles with extreme undershoot
         for _ in range(6):
-            learner.add_cycle_metrics(CycleMetrics(
-                overshoot=0.0,
-                undershoot=2.0,  # Extreme undershoot
-                oscillations=0.0,
-                rise_time=50.0,
-                settling_time=60.0,
-            ))
+            learner.add_cycle_metrics(
+                CycleMetrics(
+                    overshoot=0.0,
+                    undershoot=2.0,  # Extreme undershoot
+                    oscillations=0.0,
+                    rise_time=50.0,
+                    settling_time=60.0,
+                )
+            )
 
         # Start with Ki already near maximum
         ki_near_max = PID_LIMITS["ki_max"] - 50.0
@@ -337,13 +341,15 @@ class TestOvershootRuleKdIncrease:
 
         # Add 6 cycles with moderate overshoot (0.5°C)
         for _ in range(6):
-            learner.add_cycle_metrics(CycleMetrics(
-                overshoot=0.5,  # Moderate overshoot
-                undershoot=0.0,
-                oscillations=0.0,
-                rise_time=40.0,
-                settling_time=50.0,
-            ))
+            learner.add_cycle_metrics(
+                CycleMetrics(
+                    overshoot=0.5,  # Moderate overshoot
+                    undershoot=0.0,
+                    oscillations=0.0,
+                    rise_time=40.0,
+                    settling_time=50.0,
+                )
+            )
 
         # Starting PID: Kp=100, Ki=2.0, Kd=2.0 (valid within PID_LIMITS kd_max=5.0)
         result = learner.calculate_pid_adjustment(100.0, 2.0, 2.0)
@@ -828,14 +834,14 @@ class TestInterCycleDriftRule:
         """Test INTER_CYCLE_DRIFT rule respects custom threshold from heating type."""
         # Use a custom threshold (e.g., floor hydronic has -0.3°C threshold)
         custom_thresholds = {
-            'moderate_overshoot': 0.3,
-            'high_overshoot': 1.5,
-            'slow_response': 120,
-            'slow_settling': 90,
-            'undershoot': 0.3,
-            'many_oscillations': 3,
-            'some_oscillations': 1,
-            'inter_cycle_drift_max': 0.25,  # Custom threshold
+            "moderate_overshoot": 0.3,
+            "high_overshoot": 1.5,
+            "slow_response": 120,
+            "slow_settling": 90,
+            "undershoot": 0.3,
+            "many_oscillations": 3,
+            "some_oscillations": 1,
+            "inter_cycle_drift_max": 0.25,  # Custom threshold
         }
 
         # Drift of -0.28°C exceeds threshold of -0.25°C

@@ -1,4 +1,5 @@
 """Tests for state attribute building."""
+
 import sys
 import pytest
 from datetime import datetime, timedelta
@@ -6,14 +7,19 @@ from unittest.mock import MagicMock, Mock, patch
 from abc import ABC
 from enum import IntFlag
 
+
 # ClimateEntity must use ABC to be compatible with RestoreEntity's ABCMeta
 class MockClimateEntity(ABC):
     """Mock ClimateEntity base class."""
+
     pass
+
 
 class MockClimateEntityFeature(IntFlag):
     """Mock ClimateEntityFeature enum."""
+
     TARGET_TEMPERATURE = 1
+
 
 # Mock homeassistant.components.climate for HVACMode
 mock_ha_climate = MagicMock()
@@ -24,8 +30,8 @@ mock_hvac_mode.COOL = "cool"
 mock_ha_climate.HVACMode = mock_hvac_mode
 mock_ha_climate.ClimateEntity = MockClimateEntity
 mock_ha_climate.ClimateEntityFeature = MockClimateEntityFeature
-sys.modules['homeassistant.components'] = MagicMock()
-sys.modules['homeassistant.components.climate'] = mock_ha_climate
+sys.modules["homeassistant.components"] = MagicMock()
+sys.modules["homeassistant.components.climate"] = mock_ha_climate
 
 from custom_components.adaptive_climate.managers.state_attributes import (
     _compute_learning_status,
@@ -730,6 +736,7 @@ class TestPerModeConvergenceConfidence:
 
         # Setup coordinator with adaptive learner
         adaptive_learner = MagicMock()
+
         # Return different values for different modes
         def get_confidence_by_mode(mode):
             if mode == HVACMode.HEAT:
@@ -1219,7 +1226,7 @@ class TestStatusAttribute:
 
         status_attr = _build_status_attribute(thermostat)
 
-        assert status_attr ["activity"] == "idle"
+        assert status_attr["activity"] == "idle"
         assert len(status_attr["overrides"]) == 1
         assert status_attr["overrides"][0]["type"] == "humidity"
 
@@ -1537,7 +1544,7 @@ class TestStatusAttributeIntegration:
 
         # Mock dt_util.now() to return a real datetime
         mock_now = datetime(2024, 1, 15, 6, 30, 0)
-        with patch('custom_components.adaptive_climate.managers.status_manager.dt_util.now', return_value=mock_now):
+        with patch("custom_components.adaptive_climate.managers.status_manager.dt_util.now", return_value=mock_now):
             thermostat = MagicMock()
             # Setup thermostat in night setback
             thermostat._away_temp = 18.0
@@ -1568,8 +1575,8 @@ class TestStatusAttributeIntegration:
             night_setback_controller = MagicMock()
             night_setback_controller.calculate_night_setback_adjustment.return_value = (
                 -3.0,  # adjustment
-                True,   # in_night_period
-                {"night_setback_delta": 3.0, "night_setback_end": "07:00"}
+                True,  # in_night_period
+                {"night_setback_delta": 3.0, "night_setback_end": "07:00"},
             )
             night_setback_controller.in_learning_grace_period = False
             thermostat._night_setback_controller = night_setback_controller
@@ -1601,7 +1608,7 @@ class TestStatusAttributeIntegration:
 
         # Mock dt_util.now() to return a real datetime
         mock_now = datetime(2024, 1, 15, 6, 30, 0)
-        with patch('custom_components.adaptive_climate.managers.status_manager.dt_util.now', return_value=mock_now):
+        with patch("custom_components.adaptive_climate.managers.status_manager.dt_util.now", return_value=mock_now):
             thermostat = MagicMock()
             # Setup thermostat with multiple conditions
             thermostat._away_temp = 18.0
@@ -1633,7 +1640,7 @@ class TestStatusAttributeIntegration:
             night_setback_controller.calculate_night_setback_adjustment.return_value = (
                 -3.0,
                 True,
-                {"night_setback_delta": 3.0, "night_setback_end": "07:00"}
+                {"night_setback_delta": 3.0, "night_setback_end": "07:00"},
             )
             night_setback_controller.in_learning_grace_period = True
             thermostat._night_setback_controller = night_setback_controller
@@ -1662,7 +1669,7 @@ class TestStatusAttributeIntegration:
 
         # Mock dt_util.now() to return a real datetime
         mock_now = datetime(2024, 1, 15, 6, 30, 0)
-        with patch('custom_components.adaptive_climate.managers.status_manager.dt_util.now', return_value=mock_now):
+        with patch("custom_components.adaptive_climate.managers.status_manager.dt_util.now", return_value=mock_now):
             thermostat = MagicMock()
             # Setup thermostat in preheat mode
             thermostat._away_temp = 18.0
@@ -1697,7 +1704,7 @@ class TestStatusAttributeIntegration:
             night_setback_controller.calculate_night_setback_adjustment.return_value = (
                 -2.0,  # Still in setback but preheating
                 True,
-                {"night_setback_delta": 2.0, "night_setback_end": "07:00"}
+                {"night_setback_delta": 2.0, "night_setback_end": "07:00"},
             )
             night_setback_controller.in_learning_grace_period = False
             thermostat._night_setback_controller = night_setback_controller
@@ -1872,6 +1879,7 @@ class TestStatusAttributeIntegration:
         assert "T" in resume_at
         # Verify it's a valid timestamp format (YYYY-MM-DDTHH:MM:SS)
         from datetime import datetime
+
         try:
             # Try parsing as ISO8601
             datetime.fromisoformat(resume_at)
@@ -2040,7 +2048,7 @@ def test_build_state_attributes_new_structure():
     thermostat.hass.data = {"adaptive_climate": {"debug": False}}
 
     # Mock _build_status_attribute since Task 10 is not done yet
-    with patch('custom_components.adaptive_climate.managers.state_attributes._build_status_attribute') as mock_status:
+    with patch("custom_components.adaptive_climate.managers.state_attributes._build_status_attribute") as mock_status:
         mock_status.return_value = {
             "activity": "heating",
             "overrides": [],

@@ -155,9 +155,7 @@ class TestLearningStatusStates:
         heating_type = HeatingType.CONVECTOR
 
         # Even with high confidence, insufficient cycles = collecting
-        status = _compute_learning_status(
-            MIN_CYCLES_FOR_LEARNING - 1, 0.95, heating_type, is_paused=False
-        )
+        status = _compute_learning_status(MIN_CYCLES_FOR_LEARNING - 1, 0.95, heating_type, is_paused=False)
         assert status == "collecting"
 
     def test_collecting_low_confidence(self):

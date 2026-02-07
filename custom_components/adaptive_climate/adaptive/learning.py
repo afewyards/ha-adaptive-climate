@@ -173,6 +173,7 @@ class AdaptiveLearner:
         # Undershoot detector for persistent temperature deficit detection (unified real-time + cycle)
         # Convert string to HeatingType enum if needed (default to RADIATOR if None)
         from ..const import HeatingType as HeatingTypeEnum
+
         if heating_type is None:
             undershoot_heating_type = HeatingTypeEnum.RADIATOR
         elif isinstance(heating_type, str):
@@ -446,13 +447,13 @@ class AdaptiveLearner:
             True if converged, False otherwise
         """
         is_converged = (
-            avg_overshoot <= self._convergence_thresholds["overshoot_max"] and
-            avg_oscillations <= self._convergence_thresholds["oscillations_max"] and
-            avg_settling_time <= self._convergence_thresholds["settling_time_max"] and
-            avg_rise_time <= self._convergence_thresholds["rise_time_max"] and
-            abs(avg_inter_cycle_drift) <= self._convergence_thresholds.get("inter_cycle_drift_max", 0.3) and
-            avg_settling_mae <= self._convergence_thresholds.get("settling_mae_max", 0.3) and
-            avg_undershoot <= self._convergence_thresholds.get("undershoot_max", 0.2)
+            avg_overshoot <= self._convergence_thresholds["overshoot_max"]
+            and avg_oscillations <= self._convergence_thresholds["oscillations_max"]
+            and avg_settling_time <= self._convergence_thresholds["settling_time_max"]
+            and avg_rise_time <= self._convergence_thresholds["rise_time_max"]
+            and abs(avg_inter_cycle_drift) <= self._convergence_thresholds.get("inter_cycle_drift_max", 0.3)
+            and avg_settling_mae <= self._convergence_thresholds.get("settling_mae_max", 0.3)
+            and avg_undershoot <= self._convergence_thresholds.get("undershoot_max", 0.2)
         )
 
         if is_converged:
@@ -576,8 +577,14 @@ class AdaptiveLearner:
         if mode is None:
             mode = get_hvac_heat_mode()
         cycle_history = self._cooling_cycle_history if mode == get_hvac_cool_mode() else self._heating_cycle_history
-        auto_apply_count = self._cooling_auto_apply_count if mode == get_hvac_cool_mode() else self._heating_auto_apply_count
-        convergence_confidence = self._cooling_convergence_confidence if mode == get_hvac_cool_mode() else self._heating_convergence_confidence
+        auto_apply_count = (
+            self._cooling_auto_apply_count if mode == get_hvac_cool_mode() else self._heating_auto_apply_count
+        )
+        convergence_confidence = (
+            self._cooling_convergence_confidence
+            if mode == get_hvac_cool_mode()
+            else self._heating_convergence_confidence
+        )
 
         # Auto-apply safety gates (when called for automatic PID application)
         if check_auto_apply:
@@ -615,7 +622,7 @@ class AdaptiveLearner:
 
         # Calculate average metrics from recent cycles
         # Filter out disturbed cycles for more accurate learning
-        recent_cycles = cycle_history[-min_cycles * 2:]  # Get more cycles to account for filtering
+        recent_cycles = cycle_history[-min_cycles * 2 :]  # Get more cycles to account for filtering
         undisturbed_cycles = [c for c in recent_cycles if not c.is_disturbed]
 
         # If too many cycles were filtered out, we don't have enough data
@@ -635,9 +642,7 @@ class AdaptiveLearner:
 
         # Apply clamped overshoot multiplier to cycles that were clamped
         # Clamping hides true overshoot potential, so we amplify to compensate
-        clamped_multiplier = CLAMPED_OVERSHOOT_MULTIPLIER.get(
-            self._heating_type, DEFAULT_CLAMPED_OVERSHOOT_MULTIPLIER
-        )
+        clamped_multiplier = CLAMPED_OVERSHOOT_MULTIPLIER.get(self._heating_type, DEFAULT_CLAMPED_OVERSHOOT_MULTIPLIER)
         clamped_cycle_count = 0
         split_overshoot_count = 0
         overshoot_values = []
@@ -645,7 +650,7 @@ class AdaptiveLearner:
             # Prefer controllable_overshoot when available (excludes committed heat)
             # This ensures learning only penalizes controllable overshoot, not unavoidable
             # overshoot from in-flight heat (valve actuation time)
-            overshoot_value = getattr(c, 'controllable_overshoot', None)
+            overshoot_value = getattr(c, "controllable_overshoot", None)
             if overshoot_value is not None:
                 split_overshoot_count += 1
             else:
@@ -653,7 +658,7 @@ class AdaptiveLearner:
                 overshoot_value = c.overshoot
 
             if overshoot_value is not None:
-                if getattr(c, 'was_clamped', False):
+                if getattr(c, "was_clamped", False):
                     overshoot_values.append(overshoot_value * clamped_multiplier)
                     clamped_cycle_count += 1
                 else:
@@ -709,9 +714,7 @@ class AdaptiveLearner:
         if rise_time_values:
             avg_rise_time, rise_outliers = robust_average(rise_time_values)
             if rise_outliers:
-                _LOGGER.debug(
-                    f"Removed {len(rise_outliers)} rise_time outliers from {len(rise_time_values)} cycles"
-                )
+                _LOGGER.debug(f"Removed {len(rise_outliers)} rise_time outliers from {len(rise_time_values)} cycles")
         else:
             avg_rise_time = 0.0
 
@@ -719,12 +722,8 @@ class AdaptiveLearner:
         outdoor_temp_values = [c.outdoor_temp_avg for c in recent_cycles if c.outdoor_temp_avg is not None]
 
         # Extract decay metrics for rule evaluation
-        decay_contribution_values = [
-            c.decay_contribution for c in recent_cycles if c.decay_contribution is not None
-        ]
-        avg_decay_contribution = (
-            statistics.mean(decay_contribution_values) if decay_contribution_values else None
-        )
+        decay_contribution_values = [c.decay_contribution for c in recent_cycles if c.decay_contribution is not None]
+        avg_decay_contribution = statistics.mean(decay_contribution_values) if decay_contribution_values else None
 
         integral_at_tolerance_values = [
             c.integral_at_tolerance_entry for c in recent_cycles if c.integral_at_tolerance_entry is not None
@@ -734,17 +733,11 @@ class AdaptiveLearner:
         )
 
         # Extract inter_cycle_drift values from recent cycles
-        drift_values = [
-            c.inter_cycle_drift for c in recent_cycles
-            if c.inter_cycle_drift is not None
-        ]
+        drift_values = [c.inter_cycle_drift for c in recent_cycles if c.inter_cycle_drift is not None]
         avg_inter_cycle_drift = sum(drift_values) / len(drift_values) if drift_values else 0.0
 
         # Extract settling_mae values
-        settling_mae_values = [
-            c.settling_mae for c in recent_cycles
-            if c.settling_mae is not None
-        ]
+        settling_mae_values = [c.settling_mae for c in recent_cycles if c.settling_mae is not None]
         avg_settling_mae = sum(settling_mae_values) / len(settling_mae_values) if settling_mae_values else 0.0
 
         # Log averaged metrics used for learning decisions
@@ -765,7 +758,10 @@ class AdaptiveLearner:
 
         # Check for convergence - skip adjustments if system is tuned
         if self._check_convergence(
-            avg_overshoot, avg_oscillations, avg_settling_time, avg_rise_time,
+            avg_overshoot,
+            avg_oscillations,
+            avg_settling_time,
+            avg_rise_time,
             avg_inter_cycle_drift=avg_inter_cycle_drift,
             avg_settling_mae=avg_settling_mae,
             avg_undershoot=avg_undershoot,
@@ -775,8 +771,11 @@ class AdaptiveLearner:
 
         # Evaluate all applicable rules with hysteresis tracking
         rule_results = evaluate_pid_rules(
-            avg_overshoot, avg_undershoot, avg_oscillations,
-            avg_rise_time, avg_settling_time,
+            avg_overshoot,
+            avg_undershoot,
+            avg_oscillations,
+            avg_rise_time,
+            avg_settling_time,
             recent_rise_times=rise_time_values,
             recent_outdoor_temps=outdoor_temp_values,
             state_tracker=self._rule_state_tracker,
@@ -794,6 +793,7 @@ class AdaptiveLearner:
         # PWM cycling is expected behavior and should not trigger oscillation rules
         if pwm_seconds > 0:
             from ..const import RULE_PRIORITY_OSCILLATION
+
             original_count = len(rule_results)
             rule_results = [r for r in rule_results if r.rule.priority != RULE_PRIORITY_OSCILLATION]
             if len(rule_results) < original_count:
@@ -834,20 +834,11 @@ class AdaptiveLearner:
             scaled_kd_factor = 1.0 + (result.kd_factor - 1.0) * learning_rate
 
             if result.kp_factor != 1.0:
-                _LOGGER.info(
-                    f"{result.reason}: Kp *= {result.kp_factor:.2f} "
-                    f"(scaled: {scaled_kp_factor:.2f})"
-                )
+                _LOGGER.info(f"{result.reason}: Kp *= {result.kp_factor:.2f} (scaled: {scaled_kp_factor:.2f})")
             if result.ki_factor != 1.0:
-                _LOGGER.info(
-                    f"{result.reason}: Ki *= {result.ki_factor:.2f} "
-                    f"(scaled: {scaled_ki_factor:.2f})"
-                )
+                _LOGGER.info(f"{result.reason}: Ki *= {result.ki_factor:.2f} (scaled: {scaled_ki_factor:.2f})")
             if result.kd_factor != 1.0:
-                _LOGGER.info(
-                    f"{result.reason}: Kd *= {result.kd_factor:.2f} "
-                    f"(scaled: {scaled_kd_factor:.2f})"
-                )
+                _LOGGER.info(f"{result.reason}: Kd *= {result.kd_factor:.2f} (scaled: {scaled_kd_factor:.2f})")
 
             new_kp *= scaled_kp_factor
             new_ki *= scaled_ki_factor
@@ -899,6 +890,7 @@ class AdaptiveLearner:
 
         # Reset contribution tracker (no reset method - create fresh instance)
         from ..const import HeatingType as HeatingTypeEnum
+
         if self._heating_type is None:
             heating_type_enum = HeatingTypeEnum.RADIATOR
         elif isinstance(self._heating_type, str):
@@ -906,10 +898,12 @@ class AdaptiveLearner:
         else:
             heating_type_enum = self._heating_type
         from .confidence_contribution import ConfidenceContributionTracker
+
         self._contribution_tracker = ConfidenceContributionTracker(heating_type_enum)
 
         # Reset heating rate learner (no reset method - create fresh instance)
         from .heating_rate_learner import HeatingRateLearner
+
         self._heating_rate_learner = HeatingRateLearner(self._heating_type or "radiator")
 
     def get_previous_pid(self) -> Dict[str, float] | None:
@@ -980,11 +974,11 @@ class AdaptiveLearner:
         rise_time = metrics.rise_time if metrics.rise_time is not None else 0.0
 
         is_cycle_converged = (
-            overshoot <= self._convergence_thresholds["overshoot_max"] and
-            undershoot <= self._convergence_thresholds.get("undershoot_max", 0.2) and
-            oscillations <= self._convergence_thresholds["oscillations_max"] and
-            settling_time <= self._convergence_thresholds["settling_time_max"] and
-            rise_time <= self._convergence_thresholds["rise_time_max"]
+            overshoot <= self._convergence_thresholds["overshoot_max"]
+            and undershoot <= self._convergence_thresholds.get("undershoot_max", 0.2)
+            and oscillations <= self._convergence_thresholds["oscillations_max"]
+            and settling_time <= self._convergence_thresholds["settling_time_max"]
+            and rise_time <= self._convergence_thresholds["rise_time_max"]
         )
 
         if is_cycle_converged:
@@ -995,8 +989,7 @@ class AdaptiveLearner:
             )
 
             # Check if we've reached the threshold for Ke learning
-            if (self._consecutive_converged_cycles >= MIN_CONVERGENCE_CYCLES_FOR_KE and
-                    not self._pid_converged_for_ke):
+            if self._consecutive_converged_cycles >= MIN_CONVERGENCE_CYCLES_FOR_KE and not self._pid_converged_for_ke:
                 self._pid_converged_for_ke = True
                 _LOGGER.info(
                     "PID converged for Ke learning after %d consecutive cycles",
@@ -1006,8 +999,7 @@ class AdaptiveLearner:
             # Reset consecutive counter on non-converged cycle
             if self._consecutive_converged_cycles > 0:
                 _LOGGER.debug(
-                    "Convergence tracking: cycle not converged, resetting "
-                    "counter (was %d)",
+                    "Convergence tracking: cycle not converged, resetting counter (was %d)",
                     self._consecutive_converged_cycles,
                 )
             self._consecutive_converged_cycles = 0
@@ -1047,7 +1039,6 @@ class AdaptiveLearner:
                 old_converged,
                 old_count,
             )
-
 
     def get_convergence_confidence(self, mode: "HVACMode" = None) -> float:
         """Get current convergence confidence level for specified mode.
@@ -1095,26 +1086,31 @@ class AdaptiveLearner:
         # Use simplified stability check for determining recovery threshold
         tier1_base = 0.4
         is_stable = current_confidence >= (tier1_base * 0.8)  # Floor scaling approximation
-        is_recovery = (
-            metrics.starting_delta is not None and
-            self._weight_calculator.is_recovery_cycle(metrics.starting_delta, is_stable)
+        is_recovery = metrics.starting_delta is not None and self._weight_calculator.is_recovery_cycle(
+            metrics.starting_delta, is_stable
         )
 
         # Check if this cycle meets convergence criteria
         # For recovery cycles: require rise_time to be measured (cycle must reach target)
         # For maintenance cycles: rise_time=None is acceptable (already at target)
         rise_time_ok = (
-            metrics.rise_time is not None and metrics.rise_time <= self._convergence_thresholds["rise_time_max"]
-        ) if is_recovery else (
-            metrics.rise_time is None or metrics.rise_time <= self._convergence_thresholds["rise_time_max"]
+            (metrics.rise_time is not None and metrics.rise_time <= self._convergence_thresholds["rise_time_max"])
+            if is_recovery
+            else (metrics.rise_time is None or metrics.rise_time <= self._convergence_thresholds["rise_time_max"])
         )
 
         is_good_cycle = (
-            (metrics.overshoot is None or metrics.overshoot <= self._convergence_thresholds["overshoot_max"]) and
-            (metrics.undershoot is None or metrics.undershoot <= self._convergence_thresholds.get("undershoot_max", 0.2)) and
-            metrics.oscillations <= self._convergence_thresholds["oscillations_max"] and
-            (metrics.settling_time is None or metrics.settling_time <= self._convergence_thresholds["settling_time_max"]) and
-            rise_time_ok
+            (metrics.overshoot is None or metrics.overshoot <= self._convergence_thresholds["overshoot_max"])
+            and (
+                metrics.undershoot is None
+                or metrics.undershoot <= self._convergence_thresholds.get("undershoot_max", 0.2)
+            )
+            and metrics.oscillations <= self._convergence_thresholds["oscillations_max"]
+            and (
+                metrics.settling_time is None
+                or metrics.settling_time <= self._convergence_thresholds["settling_time_max"]
+            )
+            and rise_time_ok
         )
 
         # Determine cycle outcome from metrics
@@ -1122,7 +1118,9 @@ class AdaptiveLearner:
             outcome = CycleOutcome.CLEAN
         elif metrics.overshoot is not None and metrics.overshoot > self._convergence_thresholds["overshoot_max"]:
             outcome = CycleOutcome.OVERSHOOT
-        elif metrics.undershoot is not None and metrics.undershoot > self._convergence_thresholds.get("undershoot_max", 0.2):
+        elif metrics.undershoot is not None and metrics.undershoot > self._convergence_thresholds.get(
+            "undershoot_max", 0.2
+        ):
             outcome = CycleOutcome.UNDERSHOOT
         elif is_recovery and metrics.rise_time is None:
             # Recovery cycle that failed to reach target
@@ -1165,16 +1163,12 @@ class AdaptiveLearner:
                 # Determine if system is stable for threshold selection
                 tier1_base = 0.4
                 is_stable = current_confidence >= (tier1_base * 0.8)
-                is_recovery = self._weight_calculator.is_recovery_cycle(
-                    metrics.starting_delta, is_stable
-                )
+                is_recovery = self._weight_calculator.is_recovery_cycle(metrics.starting_delta, is_stable)
                 is_maintenance = not is_recovery
 
             if is_maintenance:
                 # Maintenance cycles: route through cap with diminishing returns
-                actual_gain = self._contribution_tracker.apply_maintenance_gain(
-                    weighted_gain, mode
-                )
+                actual_gain = self._contribution_tracker.apply_maintenance_gain(weighted_gain, mode)
             else:
                 # Recovery cycles or unknown (no starting_delta): add gain directly
                 actual_gain = weighted_gain
@@ -1183,10 +1177,7 @@ class AdaptiveLearner:
             if metrics.rise_time is not None:
                 self._contribution_tracker.apply_heating_rate_gain(actual_gain)
 
-            current_confidence = min(
-                CONVERGENCE_CONFIDENCE_HIGH,
-                current_confidence + actual_gain
-            )
+            current_confidence = min(CONVERGENCE_CONFIDENCE_HIGH, current_confidence + actual_gain)
             _LOGGER.debug(
                 f"Convergence confidence ({mode_to_str(mode)} mode) increased to {current_confidence:.2f} "
                 f"(good cycle with weight {weight:.2f}, actual_gain={actual_gain:.3f}, "
@@ -1198,10 +1189,7 @@ class AdaptiveLearner:
             )
         else:
             # Poor cycle - reduce confidence slightly (no weighting on penalties)
-            current_confidence = max(
-                0.0,
-                current_confidence - CONFIDENCE_INCREASE_PER_GOOD_CYCLE * 0.5
-            )
+            current_confidence = max(0.0, current_confidence - CONFIDENCE_INCREASE_PER_GOOD_CYCLE * 0.5)
             _LOGGER.debug(
                 f"Convergence confidence ({mode_to_str(mode)} mode) decreased to {current_confidence:.2f} "
                 f"(poor cycle detected, outcome={outcome.value})"
@@ -1272,9 +1260,7 @@ class AdaptiveLearner:
         """
         return self._confidence.get_learning_rate_multiplier(confidence)
 
-    def get_heating_rate(
-        self, delta: float, outdoor_temp: float
-    ) -> tuple[float, str]:
+    def get_heating_rate(self, delta: float, outdoor_temp: float) -> tuple[float, str]:
         """Get learned heating rate for given conditions.
 
         Delegates to HeatingRateLearner.
@@ -1349,10 +1335,12 @@ class AdaptiveLearner:
         """
         # PID history is now managed by PIDGainsManager, pass empty list
         return self._validation.check_auto_apply_limits(
-            current_kp, current_ki, current_kd,
+            current_kp,
+            current_ki,
+            current_kd,
             self._heating_auto_apply_count,
             self._cooling_auto_apply_count,
-            []  # Empty list - history is now managed by PIDGainsManager
+            [],  # Empty list - history is now managed by PIDGainsManager
         )
 
     def record_seasonal_shift(self) -> None:
@@ -1415,12 +1403,8 @@ class AdaptiveLearner:
         last_boost_utc = None
         if pid_history:
             # Check both old reason names for backward compatibility
-            undershoot_utc = _get_last_adjustment_time_from_history(
-                pid_history, "undershoot_ki_boost"
-            )
-            chronic_utc = _get_last_adjustment_time_from_history(
-                pid_history, "chronic_approach_ki_boost"
-            )
+            undershoot_utc = _get_last_adjustment_time_from_history(pid_history, "undershoot_ki_boost")
+            chronic_utc = _get_last_adjustment_time_from_history(pid_history, "chronic_approach_ki_boost")
             # Use the most recent adjustment
             if undershoot_utc and chronic_utc:
                 last_boost_utc = max(undershoot_utc, chronic_utc)
@@ -1548,7 +1532,6 @@ class AdaptiveLearner:
         """
         return self._contribution_tracker.can_reach_tier(tier, mode)
 
-
     def to_dict(self) -> Dict[str, Any]:
         """Serialize AdaptiveLearner state to a dictionary in v9 format with backward compatibility.
 
@@ -1635,15 +1618,15 @@ class AdaptiveLearner:
 
         # Restore contribution tracker state (serialization module handles v8->v9 migration)
         from .confidence_contribution import ConfidenceContributionTracker
+
         contribution_state = restored.get("contribution_tracker_state", {})
         if contribution_state:
             # Use from_dict to restore state
-            self._contribution_tracker = ConfidenceContributionTracker.from_dict(
-                contribution_state, self._heating_type
-            )
+            self._contribution_tracker = ConfidenceContributionTracker.from_dict(contribution_state, self._heating_type)
 
         # Restore heating rate learner state (serialization module handles v9->v10 migration)
         from .heating_rate_learner import HeatingRateLearner
+
         heating_rate_learner_state = restored.get("heating_rate_learner_state", {})
         if heating_rate_learner_state:
             # Use from_dict to restore state
@@ -1669,8 +1652,7 @@ class AdaptiveLearner:
             return
 
         _LOGGER.info(
-            "Performing historic scan of %d cycles for chronic approach patterns",
-            len(self._heating_cycle_history)
+            "Performing historic scan of %d cycles for chronic approach patterns", len(self._heating_cycle_history)
         )
 
         # Feed all cycles to unified detector in order
@@ -1689,11 +1671,11 @@ class AdaptiveLearner:
         if self._undershoot_detector.should_adjust_ki(cycles_completed):
             _LOGGER.warning(
                 "Historic scan detected chronic approach pattern: %d consecutive failures",
-                self._undershoot_detector._consecutive_failures
+                self._undershoot_detector._consecutive_failures,
             )
             _LOGGER.info(
                 "Chronic approach Ki adjustment will be recommended: %.3fx multiplier",
-                self._undershoot_detector.get_adjustment()
+                self._undershoot_detector.get_adjustment(),
             )
         else:
             _LOGGER.debug("No chronic approach pattern detected in historic scan")

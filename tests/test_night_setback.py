@@ -1,11 +1,9 @@
 """Tests for night setback module."""
+
 import pytest
 from datetime import datetime, time, timedelta
 from unittest.mock import Mock
-from custom_components.adaptive_climate.adaptive.night_setback import (
-    NightSetback,
-    NightSetbackManager
-)
+from custom_components.adaptive_climate.adaptive.night_setback import NightSetback, NightSetbackManager
 from custom_components.adaptive_climate.adaptive.thermal_rates import ThermalRateLearner
 
 
@@ -14,11 +12,7 @@ class TestNightSetback:
 
     def test_night_period_detection_basic(self):
         """Test basic night period detection with fixed times."""
-        setback = NightSetback(
-            start_time="22:00",
-            end_time="06:00",
-            setback_delta=2.0
-        )
+        setback = NightSetback(start_time="22:00", end_time="06:00", setback_delta=2.0)
 
         # During night (23:00)
         current = datetime(2024, 1, 15, 23, 0)
@@ -42,11 +36,7 @@ class TestNightSetback:
 
     def test_setpoint_lowering_during_night(self):
         """Test setpoint is lowered by delta during night period."""
-        setback = NightSetback(
-            start_time="22:00",
-            end_time="06:00",
-            setback_delta=2.5
-        )
+        setback = NightSetback(start_time="22:00", end_time="06:00", setback_delta=2.5)
 
         base_setpoint = 20.0
 
@@ -62,11 +52,7 @@ class TestNightSetback:
 
     def test_sunset_as_start_time(self):
         """Test using sunset as start time."""
-        setback = NightSetback(
-            start_time="sunset",
-            end_time="06:00",
-            setback_delta=2.0
-        )
+        setback = NightSetback(start_time="sunset", end_time="06:00", setback_delta=2.0)
 
         # Sunset at 18:30
         sunset = datetime(2024, 1, 15, 18, 30)
@@ -86,11 +72,7 @@ class TestNightSetback:
     def test_sunset_with_offset(self):
         """Test sunset with positive and negative offsets."""
         # Sunset + 30 minutes
-        setback = NightSetback(
-            start_time="sunset+30",
-            end_time="06:00",
-            setback_delta=2.0
-        )
+        setback = NightSetback(start_time="sunset+30", end_time="06:00", setback_delta=2.0)
 
         sunset = datetime(2024, 1, 15, 18, 30)
 
@@ -103,11 +85,7 @@ class TestNightSetback:
         assert setback.is_night_period(current, sunset) is True
 
         # Sunset - 15 minutes
-        setback = NightSetback(
-            start_time="sunset-15",
-            end_time="06:00",
-            setback_delta=2.0
-        )
+        setback = NightSetback(start_time="sunset-15", end_time="06:00", setback_delta=2.0)
 
         # 18:20 (10 minutes before sunset, but after sunset-15)
         current = datetime(2024, 1, 15, 18, 20)
@@ -115,12 +93,7 @@ class TestNightSetback:
 
     def test_recovery_deadline_override(self):
         """Test recovery deadline forces setpoint restoration."""
-        setback = NightSetback(
-            start_time="22:00",
-            end_time="06:00",
-            setback_delta=2.0,
-            recovery_deadline="06:00"
-        )
+        setback = NightSetback(start_time="22:00", end_time="06:00", setback_delta=2.0, recovery_deadline="06:00")
 
         base_setpoint = 20.0
 
@@ -138,11 +111,7 @@ class TestNightSetback:
 
     def test_force_recovery_parameter(self):
         """Test force_recovery parameter overrides night setback."""
-        setback = NightSetback(
-            start_time="22:00",
-            end_time="06:00",
-            setback_delta=2.0
-        )
+        setback = NightSetback(start_time="22:00", end_time="06:00", setback_delta=2.0)
 
         base_setpoint = 20.0
         current = datetime(2024, 1, 15, 23, 0)  # During night
@@ -157,12 +126,7 @@ class TestNightSetback:
 
     def test_should_start_recovery(self):
         """Test recovery start detection based on temperature deficit."""
-        setback = NightSetback(
-            start_time="22:00",
-            end_time="06:00",
-            setback_delta=2.0,
-            recovery_deadline="06:00"
-        )
+        setback = NightSetback(start_time="22:00", end_time="06:00", setback_delta=2.0, recovery_deadline="06:00")
 
         base_setpoint = 20.0
 
@@ -178,11 +142,7 @@ class TestNightSetback:
 
     def test_night_period_not_crossing_midnight(self):
         """Test night period that doesn't cross midnight."""
-        setback = NightSetback(
-            start_time="01:00",
-            end_time="06:00",
-            setback_delta=2.0
-        )
+        setback = NightSetback(start_time="01:00", end_time="06:00", setback_delta=2.0)
 
         # During night (03:00)
         current = datetime(2024, 1, 15, 3, 0)
@@ -205,11 +165,7 @@ class TestNightSetbackManager:
         manager = NightSetbackManager()
 
         manager.configure_zone(
-            zone_id="bedroom",
-            start_time="22:00",
-            end_time="06:00",
-            setback_delta=2.5,
-            recovery_deadline="06:00"
+            zone_id="bedroom", start_time="22:00", end_time="06:00", setback_delta=2.5, recovery_deadline="06:00"
         )
 
         config = manager.get_zone_config("bedroom")
@@ -224,12 +180,7 @@ class TestNightSetbackManager:
         """Test getting adjusted setpoint for configured zone."""
         manager = NightSetbackManager()
 
-        manager.configure_zone(
-            zone_id="bedroom",
-            start_time="22:00",
-            end_time="06:00",
-            setback_delta=2.0
-        )
+        manager.configure_zone(zone_id="bedroom", start_time="22:00", end_time="06:00", setback_delta=2.0)
 
         base_setpoint = 20.0
 
@@ -257,12 +208,7 @@ class TestNightSetbackManager:
         """Test checking if zone is in setback period."""
         manager = NightSetbackManager()
 
-        manager.configure_zone(
-            zone_id="bedroom",
-            start_time="22:00",
-            end_time="06:00",
-            setback_delta=2.0
-        )
+        manager.configure_zone(zone_id="bedroom", start_time="22:00", end_time="06:00", setback_delta=2.0)
 
         # During night
         current = datetime(2024, 1, 15, 23, 0)
@@ -280,20 +226,10 @@ class TestNightSetbackManager:
         manager = NightSetbackManager()
 
         # Bedroom: 22:00 - 06:00, 2.0°C setback
-        manager.configure_zone(
-            zone_id="bedroom",
-            start_time="22:00",
-            end_time="06:00",
-            setback_delta=2.0
-        )
+        manager.configure_zone(zone_id="bedroom", start_time="22:00", end_time="06:00", setback_delta=2.0)
 
         # Living room: sunset - 23:00, 1.5°C setback
-        manager.configure_zone(
-            zone_id="living_room",
-            start_time="sunset",
-            end_time="23:00",
-            setback_delta=1.5
-        )
+        manager.configure_zone(zone_id="living_room", start_time="sunset", end_time="23:00", setback_delta=1.5)
 
         base_setpoint = 20.0
         current = datetime(2024, 1, 15, 22, 30)
@@ -311,12 +247,7 @@ class TestNightSetbackManager:
         """Test sunset-based configuration in manager."""
         manager = NightSetbackManager()
 
-        manager.configure_zone(
-            zone_id="living_room",
-            start_time="sunset+30",
-            end_time="23:00",
-            setback_delta=1.5
-        )
+        manager.configure_zone(zone_id="living_room", start_time="sunset+30", end_time="23:00", setback_delta=1.5)
 
         config = manager.get_zone_config("living_room")
         assert config["use_sunset"] is True
@@ -341,7 +272,7 @@ class TestNightSetbackLearnedRate:
             setback_delta=3.0,
             recovery_deadline="07:00",
             thermal_rate_learner=learner,
-            heating_type="radiator"
+            heating_type="radiator",
         )
 
         # Current: 04:00, 3 hours until deadline
@@ -367,7 +298,7 @@ class TestNightSetbackLearnedRate:
             setback_delta=3.0,
             recovery_deadline="07:00",
             thermal_rate_learner=None,
-            heating_type="forced_air"
+            heating_type="forced_air",
         )
 
         # Current: 05:00, 2 hours until deadline
@@ -396,7 +327,7 @@ class TestNightSetbackLearnedRate:
             setback_delta=2.0,
             recovery_deadline="07:00",
             thermal_rate_learner=learner_with_data,
-            heating_type="floor_hydronic"
+            heating_type="floor_hydronic",
         )
 
         # Learned rate should be used (2.5°C/h), not floor_hydronic (0.5°C/h)
@@ -412,7 +343,7 @@ class TestNightSetbackLearnedRate:
             setback_delta=2.0,
             recovery_deadline="07:00",
             thermal_rate_learner=learner_no_data,
-            heating_type="convector"
+            heating_type="convector",
         )
 
         # Should use convector estimate (2.0°C/h)
@@ -426,7 +357,7 @@ class TestNightSetbackLearnedRate:
             setback_delta=2.0,
             recovery_deadline="07:00",
             thermal_rate_learner=None,
-            heating_type=None
+            heating_type=None,
         )
 
         # Should use default (1.0°C/h)
@@ -446,7 +377,7 @@ class TestNightSetbackLearnedRate:
             setback_delta=3.0,
             recovery_deadline="07:00",
             thermal_rate_learner=learner,
-            heating_type="floor_hydronic"
+            heating_type="floor_hydronic",
         )
 
         # Current: 02:00, 5 hours until deadline
@@ -476,7 +407,7 @@ class TestNightSetbackLearnedRate:
             setback_delta=2.0,
             recovery_deadline="07:00",
             thermal_rate_learner=learner,
-            heating_type="forced_air"
+            heating_type="forced_air",
         )
 
         # Current: 05:30, 1.5 hours until deadline
@@ -497,46 +428,31 @@ class TestNightSetbackLearnedRate:
         """Test cold-soak margins are correctly applied by heating type."""
         # Floor hydronic: 50% margin
         setback_floor = NightSetback(
-            start_time="22:00",
-            end_time="06:00",
-            setback_delta=2.0,
-            heating_type="floor_hydronic"
+            start_time="22:00", end_time="06:00", setback_delta=2.0, heating_type="floor_hydronic"
         )
         assert setback_floor._get_cold_soak_margin() == 1.5
 
         # Radiator: 30% margin
         setback_radiator = NightSetback(
-            start_time="22:00",
-            end_time="06:00",
-            setback_delta=2.0,
-            heating_type="radiator"
+            start_time="22:00", end_time="06:00", setback_delta=2.0, heating_type="radiator"
         )
         assert setback_radiator._get_cold_soak_margin() == 1.3
 
         # Convector: 20% margin
         setback_convector = NightSetback(
-            start_time="22:00",
-            end_time="06:00",
-            setback_delta=2.0,
-            heating_type="convector"
+            start_time="22:00", end_time="06:00", setback_delta=2.0, heating_type="convector"
         )
         assert setback_convector._get_cold_soak_margin() == 1.2
 
         # Forced air: 10% margin
         setback_forced = NightSetback(
-            start_time="22:00",
-            end_time="06:00",
-            setback_delta=2.0,
-            heating_type="forced_air"
+            start_time="22:00", end_time="06:00", setback_delta=2.0, heating_type="forced_air"
         )
         assert setback_forced._get_cold_soak_margin() == 1.1
 
         # Unknown: 25% margin (default)
         setback_unknown = NightSetback(
-            start_time="22:00",
-            end_time="06:00",
-            setback_delta=2.0,
-            heating_type="unknown_type"
+            start_time="22:00", end_time="06:00", setback_delta=2.0, heating_type="unknown_type"
         )
         assert setback_unknown._get_cold_soak_margin() == 1.25
 
@@ -544,37 +460,25 @@ class TestNightSetbackLearnedRate:
         """Test heating type rate estimates are correct."""
         # Floor hydronic: 0.5°C/h
         setback_floor = NightSetback(
-            start_time="22:00",
-            end_time="06:00",
-            setback_delta=2.0,
-            heating_type="floor_hydronic"
+            start_time="22:00", end_time="06:00", setback_delta=2.0, heating_type="floor_hydronic"
         )
         assert setback_floor._get_heating_rate() == 0.5
 
         # Radiator: 1.2°C/h
         setback_radiator = NightSetback(
-            start_time="22:00",
-            end_time="06:00",
-            setback_delta=2.0,
-            heating_type="radiator"
+            start_time="22:00", end_time="06:00", setback_delta=2.0, heating_type="radiator"
         )
         assert setback_radiator._get_heating_rate() == 1.2
 
         # Convector: 2.0°C/h
         setback_convector = NightSetback(
-            start_time="22:00",
-            end_time="06:00",
-            setback_delta=2.0,
-            heating_type="convector"
+            start_time="22:00", end_time="06:00", setback_delta=2.0, heating_type="convector"
         )
         assert setback_convector._get_heating_rate() == 2.0
 
         # Forced air: 4.0°C/h
         setback_forced = NightSetback(
-            start_time="22:00",
-            end_time="06:00",
-            setback_delta=2.0,
-            heating_type="forced_air"
+            start_time="22:00", end_time="06:00", setback_delta=2.0, heating_type="forced_air"
         )
         assert setback_forced._get_heating_rate() == 4.0
 
@@ -589,7 +493,7 @@ class TestNightSetbackLearnedRate:
             setback_delta=2.0,
             recovery_deadline=None,  # No deadline
             thermal_rate_learner=learner,
-            heating_type="radiator"
+            heating_type="radiator",
         )
 
         current = datetime(2024, 1, 15, 4, 0)
@@ -609,17 +513,13 @@ def test_night_setback_learned_rate_module_exists():
     # Verify new parameters exist
     learner = ThermalRateLearner()
     setback = NightSetback(
-        start_time="22:00",
-        end_time="06:00",
-        setback_delta=2.0,
-        thermal_rate_learner=learner,
-        heating_type="radiator"
+        start_time="22:00", end_time="06:00", setback_delta=2.0, thermal_rate_learner=learner, heating_type="radiator"
     )
 
-    assert hasattr(setback, 'thermal_rate_learner')
-    assert hasattr(setback, 'heating_type')
-    assert hasattr(setback, '_get_heating_rate')
-    assert hasattr(setback, '_get_cold_soak_margin')
+    assert hasattr(setback, "thermal_rate_learner")
+    assert hasattr(setback, "heating_type")
+    assert hasattr(setback, "_get_heating_rate")
+    assert hasattr(setback, "_get_cold_soak_margin")
 
 
 class TestNightSetbackTimezone:
@@ -634,11 +534,7 @@ class TestNightSetbackTimezone:
         """
         from zoneinfo import ZoneInfo
 
-        setback = NightSetback(
-            start_time="22:00",
-            end_time="08:57",
-            setback_delta=2.0
-        )
+        setback = NightSetback(start_time="22:00", end_time="08:57", setback_delta=2.0)
 
         # Create timezone-aware datetime
         # Amsterdam timezone (UTC+1 or UTC+2 depending on DST)
@@ -662,11 +558,7 @@ class TestNightSetbackTimezone:
         """
         from zoneinfo import ZoneInfo
 
-        setback = NightSetback(
-            start_time="23:00",
-            end_time="09:00",
-            setback_delta=3.0
-        )
+        setback = NightSetback(start_time="23:00", end_time="09:00", setback_delta=3.0)
 
         # New York timezone (UTC-5)
         tz = ZoneInfo("America/New_York")
@@ -689,11 +581,7 @@ class TestNightSetbackTimezone:
         """Test timezone-aware datetime during night period."""
         from zoneinfo import ZoneInfo
 
-        setback = NightSetback(
-            start_time="22:00",
-            end_time="06:00",
-            setback_delta=2.0
-        )
+        setback = NightSetback(start_time="22:00", end_time="06:00", setback_delta=2.0)
 
         tz = ZoneInfo("Europe/Amsterdam")
 
@@ -709,11 +597,7 @@ class TestNightSetbackTimezone:
         """Test that the same config works correctly across different timezones."""
         from zoneinfo import ZoneInfo
 
-        setback = NightSetback(
-            start_time="22:00",
-            end_time="07:00",
-            setback_delta=2.0
-        )
+        setback = NightSetback(start_time="22:00", end_time="07:00", setback_delta=2.0)
 
         # Test with multiple timezones - all at local 10:00 AM
         timezones = [
@@ -737,12 +621,7 @@ class TestNightSetbackTimezone:
         """Test get_adjusted_setpoint with timezone-aware datetime doesn't crash."""
         from datetime import timezone, timedelta as td
 
-        setback = NightSetback(
-            start_time="22:00",
-            end_time="06:00",
-            setback_delta=2.0,
-            recovery_deadline="06:00"
-        )
+        setback = NightSetback(start_time="22:00", end_time="06:00", setback_delta=2.0, recovery_deadline="06:00")
 
         base_setpoint = 20.0
 
@@ -765,12 +644,7 @@ class TestNightSetbackTimezone:
         """Test should_start_recovery with timezone-aware datetime doesn't crash."""
         from datetime import timezone, timedelta as td
 
-        setback = NightSetback(
-            start_time="22:00",
-            end_time="06:00",
-            setback_delta=2.0,
-            recovery_deadline="06:00"
-        )
+        setback = NightSetback(start_time="22:00", end_time="06:00", setback_delta=2.0, recovery_deadline="06:00")
 
         base_setpoint = 20.0
 
@@ -791,12 +665,7 @@ class TestNightSetbackTimezone:
         """Test recovery deadline calculations when deadline is next day."""
         from datetime import timezone, timedelta as td
 
-        setback = NightSetback(
-            start_time="22:00",
-            end_time="06:00",
-            setback_delta=2.0,
-            recovery_deadline="06:00"
-        )
+        setback = NightSetback(start_time="22:00", end_time="06:00", setback_delta=2.0, recovery_deadline="06:00")
 
         base_setpoint = 20.0
 
@@ -830,11 +699,7 @@ class TestNightSetbackManagerGraduatedDelta:
         hass.data = {}
 
         # Create night setback with configured delta of 3.0
-        night_setback = NightSetback(
-            start_time="22:00",
-            end_time="06:00",
-            setback_delta=3.0
-        )
+        night_setback = NightSetback(start_time="22:00", end_time="06:00", setback_delta=3.0)
 
         # Callback returns allowed_delta of 0.5
         def get_allowed_delta():
@@ -874,11 +739,7 @@ class TestNightSetbackManagerGraduatedDelta:
         hass.data = {}
 
         # Create night setback with configured delta of 3.0
-        night_setback = NightSetback(
-            start_time="22:00",
-            end_time="06:00",
-            setback_delta=3.0
-        )
+        night_setback = NightSetback(start_time="22:00", end_time="06:00", setback_delta=3.0)
 
         # Callback returns None (no restriction)
         def get_allowed_delta():
@@ -918,11 +779,7 @@ class TestNightSetbackManagerGraduatedDelta:
         hass.data = {}
 
         # Create night setback with configured delta of 2.0
-        night_setback = NightSetback(
-            start_time="22:00",
-            end_time="06:00",
-            setback_delta=2.0
-        )
+        night_setback = NightSetback(start_time="22:00", end_time="06:00", setback_delta=2.0)
 
         # Callback returns allowed_delta of 5.0 (exceeds configured)
         def get_allowed_delta():
@@ -962,11 +819,7 @@ class TestNightSetbackManagerGraduatedDelta:
         hass.data = {}
 
         # Create night setback with configured delta of 3.0
-        night_setback = NightSetback(
-            start_time="22:00",
-            end_time="06:00",
-            setback_delta=3.0
-        )
+        night_setback = NightSetback(start_time="22:00", end_time="06:00", setback_delta=3.0)
 
         # Callback returns allowed_delta of 0 (fully suppressed)
         def get_allowed_delta():
@@ -1006,11 +859,7 @@ class TestNightSetbackManagerGraduatedDelta:
         hass.data = {}
 
         # Create night setback with configured delta of 3.0
-        night_setback = NightSetback(
-            start_time="22:00",
-            end_time="06:00",
-            setback_delta=3.0
-        )
+        night_setback = NightSetback(start_time="22:00", end_time="06:00", setback_delta=3.0)
 
         # Callback returns allowed_delta of 1.0 (less than configured)
         def get_allowed_delta():
@@ -1050,11 +899,7 @@ class TestNightSetbackManagerGraduatedDelta:
         hass.data = {}
 
         # Test case 1: allowed >= configured
-        night_setback = NightSetback(
-            start_time="22:00",
-            end_time="06:00",
-            setback_delta=2.0
-        )
+        night_setback = NightSetback(start_time="22:00", end_time="06:00", setback_delta=2.0)
 
         def get_allowed_delta_high():
             return 5.0

@@ -1,4 +1,5 @@
 """Tests for humidity detector integration in climate entity."""
+
 import pytest
 from datetime import datetime, timedelta
 from unittest.mock import Mock, AsyncMock, MagicMock, patch, call
@@ -39,24 +40,24 @@ class TestHumidityDetectorInitialization:
         """Test detector is created when humidity_sensor is configured."""
         # Simulate climate entity initialization with humidity config
         humidity_config = {
-            'humidity_sensor': 'sensor.bathroom_humidity',
-            'humidity_spike_threshold': 20.0,
-            'humidity_absolute_max': 85.0,
-            'humidity_detection_window': 400,
-            'humidity_stabilization_delay': 400,
+            "humidity_sensor": "sensor.bathroom_humidity",
+            "humidity_spike_threshold": 20.0,
+            "humidity_absolute_max": 85.0,
+            "humidity_detection_window": 400,
+            "humidity_stabilization_delay": 400,
         }
 
         # Mock detector creation
-        with patch('custom_components.adaptive_climate.adaptive.humidity_detector.HumidityDetector') as MockDetector:
+        with patch("custom_components.adaptive_climate.adaptive.humidity_detector.HumidityDetector") as MockDetector:
             detector_instance = MagicMock()
             MockDetector.return_value = detector_instance
 
             # Simulate entity initialization
             detector = MockDetector(
-                spike_threshold=humidity_config['humidity_spike_threshold'],
-                absolute_max=humidity_config['humidity_absolute_max'],
-                detection_window=humidity_config['humidity_detection_window'],
-                stabilization_delay=humidity_config['humidity_stabilization_delay'],
+                spike_threshold=humidity_config["humidity_spike_threshold"],
+                absolute_max=humidity_config["humidity_absolute_max"],
+                detection_window=humidity_config["humidity_detection_window"],
+                stabilization_delay=humidity_config["humidity_stabilization_delay"],
             )
 
             assert detector is not None
@@ -71,16 +72,16 @@ class TestHumidityDetectorInitialization:
         """Test detector is None when humidity_sensor not configured."""
         # Simulate climate entity initialization without humidity config
         humidity_config = {
-            'humidity_sensor': None,
+            "humidity_sensor": None,
         }
 
         # When no humidity_sensor, detector should be None
-        detector = None if not humidity_config['humidity_sensor'] else HumidityDetector()
+        detector = None if not humidity_config["humidity_sensor"] else HumidityDetector()
         assert detector is None
 
     def test_humidity_detector_uses_defaults(self):
         """Test detector uses default values from const.py."""
-        with patch('custom_components.adaptive_climate.adaptive.humidity_detector.HumidityDetector') as MockDetector:
+        with patch("custom_components.adaptive_climate.adaptive.humidity_detector.HumidityDetector") as MockDetector:
             detector_instance = MagicMock()
             MockDetector.return_value = detector_instance
 
@@ -94,7 +95,7 @@ class TestHumidityDetectorInitialization:
 
             MockDetector.assert_called_once_with(
                 spike_threshold=15,  # DEFAULT_HUMIDITY_SPIKE_THRESHOLD
-                absolute_max=80,     # DEFAULT_HUMIDITY_ABSOLUTE_MAX
+                absolute_max=80,  # DEFAULT_HUMIDITY_ABSOLUTE_MAX
                 detection_window=300,  # DEFAULT_HUMIDITY_DETECTION_WINDOW
                 stabilization_delay=300,  # DEFAULT_HUMIDITY_STABILIZATION_DELAY
             )
@@ -191,9 +192,7 @@ class TestControlLoopIntegration:
         mock_pid_controller.decay_integral.assert_called_once_with(decay_factor)
 
         # Verify heater service is called (turn_off)
-        await mock_hass.services.async_call(
-            "homeassistant", "turn_off", {"entity_id": "switch.heater"}
-        )
+        await mock_hass.services.async_call("homeassistant", "turn_off", {"entity_id": "switch.heater"})
         mock_hass.services.async_call.assert_called_once_with(
             "homeassistant", "turn_off", {"entity_id": "switch.heater"}
         )
@@ -226,9 +225,7 @@ class TestControlLoopIntegration:
     async def test_pwm_mode_heater_turn_off(self, mock_hass):
         """Test heater turn off in PWM mode during humidity pause."""
         # Simulate PWM mode (force=True parameter)
-        await mock_hass.services.async_call(
-            "homeassistant", "turn_off", {"entity_id": "switch.heater"}
-        )
+        await mock_hass.services.async_call("homeassistant", "turn_off", {"entity_id": "switch.heater"})
         mock_hass.services.async_call.assert_called_once()
 
     @pytest.mark.asyncio
@@ -236,13 +233,9 @@ class TestControlLoopIntegration:
         """Test valve set to min output during humidity pause."""
         # Simulate valve mode (set to output_min)
         output_min = 0
-        await mock_hass.services.async_call(
-            "number", "set_value",
-            {"entity_id": "number.valve", "value": output_min}
-        )
+        await mock_hass.services.async_call("number", "set_value", {"entity_id": "number.valve", "value": output_min})
         mock_hass.services.async_call.assert_called_once_with(
-            "number", "set_value",
-            {"entity_id": "number.valve", "value": output_min}
+            "number", "set_value", {"entity_id": "number.valve", "value": output_min}
         )
 
 
@@ -376,6 +369,4 @@ class TestZoneDemandUpdate:
         zone_id = "bathroom"
         mock_coordinator.update_zone_demand(zone_id, False, "heat")
 
-        mock_coordinator.update_zone_demand.assert_called_once_with(
-            zone_id, False, "heat"
-        )
+        mock_coordinator.update_zone_demand.assert_called_once_with(zone_id, False, "heat")

@@ -104,7 +104,7 @@ class HumidityDetector:
                 if elapsed >= self._max_pause_duration:
                     _LOGGER.warning(
                         "Max pause duration (%d seconds) reached. Forcing resume to normal state.",
-                        self._max_pause_duration
+                        self._max_pause_duration,
                     )
                     self._state = "normal"
                     self._peak_humidity = None

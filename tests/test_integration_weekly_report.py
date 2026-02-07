@@ -1,11 +1,14 @@
 """Integration tests for weekly report end-to-end flow."""
+
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from custom_components.adaptive_climate.analytics.reports import WeeklyReport
 from custom_components.adaptive_climate.analytics.history_store import (
-    HistoryStore, WeeklySnapshot, ZoneSnapshot,
+    HistoryStore,
+    WeeklySnapshot,
+    ZoneSnapshot,
 )
 from custom_components.adaptive_climate.managers.notification_manager import (
     NotificationManager,
@@ -28,17 +31,28 @@ def test_weekly_report_end_to_end():
 
     report = WeeklyReport(start, end)
     report.add_zone_data(
-        "living_room", duty_cycle=45.0, comfort_score=85.0,
-        learning_status="tuned", confidence=63, confidence_prev=55,
+        "living_room",
+        duty_cycle=45.0,
+        comfort_score=85.0,
+        learning_status="tuned",
+        confidence=63,
+        confidence_prev=55,
         recovery_cycles=2,
     )
     report.add_zone_data(
-        "kitchen", duty_cycle=30.0, comfort_score=72.0,
-        learning_status="collecting", confidence=28,
+        "kitchen",
+        duty_cycle=30.0,
+        comfort_score=72.0,
+        learning_status="collecting",
+        confidence=28,
     )
     report.add_zone_data(
-        "office", duty_cycle=50.0, comfort_score=58.0,
-        learning_status="stable", confidence=45, comfort_score_prev=81.0,
+        "office",
+        duty_cycle=50.0,
+        comfort_score=58.0,
+        learning_status="stable",
+        confidence=45,
+        comfort_score_prev=81.0,
         contact_pauses=5,
     )
     report.health_status = "healthy"
@@ -66,13 +80,21 @@ def test_weekly_report_end_to_end():
 def test_weekly_report_with_history():
     """WoW confidence delta calculated from history snapshots."""
     prev_snap = ZoneSnapshot(
-        zone_id="living_room", duty_cycle=40.0, comfort_score=80.0,
-        time_at_target=75.0, area_m2=20.0, confidence=0.55,
+        zone_id="living_room",
+        duty_cycle=40.0,
+        comfort_score=80.0,
+        time_at_target=75.0,
+        area_m2=20.0,
+        confidence=0.55,
         learning_status="stable",
     )
     curr_snap = ZoneSnapshot(
-        zone_id="living_room", duty_cycle=42.0, comfort_score=85.0,
-        time_at_target=78.0, area_m2=20.0, confidence=0.63,
+        zone_id="living_room",
+        duty_cycle=42.0,
+        comfort_score=85.0,
+        time_at_target=78.0,
+        area_m2=20.0,
+        confidence=0.63,
         learning_status="tuned",
     )
 
@@ -85,8 +107,12 @@ def test_weekly_report_with_history():
     # Build report using this delta
     report = WeeklyReport(datetime(2024, 2, 3), datetime(2024, 2, 9))
     report.add_zone_data(
-        "living_room", duty_cycle=42.0, comfort_score=85.0,
-        learning_status="tuned", confidence=63, confidence_prev=55,
+        "living_room",
+        duty_cycle=42.0,
+        comfort_score=85.0,
+        learning_status="tuned",
+        confidence=63,
+        confidence_prev=55,
     )
 
     md = report.format_markdown_report()
@@ -104,7 +130,10 @@ async def test_notification_manager_sends_report(mock_hass):
 
     report = WeeklyReport(datetime(2024, 1, 27), datetime(2024, 2, 2))
     report.add_zone_data(
-        "living_room", duty_cycle=45.0, learning_status="tuned", confidence=63,
+        "living_room",
+        duty_cycle=45.0,
+        learning_status="tuned",
+        confidence=63,
     )
 
     result = await mgr.async_send(
@@ -132,7 +161,7 @@ def test_weekly_report_zone_sorting():
     progress_idx = next(i for i, line in enumerate(lines) if "Learning Progress" in line)
 
     # Check order: optimized, tuned, stable, collecting
-    zone_lines = [line for line in lines[progress_idx + 1:] if line.startswith("**")]
+    zone_lines = [line for line in lines[progress_idx + 1 :] if line.startswith("**")]
     assert "Zone B" in zone_lines[0]  # optimized
     assert "Zone C" in zone_lines[1]  # tuned
     assert "Zone D" in zone_lines[2]  # stable
@@ -145,19 +174,27 @@ def test_weekly_report_problem_detection():
 
     # Zone with comfort drop
     report.add_zone_data(
-        "bedroom", duty_cycle=20.0, comfort_score=60.0,
-        comfort_score_prev=78.0, learning_status="stable",
+        "bedroom",
+        duty_cycle=20.0,
+        comfort_score=60.0,
+        comfort_score_prev=78.0,
+        learning_status="stable",
     )
 
     # Zone with contact pauses
     report.add_zone_data(
-        "kitchen", duty_cycle=25.0, comfort_score=75.0,
-        contact_pauses=5, learning_status="collecting",
+        "kitchen",
+        duty_cycle=25.0,
+        comfort_score=75.0,
+        contact_pauses=5,
+        learning_status="collecting",
     )
 
     # Zone with no problems
     report.add_zone_data(
-        "living_room", duty_cycle=30.0, comfort_score=85.0,
+        "living_room",
+        duty_cycle=30.0,
+        comfort_score=85.0,
         learning_status="tuned",
     )
 
@@ -187,12 +224,18 @@ def test_weekly_report_no_problems():
     """Report without problems doesn't show needs attention section."""
     report = WeeklyReport(datetime(2024, 1, 27), datetime(2024, 2, 2))
     report.add_zone_data(
-        "living_room", duty_cycle=30.0, comfort_score=85.0,
-        learning_status="tuned", confidence=65,
+        "living_room",
+        duty_cycle=30.0,
+        comfort_score=85.0,
+        learning_status="tuned",
+        confidence=65,
     )
     report.add_zone_data(
-        "kitchen", duty_cycle=25.0, comfort_score=80.0,
-        learning_status="stable", confidence=42,
+        "kitchen",
+        duty_cycle=25.0,
+        comfort_score=80.0,
+        learning_status="stable",
+        confidence=42,
     )
 
     md = report.format_markdown_report()
@@ -207,14 +250,19 @@ def test_weekly_report_ios_summary_highlights():
 
     # Zone with tier change
     report.add_zone_data(
-        "living_room", duty_cycle=30.0, comfort_score=85.0,
-        learning_status="tuned", learning_status_prev="stable",
+        "living_room",
+        duty_cycle=30.0,
+        comfort_score=85.0,
+        learning_status="tuned",
+        learning_status_prev="stable",
         confidence=65,
     )
 
     # Zone with comfort drop
     report.add_zone_data(
-        "bedroom", duty_cycle=20.0, comfort_score=58.0,
+        "bedroom",
+        duty_cycle=20.0,
+        comfort_score=58.0,
         learning_status="stable",
     )
 
@@ -240,28 +288,36 @@ def test_zone_confidence_delta():
 
     # With previous confidence
     zone = ZoneReportData(
-        zone_id="test", duty_cycle=30.0,
-        confidence=65, confidence_prev=58,
+        zone_id="test",
+        duty_cycle=30.0,
+        confidence=65,
+        confidence_prev=58,
     )
     assert zone.confidence_delta == 7
 
     # Negative delta
     zone2 = ZoneReportData(
-        zone_id="test", duty_cycle=30.0,
-        confidence=50, confidence_prev=60,
+        zone_id="test",
+        duty_cycle=30.0,
+        confidence=50,
+        confidence_prev=60,
     )
     assert zone2.confidence_delta == -10
 
     # Missing previous
     zone3 = ZoneReportData(
-        zone_id="test", duty_cycle=30.0,
-        confidence=65, confidence_prev=None,
+        zone_id="test",
+        duty_cycle=30.0,
+        confidence=65,
+        confidence_prev=None,
     )
     assert zone3.confidence_delta is None
 
     # Missing current
     zone4 = ZoneReportData(
-        zone_id="test", duty_cycle=30.0,
-        confidence=None, confidence_prev=58,
+        zone_id="test",
+        duty_cycle=30.0,
+        confidence=None,
+        confidence_prev=58,
     )
     assert zone4.confidence_delta is None

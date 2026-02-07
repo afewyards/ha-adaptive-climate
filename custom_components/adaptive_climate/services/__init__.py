@@ -1,4 +1,5 @@
 """Service handlers for Adaptive Climate integration."""
+
 from __future__ import annotations
 
 import logging
@@ -7,6 +8,7 @@ from typing import Any, TYPE_CHECKING
 # These imports are only needed when running in Home Assistant
 try:
     from homeassistant.core import HomeAssistant, ServiceCall
+
     HAS_HOMEASSISTANT = True
 except ImportError:
     HAS_HOMEASSISTANT = False
@@ -127,9 +129,12 @@ async def async_handle_run_learning(
                 _LOGGER.info(
                     "Zone %s PID recommendation: Kp=%.2f (%.1f%%), Ki=%.4f (%.1f%%), Kd=%.2f (%.1f%%)",
                     zone_id,
-                    recommendation["kp"], kp_change,
-                    recommendation["ki"], ki_change,
-                    recommendation["kd"], kd_change,
+                    recommendation["kp"],
+                    kp_change,
+                    recommendation["ki"],
+                    ki_change,
+                    recommendation["kd"],
+                    kd_change,
                 )
 
                 results["zones_with_recommendations"] += 1
@@ -361,19 +366,32 @@ def async_register_services(
 
     async def _health_check_handler(call: ServiceCall) -> dict:
         return await async_handle_health_check(
-            hass, coordinator, call, notify_service, persistent_notification,
-            async_send_notification_func, async_send_persistent_notification_func,
+            hass,
+            coordinator,
+            call,
+            notify_service,
+            persistent_notification,
+            async_send_notification_func,
+            async_send_persistent_notification_func,
         )
 
     async def _weekly_report_handler(call: ServiceCall) -> None:
         await async_handle_weekly_report(
-            hass, coordinator, call, notify_service, persistent_notification,
-            async_send_notification_func, async_send_persistent_notification_func,
+            hass,
+            coordinator,
+            call,
+            notify_service,
+            persistent_notification,
+            async_send_notification_func,
+            async_send_persistent_notification_func,
         )
 
     async def _vacation_mode_handler(call: ServiceCall) -> None:
         await async_handle_set_vacation_mode(
-            hass, vacation_mode, call, default_vacation_target_temp,
+            hass,
+            vacation_mode,
+            call,
+            default_vacation_target_temp,
         )
 
     async def _pid_recommendations_handler(call: ServiceCall) -> dict:
@@ -381,23 +399,19 @@ def async_register_services(
 
     # Register public services (always available)
     hass.services.async_register(
-        DOMAIN, SERVICE_SET_VACATION_MODE, _vacation_mode_handler,
+        DOMAIN,
+        SERVICE_SET_VACATION_MODE,
+        _vacation_mode_handler,
         schema=vacation_schema,
     )
-    hass.services.async_register(
-        DOMAIN, SERVICE_WEEKLY_REPORT, _weekly_report_handler
-    )
+    hass.services.async_register(DOMAIN, SERVICE_WEEKLY_REPORT, _weekly_report_handler)
 
     services_count = 2
 
     # Register debug-only services
     if debug:
-        hass.services.async_register(
-            DOMAIN, SERVICE_RUN_LEARNING, _run_learning_handler
-        )
-        hass.services.async_register(
-            DOMAIN, SERVICE_PID_RECOMMENDATIONS, _pid_recommendations_handler
-        )
+        hass.services.async_register(DOMAIN, SERVICE_RUN_LEARNING, _run_learning_handler)
+        hass.services.async_register(DOMAIN, SERVICE_PID_RECOMMENDATIONS, _pid_recommendations_handler)
         services_count += 2
 
     _LOGGER.debug("Registered %d services for %s domain (debug=%s)", services_count, DOMAIN, debug)

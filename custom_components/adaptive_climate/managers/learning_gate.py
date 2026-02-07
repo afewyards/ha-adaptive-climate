@@ -2,6 +2,7 @@
 
 Manages learning suppression and graduated night setback based on learning progress.
 """
+
 from __future__ import annotations
 
 import logging

@@ -1,4 +1,5 @@
 """Tests for learning metrics sensors."""
+
 import pytest
 import asyncio
 from unittest.mock import Mock
@@ -29,6 +30,7 @@ def test_overshoot_sensor_value():
     # Event needs to support subscripting for type hints like Event[EventStateChangedData]
     class MockEvent:
         """Mock Event class that supports generic subscripting."""
+
         def __class_getitem__(cls, item):
             return cls
 
@@ -38,16 +40,16 @@ def test_overshoot_sensor_value():
     mock_restore_state = Mock()
     mock_restore_state.RestoreEntity = MockRestoreEntity
 
-    sys.modules['homeassistant'] = Mock()
-    sys.modules['homeassistant.core'] = mock_core
-    sys.modules['homeassistant.components'] = Mock()
-    sys.modules['homeassistant.components.sensor'] = mock_sensor_module
-    sys.modules['homeassistant.const'] = Mock()
-    sys.modules['homeassistant.helpers'] = Mock()
-    sys.modules['homeassistant.helpers.entity_platform'] = Mock()
-    sys.modules['homeassistant.helpers.typing'] = Mock()
-    sys.modules['homeassistant.helpers.event'] = Mock()
-    sys.modules['homeassistant.helpers.restore_state'] = mock_restore_state
+    sys.modules["homeassistant"] = Mock()
+    sys.modules["homeassistant.core"] = mock_core
+    sys.modules["homeassistant.components"] = Mock()
+    sys.modules["homeassistant.components.sensor"] = mock_sensor_module
+    sys.modules["homeassistant.const"] = Mock()
+    sys.modules["homeassistant.helpers"] = Mock()
+    sys.modules["homeassistant.helpers.entity_platform"] = Mock()
+    sys.modules["homeassistant.helpers.typing"] = Mock()
+    sys.modules["homeassistant.helpers.event"] = Mock()
+    sys.modules["homeassistant.helpers.restore_state"] = mock_restore_state
 
     from custom_components.adaptive_climate.sensor import OvershootSensor
     from custom_components.adaptive_climate.adaptive.learning import (
@@ -94,9 +96,7 @@ def test_overshoot_sensor_value():
     mock_hass.data = {"adaptive_climate": {"coordinator": coordinator}}
 
     # Create sensor
-    sensor = OvershootSensor(
-        mock_hass, "test_zone", "Test Zone", "climate.test_zone"
-    )
+    sensor = OvershootSensor(mock_hass, "test_zone", "Test Zone", "climate.test_zone")
 
     # Run async update
     result = asyncio.run(sensor.async_update())
@@ -131,6 +131,7 @@ def test_settling_time_in_minutes_conversion():
     # Event needs to support subscripting for type hints like Event[EventStateChangedData]
     class MockEvent:
         """Mock Event class that supports generic subscripting."""
+
         def __class_getitem__(cls, item):
             return cls
 
@@ -140,16 +141,16 @@ def test_settling_time_in_minutes_conversion():
     mock_restore_state = Mock()
     mock_restore_state.RestoreEntity = MockRestoreEntity
 
-    sys.modules['homeassistant'] = Mock()
-    sys.modules['homeassistant.core'] = mock_core
-    sys.modules['homeassistant.components'] = Mock()
-    sys.modules['homeassistant.components.sensor'] = mock_sensor_module
-    sys.modules['homeassistant.const'] = Mock()
-    sys.modules['homeassistant.helpers'] = Mock()
-    sys.modules['homeassistant.helpers.entity_platform'] = Mock()
-    sys.modules['homeassistant.helpers.typing'] = Mock()
-    sys.modules['homeassistant.helpers.event'] = Mock()
-    sys.modules['homeassistant.helpers.restore_state'] = mock_restore_state
+    sys.modules["homeassistant"] = Mock()
+    sys.modules["homeassistant.core"] = mock_core
+    sys.modules["homeassistant.components"] = Mock()
+    sys.modules["homeassistant.components.sensor"] = mock_sensor_module
+    sys.modules["homeassistant.const"] = Mock()
+    sys.modules["homeassistant.helpers"] = Mock()
+    sys.modules["homeassistant.helpers.entity_platform"] = Mock()
+    sys.modules["homeassistant.helpers.typing"] = Mock()
+    sys.modules["homeassistant.helpers.event"] = Mock()
+    sys.modules["homeassistant.helpers.restore_state"] = mock_restore_state
 
     from custom_components.adaptive_climate.sensor import SettlingTimeSensor
     from custom_components.adaptive_climate.adaptive.learning import (
@@ -196,9 +197,7 @@ def test_settling_time_in_minutes_conversion():
     mock_hass.data = {"adaptive_climate": {"coordinator": coordinator}}
 
     # Create sensor
-    sensor = SettlingTimeSensor(
-        mock_hass, "test_zone", "Test Zone", "climate.test_zone"
-    )
+    sensor = SettlingTimeSensor(mock_hass, "test_zone", "Test Zone", "climate.test_zone")
 
     # Run async update
     result = asyncio.run(sensor.async_update())

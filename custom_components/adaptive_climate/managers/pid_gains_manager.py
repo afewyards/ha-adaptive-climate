@@ -1,4 +1,5 @@
 """PID Gains Manager - centralized PID gain mutations with auto-history recording."""
+
 from __future__ import annotations
 
 from collections.abc import Callable

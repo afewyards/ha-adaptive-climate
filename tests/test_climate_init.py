@@ -280,15 +280,18 @@ class TestAsyncSetupManagers:
         assert thermostat._cycle_dispatcher is not None
         # Verify it's a CycleEventDispatcher by checking it has expected structure
         from custom_components.adaptive_climate.managers.events import CycleEventDispatcher
+
         assert isinstance(thermostat._cycle_dispatcher, CycleEventDispatcher)
 
     async def test_heater_controller_initialization_with_pwm(self):
         """Test HeaterController is initialized with correct PWM config."""
-        thermostat = MockThermostat({
-            "_heater_entity_id": "switch.main_heater",
-            "_pwm": 900,  # 15 minutes
-            "_difference": 100,
-        })
+        thermostat = MockThermostat(
+            {
+                "_heater_entity_id": "switch.main_heater",
+                "_pwm": 900,  # 15 minutes
+                "_difference": 100,
+            }
+        )
 
         await async_setup_managers(thermostat)
 
@@ -299,9 +302,11 @@ class TestAsyncSetupManagers:
 
     async def test_heater_controller_initialization_without_pwm(self):
         """Test HeaterController works with pwm=0 (valve mode)."""
-        thermostat = MockThermostat({
-            "_pwm": 0,
-        })
+        thermostat = MockThermostat(
+            {
+                "_pwm": 0,
+            }
+        )
 
         await async_setup_managers(thermostat)
 
@@ -310,13 +315,15 @@ class TestAsyncSetupManagers:
 
     async def test_preheat_learner_created_when_recovery_deadline_set(self):
         """Test PreheatLearner is created when recovery_deadline is configured."""
-        thermostat = MockThermostat({
-            "_night_setback_config": {
-                "recovery_deadline": "07:00",
-                "setback_delta": 2.0,
-            },
-            "_heating_type": HEATING_TYPE_FLOOR_HYDRONIC,
-        })
+        thermostat = MockThermostat(
+            {
+                "_night_setback_config": {
+                    "recovery_deadline": "07:00",
+                    "setback_delta": 2.0,
+                },
+                "_heating_type": HEATING_TYPE_FLOOR_HYDRONIC,
+            }
+        )
 
         await async_setup_managers(thermostat)
 
@@ -325,13 +332,15 @@ class TestAsyncSetupManagers:
 
     async def test_preheat_learner_respects_max_preheat_hours(self):
         """Test PreheatLearner uses configured max_preheat_hours."""
-        thermostat = MockThermostat({
-            "_night_setback_config": {
-                "recovery_deadline": "07:00",
-                "max_preheat_hours": 2.5,
-            },
-            "_heating_type": HEATING_TYPE_RADIATOR,
-        })
+        thermostat = MockThermostat(
+            {
+                "_night_setback_config": {
+                    "recovery_deadline": "07:00",
+                    "max_preheat_hours": 2.5,
+                },
+                "_heating_type": HEATING_TYPE_RADIATOR,
+            }
+        )
 
         await async_setup_managers(thermostat)
 
@@ -340,11 +349,13 @@ class TestAsyncSetupManagers:
 
     async def test_preheat_learner_not_created_when_no_recovery_deadline(self):
         """Test PreheatLearner is not created without recovery_deadline."""
-        thermostat = MockThermostat({
-            "_night_setback_config": {
-                "setback_delta": 2.0,
-            },
-        })
+        thermostat = MockThermostat(
+            {
+                "_night_setback_config": {
+                    "setback_delta": 2.0,
+                },
+            }
+        )
 
         await async_setup_managers(thermostat)
 
@@ -352,13 +363,15 @@ class TestAsyncSetupManagers:
 
     async def test_preheat_learner_created_when_preheat_enabled_explicitly(self):
         """Test PreheatLearner is created when preheat_enabled=True even without recovery_deadline."""
-        thermostat = MockThermostat({
-            "_night_setback_config": {
-                "preheat_enabled": True,
-                "setback_delta": 2.0,
-            },
-            "_heating_type": HEATING_TYPE_CONVECTOR,
-        })
+        thermostat = MockThermostat(
+            {
+                "_night_setback_config": {
+                    "preheat_enabled": True,
+                    "setback_delta": 2.0,
+                },
+                "_heating_type": HEATING_TYPE_CONVECTOR,
+            }
+        )
 
         await async_setup_managers(thermostat)
 
@@ -367,12 +380,14 @@ class TestAsyncSetupManagers:
 
     async def test_preheat_learner_not_created_when_preheat_disabled_explicitly(self):
         """Test PreheatLearner is not created when preheat_enabled=False even with recovery_deadline."""
-        thermostat = MockThermostat({
-            "_night_setback_config": {
-                "recovery_deadline": "07:00",
-                "preheat_enabled": False,
-            },
-        })
+        thermostat = MockThermostat(
+            {
+                "_night_setback_config": {
+                    "recovery_deadline": "07:00",
+                    "preheat_enabled": False,
+                },
+            }
+        )
 
         await async_setup_managers(thermostat)
 
@@ -389,18 +404,22 @@ class TestAsyncSetupManagers:
 
         # Mock coordinator with stored data
         mock_coordinator = Mock()
-        mock_coordinator.get_zone_data = Mock(return_value={
-            "stored_preheat_data": stored_preheat_data,
-        })
+        mock_coordinator.get_zone_data = Mock(
+            return_value={
+                "stored_preheat_data": stored_preheat_data,
+            }
+        )
         mock_coordinator.get_worst_case_transport_delay_for_zone = Mock(return_value=0.0)
 
-        thermostat = MockThermostat({
-            "_night_setback_config": {
-                "recovery_deadline": "07:00",
-            },
-            "_coordinator": mock_coordinator,
-            "_zone_id": "test_zone",
-        })
+        thermostat = MockThermostat(
+            {
+                "_night_setback_config": {
+                    "recovery_deadline": "07:00",
+                },
+                "_coordinator": mock_coordinator,
+                "_zone_id": "test_zone",
+            }
+        )
 
         with patch("custom_components.adaptive_climate.climate_init.PreheatLearner.from_dict") as mock_from_dict:
             mock_from_dict.return_value = Mock(
@@ -415,13 +434,15 @@ class TestAsyncSetupManagers:
 
     async def test_night_setback_manager_created_with_config(self):
         """Test NightSetbackManager is created when night_setback_config exists."""
-        thermostat = MockThermostat({
-            "_night_setback_config": {
-                "start_time": "22:00",
-                "end_time": "06:00",
-                "setback_delta": 2.5,
-            },
-        })
+        thermostat = MockThermostat(
+            {
+                "_night_setback_config": {
+                    "start_time": "22:00",
+                    "end_time": "06:00",
+                    "setback_delta": 2.5,
+                },
+            }
+        )
 
         await async_setup_managers(thermostat)
 
@@ -429,9 +450,11 @@ class TestAsyncSetupManagers:
 
     async def test_night_setback_manager_created_with_legacy_setback(self):
         """Test NightSetbackManager is created with legacy _night_setback value."""
-        thermostat = MockThermostat({
-            "_night_setback": 2.0,
-        })
+        thermostat = MockThermostat(
+            {
+                "_night_setback": 2.0,
+            }
+        )
 
         await async_setup_managers(thermostat)
 
@@ -447,12 +470,14 @@ class TestAsyncSetupManagers:
 
     async def test_night_setback_manager_with_preheat_learner(self):
         """Test NightSetbackManager receives PreheatLearner when both enabled."""
-        thermostat = MockThermostat({
-            "_night_setback_config": {
-                "recovery_deadline": "07:00",
-                "setback_delta": 2.0,
-            },
-        })
+        thermostat = MockThermostat(
+            {
+                "_night_setback_config": {
+                    "recovery_deadline": "07:00",
+                    "setback_delta": 2.0,
+                },
+            }
+        )
 
         await async_setup_managers(thermostat)
 
@@ -463,12 +488,14 @@ class TestAsyncSetupManagers:
 
     async def test_temperature_manager_initialization(self):
         """Test TemperatureManager is initialized with preset temps."""
-        thermostat = MockThermostat({
-            "_away_temp": 16.0,
-            "_eco_temp": 18.0,
-            "_boost_temp": 22.0,
-            "_comfort_temp": 21.0,
-        })
+        thermostat = MockThermostat(
+            {
+                "_away_temp": 16.0,
+                "_eco_temp": 18.0,
+                "_boost_temp": 22.0,
+                "_comfort_temp": 21.0,
+            }
+        )
 
         await async_setup_managers(thermostat)
 
@@ -480,10 +507,12 @@ class TestAsyncSetupManagers:
 
     async def test_temperature_manager_restores_state(self):
         """Test TemperatureManager restores preset mode state."""
-        thermostat = MockThermostat({
-            "_attr_preset_mode": "away",
-            "_saved_target_temp": 20.0,
-        })
+        thermostat = MockThermostat(
+            {
+                "_attr_preset_mode": "away",
+                "_saved_target_temp": 20.0,
+            }
+        )
 
         await async_setup_managers(thermostat)
 
@@ -493,11 +522,13 @@ class TestAsyncSetupManagers:
 
     async def test_ke_learner_created_with_outdoor_sensor(self):
         """Test KeLearner is created when outdoor sensor is configured."""
-        thermostat = MockThermostat({
-            "_has_outdoor_temp_source": True,
-            "_ext_sensor_entity_id": "sensor.outdoor_temp",
-            "_area_m2": 25.0,
-        })
+        thermostat = MockThermostat(
+            {
+                "_has_outdoor_temp_source": True,
+                "_ext_sensor_entity_id": "sensor.outdoor_temp",
+                "_area_m2": 25.0,
+            }
+        )
 
         with patch("custom_components.adaptive_climate.climate_init.calculate_initial_ke") as mock_calc_ke:
             mock_calc_ke.return_value = 0.05
@@ -518,15 +549,19 @@ class TestAsyncSetupManagers:
         }
 
         mock_coordinator = Mock()
-        mock_coordinator.get_zone_data = Mock(return_value={
-            "stored_ke_data": stored_ke_data,
-        })
+        mock_coordinator.get_zone_data = Mock(
+            return_value={
+                "stored_ke_data": stored_ke_data,
+            }
+        )
 
-        thermostat = MockThermostat({
-            "_has_outdoor_temp_source": True,
-            "_coordinator": mock_coordinator,
-            "_zone_id": "test_zone",
-        })
+        thermostat = MockThermostat(
+            {
+                "_has_outdoor_temp_source": True,
+                "_coordinator": mock_coordinator,
+                "_zone_id": "test_zone",
+            }
+        )
 
         with patch("custom_components.adaptive_climate.climate_init.KeLearner.from_dict") as mock_from_dict:
             mock_ke_learner = Mock()
@@ -543,9 +578,11 @@ class TestAsyncSetupManagers:
 
     async def test_ke_learner_not_created_without_outdoor_sensor(self):
         """Test KeLearner is not created without outdoor sensor."""
-        thermostat = MockThermostat({
-            "_has_outdoor_temp_source": False,
-        })
+        thermostat = MockThermostat(
+            {
+                "_has_outdoor_temp_source": False,
+            }
+        )
 
         await async_setup_managers(thermostat)
 
@@ -553,9 +590,11 @@ class TestAsyncSetupManagers:
 
     async def test_ke_manager_always_created(self):
         """Test KeManager is always created even without outdoor sensor."""
-        thermostat = MockThermostat({
-            "_has_outdoor_temp_source": False,
-        })
+        thermostat = MockThermostat(
+            {
+                "_has_outdoor_temp_source": False,
+            }
+        )
 
         await async_setup_managers(thermostat)
 
@@ -587,15 +626,19 @@ class TestAsyncSetupManagers:
         """Test CycleTrackerManager is created when coordinator and adaptive_learner exist."""
         mock_adaptive_learner = Mock()
         mock_coordinator = Mock()
-        mock_coordinator.get_zone_data = Mock(return_value={
-            "adaptive_learner": mock_adaptive_learner,
-        })
+        mock_coordinator.get_zone_data = Mock(
+            return_value={
+                "adaptive_learner": mock_adaptive_learner,
+            }
+        )
 
-        thermostat = MockThermostat({
-            "_coordinator": mock_coordinator,
-            "_zone_id": "test_zone",
-            "_thermal_time_constant": 3600,
-        })
+        thermostat = MockThermostat(
+            {
+                "_coordinator": mock_coordinator,
+                "_zone_id": "test_zone",
+                "_thermal_time_constant": 3600,
+            }
+        )
 
         await async_setup_managers(thermostat)
 
@@ -603,9 +646,11 @@ class TestAsyncSetupManagers:
 
     async def test_cycle_tracker_not_created_without_coordinator(self):
         """Test CycleTrackerManager is not created without coordinator."""
-        thermostat = MockThermostat({
-            "_coordinator": None,
-        })
+        thermostat = MockThermostat(
+            {
+                "_coordinator": None,
+            }
+        )
 
         await async_setup_managers(thermostat)
 
@@ -615,10 +660,12 @@ class TestAsyncSetupManagers:
         """Test CycleTrackerManager is not created without zone_id."""
         mock_coordinator = Mock()
 
-        thermostat = MockThermostat({
-            "_coordinator": mock_coordinator,
-            "_zone_id": None,
-        })
+        thermostat = MockThermostat(
+            {
+                "_coordinator": mock_coordinator,
+                "_zone_id": None,
+            }
+        )
 
         await async_setup_managers(thermostat)
 
@@ -629,10 +676,12 @@ class TestAsyncSetupManagers:
         mock_coordinator = Mock()
         mock_coordinator.get_zone_data = Mock(return_value={})
 
-        thermostat = MockThermostat({
-            "_coordinator": mock_coordinator,
-            "_zone_id": "test_zone",
-        })
+        thermostat = MockThermostat(
+            {
+                "_coordinator": mock_coordinator,
+                "_zone_id": "test_zone",
+            }
+        )
 
         await async_setup_managers(thermostat)
 
@@ -640,11 +689,13 @@ class TestAsyncSetupManagers:
 
     async def test_preheat_learner_subscribes_to_cycle_ended_events(self):
         """Test PreheatLearner subscribes to CYCLE_ENDED events when created."""
-        thermostat = MockThermostat({
-            "_night_setback_config": {
-                "recovery_deadline": "07:00",
-            },
-        })
+        thermostat = MockThermostat(
+            {
+                "_night_setback_config": {
+                    "recovery_deadline": "07:00",
+                },
+            }
+        )
 
         await async_setup_managers(thermostat)
 
@@ -664,12 +715,14 @@ class TestAsyncSetupManagers:
         ]
 
         for heating_type in heating_types:
-            thermostat = MockThermostat({
-                "_heating_type": heating_type,
-                "_night_setback_config": {
-                    "recovery_deadline": "07:00",
-                },
-            })
+            thermostat = MockThermostat(
+                {
+                    "_heating_type": heating_type,
+                    "_night_setback_config": {
+                        "recovery_deadline": "07:00",
+                    },
+                }
+            )
 
             await async_setup_managers(thermostat)
 
@@ -679,10 +732,12 @@ class TestAsyncSetupManagers:
 
     async def test_initialization_with_cooler_entity(self):
         """Test initialization works with cooler entity configured."""
-        thermostat = MockThermostat({
-            "_heater_entity_id": "switch.heater",
-            "_cooler_entity_id": "switch.cooler",
-        })
+        thermostat = MockThermostat(
+            {
+                "_heater_entity_id": "switch.heater",
+                "_cooler_entity_id": "switch.cooler",
+            }
+        )
 
         await async_setup_managers(thermostat)
 
@@ -691,9 +746,11 @@ class TestAsyncSetupManagers:
 
     async def test_initialization_with_demand_switch(self):
         """Test initialization works with demand switch configured."""
-        thermostat = MockThermostat({
-            "_demand_switch_entity_id": "switch.manifold_demand",
-        })
+        thermostat = MockThermostat(
+            {
+                "_demand_switch_entity_id": "switch.manifold_demand",
+            }
+        )
 
         await async_setup_managers(thermostat)
 
@@ -702,9 +759,11 @@ class TestAsyncSetupManagers:
 
     async def test_initialization_with_polarity_invert(self):
         """Test initialization works with heater polarity inverted."""
-        thermostat = MockThermostat({
-            "_heater_polarity_invert": True,
-        })
+        thermostat = MockThermostat(
+            {
+                "_heater_polarity_invert": True,
+            }
+        )
 
         await async_setup_managers(thermostat)
 
@@ -713,9 +772,11 @@ class TestAsyncSetupManagers:
 
     async def test_edge_case_none_night_setback_config(self):
         """Test handling of None night_setback_config."""
-        thermostat = MockThermostat({
-            "_night_setback_config": None,
-        })
+        thermostat = MockThermostat(
+            {
+                "_night_setback_config": None,
+            }
+        )
 
         await async_setup_managers(thermostat)
 
@@ -724,9 +785,11 @@ class TestAsyncSetupManagers:
 
     async def test_edge_case_empty_night_setback_config(self):
         """Test handling of empty night_setback_config dict."""
-        thermostat = MockThermostat({
-            "_night_setback_config": {},
-        })
+        thermostat = MockThermostat(
+            {
+                "_night_setback_config": {},
+            }
+        )
 
         await async_setup_managers(thermostat)
 
@@ -737,9 +800,11 @@ class TestAsyncSetupManagers:
 
     async def test_ke_initialization_uses_house_energy_rating(self):
         """Test Ke initialization uses house_energy_rating from domain data."""
-        thermostat = MockThermostat({
-            "_has_outdoor_temp_source": True,
-        })
+        thermostat = MockThermostat(
+            {
+                "_has_outdoor_temp_source": True,
+            }
+        )
         thermostat.hass.data = {
             "adaptive_climate": {
                 "house_energy_rating": "A",
@@ -762,10 +827,12 @@ class TestAsyncSetupManagers:
         mock_coordinator = Mock()
         mock_coordinator.get_zone_data = Mock(return_value=zone_data)
 
-        thermostat = MockThermostat({
-            "_coordinator": mock_coordinator,
-            "_zone_id": "test_zone",
-        })
+        thermostat = MockThermostat(
+            {
+                "_coordinator": mock_coordinator,
+                "_zone_id": "test_zone",
+            }
+        )
 
         await async_setup_managers(thermostat)
 

@@ -1,4 +1,5 @@
 """Tests for disturbance rejection in adaptive learning."""
+
 import pytest
 from datetime import datetime, timedelta
 from custom_components.adaptive_climate.adaptive.disturbance_detector import DisturbanceDetector
@@ -23,9 +24,7 @@ class TestDisturbanceDetector:
             (start_time + timedelta(minutes=40), 20.0),  # Slow cooling
         ]
 
-        heater_active_periods = [
-            (start_time, start_time + timedelta(minutes=23))
-        ]
+        heater_active_periods = [(start_time, start_time + timedelta(minutes=23))]
 
         disturbances = detector.detect_disturbances(
             temperature_history=temperature_history,
@@ -49,9 +48,7 @@ class TestDisturbanceDetector:
             (start_time + timedelta(minutes=50), 20.9),  # Still rising
         ]
 
-        heater_active_periods = [
-            (start_time, start_time + timedelta(minutes=20))
-        ]
+        heater_active_periods = [(start_time, start_time + timedelta(minutes=20))]
 
         # Solar irradiance increasing
         solar_values = [
@@ -86,9 +83,7 @@ class TestDisturbanceDetector:
             (start_time + timedelta(minutes=40), 18.5),  # Continued rapid drop (1.5°C in 20 min = 4.5°C/h)
         ]
 
-        heater_active_periods = [
-            (start_time, start_time + timedelta(minutes=20))
-        ]
+        heater_active_periods = [(start_time, start_time + timedelta(minutes=20))]
 
         # Outdoor temperature stable
         outdoor_temps = [
@@ -123,9 +118,7 @@ class TestDisturbanceDetector:
             (start_time + timedelta(minutes=20), 20.0),
         ]
 
-        heater_active_periods = [
-            (start_time, start_time + timedelta(minutes=15))
-        ]
+        heater_active_periods = [(start_time, start_time + timedelta(minutes=15))]
 
         # Large outdoor temperature swing (>5°C)
         outdoor_temps = [
@@ -157,9 +150,7 @@ class TestDisturbanceDetector:
             (start_time + timedelta(minutes=50), 20.6),  # Still rising
         ]
 
-        heater_active_periods = [
-            (start_time, start_time + timedelta(minutes=20))
-        ]
+        heater_active_periods = [(start_time, start_time + timedelta(minutes=20))]
 
         disturbances = detector.detect_disturbances(
             temperature_history=temperature_history,
@@ -182,9 +173,7 @@ class TestDisturbanceDetector:
             (start_time + timedelta(minutes=50), 21.2),
         ]
 
-        heater_active_periods = [
-            (start_time, start_time + timedelta(minutes=20))
-        ]
+        heater_active_periods = [(start_time, start_time + timedelta(minutes=20))]
 
         # Both solar gain and outdoor temp swing
         solar_values = [
@@ -216,19 +205,11 @@ class TestCycleMetricsDisturbances:
     def test_cycle_metrics_is_disturbed_property(self):
         """Test the is_disturbed property."""
         # No disturbances
-        metrics = CycleMetrics(
-            overshoot=0.5,
-            undershoot=0.2,
-            disturbances=[]
-        )
+        metrics = CycleMetrics(overshoot=0.5, undershoot=0.2, disturbances=[])
         assert not metrics.is_disturbed
 
         # With disturbances
-        metrics = CycleMetrics(
-            overshoot=0.5,
-            undershoot=0.2,
-            disturbances=["solar_gain"]
-        )
+        metrics = CycleMetrics(overshoot=0.5, undershoot=0.2, disturbances=["solar_gain"])
         assert metrics.is_disturbed
 
     def test_cycle_metrics_disturbances_default_empty(self):
@@ -275,4 +256,5 @@ class TestDisturbanceFiltering:
 def test_disturbance_rejection_module_exists():
     """Test that disturbance rejection module is importable."""
     from custom_components.adaptive_climate.adaptive import disturbance_detector
-    assert hasattr(disturbance_detector, 'DisturbanceDetector')
+
+    assert hasattr(disturbance_detector, "DisturbanceDetector")

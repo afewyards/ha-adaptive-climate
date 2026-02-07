@@ -1,4 +1,5 @@
 """Sun position calculations for dynamic solar recovery timing."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -86,10 +87,7 @@ class SunPositionCalculator:
             elev = hass.config.elevation or 0
 
             if lat is None or lon is None:
-                _LOGGER.warning(
-                    "Home location not configured in Home Assistant, "
-                    "dynamic solar recovery unavailable"
-                )
+                _LOGGER.warning("Home location not configured in Home Assistant, dynamic solar recovery unavailable")
                 return None
 
             return cls(latitude=lat, longitude=lon, elevation_m=elev)
@@ -165,9 +163,7 @@ class SunPositionCalculator:
             pos = self.get_position_at_time(current_time)
 
             # Check if sun is in effective range for this window
-            if self._is_sun_effective(
-                pos, window_azimuth, min_elevation, effective_angle
-            ):
+            if self._is_sun_effective(pos, window_azimuth, min_elevation, effective_angle):
                 return current_time
 
             current_time += step

@@ -45,6 +45,7 @@ def manager(mock_pid_controller, initial_heating_gains):
 # Basic Operations
 # =============================================================================
 
+
 class TestPIDGainsManagerBasicOperations:
     """Tests for basic PIDGainsManager operations."""
 
@@ -133,6 +134,7 @@ class TestPIDGainsManagerBasicOperations:
 # Mode-Specific Gains
 # =============================================================================
 
+
 class TestPIDGainsManagerModeSpecificGains:
     """Tests for mode-specific gain storage and switching."""
 
@@ -146,8 +148,8 @@ class TestPIDGainsManagerModeSpecificGains:
             initial_cooling_gains=initial_cooling_gains,
         )
 
-        assert hasattr(manager, '_heating_gains')
-        assert hasattr(manager, '_cooling_gains')
+        assert hasattr(manager, "_heating_gains")
+        assert hasattr(manager, "_cooling_gains")
         assert manager._heating_gains.kp == 1.0
         assert manager._cooling_gains.kp == 1.5
 
@@ -168,9 +170,7 @@ class TestPIDGainsManagerModeSpecificGains:
         assert heating_gains.kp == 2.0  # Changed
         assert cooling_gains.kp == 1.5  # Unchanged
 
-    def test_history_keyed_by_mode(
-        self, mock_pid_controller, initial_heating_gains, initial_cooling_gains
-    ):
+    def test_history_keyed_by_mode(self, mock_pid_controller, initial_heating_gains, initial_cooling_gains):
         """Test history is keyed by mode."""
         manager = PIDGainsManager(
             pid_controller=mock_pid_controller,
@@ -193,6 +193,7 @@ class TestPIDGainsManagerModeSpecificGains:
 # =============================================================================
 # Partial Updates
 # =============================================================================
+
 
 class TestPIDGainsManagerPartialUpdates:
     """Tests for partial PID gain updates."""
@@ -232,6 +233,7 @@ class TestPIDGainsManagerPartialUpdates:
 # =============================================================================
 # State Restoration
 # =============================================================================
+
 
 class TestRestoreFromState:
     """Tests for restore_from_state() method."""
@@ -285,7 +287,14 @@ class TestRestoreFromState:
         old_state = Mock()
         old_state.attributes = {
             "pid_history": [
-                {"timestamp": "2024-01-15T10:00:00", "kp": 2.0, "ki": 0.02, "kd": 15.0, "ke": 0.7, "reason": "auto_apply"},
+                {
+                    "timestamp": "2024-01-15T10:00:00",
+                    "kp": 2.0,
+                    "ki": 0.02,
+                    "kd": 15.0,
+                    "ke": 0.7,
+                    "reason": "auto_apply",
+                },
             ]
         }
 
@@ -295,7 +304,7 @@ class TestRestoreFromState:
         assert mock_pid_controller.set_pid_param.called
         # Check that kp=2.0 was set
         calls = [str(call) for call in mock_pid_controller.set_pid_param.call_args_list]
-        assert any('2.0' in call for call in calls)
+        assert any("2.0" in call for call in calls)
 
     def test_restore_with_none_state(self, manager):
         """restore_from_state with None should be a no-op."""
@@ -314,6 +323,7 @@ class TestRestoreFromState:
 # =============================================================================
 # Backward Compatibility
 # =============================================================================
+
 
 class TestRestoreBackwardCompatibility:
     """Tests for backward compatibility with old state formats."""
@@ -375,7 +385,7 @@ class TestRestoreBackwardCompatibility:
                     "kd": 10.0,
                     "reason": "physics_init",
                 }
-            ]
+            ],
         }
 
         manager.restore_from_state(old_state)
@@ -387,6 +397,7 @@ class TestRestoreBackwardCompatibility:
 # =============================================================================
 # History Serialization
 # =============================================================================
+
 
 class TestPIDHistorySerializationWithKe:
     """Tests for pid_history serialization including ke field."""
@@ -439,12 +450,13 @@ class TestPIDHistorySerializationWithKe:
 # PID Change Reasons
 # =============================================================================
 
+
 class TestPIDChangeReasons:
     """Tests for PID change reasons and actors."""
 
     def test_physics_reset_reason_enum_exists(self):
         """Test that PHYSICS_RESET reason exists in PIDChangeReason enum."""
-        assert hasattr(PIDChangeReason, 'PHYSICS_RESET')
+        assert hasattr(PIDChangeReason, "PHYSICS_RESET")
         assert PIDChangeReason.PHYSICS_RESET.value == "physics_reset"
 
     def test_physics_reset_maps_to_user_actor(self):
@@ -454,23 +466,24 @@ class TestPIDChangeReasons:
 
     def test_adaptive_apply_reason_enum_exists(self):
         """Test that ADAPTIVE_APPLY reason exists in PIDChangeReason enum."""
-        assert hasattr(PIDChangeReason, 'ADAPTIVE_APPLY')
+        assert hasattr(PIDChangeReason, "ADAPTIVE_APPLY")
         assert PIDChangeReason.ADAPTIVE_APPLY.value == "adaptive_apply"
 
     def test_auto_apply_reason_enum_exists(self):
         """Test that AUTO_APPLY reason exists in PIDChangeReason enum."""
-        assert hasattr(PIDChangeReason, 'AUTO_APPLY')
+        assert hasattr(PIDChangeReason, "AUTO_APPLY")
         assert PIDChangeReason.AUTO_APPLY.value == "auto_apply"
 
     def test_rollback_reason_enum_exists(self):
         """Test that ROLLBACK reason exists in PIDChangeReason enum."""
-        assert hasattr(PIDChangeReason, 'ROLLBACK')
+        assert hasattr(PIDChangeReason, "ROLLBACK")
         assert PIDChangeReason.ROLLBACK.value == "rollback"
 
 
 # =============================================================================
 # History Size Limits
 # =============================================================================
+
 
 class TestHistorySizeLimits:
     """Tests for history size limiting."""
@@ -530,6 +543,7 @@ class TestHistorySizeLimits:
 # =============================================================================
 # History Migration from AdaptiveLearner
 # =============================================================================
+
 
 class TestHistoryMigrationFromAdaptiveLearner:
     """Tests for migrating pid_history from AdaptiveLearner format."""
@@ -694,6 +708,7 @@ class TestHistoryMigrationFromAdaptiveLearner:
 # =============================================================================
 # Restore Deduplication
 # =============================================================================
+
 
 class TestRestoreDeduplication:
     """Tests for deduplicating RESTORE entries when gains unchanged."""
@@ -949,6 +964,7 @@ class TestRestoreDeduplication:
 # History Deletion
 # =============================================================================
 
+
 class TestHistoryDeletion:
     """Tests for delete_history_entries() method."""
 
@@ -1043,9 +1059,7 @@ class TestHistoryDeletion:
         history = manager.get_history(HVACMode.HEAT)
         assert len(history) == 0
 
-    def test_delete_mode_specific_history(
-        self, mock_pid_controller, initial_heating_gains, initial_cooling_gains
-    ):
+    def test_delete_mode_specific_history(self, mock_pid_controller, initial_heating_gains, initial_cooling_gains):
         """Test that deletion only affects the specified mode."""
         manager = PIDGainsManager(
             pid_controller=mock_pid_controller,
@@ -1099,6 +1113,7 @@ class TestHistoryDeletion:
 # =============================================================================
 # History Restore
 # =============================================================================
+
 
 class TestRestoreFromHistory:
     """Tests for restore_from_history() method."""
@@ -1195,9 +1210,7 @@ class TestRestoreFromHistory:
         with pytest.raises(ValueError, match="Invalid history index"):
             manager.restore_from_history(0, mode=HVACMode.HEAT)
 
-    def test_restore_mode_specific(
-        self, mock_pid_controller, initial_heating_gains, initial_cooling_gains
-    ):
+    def test_restore_mode_specific(self, mock_pid_controller, initial_heating_gains, initial_cooling_gains):
         """Test that restore only affects the specified mode."""
         manager = PIDGainsManager(
             pid_controller=mock_pid_controller,
@@ -1222,14 +1235,7 @@ class TestRestoreFromHistory:
 
     def test_restore_returns_correct_entry(self, manager):
         """Test that restore returns the exact entry that was restored."""
-        manager.set_gains(
-            PIDChangeReason.PHYSICS_INIT,
-            kp=1.0,
-            ki=0.01,
-            kd=10.0,
-            ke=0.0,
-            metrics={"test": "value"}
-        )
+        manager.set_gains(PIDChangeReason.PHYSICS_INIT, kp=1.0, ki=0.01, kd=10.0, ke=0.0, metrics={"test": "value"})
         manager.set_gains(PIDChangeReason.ADAPTIVE_APPLY, kp=1.5, ki=0.015, kd=12.0, ke=0.5)
 
         entry = manager.restore_from_history(0, mode=HVACMode.HEAT)
@@ -1267,6 +1273,7 @@ class TestRestoreFromHistory:
 # =============================================================================
 # Single Source of Truth Integration
 # =============================================================================
+
 
 class TestSingleSourceOfTruth:
     """Integration tests for single source of truth pattern.
@@ -1492,6 +1499,7 @@ class TestSingleSourceOfTruth:
 # Initial History Recording
 # =============================================================================
 
+
 class TestInitialHistoryRecording:
     """Tests for ensure_initial_history_recorded()."""
 
@@ -1550,7 +1558,9 @@ class TestInitialHistoryRecording:
         assert len(history) == 1
         assert history[0]["reason"] == PIDChangeReason.SERVICE_CALL.value
 
-    def test_ensure_initial_history_recorded_after_restore_with_history(self, mock_pid_controller, initial_heating_gains):
+    def test_ensure_initial_history_recorded_after_restore_with_history(
+        self, mock_pid_controller, initial_heating_gains
+    ):
         """After restore with existing history, ensure_initial_history_recorded should do nothing."""
         manager = PIDGainsManager(mock_pid_controller, initial_heating_gains)
 
@@ -1585,7 +1595,9 @@ class TestInitialHistoryRecording:
         assert len(history) == 1
         assert history[0]["reason"] == "adaptive_apply"
 
-    def test_ensure_initial_history_recorded_after_restore_without_history(self, mock_pid_controller, initial_heating_gains):
+    def test_ensure_initial_history_recorded_after_restore_without_history(
+        self, mock_pid_controller, initial_heating_gains
+    ):
         """After restore without history, ensure_initial_history_recorded should record PHYSICS_INIT."""
         manager = PIDGainsManager(mock_pid_controller, initial_heating_gains)
 
@@ -1603,14 +1615,13 @@ class TestInitialHistoryRecording:
         assert len(history) == 1
         assert history[0]["reason"] == "physics_init"
 
-    def test_ensure_initial_history_recorded_mode_specific(self, mock_pid_controller, initial_heating_gains, initial_cooling_gains):
+    def test_ensure_initial_history_recorded_mode_specific(
+        self, mock_pid_controller, initial_heating_gains, initial_cooling_gains
+    ):
         """ensure_initial_history_recorded should work for current mode."""
         get_hvac_mode = Mock(return_value=HVACMode.HEAT)
         manager = PIDGainsManager(
-            mock_pid_controller,
-            initial_heating_gains,
-            initial_cooling_gains,
-            get_hvac_mode=get_hvac_mode
+            mock_pid_controller, initial_heating_gains, initial_cooling_gains, get_hvac_mode=get_hvac_mode
         )
 
         # Call ensure for heating mode

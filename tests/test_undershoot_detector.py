@@ -1,4 +1,5 @@
 """Tests for UndershootDetector."""
+
 import time
 from unittest.mock import patch
 
@@ -200,7 +201,7 @@ class TestCooldownEnforcement:
         # Immediately check again - should be in cooldown
         assert detector.should_adjust_ki(cycles_completed=0) is False
 
-    @patch('custom_components.adaptive_climate.adaptive.undershoot_detector.time.monotonic')
+    @patch("custom_components.adaptive_climate.adaptive.undershoot_detector.time.monotonic")
     def test_can_adjust_after_cooldown_expires(self, mock_time, detector):
         """Test that adjustment is allowed after cooldown expires."""
         # Set initial time
@@ -306,9 +307,7 @@ class TestShouldAdjustTimeThreshold:
         assert time_threshold == 2700.0
 
         # Should trigger at 2700s
-        forced_air_detector.update(
-            temp=18.0, setpoint=20.0, dt_seconds=2700.0, cold_tolerance=0.5
-        )
+        forced_air_detector.update(temp=18.0, setpoint=20.0, dt_seconds=2700.0, cold_tolerance=0.5)
         assert forced_air_detector.should_adjust_ki(cycles_completed=0) is True
 
 
@@ -338,9 +337,7 @@ class TestShouldAdjustDebtThreshold:
         assert debt_threshold == 0.5
 
         # Should trigger at 0.5 °C·h: error=1.0°C for 0.5h
-        forced_air_detector.update(
-            temp=19.0, setpoint=20.0, dt_seconds=1800.0, cold_tolerance=0.5
-        )
+        forced_air_detector.update(temp=19.0, setpoint=20.0, dt_seconds=1800.0, cold_tolerance=0.5)
         assert forced_air_detector.should_adjust_ki(cycles_completed=0) is True
 
 
@@ -944,6 +941,7 @@ class TestRateModeDetection:
         from custom_components.adaptive_climate.adaptive.heating_rate_learner import (
             HeatingRateLearner,
         )
+
         return HeatingRateLearner("floor_hydronic")
 
     @pytest.fixture
@@ -1189,9 +1187,7 @@ class TestRateModeDetection:
         # Stall counter should be reset
         assert heating_rate_learner._stall_counter == 0
 
-    def test_rate_mode_updates_cumulative_multiplier(
-        self, detector_with_rate_learner, heating_rate_learner
-    ):
+    def test_rate_mode_updates_cumulative_multiplier(self, detector_with_rate_learner, heating_rate_learner):
         """Test that rate-based adjustment updates cumulative multiplier."""
         from datetime import datetime, timedelta
         from homeassistant.util import dt as dt_util
@@ -1225,6 +1221,4 @@ class TestRateModeDetection:
         detector_with_rate_learner.apply_rate_adjustment()
 
         expected = initial_cumulative * multiplier
-        assert detector_with_rate_learner.cumulative_ki_multiplier == pytest.approx(
-            expected, abs=0.001
-        )
+        assert detector_with_rate_learner.cumulative_ki_multiplier == pytest.approx(expected, abs=0.001)

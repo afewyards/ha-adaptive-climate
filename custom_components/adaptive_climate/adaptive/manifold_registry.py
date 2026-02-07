@@ -13,6 +13,7 @@ Formula:
 
 Once the manifold is warm (active within 5 minutes), delay is zero.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -40,6 +41,7 @@ class Manifold:
         pipe_volume: Total pipe volume in liters from heat source to manifold
         flow_per_loop: Flow rate per loop in L/min (default 2.0)
     """
+
     name: str
     zones: List[str]
     pipe_volume: float
@@ -94,11 +96,7 @@ class ManifoldRegistry:
         if manifold:
             self._last_active_time[manifold.name] = dt_util.utcnow()
 
-    def get_transport_delay(
-        self,
-        zone_id: str,
-        active_zones: Dict[str, int]
-    ) -> float:
+    def get_transport_delay(self, zone_id: str, active_zones: Dict[str, int]) -> float:
         """Calculate transport delay for a zone in minutes.
 
         Transport delay is the time for hot water to travel from the heat source
@@ -166,11 +164,7 @@ class ManifoldRegistry:
         Returns:
             Dict mapping manifold names to ISO datetime strings.
         """
-        return {
-            name: ts.isoformat()
-            for name, ts in self._last_active_time.items()
-            if ts is not None
-        }
+        return {name: ts.isoformat() for name, ts in self._last_active_time.items() if ts is not None}
 
     def restore_state(self, state: Dict[str, str]) -> None:
         """Restore last_active_time from stored ISO strings.

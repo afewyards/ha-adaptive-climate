@@ -3,6 +3,7 @@
 This module defines protocols (structural types) that describe the interfaces
 managers and other components expect from the thermostat entity.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
@@ -162,6 +163,7 @@ class KeManagerState(TemperatureState, PIDState, HVACState, Protocol):
         state access. Action callbacks (set_ke, async_control_heating, etc.)
         remain as explicit callable parameters.
     """
+
     # All properties inherited from TemperatureState, PIDState, and HVACState
     # Additional property needed for logging
     @property

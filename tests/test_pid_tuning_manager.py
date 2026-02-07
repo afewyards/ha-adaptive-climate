@@ -47,6 +47,7 @@ class MockPIDTuningManagerState:
 
         # HVAC properties
         from homeassistant.components.climate import HVACMode
+
         self._hvac_mode = HVACMode.HEAT
         self.hvac_mode = HVACMode.HEAT
         self.hvac_action = "heating"

@@ -93,9 +93,7 @@ class TestExtendedSettlingWindow:
         # Should default to 30 minutes (radiator-like default)
         assert recorder.get_settling_window_minutes() == 30
 
-    def test_settling_start_includes_transport_delay(
-        self, mock_hass, mock_adaptive_learner, mock_callbacks
-    ):
+    def test_settling_start_includes_transport_delay(self, mock_hass, mock_adaptive_learner, mock_callbacks):
         """Settling window starts after transport delay."""
         recorder = CycleMetricsRecorder(
             hass=mock_hass,
@@ -123,9 +121,7 @@ class TestExtendedSettlingWindow:
         expected_start = datetime(2025, 1, 15, 10, 35, 0)
         assert settling_start == expected_start
 
-    def test_settling_start_includes_valve_actuation(
-        self, mock_hass, mock_adaptive_learner, mock_callbacks
-    ):
+    def test_settling_start_includes_valve_actuation(self, mock_hass, mock_adaptive_learner, mock_callbacks):
         """Settling window starts after valve actuation time."""
         recorder = CycleMetricsRecorder(
             hass=mock_hass,
@@ -151,9 +147,7 @@ class TestExtendedSettlingWindow:
         expected_start = datetime(2025, 1, 15, 10, 31, 0)
         assert settling_start == expected_start
 
-    def test_settling_start_includes_both_delays(
-        self, mock_hass, mock_adaptive_learner, mock_callbacks
-    ):
+    def test_settling_start_includes_both_delays(self, mock_hass, mock_adaptive_learner, mock_callbacks):
         """Settling window starts after both valve actuation and transport delay."""
         recorder = CycleMetricsRecorder(
             hass=mock_hass,
@@ -184,9 +178,7 @@ class TestExtendedSettlingWindow:
         expected_start = datetime(2025, 1, 15, 10, 36, 0)
         assert settling_start == expected_start
 
-    def test_settling_start_returns_device_off_when_no_delays(
-        self, mock_hass, mock_adaptive_learner, mock_callbacks
-    ):
+    def test_settling_start_returns_device_off_when_no_delays(self, mock_hass, mock_adaptive_learner, mock_callbacks):
         """Settling starts at device off time when no delays are present."""
         recorder = CycleMetricsRecorder(
             hass=mock_hass,
@@ -209,9 +201,7 @@ class TestExtendedSettlingWindow:
 
         assert settling_start == device_off_time
 
-    def test_settling_start_returns_none_when_no_device_off(
-        self, mock_hass, mock_adaptive_learner, mock_callbacks
-    ):
+    def test_settling_start_returns_none_when_no_device_off(self, mock_hass, mock_adaptive_learner, mock_callbacks):
         """Settling start returns None when device_off_time is not set."""
         recorder = CycleMetricsRecorder(
             hass=mock_hass,
@@ -236,9 +226,7 @@ class TestExtendedSettlingWindow:
 class TestRiseTimeThreshold:
     """Test rise_time calculation uses heating-type-specific thresholds."""
 
-    def test_rise_time_uses_floor_hydronic_threshold(
-        self, mock_hass, mock_adaptive_learner, mock_callbacks
-    ):
+    def test_rise_time_uses_floor_hydronic_threshold(self, mock_hass, mock_adaptive_learner, mock_callbacks):
         """Rise time calculation uses 0.5°C threshold for floor_hydronic."""
         from datetime import timedelta
         from unittest.mock import patch
@@ -271,7 +259,7 @@ class TestRiseTimeThreshold:
         ]
 
         # Mock calculate_rise_time to capture the threshold parameter
-        with patch('custom_components.adaptive_climate.adaptive.cycle_analysis.calculate_rise_time') as mock_calc:
+        with patch("custom_components.adaptive_climate.adaptive.cycle_analysis.calculate_rise_time") as mock_calc:
             mock_calc.return_value = 40.0  # 40 minutes to reach target
 
             # Record cycle metrics (this calls calculate_rise_time internally)
@@ -286,12 +274,10 @@ class TestRiseTimeThreshold:
             # Verify calculate_rise_time was called with 0.5°C threshold (floor_hydronic)
             mock_calc.assert_called_once()
             call_kwargs = mock_calc.call_args[1]
-            assert 'threshold' in call_kwargs
-            assert call_kwargs['threshold'] == 0.5
+            assert "threshold" in call_kwargs
+            assert call_kwargs["threshold"] == 0.5
 
-    def test_rise_time_uses_forced_air_threshold(
-        self, mock_hass, mock_adaptive_learner, mock_callbacks
-    ):
+    def test_rise_time_uses_forced_air_threshold(self, mock_hass, mock_adaptive_learner, mock_callbacks):
         """Rise time calculation uses 0.15°C threshold for forced_air."""
         from datetime import timedelta
         from unittest.mock import patch
@@ -322,7 +308,7 @@ class TestRiseTimeThreshold:
         ]
 
         # Mock calculate_rise_time to capture the threshold parameter
-        with patch('custom_components.adaptive_climate.adaptive.cycle_analysis.calculate_rise_time') as mock_calc:
+        with patch("custom_components.adaptive_climate.adaptive.cycle_analysis.calculate_rise_time") as mock_calc:
             mock_calc.return_value = 20.0  # 20 minutes to reach target
 
             # Record cycle metrics
@@ -337,12 +323,10 @@ class TestRiseTimeThreshold:
             # Verify calculate_rise_time was called with 0.15°C threshold (forced_air)
             mock_calc.assert_called_once()
             call_kwargs = mock_calc.call_args[1]
-            assert 'threshold' in call_kwargs
-            assert call_kwargs['threshold'] == 0.15
+            assert "threshold" in call_kwargs
+            assert call_kwargs["threshold"] == 0.15
 
-    def test_rise_time_defaults_to_0_2_when_no_cold_tolerance(
-        self, mock_hass, mock_adaptive_learner, mock_callbacks
-    ):
+    def test_rise_time_defaults_to_0_2_when_no_cold_tolerance(self, mock_hass, mock_adaptive_learner, mock_callbacks):
         """Rise time calculation defaults to 0.2°C threshold when cold_tolerance is None."""
         from datetime import timedelta
         from unittest.mock import patch
@@ -372,7 +356,7 @@ class TestRiseTimeThreshold:
         ]
 
         # Mock calculate_rise_time to capture the threshold parameter
-        with patch('custom_components.adaptive_climate.adaptive.cycle_analysis.calculate_rise_time') as mock_calc:
+        with patch("custom_components.adaptive_climate.adaptive.cycle_analysis.calculate_rise_time") as mock_calc:
             mock_calc.return_value = 20.0
 
             # Record cycle metrics
@@ -388,7 +372,7 @@ class TestRiseTimeThreshold:
             # (will use default 0.2°C from calculate_rise_time function)
             mock_calc.assert_called_once()
             call_kwargs = mock_calc.call_args[1]
-            assert 'threshold' not in call_kwargs
+            assert "threshold" not in call_kwargs
 
 
 class TestStartingDeltaCalculation:
@@ -444,9 +428,7 @@ class TestStartingDeltaCalculation:
         # Verify starting_delta is calculated correctly
         assert cycle_metrics.starting_delta == 2.0
 
-    def test_starting_delta_with_cooling_mode(
-        self, mock_hass, mock_adaptive_learner, mock_callbacks
-    ):
+    def test_starting_delta_with_cooling_mode(self, mock_hass, mock_adaptive_learner, mock_callbacks):
         """Starting delta is calculated for cooling mode (temp - target)."""
         # Modify callbacks for cooling mode
         mock_callbacks["get_hvac_mode"].return_value = "cool"

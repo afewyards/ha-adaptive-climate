@@ -233,6 +233,7 @@ class TestOscillationCountingPWMFilter:
     def test_pwm_mode_logging_message(self, caplog):
         """Test that PWM mode filtering logs appropriate message."""
         import logging
+
         caplog.set_level(logging.DEBUG)
 
         learner = AdaptiveLearner()

@@ -1,4 +1,5 @@
 """Tests for thermal groups module."""
+
 import pytest
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock
@@ -20,7 +21,7 @@ class TestThermalGroupValidation:
             "name": "downstairs",
             "zones": ["living_room", "kitchen", "dining"],
             "group_type": "open_plan",
-            "leader": "living_room"
+            "leader": "living_room",
         }
 
         group = ThermalGroup(**config)
@@ -39,7 +40,7 @@ class TestThermalGroupValidation:
             "leader": "bedroom1",
             "receives_from": "downstairs",
             "transfer_factor": 0.3,
-            "delay_minutes": 15
+            "delay_minutes": 15,
         }
 
         group = ThermalGroup(**config)
@@ -53,7 +54,7 @@ class TestThermalGroupValidation:
         config = {
             "name": "downstairs",
             "zones": ["living_room", "kitchen"],
-            "group_type": "open_plan"
+            "group_type": "open_plan",
             # Missing leader
         }
 
@@ -66,7 +67,7 @@ class TestThermalGroupValidation:
             "name": "downstairs",
             "zones": ["living_room", "kitchen"],
             "group_type": "open_plan",
-            "leader": "dining_room"  # Not in zones list
+            "leader": "dining_room",  # Not in zones list
         }
 
         with pytest.raises(ValueError, match="must be in zones list"):
@@ -74,12 +75,7 @@ class TestThermalGroupValidation:
 
     def test_invalid_empty_zones(self):
         """Test invalid config: empty zones list."""
-        config = {
-            "name": "empty_group",
-            "zones": [],
-            "group_type": "open_plan",
-            "leader": None
-        }
+        config = {"name": "empty_group", "zones": [], "group_type": "open_plan", "leader": None}
 
         with pytest.raises(ValueError, match="must have at least one zone"):
             ThermalGroup(**config)
@@ -92,7 +88,7 @@ class TestThermalGroupValidation:
             "group_type": "open_plan",
             "leader": "bedroom1",
             "receives_from": "downstairs",
-            "transfer_factor": 1.5  # Invalid: > 1.0
+            "transfer_factor": 1.5,  # Invalid: > 1.0
         }
 
         with pytest.raises(ValueError, match="transfer_factor must be between 0.0 and 1.0"):
@@ -106,7 +102,7 @@ class TestThermalGroupValidation:
             "group_type": "open_plan",
             "leader": "bedroom1",
             "receives_from": "downstairs",
-            "transfer_factor": -0.2  # Invalid: negative
+            "transfer_factor": -0.2,  # Invalid: negative
         }
 
         with pytest.raises(ValueError, match="transfer_factor must be between 0.0 and 1.0"):
@@ -121,7 +117,7 @@ class TestThermalGroupValidation:
             "leader": "bedroom1",
             "receives_from": "downstairs",
             "transfer_factor": 0.3,
-            "delay_minutes": -5  # Invalid: negative
+            "delay_minutes": -5,  # Invalid: negative
         }
 
         with pytest.raises(ValueError, match="delay_minutes must be non-negative"):
@@ -133,7 +129,7 @@ class TestThermalGroupValidation:
             "name": "test_group",
             "zones": ["zone1"],
             "group_type": "invalid_type",  # Invalid type
-            "leader": "zone1"
+            "leader": "zone1",
         }
 
         with pytest.raises(ValueError, match="Invalid group_type"):
@@ -147,16 +143,12 @@ class TestThermalGroupManagerValidation:
         """Test invalid: zone assigned to multiple groups."""
         hass = MagicMock()
         config = [
-            {
-                "name": "downstairs",
-                "zones": ["living_room", "kitchen"],
-                "leader": "living_room"
-            },
+            {"name": "downstairs", "zones": ["living_room", "kitchen"], "leader": "living_room"},
             {
                 "name": "upstairs",
                 "zones": ["bedroom1", "kitchen"],  # kitchen duplicated
-                "leader": "bedroom1"
-            }
+                "leader": "bedroom1",
+            },
         ]
 
         with pytest.raises(ValueError, match="Zone 'kitchen' is already in group"):
@@ -171,7 +163,7 @@ class TestThermalGroupManagerValidation:
                 "zones": ["bedroom1"],
                 "leader": "bedroom1",
                 "receives_from": "nonexistent_group",  # Does not exist
-                "transfer_factor": 0.3
+                "transfer_factor": 0.3,
             }
         ]
 
@@ -187,7 +179,7 @@ class TestThermalGroupManagerValidation:
                 "zones": ["living_room"],
                 "leader": "living_room",
                 "receives_from": "downstairs",  # Self-reference
-                "transfer_factor": 0.3
+                "transfer_factor": 0.3,
             }
         ]
 
@@ -201,7 +193,7 @@ class TestThermalGroupManagerValidation:
             {
                 # Missing "name"
                 "zones": ["living_room"],
-                "leader": "living_room"
+                "leader": "living_room",
             }
         ]
 
@@ -215,7 +207,7 @@ class TestThermalGroupManagerValidation:
             {
                 "name": "downstairs",
                 # Missing "zones"
-                "leader": "living_room"
+                "leader": "living_room",
             }
         ]
 
@@ -229,13 +221,7 @@ class TestLeaderFollowerTracking:
     def test_follower_zones_track_leader(self):
         """Test that follower zones are identified correctly."""
         hass = MagicMock()
-        config = [
-            {
-                "name": "downstairs",
-                "zones": ["living_room", "kitchen", "dining"],
-                "leader": "living_room"
-            }
-        ]
+        config = [{"name": "downstairs", "zones": ["living_room", "kitchen", "dining"], "leader": "living_room"}]
 
         manager = ThermalGroupManager(hass, config)
 
@@ -253,13 +239,7 @@ class TestLeaderFollowerTracking:
     def test_get_follower_zones(self):
         """Test getting all follower zones for a leader."""
         hass = MagicMock()
-        config = [
-            {
-                "name": "downstairs",
-                "zones": ["living_room", "kitchen", "dining"],
-                "leader": "living_room"
-            }
-        ]
+        config = [{"name": "downstairs", "zones": ["living_room", "kitchen", "dining"], "leader": "living_room"}]
 
         manager = ThermalGroupManager(hass, config)
 
@@ -270,13 +250,7 @@ class TestLeaderFollowerTracking:
     def test_non_follower_zones_unaffected(self):
         """Test that zones outside the group are unaffected."""
         hass = MagicMock()
-        config = [
-            {
-                "name": "downstairs",
-                "zones": ["living_room", "kitchen"],
-                "leader": "living_room"
-            }
-        ]
+        config = [{"name": "downstairs", "zones": ["living_room", "kitchen"], "leader": "living_room"}]
 
         manager = ThermalGroupManager(hass, config)
 
@@ -288,13 +262,7 @@ class TestLeaderFollowerTracking:
     def test_should_sync_setpoint_follower(self):
         """Test should_sync_setpoint returns True for followers."""
         hass = MagicMock()
-        config = [
-            {
-                "name": "downstairs",
-                "zones": ["living_room", "kitchen"],
-                "leader": "living_room"
-            }
-        ]
+        config = [{"name": "downstairs", "zones": ["living_room", "kitchen"], "leader": "living_room"}]
 
         manager = ThermalGroupManager(hass, config)
 
@@ -310,13 +278,7 @@ class TestLeaderFollowerTracking:
     def test_leader_not_affected_by_own_changes(self):
         """Test that leader zone is not affected by its own setpoint changes."""
         hass = MagicMock()
-        config = [
-            {
-                "name": "downstairs",
-                "zones": ["living_room", "kitchen"],
-                "leader": "living_room"
-            }
-        ]
+        config = [{"name": "downstairs", "zones": ["living_room", "kitchen"], "leader": "living_room"}]
 
         manager = ThermalGroupManager(hass, config)
 
@@ -334,19 +296,15 @@ class TestCrossGroupFeedforward:
 
         hass = MagicMock()
         config = [
-            {
-                "name": "downstairs",
-                "zones": ["living_room"],
-                "leader": "living_room"
-            },
+            {"name": "downstairs", "zones": ["living_room"], "leader": "living_room"},
             {
                 "name": "upstairs",
                 "zones": ["bedroom1"],
                 "leader": "bedroom1",
                 "receives_from": "downstairs",
                 "transfer_factor": 0.3,
-                "delay_minutes": 10
-            }
+                "delay_minutes": 10,
+            },
         ]
 
         manager = ThermalGroupManager(hass, config)
@@ -355,15 +313,11 @@ class TestCrossGroupFeedforward:
         current_time = datetime(2024, 1, 15, 10, 0)
         with_delay = current_time - timedelta(minutes=10)
         manager._transfer_history["upstairs"].append(
-            TransferHistory(
-                source_group="downstairs",
-                timestamp=with_delay,
-                heat_output=50.0
-            )
+            TransferHistory(source_group="downstairs", timestamp=with_delay, heat_output=50.0)
         )
 
         # Calculate feedforward for bedroom1
-        with patch('custom_components.adaptive_climate.adaptive.thermal_groups.dt_util') as mock_dt_util:
+        with patch("custom_components.adaptive_climate.adaptive.thermal_groups.dt_util") as mock_dt_util:
             mock_dt_util.utcnow.return_value = current_time
             feedforward = manager.calculate_feedforward("bedroom1")
 
@@ -376,19 +330,15 @@ class TestCrossGroupFeedforward:
 
         hass = MagicMock()
         config = [
-            {
-                "name": "downstairs",
-                "zones": ["living_room"],
-                "leader": "living_room"
-            },
+            {"name": "downstairs", "zones": ["living_room"], "leader": "living_room"},
             {
                 "name": "upstairs",
                 "zones": ["bedroom1"],
                 "leader": "bedroom1",
                 "receives_from": "downstairs",
                 "transfer_factor": 0.3,
-                "delay_minutes": 10
-            }
+                "delay_minutes": 10,
+            },
         ]
 
         manager = ThermalGroupManager(hass, config)
@@ -398,15 +348,11 @@ class TestCrossGroupFeedforward:
         # Heat output only 2 minutes ago (less than 10 minute delay)
         recent = current_time - timedelta(minutes=2)
         manager._transfer_history["upstairs"].append(
-            TransferHistory(
-                source_group="downstairs",
-                timestamp=recent,
-                heat_output=50.0
-            )
+            TransferHistory(source_group="downstairs", timestamp=recent, heat_output=50.0)
         )
 
         # Should return 0 because data is too recent (doesn't match delay)
-        with patch('custom_components.adaptive_climate.adaptive.thermal_groups.dt_util') as mock_dt_util:
+        with patch("custom_components.adaptive_climate.adaptive.thermal_groups.dt_util") as mock_dt_util:
             mock_dt_util.utcnow.return_value = current_time
             feedforward = manager.calculate_feedforward("bedroom1")
             assert feedforward == 0.0
@@ -415,19 +361,15 @@ class TestCrossGroupFeedforward:
         """Test feedforward returns 0 when no history available."""
         hass = MagicMock()
         config = [
-            {
-                "name": "downstairs",
-                "zones": ["living_room"],
-                "leader": "living_room"
-            },
+            {"name": "downstairs", "zones": ["living_room"], "leader": "living_room"},
             {
                 "name": "upstairs",
                 "zones": ["bedroom1"],
                 "leader": "bedroom1",
                 "receives_from": "downstairs",
                 "transfer_factor": 0.3,
-                "delay_minutes": 10
-            }
+                "delay_minutes": 10,
+            },
         ]
 
         manager = ThermalGroupManager(hass, config)
@@ -439,13 +381,7 @@ class TestCrossGroupFeedforward:
     def test_feedforward_zone_not_receiving(self):
         """Test feedforward returns 0 for zones not receiving from other groups."""
         hass = MagicMock()
-        config = [
-            {
-                "name": "downstairs",
-                "zones": ["living_room"],
-                "leader": "living_room"
-            }
-        ]
+        config = [{"name": "downstairs", "zones": ["living_room"], "leader": "living_room"}]
 
         manager = ThermalGroupManager(hass, config)
 
@@ -458,19 +394,15 @@ class TestCrossGroupFeedforward:
 
         hass = MagicMock()
         config = [
-            {
-                "name": "downstairs",
-                "zones": ["living_room"],
-                "leader": "living_room"
-            },
+            {"name": "downstairs", "zones": ["living_room"], "leader": "living_room"},
             {
                 "name": "upstairs",
                 "zones": ["bedroom1"],
                 "leader": "bedroom1",
                 "receives_from": "downstairs",
                 "transfer_factor": 0.3,
-                "delay_minutes": 10
-            }
+                "delay_minutes": 10,
+            },
         ]
 
         manager = ThermalGroupManager(hass, config)
@@ -480,7 +412,7 @@ class TestCrossGroupFeedforward:
 
         # Record heat output for living_room (in downstairs group)
         current_time = datetime(2024, 1, 15, 10, 0)
-        with patch('custom_components.adaptive_climate.adaptive.thermal_groups.dt_util') as mock_dt_util:
+        with patch("custom_components.adaptive_climate.adaptive.thermal_groups.dt_util") as mock_dt_util:
             mock_dt_util.utcnow.return_value = current_time
             manager.record_heat_output("living_room", 60.0)
 
@@ -495,19 +427,15 @@ class TestCrossGroupFeedforward:
 
         hass = MagicMock()
         config = [
-            {
-                "name": "downstairs",
-                "zones": ["living_room"],
-                "leader": "living_room"
-            },
+            {"name": "downstairs", "zones": ["living_room"], "leader": "living_room"},
             {
                 "name": "upstairs",
                 "zones": ["bedroom1"],
                 "leader": "bedroom1",
                 "receives_from": "downstairs",
                 "transfer_factor": 0.3,
-                "delay_minutes": 10
-            }
+                "delay_minutes": 10,
+            },
         ]
 
         manager = ThermalGroupManager(hass, config)
@@ -516,22 +444,18 @@ class TestCrossGroupFeedforward:
 
         # Add old entry (3 hours ago - should be pruned)
         old_entry = TransferHistory(
-            source_group="downstairs",
-            timestamp=current_time - timedelta(hours=3),
-            heat_output=30.0
+            source_group="downstairs", timestamp=current_time - timedelta(hours=3), heat_output=30.0
         )
         manager._transfer_history["upstairs"].append(old_entry)
 
         # Add recent entry (1 hour ago - should be kept)
         recent_entry = TransferHistory(
-            source_group="downstairs",
-            timestamp=current_time - timedelta(hours=1),
-            heat_output=40.0
+            source_group="downstairs", timestamp=current_time - timedelta(hours=1), heat_output=40.0
         )
         manager._transfer_history["upstairs"].append(recent_entry)
 
         # Record new heat output (triggers pruning)
-        with patch('custom_components.adaptive_climate.adaptive.thermal_groups.dt_util') as mock_dt_util:
+        with patch("custom_components.adaptive_climate.adaptive.thermal_groups.dt_util") as mock_dt_util:
             mock_dt_util.utcnow.return_value = current_time
             manager.record_heat_output("living_room", 50.0)
 
@@ -548,19 +472,15 @@ class TestCrossGroupFeedforward:
 
         hass = MagicMock()
         config = [
-            {
-                "name": "downstairs",
-                "zones": ["living_room"],
-                "leader": "living_room"
-            },
+            {"name": "downstairs", "zones": ["living_room"], "leader": "living_room"},
             {
                 "name": "upstairs",
                 "zones": ["bedroom1"],
                 "leader": "bedroom1",
                 "receives_from": "downstairs",
                 "transfer_factor": 0.3,
-                "delay_minutes": 10
-            }
+                "delay_minutes": 10,
+            },
         ]
 
         manager = ThermalGroupManager(hass, config)
@@ -570,15 +490,11 @@ class TestCrossGroupFeedforward:
         # Heat output 16 minutes ago (6 minutes off from 10 minute delay - outside tolerance)
         off_target = current_time - timedelta(minutes=16)
         manager._transfer_history["upstairs"].append(
-            TransferHistory(
-                source_group="downstairs",
-                timestamp=off_target,
-                heat_output=50.0
-            )
+            TransferHistory(source_group="downstairs", timestamp=off_target, heat_output=50.0)
         )
 
         # Should return 0 because entry is outside 5-minute tolerance window
-        with patch('custom_components.adaptive_climate.adaptive.thermal_groups.dt_util') as mock_dt_util:
+        with patch("custom_components.adaptive_climate.adaptive.thermal_groups.dt_util") as mock_dt_util:
             mock_dt_util.utcnow.return_value = current_time
             feedforward = manager.calculate_feedforward("bedroom1")
             assert feedforward == 0.0
@@ -591,16 +507,8 @@ class TestThermalGroupManagerIntegration:
         """Test manager creation and basic zone lookups."""
         hass = MagicMock()
         config = [
-            {
-                "name": "downstairs",
-                "zones": ["living_room", "kitchen"],
-                "leader": "living_room"
-            },
-            {
-                "name": "upstairs",
-                "zones": ["bedroom1", "bedroom2"],
-                "leader": "bedroom1"
-            }
+            {"name": "downstairs", "zones": ["living_room", "kitchen"], "leader": "living_room"},
+            {"name": "upstairs", "zones": ["bedroom1", "bedroom2"], "leader": "bedroom1"},
         ]
 
         manager = ThermalGroupManager(hass, config)
@@ -618,19 +526,15 @@ class TestThermalGroupManagerIntegration:
         """Test getting status of all thermal groups."""
         hass = MagicMock()
         config = [
-            {
-                "name": "downstairs",
-                "zones": ["living_room", "kitchen"],
-                "leader": "living_room"
-            },
+            {"name": "downstairs", "zones": ["living_room", "kitchen"], "leader": "living_room"},
             {
                 "name": "upstairs",
                 "zones": ["bedroom1"],
                 "leader": "bedroom1",
                 "receives_from": "downstairs",
                 "transfer_factor": 0.3,
-                "delay_minutes": 15
-            }
+                "delay_minutes": 15,
+            },
         ]
 
         manager = ThermalGroupManager(hass, config)
@@ -668,18 +572,14 @@ class TestThermalGroupManagerIntegration:
         """Test complex setup with multiple groups and cross-references."""
         hass = MagicMock()
         config = [
-            {
-                "name": "ground_floor",
-                "zones": ["living_room", "kitchen", "dining"],
-                "leader": "living_room"
-            },
+            {"name": "ground_floor", "zones": ["living_room", "kitchen", "dining"], "leader": "living_room"},
             {
                 "name": "first_floor",
                 "zones": ["bedroom1", "bedroom2", "bathroom"],
                 "leader": "bedroom1",
                 "receives_from": "ground_floor",
                 "transfer_factor": 0.25,
-                "delay_minutes": 20
+                "delay_minutes": 20,
             },
             {
                 "name": "second_floor",
@@ -687,8 +587,8 @@ class TestThermalGroupManagerIntegration:
                 "leader": "attic",
                 "receives_from": "first_floor",
                 "transfer_factor": 0.15,
-                "delay_minutes": 30
-            }
+                "delay_minutes": 30,
+            },
         ]
 
         manager = ThermalGroupManager(hass, config)
@@ -723,13 +623,7 @@ class TestValidateThermalGroupsConfig:
 
     def test_validate_valid_config(self):
         """Test validation passes for valid config."""
-        config = [
-            {
-                "name": "downstairs",
-                "zones": ["living_room", "kitchen"],
-                "leader": "living_room"
-            }
-        ]
+        config = [{"name": "downstairs", "zones": ["living_room", "kitchen"], "leader": "living_room"}]
 
         # Should not raise
         validate_thermal_groups_config(config)
@@ -753,24 +647,14 @@ class TestValidateThermalGroupsConfig:
 
     def test_validate_missing_name_fails(self):
         """Test validation fails if name is missing."""
-        config = [
-            {
-                "zones": ["living_room"],
-                "leader": "living_room"
-            }
-        ]
+        config = [{"zones": ["living_room"], "leader": "living_room"}]
 
         with pytest.raises(ValueError, match="missing required field 'name'"):
             validate_thermal_groups_config(config)
 
     def test_validate_missing_zones_fails(self):
         """Test validation fails if zones is missing."""
-        config = [
-            {
-                "name": "downstairs",
-                "leader": "living_room"
-            }
-        ]
+        config = [{"name": "downstairs", "leader": "living_room"}]
 
         with pytest.raises(ValueError, match="missing required field 'zones'"):
             validate_thermal_groups_config(config)
@@ -778,16 +662,12 @@ class TestValidateThermalGroupsConfig:
     def test_validate_duplicate_names_fails(self):
         """Test validation fails for duplicate group names."""
         config = [
-            {
-                "name": "downstairs",
-                "zones": ["living_room"],
-                "leader": "living_room"
-            },
+            {"name": "downstairs", "zones": ["living_room"], "leader": "living_room"},
             {
                 "name": "downstairs",  # Duplicate
                 "zones": ["kitchen"],
-                "leader": "kitchen"
-            }
+                "leader": "kitchen",
+            },
         ]
 
         with pytest.raises(ValueError, match="Duplicate group name"):
@@ -799,7 +679,7 @@ class TestValidateThermalGroupsConfig:
             {
                 "name": "downstairs",
                 "zones": "living_room",  # Should be list
-                "leader": "living_room"
+                "leader": "living_room",
             }
         ]
 
@@ -809,16 +689,12 @@ class TestValidateThermalGroupsConfig:
     def test_validate_zone_in_multiple_groups_fails(self):
         """Test validation fails if zone is in multiple groups."""
         config = [
-            {
-                "name": "downstairs",
-                "zones": ["living_room", "kitchen"],
-                "leader": "living_room"
-            },
+            {"name": "downstairs", "zones": ["living_room", "kitchen"], "leader": "living_room"},
             {
                 "name": "upstairs",
                 "zones": ["kitchen", "bedroom"],  # kitchen duplicated
-                "leader": "bedroom"
-            }
+                "leader": "bedroom",
+            },
         ]
 
         with pytest.raises(ValueError, match="assigned to multiple groups"):
@@ -826,14 +702,7 @@ class TestValidateThermalGroupsConfig:
 
     def test_validate_receives_from_unknown_group_fails(self):
         """Test validation fails if receives_from references unknown group."""
-        config = [
-            {
-                "name": "upstairs",
-                "zones": ["bedroom"],
-                "leader": "bedroom",
-                "receives_from": "nonexistent"
-            }
-        ]
+        config = [{"name": "upstairs", "zones": ["bedroom"], "leader": "bedroom", "receives_from": "nonexistent"}]
 
         with pytest.raises(ValueError, match="receives_from unknown group"):
             validate_thermal_groups_config(config)
@@ -845,7 +714,7 @@ class TestValidateThermalGroupsConfig:
                 "name": "downstairs",
                 "zones": ["living_room"],
                 "leader": "living_room",
-                "receives_from": "downstairs"  # Self-reference
+                "receives_from": "downstairs",  # Self-reference
             }
         ]
 

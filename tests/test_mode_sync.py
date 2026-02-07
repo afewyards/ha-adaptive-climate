@@ -1,4 +1,5 @@
 """Tests for ModeSync class."""
+
 import asyncio
 import pytest
 import sys
@@ -10,20 +11,24 @@ from datetime import timedelta
 sys.path.insert(0, str(Path(__file__).parent.parent / "custom_components" / "adaptive_climate"))
 
 # Mock homeassistant modules before importing coordinator
-sys.modules['homeassistant'] = Mock()
+sys.modules["homeassistant"] = Mock()
+
 
 # Event needs to support subscripting for type hints like Event[EventStateChangedData]
 class MockEvent:
     """Mock Event class that supports generic subscripting."""
+
     def __class_getitem__(cls, item):
         return cls
 
+
 mock_core = Mock()
 mock_core.Event = MockEvent
-sys.modules['homeassistant.core'] = mock_core
-sys.modules['homeassistant.exceptions'] = Mock()
-sys.modules['homeassistant.helpers'] = Mock()
-sys.modules['homeassistant.helpers.update_coordinator'] = Mock()
+sys.modules["homeassistant.core"] = mock_core
+sys.modules["homeassistant.exceptions"] = Mock()
+sys.modules["homeassistant.helpers"] = Mock()
+sys.modules["homeassistant.helpers.update_coordinator"] = Mock()
+
 
 # Create mock base class
 class MockDataUpdateCoordinator:
@@ -33,7 +38,8 @@ class MockDataUpdateCoordinator:
         self.name = name
         self.update_interval = update_interval
 
-sys.modules['homeassistant.helpers.update_coordinator'].DataUpdateCoordinator = MockDataUpdateCoordinator
+
+sys.modules["homeassistant.helpers.update_coordinator"].DataUpdateCoordinator = MockDataUpdateCoordinator
 
 # Import coordinator module
 import coordinator
@@ -462,10 +468,7 @@ async def test_multiple_zones_syncing_without_loop(mock_hass, coord):
     assert mock_hass.services.async_call.call_count == 3
 
     # Verify all expected zones were synced
-    entity_ids_called = {
-        call[0][2]["entity_id"]
-        for call in mock_hass.services.async_call.call_args_list
-    }
+    entity_ids_called = {call[0][2]["entity_id"] for call in mock_hass.services.async_call.call_args_list}
     assert entity_ids_called == {
         "climate.bedroom",
         "climate.kitchen",

@@ -21,7 +21,7 @@ def mode_to_str(mode):
     Returns:
         String representation of the mode
     """
-    return mode.value if hasattr(mode, 'value') else str(mode)
+    return mode.value if hasattr(mode, "value") else str(mode)
 
 
 def get_hvac_heat_mode():
@@ -31,6 +31,7 @@ def get_hvac_heat_mode():
         HVACMode.HEAT enum value
     """
     from homeassistant.components.climate import HVACMode
+
     return HVACMode.HEAT
 
 
@@ -41,4 +42,5 @@ def get_hvac_cool_mode():
         HVACMode.COOL enum value
     """
     from homeassistant.components.climate import HVACMode
+
     return HVACMode.COOL

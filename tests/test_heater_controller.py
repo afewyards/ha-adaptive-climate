@@ -8,6 +8,7 @@ import pytest
 
 class MockHVACMode:
     """Mock HVACMode for testing."""
+
     HEAT = "heat"
     COOL = "cool"
     OFF = "off"
@@ -15,12 +16,15 @@ class MockHVACMode:
 
 # Import and patch the module
 import custom_components.adaptive_climate.managers.heater_controller as heater_controller_module
+
 heater_controller_module.HVACMode = MockHVACMode
+
 
 # Mock split_entity_id for tests
 def mock_split_entity_id(entity_id: str):
     """Split entity_id into domain and object_id."""
-    return tuple(entity_id.split('.', 1)) if entity_id and '.' in entity_id else ()
+    return tuple(entity_id.split(".", 1)) if entity_id and "." in entity_id else ()
+
 
 heater_controller_module.split_entity_id = mock_split_entity_id
 
@@ -79,7 +83,7 @@ class TestHeaterControllerSessionTracking:
 
     def test_heater_controller_session_init(self, heater_controller):
         """Test that _cycle_active initializes to False."""
-        assert hasattr(heater_controller, '_cycle_active')
+        assert hasattr(heater_controller, "_cycle_active")
         assert heater_controller._cycle_active is False
 
     @pytest.mark.asyncio
@@ -96,6 +100,7 @@ class TestHeaterControllerSessionTracking:
         # Mock the service call to be async
         async def mock_async_call(*args, **kwargs):
             pass
+
         heater_controller._hass.services.async_call = mock_async_call
 
         # Mock required callbacks
@@ -142,6 +147,7 @@ class TestHeaterControllerSessionTracking:
         # Mock the service call to be async
         async def mock_async_call(*args, **kwargs):
             pass
+
         heater_controller._hass.services.async_call = mock_async_call
 
         # Mock required callbacks
@@ -192,6 +198,7 @@ class TestHeaterControllerSessionTracking:
         # Mock the service call to be async
         async def mock_async_call(*args, **kwargs):
             pass
+
         heater_controller._hass.services.async_call = mock_async_call
 
         # Mock required callbacks
@@ -255,6 +262,7 @@ class TestHeaterControllerSessionTracking:
         # Mock the service call (make it an async coroutine)
         async def async_mock(*args, **kwargs):
             pass
+
         heater_controller._hass.services.async_call = async_mock
         heater_controller._hass.states.is_state = MagicMock(return_value=False)
 
@@ -319,6 +327,7 @@ class TestHeaterControllerSessionTracking:
         # Mock the service call to be async
         async def mock_async_call(*args, **kwargs):
             pass
+
         heater_controller._hass.services.async_call = mock_async_call
 
         # Mock required callbacks
@@ -363,6 +372,7 @@ class TestHeaterControllerSessionTracking:
         # Mock the service call to be async
         async def mock_async_call(*args, **kwargs):
             pass
+
         heater_controller._hass.services.async_call = mock_async_call
 
         # Mock required callbacks
@@ -470,6 +480,7 @@ class TestHeaterControllerPWMThreshold:
         # Mock the service call to be async
         async def mock_async_call(*args, **kwargs):
             pass
+
         heater_controller._hass.services.async_call = mock_async_call
         # Device starts OFF, then simulate time_off has passed
         heater_controller._hass.states.is_state = MagicMock(return_value=False)
@@ -715,14 +726,14 @@ class TestHeaterControllerEventEmission:
     def test_hc_accepts_dispatcher(self, heater_controller_with_dispatcher):
         """Test HC.__init__ accepts optional dispatcher parameter."""
         controller, dispatcher = heater_controller_with_dispatcher
-        assert hasattr(controller, '_dispatcher')
+        assert hasattr(controller, "_dispatcher")
         assert controller._dispatcher is dispatcher
 
     def test_hc_tracks_cycle_active(self, heater_controller_with_dispatcher):
         """Test HC tracks _cycle_active bool for demand state."""
         controller, _ = heater_controller_with_dispatcher
         # Should be renamed from _cycle_active to _cycle_active
-        assert hasattr(controller, '_cycle_active')
+        assert hasattr(controller, "_cycle_active")
         assert controller._cycle_active is False
 
     @pytest.mark.asyncio
@@ -742,6 +753,7 @@ class TestHeaterControllerEventEmission:
         # Mock service calls to be async
         async def mock_async_call(*args, **kwargs):
             pass
+
         controller._hass.services.async_call = mock_async_call
 
         # Mock device state as OFF (so turn_on will actually turn it on)
@@ -749,6 +761,7 @@ class TestHeaterControllerEventEmission:
 
         # Mock callbacks
         import time
+
         cycle_start_time = time.monotonic() - 600  # 600 seconds ago (>= min_closed_time)
         get_cycle_start_time = MagicMock(return_value=cycle_start_time)
         set_is_heating = MagicMock()
@@ -787,11 +800,13 @@ class TestHeaterControllerEventEmission:
         # Mock service calls to be async
         async def mock_async_call(*args, **kwargs):
             pass
+
         controller._hass.services.async_call = mock_async_call
         controller._hass.states.is_state = MagicMock(return_value=False)
 
         # Mock callbacks
         import time
+
         # Set cycle start time to be at least min_closed_time in the past
         # to satisfy the condition: time.monotonic() - get_cycle_start_time() >= min_closed_time
         cycle_start_time = time.monotonic() - 600  # 600 seconds ago (>= 300s min_off)
@@ -825,11 +840,13 @@ class TestHeaterControllerEventEmission:
         # Mock service calls to be async
         async def mock_async_call(*args, **kwargs):
             pass
+
         controller._hass.services.async_call = mock_async_call
         controller._hass.states.is_state = MagicMock(return_value=True)
 
         # Mock callbacks
         import time
+
         cycle_start_time = time.monotonic() - 600  # 600 seconds ago (>= min_open_time)
         get_cycle_start_time = MagicMock(return_value=cycle_start_time)
         set_is_heating = MagicMock()
@@ -866,10 +883,12 @@ class TestHeaterControllerEventEmission:
         # Mock service calls to be async
         async def mock_async_call(*args, **kwargs):
             pass
+
         controller._hass.services.async_call = mock_async_call
 
         # Mock callbacks
         import time
+
         cycle_start_time = time.monotonic() - 600  # 600 seconds ago
         get_cycle_start_time = MagicMock(return_value=cycle_start_time)
         set_is_heating = MagicMock()
@@ -968,11 +987,13 @@ class TestHeaterControllerEventEmission:
         # Mock service calls to be async
         async def mock_async_call(*args, **kwargs):
             pass
+
         controller._hass.services.async_call = mock_async_call
         controller._hass.states.is_state = MagicMock(return_value=True)
 
         # Mock callbacks
         import time
+
         cycle_start_time = time.monotonic() - 600  # 600 seconds ago (>= min_open_time)
         get_cycle_start_time = MagicMock(return_value=cycle_start_time)
         set_is_heating = MagicMock()
@@ -1058,7 +1079,7 @@ class TestDutyAccumulator:
 
     def test_duty_accumulator_initial_zero(self, heater_controller):
         """Test that duty accumulator starts at 0."""
-        assert hasattr(heater_controller, '_duty_accumulator_seconds')
+        assert hasattr(heater_controller, "_duty_accumulator_seconds")
         assert heater_controller._duty_accumulator_seconds == 0.0
 
     def test_max_accumulator_is_2x_min_cycle(self, heater_controller):
@@ -1066,7 +1087,7 @@ class TestDutyAccumulator:
 
         With fixture min_open_time=300s, max_accumulator should be 600s.
         """
-        assert hasattr(heater_controller, '_max_accumulator')
+        assert hasattr(heater_controller, "_max_accumulator")
         expected = 2.0 * 300.0  # 2 * min_open_time from fixture
         assert heater_controller._max_accumulator == expected
 
@@ -1158,6 +1179,7 @@ class TestDutyAccumulation:
 
         async def mock_async_call(*args, **kwargs):
             pass
+
         controller._hass.services.async_call = mock_async_call
         controller._hass.states.is_state = MagicMock(return_value=False)
 
@@ -1348,6 +1370,7 @@ class TestCompressorMinCycleProtection:
         controller._last_cooler_state = True
 
         import time
+
         # Simulate only 60 seconds have passed (less than 180s min_cycle)
         get_cycle_start_time.return_value = time.monotonic() - 60
 
@@ -1372,6 +1395,7 @@ class TestCompressorMinCycleProtection:
         # Mock service calls and state
         async def mock_async_call(*args, **kwargs):
             pass
+
         controller._hass.services.async_call = mock_async_call
         controller._hass.states.is_state = MagicMock(return_value=True)  # Compressor is ON
 
@@ -1384,6 +1408,7 @@ class TestCompressorMinCycleProtection:
         controller._last_cooler_state = True
 
         import time
+
         # Simulate 200 seconds have passed (more than 180s min_cycle)
         get_cycle_start_time.return_value = time.monotonic() - 200
 
@@ -1416,6 +1441,7 @@ class TestCompressorMinCycleProtection:
         controller._last_cooler_state = True
 
         import time
+
         # Simulate only 120 seconds have passed (less than 300s min_cycle)
         get_cycle_start_time.return_value = time.monotonic() - 120
 
@@ -1440,6 +1466,7 @@ class TestCompressorMinCycleProtection:
         # Mock service calls
         async def mock_async_call(*args, **kwargs):
             pass
+
         controller._hass.services.async_call = mock_async_call
         controller._hass.states.is_state = MagicMock(return_value=True)  # Compressor is ON
 
@@ -1452,6 +1479,7 @@ class TestCompressorMinCycleProtection:
         controller._last_cooler_state = True
 
         import time
+
         # Simulate 350 seconds have passed (more than 300s min_cycle)
         get_cycle_start_time.return_value = time.monotonic() - 350
 
@@ -1481,10 +1509,12 @@ class TestCompressorMinCycleProtection:
         # Mock service calls (valve mode)
         async def mock_async_call(*args, **kwargs):
             pass
+
         controller._hass.services.async_call = mock_async_call
         controller._hass.states.get = MagicMock(return_value=MagicMock(state="50"))
 
         import time
+
         # Start with valve open at 50%
         controller._last_cooler_state = True
 
@@ -1505,6 +1535,7 @@ class TestCompressorMinCycleProtection:
         # Mock service calls
         async def mock_async_call(*args, **kwargs):
             pass
+
         controller._hass.services.async_call = mock_async_call
         controller._hass.states.is_state = MagicMock(return_value=True)  # Compressor is ON
 
@@ -1517,6 +1548,7 @@ class TestCompressorMinCycleProtection:
         controller._last_cooler_state = True
 
         import time
+
         # Simulate only 10 seconds have passed (way less than 180s min_cycle)
         get_cycle_start_time.return_value = time.monotonic() - 10
 
@@ -1540,6 +1572,7 @@ class TestCompressorMinCycleProtection:
         # Mock service calls
         async def mock_async_call(*args, **kwargs):
             pass
+
         controller._hass.services.async_call = mock_async_call
         controller._hass.states.is_state = MagicMock(return_value=True)  # Compressor is ON
 
@@ -1553,6 +1586,7 @@ class TestCompressorMinCycleProtection:
         initial_count = controller._cooler_cycle_count
 
         import time
+
         # Simulate 200 seconds have passed (more than 180s min_cycle)
         get_cycle_start_time.return_value = time.monotonic() - 200
 
@@ -1586,6 +1620,7 @@ class TestCompressorMinCycleProtection:
         initial_count = controller._cooler_cycle_count
 
         import time
+
         # Simulate only 60 seconds have passed (less than 180s min_cycle)
         get_cycle_start_time.return_value = time.monotonic() - 60
 
@@ -1766,11 +1801,13 @@ class TestWasClampedCallback:
         # Mock service calls to be async
         async def mock_async_call(*args, **kwargs):
             pass
+
         controller._hass.services.async_call = mock_async_call
         controller._hass.states.is_state = MagicMock(return_value=True)
 
         # Mock callbacks
         import time
+
         cycle_start_time = time.monotonic() - 600  # 600 seconds ago
         get_cycle_start_time = MagicMock(return_value=cycle_start_time)
         set_is_heating = MagicMock()
@@ -1809,11 +1846,13 @@ class TestWasClampedCallback:
         # Mock service calls to be async
         async def mock_async_call(*args, **kwargs):
             pass
+
         controller._hass.services.async_call = mock_async_call
         controller._hass.states.is_state = MagicMock(return_value=True)
 
         # Mock callbacks
         import time
+
         cycle_start_time = time.monotonic() - 600
         get_cycle_start_time = MagicMock(return_value=cycle_start_time)
         set_is_heating = MagicMock()
@@ -1852,6 +1891,7 @@ class TestWasClampedCallback:
         # Mock service calls to be async
         async def mock_async_call(*args, **kwargs):
             pass
+
         controller._hass.services.async_call = mock_async_call
 
         # Mock device state as OFF
@@ -1859,6 +1899,7 @@ class TestWasClampedCallback:
 
         # Mock callbacks
         import time
+
         cycle_start_time = time.monotonic() - 600  # 600 seconds ago
         get_cycle_start_time = MagicMock(return_value=cycle_start_time)
         set_is_heating = MagicMock()
@@ -1944,6 +1985,7 @@ class TestDutyAccumulatorPulse:
 
         async def mock_async_call(*args, **kwargs):
             pass
+
         controller._hass.services.async_call = mock_async_call
         controller._hass.states.is_state = MagicMock(return_value=False)
 
@@ -1986,6 +2028,7 @@ class TestDutyAccumulatorPulse:
 
         async def mock_async_call(*args, **kwargs):
             pass
+
         controller._hass.services.async_call = mock_async_call
         controller._hass.states.is_state = MagicMock(return_value=False)
 
@@ -2027,6 +2070,7 @@ class TestDutyAccumulatorPulse:
 
         async def mock_async_call(*args, **kwargs):
             pass
+
         controller._hass.services.async_call = mock_async_call
         controller._hass.states.is_state = MagicMock(return_value=False)
 
@@ -2067,6 +2111,7 @@ class TestDutyAccumulatorPulse:
 
         async def mock_async_call(*args, **kwargs):
             pass
+
         controller._hass.services.async_call = mock_async_call
         controller._hass.states.is_state = MagicMock(return_value=False)
 
@@ -2126,7 +2171,7 @@ class TestValveActuationTimeDelays:
         return controller, dispatcher
 
     @pytest.mark.asyncio
-    @patch('custom_components.adaptive_climate.managers.heater_controller.async_call_later')
+    @patch("custom_components.adaptive_climate.managers.heater_controller.async_call_later")
     async def test_demand_signal_delayed_on_turn_on(
         self, mock_call_later, heater_controller_valve_actuation, mock_thermostat
     ):
@@ -2140,8 +2185,10 @@ class TestValveActuationTimeDelays:
 
         # Mock service calls
         mock_service_call = MagicMock()
+
         async def mock_async_call(*args, **kwargs):
             mock_service_call(*args, **kwargs)
+
         controller._hass.services.async_call = mock_async_call
         controller._hass.states.is_state = MagicMock(return_value=False)
 
@@ -2174,7 +2221,7 @@ class TestValveActuationTimeDelays:
         assert args[0][1] == 120.0  # delay in seconds
 
     @pytest.mark.asyncio
-    @patch('custom_components.adaptive_climate.managers.heater_controller.async_call_later')
+    @patch("custom_components.adaptive_climate.managers.heater_controller.async_call_later")
     async def test_demand_signal_immediate_when_no_valve_actuation_time(
         self, mock_call_later, mock_hass, mock_thermostat
     ):
@@ -2204,6 +2251,7 @@ class TestValveActuationTimeDelays:
         # Mock service calls
         async def mock_async_call(*args, **kwargs):
             pass
+
         controller._hass.services.async_call = mock_async_call
         controller._hass.states.is_state = MagicMock(return_value=False)
 
@@ -2231,7 +2279,7 @@ class TestValveActuationTimeDelays:
         mock_call_later.assert_not_called()
 
     @pytest.mark.asyncio
-    @patch('custom_components.adaptive_climate.managers.heater_controller.async_call_later')
+    @patch("custom_components.adaptive_climate.managers.heater_controller.async_call_later")
     async def test_demand_removal_delayed_on_turn_off(
         self, mock_call_later, heater_controller_valve_actuation, mock_thermostat
     ):
@@ -2245,8 +2293,10 @@ class TestValveActuationTimeDelays:
 
         # Mock service calls
         mock_service_call = MagicMock()
+
         async def mock_async_call(*args, **kwargs):
             mock_service_call(*args, **kwargs)
+
         controller._hass.services.async_call = mock_async_call
         controller._hass.states.is_state = MagicMock(return_value=True)
 
@@ -2279,7 +2329,7 @@ class TestValveActuationTimeDelays:
         assert args[0][1] == 60.0  # half valve_actuation_time
 
     @pytest.mark.asyncio
-    @patch('custom_components.adaptive_climate.managers.heater_controller.async_call_later')
+    @patch("custom_components.adaptive_climate.managers.heater_controller.async_call_later")
     async def test_pending_open_timer_cancelled_on_turn_off(
         self, mock_call_later, heater_controller_valve_actuation, mock_thermostat
     ):
@@ -2290,6 +2340,7 @@ class TestValveActuationTimeDelays:
         # Mock service calls
         async def mock_async_call(*args, **kwargs):
             pass
+
         controller._hass.services.async_call = mock_async_call
 
         # Mock timer handle
@@ -2330,9 +2381,7 @@ class TestValveActuationTimeDelays:
         mock_timer.assert_called_once()  # Timer cancel function called
 
     @pytest.mark.asyncio
-    async def test_valve_mode_no_delay_on_valve_value(
-        self, mock_hass, mock_thermostat
-    ):
+    async def test_valve_mode_no_delay_on_valve_value(self, mock_hass, mock_thermostat):
         """Test that valve mode (pwm=0) does not apply valve actuation delays."""
         dispatcher = CycleEventDispatcher()
         controller = HeaterController(
@@ -2357,6 +2406,7 @@ class TestValveActuationTimeDelays:
         # Mock service calls
         async def mock_async_call(*args, **kwargs):
             pass
+
         controller._hass.services.async_call = mock_async_call
 
         # Set valve value

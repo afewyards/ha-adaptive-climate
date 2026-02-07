@@ -1,4 +1,5 @@
 """Number entities for Adaptive Climate."""
+
 from __future__ import annotations
 
 import logging
@@ -80,9 +81,7 @@ class LearningWindowNumber(RestoreNumber):
         last_number_data = await self.async_get_last_number_data()
         if last_number_data and last_number_data.native_value is not None:
             self._attr_native_value = int(last_number_data.native_value)
-            _LOGGER.debug(
-                "Restored learning window to %d days", self._attr_native_value
-            )
+            _LOGGER.debug("Restored learning window to %d days", self._attr_native_value)
         else:
             # Fall back to configured value or default
             if DOMAIN in self.hass.data:

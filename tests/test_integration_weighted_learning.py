@@ -45,8 +45,7 @@ class TestCycleWeightCalculation:
 
         # Recovery cycles should have higher weight
         assert weight_recovery > weight_maintenance, (
-            f"Recovery weight ({weight_recovery:.2f}) should exceed "
-            f"maintenance weight ({weight_maintenance:.2f})"
+            f"Recovery weight ({weight_recovery:.2f}) should exceed maintenance weight ({weight_maintenance:.2f})"
         )
 
     def test_weight_calculator_outcome_affects_weight(self):
@@ -129,9 +128,7 @@ class TestConfidenceContributionTracker:
 
         # Should be capped at 25% + diminishing returns
         contribution = tracker.get_maintenance_contribution(mode)
-        assert contribution < cap * 1.5, (
-            f"Maintenance should be capped around {cap:.0%}, got {contribution:.1%}"
-        )
+        assert contribution < cap * 1.5, f"Maintenance should be capped around {cap:.0%}, got {contribution:.1%}"
 
     def test_recovery_cycle_counting(self):
         """Verify recovery cycles are counted correctly."""
@@ -171,9 +168,7 @@ class TestConfidenceContributionTracker:
             tracker.apply_heating_rate_gain(0.02)
 
         contribution = tracker.get_heating_rate_contribution()
-        assert contribution <= cap, (
-            f"Heating rate should be hard capped at {cap:.0%}, got {contribution:.1%}"
-        )
+        assert contribution <= cap, f"Heating rate should be hard capped at {cap:.0%}, got {contribution:.1%}"
 
 
 class TestCycleOutcomeClassification:
@@ -210,9 +205,7 @@ class TestWeightedLearningConstants:
         from custom_components.adaptive_climate.const import MAINTENANCE_CONFIDENCE_CAP
 
         for heating_type in HeatingType:
-            assert heating_type in MAINTENANCE_CONFIDENCE_CAP, (
-                f"MAINTENANCE_CONFIDENCE_CAP missing for {heating_type}"
-            )
+            assert heating_type in MAINTENANCE_CONFIDENCE_CAP, f"MAINTENANCE_CONFIDENCE_CAP missing for {heating_type}"
             cap = MAINTENANCE_CONFIDENCE_CAP[heating_type]
             assert 0.0 < cap < 0.5, f"Cap for {heating_type} should be reasonable: {cap}"
 
@@ -249,10 +242,7 @@ class TestWeightedLearningConstants:
             tier2 = RECOVERY_CYCLES_FOR_TIER2[heating_type]
 
             # Tier 2 should require more cycles than tier 1
-            assert tier2 > tier1, (
-                f"{heating_type}: tier2 ({tier2}) should require more cycles than "
-                f"tier1 ({tier1})"
-            )
+            assert tier2 > tier1, f"{heating_type}: tier2 ({tier2}) should require more cycles than tier1 ({tier1})"
 
 
 class TestAdaptiveLearnerIntegration:
@@ -391,9 +381,7 @@ class TestLearningStatusTierGates:
             mode=mode,
         )
 
-        assert status == "stable", (
-            f"Status should be 'stable' with 12 recovery cycles, got '{status}'."
-        )
+        assert status == "stable", f"Status should be 'stable' with 12 recovery cycles, got '{status}'."
 
     def test_tuned_requires_more_recovery_cycles(self):
         """Verify 'tuned' status requires tier 2 recovery cycles."""
@@ -452,9 +440,7 @@ class TestLearningStatusTierGates:
             mode=mode,
         )
 
-        assert status == "tuned", (
-            f"Status should be 'tuned' with 20 recovery cycles, got '{status}'."
-        )
+        assert status == "tuned", f"Status should be 'tuned' with 20 recovery cycles, got '{status}'."
 
 
 class TestEndToEndWeightedLearning:
@@ -518,10 +504,7 @@ class TestEndToEndWeightedLearning:
         # Without caps: 100 cycles * 0.03 weighted_gain = 3.0 (capped at 1.0)
         # With caps: ~0.25 (cap) + 0.30 (91 cycles * 0.003 diminishing) = ~0.55
         # The key verification is that it's well below 100% and tier gates block "tuned"
-        assert confidence < 0.70, (
-            f"Confidence should be significantly limited by maintenance cap, "
-            f"got {confidence:.1%}"
-        )
+        assert confidence < 0.70, f"Confidence should be significantly limited by maintenance cap, got {confidence:.1%}"
 
         # Verify recovery cycle count is still 0
         assert contribution_tracker.get_recovery_cycle_count(mode) == 0, (
@@ -585,8 +568,7 @@ class TestEndToEndWeightedLearning:
 
         # Verify recovery cycle count
         assert contribution_tracker.get_recovery_cycle_count(mode) == 25, (
-            f"Should have 25 recovery cycles, "
-            f"got {contribution_tracker.get_recovery_cycle_count(mode)}"
+            f"Should have 25 recovery cycles, got {contribution_tracker.get_recovery_cycle_count(mode)}"
         )
 
 
@@ -600,6 +582,7 @@ def test_integration_weighted_learning_module_exists():
     from custom_components.adaptive_climate.adaptive.confidence_contribution import (
         ConfidenceContributionTracker,
     )
+
     assert CycleWeightCalculator is not None
     assert CycleOutcome is not None
     assert ConfidenceContributionTracker is not None

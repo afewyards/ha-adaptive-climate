@@ -17,6 +17,7 @@ from custom_components.adaptive_climate.const import (
 
 class MockHVACMode:
     """Mock HVACMode for testing."""
+
     HEAT = "heat"
     COOL = "cool"
     OFF = "off"
@@ -106,7 +107,7 @@ class TestPIDCalcTimeTracking:
             thermostat_state=self.thermostat_state,
             pid_controller=self.pid_controller,
             heater_controller=self.heater_controller,
-            **self.set_callbacks
+            **self.set_callbacks,
         )
 
     @pytest.mark.asyncio
@@ -228,7 +229,7 @@ class TestPIDDtCorrection:
             thermostat_state=self.thermostat_state,
             pid_controller=self.pid_controller,
             heater_controller=self.heater_controller,
-            **self.set_callbacks
+            **self.set_callbacks,
         )
 
     @pytest.mark.asyncio
@@ -244,8 +245,9 @@ class TestPIDDtCorrection:
 
         # The dt should be 60s (actual elapsed time)
         assert len(self._set_dt_calls) == 2
-        assert self._set_dt_calls[1] == pytest.approx(60.0, abs=0.1), \
+        assert self._set_dt_calls[1] == pytest.approx(60.0, abs=0.1), (
             "dt should be actual elapsed time between sensor updates"
+        )
 
     @pytest.mark.asyncio
     async def test_non_sensor_trigger_uses_actual_elapsed_time(self):
@@ -259,8 +261,7 @@ class TestPIDDtCorrection:
             await self.manager.calc_output(is_temp_sensor_update=False)
 
         # Should show 30s elapsed, not sensor interval
-        assert self._set_dt_calls[1] == pytest.approx(30.0, abs=0.1), \
-            "External trigger should show actual elapsed time"
+        assert self._set_dt_calls[1] == pytest.approx(30.0, abs=0.1), "External trigger should show actual elapsed time"
 
     @pytest.mark.asyncio
     async def test_multiple_external_triggers_accumulate_correctly(self):
@@ -274,15 +275,13 @@ class TestPIDDtCorrection:
             await self.manager.calc_output(is_temp_sensor_update=False)
 
         # Should show 30s elapsed, not sensor interval
-        assert self._set_dt_calls[1] == pytest.approx(30.0, abs=0.1), \
-            "External trigger should show actual elapsed time"
+        assert self._set_dt_calls[1] == pytest.approx(30.0, abs=0.1), "External trigger should show actual elapsed time"
 
         # Another external trigger at t=1045 (15s later)
         with patch("time.monotonic", return_value=1045.0):
             await self.manager.calc_output(is_temp_sensor_update=False)
 
-        assert self._set_dt_calls[2] == pytest.approx(15.0, abs=0.1), \
-            "Subsequent trigger should show correct dt"
+        assert self._set_dt_calls[2] == pytest.approx(15.0, abs=0.1), "Subsequent trigger should show correct dt"
 
 
 # ============================================================================
@@ -342,7 +341,7 @@ class TestResetCalcTiming:
             thermostat_state=self.thermostat_state,
             pid_controller=self.pid_controller,
             heater_controller=self.heater_controller,
-            **self.set_callbacks
+            **self.set_callbacks,
         )
 
     @pytest.mark.asyncio
@@ -379,8 +378,7 @@ class TestResetCalcTiming:
             await self.manager.calc_output()
 
         # First call after reset should have dt=0
-        assert self._set_dt_calls[0] == pytest.approx(0.0, abs=0.1), \
-            "First calc after reset should have dt=0"
+        assert self._set_dt_calls[0] == pytest.approx(0.0, abs=0.1), "First calc after reset should have dt=0"
 
 
 # ============================================================================
@@ -440,7 +438,7 @@ class TestPidDtStateAttribute:
             thermostat_state=self.thermostat_state,
             pid_controller=self.pid_controller,
             heater_controller=self.heater_controller,
-            **self.set_callbacks
+            **self.set_callbacks,
         )
 
     @pytest.mark.asyncio
@@ -487,12 +485,10 @@ class TestPidDtStateAttribute:
             await self.manager.calc_output(is_temp_sensor_update=False)
 
         # Should show 30s elapsed, not sensor interval
-        assert self._set_dt_calls[1] == pytest.approx(30.0, abs=0.1), \
-            "External trigger should show actual elapsed time"
+        assert self._set_dt_calls[1] == pytest.approx(30.0, abs=0.1), "External trigger should show actual elapsed time"
 
         # Another external trigger at t=1045 (15s later)
         with patch("time.monotonic", return_value=1045.0):
             await self.manager.calc_output(is_temp_sensor_update=False)
 
-        assert self._set_dt_calls[2] == pytest.approx(15.0, abs=0.1), \
-            "Subsequent trigger should show correct dt"
+        assert self._set_dt_calls[2] == pytest.approx(15.0, abs=0.1), "Subsequent trigger should show correct dt"

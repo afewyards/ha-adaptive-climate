@@ -1,4 +1,5 @@
 """Night setback controller manager for Adaptive Climate integration."""
+
 from __future__ import annotations
 
 import logging
@@ -9,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Tuple
 try:
     from homeassistant.core import HomeAssistant
     from homeassistant.util import dt as dt_util
+
     HAS_HOMEASSISTANT = True
 except ImportError:
     HAS_HOMEASSISTANT = False
@@ -151,7 +153,9 @@ class NightSetbackManager:
         self._learning_grace_until = dt_util.utcnow() + timedelta(minutes=minutes)
         _LOGGER.info(
             "%s: Learning grace period set for %d minutes (until %s)",
-            self._entity_id, minutes, self._learning_grace_until.strftime("%H:%M")
+            self._entity_id,
+            minutes,
+            self._learning_grace_until.strftime("%H:%M"),
         )
 
     def update_days_at_maintenance_cap(self, at_cap: bool) -> None:
@@ -162,15 +166,11 @@ class NightSetbackManager:
         """
         if at_cap:
             self._days_at_maintenance_cap += 1
-            _LOGGER.debug(
-                "%s: Days at maintenance cap: %d",
-                self._entity_id, self._days_at_maintenance_cap
-            )
+            _LOGGER.debug("%s: Days at maintenance cap: %d", self._entity_id, self._days_at_maintenance_cap)
         else:
             if self._days_at_maintenance_cap > 0:
                 _LOGGER.debug(
-                    "%s: Resetting days at maintenance cap (was %d)",
-                    self._entity_id, self._days_at_maintenance_cap
+                    "%s: Resetting days at maintenance cap (was %d)", self._entity_id, self._days_at_maintenance_cap
                 )
             self._days_at_maintenance_cap = 0
 
@@ -219,8 +219,7 @@ class NightSetbackManager:
         return AUTO_LEARNING_SETBACK_WINDOW_START <= hour < AUTO_LEARNING_SETBACK_WINDOW_END
 
     def calculate_night_setback_adjustment(
-        self,
-        current_time: datetime | None = None
+        self, current_time: datetime | None = None
     ) -> Tuple[float, bool, Dict[str, Any]]:
         """Calculate night setback adjustment for effective target temperature.
 
@@ -261,15 +260,14 @@ class NightSetbackManager:
                 self._last_auto_setback = current_time
                 _LOGGER.info(
                     "%s: Auto-learning setback activated (stuck at cap for %d days)",
-                    self._entity_id, self._days_at_maintenance_cap
+                    self._entity_id,
+                    self._days_at_maintenance_cap,
                 )
 
             return effective_target, True, info
 
         # First calculate what the full setback would be
-        effective_target, in_night_period, info = self._calculator.calculate_night_setback_adjustment(
-            current_time
-        )
+        effective_target, in_night_period, info = self._calculator.calculate_night_setback_adjustment(current_time)
 
         # If not in night period, return as-is with zero effective delta
         if not in_night_period:
@@ -294,7 +292,11 @@ class NightSetbackManager:
                 if not self._learning_suppressed:
                     _LOGGER.info("Night setback fully suppressed - learning not ready")
                     self._learning_suppressed = True
-                return (target_temp, True, {"night_setback_delta": 0.0, "effective_delta": 0.0, "suppressed_reason": "learning"})
+                return (
+                    target_temp,
+                    True,
+                    {"night_setback_delta": 0.0, "effective_delta": 0.0, "suppressed_reason": "learning"},
+                )
 
             elif allowed_delta is not None and allowed_delta > 0.0:
                 # Partially allowed - cap the delta
@@ -309,7 +311,9 @@ class NightSetbackManager:
                     if not self._learning_suppressed:
                         _LOGGER.info(
                             "Night setback capped to %.1f°C (allowed: %.1f°C, configured: %.1f°C)",
-                            capped_delta, allowed_delta, configured_delta
+                            capped_delta,
+                            allowed_delta,
+                            configured_delta,
                         )
                         self._learning_suppressed = True
                     result_info["suppressed_reason"] = "limited"
@@ -366,10 +370,7 @@ class NightSetbackManager:
 
         return effective_target, in_night_period, info
 
-    def calculate_effective_setpoint(
-        self,
-        current_time: datetime | None = None
-    ) -> float:
+    def calculate_effective_setpoint(self, current_time: datetime | None = None) -> float:
         """Calculate the effective setpoint with night setback applied.
 
         This is the main interface method for getting the adjusted target temperature.

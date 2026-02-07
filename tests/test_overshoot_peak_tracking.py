@@ -17,9 +17,7 @@ class TestPhaseAwareOvershootTrackerPeakWindow:
     def test_peak_within_window_counted(self):
         """Test that peak within tracking window is counted as overshoot."""
         setpoint = 21.0
-        tracker = PhaseAwareOvershootTracker(
-            setpoint=setpoint, peak_tracking_window_minutes=45
-        )
+        tracker = PhaseAwareOvershootTracker(setpoint=setpoint, peak_tracking_window_minutes=45)
 
         # Rise phase - temperature rises to setpoint
         base_time = datetime(2024, 1, 1, 10, 0)
@@ -46,9 +44,7 @@ class TestPhaseAwareOvershootTrackerPeakWindow:
     def test_peak_outside_window_ignored(self):
         """Test that peak outside tracking window is ignored."""
         setpoint = 21.0
-        tracker = PhaseAwareOvershootTracker(
-            setpoint=setpoint, peak_tracking_window_minutes=45
-        )
+        tracker = PhaseAwareOvershootTracker(setpoint=setpoint, peak_tracking_window_minutes=45)
 
         # Rise phase - temperature rises to setpoint
         base_time = datetime(2024, 1, 1, 10, 0)
@@ -78,9 +74,7 @@ class TestPhaseAwareOvershootTrackerPeakWindow:
     def test_window_closure_logged_once(self):
         """Test that window closure is logged only once."""
         setpoint = 21.0
-        tracker = PhaseAwareOvershootTracker(
-            setpoint=setpoint, peak_tracking_window_minutes=30
-        )
+        tracker = PhaseAwareOvershootTracker(setpoint=setpoint, peak_tracking_window_minutes=30)
 
         base_time = datetime(2024, 1, 1, 10, 0)
         tracker.update(base_time, 19.0)
@@ -109,9 +103,7 @@ class TestPhaseAwareOvershootTrackerPeakWindow:
     def test_no_heater_stop_tracks_all_peaks(self):
         """Test that without heater stop signal, all peaks are tracked."""
         setpoint = 21.0
-        tracker = PhaseAwareOvershootTracker(
-            setpoint=setpoint, peak_tracking_window_minutes=45
-        )
+        tracker = PhaseAwareOvershootTracker(setpoint=setpoint, peak_tracking_window_minutes=45)
 
         base_time = datetime(2024, 1, 1, 10, 0)
         tracker.update(base_time, 19.0)
@@ -132,9 +124,7 @@ class TestPhaseAwareOvershootTrackerPeakWindow:
     def test_reset_clears_heater_stop_time(self):
         """Test that reset clears heater stop time and window state."""
         setpoint = 21.0
-        tracker = PhaseAwareOvershootTracker(
-            setpoint=setpoint, peak_tracking_window_minutes=45
-        )
+        tracker = PhaseAwareOvershootTracker(setpoint=setpoint, peak_tracking_window_minutes=45)
 
         base_time = datetime(2024, 1, 1, 10, 0)
         tracker.update(base_time, 19.0)
@@ -166,9 +156,7 @@ class TestPhaseAwareOvershootTrackerPeakWindow:
         """Test using custom peak tracking window duration."""
         setpoint = 21.0
         # Use shorter 20-minute window
-        tracker = PhaseAwareOvershootTracker(
-            setpoint=setpoint, peak_tracking_window_minutes=20
-        )
+        tracker = PhaseAwareOvershootTracker(setpoint=setpoint, peak_tracking_window_minutes=20)
 
         base_time = datetime(2024, 1, 1, 10, 0)
         tracker.update(base_time, 19.0)
@@ -202,9 +190,7 @@ class TestPhaseAwareOvershootTrackerPeakWindow:
     def test_setpoint_change_invalidates_window(self):
         """Test that setpoint change resets window state."""
         setpoint = 21.0
-        tracker = PhaseAwareOvershootTracker(
-            setpoint=setpoint, peak_tracking_window_minutes=45
-        )
+        tracker = PhaseAwareOvershootTracker(setpoint=setpoint, peak_tracking_window_minutes=45)
 
         base_time = datetime(2024, 1, 1, 10, 0)
         tracker.update(base_time, 19.0)
@@ -283,9 +269,7 @@ class TestOvershootPeakTrackingIntegration:
     def test_solar_gain_late_peak_ignored(self):
         """Test that late peak from solar gain is ignored with time window."""
         setpoint = 21.0
-        tracker = PhaseAwareOvershootTracker(
-            setpoint=setpoint, peak_tracking_window_minutes=45
-        )
+        tracker = PhaseAwareOvershootTracker(setpoint=setpoint, peak_tracking_window_minutes=45)
 
         # Morning heating cycle
         base_time = datetime(2024, 1, 1, 8, 0)
@@ -316,9 +300,7 @@ class TestOvershootPeakTrackingIntegration:
     def test_occupancy_late_peak_ignored(self):
         """Test that late peak from occupancy is ignored with time window."""
         setpoint = 21.0
-        tracker = PhaseAwareOvershootTracker(
-            setpoint=setpoint, peak_tracking_window_minutes=45
-        )
+        tracker = PhaseAwareOvershootTracker(setpoint=setpoint, peak_tracking_window_minutes=45)
 
         # Heating cycle completes
         base_time = datetime(2024, 1, 1, 6, 0)
@@ -346,9 +328,7 @@ class TestOvershootPeakTrackingIntegration:
     def test_normal_overshoot_within_window_counted(self):
         """Test that legitimate overshoot within window is properly counted."""
         setpoint = 21.0
-        tracker = PhaseAwareOvershootTracker(
-            setpoint=setpoint, peak_tracking_window_minutes=45
-        )
+        tracker = PhaseAwareOvershootTracker(setpoint=setpoint, peak_tracking_window_minutes=45)
 
         # Fast heating system with thermal lag causing overshoot
         base_time = datetime(2024, 1, 1, 10, 0)

@@ -8,6 +8,7 @@ the PID used the stale sensor-based timestamp interval instead of the actual ela
 time since the last calculation. This caused the integral to accumulate at incorrect
 rates (e.g., 3%/min instead of 0.01%/min).
 """
+
 import pytest
 from unittest.mock import Mock, patch
 
@@ -22,6 +23,7 @@ from custom_components.adaptive_climate.const import (
 
 class MockHVACMode:
     """Mock HVACMode for testing."""
+
     HEAT = "heat"
     COOL = "cool"
     OFF = "off"
@@ -105,7 +107,7 @@ class TestIntegralAccumulationRate:
             thermostat_state=self.thermostat_state,
             pid_controller=self.pid_controller,
             heater_controller=self.heater_controller,
-            **self.set_callbacks
+            **self.set_callbacks,
         )
 
     @pytest.mark.asyncio
@@ -136,8 +138,7 @@ class TestIntegralAccumulationRate:
 
         # Record initial integral (should be 0 after first calc with dt=0)
         initial_integral = self.pid_controller.integral
-        assert initial_integral == pytest.approx(0.0, abs=0.01), \
-            f"Initial integral should be 0, got {initial_integral}"
+        assert initial_integral == pytest.approx(0.0, abs=0.01), f"Initial integral should be 0, got {initial_integral}"
 
         # Perform 10 calculations at 60s intervals via external sensor triggers
         for i in range(10):
@@ -156,12 +157,12 @@ class TestIntegralAccumulationRate:
         expected_integral = 0.1 * 0.1 * (9 * 60.0 / 3600.0)
 
         # Allow 50% tolerance for rounding and implementation details
-        assert final_integral < 0.1, \
+        assert final_integral < 0.1, (
             f"Integral grew too fast: {final_integral}% (expected ~{expected_integral}%, limit 0.1%)"
+        )
 
         # Also verify it's in the right ballpark (not zero)
-        assert final_integral > 0.0001, \
-            f"Integral too low: {final_integral}% (expected ~{expected_integral}%)"
+        assert final_integral > 0.0001, f"Integral too low: {final_integral}% (expected ~{expected_integral}%)"
 
     @pytest.mark.asyncio
     async def test_integral_stable_when_at_setpoint(self):
@@ -183,12 +184,12 @@ class TestIntegralAccumulationRate:
 
         # Mix of sensor updates and external triggers
         trigger_sequence = [
-            (60.0, True),    # sensor update at +60s
-            (90.0, False),   # external trigger at +90s
-            (120.0, True),   # sensor update at +120s
+            (60.0, True),  # sensor update at +60s
+            (90.0, False),  # external trigger at +90s
+            (120.0, True),  # sensor update at +120s
             (130.0, False),  # external trigger at +130s
             (140.0, False),  # external trigger at +140s
-            (180.0, True),   # sensor update at +180s
+            (180.0, True),  # sensor update at +180s
             (200.0, False),  # external trigger at +200s
         ]
 
@@ -200,8 +201,9 @@ class TestIntegralAccumulationRate:
 
         # With error=0, integral should not change
         # Note: There might be very small floating point differences
-        assert final_integral == pytest.approx(initial_integral, abs=0.001), \
+        assert final_integral == pytest.approx(initial_integral, abs=0.001), (
             f"Integral drifted from {initial_integral} to {final_integral} with zero error"
+        )
 
     @pytest.mark.asyncio
     async def test_integral_rate_independent_of_trigger_frequency(self):
@@ -226,15 +228,20 @@ class TestIntegralAccumulationRate:
         thermostat_state1._current_temp = 20.9
         thermostat_state1._coordinator = self.coordinator
         pid1 = PID(
-            kp=100.0, ki=0.1, kd=50.0, ke=0,
-            out_min=0, out_max=100, sampling_period=0,
+            kp=100.0,
+            ki=0.1,
+            kd=50.0,
+            ke=0,
+            out_min=0,
+            out_max=100,
+            sampling_period=0,
         )
         pid1.set_feedforward = Mock()
         manager1 = ControlOutputManager(
             thermostat_state=thermostat_state1,
             pid_controller=pid1,
             heater_controller=self.heater_controller,
-            **self.set_callbacks
+            **self.set_callbacks,
         )
 
         with patch("time.monotonic", return_value=base_time):
@@ -251,15 +258,20 @@ class TestIntegralAccumulationRate:
         thermostat_state2._current_temp = 20.9
         thermostat_state2._coordinator = self.coordinator
         pid2 = PID(
-            kp=100.0, ki=0.1, kd=50.0, ke=0,
-            out_min=0, out_max=100, sampling_period=0,
+            kp=100.0,
+            ki=0.1,
+            kd=50.0,
+            ke=0,
+            out_min=0,
+            out_max=100,
+            sampling_period=0,
         )
         pid2.set_feedforward = Mock()
         manager2 = ControlOutputManager(
             thermostat_state=thermostat_state2,
             pid_controller=pid2,
             heater_controller=self.heater_controller,
-            **self.set_callbacks
+            **self.set_callbacks,
         )
 
         with patch("time.monotonic", return_value=base_time):
@@ -282,8 +294,9 @@ class TestIntegralAccumulationRate:
 
         # Allow 15% difference to account for different number of intervals
         relative_diff = abs(integral_slow - integral_fast) / max(integral_slow, integral_fast, 0.0001)
-        assert relative_diff < 0.15, \
+        assert relative_diff < 0.15, (
             f"Integral differs too much: slow={integral_slow}, fast={integral_fast}, diff={relative_diff:.1%}"
+        )
 
     @pytest.mark.asyncio
     async def test_external_trigger_uses_correct_dt(self):
@@ -309,5 +322,4 @@ class TestIntegralAccumulationRate:
         dt_value = self.pid_controller.dt
 
         # dt should be 30s (actual elapsed), not 60s (sensor interval)
-        assert dt_value == pytest.approx(30.0, abs=1.0), \
-            f"dt should be 30s (actual elapsed), got {dt_value}s"
+        assert dt_value == pytest.approx(30.0, abs=1.0), f"dt should be 30s (actual elapsed), got {dt_value}s"

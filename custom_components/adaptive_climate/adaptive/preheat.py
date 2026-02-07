@@ -177,10 +177,7 @@ class PreheatLearner:
 
         for bin_key in list(self._observations.keys()):
             # Filter out old observations
-            self._observations[bin_key] = [
-                obs for obs in self._observations[bin_key]
-                if obs.timestamp >= cutoff
-            ]
+            self._observations[bin_key] = [obs for obs in self._observations[bin_key] if obs.timestamp >= cutoff]
 
             # Remove empty bins
             if not self._observations[bin_key]:
@@ -208,9 +205,7 @@ class PreheatLearner:
 
         # Delegate to HeatingRateLearner if available
         if self._heating_rate_learner is not None:
-            rate, source = self._heating_rate_learner.get_heating_rate(
-                delta, outdoor_temp
-            )
+            rate, source = self._heating_rate_learner.get_heating_rate(delta, outdoor_temp)
             if rate <= 0:
                 return float("inf")
 
@@ -341,15 +336,17 @@ class PreheatLearner:
         observations_list = []
         for bin_key, obs_list in self._observations.items():
             for obs in obs_list:
-                observations_list.append({
-                    "bin_key": bin_key,
-                    "start_temp": obs.start_temp,
-                    "end_temp": obs.end_temp,
-                    "outdoor_temp": obs.outdoor_temp,
-                    "duration_minutes": obs.duration_minutes,
-                    "rate": obs.rate,
-                    "timestamp": obs.timestamp.isoformat(),
-                })
+                observations_list.append(
+                    {
+                        "bin_key": bin_key,
+                        "start_temp": obs.start_temp,
+                        "end_temp": obs.end_temp,
+                        "outdoor_temp": obs.outdoor_temp,
+                        "duration_minutes": obs.duration_minutes,
+                        "rate": obs.rate,
+                        "timestamp": obs.timestamp.isoformat(),
+                    }
+                )
 
         return {
             "heating_type": self.heating_type,

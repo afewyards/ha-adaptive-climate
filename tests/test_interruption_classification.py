@@ -17,7 +17,7 @@ class TestInterruptionClassification:
         interruption_type = InterruptionClassifier.classify_setpoint_change(
             old_temp=20.0,
             new_temp=21.0,  # 1.0°C change > 0.5°C threshold
-            is_device_active=False
+            is_device_active=False,
         )
         assert interruption_type == InterruptionType.SETPOINT_MAJOR
 
@@ -26,7 +26,7 @@ class TestInterruptionClassification:
         interruption_type = InterruptionClassifier.classify_setpoint_change(
             old_temp=20.0,
             new_temp=20.3,  # 0.3°C change ≤ 0.5°C threshold
-            is_device_active=False
+            is_device_active=False,
         )
         assert interruption_type == InterruptionType.SETPOINT_MINOR
 
@@ -35,43 +35,35 @@ class TestInterruptionClassification:
         interruption_type = InterruptionClassifier.classify_setpoint_change(
             old_temp=20.0,
             new_temp=22.0,  # 2.0°C change but device active
-            is_device_active=True
+            is_device_active=True,
         )
         assert interruption_type == InterruptionType.SETPOINT_MINOR
 
     def test_mode_change_heating_to_off(self):
         """Test mode change from heat to off during heating."""
         interruption_type = InterruptionClassifier.classify_mode_change(
-            old_mode="heat",
-            new_mode="off",
-            current_cycle_state="heating"
+            old_mode="heat", new_mode="off", current_cycle_state="heating"
         )
         assert interruption_type == InterruptionType.MODE_CHANGE
 
     def test_mode_change_heating_to_cool(self):
         """Test mode change from heat to cool during heating."""
         interruption_type = InterruptionClassifier.classify_mode_change(
-            old_mode="heat",
-            new_mode="cool",
-            current_cycle_state="heating"
+            old_mode="heat", new_mode="cool", current_cycle_state="heating"
         )
         assert interruption_type == InterruptionType.MODE_CHANGE
 
     def test_mode_change_compatible(self):
         """Test compatible mode change (no interruption)."""
         interruption_type = InterruptionClassifier.classify_mode_change(
-            old_mode="heat",
-            new_mode="auto",
-            current_cycle_state="heating"
+            old_mode="heat", new_mode="auto", current_cycle_state="heating"
         )
         assert interruption_type is None
 
     def test_mode_change_settling_to_off(self):
         """Test mode change from settling to off."""
         interruption_type = InterruptionClassifier.classify_mode_change(
-            old_mode="heat",
-            new_mode="off",
-            current_cycle_state="settling"
+            old_mode="heat", new_mode="off", current_cycle_state="settling"
         )
         assert interruption_type == InterruptionType.MODE_CHANGE
 
@@ -93,6 +85,6 @@ class TestInterruptionClassification:
         """Test that InterruptionClassifier module can be imported."""
         assert InterruptionClassifier is not None
         assert InterruptionType is not None
-        assert hasattr(InterruptionClassifier, 'classify_setpoint_change')
-        assert hasattr(InterruptionClassifier, 'classify_mode_change')
-        assert hasattr(InterruptionClassifier, 'classify_contact_sensor')
+        assert hasattr(InterruptionClassifier, "classify_setpoint_change")
+        assert hasattr(InterruptionClassifier, "classify_mode_change")
+        assert hasattr(InterruptionClassifier, "classify_contact_sensor")

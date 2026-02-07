@@ -1,4 +1,5 @@
 """Tests for chronic approach historic scan functionality."""
+
 import pytest
 from custom_components.adaptive_climate.adaptive.learning import AdaptiveLearner
 from custom_components.adaptive_climate.adaptive.cycle_analysis import CycleMetrics
@@ -66,10 +67,7 @@ class TestChronicApproachHistoricScan:
             del state["undershoot_detector"]
 
         # Restore with historic scan enabled
-        learner2 = AdaptiveLearner(
-            heating_type="radiator",
-            chronic_approach_historic_scan=True
-        )
+        learner2 = AdaptiveLearner(heating_type="radiator", chronic_approach_historic_scan=True)
         learner2.restore_from_dict(state)
 
         # Should have detected pattern via historic scan
@@ -97,10 +95,7 @@ class TestChronicApproachHistoricScan:
             del state["undershoot_detector"]
 
         # Restore with historic scan enabled
-        learner2 = AdaptiveLearner(
-            heating_type="radiator",
-            chronic_approach_historic_scan=True
-        )
+        learner2 = AdaptiveLearner(heating_type="radiator", chronic_approach_historic_scan=True)
         learner2.restore_from_dict(state)
 
         # Should not have detected pattern (cycles have rise_time)
@@ -116,10 +111,7 @@ class TestChronicApproachHistoricScan:
         if "undershoot_detector" in state:
             del state["undershoot_detector"]
 
-        learner2 = AdaptiveLearner(
-            heating_type="radiator",
-            chronic_approach_historic_scan=True
-        )
+        learner2 = AdaptiveLearner(heating_type="radiator", chronic_approach_historic_scan=True)
         learner2.restore_from_dict(state)
 
         # Should not crash and should not detect pattern
@@ -128,10 +120,7 @@ class TestChronicApproachHistoricScan:
 
     def test_historic_scan_respects_cooldown(self):
         """Test that historic scan respects cooldown from previous adjustment."""
-        learner = AdaptiveLearner(
-            heating_type="radiator",
-            chronic_approach_historic_scan=True
-        )
+        learner = AdaptiveLearner(heating_type="radiator", chronic_approach_historic_scan=True)
 
         # Add 3 consecutive failures
         for _ in range(3):
@@ -152,10 +141,7 @@ class TestChronicApproachHistoricScan:
         state = learner.to_dict()
 
         # Restore detector state with cooldown active
-        learner2 = AdaptiveLearner(
-            heating_type="radiator",
-            chronic_approach_historic_scan=True
-        )
+        learner2 = AdaptiveLearner(heating_type="radiator", chronic_approach_historic_scan=True)
         learner2.restore_from_dict(state)
         learner2._undershoot_detector.last_adjustment_time = detector.last_adjustment_time
         learner2._undershoot_detector.cumulative_ki_multiplier = detector.cumulative_ki_multiplier
@@ -170,10 +156,7 @@ class TestChronicApproachHistoricScan:
 
     def test_historic_scan_respects_cap(self):
         """Test that historic scan respects cumulative Ki multiplier cap."""
-        learner = AdaptiveLearner(
-            heating_type="radiator",
-            chronic_approach_historic_scan=True
-        )
+        learner = AdaptiveLearner(heating_type="radiator", chronic_approach_historic_scan=True)
 
         # Set cumulative multiplier near cap
         learner._undershoot_detector.cumulative_ki_multiplier = 1.95  # Near 2.0 cap
@@ -191,10 +174,7 @@ class TestChronicApproachHistoricScan:
 
         # Restore from dict (should trigger scan)
         state = learner.to_dict()
-        learner2 = AdaptiveLearner(
-            heating_type="radiator",
-            chronic_approach_historic_scan=True
-        )
+        learner2 = AdaptiveLearner(heating_type="radiator", chronic_approach_historic_scan=True)
         learner2._undershoot_detector.cumulative_ki_multiplier = 1.95
         learner2.restore_from_dict(state)
 
@@ -219,10 +199,7 @@ class TestChronicApproachHistoricScan:
         if "undershoot_detector" in state_floor:
             del state_floor["undershoot_detector"]
 
-        learner_floor2 = AdaptiveLearner(
-            heating_type="floor_hydronic",
-            chronic_approach_historic_scan=True
-        )
+        learner_floor2 = AdaptiveLearner(heating_type="floor_hydronic", chronic_approach_historic_scan=True)
         learner_floor2.restore_from_dict(state_floor)
         assert learner_floor2._undershoot_detector._consecutive_failures == 6
         assert learner_floor2._undershoot_detector.should_adjust_ki(cycles_completed=6)
@@ -243,10 +220,7 @@ class TestChronicApproachHistoricScan:
         if "undershoot_detector" in state_forced:
             del state_forced["undershoot_detector"]
 
-        learner_forced2 = AdaptiveLearner(
-            heating_type="forced_air",
-            chronic_approach_historic_scan=True
-        )
+        learner_forced2 = AdaptiveLearner(heating_type="forced_air", chronic_approach_historic_scan=True)
         learner_forced2.restore_from_dict(state_forced)
         assert learner_forced2._undershoot_detector._consecutive_failures == 6
         assert learner_forced2._undershoot_detector.should_adjust_ki(cycles_completed=6)

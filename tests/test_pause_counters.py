@@ -11,6 +11,7 @@ from custom_components.adaptive_climate.adaptive.contact_sensors import ContactS
 
 def test_humidity_pause_counter_properties():
     """Test that humidity pause counter properties work correctly."""
+
     # Create a minimal thermostat-like object with counter properties
     class MinimalThermostat:
         def __init__(self):
@@ -46,6 +47,7 @@ def test_humidity_pause_counter_properties():
 
 def test_reset_pause_counters():
     """Test that reset_pause_counters resets both counters to 0."""
+
     # Create a minimal thermostat-like object
     class MinimalThermostat:
         def __init__(self):
@@ -190,6 +192,7 @@ def test_counter_increment_logic_integration():
 
     # Fast-forward time and return to normal
     from datetime import timedelta as td
+
     future_now = now + td(seconds=400)
     prev_state = detector.get_state()
     detector.record_humidity(future_now, 55.0)

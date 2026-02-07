@@ -3,6 +3,7 @@
 Implements energy-saving night setback with configurable temperature delta,
 sunset support, and recovery deadline overrides.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, time
@@ -26,9 +27,9 @@ class NightSetback:
         setback_delta: float,
         recovery_deadline: str | None = None,
         sunset_offset_minutes: int = 0,
-        thermal_rate_learner: 'ThermalRateLearner' | None = None,
+        thermal_rate_learner: "ThermalRateLearner" | None = None,
         heating_type: str | None = None,
-        preheat_learner: 'PreheatLearner' | None = None,
+        preheat_learner: "PreheatLearner" | None = None,
     ):
         """Initialize night setback.
 
@@ -87,9 +88,9 @@ class NightSetback:
             Offset in minutes
         """
         offset_str = offset_str.strip()
-        if offset_str.endswith('m'):
+        if offset_str.endswith("m"):
             return int(offset_str[:-1])
-        elif offset_str.endswith('h'):
+        elif offset_str.endswith("h"):
             return int(offset_str[:-1]) * 60
         else:
             # Default: interpret as hours for values <= 12, minutes otherwise
@@ -119,9 +120,9 @@ class NightSetback:
         # Fallback 2: Heating type estimates
         heating_type_rates = {
             "floor_hydronic": 0.5,  # Slow heating
-            "radiator": 1.2,         # Moderate heating
-            "convector": 2.0,        # Fast heating
-            "forced_air": 4.0,       # Very fast heating
+            "radiator": 1.2,  # Moderate heating
+            "convector": 2.0,  # Fast heating
+            "forced_air": 4.0,  # Very fast heating
         }
 
         if self.heating_type in heating_type_rates:
@@ -145,9 +146,9 @@ class NightSetback:
         # Cold-soak margins by heating type
         margins = {
             "floor_hydronic": 1.5,  # 50% margin - high thermal mass
-            "radiator": 1.3,         # 30% margin - moderate thermal mass
-            "convector": 1.2,        # 20% margin - low thermal mass
-            "forced_air": 1.1,       # 10% margin - very low thermal mass
+            "radiator": 1.3,  # 30% margin - moderate thermal mass
+            "convector": 1.2,  # 20% margin - low thermal mass
+            "forced_air": 1.1,  # 10% margin - very low thermal mass
         }
 
         if self.heating_type in margins:
@@ -156,11 +157,7 @@ class NightSetback:
         # Default margin for unknown heating types
         return 1.25  # 25% margin
 
-    def is_night_period(
-        self,
-        current_time: datetime,
-        sunset_time: datetime | None = None
-    ) -> bool:
+    def is_night_period(self, current_time: datetime, sunset_time: datetime | None = None) -> bool:
         """Check if current time is within night period.
 
         Args:
@@ -180,6 +177,7 @@ class NightSetback:
             # Apply offset
             if self.sunset_offset_minutes != 0:
                 from datetime import timedelta
+
                 sunset_with_offset = sunset_time + timedelta(minutes=self.sunset_offset_minutes)
                 start = sunset_with_offset.time()
         else:
@@ -198,7 +196,7 @@ class NightSetback:
         base_setpoint: float,
         current_time: datetime,
         sunset_time: datetime | None = None,
-        force_recovery: bool = False
+        force_recovery: bool = False,
     ) -> float:
         """Get adjusted setpoint with night setback applied.
 
@@ -215,11 +213,9 @@ class NightSetback:
         if self.recovery_deadline and not force_recovery:
             # If we're within 2 hours of recovery deadline, restore setpoint
             from datetime import timedelta
+
             recovery_threshold = current_time.replace(
-                hour=self.recovery_deadline.hour,
-                minute=self.recovery_deadline.minute,
-                second=0,
-                microsecond=0
+                hour=self.recovery_deadline.hour, minute=self.recovery_deadline.minute, second=0, microsecond=0
             )
             two_hours_before = recovery_threshold - timedelta(hours=2)
 
@@ -236,11 +232,7 @@ class NightSetback:
         return base_setpoint
 
     def should_start_recovery(
-        self,
-        current_time: datetime,
-        current_temp: float,
-        base_setpoint: float,
-        outdoor_temp: float | None = None
+        self, current_time: datetime, current_temp: float, base_setpoint: float, outdoor_temp: float | None = None
     ) -> bool:
         """Check if recovery heating should start.
 
@@ -261,14 +253,12 @@ class NightSetback:
 
         # Calculate time until deadline
         recovery_dt = current_time.replace(
-            hour=self.recovery_deadline.hour,
-            minute=self.recovery_deadline.minute,
-            second=0,
-            microsecond=0
+            hour=self.recovery_deadline.hour, minute=self.recovery_deadline.minute, second=0, microsecond=0
         )
         if recovery_dt < current_time:
             # Deadline is tomorrow
             from datetime import timedelta
+
             recovery_dt = recovery_dt + timedelta(days=1)
 
         time_until_deadline = (recovery_dt - current_time).total_seconds() / 3600  # hours
@@ -280,9 +270,7 @@ class NightSetback:
         if self.preheat_learner and outdoor_temp is not None:
             # Use PreheatLearner to estimate time needed
             estimated_minutes = self.preheat_learner.estimate_time_to_target(
-                current_temp=current_temp,
-                target_temp=base_setpoint,
-                outdoor_temp=outdoor_temp
+                current_temp=current_temp, target_temp=base_setpoint, outdoor_temp=outdoor_temp
             )
             estimated_recovery_hours = estimated_minutes / 60.0
 
@@ -323,12 +311,7 @@ class NightSetbackManager:
         self._zone_setbacks: Dict[str, NightSetback] = {}
 
     def configure_zone(
-        self,
-        zone_id: str,
-        start_time: str,
-        end_time: str,
-        setback_delta: float,
-        recovery_deadline: str | None = None
+        self, zone_id: str, start_time: str, end_time: str, setback_delta: float, recovery_deadline: str | None = None
     ):
         """Configure night setback for a zone.
 
@@ -340,18 +323,11 @@ class NightSetbackManager:
             recovery_deadline: Optional override time "HH:MM" when temp must be restored
         """
         self._zone_setbacks[zone_id] = NightSetback(
-            start_time=start_time,
-            end_time=end_time,
-            setback_delta=setback_delta,
-            recovery_deadline=recovery_deadline
+            start_time=start_time, end_time=end_time, setback_delta=setback_delta, recovery_deadline=recovery_deadline
         )
 
     def get_adjusted_setpoint(
-        self,
-        zone_id: str,
-        base_setpoint: float,
-        current_time: datetime,
-        sunset_time: datetime | None = None
+        self, zone_id: str, base_setpoint: float, current_time: datetime, sunset_time: datetime | None = None
     ) -> float:
         """Get adjusted setpoint for a zone.
 
@@ -370,12 +346,7 @@ class NightSetbackManager:
         setback = self._zone_setbacks[zone_id]
         return setback.get_adjusted_setpoint(base_setpoint, current_time, sunset_time)
 
-    def is_zone_in_setback(
-        self,
-        zone_id: str,
-        current_time: datetime,
-        sunset_time: datetime | None = None
-    ) -> bool:
+    def is_zone_in_setback(self, zone_id: str, current_time: datetime, sunset_time: datetime | None = None) -> bool:
         """Check if a zone is currently in night setback.
 
         Args:
@@ -411,5 +382,5 @@ class NightSetbackManager:
             "setback_delta": setback.setback_delta,
             "recovery_deadline": setback.recovery_deadline.strftime("%H:%M") if setback.recovery_deadline else None,
             "use_sunset": setback.use_sunset,
-            "sunset_offset_minutes": setback.sunset_offset_minutes
+            "sunset_offset_minutes": setback.sunset_offset_minutes,
         }

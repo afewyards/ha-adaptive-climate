@@ -1,4 +1,5 @@
 """Tests for solar gain learning and prediction."""
+
 import pytest
 from datetime import datetime
 from custom_components.adaptive_climate.solar.solar_gain import (
@@ -6,7 +7,7 @@ from custom_components.adaptive_climate.solar.solar_gain import (
     SolarGainManager,
     WindowOrientation,
     Season,
-    CloudCoverage
+    CloudCoverage,
 )
 
 
@@ -21,12 +22,12 @@ class TestSolarGainPatternLearning:
         learner.add_measurement(
             datetime(2024, 1, 15, 12, 0),  # Winter, noon
             1.5,  # 1.5°C/hour gain
-            CloudCoverage.CLEAR
+            CloudCoverage.CLEAR,
         )
         learner.add_measurement(
             datetime(2024, 1, 20, 12, 0),  # Winter, noon
             1.3,  # 1.3°C/hour gain
-            CloudCoverage.CLEAR
+            CloudCoverage.CLEAR,
         )
 
         # Should learn pattern: average of 1.5 and 1.3 = 1.4°C/hour
@@ -34,10 +35,7 @@ class TestSolarGainPatternLearning:
         assert learner.get_pattern_count() == 1
 
         # Predict for same conditions
-        predicted = learner.predict_solar_gain(
-            datetime(2024, 1, 25, 12, 0),
-            CloudCoverage.CLEAR
-        )
+        predicted = learner.predict_solar_gain(datetime(2024, 1, 25, 12, 0), CloudCoverage.CLEAR)
         assert predicted == pytest.approx(1.4, abs=0.01)
 
     def test_multiple_patterns_by_hour(self):
@@ -45,43 +43,21 @@ class TestSolarGainPatternLearning:
         learner = SolarGainLearner("living_room", WindowOrientation.SOUTH)
 
         # Morning pattern (9 AM)
-        learner.add_measurement(
-            datetime(2024, 1, 15, 9, 0),
-            0.8,
-            CloudCoverage.CLEAR
-        )
-        learner.add_measurement(
-            datetime(2024, 1, 20, 9, 0),
-            0.9,
-            CloudCoverage.CLEAR
-        )
+        learner.add_measurement(datetime(2024, 1, 15, 9, 0), 0.8, CloudCoverage.CLEAR)
+        learner.add_measurement(datetime(2024, 1, 20, 9, 0), 0.9, CloudCoverage.CLEAR)
 
         # Noon pattern (12 PM)
-        learner.add_measurement(
-            datetime(2024, 1, 15, 12, 0),
-            1.5,
-            CloudCoverage.CLEAR
-        )
-        learner.add_measurement(
-            datetime(2024, 1, 20, 12, 0),
-            1.3,
-            CloudCoverage.CLEAR
-        )
+        learner.add_measurement(datetime(2024, 1, 15, 12, 0), 1.5, CloudCoverage.CLEAR)
+        learner.add_measurement(datetime(2024, 1, 20, 12, 0), 1.3, CloudCoverage.CLEAR)
 
         assert learner.get_pattern_count() == 2
 
         # Verify different predictions for different hours
-        morning_gain = learner.predict_solar_gain(
-            datetime(2024, 1, 25, 9, 0),
-            CloudCoverage.CLEAR
-        )
-        noon_gain = learner.predict_solar_gain(
-            datetime(2024, 1, 25, 12, 0),
-            CloudCoverage.CLEAR
-        )
+        morning_gain = learner.predict_solar_gain(datetime(2024, 1, 25, 9, 0), CloudCoverage.CLEAR)
+        noon_gain = learner.predict_solar_gain(datetime(2024, 1, 25, 12, 0), CloudCoverage.CLEAR)
 
         assert morning_gain == pytest.approx(0.85, abs=0.01)  # (0.8 + 0.9) / 2
-        assert noon_gain == pytest.approx(1.4, abs=0.01)      # (1.5 + 1.3) / 2
+        assert noon_gain == pytest.approx(1.4, abs=0.01)  # (1.5 + 1.3) / 2
 
     def test_negative_gain_ignored(self):
         """Test that negative or zero gains are ignored."""
@@ -90,12 +66,12 @@ class TestSolarGainPatternLearning:
         learner.add_measurement(
             datetime(2024, 1, 15, 12, 0),
             -0.5,  # Negative gain (cooling)
-            CloudCoverage.CLEAR
+            CloudCoverage.CLEAR,
         )
         learner.add_measurement(
             datetime(2024, 1, 15, 13, 0),
             0.0,  # Zero gain
-            CloudCoverage.CLEAR
+            CloudCoverage.CLEAR,
         )
 
         assert learner.get_measurement_count() == 0
@@ -106,11 +82,7 @@ class TestSolarGainPatternLearning:
         learner = SolarGainLearner("kitchen", WindowOrientation.EAST)
 
         # Add only 1 measurement
-        learner.add_measurement(
-            datetime(2024, 1, 15, 12, 0),
-            1.2,
-            CloudCoverage.CLEAR
-        )
+        learner.add_measurement(datetime(2024, 1, 15, 12, 0), 1.2, CloudCoverage.CLEAR)
 
         assert learner.get_measurement_count() == 1
         assert learner.get_pattern_count() == 0  # No pattern yet
@@ -148,18 +120,18 @@ class TestSeasonalAdjustment:
         learner.add_measurement(
             datetime(2024, 1, 15, 12, 0),  # Winter
             1.0,
-            CloudCoverage.CLEAR
+            CloudCoverage.CLEAR,
         )
         learner.add_measurement(
             datetime(2024, 1, 20, 12, 0),  # Winter
             1.0,
-            CloudCoverage.CLEAR
+            CloudCoverage.CLEAR,
         )
 
         # Predict in summer (higher sun angle, more gain)
         summer_gain = learner.predict_solar_gain(
             datetime(2024, 7, 15, 12, 0),  # Summer
-            CloudCoverage.CLEAR
+            CloudCoverage.CLEAR,
         )
 
         # Summer should have more gain than winter (sun angle higher)
@@ -176,12 +148,12 @@ class TestSeasonalAdjustment:
         south_learner.add_measurement(
             datetime(2024, 1, 15, 12, 0),  # Winter
             1.0,
-            CloudCoverage.CLEAR
+            CloudCoverage.CLEAR,
         )
         south_learner.add_measurement(
             datetime(2024, 1, 20, 12, 0),  # Winter
             1.0,
-            CloudCoverage.CLEAR
+            CloudCoverage.CLEAR,
         )
 
         # North-facing window (least affected by season)
@@ -189,23 +161,17 @@ class TestSeasonalAdjustment:
         north_learner.add_measurement(
             datetime(2024, 1, 15, 12, 0),  # Winter
             0.3,
-            CloudCoverage.CLEAR
+            CloudCoverage.CLEAR,
         )
         north_learner.add_measurement(
             datetime(2024, 1, 20, 12, 0),  # Winter
             0.3,
-            CloudCoverage.CLEAR
+            CloudCoverage.CLEAR,
         )
 
         # Predict in summer for both
-        south_summer = south_learner.predict_solar_gain(
-            datetime(2024, 7, 15, 12, 0),
-            CloudCoverage.CLEAR
-        )
-        north_summer = north_learner.predict_solar_gain(
-            datetime(2024, 7, 15, 12, 0),
-            CloudCoverage.CLEAR
-        )
+        south_summer = south_learner.predict_solar_gain(datetime(2024, 7, 15, 12, 0), CloudCoverage.CLEAR)
+        north_summer = north_learner.predict_solar_gain(datetime(2024, 7, 15, 12, 0), CloudCoverage.CLEAR)
 
         # South should have larger seasonal change than north
         south_change_ratio = south_summer / 1.0
@@ -225,37 +191,21 @@ class TestCloudForecastIntegration:
         learner.add_measurement(
             datetime(2024, 1, 15, 12, 0),
             2.0,  # 2.0°C/hour under clear skies
-            CloudCoverage.CLEAR
+            CloudCoverage.CLEAR,
         )
-        learner.add_measurement(
-            datetime(2024, 1, 20, 12, 0),
-            2.0,
-            CloudCoverage.CLEAR
-        )
+        learner.add_measurement(datetime(2024, 1, 20, 12, 0), 2.0, CloudCoverage.CLEAR)
 
         # Predict under different cloud conditions
-        clear_gain = learner.predict_solar_gain(
-            datetime(2024, 1, 25, 12, 0),
-            CloudCoverage.CLEAR
-        )
-        partly_cloudy_gain = learner.predict_solar_gain(
-            datetime(2024, 1, 25, 12, 0),
-            CloudCoverage.PARTLY_CLOUDY
-        )
-        cloudy_gain = learner.predict_solar_gain(
-            datetime(2024, 1, 25, 12, 0),
-            CloudCoverage.CLOUDY
-        )
-        overcast_gain = learner.predict_solar_gain(
-            datetime(2024, 1, 25, 12, 0),
-            CloudCoverage.OVERCAST
-        )
+        clear_gain = learner.predict_solar_gain(datetime(2024, 1, 25, 12, 0), CloudCoverage.CLEAR)
+        partly_cloudy_gain = learner.predict_solar_gain(datetime(2024, 1, 25, 12, 0), CloudCoverage.PARTLY_CLOUDY)
+        cloudy_gain = learner.predict_solar_gain(datetime(2024, 1, 25, 12, 0), CloudCoverage.CLOUDY)
+        overcast_gain = learner.predict_solar_gain(datetime(2024, 1, 25, 12, 0), CloudCoverage.OVERCAST)
 
         # Verify decreasing gain with increasing cloud coverage
         assert clear_gain == pytest.approx(2.0, abs=0.01)
         assert partly_cloudy_gain == pytest.approx(1.4, abs=0.1)  # 70% of clear
-        assert cloudy_gain == pytest.approx(0.8, abs=0.1)         # 40% of clear
-        assert overcast_gain == pytest.approx(0.2, abs=0.1)       # 10% of clear
+        assert cloudy_gain == pytest.approx(0.8, abs=0.1)  # 40% of clear
+        assert overcast_gain == pytest.approx(0.2, abs=0.1)  # 10% of clear
 
         assert clear_gain > partly_cloudy_gain > cloudy_gain > overcast_gain
 
@@ -264,40 +214,18 @@ class TestCloudForecastIntegration:
         learner = SolarGainLearner("living_room", WindowOrientation.SOUTH)
 
         # Learn pattern for clear skies
-        learner.add_measurement(
-            datetime(2024, 1, 15, 12, 0),
-            2.0,
-            CloudCoverage.CLEAR
-        )
-        learner.add_measurement(
-            datetime(2024, 1, 20, 12, 0),
-            2.0,
-            CloudCoverage.CLEAR
-        )
+        learner.add_measurement(datetime(2024, 1, 15, 12, 0), 2.0, CloudCoverage.CLEAR)
+        learner.add_measurement(datetime(2024, 1, 20, 12, 0), 2.0, CloudCoverage.CLEAR)
 
         # Learn pattern for cloudy skies
-        learner.add_measurement(
-            datetime(2024, 1, 16, 12, 0),
-            0.8,
-            CloudCoverage.CLOUDY
-        )
-        learner.add_measurement(
-            datetime(2024, 1, 21, 12, 0),
-            0.8,
-            CloudCoverage.CLOUDY
-        )
+        learner.add_measurement(datetime(2024, 1, 16, 12, 0), 0.8, CloudCoverage.CLOUDY)
+        learner.add_measurement(datetime(2024, 1, 21, 12, 0), 0.8, CloudCoverage.CLOUDY)
 
         assert learner.get_pattern_count() == 2
 
         # Predict with exact match (no adjustment needed)
-        clear_prediction = learner.predict_solar_gain(
-            datetime(2024, 1, 25, 12, 0),
-            CloudCoverage.CLEAR
-        )
-        cloudy_prediction = learner.predict_solar_gain(
-            datetime(2024, 1, 25, 12, 0),
-            CloudCoverage.CLOUDY
-        )
+        clear_prediction = learner.predict_solar_gain(datetime(2024, 1, 25, 12, 0), CloudCoverage.CLEAR)
+        cloudy_prediction = learner.predict_solar_gain(datetime(2024, 1, 25, 12, 0), CloudCoverage.CLOUDY)
 
         assert clear_prediction == pytest.approx(2.0, abs=0.01)
         assert cloudy_prediction == pytest.approx(0.8, abs=0.01)
@@ -310,9 +238,7 @@ class TestCloudForecastIntegration:
 
         # Predict with fallback
         prediction = learner.predict_solar_gain(
-            datetime(2024, 1, 15, 12, 0),
-            CloudCoverage.CLEAR,
-            fallback_gain_c_per_hour=0.5
+            datetime(2024, 1, 15, 12, 0), CloudCoverage.CLEAR, fallback_gain_c_per_hour=0.5
         )
 
         assert prediction == 0.5
@@ -321,16 +247,8 @@ class TestCloudForecastIntegration:
         """Test clearing measurements and patterns."""
         learner = SolarGainLearner("living_room", WindowOrientation.SOUTH)
 
-        learner.add_measurement(
-            datetime(2024, 1, 15, 12, 0),
-            1.5,
-            CloudCoverage.CLEAR
-        )
-        learner.add_measurement(
-            datetime(2024, 1, 20, 12, 0),
-            1.3,
-            CloudCoverage.CLEAR
-        )
+        learner.add_measurement(datetime(2024, 1, 15, 12, 0), 1.5, CloudCoverage.CLEAR)
+        learner.add_measurement(datetime(2024, 1, 20, 12, 0), 1.3, CloudCoverage.CLEAR)
 
         assert learner.get_measurement_count() == 2
         assert learner.get_pattern_count() == 1
@@ -361,18 +279,8 @@ class TestSolarGainManager:
 
         manager.configure_zone("living_room", WindowOrientation.SOUTH)
 
-        manager.add_measurement(
-            "living_room",
-            datetime(2024, 1, 15, 12, 0),
-            1.5,
-            CloudCoverage.CLEAR
-        )
-        manager.add_measurement(
-            "living_room",
-            datetime(2024, 1, 20, 12, 0),
-            1.3,
-            CloudCoverage.CLEAR
-        )
+        manager.add_measurement("living_room", datetime(2024, 1, 15, 12, 0), 1.5, CloudCoverage.CLEAR)
+        manager.add_measurement("living_room", datetime(2024, 1, 20, 12, 0), 1.3, CloudCoverage.CLEAR)
 
         learner = manager.get_learner("living_room")
         assert learner.get_measurement_count() == 2
@@ -383,24 +291,10 @@ class TestSolarGainManager:
 
         manager.configure_zone("living_room", WindowOrientation.SOUTH)
 
-        manager.add_measurement(
-            "living_room",
-            datetime(2024, 1, 15, 12, 0),
-            1.5,
-            CloudCoverage.CLEAR
-        )
-        manager.add_measurement(
-            "living_room",
-            datetime(2024, 1, 20, 12, 0),
-            1.3,
-            CloudCoverage.CLEAR
-        )
+        manager.add_measurement("living_room", datetime(2024, 1, 15, 12, 0), 1.5, CloudCoverage.CLEAR)
+        manager.add_measurement("living_room", datetime(2024, 1, 20, 12, 0), 1.3, CloudCoverage.CLEAR)
 
-        prediction = manager.predict_solar_gain(
-            "living_room",
-            datetime(2024, 1, 25, 12, 0),
-            CloudCoverage.CLEAR
-        )
+        prediction = manager.predict_solar_gain("living_room", datetime(2024, 1, 25, 12, 0), CloudCoverage.CLEAR)
 
         assert prediction == pytest.approx(1.4, abs=0.01)
 
@@ -411,10 +305,7 @@ class TestSolarGainManager:
         # Don't configure any zones
 
         prediction = manager.predict_solar_gain(
-            "kitchen",
-            datetime(2024, 1, 15, 12, 0),
-            CloudCoverage.CLEAR,
-            fallback_gain_c_per_hour=0.3
+            "kitchen", datetime(2024, 1, 15, 12, 0), CloudCoverage.CLEAR, fallback_gain_c_per_hour=0.3
         )
 
         assert prediction == 0.3

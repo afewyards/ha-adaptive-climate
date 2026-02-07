@@ -3,6 +3,7 @@
 This module provides pure calculation logic for night setback functionality,
 separated from the state management concerns handled by NightSetbackManager.
 """
+
 from __future__ import annotations
 
 import logging
@@ -13,6 +14,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Tuple
 try:
     from homeassistant.core import HomeAssistant
     from homeassistant.util import dt as dt_util
+
     HAS_HOMEASSISTANT = True
 except ImportError:
     HAS_HOMEASSISTANT = False
@@ -84,9 +86,7 @@ class NightSetbackCalculator:
         sun_state = self._hass.states.get("sun.sun")
         if sun_state and sun_state.attributes.get("next_setting"):
             try:
-                utc_sunset = datetime.fromisoformat(
-                    sun_state.attributes["next_setting"].replace("Z", "+00:00")
-                )
+                utc_sunset = datetime.fromisoformat(sun_state.attributes["next_setting"].replace("Z", "+00:00"))
                 if dt_util:
                     return dt_util.as_local(utc_sunset)
                 return utc_sunset
@@ -99,9 +99,7 @@ class NightSetbackCalculator:
         sun_state = self._hass.states.get("sun.sun")
         if sun_state and sun_state.attributes.get("next_rising"):
             try:
-                utc_sunrise = datetime.fromisoformat(
-                    sun_state.attributes["next_rising"].replace("Z", "+00:00")
-                )
+                utc_sunrise = datetime.fromisoformat(sun_state.attributes["next_rising"].replace("Z", "+00:00"))
                 if dt_util:
                     return dt_util.as_local(utc_sunrise)
                 return utc_sunrise
@@ -112,7 +110,7 @@ class NightSetbackCalculator:
     def get_weather_condition(self) -> str | None:
         """Get current weather condition from coordinator's weather entity."""
         coordinator = self._hass.data.get(DOMAIN, {}).get("coordinator")
-        if coordinator and hasattr(coordinator, '_weather_entity'):
+        if coordinator and hasattr(coordinator, "_weather_entity"):
             weather_state = self._hass.states.get(coordinator._weather_entity)
             if weather_state:
                 return weather_state.state
@@ -146,10 +144,10 @@ class NightSetbackCalculator:
         # West: no morning sun at all, need active heating
         # North: minimal direct sun ever, need active heating
         orientation_offsets = {
-            "south": +30,   # Wait longer - sun will heat this room well once high enough
-            "east": +15,    # Gets morning sun fairly soon
-            "west": -30,    # No morning sun - start heating earlier
-            "north": -45,   # No direct sun - need heating earliest
+            "south": +30,  # Wait longer - sun will heat this room well once high enough
+            "east": +15,  # Gets morning sun fairly soon
+            "west": -30,  # No morning sun - start heating earlier
+            "north": -45,  # No direct sun - need heating earliest
         }
 
         if self._window_orientation:
@@ -181,9 +179,9 @@ class NightSetbackCalculator:
             Offset in minutes
         """
         offset_str = offset_str.strip()
-        if offset_str.endswith('m'):
+        if offset_str.endswith("m"):
             return int(offset_str[:-1])
-        elif offset_str.endswith('h'):
+        elif offset_str.endswith("h"):
             return int(offset_str[:-1]) * 60
         else:
             # Default: interpret as hours for values <= 12, minutes otherwise
@@ -217,12 +215,7 @@ class NightSetbackCalculator:
             hour, minute = map(int, start_str.split(":"))
             return dt_time(hour, minute)
 
-    def is_in_night_time_period(
-        self,
-        current_time_only: dt_time,
-        start_time: dt_time,
-        end_time: dt_time
-    ) -> bool:
+    def is_in_night_time_period(self, current_time_only: dt_time, start_time: dt_time, end_time: dt_time) -> bool:
         """Check if current time is within night period, handling midnight crossing.
 
         Args:
@@ -241,8 +234,7 @@ class NightSetbackCalculator:
             return start_time <= current_time_only < end_time
 
     def calculate_night_setback_adjustment(
-        self,
-        current_time: datetime | None = None
+        self, current_time: datetime | None = None
     ) -> Tuple[float, bool, Dict[str, Any]]:
         """Calculate night setback adjustment for effective target temperature.
 
@@ -284,15 +276,13 @@ class NightSetbackCalculator:
             current_time_only = current_time.time()
 
             # Parse start time
-            start_time = self.parse_night_start_time(
-                self._night_setback_config['start'], current_time
-            )
+            start_time = self.parse_night_start_time(self._night_setback_config["start"], current_time)
 
             # Calculate dynamic end time
             end_time = self.calculate_dynamic_night_end()
             if not end_time:
                 # Fallback: use recovery_deadline or default 07:00
-                deadline = self._night_setback_config.get('recovery_deadline')
+                deadline = self._night_setback_config.get("recovery_deadline")
                 if deadline:
                     hour, minute = map(int, deadline.split(":"))
                     end_time = dt_time(hour, minute)
@@ -300,7 +290,7 @@ class NightSetbackCalculator:
                     end_time = dt_time(7, 0)
             else:
                 # If recovery_deadline is set and earlier than dynamic end, use it
-                deadline_str = self._night_setback_config.get('recovery_deadline')
+                deadline_str = self._night_setback_config.get("recovery_deadline")
                 if deadline_str:
                     hour, minute = map(int, deadline_str.split(":"))
                     deadline_time = dt_time(hour, minute)
@@ -308,15 +298,14 @@ class NightSetbackCalculator:
                         end_time = deadline_time
                         _LOGGER.debug(
                             "%s: Using recovery_deadline %s (earlier than dynamic end time)",
-                            self._entity_id, deadline_str
+                            self._entity_id,
+                            deadline_str,
                         )
 
             # Check if in night period
-            in_night_period = self.is_in_night_time_period(
-                current_time_only, start_time, end_time
-            )
+            in_night_period = self.is_in_night_time_period(current_time_only, start_time, end_time)
 
-            info["night_setback_delta"] = self._night_setback_config['delta']
+            info["night_setback_delta"] = self._night_setback_config["delta"]
             info["night_setback_end"] = end_time.strftime("%H:%M")
             info["night_setback_end_dynamic"] = True
 
@@ -327,12 +316,17 @@ class NightSetbackCalculator:
 
             _LOGGER.debug(
                 "%s: Night setback check: current=%s, start=%s, end=%s, in_night=%s, target=%s, delta=%s",
-                self._entity_id, current_time_only, start_time, end_time, in_night_period,
-                target_temp, self._night_setback_config['delta']
+                self._entity_id,
+                current_time_only,
+                start_time,
+                end_time,
+                in_night_period,
+                target_temp,
+                self._night_setback_config["delta"],
             )
 
             if in_night_period:
-                effective_target = target_temp - self._night_setback_config['delta']
+                effective_target = target_temp - self._night_setback_config["delta"]
                 _LOGGER.info("%s: Night setback active, effective_target=%s", self._entity_id, effective_target)
 
         info["night_setback_active"] = in_night_period

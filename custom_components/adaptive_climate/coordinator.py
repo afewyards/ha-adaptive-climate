@@ -1,4 +1,5 @@
 """Data Update Coordinator for Adaptive Climate."""
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta
@@ -58,9 +59,7 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
         # Auto mode switching (if configured)
         auto_mode_config = self._config.get("auto_mode_switching")
         if auto_mode_config and auto_mode_config.get("enabled", False):
-            self._auto_mode_switching = AutoModeSwitchingManager(
-                hass, auto_mode_config, self
-            )
+            self._auto_mode_switching = AutoModeSwitchingManager(hass, auto_mode_config, self)
         else:
             self._auto_mode_switching: AutoModeSwitchingManager | None = None
 
@@ -231,8 +230,14 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
         if not rating:
             return 4.0
         rating_map = {
-            "A++++": 10.0, "A+++": 8.0, "A++": 6.0, "A+": 5.0,
-            "A": 4.0, "B": 3.0, "C": 2.5, "D": 2.0,
+            "A++++": 10.0,
+            "A+++": 8.0,
+            "A++": 6.0,
+            "A+": 5.0,
+            "A": 4.0,
+            "B": 3.0,
+            "C": 2.5,
+            "D": 2.0,
         }
         return rating_map.get(rating.upper(), 4.0)
 
@@ -315,8 +320,11 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
             if old_state != new_state:
                 _LOGGER.info(
                     "Demand changed for zone %s: %s/%s -> %s/%s",
-                    zone_id, old_state.get("demand"), old_state.get("mode"),
-                    has_demand, hvac_mode
+                    zone_id,
+                    old_state.get("demand"),
+                    old_state.get("mode"),
+                    has_demand,
+                    hvac_mode,
                 )
 
                 # Trigger central controller with single-flight guard
@@ -390,12 +398,10 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
             if any zone has demand for that mode.
         """
         has_heating_demand = any(
-            state.get("demand") and state.get("mode") == "heat"
-            for state in self._demand_states.values()
+            state.get("demand") and state.get("mode") == "heat" for state in self._demand_states.values()
         )
         has_cooling_demand = any(
-            state.get("demand") and state.get("mode") == "cool"
-            for state in self._demand_states.values()
+            state.get("demand") and state.get("mode") == "cool" for state in self._demand_states.values()
         )
         return {
             "heating": has_heating_demand,
@@ -567,11 +573,14 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
                 self.hass.async_create_task(self._async_evaluate_auto_mode())
 
         self._outdoor_temp_unsub = async_track_state_change_event(
-            self.hass, weather_entity_id, _async_outdoor_temp_changed,
+            self.hass,
+            weather_entity_id,
+            _async_outdoor_temp_changed,
         )
         _LOGGER.debug(
             "Tracking outdoor temp from %s (tau=%.1fh)",
-            weather_entity_id, self._outdoor_temp_tau,
+            weather_entity_id,
+            self._outdoor_temp_tau,
         )
 
     async def _async_evaluate_auto_mode(self) -> None:
@@ -599,9 +608,7 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
                         blocking=False,
                     )
                 except Exception:
-                    _LOGGER.exception(
-                        "Failed to set mode %s for zone %s", mode, zone_id
-                    )
+                    _LOGGER.exception("Failed to set mode %s for zone %s", mode, zone_id)
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch data from all zones.
@@ -879,5 +886,3 @@ class ModeSync:
         self._sync_disabled_zones.discard(zone_id)
 
         _LOGGER.debug("Unregistered zone from ModeSync: %s", zone_id)
-
-

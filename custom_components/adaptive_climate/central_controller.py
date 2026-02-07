@@ -1,4 +1,5 @@
 """Central Controller for managing main heater/cooler based on zone demand."""
+
 from __future__ import annotations
 
 import asyncio
@@ -120,7 +121,9 @@ class CentralController:
                 # Cancel any pending turn-off (demand came back)
                 self._cancel_heater_turnoff_unlocked()
                 # Zone(s) need heating - start if not already waiting and not all switches are on
-                if not self._heater_waiting_for_startup and not await self._are_all_switches_on(self.main_heater_switch):
+                if not self._heater_waiting_for_startup and not await self._are_all_switches_on(
+                    self.main_heater_switch
+                ):
                     # Start heater with delay (some switches are off)
                     await self._start_heater_with_delay_unlocked()
             else:
@@ -139,7 +142,9 @@ class CentralController:
                 # Cancel any pending turn-off (demand came back)
                 self._cancel_cooler_turnoff_unlocked()
                 # Zone(s) need cooling
-                if not self._cooler_waiting_for_startup and not await self._are_all_switches_on(self.main_cooler_switch):
+                if not self._cooler_waiting_for_startup and not await self._are_all_switches_on(
+                    self.main_cooler_switch
+                ):
                     # Start cooler with delay (some switches are off)
                     await self._start_cooler_with_delay_unlocked()
             else:
@@ -270,9 +275,7 @@ class CentralController:
         if self._heater_turnoff_task and not self._heater_turnoff_task.done():
             return
 
-        _LOGGER.debug(
-            "Scheduling heater turn-off in %d seconds", TURN_OFF_DEBOUNCE_SECONDS
-        )
+        _LOGGER.debug("Scheduling heater turn-off in %d seconds", TURN_OFF_DEBOUNCE_SECONDS)
         self._heater_turnoff_task = asyncio.create_task(self._delayed_heater_turnoff())
 
     def _schedule_cooler_turnoff_unlocked(self) -> None:
@@ -284,9 +287,7 @@ class CentralController:
         if self._cooler_turnoff_task and not self._cooler_turnoff_task.done():
             return
 
-        _LOGGER.debug(
-            "Scheduling cooler turn-off in %d seconds", TURN_OFF_DEBOUNCE_SECONDS
-        )
+        _LOGGER.debug("Scheduling cooler turn-off in %d seconds", TURN_OFF_DEBOUNCE_SECONDS)
         self._cooler_turnoff_task = asyncio.create_task(self._delayed_cooler_turnoff())
 
     def _cancel_heater_turnoff_unlocked(self) -> None:
@@ -559,7 +560,7 @@ class CentralController:
 
             # Wait before retrying with exponential backoff
             if attempt < MAX_SERVICE_CALL_RETRIES - 1:
-                delay = BASE_RETRY_DELAY_SECONDS * (2 ** attempt)
+                delay = BASE_RETRY_DELAY_SECONDS * (2**attempt)
                 _LOGGER.debug(
                     "Retrying %s on %s in %.1f seconds",
                     service,
@@ -585,15 +586,12 @@ class CentralController:
         Args:
             entity_id: Entity ID that failed
         """
-        self._consecutive_failures[entity_id] = (
-            self._consecutive_failures.get(entity_id, 0) + 1
-        )
+        self._consecutive_failures[entity_id] = self._consecutive_failures.get(entity_id, 0) + 1
         failure_count = self._consecutive_failures[entity_id]
 
         if failure_count >= CONSECUTIVE_FAILURE_WARNING_THRESHOLD:
             _LOGGER.warning(
-                "Switch %s has failed %d consecutive times. "
-                "Check entity availability and Home Assistant logs.",
+                "Switch %s has failed %d consecutive times. Check entity availability and Home Assistant logs.",
                 entity_id,
                 failure_count,
             )
@@ -649,6 +647,4 @@ class CentralController:
             except asyncio.CancelledError:
                 pass
 
-        _LOGGER.debug(
-            "CentralController cleanup: cancelled %d tasks", len(tasks_to_cancel)
-        )
+        _LOGGER.debug("CentralController cleanup: cancelled %d tasks", len(tasks_to_cancel))

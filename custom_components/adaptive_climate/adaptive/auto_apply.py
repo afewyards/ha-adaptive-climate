@@ -176,18 +176,12 @@ class AutoApplyManager:
 
         # Check 1: Skip if in validation mode (validating previous auto-apply)
         if validation_manager.is_in_validation_mode():
-            _LOGGER.debug(
-                "Auto-apply blocked: currently in validation mode, "
-                "waiting for validation to complete"
-            )
+            _LOGGER.debug("Auto-apply blocked: currently in validation mode, waiting for validation to complete")
             return False, None, None, None
 
         # Check 2: Safety limits (lifetime, seasonal, drift, shift cooldown)
         limit_msg = validation_manager.check_auto_apply_limits(
-            current_kp, current_ki, current_kd,
-            heating_auto_apply_count,
-            cooling_auto_apply_count,
-            pid_history
+            current_kp, current_ki, current_kd, heating_auto_apply_count, cooling_auto_apply_count, pid_history
         )
         if limit_msg:
             _LOGGER.warning(f"Auto-apply blocked: {limit_msg}")
@@ -196,6 +190,7 @@ class AutoApplyManager:
         # Check 3: Seasonal shift detection
         if outdoor_temp is not None and validation_manager.check_seasonal_shift(outdoor_temp):
             from ..const import SEASONAL_SHIFT_BLOCK_DAYS
+
             validation_manager.record_seasonal_shift()
             _LOGGER.warning(
                 "Auto-apply blocked: seasonal temperature shift detected, "
@@ -212,8 +207,11 @@ class AutoApplyManager:
 
         # Compute learning status based on tier thresholds and recovery cycle gates
         learning_status = self._compute_learning_status(
-            cycle_count, convergence_confidence, self._heating_type,
-            contribution_tracker=contribution_tracker, mode=mode
+            cycle_count,
+            convergence_confidence,
+            self._heating_type,
+            contribution_tracker=contribution_tracker,
+            mode=mode,
         )
 
         # First auto-apply requires "tuned" or "optimized"

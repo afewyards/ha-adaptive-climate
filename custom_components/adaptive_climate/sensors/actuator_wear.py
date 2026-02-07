@@ -3,6 +3,7 @@
 This module contains sensors that track actuator (contactor/valve) wear
 based on on→off cycle counting, with maintenance alerts at configurable thresholds.
 """
+
 from __future__ import annotations
 
 import logging
@@ -141,10 +142,7 @@ class ActuatorWearSensor(SensorEntity):
 
         # Calculate wear percentage
         if self._rated_cycles and self._rated_cycles > 0:
-            self._wear_percentage = min(
-                100.0,
-                (self._current_cycles / self._rated_cycles) * 100.0
-            )
+            self._wear_percentage = min(100.0, (self._current_cycles / self._rated_cycles) * 100.0)
 
             # Determine maintenance status
             if self._wear_percentage >= ACTUATOR_MAINTENANCE_DUE_PCT:

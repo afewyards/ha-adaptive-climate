@@ -1,4 +1,5 @@
 """Constants for Adaptive Climate"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -13,8 +14,10 @@ DOMAIN = "adaptive_climate"
 if sys.version_info >= (3, 11):
     from enum import StrEnum
 else:
+
     class StrEnum(str, Enum):
         """Drop-in replacement for StrEnum on Python < 3.11."""
+
         def __new__(cls, value):
             if not isinstance(value, str):
                 raise TypeError(f"{value!r} is not a string")
@@ -29,6 +32,7 @@ else:
 
 class HeatingType(StrEnum):
     """Heating system types."""
+
     FLOOR_HYDRONIC = "floor_hydronic"
     RADIATOR = "radiator"
     CONVECTOR = "convector"
@@ -37,6 +41,7 @@ class HeatingType(StrEnum):
 
 class ThermostatCondition(StrEnum):
     """Thermostat condition types for status tracking."""
+
     CONTACT_OPEN = "contact_open"
     HUMIDITY_SPIKE = "humidity_spike"
     OPEN_WINDOW = "open_window"
@@ -46,6 +51,7 @@ class ThermostatCondition(StrEnum):
 
 class ThermostatState(StrEnum):
     """Operational states for thermostat status."""
+
     IDLE = "idle"
     HEATING = "heating"
     COOLING = "cooling"
@@ -54,6 +60,7 @@ class ThermostatState(StrEnum):
 
 class OverrideType(StrEnum):
     """Override types for status attribute."""
+
     CONTACT_OPEN = "contact_open"
     HUMIDITY = "humidity"
     OPEN_WINDOW = "open_window"
@@ -75,24 +82,26 @@ OVERRIDE_PRIORITY = [
 
 class PIDChangeActor(StrEnum):
     """Actor that initiated a PID gain change."""
-    USER = "user"          # Manual action (service call, UI, reset button)
-    SYSTEM = "system"      # Startup, restore, init
+
+    USER = "user"  # Manual action (service call, UI, reset button)
+    SYSTEM = "system"  # Startup, restore, init
     LEARNING = "learning"  # Adaptive tuning, auto-apply, undershoot boost
 
 
 class PIDChangeReason(StrEnum):
     """Reason for a PID gain change."""
-    PHYSICS_INIT = "physics_init"          # climate_init.py setup
-    PHYSICS_RESET = "physics_reset"        # User reset to physics
-    ADAPTIVE_APPLY = "adaptive_apply"      # Manual apply
-    AUTO_APPLY = "auto_apply"              # Validation manager
+
+    PHYSICS_INIT = "physics_init"  # climate_init.py setup
+    PHYSICS_RESET = "physics_reset"  # User reset to physics
+    ADAPTIVE_APPLY = "adaptive_apply"  # Manual apply
+    AUTO_APPLY = "auto_apply"  # Validation manager
     ROLLBACK = "rollback"
-    HISTORY_RESTORE = "history_restore"    # User restore from history
+    HISTORY_RESTORE = "history_restore"  # User restore from history
     KE_PHYSICS = "ke_physics_enable"
     KE_LEARNING = "ke_learning_apply"
     UNDERSHOOT_BOOST = "undershoot_ki_boost"
     CHRONIC_APPROACH_BOOST = "chronic_approach_ki_boost"
-    SERVICE_CALL = "service_call"          # Manual set_pid service
+    SERVICE_CALL = "service_call"  # Manual set_pid service
     RESTORE = "restore"
 
 
@@ -118,9 +127,9 @@ DEFAULT_OUTPUT_MIN = 0
 DEFAULT_OUTPUT_MAX = 100
 DEFAULT_OUT_CLAMP_LOW = 0
 DEFAULT_OUT_CLAMP_HIGH = 100
-DEFAULT_PWM = '00:15:00'
-DEFAULT_MIN_CYCLE_DURATION = '00:00:00'
-DEFAULT_MIN_OFF_CYCLE_DURATION = '00:00:00'
+DEFAULT_PWM = "00:15:00"
+DEFAULT_MIN_CYCLE_DURATION = "00:00:00"
+DEFAULT_MIN_OFF_CYCLE_DURATION = "00:00:00"
 DEFAULT_TOLERANCE = 0.3
 DEFAULT_MIN_TEMP = 7.0
 DEFAULT_MAX_TEMP = 35.0
@@ -131,15 +140,15 @@ DEFAULT_KP = 100
 DEFAULT_KI = 0
 DEFAULT_KD = 0
 DEFAULT_KE = 0
-DEFAULT_SAMPLING_PERIOD = '00:00:00'
+DEFAULT_SAMPLING_PERIOD = "00:00:00"
 DEFAULT_CONTROL_INTERVAL = 60  # seconds - used when keep_alive not specified
-DEFAULT_SENSOR_STALL = '06:00:00'
+DEFAULT_SENSOR_STALL = "06:00:00"
 DEFAULT_OUTPUT_SAFETY = 5.0
 DEFAULT_PRESET_SYNC_MODE = "none"
 
 CONF_HEATER = "heater"
 CONF_COOLER = "cooler"
-CONF_INVERT_HEATER = 'invert_heater'
+CONF_INVERT_HEATER = "invert_heater"
 CONF_SENSOR = "target_sensor"
 CONF_OUTDOOR_SENSOR = "outdoor_sensor"
 CONF_WIND_SPEED_SENSOR = "wind_speed_sensor"
@@ -152,12 +161,12 @@ CONF_AC_MODE = "ac_mode"
 CONF_FORCE_OFF_STATE = "force_off_state"
 CONF_MIN_OPEN_TIME = "min_open_time"
 CONF_MIN_CLOSED_TIME = "min_closed_time"
-CONF_MIN_OPEN_TIME_PID_OFF = 'min_open_time_pid_off'
-CONF_MIN_CLOSED_TIME_PID_OFF = 'min_closed_time_pid_off'
+CONF_MIN_OPEN_TIME_PID_OFF = "min_open_time_pid_off"
+CONF_MIN_CLOSED_TIME_PID_OFF = "min_closed_time_pid_off"
 CONF_CONTROL_INTERVAL = "control_interval"
 CONF_SAMPLING_PERIOD = "sampling_period"
-CONF_SENSOR_STALL = 'sensor_stall'
-CONF_OUTPUT_SAFETY = 'output_safety'
+CONF_SENSOR_STALL = "sensor_stall"
+CONF_OUTPUT_SAFETY = "output_safety"
 CONF_INITIAL_HVAC_MODE = "initial_hvac_mode"
 CONF_PRESET_SYNC_MODE = "preset_sync_mode"
 CONF_AWAY_TEMP = "away_temp"
@@ -175,8 +184,8 @@ CONF_OUTPUT_MAX = "output_max"
 CONF_OUT_CLAMP_LOW = "out_clamp_low"
 CONF_OUT_CLAMP_HIGH = "out_clamp_high"
 CONF_PWM = "pwm"
-CONF_BOOST_PID_OFF = 'boost_pid_off'
-CONF_DEBUG = 'debug'
+CONF_BOOST_PID_OFF = "boost_pid_off"
+CONF_DEBUG = "debug"
 DEFAULT_DEBUG = False
 CONF_HEATING_TYPE = "heating_type"
 CONF_COOLING_TYPE = "cooling_type"
@@ -207,59 +216,61 @@ VALID_HEATING_TYPES = [
 @dataclass(frozen=True)
 class PIDGains:
     """Immutable PID gain parameters."""
+
     kp: float
     ki: float
     kd: float
     ke: float = 0.0
 
+
 # Heating type characteristics lookup table
 # Used by adaptive/physics.py for PID initialization
 HEATING_TYPE_CHARACTERISTICS = {
     HeatingType.FLOOR_HYDRONIC: {
-        "pid_modifier": 0.5,      # Very conservative
-        "pwm_period": 900,        # 15 minutes
+        "pid_modifier": 0.5,  # Very conservative
+        "pwm_period": 900,  # 15 minutes
         "derivative_filter_alpha": 0.05,  # Heavy filtering - high thermal mass reduces noise sensitivity
         "baseline_power_w_m2": 20,  # Baseline power density for process gain scaling (W/m²)
         "reference_supply_temp": 45.0,  # Reference supply temp for PID scaling (°C) - typical floor heating
-        "cold_tolerance": 0.5,    # Temperature tolerance below setpoint (°C)
-        "hot_tolerance": 0.5,     # Temperature tolerance above setpoint (°C)
-        "decay_exponent": 2.0,    # Exponential decay rate for integral during settling
+        "cold_tolerance": 0.5,  # Temperature tolerance below setpoint (°C)
+        "hot_tolerance": 0.5,  # Temperature tolerance above setpoint (°C)
+        "decay_exponent": 2.0,  # Exponential decay rate for integral during settling
         "max_settling_time": 90,  # Maximum settling time in minutes
         "description": "Floor heating with water - high thermal mass, slow response",
     },
     HeatingType.RADIATOR: {
-        "pid_modifier": 0.7,      # Moderately conservative
-        "pwm_period": 600,        # 10 minutes
+        "pid_modifier": 0.7,  # Moderately conservative
+        "pwm_period": 600,  # 10 minutes
         "derivative_filter_alpha": 0.10,  # Moderate filtering
         "baseline_power_w_m2": 50,  # Baseline power density for process gain scaling (W/m²)
         "reference_supply_temp": 70.0,  # Reference supply temp for PID scaling (°C) - traditional radiator
-        "cold_tolerance": 0.3,    # Temperature tolerance below setpoint (°C)
-        "hot_tolerance": 0.3,     # Temperature tolerance above setpoint (°C)
-        "decay_exponent": 1.0,    # Exponential decay rate for integral during settling
+        "cold_tolerance": 0.3,  # Temperature tolerance below setpoint (°C)
+        "hot_tolerance": 0.3,  # Temperature tolerance above setpoint (°C)
+        "decay_exponent": 1.0,  # Exponential decay rate for integral during settling
         "max_settling_time": 45,  # Maximum settling time in minutes
         "description": "Traditional radiators - moderate thermal mass",
     },
     HeatingType.CONVECTOR: {
-        "pid_modifier": 1.0,      # Standard
-        "pwm_period": 300,        # 5 minutes
+        "pid_modifier": 1.0,  # Standard
+        "pwm_period": 300,  # 5 minutes
         "derivative_filter_alpha": 0.15,  # Light filtering - default balance
         "baseline_power_w_m2": 60,  # Baseline power density for process gain scaling (W/m²)
         "reference_supply_temp": 55.0,  # Reference supply temp for PID scaling (°C)
-        "cold_tolerance": 0.2,    # Temperature tolerance below setpoint (°C)
-        "hot_tolerance": 0.2,     # Temperature tolerance above setpoint (°C)
-        "decay_exponent": 1.0,    # Exponential decay rate for integral during settling
+        "cold_tolerance": 0.2,  # Temperature tolerance below setpoint (°C)
+        "hot_tolerance": 0.2,  # Temperature tolerance above setpoint (°C)
+        "decay_exponent": 1.0,  # Exponential decay rate for integral during settling
         "max_settling_time": 30,  # Maximum settling time in minutes
         "description": "Convection heaters - low thermal mass, faster response",
     },
     HeatingType.FORCED_AIR: {
-        "pid_modifier": 1.3,      # Aggressive
-        "pwm_period": 180,        # 3 minutes
+        "pid_modifier": 1.3,  # Aggressive
+        "pwm_period": 180,  # 3 minutes
         "derivative_filter_alpha": 0.25,  # Minimal filtering - fast response needed
         "baseline_power_w_m2": 80,  # Baseline power density for process gain scaling (W/m²)
         "reference_supply_temp": 45.0,  # Reference supply temp for PID scaling (°C) - heat pump typical
-        "cold_tolerance": 0.15,   # Temperature tolerance below setpoint (°C)
-        "hot_tolerance": 0.15,    # Temperature tolerance above setpoint (°C)
-        "decay_exponent": 0.5,    # Exponential decay rate for integral during settling
+        "cold_tolerance": 0.15,  # Temperature tolerance below setpoint (°C)
+        "hot_tolerance": 0.15,  # Temperature tolerance above setpoint (°C)
+        "decay_exponent": 0.5,  # Exponential decay rate for integral during settling
         "max_settling_time": 15,  # Maximum settling time in minutes
         "description": "Forced air heating - very low thermal mass, fast response",
     },
@@ -270,39 +281,39 @@ HEATING_TYPE_CHARACTERISTICS = {
 COOLING_TYPE_CHARACTERISTICS = {
     "forced_air": {
         "pid_modifier": 1.0,
-        "pwm_period": 600,      # 10 min
-        "min_cycle": 180,       # 3 min compressor protection
-        "tau_ratio": 0.3,       # cooling tau = heating_tau * 0.3
+        "pwm_period": 600,  # 10 min
+        "min_cycle": 180,  # 3 min compressor protection
+        "tau_ratio": 0.3,  # cooling tau = heating_tau * 0.3
     },
     "chilled_water": {
         "pid_modifier": 0.7,
-        "pwm_period": 900,      # 15 min
-        "min_cycle": 0,         # no compressor
+        "pwm_period": 900,  # 15 min
+        "min_cycle": 0,  # no compressor
         "tau_ratio": 0.6,
     },
     "mini_split": {
         "pid_modifier": 0.9,
-        "pwm_period": 0,        # inverter modulating, no PWM
+        "pwm_period": 0,  # inverter modulating, no PWM
         "min_cycle": 180,
         "tau_ratio": 0.4,
     },
     "radiator": {
         "pid_modifier": 0.7,
-        "pwm_period": 600,      # 10 min
-        "min_cycle": 0,         # no compressor (fan coil units)
-        "tau_ratio": 0.5,       # moderate cooling speed
+        "pwm_period": 600,  # 10 min
+        "min_cycle": 0,  # no compressor (fan coil units)
+        "tau_ratio": 0.5,  # moderate cooling speed
     },
     "convector": {
         "pid_modifier": 1.0,
-        "pwm_period": 300,      # 5 min
-        "min_cycle": 0,         # no compressor
-        "tau_ratio": 0.6,       # moderate cooling speed
+        "pwm_period": 300,  # 5 min
+        "min_cycle": 0,  # no compressor
+        "tau_ratio": 0.6,  # moderate cooling speed
     },
     "floor_hydronic": {
         "pid_modifier": 0.5,
-        "pwm_period": 900,      # 15 min
-        "min_cycle": 0,         # no compressor (valve-based)
-        "tau_ratio": 0.8,       # slow cooling (high thermal mass)
+        "pwm_period": 900,  # 15 min
+        "min_cycle": 0,  # no compressor (valve-based)
+        "tau_ratio": 0.8,  # slow cooling (high thermal mass)
     },
 }
 
@@ -333,53 +344,53 @@ HEATING_TYPE_VALVE_DEFAULTS: dict[HeatingType, int] = {
 # System is considered "tuned" when ALL metrics are within these bounds
 # Default thresholds (used for unknown heating types)
 DEFAULT_CONVERGENCE_THRESHOLDS = {
-    "overshoot_max": 0.2,       # Maximum acceptable overshoot in °C
-    "undershoot_max": 0.2,      # Maximum acceptable undershoot in °C
-    "oscillations_max": 1,      # Maximum acceptable oscillations
-    "settling_time_max": 60,    # Maximum settling time in minutes
-    "rise_time_max": 45,        # Maximum rise time in minutes
+    "overshoot_max": 0.2,  # Maximum acceptable overshoot in °C
+    "undershoot_max": 0.2,  # Maximum acceptable undershoot in °C
+    "oscillations_max": 1,  # Maximum acceptable oscillations
+    "settling_time_max": 60,  # Maximum settling time in minutes
+    "rise_time_max": 45,  # Maximum rise time in minutes
     "inter_cycle_drift_max": 0.25,  # Maximum cycle-to-cycle metric drift (°C)
-    "settling_mae_max": 0.25,   # Maximum mean absolute error during settling (°C)
+    "settling_mae_max": 0.25,  # Maximum mean absolute error during settling (°C)
 }
 
 # Heating-type-specific convergence thresholds
 # Slow systems (high thermal mass) get relaxed criteria to avoid false negatives
 HEATING_TYPE_CONVERGENCE_THRESHOLDS = {
     HeatingType.FLOOR_HYDRONIC: {
-        "overshoot_max": 0.3,       # Relaxed from 0.2°C - high thermal mass makes precise control harder
-        "undershoot_max": 0.3,      # Relaxed from 0.2°C - matches overshoot_max
-        "oscillations_max": 1,      # Same as default
-        "settling_time_max": 120,   # Relaxed from 60 min - slow systems take longer to stabilize
-        "rise_time_max": 90,        # Relaxed from 45 min - slower heating rate
+        "overshoot_max": 0.3,  # Relaxed from 0.2°C - high thermal mass makes precise control harder
+        "undershoot_max": 0.3,  # Relaxed from 0.2°C - matches overshoot_max
+        "oscillations_max": 1,  # Same as default
+        "settling_time_max": 120,  # Relaxed from 60 min - slow systems take longer to stabilize
+        "rise_time_max": 90,  # Relaxed from 45 min - slower heating rate
         "inter_cycle_drift_max": 0.3,  # Relaxed - high thermal mass increases variability
-        "settling_mae_max": 0.3,    # Relaxed - thermal mass makes precise settling harder
+        "settling_mae_max": 0.3,  # Relaxed - thermal mass makes precise settling harder
     },
     HeatingType.RADIATOR: {
-        "overshoot_max": 0.25,      # Slightly relaxed from 0.2°C
-        "undershoot_max": 0.25,     # Slightly relaxed from 0.2°C - matches overshoot_max
-        "oscillations_max": 1,      # Same as default
-        "settling_time_max": 90,    # Relaxed from 60 min - moderate thermal mass
-        "rise_time_max": 60,        # Relaxed from 45 min - moderate heating rate
+        "overshoot_max": 0.25,  # Slightly relaxed from 0.2°C
+        "undershoot_max": 0.25,  # Slightly relaxed from 0.2°C - matches overshoot_max
+        "oscillations_max": 1,  # Same as default
+        "settling_time_max": 90,  # Relaxed from 60 min - moderate thermal mass
+        "rise_time_max": 60,  # Relaxed from 45 min - moderate heating rate
         "inter_cycle_drift_max": 0.25,  # Baseline - moderate thermal mass
-        "settling_mae_max": 0.25,   # Baseline - moderate thermal mass
+        "settling_mae_max": 0.25,  # Baseline - moderate thermal mass
     },
     HeatingType.CONVECTOR: {
-        "overshoot_max": 0.2,       # Baseline (same as default)
-        "undershoot_max": 0.2,      # Baseline (same as default) - matches overshoot_max
-        "oscillations_max": 1,      # Same as default
-        "settling_time_max": 60,    # Baseline (same as default)
-        "rise_time_max": 45,        # Baseline (same as default)
+        "overshoot_max": 0.2,  # Baseline (same as default)
+        "undershoot_max": 0.2,  # Baseline (same as default) - matches overshoot_max
+        "oscillations_max": 1,  # Same as default
+        "settling_time_max": 60,  # Baseline (same as default)
+        "rise_time_max": 45,  # Baseline (same as default)
         "inter_cycle_drift_max": 0.2,  # Baseline - low thermal mass
-        "settling_mae_max": 0.2,    # Baseline - low thermal mass
+        "settling_mae_max": 0.2,  # Baseline - low thermal mass
     },
     HeatingType.FORCED_AIR: {
-        "overshoot_max": 0.15,      # Tightened from 0.2°C - fast systems should be more precise
-        "undershoot_max": 0.15,     # Tightened from 0.2°C - matches overshoot_max
-        "oscillations_max": 1,      # Same as default
-        "settling_time_max": 45,    # Tightened from 60 min - fast settling expected
-        "rise_time_max": 30,        # Tightened from 45 min - rapid heating rate
+        "overshoot_max": 0.15,  # Tightened from 0.2°C - fast systems should be more precise
+        "undershoot_max": 0.15,  # Tightened from 0.2°C - matches overshoot_max
+        "oscillations_max": 1,  # Same as default
+        "settling_time_max": 45,  # Tightened from 60 min - fast settling expected
+        "rise_time_max": 30,  # Tightened from 45 min - rapid heating rate
         "inter_cycle_drift_max": 0.15,  # Tight - very low thermal mass allows precise control
-        "settling_mae_max": 0.15,   # Tight - fast response enables precise settling
+        "settling_mae_max": 0.15,  # Tight - fast response enables precise settling
     },
 }
 
@@ -414,21 +425,21 @@ def get_convergence_thresholds(heating_type: str | None = None) -> Dict[str, flo
 # Rule threshold multipliers - scale convergence thresholds for rule activation
 # Each rule uses: threshold = convergence_threshold * multiplier
 RULE_THRESHOLD_MULTIPLIERS = {
-    "moderate_overshoot": 1.0,   # Activate at convergence threshold (0.2°C baseline)
-    "high_overshoot": 5.0,       # Activate at 5x convergence threshold (1.0°C baseline)
-    "slow_response": 4 / 3,      # Activate at 1.33x rise time max (60 min baseline)
-    "slow_settling": 1.5,        # Activate at 1.5x settling time max (90 min baseline)
-    "undershoot": 1.5,           # Activate at 1.5x convergence threshold (0.3°C baseline)
-    "many_oscillations": 3.0,    # Activate at 3x oscillation max (3 oscillations baseline)
-    "some_oscillations": 1.0,    # Activate at convergence threshold (1 oscillation baseline)
+    "moderate_overshoot": 1.0,  # Activate at convergence threshold (0.2°C baseline)
+    "high_overshoot": 5.0,  # Activate at 5x convergence threshold (1.0°C baseline)
+    "slow_response": 4 / 3,  # Activate at 1.33x rise time max (60 min baseline)
+    "slow_settling": 1.5,  # Activate at 1.5x settling time max (90 min baseline)
+    "undershoot": 1.5,  # Activate at 1.5x convergence threshold (0.3°C baseline)
+    "many_oscillations": 3.0,  # Activate at 3x oscillation max (3 oscillations baseline)
+    "some_oscillations": 1.0,  # Activate at convergence threshold (1 oscillation baseline)
 }
 
 # Rule threshold floors - minimum absolute thresholds to prevent excessive sensitivity
 # Floors override calculated thresholds to account for sensor noise and comfort minimums
 RULE_THRESHOLD_FLOORS = {
     "moderate_overshoot": 0.15,  # Minimum 0.15°C (sensor noise + comfort minimum)
-    "high_overshoot": 1.0,       # Minimum 1.0°C (significant overshoot)
-    "undershoot": 0.2,           # Minimum 0.2°C (sensor noise + comfort minimum)
+    "high_overshoot": 1.0,  # Minimum 1.0°C (significant overshoot)
+    "undershoot": 0.2,  # Minimum 0.2°C (sensor noise + comfort minimum)
 }
 
 
@@ -500,8 +511,8 @@ def get_rule_thresholds(heating_type: str | None = None) -> Dict[str, float]:
 
 # Rule priority levels for PID adjustment conflict resolution
 # Higher priority = takes precedence when rules conflict
-RULE_PRIORITY_OSCILLATION = 3   # Safety - prevent oscillation damage
-RULE_PRIORITY_OVERSHOOT = 2     # Stability - avoid temperature swings
+RULE_PRIORITY_OSCILLATION = 3  # Safety - prevent oscillation damage
+RULE_PRIORITY_OVERSHOOT = 2  # Stability - avoid temperature swings
 RULE_PRIORITY_SLOW_RESPONSE = 1  # Performance - improve comfort
 
 # Minimum number of cycles required before adaptive learning can recommend PID changes
@@ -543,10 +554,10 @@ CONFIDENCE_TIER_3 = 95  # optimized - very high confidence
 # Applied to tier thresholds to account for thermal mass differences
 # Slower systems (high thermal mass) need lower thresholds due to longer learning cycles
 HEATING_TYPE_CONFIDENCE_SCALE = {
-    HeatingType.FLOOR_HYDRONIC: 0.8,   # Lower threshold - slow response, longer learning
-    HeatingType.RADIATOR: 0.9,          # Moderate threshold
-    HeatingType.CONVECTOR: 1.0,         # Baseline threshold
-    HeatingType.FORCED_AIR: 1.1,        # Higher threshold - fast response, quicker learning
+    HeatingType.FLOOR_HYDRONIC: 0.8,  # Lower threshold - slow response, longer learning
+    HeatingType.RADIATOR: 0.9,  # Moderate threshold
+    HeatingType.CONVECTOR: 1.0,  # Baseline threshold
+    HeatingType.FORCED_AIR: 1.1,  # Higher threshold - fast response, quicker learning
 }
 
 # Comfort degradation notification thresholds
@@ -648,7 +659,7 @@ SEGMENT_NOISE_TOLERANCE = 0.05  # 0.05C default
 
 # Rate bounds for segment validation (C/hour)
 # Rates outside these bounds are rejected as physically impossible
-SEGMENT_RATE_MIN = 0.1   # Minimum 0.1 C/hour (extremely slow, but physically possible)
+SEGMENT_RATE_MIN = 0.1  # Minimum 0.1 C/hour (extremely slow, but physically possible)
 SEGMENT_RATE_MAX = 10.0  # Maximum 10 C/hour (very fast forced air systems)
 
 # System-level configuration
@@ -695,13 +706,13 @@ CONF_COOLER_RATED_CYCLES = "cooler_rated_cycles"  # Expected lifetime cycles for
 # Default rated cycles by actuator type
 DEFAULT_RATED_CYCLES = {
     "contactor": 100000,  # Mechanical contactors (typical HVAC relay)
-    "valve": 50000,       # Motorized valves (higher wear due to mechanical movement)
-    "switch": 100000,     # Solid-state relays and electronic switches
+    "valve": 50000,  # Motorized valves (higher wear due to mechanical movement)
+    "switch": 100000,  # Solid-state relays and electronic switches
 }
 
 # Actuator maintenance thresholds (percentage of rated cycles)
-ACTUATOR_MAINTENANCE_SOON_PCT = 80   # Warning threshold - maintenance soon
-ACTUATOR_MAINTENANCE_DUE_PCT = 90    # Critical threshold - maintenance due
+ACTUATOR_MAINTENANCE_SOON_PCT = 80  # Warning threshold - maintenance soon
+ACTUATOR_MAINTENANCE_DUE_PCT = 90  # Critical threshold - maintenance due
 
 # Contact sensor configuration
 CONF_CONTACT_SENSORS = "contact_sensors"
@@ -735,9 +746,9 @@ CONF_MAX_PREHEAT_HOURS = "max_preheat_hours"
 # Preheat configuration by heating type
 HEATING_TYPE_PREHEAT_CONFIG = {
     "floor_hydronic": {"max_hours": 8.0, "cold_soak_margin": 1.5, "fallback_rate": 0.5},
-    "radiator":       {"max_hours": 4.0, "cold_soak_margin": 1.3, "fallback_rate": 1.2},
-    "convector":      {"max_hours": 2.0, "cold_soak_margin": 1.2, "fallback_rate": 2.0},
-    "forced_air":     {"max_hours": 1.5, "cold_soak_margin": 1.1, "fallback_rate": 4.0},
+    "radiator": {"max_hours": 4.0, "cold_soak_margin": 1.3, "fallback_rate": 1.2},
+    "convector": {"max_hours": 2.0, "cold_soak_margin": 1.2, "fallback_rate": 2.0},
+    "forced_air": {"max_hours": 1.5, "cold_soak_margin": 1.1, "fallback_rate": 4.0},
 }
 
 # Contact action types
@@ -775,9 +786,7 @@ VALID_WINDOW_ORIENTATIONS = [
 ]
 
 # Energy ratings
-VALID_ENERGY_RATINGS = [
-    "A++++", "A+++", "A++", "A+", "A", "B", "C", "D", "E", "F", "G"
-]
+VALID_ENERGY_RATINGS = ["A++++", "A+++", "A++", "A+", "A", "B", "C", "D", "E", "F", "G"]
 
 # Default values for new configuration options
 DEFAULT_SOURCE_STARTUP_DELAY = 30
@@ -787,7 +796,7 @@ DEFAULT_LEARNING_WINDOW_DAYS = 7
 
 # Humidity detection defaults
 DEFAULT_HUMIDITY_SPIKE_THRESHOLD = 15  # % rise to trigger
-DEFAULT_HUMIDITY_ABSOLUTE_MAX = 80     # % absolute cap
+DEFAULT_HUMIDITY_ABSOLUTE_MAX = 80  # % absolute cap
 DEFAULT_HUMIDITY_DETECTION_WINDOW = 300  # seconds
 DEFAULT_HUMIDITY_STABILIZATION_DELAY = 300  # seconds
 DEFAULT_HUMIDITY_MAX_PAUSE = 3600  # 60 min max pause
@@ -832,9 +841,9 @@ DEFAULT_INTEGRAL_DECAY = 1.5
 
 HEATING_TYPE_INTEGRAL_DECAY = {
     HeatingType.FLOOR_HYDRONIC: 3.0,  # High decay - very slow thermal response
-    HeatingType.RADIATOR: 2.0,        # Moderate decay
-    HeatingType.CONVECTOR: 1.5,       # Standard decay
-    HeatingType.FORCED_AIR: 1.2,      # Low decay - fast response can self-correct
+    HeatingType.RADIATOR: 2.0,  # Moderate decay
+    HeatingType.CONVECTOR: 1.5,  # Standard decay
+    HeatingType.FORCED_AIR: 1.2,  # Low decay - fast response can self-correct
 }
 
 # Integral decay safety net thresholds (% of integral value)
@@ -843,9 +852,9 @@ HEATING_TYPE_INTEGRAL_DECAY = {
 # Slower systems get lower thresholds to activate safety net earlier.
 INTEGRAL_DECAY_THRESHOLDS = {
     HeatingType.FLOOR_HYDRONIC: 30.0,  # Low threshold - high thermal mass needs early intervention
-    HeatingType.RADIATOR: 40.0,        # Moderate threshold
-    HeatingType.CONVECTOR: 50.0,       # Standard threshold
-    HeatingType.FORCED_AIR: 60.0,      # High threshold - fast response can handle larger integral
+    HeatingType.RADIATOR: 40.0,  # Moderate threshold
+    HeatingType.CONVECTOR: 50.0,  # Standard threshold
+    HeatingType.FORCED_AIR: 60.0,  # High threshold - fast response can handle larger integral
 }
 
 # Clamped cycle overshoot multipliers by heating type
@@ -855,10 +864,10 @@ INTEGRAL_DECAY_THRESHOLDS = {
 # Slower systems (high thermal mass) get higher multipliers since clamping hides more
 # of the true overshoot due to delayed thermal response.
 CLAMPED_OVERSHOOT_MULTIPLIER = {
-    HeatingType.FLOOR_HYDRONIC: 1.5,   # High multiplier - thermal mass delays overshoot expression
-    HeatingType.RADIATOR: 1.35,        # Moderate-high multiplier
-    HeatingType.CONVECTOR: 1.2,        # Moderate multiplier
-    HeatingType.FORCED_AIR: 1.1,       # Low multiplier - fast response shows true overshoot quickly
+    HeatingType.FLOOR_HYDRONIC: 1.5,  # High multiplier - thermal mass delays overshoot expression
+    HeatingType.RADIATOR: 1.35,  # Moderate-high multiplier
+    HeatingType.CONVECTOR: 1.2,  # Moderate multiplier
+    HeatingType.FORCED_AIR: 1.1,  # Low multiplier - fast response shows true overshoot quickly
 }
 
 # Default clamped overshoot multiplier for unknown heating types
@@ -869,10 +878,10 @@ DEFAULT_CLAMPED_OVERSHOOT_MULTIPLIER = 1.25
 DEFAULT_EXP_DECAY_TAU = 0.12
 
 HEATING_TYPE_EXP_DECAY_TAU = {
-    HeatingType.FLOOR_HYDRONIC: 0.18,   # 7.5 min half-life (15 min cycle / 2)
-    HeatingType.RADIATOR: 0.12,         # 5 min half-life (10 min cycle / 2)
-    HeatingType.CONVECTOR: 0.06,        # 2.5 min half-life (5 min cycle / 2)
-    HeatingType.FORCED_AIR: 0.036,      # 1.5 min half-life (3 min cycle / 2)
+    HeatingType.FLOOR_HYDRONIC: 0.18,  # 7.5 min half-life (15 min cycle / 2)
+    HeatingType.RADIATOR: 0.12,  # 5 min half-life (10 min cycle / 2)
+    HeatingType.CONVECTOR: 0.06,  # 2.5 min half-life (5 min cycle / 2)
+    HeatingType.FORCED_AIR: 0.036,  # 1.5 min half-life (3 min cycle / 2)
 }
 
 # Undershoot detection thresholds by heating type
@@ -881,15 +890,15 @@ HEATING_TYPE_EXP_DECAY_TAU = {
 UNDERSHOOT_THRESHOLDS: dict[HeatingType, dict[str, float]] = {
     HeatingType.FLOOR_HYDRONIC: {
         # Real-time mode
-        "time_threshold_hours": 4.0,    # Hours below setpoint before triggering
-        "debt_threshold": 2.0,          # Temperature debt (°C·h) threshold
+        "time_threshold_hours": 4.0,  # Hours below setpoint before triggering
+        "debt_threshold": 2.0,  # Temperature debt (°C·h) threshold
         # Cycle mode
-        "min_consecutive_cycles": 4,    # Minimum consecutive approach failures
-        "undershoot_threshold": 0.4,    # Temperature gap threshold (°C)
-        "min_cycle_duration": 60.0,     # Minimum cycle duration (minutes)
+        "min_consecutive_cycles": 4,  # Minimum consecutive approach failures
+        "undershoot_threshold": 0.4,  # Temperature gap threshold (°C)
+        "min_cycle_duration": 60.0,  # Minimum cycle duration (minutes)
         # Shared
-        "ki_multiplier": 1.20,          # Ki boost per detection (20% increase)
-        "cooldown_hours": 24.0,         # Hours between adjustments
+        "ki_multiplier": 1.20,  # Ki boost per detection (20% increase)
+        "cooldown_hours": 24.0,  # Hours between adjustments
     },
     HeatingType.RADIATOR: {
         # Real-time mode
@@ -967,24 +976,24 @@ SEASONAL_SHIFT_BLOCK_DAYS = 7
 # (see LEARNING_STATUS_THRESHOLDS), not per-apply thresholds.
 AUTO_APPLY_THRESHOLDS = {
     HeatingType.FLOOR_HYDRONIC: {
-        "min_cycles": 8,                 # More cycles needed due to long cycle times
-        "cooldown_hours": 96,            # 4 days between applies
-        "cooldown_cycles": 15,           # ~1 week of normal operation
+        "min_cycles": 8,  # More cycles needed due to long cycle times
+        "cooldown_hours": 96,  # 4 days between applies
+        "cooldown_cycles": 15,  # ~1 week of normal operation
     },
     HeatingType.RADIATOR: {
-        "min_cycles": 7,                 # Moderate cycle requirement
-        "cooldown_hours": 72,            # 3 days between applies
-        "cooldown_cycles": 12,           # ~5 days of normal operation
+        "min_cycles": 7,  # Moderate cycle requirement
+        "cooldown_hours": 72,  # 3 days between applies
+        "cooldown_cycles": 12,  # ~5 days of normal operation
     },
     HeatingType.CONVECTOR: {
-        "min_cycles": 6,                 # Standard cycle requirement
-        "cooldown_hours": 48,            # 2 days between applies
-        "cooldown_cycles": 10,           # ~3-4 days of normal operation
+        "min_cycles": 6,  # Standard cycle requirement
+        "cooldown_hours": 48,  # 2 days between applies
+        "cooldown_cycles": 10,  # ~3-4 days of normal operation
     },
     HeatingType.FORCED_AIR: {
-        "min_cycles": 6,                 # Standard cycle requirement
-        "cooldown_hours": 36,            # 1.5 days between applies
-        "cooldown_cycles": 8,            # ~2 days of normal operation
+        "min_cycles": 6,  # Standard cycle requirement
+        "cooldown_hours": 36,  # 1.5 days between applies
+        "cooldown_cycles": 8,  # ~2 days of normal operation
     },
 }
 
@@ -996,8 +1005,8 @@ ATTR_PID_HISTORY = "pid_history"
 ATTR_PENDING_RECOMMENDATION = "pending_recommendation"
 
 # Floor heating construction configuration
-CONF_FLOOR_CONSTRUCTION = 'floor_construction'
-CONF_PIPE_SPACING_MM = 'pipe_spacing_mm'
+CONF_FLOOR_CONSTRUCTION = "floor_construction"
+CONF_PIPE_SPACING_MM = "pipe_spacing_mm"
 
 # Top floor material thermal properties
 # Properties: conductivity (W/(m·K)), density (kg/m³), specific_heat (J/(kg·K))
@@ -1039,8 +1048,8 @@ PIPE_SPACING_EFFICIENCY = {
 # Floor construction thickness limits (mm)
 # Used for validation of user-provided thickness values
 FLOOR_THICKNESS_LIMITS = {
-    'top_floor': (5, 25),
-    'screed': (30, 100),
+    "top_floor": (5, 25),
+    "screed": (30, 100),
 }
 
 # Manifold transport delay

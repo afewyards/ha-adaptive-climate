@@ -41,51 +41,64 @@ DEAD_TIME_INTEGRAL_RATE = 0.25
 class PID:
     error: float
 
-    def __init__(self, kp, ki, kd, ke=0, ke_wind=0.02, out_min=float('-inf'), out_max=float('+inf'),
-                 sampling_period=0, cold_tolerance=0.3, hot_tolerance=0.3, derivative_filter_alpha=0.15,
-                 integral_decay_multiplier=1.5, integral_exp_decay_tau=None,
-                 heating_type="radiator"):
+    def __init__(
+        self,
+        kp,
+        ki,
+        kd,
+        ke=0,
+        ke_wind=0.02,
+        out_min=float("-inf"),
+        out_max=float("+inf"),
+        sampling_period=0,
+        cold_tolerance=0.3,
+        hot_tolerance=0.3,
+        derivative_filter_alpha=0.15,
+        integral_decay_multiplier=1.5,
+        integral_exp_decay_tau=None,
+        heating_type="radiator",
+    ):
         """A proportional-integral-derivative controller using P-on-M (proportional-on-measurement).
-            :param kp: Proportional coefficient.
-            :type kp: float
-            :param ki: Integral coefficient in units of %/(°C·hour).
-            :type ki: float
-            :param kd: Derivative coefficient in units of %/(°C/hour).
-            :type kd: float
-            :param ke: Outdoor temperature compensation coefficient.
-            :type ke: float
-            :param ke_wind: Wind speed compensation coefficient (per m/s).
-            :type ke_wind: float
-            :param out_min: Lower output limit.
-            :type out_min: float
-            :param out_max: Upper output limit.
-            :type out_max: float
-            :param sampling_period: time period between two PID calculations in seconds
-            :type sampling_period: float
-            :param cold_tolerance: Temperature below setpoint to trigger heating when PID mode is OFF.
-            :type cold_tolerance: float
-            :param hot_tolerance: Temperature above setpoint to trigger cooling when PID mode is OFF.
-            :type hot_tolerance: float
-            :param derivative_filter_alpha: EMA filter alpha for derivative term (0.0-1.0).
-                                           Lower values = more filtering. 1.0 = no filter.
-            :type derivative_filter_alpha: float
-            :param integral_decay_multiplier: Multiplier for integral decay when error opposes integral sign.
-                                              Higher values = faster decay during overhang. Minimum 1.0.
-            :type integral_decay_multiplier: float
-            :param integral_exp_decay_tau: Time constant (hours) for exponential integral decay during overhang.
-                                           Half-life = 0.693 * tau. None disables exponential decay.
-            :type integral_exp_decay_tau: float
-            :param heating_type: Heating system type (floor_hydronic, radiator, convector, forced_air).
-            :type heating_type: str
+        :param kp: Proportional coefficient.
+        :type kp: float
+        :param ki: Integral coefficient in units of %/(°C·hour).
+        :type ki: float
+        :param kd: Derivative coefficient in units of %/(°C/hour).
+        :type kd: float
+        :param ke: Outdoor temperature compensation coefficient.
+        :type ke: float
+        :param ke_wind: Wind speed compensation coefficient (per m/s).
+        :type ke_wind: float
+        :param out_min: Lower output limit.
+        :type out_min: float
+        :param out_max: Upper output limit.
+        :type out_max: float
+        :param sampling_period: time period between two PID calculations in seconds
+        :type sampling_period: float
+        :param cold_tolerance: Temperature below setpoint to trigger heating when PID mode is OFF.
+        :type cold_tolerance: float
+        :param hot_tolerance: Temperature above setpoint to trigger cooling when PID mode is OFF.
+        :type hot_tolerance: float
+        :param derivative_filter_alpha: EMA filter alpha for derivative term (0.0-1.0).
+                                       Lower values = more filtering. 1.0 = no filter.
+        :type derivative_filter_alpha: float
+        :param integral_decay_multiplier: Multiplier for integral decay when error opposes integral sign.
+                                          Higher values = faster decay during overhang. Minimum 1.0.
+        :type integral_decay_multiplier: float
+        :param integral_exp_decay_tau: Time constant (hours) for exponential integral decay during overhang.
+                                       Half-life = 0.693 * tau. None disables exponential decay.
+        :type integral_exp_decay_tau: float
+        :param heating_type: Heating system type (floor_hydronic, radiator, convector, forced_air).
+        :type heating_type: str
         """
         if kp is None:
-            raise ValueError('kp must be specified')
+            raise ValueError("kp must be specified")
         if ki is None:
-            raise ValueError('ki must be specified')
+            raise ValueError("ki must be specified")
         if kd is None:
-            raise ValueError('kd must be specified')
+            raise ValueError("kd must be specified")
         if out_min >= out_max:
-            raise ValueError('out_min must be less than out_max')
+            raise ValueError("out_min must be less than out_max")
 
         self._Kp = kp
         self._Ki = ki
@@ -115,7 +128,7 @@ class PID:
         self._derivative = 0
         self._external = 0
         self._feedforward = 0.0
-        self._mode = 'AUTO'
+        self._mode = "AUTO"
         self._sampling_period = sampling_period
         self._cold_tolerance = cold_tolerance
         self._hot_tolerance = hot_tolerance
@@ -138,14 +151,14 @@ class PID:
 
     @mode.setter
     def mode(self, mode):
-        if mode.upper() not in ['AUTO', 'OFF']:
+        if mode.upper() not in ["AUTO", "OFF"]:
             raise ValueError(f"mode must be 'AUTO' or 'OFF', got '{mode}'")
         new_mode = mode.upper()
         # Store output before switching to OFF for bumpless transfer
-        if self._mode == 'AUTO' and new_mode == 'OFF':
+        if self._mode == "AUTO" and new_mode == "OFF":
             self._last_output_before_off = self._output
         # Clear samples when switching from OFF to AUTO to prevent stale data
-        if self._mode == 'OFF' and new_mode == 'AUTO':
+        if self._mode == "OFF" and new_mode == "AUTO":
             self.clear_samples()
         self._mode = new_mode
 
@@ -335,8 +348,9 @@ class PID:
 
         # Skip transfer if setpoint changed significantly or error is large
         if abs(self._set_point - self._last_set_point) > BUMPLESS_TRANSFER_THRESHOLD:
-            _LOGGER.debug("Bumpless transfer skipped: setpoint changed by %.2f°C",
-                         abs(self._set_point - self._last_set_point))
+            _LOGGER.debug(
+                "Bumpless transfer skipped: setpoint changed by %.2f°C", abs(self._set_point - self._last_set_point)
+            )
             self._last_output_before_off = None
             return
 
@@ -352,12 +366,15 @@ class PID:
         # Clamp to valid range accounting for external and feedforward terms
         required_integral = max(
             min(required_integral, self._out_max - self._external - self._feedforward),
-            self._out_min - self._external - self._feedforward
+            self._out_min - self._external - self._feedforward,
         )
 
         self._integral = required_integral
-        _LOGGER.debug("Bumpless transfer: set integral to %.2f%% to maintain output %.2f%%",
-                     self._integral, self._last_output_before_off)
+        _LOGGER.debug(
+            "Bumpless transfer: set integral to %.2f%% to maintain output %.2f%%",
+            self._integral,
+            self._last_output_before_off,
+        )
 
         # Clear the transfer state after use
         self._last_output_before_off = None
@@ -491,8 +508,11 @@ class PID:
             _LOGGER.warning("Invalid ext_temp received: %s. Returning cached output.", ext_temp)
             return self._output, False
 
-        if self._sampling_period != 0 and self._last_input_time is not None and \
-                time() - self._last_input_time < self._sampling_period:
+        if (
+            self._sampling_period != 0
+            and self._last_input_time is not None
+            and time() - self._last_input_time < self._sampling_period
+        ):
             return self._output, False  # If last sample is too young, keep last output value
 
         self._last_input = self._input
@@ -518,7 +538,7 @@ class PID:
         self._last_set_point = self._set_point
         self._set_point = set_point
 
-        if self.mode == 'OFF':  # If PID is off, simply switch between min and max output
+        if self.mode == "OFF":  # If PID is off, simply switch between min and max output
             if input_val <= set_point - self._cold_tolerance:
                 self._output = self._out_max
                 _LOGGER.debug("PID is off and input lower than set point: heater ON")
@@ -597,8 +617,7 @@ class PID:
                 # Overhang conditions:
                 # - Positive integral (was heating) + negative error (temp above setpoint)
                 # - Negative integral (was cooling) + positive error (temp below setpoint)
-                is_overhang = (self._integral > 0 and self._error < 0) or \
-                              (self._integral < 0 and self._error > 0)
+                is_overhang = (self._integral > 0 and self._error < 0) or (self._integral < 0 and self._error > 0)
                 decay_multiplier = self._integral_decay_multiplier if is_overhang else 1.0
 
                 # Progressive tolerance-based integral decay (safety net for untuned systems)
@@ -607,7 +626,7 @@ class PID:
                 if self.should_apply_decay():
                     # Track safety net activation for learning feedback
                     self._was_clamped = True
-                    self._clamp_reason = 'safety_net'
+                    self._clamp_reason = "safety_net"
 
                     # Calculate progress through tolerance zone (0 at edge, 1 at setpoint)
                     # For heating (positive integral), use cold_tolerance
@@ -622,10 +641,8 @@ class PID:
                     progress = max(0.0, min(1.0, progress))  # Clamp to [0, 1]
 
                     # Apply heating-type specific decay curve
-                    decay_exponent = HEATING_TYPE_CHARACTERISTICS.get(
-                        self._heating_type, {}
-                    ).get("decay_exponent", 1.0)
-                    shaped_progress = progress ** decay_exponent
+                    decay_exponent = HEATING_TYPE_CHARACTERISTICS.get(self._heating_type, {}).get("decay_exponent", 1.0)
+                    shaped_progress = progress**decay_exponent
 
                     # Calculate effective decay: ramps from 1.0 to decay_multiplier
                     # effective_decay = 1 + shaped_progress * (decay_multiplier - 1)
@@ -647,7 +664,7 @@ class PID:
             # Note: Clamping always runs (not just when accumulating) to handle feedforward changes
             self._integral = max(
                 min(self._integral, self._out_max - self._external - self._feedforward),
-                self._out_min - self._external - self._feedforward
+                self._out_min - self._external - self._feedforward,
             )
 
             # Calculate derivative
@@ -661,8 +678,8 @@ class PID:
             # alpha = 1.0 disables filter (no filtering)
             # alpha = 0.0 gives maximum filtering (derivative becomes constant)
             self._derivative_filtered = (
-                self._derivative_filter_alpha * raw_derivative +
-                (1.0 - self._derivative_filter_alpha) * self._derivative_filtered
+                self._derivative_filter_alpha * raw_derivative
+                + (1.0 - self._derivative_filter_alpha) * self._derivative_filtered
             )
             self._derivative = self._derivative_filtered
 
@@ -672,7 +689,10 @@ class PID:
             # Integral and derivative remain unchanged from previous calculation
             _LOGGER.debug(
                 "PID: dt=%.3fs < %.1fs threshold, freeze I=%.2f D=%.2f (rapid non-sensor call)",
-                self._dt, MIN_DT_FOR_DERIVATIVE, self._integral, self._derivative_filtered
+                self._dt,
+                MIN_DT_FOR_DERIVATIVE,
+                self._integral,
+                self._derivative_filtered,
             )
         else:
             # First call (dt=0) - initialize D to zero, preserve restored I
@@ -692,12 +712,12 @@ class PID:
         if self._error < -self._cold_tolerance:  # Beyond tolerance above setpoint - no heating needed
             if output > 0:  # Only track if clamp actually affects output
                 self._was_clamped = True
-                self._clamp_reason = 'tolerance'
+                self._clamp_reason = "tolerance"
             output = min(output, 0)
         elif self._error > self._hot_tolerance:  # Beyond tolerance below setpoint - no cooling needed
             if output < 0:  # Only track if clamp actually affects output
                 self._was_clamped = True
-                self._clamp_reason = 'tolerance'
+                self._clamp_reason = "tolerance"
             output = max(output, 0)
 
         self._output = max(min(output, self._out_max), self._out_min)

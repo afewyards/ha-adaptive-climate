@@ -46,9 +46,7 @@ class TestHeatingTypeCharacteristics:
             characteristics = HEATING_TYPE_CHARACTERISTICS[heating_type]
 
             for key in required_keys:
-                assert key in characteristics, (
-                    f"Heating type {heating_type} missing required key: {key}"
-                )
+                assert key in characteristics, f"Heating type {heating_type} missing required key: {key}"
                 assert isinstance(characteristics[key], (int, float)), (
                     f"Heating type {heating_type} key {key} must be numeric, got {type(characteristics[key])}"
                 )
@@ -150,9 +148,7 @@ class TestIntegralDecayThresholds:
             assert isinstance(threshold, (int, float)), (
                 f"Threshold for {heating_type} must be numeric, got {type(threshold)}"
             )
-            assert threshold > 0, (
-                f"Threshold for {heating_type} must be positive, got {threshold}"
-            )
+            assert threshold > 0, f"Threshold for {heating_type} must be positive, got {threshold}"
 
     def test_integral_decay_threshold_values(self):
         """Verify specific threshold values match the specification."""
@@ -185,9 +181,9 @@ class TestPIDGains:
         """Verify PIDGains dataclass can be imported and instantiated."""
         gains = PIDGains(kp=1.0, ki=0.5, kd=0.2)
         assert gains is not None
-        assert hasattr(gains, 'kp')
-        assert hasattr(gains, 'ki')
-        assert hasattr(gains, 'kd')
+        assert hasattr(gains, "kp")
+        assert hasattr(gains, "ki")
+        assert hasattr(gains, "kd")
 
     def test_pidgains_field_access(self):
         """Verify PIDGains fields are accessible and have correct values."""
@@ -236,9 +232,7 @@ class TestCoolingTypeCharacteristics:
 
         for cooling_type, characteristics in COOLING_TYPE_CHARACTERISTICS.items():
             for key in required_keys:
-                assert key in characteristics, (
-                    f"Cooling type {cooling_type} missing required key: {key}"
-                )
+                assert key in characteristics, f"Cooling type {cooling_type} missing required key: {key}"
                 assert isinstance(characteristics[key], (int, float)), (
                     f"Cooling type {cooling_type} key {key} must be numeric, got {type(characteristics[key])}"
                 )
@@ -396,4 +390,5 @@ class TestHumidityDetectionConstants:
 def test_const_module_exists():
     """Marker test to ensure const module is importable."""
     from custom_components.adaptive_climate import const
+
     assert const is not None

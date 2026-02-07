@@ -2,6 +2,7 @@
 
 Manages duty accumulation for sub-threshold PID outputs and PWM switching logic.
 """
+
 from __future__ import annotations
 
 import logging
@@ -11,6 +12,7 @@ from typing import TYPE_CHECKING, Any, Callable
 # These imports are only needed when running in Home Assistant
 try:
     from homeassistant.components.climate import HVACMode
+
     HAS_HOMEASSISTANT = True
 except ImportError:
     HAS_HOMEASSISTANT = False
@@ -169,9 +171,13 @@ class PWMController:
 
         # Total on-time = transport delay + valve open time + max(heat_duration, min_open_time)
         # This ensures heat arrives and valve is fully open before heat delivery begins
-        return self._transport_delay + self._valve_actuation_time + max(
-            heat_duration,
-            self._min_open_time,
+        return (
+            self._transport_delay
+            + self._valve_actuation_time
+            + max(
+                heat_duration,
+                self._min_open_time,
+            )
         )
 
     def get_close_command_offset(self) -> float:
@@ -276,10 +282,9 @@ class PWMController:
                 # Safety check: don't fire if heating would be counterproductive
                 # (This can happen after restart when PID integral keeps output positive
                 # even though temperature is already above setpoint)
-                current_temp = getattr(self._thermostat, '_current_temp', None)
-                target_temp = getattr(self._thermostat, '_target_temp', None)
-                if (isinstance(current_temp, (int, float)) and
-                    isinstance(target_temp, (int, float))):
+                current_temp = getattr(self._thermostat, "_current_temp", None)
+                target_temp = getattr(self._thermostat, "_target_temp", None)
+                if isinstance(current_temp, (int, float)) and isinstance(target_temp, (int, float)):
                     if hvac_mode == HVACMode.HEAT and current_temp >= target_temp:
                         _LOGGER.info(
                             "%s: Accumulator threshold reached but skipping pulse - "
@@ -396,11 +401,7 @@ class PWMController:
 
         if is_device_active:
             if time_to_close <= time_passed or force_off:
-                _LOGGER.info(
-                    "%s: ON time passed. Request turning OFF %s",
-                    thermostat_entity_id,
-                    ", ".join(entities)
-                )
+                _LOGGER.info("%s: ON time passed. Request turning OFF %s", thermostat_entity_id, ", ".join(entities))
                 await heater_controller.async_turn_off(
                     hvac_mode=hvac_mode,
                     get_cycle_start_time=get_cycle_start_time,
@@ -413,7 +414,7 @@ class PWMController:
                     "%s: Time until %s turns OFF: %s sec",
                     thermostat_entity_id,
                     ", ".join(entities),
-                    int(time_to_close - time_passed)
+                    int(time_to_close - time_passed),
                 )
                 await heater_controller.async_turn_on(
                     hvac_mode=hvac_mode,
@@ -423,11 +424,7 @@ class PWMController:
                 )
         else:
             if time_off <= time_passed or force_on:
-                _LOGGER.info(
-                    "%s: OFF time passed. Request turning ON %s",
-                    thermostat_entity_id,
-                    ", ".join(entities)
-                )
+                _LOGGER.info("%s: OFF time passed. Request turning ON %s", thermostat_entity_id, ", ".join(entities))
                 await heater_controller.async_turn_on(
                     hvac_mode=hvac_mode,
                     get_cycle_start_time=get_cycle_start_time,
@@ -440,7 +437,7 @@ class PWMController:
                     "%s: Time until %s turns ON: %s sec",
                     thermostat_entity_id,
                     ", ".join(entities),
-                    int(time_off - time_passed)
+                    int(time_off - time_passed),
                 )
                 await heater_controller.async_turn_off(
                     hvac_mode=hvac_mode,

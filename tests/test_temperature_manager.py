@@ -3,6 +3,7 @@
 This test suite verifies that TemperatureManager works correctly using only
 callback-based access, without requiring direct thermostat reference.
 """
+
 import pytest
 from unittest.mock import AsyncMock, Mock
 from custom_components.adaptive_climate.managers.temperature_manager import (
@@ -25,23 +26,23 @@ class TestTemperatureManagerCallbackOnly:
     def mock_callbacks(self):
         """Create mock callbacks for TemperatureManager."""
         return {
-            'target_temp': 20.0,
-            'current_temp': 18.0,
-            'force_on': False,
-            'force_off': False,
+            "target_temp": 20.0,
+            "current_temp": 18.0,
+            "force_on": False,
+            "force_off": False,
         }
 
     @pytest.fixture
     def callbacks(self, mock_callbacks):
         """Create callback functions that use mock_callbacks state."""
         return {
-            'get_target_temp': lambda: mock_callbacks['target_temp'],
-            'set_target_temp': lambda temp: mock_callbacks.update({'target_temp': temp}),
-            'get_current_temp': lambda: mock_callbacks['current_temp'],
-            'set_force_on': lambda val: mock_callbacks.update({'force_on': val}),
-            'set_force_off': lambda val: mock_callbacks.update({'force_off': val}),
-            'async_set_pid_mode': AsyncMock(),
-            'async_control_heating': AsyncMock(),
+            "get_target_temp": lambda: mock_callbacks["target_temp"],
+            "set_target_temp": lambda temp: mock_callbacks.update({"target_temp": temp}),
+            "get_current_temp": lambda: mock_callbacks["current_temp"],
+            "set_force_on": lambda val: mock_callbacks.update({"force_on": val}),
+            "set_force_off": lambda val: mock_callbacks.update({"force_off": val}),
+            "async_set_pid_mode": AsyncMock(),
+            "async_control_heating": AsyncMock(),
         }
 
     @pytest.fixture
@@ -57,11 +58,11 @@ class TestTemperatureManagerCallbackOnly:
             home_temp=20.0,
             sleep_temp=18.0,
             activity_temp=22.0,
-            preset_sync_mode='sync',
+            preset_sync_mode="sync",
             min_temp=10.0,
             max_temp=30.0,
             boost_pid_off=True,
-            **callbacks
+            **callbacks,
         )
 
     def test_initialization_without_thermostat(self, manager):
@@ -114,11 +115,11 @@ class TestTemperatureManagerCallbackOnly:
             home_temp=None,
             sleep_temp=None,
             activity_temp=None,
-            preset_sync_mode='sync',
+            preset_sync_mode="sync",
             min_temp=10.0,
             max_temp=30.0,
             boost_pid_off=False,
-            **callbacks
+            **callbacks,
         )
         assert manager.has_preset_support() is False
 
@@ -129,33 +130,33 @@ class TestTemperatureManagerCallbackOnly:
         await manager.async_set_temperature(22.0)
 
         # Should set force_on flag
-        assert mock_callbacks['force_on'] is True
-        assert mock_callbacks['force_off'] is False
+        assert mock_callbacks["force_on"] is True
+        assert mock_callbacks["force_off"] is False
 
         # Should update target temp
-        assert mock_callbacks['target_temp'] == 22.0
+        assert mock_callbacks["target_temp"] == 22.0
 
         # Should trigger heating control
-        callbacks['async_control_heating'].assert_called_once_with(True)
+        callbacks["async_control_heating"].assert_called_once_with(True)
 
     @pytest.mark.asyncio
     async def test_set_temperature_decreasing(self, manager, mock_callbacks, callbacks):
         """Test setting temperature lower than current (force_off flag)."""
         # Set current temp higher
-        mock_callbacks['current_temp'] = 25.0
+        mock_callbacks["current_temp"] = 25.0
 
         # Set target lower
         await manager.async_set_temperature(20.0)
 
         # Should set force_off flag
-        assert mock_callbacks['force_on'] is False
-        assert mock_callbacks['force_off'] is True
+        assert mock_callbacks["force_on"] is False
+        assert mock_callbacks["force_off"] is True
 
         # Should update target temp
-        assert mock_callbacks['target_temp'] == 20.0
+        assert mock_callbacks["target_temp"] == 20.0
 
         # Should trigger heating control
-        callbacks['async_control_heating'].assert_called_once_with(True)
+        callbacks["async_control_heating"].assert_called_once_with(True)
 
     @pytest.mark.asyncio
     async def test_set_temperature_matches_preset_with_sync(self, manager, mock_callbacks, callbacks):
@@ -166,7 +167,7 @@ class TestTemperatureManagerCallbackOnly:
         assert manager.preset_mode == PRESET_AWAY
 
         # Should set target to preset temp
-        assert mock_callbacks['target_temp'] == 15.0
+        assert mock_callbacks["target_temp"] == 15.0
 
     @pytest.mark.asyncio
     async def test_set_temperature_no_sync(self, callbacks, mock_callbacks):
@@ -180,11 +181,11 @@ class TestTemperatureManagerCallbackOnly:
             home_temp=20.0,
             sleep_temp=18.0,
             activity_temp=22.0,
-            preset_sync_mode='none',  # Sync disabled
+            preset_sync_mode="none",  # Sync disabled
             min_temp=10.0,
             max_temp=30.0,
             boost_pid_off=False,
-            **callbacks
+            **callbacks,
         )
 
         await manager.async_set_temperature(15.0)  # Matches AWAY preset
@@ -193,13 +194,13 @@ class TestTemperatureManagerCallbackOnly:
         assert manager.preset_mode == PRESET_NONE
 
         # Should still set target temp
-        assert mock_callbacks['target_temp'] == 15.0
+        assert mock_callbacks["target_temp"] == 15.0
 
     @pytest.mark.asyncio
     async def test_set_preset_mode_from_none(self, manager, mock_callbacks, callbacks):
         """Test switching from NONE to a preset saves current temperature."""
         # Set a specific target temp
-        mock_callbacks['target_temp'] = 19.5
+        mock_callbacks["target_temp"] = 19.5
 
         await manager.async_set_preset_mode(PRESET_AWAY)
 
@@ -207,7 +208,7 @@ class TestTemperatureManagerCallbackOnly:
         assert manager.saved_target_temp == 19.5
 
         # Should switch to preset temp
-        assert mock_callbacks['target_temp'] == 15.0
+        assert mock_callbacks["target_temp"] == 15.0
 
         # Should update preset mode
         assert manager.preset_mode == PRESET_AWAY
@@ -216,14 +217,14 @@ class TestTemperatureManagerCallbackOnly:
     async def test_set_preset_mode_back_to_none(self, manager, mock_callbacks, callbacks):
         """Test switching from preset back to NONE restores saved temperature."""
         # First switch to a preset
-        mock_callbacks['target_temp'] = 19.5
+        mock_callbacks["target_temp"] = 19.5
         await manager.async_set_preset_mode(PRESET_AWAY)
 
         # Then switch back to NONE
         await manager.async_set_preset_mode(PRESET_NONE)
 
         # Should restore saved temp
-        assert mock_callbacks['target_temp'] == 19.5
+        assert mock_callbacks["target_temp"] == 19.5
 
         # Should update preset mode
         assert manager.preset_mode == PRESET_NONE
@@ -233,11 +234,11 @@ class TestTemperatureManagerCallbackOnly:
         """Test switching between different presets."""
         # Switch to ECO first
         await manager.async_set_preset_mode(PRESET_ECO)
-        assert mock_callbacks['target_temp'] == 17.0
+        assert mock_callbacks["target_temp"] == 17.0
 
         # Switch to COMFORT
         await manager.async_set_preset_mode(PRESET_COMFORT)
-        assert mock_callbacks['target_temp'] == 21.0
+        assert mock_callbacks["target_temp"] == 21.0
 
         # Should update preset mode
         assert manager.preset_mode == PRESET_COMFORT
@@ -248,7 +249,7 @@ class TestTemperatureManagerCallbackOnly:
         await manager.async_set_preset_mode(PRESET_BOOST)
 
         # Should turn PID off
-        callbacks['async_set_pid_mode'].assert_called_once_with('off')
+        callbacks["async_set_pid_mode"].assert_called_once_with("off")
 
         assert manager.preset_mode == PRESET_BOOST
 
@@ -257,13 +258,13 @@ class TestTemperatureManagerCallbackOnly:
         """Test that exiting boost mode restores PID to auto when boost_pid_off=True."""
         # Enter boost
         await manager.async_set_preset_mode(PRESET_BOOST)
-        callbacks['async_set_pid_mode'].reset_mock()
+        callbacks["async_set_pid_mode"].reset_mock()
 
         # Exit boost
         await manager.async_set_preset_mode(PRESET_ECO)
 
         # Should turn PID back to auto
-        callbacks['async_set_pid_mode'].assert_called_once_with('auto')
+        callbacks["async_set_pid_mode"].assert_called_once_with("auto")
 
     @pytest.mark.asyncio
     async def test_boost_pid_off_false(self, callbacks, mock_callbacks):
@@ -277,20 +278,20 @@ class TestTemperatureManagerCallbackOnly:
             home_temp=20.0,
             sleep_temp=18.0,
             activity_temp=22.0,
-            preset_sync_mode='sync',
+            preset_sync_mode="sync",
             min_temp=10.0,
             max_temp=30.0,
             boost_pid_off=False,  # Don't control PID
-            **callbacks
+            **callbacks,
         )
 
         await manager.async_set_preset_mode(PRESET_BOOST)
 
         # Should NOT call async_set_pid_mode
-        callbacks['async_set_pid_mode'].assert_not_called()
+        callbacks["async_set_pid_mode"].assert_not_called()
 
         # Should trigger heating control instead
-        callbacks['async_control_heating'].assert_called_once_with(True)
+        callbacks["async_control_heating"].assert_called_once_with(True)
 
     @pytest.mark.asyncio
     async def test_invalid_preset_mode(self, manager):
@@ -311,10 +312,7 @@ class TestTemperatureManagerCallbackOnly:
 
     def test_restore_state(self, manager):
         """Test restoring saved state."""
-        manager.restore_state(
-            preset_mode=PRESET_ECO,
-            saved_target_temp=19.5
-        )
+        manager.restore_state(preset_mode=PRESET_ECO, saved_target_temp=19.5)
 
         assert manager.preset_mode == PRESET_ECO
         assert manager.saved_target_temp == 19.5
@@ -338,7 +336,7 @@ class TestTemperatureManagerCallbackOnly:
         assert manager.get_preset_temperature(PRESET_AWAY) == 12.0
 
         # Should trigger heating control
-        callbacks['async_control_heating'].assert_called_once_with(True)
+        callbacks["async_control_heating"].assert_called_once_with(True)
 
     @pytest.mark.asyncio
     async def test_set_preset_temp_disable(self, manager, callbacks):
@@ -362,11 +360,7 @@ class TestTemperatureManagerCallbackOnly:
     @pytest.mark.asyncio
     async def test_set_preset_temp_multiple(self, manager, callbacks):
         """Test updating multiple preset temps at once."""
-        await manager.async_set_preset_temp(
-            away_temp=14.0,
-            eco_temp=16.0,
-            boost_temp=26.0
-        )
+        await manager.async_set_preset_temp(away_temp=14.0, eco_temp=16.0, boost_temp=26.0)
 
         assert manager.get_preset_temperature(PRESET_AWAY) == 14.0
         assert manager.get_preset_temperature(PRESET_ECO) == 16.0
@@ -401,15 +395,15 @@ class TestTemperatureManagerEdgeCases:
     @pytest.fixture
     def callbacks(self):
         """Create minimal callbacks."""
-        state = {'target_temp': 20.0, 'current_temp': None}
+        state = {"target_temp": 20.0, "current_temp": None}
         return {
-            'get_target_temp': lambda: state['target_temp'],
-            'set_target_temp': lambda temp: state.update({'target_temp': temp}),
-            'get_current_temp': lambda: state['current_temp'],
-            'set_force_on': lambda val: None,
-            'set_force_off': lambda val: None,
-            'async_set_pid_mode': AsyncMock(),
-            'async_control_heating': AsyncMock(),
+            "get_target_temp": lambda: state["target_temp"],
+            "set_target_temp": lambda temp: state.update({"target_temp": temp}),
+            "get_current_temp": lambda: state["current_temp"],
+            "set_force_on": lambda val: None,
+            "set_force_off": lambda val: None,
+            "async_set_pid_mode": AsyncMock(),
+            "async_control_heating": AsyncMock(),
         }
 
     @pytest.mark.asyncio
@@ -424,18 +418,18 @@ class TestTemperatureManagerEdgeCases:
             home_temp=None,
             sleep_temp=None,
             activity_temp=None,
-            preset_sync_mode='sync',
+            preset_sync_mode="sync",
             min_temp=10.0,
             max_temp=30.0,
             boost_pid_off=False,
-            **callbacks
+            **callbacks,
         )
 
         # Should not crash when current_temp is None
         await manager.async_set_temperature(20.0)
 
         # Should still call control_heating
-        callbacks['async_control_heating'].assert_called_once()
+        callbacks["async_control_heating"].assert_called_once()
 
     def test_preset_modes_partial_configuration(self, callbacks):
         """Test preset modes when only some presets are configured."""
@@ -448,11 +442,11 @@ class TestTemperatureManagerEdgeCases:
             home_temp=None,  # Not configured
             sleep_temp=18.0,
             activity_temp=None,  # Not configured
-            preset_sync_mode='sync',
+            preset_sync_mode="sync",
             min_temp=10.0,
             max_temp=30.0,
             boost_pid_off=False,
-            **callbacks
+            **callbacks,
         )
 
         modes = manager.preset_modes
@@ -479,11 +473,11 @@ class TestTemperatureManagerEdgeCases:
             home_temp=20.0,
             sleep_temp=18.0,
             activity_temp=22.0,
-            preset_sync_mode='sync',
+            preset_sync_mode="sync",
             min_temp=10.0,
             max_temp=30.0,
             boost_pid_off=False,
-            **callbacks
+            **callbacks,
         )
 
         presets_to_test = [

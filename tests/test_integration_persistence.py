@@ -122,30 +122,37 @@ class TestPersistenceRoundTrip:
 
         # Assert all state matches
         # Cycle count
-        assert t2.learner.get_cycle_count() == initial_cycle_count, \
+        assert t2.learner.get_cycle_count() == initial_cycle_count, (
             f"Cycle count mismatch: expected {initial_cycle_count}, got {t2.learner.get_cycle_count()}"
+        )
 
         # Confidence level
         restored_confidence = t2.learner.get_convergence_confidence()
-        assert abs(restored_confidence - initial_confidence) < 0.01, \
+        assert abs(restored_confidence - initial_confidence) < 0.01, (
             f"Confidence mismatch: expected {initial_confidence:.2f}, got {restored_confidence:.2f}"
+        )
 
         # Heating rate observation count
         # Access through learner to get the restored instance, not the fixture reference
         restored_heating_rate_count = t2.learner._heating_rate_learner.get_observation_count()
-        assert restored_heating_rate_count == initial_heating_rate_count, \
+        assert restored_heating_rate_count == initial_heating_rate_count, (
             f"Heating rate obs count mismatch: expected {initial_heating_rate_count}, got {restored_heating_rate_count}"
+        )
 
         # PID gains (kp, ki, kd, ke values)
         restored_gains = t2.gains_manager.get_gains(HVACMode.HEAT)
-        assert abs(restored_gains.kp - initial_gains.kp) < 0.01, \
+        assert abs(restored_gains.kp - initial_gains.kp) < 0.01, (
             f"Kp mismatch: expected {initial_gains.kp:.4f}, got {restored_gains.kp:.4f}"
-        assert abs(restored_gains.ki - initial_gains.ki) < 0.0001, \
+        )
+        assert abs(restored_gains.ki - initial_gains.ki) < 0.0001, (
             f"Ki mismatch: expected {initial_gains.ki:.5f}, got {restored_gains.ki:.5f}"
-        assert abs(restored_gains.kd - initial_gains.kd) < 0.01, \
+        )
+        assert abs(restored_gains.kd - initial_gains.kd) < 0.01, (
             f"Kd mismatch: expected {initial_gains.kd:.3f}, got {restored_gains.kd:.3f}"
-        assert abs(restored_gains.ke - initial_gains.ke) < 0.01, \
+        )
+        assert abs(restored_gains.ke - initial_gains.ke) < 0.01, (
             f"Ke mismatch: expected {initial_gains.ke:.2f}, got {restored_gains.ke:.2f}"
+        )
 
 
 class TestPersistenceVersionMigration:
@@ -221,8 +228,9 @@ class TestPersistenceVersionMigration:
         assert t.learner._undershoot_detector.cumulative_ki_multiplier == 1.05
 
         # Verify new fields have sensible defaults (heating_rate_learner should be empty)
-        assert t.learner._heating_rate_learner.get_observation_count() == 0, \
+        assert t.learner._heating_rate_learner.get_observation_count() == 0, (
             "Expected heating rate learner to be empty after v9 migration"
+        )
 
     def test_restore_v7_format(self, make_thermostat):
         """Restore from v7 format (separate undershoot/chronic detectors)."""
@@ -279,12 +287,14 @@ class TestPersistenceVersionMigration:
         assert t.learner.get_cycle_count() == 1
 
         # Verify migration: unified detector should have max of both multipliers
-        assert t.learner._undershoot_detector.cumulative_ki_multiplier == 1.15, \
+        assert t.learner._undershoot_detector.cumulative_ki_multiplier == 1.15, (
             "Expected max(1.10, 1.15) = 1.15 after v7->v8 migration"
+        )
 
         # Verify consecutive_failures was migrated
-        assert t.learner._undershoot_detector._consecutive_failures == 2, \
+        assert t.learner._undershoot_detector._consecutive_failures == 2, (
             "Expected consecutive_failures=2 from chronic detector"
+        )
 
 
 class TestPersistenceDegradedData:

@@ -40,34 +40,25 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Optional(const.CONF_MAX_TEMP): vol.Coerce(float),
         vol.Optional(const.CONF_MIN_TEMP): vol.Coerce(float),
         vol.Optional(CONF_NAME, default=const.DEFAULT_NAME): cv.string,
-        vol.Optional(CONF_UNIQUE_ID, default='none'): cv.string,
+        vol.Optional(CONF_UNIQUE_ID, default="none"): cv.string,
         vol.Optional(const.CONF_TARGET_TEMP): vol.Coerce(float),
         vol.Optional(const.CONF_HOT_TOLERANCE): vol.Coerce(float),
         vol.Optional(const.CONF_COLD_TOLERANCE): vol.Coerce(float),
-        vol.Optional(const.CONF_MIN_OPEN_TIME): vol.All(
-            cv.time_period, cv.positive_timedelta),
-        vol.Optional(const.CONF_MIN_CLOSED_TIME): vol.All(
-            cv.time_period, cv.positive_timedelta),
-        vol.Optional(const.CONF_MIN_OPEN_TIME_PID_OFF): vol.All(
-            cv.time_period, cv.positive_timedelta),
-        vol.Optional(const.CONF_MIN_CLOSED_TIME_PID_OFF): vol.All(
-            cv.time_period, cv.positive_timedelta),
+        vol.Optional(const.CONF_MIN_OPEN_TIME): vol.All(cv.time_period, cv.positive_timedelta),
+        vol.Optional(const.CONF_MIN_CLOSED_TIME): vol.All(cv.time_period, cv.positive_timedelta),
+        vol.Optional(const.CONF_MIN_OPEN_TIME_PID_OFF): vol.All(cv.time_period, cv.positive_timedelta),
+        vol.Optional(const.CONF_MIN_CLOSED_TIME_PID_OFF): vol.All(cv.time_period, cv.positive_timedelta),
         vol.Optional(const.CONF_CONTROL_INTERVAL): vol.All(cv.time_period, cv.positive_timedelta),
         vol.Optional(const.CONF_SAMPLING_PERIOD, default=const.DEFAULT_SAMPLING_PERIOD): vol.All(
-            cv.time_period, cv.positive_timedelta),
+            cv.time_period, cv.positive_timedelta
+        ),
         vol.Optional(const.CONF_SENSOR_STALL, default=const.DEFAULT_SENSOR_STALL): vol.All(
-            cv.time_period, cv.positive_timedelta),
-        vol.Optional(const.CONF_OUTPUT_SAFETY, default=const.DEFAULT_OUTPUT_SAFETY): vol.Coerce(
-            float),
-        vol.Optional(const.CONF_INITIAL_HVAC_MODE): vol.In(
-            [HVACMode.COOL, HVACMode.HEAT, HVACMode.OFF]
+            cv.time_period, cv.positive_timedelta
         ),
-        vol.Optional(const.CONF_PRECISION): vol.In(
-            [PRECISION_TENTHS, PRECISION_HALVES, PRECISION_WHOLE]
-        ),
-        vol.Optional(const.CONF_TARGET_TEMP_STEP): vol.In(
-            [PRECISION_TENTHS, PRECISION_HALVES, PRECISION_WHOLE]
-        ),
+        vol.Optional(const.CONF_OUTPUT_SAFETY, default=const.DEFAULT_OUTPUT_SAFETY): vol.Coerce(float),
+        vol.Optional(const.CONF_INITIAL_HVAC_MODE): vol.In([HVACMode.COOL, HVACMode.HEAT, HVACMode.OFF]),
+        vol.Optional(const.CONF_PRECISION): vol.In([PRECISION_TENTHS, PRECISION_HALVES, PRECISION_WHOLE]),
+        vol.Optional(const.CONF_TARGET_TEMP_STEP): vol.In([PRECISION_TENTHS, PRECISION_HALVES, PRECISION_WHOLE]),
         vol.Optional(const.CONF_OUTPUT_PRECISION, default=const.DEFAULT_OUTPUT_PRECISION): vol.Coerce(int),
         vol.Optional(const.CONF_OUTPUT_MIN, default=const.DEFAULT_OUTPUT_MIN): vol.Coerce(float),
         vol.Optional(const.CONF_OUTPUT_MAX, default=const.DEFAULT_OUTPUT_MAX): vol.Coerce(float),
@@ -90,51 +81,68 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Optional(const.CONF_WINDOW_RATING): cv.string,
         # Contact sensors
         vol.Optional(const.CONF_CONTACT_SENSORS): cv.entity_ids,
-        vol.Optional(const.CONF_CONTACT_ACTION, default=const.CONTACT_ACTION_PAUSE): vol.In(const.VALID_CONTACT_ACTIONS),
+        vol.Optional(const.CONF_CONTACT_ACTION, default=const.CONTACT_ACTION_PAUSE): vol.In(
+            const.VALID_CONTACT_ACTIONS
+        ),
         vol.Optional(const.CONF_CONTACT_DELAY, default=const.DEFAULT_CONTACT_DELAY): vol.Coerce(int),
         # Humidity detection
         vol.Optional(const.CONF_HUMIDITY_SENSOR): cv.entity_id,
-        vol.Optional(const.CONF_HUMIDITY_SPIKE_THRESHOLD, default=const.DEFAULT_HUMIDITY_SPIKE_THRESHOLD): vol.Coerce(float),
+        vol.Optional(const.CONF_HUMIDITY_SPIKE_THRESHOLD, default=const.DEFAULT_HUMIDITY_SPIKE_THRESHOLD): vol.Coerce(
+            float
+        ),
         vol.Optional(const.CONF_HUMIDITY_ABSOLUTE_MAX, default=const.DEFAULT_HUMIDITY_ABSOLUTE_MAX): vol.Coerce(float),
-        vol.Optional(const.CONF_HUMIDITY_DETECTION_WINDOW, default=const.DEFAULT_HUMIDITY_DETECTION_WINDOW): vol.Coerce(int),
-        vol.Optional(const.CONF_HUMIDITY_STABILIZATION_DELAY, default=const.DEFAULT_HUMIDITY_STABILIZATION_DELAY): vol.Coerce(int),
-        vol.Optional(const.CONF_HUMIDITY_EXIT_THRESHOLD, default=const.DEFAULT_HUMIDITY_EXIT_THRESHOLD): vol.Coerce(float),
+        vol.Optional(const.CONF_HUMIDITY_DETECTION_WINDOW, default=const.DEFAULT_HUMIDITY_DETECTION_WINDOW): vol.Coerce(
+            int
+        ),
+        vol.Optional(
+            const.CONF_HUMIDITY_STABILIZATION_DELAY, default=const.DEFAULT_HUMIDITY_STABILIZATION_DELAY
+        ): vol.Coerce(int),
+        vol.Optional(const.CONF_HUMIDITY_EXIT_THRESHOLD, default=const.DEFAULT_HUMIDITY_EXIT_THRESHOLD): vol.Coerce(
+            float
+        ),
         vol.Optional(const.CONF_HUMIDITY_EXIT_DROP, default=const.DEFAULT_HUMIDITY_EXIT_DROP): vol.Coerce(float),
         # Night setback
-        vol.Optional(const.CONF_NIGHT_SETBACK): vol.Schema({
-            vol.Optional(const.CONF_NIGHT_SETBACK_START): cv.string,
-            vol.Optional(const.CONF_NIGHT_SETBACK_END): cv.string,
-            vol.Optional(const.CONF_NIGHT_SETBACK_DELTA, default=const.DEFAULT_NIGHT_SETBACK_DELTA): vol.Coerce(float),
-            vol.Optional(const.CONF_NIGHT_SETBACK_RECOVERY_DEADLINE): cv.string,
-            vol.Optional(const.CONF_MIN_EFFECTIVE_ELEVATION, default=const.DEFAULT_MIN_EFFECTIVE_ELEVATION): vol.Coerce(float),
-            vol.Optional(const.CONF_PREHEAT_ENABLED, default=False): cv.boolean,
-            vol.Optional(const.CONF_MAX_PREHEAT_HOURS): vol.Coerce(float),
-        }),
-        # Floor construction (for floor_hydronic heating type)
-        vol.Optional(const.CONF_FLOOR_CONSTRUCTION): vol.Schema({
-            vol.Optional(const.CONF_PIPE_SPACING_MM, default=150): vol.In([100, 150, 200, 300]),
-            vol.Required('layers'): vol.All(
-                cv.ensure_list,
-                [vol.Schema({
-                    vol.Required('type'): vol.In(['top_floor', 'screed']),
-                    vol.Required('material'): cv.string,
-                    vol.Required('thickness_mm'): vol.All(vol.Coerce(int), vol.Range(min=5, max=100)),
-                })]
-            ),
-        }),
-        # Manifold integration
-        vol.Optional(const.CONF_LOOPS, default=const.DEFAULT_LOOPS): vol.All(
-            vol.Coerce(int),
-            vol.Range(min=1, max=10)
+        vol.Optional(const.CONF_NIGHT_SETBACK): vol.Schema(
+            {
+                vol.Optional(const.CONF_NIGHT_SETBACK_START): cv.string,
+                vol.Optional(const.CONF_NIGHT_SETBACK_END): cv.string,
+                vol.Optional(const.CONF_NIGHT_SETBACK_DELTA, default=const.DEFAULT_NIGHT_SETBACK_DELTA): vol.Coerce(
+                    float
+                ),
+                vol.Optional(const.CONF_NIGHT_SETBACK_RECOVERY_DEADLINE): cv.string,
+                vol.Optional(
+                    const.CONF_MIN_EFFECTIVE_ELEVATION, default=const.DEFAULT_MIN_EFFECTIVE_ELEVATION
+                ): vol.Coerce(float),
+                vol.Optional(const.CONF_PREHEAT_ENABLED, default=False): cv.boolean,
+                vol.Optional(const.CONF_MAX_PREHEAT_HOURS): vol.Coerce(float),
+            }
         ),
+        # Floor construction (for floor_hydronic heating type)
+        vol.Optional(const.CONF_FLOOR_CONSTRUCTION): vol.Schema(
+            {
+                vol.Optional(const.CONF_PIPE_SPACING_MM, default=150): vol.In([100, 150, 200, 300]),
+                vol.Required("layers"): vol.All(
+                    cv.ensure_list,
+                    [
+                        vol.Schema(
+                            {
+                                vol.Required("type"): vol.In(["top_floor", "screed"]),
+                                vol.Required("material"): cv.string,
+                                vol.Required("thickness_mm"): vol.All(vol.Coerce(int), vol.Range(min=5, max=100)),
+                            }
+                        )
+                    ],
+                ),
+            }
+        ),
+        # Manifold integration
+        vol.Optional(const.CONF_LOOPS, default=const.DEFAULT_LOOPS): vol.All(vol.Coerce(int), vol.Range(min=1, max=10)),
         # Setpoint boost
         vol.Optional(const.CONF_SETPOINT_BOOST, default=True): cv.boolean,
         vol.Optional(const.CONF_SETPOINT_BOOST_FACTOR): vol.Coerce(float),
         vol.Optional(const.CONF_SETPOINT_DEBOUNCE, default=const.DEFAULT_SETPOINT_DEBOUNCE): cv.positive_int,
         # Valve actuation time
-        vol.Optional(const.CONF_VALVE_ACTUATION_TIME): vol.All(
-            cv.time_period, cv.positive_timedelta
-        ),
+        vol.Optional(const.CONF_VALVE_ACTUATION_TIME): vol.All(cv.time_period, cv.positive_timedelta),
     }
 )
 
@@ -216,10 +224,7 @@ async def async_setup_platform(hass: HomeAssistant, config: ConfigType, async_ad
     cooler = config.get(const.CONF_COOLER)
     demand_switch = config.get(const.CONF_DEMAND_SWITCH)
     if not heater and not cooler and not demand_switch:
-        _LOGGER.error(
-            "%s: At least one of heater, cooler, or demand_switch must be configured",
-            name
-        )
+        _LOGGER.error("%s: At least one of heater, cooler, or demand_switch must be configured", name)
         return
 
     # Validate PWM compatibility with entity types
@@ -230,83 +235,92 @@ async def async_setup_platform(hass: HomeAssistant, config: ConfigType, async_ad
         raise
 
     parameters = {
-        'name': name,
-        'unique_id': config.get(CONF_UNIQUE_ID),
-        'heater_entity_id': config.get(const.CONF_HEATER),
-        'cooler_entity_id': config.get(const.CONF_COOLER),
-        'demand_switch_entity_id': config.get(const.CONF_DEMAND_SWITCH),
-        'invert_heater': config.get(const.CONF_INVERT_HEATER),
-        'sensor_entity_id': config.get(const.CONF_SENSOR),
-        'ext_sensor_entity_id': hass.data.get(DOMAIN, {}).get("outdoor_sensor"),
-        'weather_entity_id': hass.data.get(DOMAIN, {}).get("weather_entity"),
-        'wind_speed_sensor_entity_id': hass.data.get(DOMAIN, {}).get("wind_speed_sensor"),
+        "name": name,
+        "unique_id": config.get(CONF_UNIQUE_ID),
+        "heater_entity_id": config.get(const.CONF_HEATER),
+        "cooler_entity_id": config.get(const.CONF_COOLER),
+        "demand_switch_entity_id": config.get(const.CONF_DEMAND_SWITCH),
+        "invert_heater": config.get(const.CONF_INVERT_HEATER),
+        "sensor_entity_id": config.get(const.CONF_SENSOR),
+        "ext_sensor_entity_id": hass.data.get(DOMAIN, {}).get("outdoor_sensor"),
+        "weather_entity_id": hass.data.get(DOMAIN, {}).get("weather_entity"),
+        "wind_speed_sensor_entity_id": hass.data.get(DOMAIN, {}).get("wind_speed_sensor"),
         # Temperature range: entity → domain → default
-        'min_temp': config.get(const.CONF_MIN_TEMP) or hass.data.get(DOMAIN, {}).get("min_temp", const.DEFAULT_MIN_TEMP),
-        'max_temp': config.get(const.CONF_MAX_TEMP) or hass.data.get(DOMAIN, {}).get("max_temp", const.DEFAULT_MAX_TEMP),
-        'target_temp': config.get(const.CONF_TARGET_TEMP) or hass.data.get(DOMAIN, {}).get("target_temp"),
+        "min_temp": config.get(const.CONF_MIN_TEMP)
+        or hass.data.get(DOMAIN, {}).get("min_temp", const.DEFAULT_MIN_TEMP),
+        "max_temp": config.get(const.CONF_MAX_TEMP)
+        or hass.data.get(DOMAIN, {}).get("max_temp", const.DEFAULT_MAX_TEMP),
+        "target_temp": config.get(const.CONF_TARGET_TEMP) or hass.data.get(DOMAIN, {}).get("target_temp"),
         # Tolerances: entity → domain → default
-        'hot_tolerance': config.get(const.CONF_HOT_TOLERANCE) or hass.data.get(DOMAIN, {}).get("hot_tolerance", const.DEFAULT_TOLERANCE),
-        'cold_tolerance': config.get(const.CONF_COLD_TOLERANCE) or hass.data.get(DOMAIN, {}).get("cold_tolerance", const.DEFAULT_TOLERANCE),
+        "hot_tolerance": config.get(const.CONF_HOT_TOLERANCE)
+        or hass.data.get(DOMAIN, {}).get("hot_tolerance", const.DEFAULT_TOLERANCE),
+        "cold_tolerance": config.get(const.CONF_COLD_TOLERANCE)
+        or hass.data.get(DOMAIN, {}).get("cold_tolerance", const.DEFAULT_TOLERANCE),
         # Derive ac_mode from cooler presence (zone or controller level)
-        'ac_mode': bool(cooler) or bool(hass.data.get(DOMAIN, {}).get("main_cooler_switch")),
-        'force_off_state': config.get(const.CONF_FORCE_OFF_STATE),
+        "ac_mode": bool(cooler) or bool(hass.data.get(DOMAIN, {}).get("main_cooler_switch")),
+        "force_off_state": config.get(const.CONF_FORCE_OFF_STATE),
         # Cycle durations: entity → domain → default
-        'min_open_time': config.get(const.CONF_MIN_OPEN_TIME) or hass.data.get(DOMAIN, {}).get("min_open_time") or timedelta(0),
-        'min_closed_time': config.get(const.CONF_MIN_CLOSED_TIME) or hass.data.get(DOMAIN, {}).get("min_closed_time"),
-        'min_open_time_pid_off': config.get(const.CONF_MIN_OPEN_TIME_PID_OFF),
-        'min_closed_time_pid_off': config.get(const.CONF_MIN_CLOSED_TIME_PID_OFF),
-        'control_interval': config.get(const.CONF_CONTROL_INTERVAL),
-        'sampling_period': config.get(const.CONF_SAMPLING_PERIOD),
-        'sensor_stall': config.get(const.CONF_SENSOR_STALL),
-        'output_safety': config.get(const.CONF_OUTPUT_SAFETY),
-        'initial_hvac_mode': config.get(const.CONF_INITIAL_HVAC_MODE),
-        'preset_sync_mode': hass.data.get(DOMAIN, {}).get("preset_sync_mode"),
-        'away_temp': hass.data.get(DOMAIN, {}).get("away_temp"),
-        'eco_temp': hass.data.get(DOMAIN, {}).get("eco_temp"),
-        'boost_temp': hass.data.get(DOMAIN, {}).get("boost_temp"),
-        'comfort_temp': hass.data.get(DOMAIN, {}).get("comfort_temp"),
-        'home_temp': hass.data.get(DOMAIN, {}).get("home_temp"),
-        'activity_temp': hass.data.get(DOMAIN, {}).get("activity_temp"),
+        "min_open_time": config.get(const.CONF_MIN_OPEN_TIME)
+        or hass.data.get(DOMAIN, {}).get("min_open_time")
+        or timedelta(0),
+        "min_closed_time": config.get(const.CONF_MIN_CLOSED_TIME) or hass.data.get(DOMAIN, {}).get("min_closed_time"),
+        "min_open_time_pid_off": config.get(const.CONF_MIN_OPEN_TIME_PID_OFF),
+        "min_closed_time_pid_off": config.get(const.CONF_MIN_CLOSED_TIME_PID_OFF),
+        "control_interval": config.get(const.CONF_CONTROL_INTERVAL),
+        "sampling_period": config.get(const.CONF_SAMPLING_PERIOD),
+        "sensor_stall": config.get(const.CONF_SENSOR_STALL),
+        "output_safety": config.get(const.CONF_OUTPUT_SAFETY),
+        "initial_hvac_mode": config.get(const.CONF_INITIAL_HVAC_MODE),
+        "preset_sync_mode": hass.data.get(DOMAIN, {}).get("preset_sync_mode"),
+        "away_temp": hass.data.get(DOMAIN, {}).get("away_temp"),
+        "eco_temp": hass.data.get(DOMAIN, {}).get("eco_temp"),
+        "boost_temp": hass.data.get(DOMAIN, {}).get("boost_temp"),
+        "comfort_temp": hass.data.get(DOMAIN, {}).get("comfort_temp"),
+        "home_temp": hass.data.get(DOMAIN, {}).get("home_temp"),
+        "activity_temp": hass.data.get(DOMAIN, {}).get("activity_temp"),
         # Precision and step: entity → domain → default
-        'precision': config.get(const.CONF_PRECISION) or hass.data.get(DOMAIN, {}).get("precision", const.DEFAULT_PRECISION),
-        'target_temp_step': config.get(const.CONF_TARGET_TEMP_STEP) or hass.data.get(DOMAIN, {}).get("target_temp_step", const.DEFAULT_TARGET_TEMP_STEP),
-        'unit': hass.config.units.temperature_unit,
-        'output_precision': config.get(const.CONF_OUTPUT_PRECISION),
-        'output_min': config.get(const.CONF_OUTPUT_MIN),
-        'output_max': config.get(const.CONF_OUTPUT_MAX),
-        'output_clamp_low': config.get(const.CONF_OUT_CLAMP_LOW),
-        'output_clamp_high': config.get(const.CONF_OUT_CLAMP_HIGH),
+        "precision": config.get(const.CONF_PRECISION)
+        or hass.data.get(DOMAIN, {}).get("precision", const.DEFAULT_PRECISION),
+        "target_temp_step": config.get(const.CONF_TARGET_TEMP_STEP)
+        or hass.data.get(DOMAIN, {}).get("target_temp_step", const.DEFAULT_TARGET_TEMP_STEP),
+        "unit": hass.config.units.temperature_unit,
+        "output_precision": config.get(const.CONF_OUTPUT_PRECISION),
+        "output_min": config.get(const.CONF_OUTPUT_MIN),
+        "output_max": config.get(const.CONF_OUTPUT_MAX),
+        "output_clamp_low": config.get(const.CONF_OUT_CLAMP_LOW),
+        "output_clamp_high": config.get(const.CONF_OUT_CLAMP_HIGH),
         # PWM: entity → domain → default
-        'pwm': config.get(const.CONF_PWM) or hass.data.get(DOMAIN, {}).get("pwm") or cv.time_period(const.DEFAULT_PWM),
-        'boost_pid_off': hass.data.get(DOMAIN, {}).get("boost_pid_off"),
+        "pwm": config.get(const.CONF_PWM) or hass.data.get(DOMAIN, {}).get("pwm") or cv.time_period(const.DEFAULT_PWM),
+        "boost_pid_off": hass.data.get(DOMAIN, {}).get("boost_pid_off"),
         # New adaptive learning parameters
-        'zone_id': zone_id,
-        'heating_type': config.get(const.CONF_HEATING_TYPE),
-        'derivative_filter_alpha': config.get(const.CONF_DERIVATIVE_FILTER),
-        'auto_apply_pid': config.get(const.CONF_AUTO_APPLY_PID),
-        'area_m2': config.get(const.CONF_AREA_M2),
-        'ceiling_height': config.get(const.CONF_CEILING_HEIGHT),
-        'window_area_m2': config.get(const.CONF_WINDOW_AREA_M2),
-        'window_orientation': config.get(const.CONF_WINDOW_ORIENTATION),
+        "zone_id": zone_id,
+        "heating_type": config.get(const.CONF_HEATING_TYPE),
+        "derivative_filter_alpha": config.get(const.CONF_DERIVATIVE_FILTER),
+        "auto_apply_pid": config.get(const.CONF_AUTO_APPLY_PID),
+        "area_m2": config.get(const.CONF_AREA_M2),
+        "ceiling_height": config.get(const.CONF_CEILING_HEIGHT),
+        "window_area_m2": config.get(const.CONF_WINDOW_AREA_M2),
+        "window_orientation": config.get(const.CONF_WINDOW_ORIENTATION),
         # Window rating: use zone-level config, fall back to controller default
-        'window_rating': config.get(const.CONF_WINDOW_RATING) or hass.data.get(DOMAIN, {}).get("window_rating", const.DEFAULT_WINDOW_RATING),
-        'contact_sensors': config.get(const.CONF_CONTACT_SENSORS),
-        'contact_action': config.get(const.CONF_CONTACT_ACTION),
-        'contact_delay': config.get(const.CONF_CONTACT_DELAY),
-        'humidity_sensor': config.get(const.CONF_HUMIDITY_SENSOR),
-        'humidity_spike_threshold': config.get(const.CONF_HUMIDITY_SPIKE_THRESHOLD),
-        'humidity_absolute_max': config.get(const.CONF_HUMIDITY_ABSOLUTE_MAX),
-        'humidity_detection_window': config.get(const.CONF_HUMIDITY_DETECTION_WINDOW),
-        'humidity_stabilization_delay': config.get(const.CONF_HUMIDITY_STABILIZATION_DELAY),
-        'night_setback_config': config.get(const.CONF_NIGHT_SETBACK),
-        'floor_construction': config.get(const.CONF_FLOOR_CONSTRUCTION),
-        'max_power_w': config.get(const.CONF_MAX_POWER_W),
-        'supply_temperature': hass.data.get(DOMAIN, {}).get("supply_temperature"),
-        'ha_area': config.get(const.CONF_AREA),  # Home Assistant area to assign entity to
-        'loops': config.get(const.CONF_LOOPS),
-        'setpoint_boost': config.get(const.CONF_SETPOINT_BOOST),
-        'setpoint_boost_factor': config.get(const.CONF_SETPOINT_BOOST_FACTOR),
-        'setpoint_debounce': config.get(const.CONF_SETPOINT_DEBOUNCE),
+        "window_rating": config.get(const.CONF_WINDOW_RATING)
+        or hass.data.get(DOMAIN, {}).get("window_rating", const.DEFAULT_WINDOW_RATING),
+        "contact_sensors": config.get(const.CONF_CONTACT_SENSORS),
+        "contact_action": config.get(const.CONF_CONTACT_ACTION),
+        "contact_delay": config.get(const.CONF_CONTACT_DELAY),
+        "humidity_sensor": config.get(const.CONF_HUMIDITY_SENSOR),
+        "humidity_spike_threshold": config.get(const.CONF_HUMIDITY_SPIKE_THRESHOLD),
+        "humidity_absolute_max": config.get(const.CONF_HUMIDITY_ABSOLUTE_MAX),
+        "humidity_detection_window": config.get(const.CONF_HUMIDITY_DETECTION_WINDOW),
+        "humidity_stabilization_delay": config.get(const.CONF_HUMIDITY_STABILIZATION_DELAY),
+        "night_setback_config": config.get(const.CONF_NIGHT_SETBACK),
+        "floor_construction": config.get(const.CONF_FLOOR_CONSTRUCTION),
+        "max_power_w": config.get(const.CONF_MAX_POWER_W),
+        "supply_temperature": hass.data.get(DOMAIN, {}).get("supply_temperature"),
+        "ha_area": config.get(const.CONF_AREA),  # Home Assistant area to assign entity to
+        "loops": config.get(const.CONF_LOOPS),
+        "setpoint_boost": config.get(const.CONF_SETPOINT_BOOST),
+        "setpoint_boost_factor": config.get(const.CONF_SETPOINT_BOOST_FACTOR),
+        "setpoint_debounce": config.get(const.CONF_SETPOINT_DEBOUNCE),
     }
 
     # Get valve actuation time from config or heating type default
@@ -315,9 +329,7 @@ async def async_setup_platform(hass: HomeAssistant, config: ConfigType, async_ad
     if valve_actuation_config is not None:
         valve_actuation_seconds = valve_actuation_config.total_seconds()
     else:
-        valve_actuation_seconds = const.HEATING_TYPE_VALVE_DEFAULTS.get(
-            heating_type, 0
-        )
+        valve_actuation_seconds = const.HEATING_TYPE_VALVE_DEFAULTS.get(heating_type, 0)
 
     parameters["valve_actuation_time"] = valve_actuation_seconds
 
@@ -328,9 +340,7 @@ async def async_setup_platform(hass: HomeAssistant, config: ConfigType, async_ad
     coordinator = hass.data.get(DOMAIN, {}).get("coordinator")
     if coordinator:
         # Get domain-level chronic approach historic scan flag
-        chronic_approach_historic_scan = hass.data.get(DOMAIN, {}).get(
-            "chronic_approach_historic_scan", False
-        )
+        chronic_approach_historic_scan = hass.data.get(DOMAIN, {}).get("chronic_approach_historic_scan", False)
 
         # Create AdaptiveLearner and restore from storage if data exists
         adaptive_learner = AdaptiveLearner(

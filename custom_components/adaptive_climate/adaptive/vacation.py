@@ -1,4 +1,5 @@
 """Vacation mode handling for Adaptive Climate."""
+
 from __future__ import annotations
 
 import logging

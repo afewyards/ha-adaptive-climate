@@ -1,4 +1,5 @@
 """Tests for config schema validation in adaptive_climate __init__.py."""
+
 import pytest
 from unittest.mock import Mock, patch, MagicMock, AsyncMock
 import sys
@@ -6,16 +7,17 @@ import sys
 # Store original modules
 _original_modules = {}
 
+
 # Mock Home Assistant modules before importing
 def setup_module(module):
     """Set up mocks for Home Assistant modules."""
     modules_to_mock = [
-        'homeassistant',
-        'homeassistant.core',
-        'homeassistant.helpers',
-        'homeassistant.helpers.config_validation',
-        'homeassistant.helpers.typing',
-        'homeassistant.helpers.event',
+        "homeassistant",
+        "homeassistant.core",
+        "homeassistant.helpers",
+        "homeassistant.helpers.config_validation",
+        "homeassistant.helpers.typing",
+        "homeassistant.helpers.event",
     ]
     for mod in modules_to_mock:
         if mod in sys.modules:
@@ -32,6 +34,7 @@ def teardown_module(module):
 # Try to import voluptuous, skip tests if not available
 try:
     import voluptuous as vol
+
     HAS_VOLUPTUOUS = True
 except ImportError:
     HAS_VOLUPTUOUS = False
@@ -85,8 +88,10 @@ from custom_components.adaptive_climate import valid_notify_service
 # Helper to create a schema for testing (mirrors the real CONFIG_SCHEMA)
 # =============================================================================
 
+
 def create_test_schema():
     """Create a test schema matching the real CONFIG_SCHEMA."""
+
     # Mock cv functions for testing
     def mock_entity_id(value):
         """Mock entity_id validator."""
@@ -115,80 +120,46 @@ def create_test_schema():
 
     return vol.Schema(
         {
-            DOMAIN: vol.Schema({
-                # Notification settings
-                vol.Optional(CONF_NOTIFY_SERVICE): valid_notify_service,
-                vol.Optional(
-                    CONF_PERSISTENT_NOTIFICATION,
-                    default=DEFAULT_PERSISTENT_NOTIFICATION
-                ): mock_boolean,
-
-                # Energy tracking
-                vol.Optional(CONF_ENERGY_METER_ENTITY): mock_entity_id,
-                vol.Optional(CONF_ENERGY_COST_ENTITY): mock_entity_id,
-
-                # Central heat source control
-                vol.Optional(CONF_MAIN_HEATER_SWITCH): mock_entity_id,
-                vol.Optional(CONF_MAIN_COOLER_SWITCH): mock_entity_id,
-                vol.Optional(
-                    CONF_SOURCE_STARTUP_DELAY,
-                    default=DEFAULT_SOURCE_STARTUP_DELAY
-                ): vol.All(
-                    vol.Coerce(int),
-                    vol.Range(
-                        min=0,
-                        max=300,
-                        msg="source_startup_delay must be between 0 and 300 seconds"
-                    )
-                ),
-
-                # Mode synchronization
-                vol.Optional(
-                    CONF_SYNC_MODES,
-                    default=DEFAULT_SYNC_MODES
-                ): mock_boolean,
-
-                # Learning configuration
-                vol.Optional(
-                    CONF_LEARNING_WINDOW_DAYS,
-                    default=DEFAULT_LEARNING_WINDOW_DAYS
-                ): vol.All(
-                    vol.Coerce(int),
-                    vol.Range(
-                        min=1,
-                        max=30,
-                        msg="learning_window_days must be between 1 and 30 days"
-                    )
-                ),
-
-                # Weather and physics
-                vol.Optional(CONF_WEATHER_ENTITY): mock_entity_id,
-                vol.Optional(CONF_HOUSE_ENERGY_RATING): vol.In(
-                    VALID_ENERGY_RATINGS,
-                    msg=f"house_energy_rating must be one of: {', '.join(VALID_ENERGY_RATINGS)}"
-                ),
-                vol.Optional(
-                    CONF_WINDOW_RATING,
-                    default=DEFAULT_WINDOW_RATING
-                ): mock_string,
-
-                # Heat output sensors
-                vol.Optional(CONF_SUPPLY_TEMP_SENSOR): mock_entity_id,
-                vol.Optional(CONF_RETURN_TEMP_SENSOR): mock_entity_id,
-                vol.Optional(CONF_FLOW_RATE_SENSOR): mock_entity_id,
-                vol.Optional(CONF_VOLUME_METER_ENTITY): mock_entity_id,
-                vol.Optional(
-                    CONF_FALLBACK_FLOW_RATE,
-                    default=DEFAULT_FALLBACK_FLOW_RATE
-                ): vol.All(
-                    vol.Coerce(float),
-                    vol.Range(
-                        min=0.01,
-                        max=10.0,
-                        msg="fallback_flow_rate must be between 0.01 and 10.0 L/s"
-                    )
-                ),
-            })
+            DOMAIN: vol.Schema(
+                {
+                    # Notification settings
+                    vol.Optional(CONF_NOTIFY_SERVICE): valid_notify_service,
+                    vol.Optional(CONF_PERSISTENT_NOTIFICATION, default=DEFAULT_PERSISTENT_NOTIFICATION): mock_boolean,
+                    # Energy tracking
+                    vol.Optional(CONF_ENERGY_METER_ENTITY): mock_entity_id,
+                    vol.Optional(CONF_ENERGY_COST_ENTITY): mock_entity_id,
+                    # Central heat source control
+                    vol.Optional(CONF_MAIN_HEATER_SWITCH): mock_entity_id,
+                    vol.Optional(CONF_MAIN_COOLER_SWITCH): mock_entity_id,
+                    vol.Optional(CONF_SOURCE_STARTUP_DELAY, default=DEFAULT_SOURCE_STARTUP_DELAY): vol.All(
+                        vol.Coerce(int),
+                        vol.Range(min=0, max=300, msg="source_startup_delay must be between 0 and 300 seconds"),
+                    ),
+                    # Mode synchronization
+                    vol.Optional(CONF_SYNC_MODES, default=DEFAULT_SYNC_MODES): mock_boolean,
+                    # Learning configuration
+                    vol.Optional(CONF_LEARNING_WINDOW_DAYS, default=DEFAULT_LEARNING_WINDOW_DAYS): vol.All(
+                        vol.Coerce(int),
+                        vol.Range(min=1, max=30, msg="learning_window_days must be between 1 and 30 days"),
+                    ),
+                    # Weather and physics
+                    vol.Optional(CONF_WEATHER_ENTITY): mock_entity_id,
+                    vol.Optional(CONF_HOUSE_ENERGY_RATING): vol.In(
+                        VALID_ENERGY_RATINGS,
+                        msg=f"house_energy_rating must be one of: {', '.join(VALID_ENERGY_RATINGS)}",
+                    ),
+                    vol.Optional(CONF_WINDOW_RATING, default=DEFAULT_WINDOW_RATING): mock_string,
+                    # Heat output sensors
+                    vol.Optional(CONF_SUPPLY_TEMP_SENSOR): mock_entity_id,
+                    vol.Optional(CONF_RETURN_TEMP_SENSOR): mock_entity_id,
+                    vol.Optional(CONF_FLOW_RATE_SENSOR): mock_entity_id,
+                    vol.Optional(CONF_VOLUME_METER_ENTITY): mock_entity_id,
+                    vol.Optional(CONF_FALLBACK_FLOW_RATE, default=DEFAULT_FALLBACK_FLOW_RATE): vol.All(
+                        vol.Coerce(float),
+                        vol.Range(min=0.01, max=10.0, msg="fallback_flow_rate must be between 0.01 and 10.0 L/s"),
+                    ),
+                }
+            )
         },
         extra=vol.ALLOW_EXTRA,
     )
@@ -571,6 +542,7 @@ class TestTypeCoercion:
 def test_config_validation_module_exists():
     """Test that CONFIG_SCHEMA and valid_notify_service are importable."""
     from custom_components.adaptive_climate import valid_notify_service
+
     assert callable(valid_notify_service)
 
 
@@ -1042,18 +1014,14 @@ class TestManifoldConfigSchema:
             return [value]
 
         # Create MANIFOLD_SCHEMA
-        MANIFOLD_SCHEMA = vol.Schema({
-            vol.Required("name"): mock_string,
-            vol.Required("zones"): vol.All(mock_ensure_list, [mock_string]),
-            vol.Required(CONF_PIPE_VOLUME): vol.All(
-                vol.Coerce(float),
-                vol.Range(min=0.1)
-            ),
-            vol.Optional(CONF_FLOW_PER_LOOP, default=2.0): vol.All(
-                vol.Coerce(float),
-                vol.Range(min=0.1)
-            ),
-        })
+        MANIFOLD_SCHEMA = vol.Schema(
+            {
+                vol.Required("name"): mock_string,
+                vol.Required("zones"): vol.All(mock_ensure_list, [mock_string]),
+                vol.Required(CONF_PIPE_VOLUME): vol.All(vol.Coerce(float), vol.Range(min=0.1)),
+                vol.Optional(CONF_FLOW_PER_LOOP, default=2.0): vol.All(vol.Coerce(float), vol.Range(min=0.1)),
+            }
+        )
 
         config = {
             "name": "2nd Floor",
@@ -1085,18 +1053,14 @@ class TestManifoldConfigSchema:
             return [value]
 
         # Create MANIFOLD_SCHEMA
-        MANIFOLD_SCHEMA = vol.Schema({
-            vol.Required("name"): mock_string,
-            vol.Required("zones"): vol.All(mock_ensure_list, [mock_string]),
-            vol.Required(CONF_PIPE_VOLUME): vol.All(
-                vol.Coerce(float),
-                vol.Range(min=0.1)
-            ),
-            vol.Optional(CONF_FLOW_PER_LOOP, default=2.0): vol.All(
-                vol.Coerce(float),
-                vol.Range(min=0.1)
-            ),
-        })
+        MANIFOLD_SCHEMA = vol.Schema(
+            {
+                vol.Required("name"): mock_string,
+                vol.Required("zones"): vol.All(mock_ensure_list, [mock_string]),
+                vol.Required(CONF_PIPE_VOLUME): vol.All(vol.Coerce(float), vol.Range(min=0.1)),
+                vol.Optional(CONF_FLOW_PER_LOOP, default=2.0): vol.All(vol.Coerce(float), vol.Range(min=0.1)),
+            }
+        )
 
         config = {
             "name": "2nd Floor",
@@ -1127,18 +1091,14 @@ class TestManifoldConfigSchema:
             return [value]
 
         # Create MANIFOLD_SCHEMA
-        MANIFOLD_SCHEMA = vol.Schema({
-            vol.Required("name"): mock_string,
-            vol.Required("zones"): vol.All(mock_ensure_list, [mock_string]),
-            vol.Required(CONF_PIPE_VOLUME): vol.All(
-                vol.Coerce(float),
-                vol.Range(min=0.1)
-            ),
-            vol.Optional(CONF_FLOW_PER_LOOP, default=2.0): vol.All(
-                vol.Coerce(float),
-                vol.Range(min=0.1)
-            ),
-        })
+        MANIFOLD_SCHEMA = vol.Schema(
+            {
+                vol.Required("name"): mock_string,
+                vol.Required("zones"): vol.All(mock_ensure_list, [mock_string]),
+                vol.Required(CONF_PIPE_VOLUME): vol.All(vol.Coerce(float), vol.Range(min=0.1)),
+                vol.Optional(CONF_FLOW_PER_LOOP, default=2.0): vol.All(vol.Coerce(float), vol.Range(min=0.1)),
+            }
+        )
 
         config = {
             "zones": ["climate.bathroom_2nd"],
@@ -1166,18 +1126,14 @@ class TestManifoldConfigSchema:
             return [value]
 
         # Create MANIFOLD_SCHEMA
-        MANIFOLD_SCHEMA = vol.Schema({
-            vol.Required("name"): mock_string,
-            vol.Required("zones"): vol.All(mock_ensure_list, [mock_string]),
-            vol.Required(CONF_PIPE_VOLUME): vol.All(
-                vol.Coerce(float),
-                vol.Range(min=0.1)
-            ),
-            vol.Optional(CONF_FLOW_PER_LOOP, default=2.0): vol.All(
-                vol.Coerce(float),
-                vol.Range(min=0.1)
-            ),
-        })
+        MANIFOLD_SCHEMA = vol.Schema(
+            {
+                vol.Required("name"): mock_string,
+                vol.Required("zones"): vol.All(mock_ensure_list, [mock_string]),
+                vol.Required(CONF_PIPE_VOLUME): vol.All(vol.Coerce(float), vol.Range(min=0.1)),
+                vol.Optional(CONF_FLOW_PER_LOOP, default=2.0): vol.All(vol.Coerce(float), vol.Range(min=0.1)),
+            }
+        )
 
         config = {
             "name": "2nd Floor",
@@ -1205,18 +1161,14 @@ class TestManifoldConfigSchema:
             return [value]
 
         # Create MANIFOLD_SCHEMA
-        MANIFOLD_SCHEMA = vol.Schema({
-            vol.Required("name"): mock_string,
-            vol.Required("zones"): vol.All(mock_ensure_list, [mock_string]),
-            vol.Required(CONF_PIPE_VOLUME): vol.All(
-                vol.Coerce(float),
-                vol.Range(min=0.1)
-            ),
-            vol.Optional(CONF_FLOW_PER_LOOP, default=2.0): vol.All(
-                vol.Coerce(float),
-                vol.Range(min=0.1)
-            ),
-        })
+        MANIFOLD_SCHEMA = vol.Schema(
+            {
+                vol.Required("name"): mock_string,
+                vol.Required("zones"): vol.All(mock_ensure_list, [mock_string]),
+                vol.Required(CONF_PIPE_VOLUME): vol.All(vol.Coerce(float), vol.Range(min=0.1)),
+                vol.Optional(CONF_FLOW_PER_LOOP, default=2.0): vol.All(vol.Coerce(float), vol.Range(min=0.1)),
+            }
+        )
 
         config = {
             "name": "2nd Floor",
@@ -1244,18 +1196,14 @@ class TestManifoldConfigSchema:
             return [value]
 
         # Create MANIFOLD_SCHEMA
-        MANIFOLD_SCHEMA = vol.Schema({
-            vol.Required("name"): mock_string,
-            vol.Required("zones"): vol.All(mock_ensure_list, [mock_string]),
-            vol.Required(CONF_PIPE_VOLUME): vol.All(
-                vol.Coerce(float),
-                vol.Range(min=0.1)
-            ),
-            vol.Optional(CONF_FLOW_PER_LOOP, default=2.0): vol.All(
-                vol.Coerce(float),
-                vol.Range(min=0.1)
-            ),
-        })
+        MANIFOLD_SCHEMA = vol.Schema(
+            {
+                vol.Required("name"): mock_string,
+                vol.Required("zones"): vol.All(mock_ensure_list, [mock_string]),
+                vol.Required(CONF_PIPE_VOLUME): vol.All(vol.Coerce(float), vol.Range(min=0.1)),
+                vol.Optional(CONF_FLOW_PER_LOOP, default=2.0): vol.All(vol.Coerce(float), vol.Range(min=0.1)),
+            }
+        )
 
         config = {
             "name": "2nd Floor",
@@ -1284,22 +1232,14 @@ class TestManifoldConfigSchema:
             return [value]
 
         # Create MANIFOLD_SCHEMA with minimum length check
-        MANIFOLD_SCHEMA = vol.Schema({
-            vol.Required("name"): mock_string,
-            vol.Required("zones"): vol.All(
-                mock_ensure_list,
-                [mock_string],
-                vol.Length(min=1)
-            ),
-            vol.Required(CONF_PIPE_VOLUME): vol.All(
-                vol.Coerce(float),
-                vol.Range(min=0.1)
-            ),
-            vol.Optional(CONF_FLOW_PER_LOOP, default=2.0): vol.All(
-                vol.Coerce(float),
-                vol.Range(min=0.1)
-            ),
-        })
+        MANIFOLD_SCHEMA = vol.Schema(
+            {
+                vol.Required("name"): mock_string,
+                vol.Required("zones"): vol.All(mock_ensure_list, [mock_string], vol.Length(min=1)),
+                vol.Required(CONF_PIPE_VOLUME): vol.All(vol.Coerce(float), vol.Range(min=0.1)),
+                vol.Optional(CONF_FLOW_PER_LOOP, default=2.0): vol.All(vol.Coerce(float), vol.Range(min=0.1)),
+            }
+        )
 
         config = {
             "name": "2nd Floor",

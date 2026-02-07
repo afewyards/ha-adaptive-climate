@@ -1,4 +1,5 @@
 """Auto mode switching manager for house-wide HVAC mode control."""
+
 from __future__ import annotations
 
 import logging
@@ -169,7 +170,7 @@ class AutoModeSwitchingManager:
 
         # Check forecast entries within forecast_hours window
         # Home Assistant forecasts may be hourly or daily, check timestamp if available
-        for entry in forecast[:self._forecast_hours]:
+        for entry in forecast[: self._forecast_hours]:
             temp = entry.get("temperature")
             if temp is None:
                 continue
@@ -178,13 +179,17 @@ class AutoModeSwitchingManager:
             if temp > median_setpoint + self._threshold:
                 _LOGGER.debug(
                     "Forecast shows hot weather (%.1f°C > %.1f°C + %.1f°C), suggesting COOL",
-                    temp, median_setpoint, self._threshold
+                    temp,
+                    median_setpoint,
+                    self._threshold,
                 )
                 return HVACMode.COOL
             if temp < median_setpoint - self._threshold:
                 _LOGGER.debug(
                     "Forecast shows cold weather (%.1f°C < %.1f°C - %.1f°C), suggesting HEAT",
-                    temp, median_setpoint, self._threshold
+                    temp,
+                    median_setpoint,
+                    self._threshold,
                 )
                 return HVACMode.HEAT
 
@@ -210,10 +215,7 @@ class AutoModeSwitchingManager:
         if self._last_switch > 0:
             elapsed = now - self._last_switch
             if elapsed < self._min_switch_interval:
-                _LOGGER.debug(
-                    "Min switch interval not met (%.0fs < %ds)",
-                    elapsed, self._min_switch_interval
-                )
+                _LOGGER.debug("Min switch interval not met (%.0fs < %ds)", elapsed, self._min_switch_interval)
                 return None
 
         # Get outdoor temperature from coordinator
@@ -243,29 +245,24 @@ class AutoModeSwitchingManager:
             forecast_mode = await self._check_forecast()
             if forecast_mode:
                 target_mode = forecast_mode
-                _LOGGER.debug(
-                    "Forecast suggests proactive switch to %s",
-                    target_mode
-                )
+                _LOGGER.debug("Forecast suggests proactive switch to %s", target_mode)
 
         # If no mode determined (in hysteresis with no forecast), keep current
         if target_mode is None:
             _LOGGER.debug(
                 "Outdoor temp %.1f°C in hysteresis zone (%.1f°C ± %.1f°C), keeping current mode",
-                outdoor_temp, median_setpoint, self._threshold
+                outdoor_temp,
+                median_setpoint,
+                self._threshold,
             )
             return None
 
         # Apply season locking
         if season == "winter" and target_mode == HVACMode.COOL:
-            _LOGGER.debug(
-                "Season locking: winter prevents switching to COOL"
-            )
+            _LOGGER.debug("Season locking: winter prevents switching to COOL")
             return None
         if season == "summer" and target_mode == HVACMode.HEAT:
-            _LOGGER.debug(
-                "Season locking: summer prevents switching to HEAT"
-            )
+            _LOGGER.debug("Season locking: summer prevents switching to HEAT")
             return None
 
         # Check if mode actually changed
@@ -275,7 +272,11 @@ class AutoModeSwitchingManager:
         # Update state and return new mode
         _LOGGER.info(
             "Auto mode switching: %s -> %s (outdoor=%.1f°C, setpoint=%.1f°C, season=%s)",
-            self._current_mode, target_mode, outdoor_temp, median_setpoint, season
+            self._current_mode,
+            target_mode,
+            outdoor_temp,
+            median_setpoint,
+            season,
         )
         self._current_mode = target_mode
         self._last_switch = now

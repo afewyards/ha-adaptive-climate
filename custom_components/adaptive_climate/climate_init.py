@@ -4,6 +4,7 @@ This module extracts the manager creation logic from climate.py's async_added_to
 It creates and configures all manager instances (HeaterController, CycleTrackerManager,
 TemperatureManager, KeManager, etc.) with their required dependencies.
 """
+
 from __future__ import annotations
 
 import logging
@@ -50,11 +51,7 @@ def _has_recovery_deadline(night_setback_config: dict | None) -> bool:
     Returns:
         True if recovery_deadline is configured, False otherwise
     """
-    return (
-        night_setback_config.get("recovery_deadline") is not None
-        if night_setback_config
-        else False
-    )
+    return night_setback_config.get("recovery_deadline") is not None if night_setback_config else False
 
 
 async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
@@ -79,14 +76,8 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
     thermostat._cycle_dispatcher = CycleEventDispatcher()
 
     # Subscribe to heating events for manifold transport delay
-    thermostat._cycle_dispatcher.subscribe(
-        CycleEventType.HEATING_STARTED,
-        thermostat._on_heating_started_event
-    )
-    thermostat._cycle_dispatcher.subscribe(
-        CycleEventType.HEATING_ENDED,
-        thermostat._on_heating_ended_event
-    )
+    thermostat._cycle_dispatcher.subscribe(CycleEventType.HEATING_STARTED, thermostat._on_heating_started_event)
+    thermostat._cycle_dispatcher.subscribe(CycleEventType.HEATING_ENDED, thermostat._on_heating_ended_event)
 
     # Initialize heater controller now that hass is available
     thermostat._heater_controller = HeaterController(
@@ -101,9 +92,12 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
         min_open_time=thermostat._min_open_time.seconds,
         min_closed_time=thermostat._min_closed_time.seconds,
         dispatcher=thermostat._cycle_dispatcher,
-        get_was_clamped=lambda: getattr(thermostat._pid_controller, 'was_clamped', False),
-        reset_clamp_state=lambda: thermostat._pid_controller.reset_clamp_state()
-            if hasattr(thermostat._pid_controller, 'reset_clamp_state') else None,
+        get_was_clamped=lambda: getattr(thermostat._pid_controller, "was_clamped", False),
+        reset_clamp_state=lambda: (
+            thermostat._pid_controller.reset_clamp_state()
+            if hasattr(thermostat._pid_controller, "reset_clamp_state")
+            else None
+        ),
         valve_actuation_time=thermostat._valve_actuation_time,
     )
 
@@ -129,7 +123,9 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
             thermostat._preheat_learner = PreheatLearner.from_dict(stored_preheat_data)
             _LOGGER.info(
                 "%s: PreheatLearner restored from storage (heating_type=%s, observations=%d)",
-                thermostat.entity_id, thermostat._preheat_learner.heating_type, thermostat._preheat_learner.get_observation_count()
+                thermostat.entity_id,
+                thermostat._preheat_learner.heating_type,
+                thermostat._preheat_learner.get_observation_count(),
             )
         else:
             # Create new learner
@@ -140,7 +136,9 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
             )
             _LOGGER.info(
                 "%s: PreheatLearner initialized (heating_type=%s, max_hours=%.1f)",
-                thermostat.entity_id, thermostat._heating_type, thermostat._preheat_learner.max_hours
+                thermostat.entity_id,
+                thermostat._heating_type,
+                thermostat._preheat_learner.max_hours,
             )
 
     # Initialize night setback controller now that hass is available
@@ -158,12 +156,13 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
         if coordinator and thermostat._zone_id:
             manifold_transport_delay = coordinator.get_worst_case_transport_delay_for_zone(
                 thermostat._zone_id,
-                zone_loops=1  # Conservative estimate: assume 1 loop active
+                zone_loops=1,  # Conservative estimate: assume 1 loop active
             )
             if manifold_transport_delay > 0:
                 _LOGGER.info(
                     "%s: Using manifold transport delay of %.1f minutes for preheat scheduling",
-                    thermostat.entity_id, manifold_transport_delay
+                    thermostat.entity_id,
+                    manifold_transport_delay,
                 )
 
         # Create LearningGateManager for graduated setback delta
@@ -202,10 +201,7 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
         # Update learning_gate with the night_setback_controller reference
         learning_gate._night_setback_controller = thermostat._night_setback_controller
 
-        _LOGGER.info(
-            "%s: Night setback controller initialized (preheat=%s)",
-            thermostat.entity_id, preheat_enabled
-        )
+        _LOGGER.info("%s: Night setback controller initialized (preheat=%s)", thermostat.entity_id, preheat_enabled)
 
     # Initialize temperature manager
     thermostat._temperature_manager = TemperatureManager(
@@ -234,10 +230,7 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
         preset_mode=thermostat._attr_preset_mode,
         saved_target_temp=thermostat._saved_target_temp,
     )
-    _LOGGER.info(
-        "%s: Temperature manager initialized",
-        thermostat.entity_id
-    )
+    _LOGGER.info("%s: Temperature manager initialized", thermostat.entity_id)
 
     # Initialize Ke learning
     # Check if we have stored ke_learner data from persistence
@@ -254,13 +247,13 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
             # Restore KeLearner from storage
             thermostat._ke_learner = KeLearner.from_dict(stored_ke_data)
             # Update gains_manager with restored Ke value
-            thermostat._gains_manager.set_gains(
-                PIDChangeReason.RESTORE,
-                ke=thermostat._ke_learner.current_ke
-            )
+            thermostat._gains_manager.set_gains(PIDChangeReason.RESTORE, ke=thermostat._ke_learner.current_ke)
             _LOGGER.info(
                 "%s: KeLearner restored from storage (Ke=%.4f, enabled=%s, observations=%d)",
-                thermostat.entity_id, thermostat._ke, thermostat._ke_learner.enabled, thermostat._ke_learner.observation_count
+                thermostat.entity_id,
+                thermostat._ke,
+                thermostat._ke_learner.enabled,
+                thermostat._ke_learner.observation_count,
             )
         else:
             # Calculate physics-based Ke as reference
@@ -273,21 +266,18 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
             )
             # Apply physics-based Ke from startup for accurate PID learning
             thermostat._ke_learner = KeLearner(initial_ke=initial_ke)
-            thermostat._gains_manager.set_gains(
-                PIDChangeReason.KE_PHYSICS,
-                ke=initial_ke
-            )
+            thermostat._gains_manager.set_gains(PIDChangeReason.KE_PHYSICS, ke=initial_ke)
             temp_source = "outdoor sensor" if thermostat._ext_sensor_entity_id else "weather entity"
             _LOGGER.info(
-                "%s: Ke initialized from physics using %s (Ke=%.4f) "
-                "(energy_rating=%s, heating_type=%s)",
-                thermostat.entity_id, temp_source, initial_ke, energy_rating or "default", thermostat._heating_type
+                "%s: Ke initialized from physics using %s (Ke=%.4f) (energy_rating=%s, heating_type=%s)",
+                thermostat.entity_id,
+                temp_source,
+                initial_ke,
+                energy_rating or "default",
+                thermostat._heating_type,
             )
     else:
-        _LOGGER.debug(
-            "%s: Ke learning disabled - no outdoor temperature source configured",
-            thermostat.entity_id
-        )
+        _LOGGER.debug("%s: Ke learning disabled - no outdoor temperature source configured", thermostat.entity_id)
 
     # Initialize Ke controller (always, even without outdoor sensor)
     thermostat._ke_controller = KeManager(
@@ -297,10 +287,7 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
         async_control_heating=thermostat._async_control_heating_internal,
         async_write_ha_state=thermostat._async_write_ha_state_internal,
     )
-    _LOGGER.info(
-        "%s: Ke controller initialized",
-        thermostat.entity_id
-    )
+    _LOGGER.info("%s: Ke controller initialized", thermostat.entity_id)
 
     # Initialize PID tuning manager
     thermostat._pid_tuning_manager = PIDTuningManager(
@@ -310,10 +297,7 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
         async_control_heating=thermostat._async_control_heating_internal,
         async_write_ha_state=thermostat._async_write_ha_state_internal,
     )
-    _LOGGER.info(
-        "%s: PID tuning manager initialized",
-        thermostat.entity_id
-    )
+    _LOGGER.info("%s: PID tuning manager initialized", thermostat.entity_id)
 
     # Initialize control output manager
     thermostat._control_output_manager = ControlOutputManager(
@@ -329,10 +313,7 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
         set_e=thermostat._set_e,
         set_dt=thermostat._set_dt,
     )
-    _LOGGER.info(
-        "%s: Control output manager initialized",
-        thermostat.entity_id
-    )
+    _LOGGER.info("%s: Control output manager initialized", thermostat.entity_id)
 
     # Initialize setpoint boost manager
     # Create callback to check if night setback is active
@@ -354,7 +335,9 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
     )
     _LOGGER.info(
         "%s: Setpoint boost manager initialized (enabled=%s, debounce=%ds)",
-        thermostat.entity_id, thermostat._setpoint_boost, thermostat._setpoint_debounce
+        thermostat.entity_id,
+        thermostat._setpoint_boost,
+        thermostat._setpoint_debounce,
     )
 
     # Initialize cycle tracker for adaptive learning
@@ -382,10 +365,7 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
                 )
                 # Add cycle_tracker to zone_data for state_attributes access
                 zone_data["cycle_tracker"] = thermostat._cycle_tracker
-                _LOGGER.info(
-                    "%s: Initialized CycleTrackerManager",
-                    thermostat.entity_id
-                )
+                _LOGGER.info("%s: Initialized CycleTrackerManager", thermostat.entity_id)
 
     # Subscribe to CYCLE_ENDED events for preheat learning (H7 fix - store unsub handle)
     if thermostat._preheat_learner and thermostat._cycle_dispatcher:
@@ -393,10 +373,7 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
             CycleEventType.CYCLE_ENDED,
             thermostat._handle_cycle_ended_for_preheat,
         )
-        _LOGGER.debug(
-            "%s: Subscribed to CYCLE_ENDED events for preheat learning",
-            thermostat.entity_id
-        )
+        _LOGGER.debug("%s: Subscribed to CYCLE_ENDED events for preheat learning", thermostat.entity_id)
 
     # Subscribe to CYCLE_ENDED events for heating rate session tracking
     if thermostat._cycle_dispatcher:
@@ -404,7 +381,4 @@ async def async_setup_managers(thermostat: "AdaptiveThermostat") -> None:
             CycleEventType.CYCLE_ENDED,
             thermostat._handle_cycle_ended_for_heating_rate,
         )
-        _LOGGER.debug(
-            "%s: Subscribed to CYCLE_ENDED events for heating rate learning",
-            thermostat.entity_id
-        )
+        _LOGGER.debug("%s: Subscribed to CYCLE_ENDED events for heating rate learning", thermostat.entity_id)

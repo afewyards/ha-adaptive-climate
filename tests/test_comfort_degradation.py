@@ -1,4 +1,5 @@
 """Tests for comfort degradation detection."""
+
 from unittest.mock import AsyncMock, MagicMock
 import pytest
 
@@ -90,7 +91,9 @@ def test_rolling_average_insufficient_data(detector):
 def test_max_samples_respected():
     """Buffer doesn't grow beyond max_samples."""
     detector = ComfortDegradationDetector(
-        zone_id="test", zone_name="Test", max_samples=10,
+        zone_id="test",
+        zone_name="Test",
+        max_samples=10,
     )
     for i in range(20):
         detector.record_score(float(i))

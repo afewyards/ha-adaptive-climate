@@ -306,9 +306,7 @@ class TestContactOverrideSensorDetails:
         assert handler.get_first_open_time() == now
 
         time_travel.advance(minutes=1)
-        handler.update_contact_states(
-            {"binary_sensor.window": False}, current_time=time_travel.now()
-        )
+        handler.update_contact_states({"binary_sensor.window": False}, current_time=time_travel.now())
 
         assert handler.get_open_sensor_ids() == []
         assert handler.get_first_open_time() is None
@@ -360,7 +358,7 @@ class TestHumidityPauseAndIntegralDecay:
         pid.decay_integral(decay_factor)  # 2nd minute
         pid.decay_integral(decay_factor)  # 3rd minute
 
-        expected_after_3min = 10.0 * (0.9 ** 3)
+        expected_after_3min = 10.0 * (0.9**3)
         assert pid.integral == pytest.approx(expected_after_3min, rel=0.01)
 
         # Humidity drops, transitions to stabilizing

@@ -1,4 +1,5 @@
 """Centralized notification dispatch with cooldowns."""
+
 from __future__ import annotations
 
 import logging

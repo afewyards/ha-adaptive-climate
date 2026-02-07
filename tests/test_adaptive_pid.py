@@ -34,7 +34,7 @@ def test_high_overshoot_reducing_kp():
     # v0.7.0: Moderate overshoot (0.2-1.0°C) increases Kd only (thermal lag)
     assert result["kp"] == kp  # Kp unchanged
     assert result["ki"] == ki  # Ki unchanged
-    assert result["kd"] > kd   # Kd increased to dampen overshoot (2.0 * 1.20 * learning_rate)
+    assert result["kd"] > kd  # Kd increased to dampen overshoot (2.0 * 1.20 * learning_rate)
 
 
 def test_slow_response_increasing_kp():

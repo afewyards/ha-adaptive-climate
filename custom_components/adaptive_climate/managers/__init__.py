@@ -1,4 +1,5 @@
 """Manager classes for Adaptive Climate integration."""
+
 from __future__ import annotations
 
 from .control_output import ControlOutputManager

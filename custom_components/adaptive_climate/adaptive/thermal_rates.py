@@ -63,9 +63,7 @@ class ThermalRateLearner:
             return None
 
         # Filter for cooling periods (temperature decreasing over time)
-        cooling_segments = self._find_cooling_segments(
-            temperature_history, min_duration_minutes
-        )
+        cooling_segments = self._find_cooling_segments(temperature_history, min_duration_minutes)
 
         if not cooling_segments:
             return None
@@ -115,9 +113,7 @@ class ThermalRateLearner:
             return None
 
         # Filter for heating periods (temperature increasing over time)
-        heating_segments = self._find_heating_segments(
-            temperature_history, min_duration_minutes
-        )
+        heating_segments = self._find_heating_segments(temperature_history, min_duration_minutes)
 
         if not heating_segments:
             return None
@@ -168,9 +164,7 @@ class ThermalRateLearner:
         if rate > 0:
             self._heating_rates.append(rate)
 
-    def get_average_cooling_rate(
-        self, reject_outliers: bool = True, max_measurements: int = 50
-    ) -> float | None:
+    def get_average_cooling_rate(self, reject_outliers: bool = True, max_measurements: int = 50) -> float | None:
         """
         Calculate average cooling rate from stored measurements.
 
@@ -195,9 +189,7 @@ class ThermalRateLearner:
 
         return statistics.mean(recent_rates)
 
-    def get_average_heating_rate(
-        self, reject_outliers: bool = True, max_measurements: int = 50
-    ) -> float | None:
+    def get_average_heating_rate(self, reject_outliers: bool = True, max_measurements: int = 50) -> float | None:
         """
         Calculate average heating rate from stored measurements.
 
@@ -242,11 +234,7 @@ class ThermalRateLearner:
             return values
 
         # Keep values within threshold standard deviations of mean
-        filtered = [
-            v
-            for v in values
-            if abs(v - mean) <= self.outlier_threshold * stdev
-        ]
+        filtered = [v for v in values if abs(v - mean) <= self.outlier_threshold * stdev]
 
         return filtered if filtered else values
 
@@ -286,18 +274,14 @@ class ThermalRateLearner:
             else:
                 # Significant reversal (warming beyond tolerance) - end segment
                 if current_segment:
-                    segment = self._validate_segment(
-                        current_segment, min_duration_minutes, is_cooling=True
-                    )
+                    segment = self._validate_segment(current_segment, min_duration_minutes, is_cooling=True)
                     if segment:
                         segments.append(segment)
                     current_segment = []
 
         # Check final segment
         if current_segment:
-            segment = self._validate_segment(
-                current_segment, min_duration_minutes, is_cooling=True
-            )
+            segment = self._validate_segment(current_segment, min_duration_minutes, is_cooling=True)
             if segment:
                 segments.append(segment)
 
@@ -339,18 +323,14 @@ class ThermalRateLearner:
             else:
                 # Significant reversal (cooling beyond tolerance) - end segment
                 if current_segment:
-                    segment = self._validate_segment(
-                        current_segment, min_duration_minutes, is_cooling=False
-                    )
+                    segment = self._validate_segment(current_segment, min_duration_minutes, is_cooling=False)
                     if segment:
                         segments.append(segment)
                     current_segment = []
 
         # Check final segment
         if current_segment:
-            segment = self._validate_segment(
-                current_segment, min_duration_minutes, is_cooling=False
-            )
+            segment = self._validate_segment(current_segment, min_duration_minutes, is_cooling=False)
             if segment:
                 segments.append(segment)
 

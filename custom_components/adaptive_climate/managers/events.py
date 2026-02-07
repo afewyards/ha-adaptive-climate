@@ -184,9 +184,7 @@ class CycleEventDispatcher:
         """Initialize the dispatcher."""
         self._listeners: dict[CycleEventType, list[Callable[[CycleEvent], None]]] = {}
 
-    def subscribe(
-        self, event_type: CycleEventType, callback: Callable[[CycleEvent], None]
-    ) -> Callable[[], None]:
+    def subscribe(self, event_type: CycleEventType, callback: Callable[[CycleEvent], None]) -> Callable[[], None]:
         """Subscribe to an event type.
 
         Args:

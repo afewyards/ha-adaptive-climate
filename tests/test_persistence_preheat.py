@@ -77,15 +77,13 @@ async def test_async_save_zone_with_preheat_data(mock_hass):
     """Test async_save_zone persists preheat_data alongside other data."""
     mock_storage_module = create_mock_storage_module(load_data=None)
 
-    with patch.dict('sys.modules', {'homeassistant.helpers.storage': mock_storage_module}):
+    with patch.dict("sys.modules", {"homeassistant.helpers.storage": mock_storage_module}):
         store = LearningDataStore(mock_hass)
         await store.async_load()
 
         # Create sample zone data including preheat
         adaptive_data = {
-            "cycle_history": [
-                {"overshoot": 0.3, "undershoot": 0.2, "settling_time": 45.0}
-            ],
+            "cycle_history": [{"overshoot": 0.3, "undershoot": 0.2, "settling_time": 45.0}],
         }
         ke_data = {
             "current_ke": 0.5,

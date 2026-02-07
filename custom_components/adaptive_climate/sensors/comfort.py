@@ -4,6 +4,7 @@ This module contains sensors that track comfort metrics:
 - TimeAtTargetSensor: Tracks percentage of time temperature is within target band
 - ComfortScoreSensor: Composite comfort score (0-100)
 """
+
 from __future__ import annotations
 
 from collections import deque
@@ -151,19 +152,13 @@ class TimeAtTargetSensor(AdaptiveThermostatSensor):
         window_start = now - self._measurement_window
 
         # Filter samples within window
-        samples_in_window = [
-            s for s in self._samples if s.timestamp >= window_start
-        ]
+        samples_in_window = [s for s in self._samples if s.timestamp >= window_start]
 
         if not samples_in_window:
             return 0.0
 
         # Count samples within tolerance
-        at_target = sum(
-            1
-            for s in samples_in_window
-            if abs(s.temperature - s.setpoint) <= self._tolerance
-        )
+        at_target = sum(1 for s in samples_in_window if abs(s.temperature - s.setpoint) <= self._tolerance)
 
         return (at_target / len(samples_in_window)) * 100.0
 
@@ -244,11 +239,7 @@ class ComfortScoreSensor(AdaptiveThermostatSensor):
         self._oscillation_score = max(0.0, 100.0 - (oscillations * 10.0))
 
         # Weighted combination
-        score = (
-            self._time_at_target_score * 0.60
-            + self._deviation_score * 0.25
-            + self._oscillation_score * 0.15
-        )
+        score = self._time_at_target_score * 0.60 + self._deviation_score * 0.25 + self._oscillation_score * 0.15
 
         return min(100.0, max(0.0, score))
 

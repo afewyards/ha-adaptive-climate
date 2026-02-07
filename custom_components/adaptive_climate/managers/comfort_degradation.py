@@ -1,4 +1,5 @@
 """Comfort degradation detection with rolling average."""
+
 from __future__ import annotations
 
 import logging
@@ -67,11 +68,7 @@ class ComfortDegradationDetector:
         """
         causes = []
         if contact_pauses > 0:
-            causes.append(
-                f"{contact_pauses} contact sensor pause{'s' if contact_pauses != 1 else ''}"
-            )
+            causes.append(f"{contact_pauses} contact sensor pause{'s' if contact_pauses != 1 else ''}")
         if humidity_pauses > 0:
-            causes.append(
-                f"{humidity_pauses} humidity pause{'s' if humidity_pauses != 1 else ''}"
-            )
+            causes.append(f"{humidity_pauses} humidity pause{'s' if humidity_pauses != 1 else ''}")
         return " · ".join(causes)

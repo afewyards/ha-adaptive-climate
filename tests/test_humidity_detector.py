@@ -25,12 +25,7 @@ class TestHumidityDetector:
 
     def test_initialization_with_custom_params(self):
         """Test detector initializes with custom parameters."""
-        detector = HumidityDetector(
-            spike_threshold=20,
-            absolute_max=75,
-            detection_window=600,
-            stabilization_delay=600
-        )
+        detector = HumidityDetector(spike_threshold=20, absolute_max=75, detection_window=600, stabilization_delay=600)
 
         assert detector._spike_threshold == 20
         assert detector._absolute_max == 75
@@ -420,6 +415,7 @@ class TestHumidityDetector:
     def test_max_pause_logs_warning(self, caplog):
         """Test warning logged when max pause duration reached."""
         import logging
+
         detector = HumidityDetector(spike_threshold=15)
         now = datetime(2024, 1, 1, 12, 0, 0)
 
@@ -437,11 +433,7 @@ class TestHumidityDetector:
     def test_custom_exit_humidity_threshold(self):
         """Test custom exit_humidity_threshold parameter."""
         # Use lower exit threshold of 65% instead of default 70%
-        detector = HumidityDetector(
-            spike_threshold=15,
-            exit_humidity_threshold=65.0,
-            exit_humidity_drop=5.0
-        )
+        detector = HumidityDetector(spike_threshold=15, exit_humidity_threshold=65.0, exit_humidity_drop=5.0)
         now = datetime(2024, 1, 1, 12, 0, 0)
 
         # Trigger paused at 80%
@@ -460,11 +452,7 @@ class TestHumidityDetector:
     def test_custom_exit_humidity_drop(self):
         """Test custom exit_humidity_drop parameter."""
         # Use larger exit drop of 10% instead of default 5%
-        detector = HumidityDetector(
-            spike_threshold=15,
-            exit_humidity_threshold=70.0,
-            exit_humidity_drop=10.0
-        )
+        detector = HumidityDetector(spike_threshold=15, exit_humidity_threshold=70.0, exit_humidity_drop=10.0)
         now = datetime(2024, 1, 1, 12, 0, 0)
 
         # Trigger paused at 80%
@@ -479,11 +467,7 @@ class TestHumidityDetector:
     def test_custom_exit_both_thresholds(self):
         """Test custom exit_humidity_threshold and exit_humidity_drop together."""
         # Use 65% threshold and 8% drop
-        detector = HumidityDetector(
-            spike_threshold=15,
-            exit_humidity_threshold=65.0,
-            exit_humidity_drop=8.0
-        )
+        detector = HumidityDetector(spike_threshold=15, exit_humidity_threshold=65.0, exit_humidity_drop=8.0)
         now = datetime(2024, 1, 1, 12, 0, 0)
 
         # Trigger paused at 85%
@@ -523,10 +507,7 @@ class TestHumidityDetector:
         """
         # Bathroom scenario: absolute_max=65, humidity hovers around 69%
         detector = HumidityDetector(
-            spike_threshold=15,
-            absolute_max=65.0,
-            exit_humidity_threshold=70.0,
-            exit_humidity_drop=5.0
+            spike_threshold=15, absolute_max=65.0, exit_humidity_threshold=70.0, exit_humidity_drop=5.0
         )
         now = datetime(2024, 1, 1, 12, 0, 0)
 
@@ -553,10 +534,7 @@ class TestHumidityDetector:
     def test_peak_updates_on_new_high_above_absolute_max(self):
         """Test that peak does update when humidity rises to a new high."""
         detector = HumidityDetector(
-            spike_threshold=15,
-            absolute_max=65.0,
-            exit_humidity_threshold=70.0,
-            exit_humidity_drop=5.0
+            spike_threshold=15, absolute_max=65.0, exit_humidity_threshold=70.0, exit_humidity_drop=5.0
         )
         now = datetime(2024, 1, 1, 12, 0, 0)
 

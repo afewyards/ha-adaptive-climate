@@ -167,7 +167,7 @@ class TestAutoLearningSetbackTrigger:
 class TestAutoLearningSetbackWindow:
     """Test auto-learning setback time window."""
 
-    @patch('homeassistant.util.dt.utcnow')
+    @patch("homeassistant.util.dt.utcnow")
     def test_applies_in_3_to_5_am_window(self, mock_utcnow):
         """Setback applies during 3-5am window."""
         manager = create_night_setback_manager(
@@ -192,7 +192,7 @@ class TestAutoLearningSetbackWindow:
         assert effective_target == 19.5  # 20.0 - 0.5
         assert info.get("night_setback_delta") == 0.5
 
-    @patch('homeassistant.util.dt.utcnow')
+    @patch("homeassistant.util.dt.utcnow")
     def test_not_active_at_2_am(self, mock_utcnow):
         """No setback at 2am (before window)."""
         manager = create_night_setback_manager(
@@ -216,7 +216,7 @@ class TestAutoLearningSetbackWindow:
         assert in_night_period is False
         assert effective_target == 20.0
 
-    @patch('homeassistant.util.dt.utcnow')
+    @patch("homeassistant.util.dt.utcnow")
     def test_not_active_at_6_am(self, mock_utcnow):
         """No setback at 6am (after window)."""
         manager = create_night_setback_manager(

@@ -186,9 +186,7 @@ class TestContactPreheatInteraction:
         now = datetime(2024, 1, 1, 6, 0, 0)
 
         # Window is open
-        handler.update_contact_states({
-            "binary_sensor.window_bedroom": True
-        }, now)
+        handler.update_contact_states({"binary_sensor.window_bedroom": True}, now)
 
         assert handler.is_any_contact_open() is True
         assert handler.should_take_action(now) is True
@@ -224,16 +222,12 @@ class TestContactPreheatInteraction:
         preheat_start_time = now
 
         # Contact closed initially
-        handler.update_contact_states({
-            "binary_sensor.window_bedroom": False
-        }, now)
+        handler.update_contact_states({"binary_sensor.window_bedroom": False}, now)
         assert handler.is_any_contact_open() is False
 
         # 10 minutes into preheat, window opens
         time_window_opens = now + timedelta(minutes=10)
-        handler.update_contact_states({
-            "binary_sensor.window_bedroom": True
-        }, time_window_opens)
+        handler.update_contact_states({"binary_sensor.window_bedroom": True}, time_window_opens)
 
         assert handler.is_any_contact_open() is True
 
@@ -265,9 +259,7 @@ class TestContactPreheatInteraction:
         target_time = now + timedelta(hours=1)  # Target: 7:00 AM
 
         # Door opens (pause heating)
-        handler.update_contact_states({
-            "binary_sensor.door_bathroom": True
-        }, now)
+        handler.update_contact_states({"binary_sensor.door_bathroom": True}, now)
         assert handler.should_take_action(now) is True
 
         # Estimate time needed (should still work)
@@ -280,9 +272,7 @@ class TestContactPreheatInteraction:
 
         # Door closes 15 minutes later
         time_closed = now + timedelta(minutes=15)
-        handler.update_contact_states({
-            "binary_sensor.door_bathroom": False
-        }, time_closed)
+        handler.update_contact_states({"binary_sensor.door_bathroom": False}, time_closed)
 
         assert handler.is_any_contact_open() is False
         assert handler.should_take_action(time_closed) is False
@@ -371,7 +361,7 @@ class TestComplexScenarios:
                 end_temp=21.0,
                 outdoor_temp=5.0,
                 duration_minutes=60,
-                timestamp=now - timedelta(days=i+1),
+                timestamp=now - timedelta(days=i + 1),
             )
 
         assert learner_preheat.get_observation_count() == 5
@@ -388,9 +378,7 @@ class TestComplexScenarios:
         handler.update_contact_states({"binary_sensor.window": True}, now)
 
         # Preheat should stop (simulated)
-        preheat_should_run = not handler.should_take_action(
-            now + timedelta(minutes=6)
-        )
+        preheat_should_run = not handler.should_take_action(now + timedelta(minutes=6))
         assert preheat_should_run is False
 
         # Regular adaptive learning continues (but cycles marked disturbed)

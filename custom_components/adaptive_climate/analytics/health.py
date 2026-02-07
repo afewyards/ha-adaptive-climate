@@ -1,4 +1,5 @@
 """Health monitoring with alerts for adaptive thermostat system."""
+
 from __future__ import annotations
 
 from enum import Enum
@@ -7,6 +8,7 @@ from typing import Dict, List, Any
 
 class HealthStatus(Enum):
     """Health status levels."""
+
     HEALTHY = "healthy"
     WARNING = "warning"
     CRITICAL = "critical"
@@ -35,8 +37,8 @@ class HealthMonitor:
 
     # Thresholds
     CRITICAL_CYCLE_TIME_MIN = 10  # Minutes
-    WARNING_CYCLE_TIME_MIN = 15   # Minutes
-    HIGH_POWER_W_M2 = 20.0        # W/m²
+    WARNING_CYCLE_TIME_MIN = 15  # Minutes
+    HIGH_POWER_W_M2 = 20.0  # W/m²
 
     def __init__(self, zone_name: str, exception_zones: List[str] | None = None):
         """Initialize health monitor for a zone.
@@ -66,7 +68,7 @@ class HealthMonitor:
                 severity=HealthStatus.CRITICAL,
                 issue_type="short_cycle",
                 message=f"Critical: Very short cycling detected ({cycle_time_min:.1f} min). "
-                       f"This causes excessive valve wear."
+                f"This causes excessive valve wear.",
             )
 
         if cycle_time_min < self.WARNING_CYCLE_TIME_MIN:
@@ -74,8 +76,7 @@ class HealthMonitor:
                 zone=self.zone_name,
                 severity=HealthStatus.WARNING,
                 issue_type="short_cycle",
-                message=f"Warning: Short cycling detected ({cycle_time_min:.1f} min). "
-                       f"Consider increasing PWM period."
+                message=f"Warning: Short cycling detected ({cycle_time_min:.1f} min). Consider increasing PWM period.",
             )
 
         return None
@@ -102,7 +103,7 @@ class HealthMonitor:
                 severity=HealthStatus.WARNING,
                 issue_type="high_power",
                 message=f"Warning: High power consumption ({power_w_m2:.1f} W/m²). "
-                       f"Check for heat loss or poor insulation."
+                f"Check for heat loss or poor insulation.",
             )
 
         return None
@@ -121,17 +122,13 @@ class HealthMonitor:
                 zone=self.zone_name,
                 severity=HealthStatus.CRITICAL,
                 issue_type="sensor_unavailable",
-                message=f"Critical: Temperature sensor unavailable for {self.zone_name}. "
-                       f"Cannot control heating."
+                message=f"Critical: Temperature sensor unavailable for {self.zone_name}. Cannot control heating.",
             )
 
         return None
 
     def check_all(
-        self,
-        cycle_time_min: float | None,
-        power_w_m2: float | None,
-        sensor_available: bool
+        self, cycle_time_min: float | None, power_w_m2: float | None, sensor_available: bool
     ) -> List[HealthIssue]:
         """Run all health checks for the zone.
 
@@ -200,10 +197,7 @@ class SystemHealthMonitor:
         else:
             return HealthStatus.HEALTHY
 
-    def check_all_zones(
-        self,
-        zones_data: Dict[str, Dict[str, Any]]
-    ) -> Dict[str, Any]:
+    def check_all_zones(self, zones_data: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
         """Check health of all zones.
 
         Args:
@@ -231,7 +225,7 @@ class SystemHealthMonitor:
             issues = monitor.check_all(
                 cycle_time_min=data.get("cycle_time_min"),
                 power_w_m2=data.get("power_w_m2"),
-                sensor_available=data.get("sensor_available", True)
+                sensor_available=data.get("sensor_available", True),
             )
             zone_issues[zone_name] = issues
 
@@ -240,14 +234,10 @@ class SystemHealthMonitor:
         # Generate summary
         total_issues = sum(len(issues) for issues in zone_issues.values())
         critical_count = sum(
-            1 for issues in zone_issues.values()
-            for issue in issues
-            if issue.severity == HealthStatus.CRITICAL
+            1 for issues in zone_issues.values() for issue in issues if issue.severity == HealthStatus.CRITICAL
         )
         warning_count = sum(
-            1 for issues in zone_issues.values()
-            for issue in issues
-            if issue.severity == HealthStatus.WARNING
+            1 for issues in zone_issues.values() for issue in issues if issue.severity == HealthStatus.WARNING
         )
 
         if overall_status == HealthStatus.HEALTHY:
@@ -263,5 +253,5 @@ class SystemHealthMonitor:
             "summary": summary,
             "total_issues": total_issues,
             "critical_count": critical_count,
-            "warning_count": warning_count
+            "warning_count": warning_count,
         }

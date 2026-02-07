@@ -5,6 +5,7 @@ Provides declarative thermal group configuration for:
 - Cross-group heat transfer with delay modeling
 - Static configuration without learning or Bayesian updates
 """
+
 from __future__ import annotations
 
 import logging
@@ -45,6 +46,7 @@ class ThermalGroup:
         transfer_factor: Fraction of source heat reaching this group (0.0-1.0)
         delay_minutes: Time delay for heat transfer propagation
     """
+
     name: str
     zones: list[str]
     group_type: str = GROUP_TYPE_OPEN_PLAN
@@ -56,34 +58,25 @@ class ThermalGroup:
     def __post_init__(self):
         """Validate configuration after initialization."""
         if self.group_type not in VALID_GROUP_TYPES:
-            raise ValueError(
-                f"Invalid group_type '{self.group_type}'. "
-                f"Must be one of: {', '.join(VALID_GROUP_TYPES)}"
-            )
+            raise ValueError(f"Invalid group_type '{self.group_type}'. Must be one of: {', '.join(VALID_GROUP_TYPES)}")
 
         if not self.zones:
             raise ValueError(f"Group '{self.name}' must have at least one zone")
 
         if self.group_type == GROUP_TYPE_OPEN_PLAN:
             if self.leader is None:
-                raise ValueError(
-                    f"Group '{self.name}' type 'open_plan' requires a leader zone"
-                )
+                raise ValueError(f"Group '{self.name}' type 'open_plan' requires a leader zone")
             if self.leader not in self.zones:
-                raise ValueError(
-                    f"Leader '{self.leader}' must be in zones list for group '{self.name}'"
-                )
+                raise ValueError(f"Leader '{self.leader}' must be in zones list for group '{self.name}'")
 
         if self.receives_from is not None:
             if not (0.0 <= self.transfer_factor <= 1.0):
                 raise ValueError(
-                    f"transfer_factor must be between 0.0 and 1.0 for group '{self.name}', "
-                    f"got {self.transfer_factor}"
+                    f"transfer_factor must be between 0.0 and 1.0 for group '{self.name}', got {self.transfer_factor}"
                 )
             if self.delay_minutes < 0:
                 raise ValueError(
-                    f"delay_minutes must be non-negative for group '{self.name}', "
-                    f"got {self.delay_minutes}"
+                    f"delay_minutes must be non-negative for group '{self.name}', got {self.delay_minutes}"
                 )
 
 
@@ -96,6 +89,7 @@ class TransferHistory:
         timestamp: When the heat was measured
         heat_output: Heat output percentage (0-100)
     """
+
     source_group: str
     timestamp: datetime
     heat_output: float
@@ -132,7 +126,7 @@ class ThermalGroupManager:
         _LOGGER.info(
             "ThermalGroupManager initialized with %d groups covering %d zones",
             len(self._groups),
-            len(self._zone_to_group)
+            len(self._zone_to_group),
         )
 
     def _add_group(self, config: dict[str, Any]) -> None:
@@ -157,8 +151,7 @@ class ThermalGroupManager:
                 if zone_id in self._zone_to_group:
                     existing_group = self._zone_to_group[zone_id]
                     raise ValueError(
-                        f"Zone '{zone_id}' is already in group '{existing_group}', "
-                        f"cannot add to group '{group.name}'"
+                        f"Zone '{zone_id}' is already in group '{existing_group}', cannot add to group '{group.name}'"
                     )
 
             # Register group and zones
@@ -170,8 +163,7 @@ class ThermalGroupManager:
             if group.receives_from:
                 self._transfer_history[group.name] = []
 
-            _LOGGER.debug("Added thermal group: %s (type=%s, zones=%s)",
-                         group.name, group.group_type, group.zones)
+            _LOGGER.debug("Added thermal group: %s (type=%s, zones=%s)", group.name, group.group_type, group.zones)
 
         except (KeyError, ValueError) as e:
             _LOGGER.error("Failed to add thermal group from config: %s", e)
@@ -182,15 +174,10 @@ class ThermalGroupManager:
         for group in self._groups.values():
             if group.receives_from:
                 if group.receives_from not in self._groups:
-                    raise ValueError(
-                        f"Group '{group.name}' receives_from unknown group "
-                        f"'{group.receives_from}'"
-                    )
+                    raise ValueError(f"Group '{group.name}' receives_from unknown group '{group.receives_from}'")
                 # Prevent self-reference
                 if group.receives_from == group.name:
-                    raise ValueError(
-                        f"Group '{group.name}' cannot receive from itself"
-                    )
+                    raise ValueError(f"Group '{group.name}' cannot receive from itself")
 
     def get_zone_group(self, zone_id: str) -> ThermalGroup | None:
         """Get the thermal group for a zone.
@@ -266,17 +253,14 @@ class ThermalGroupManager:
             if group.receives_from == source_group_name:
                 # Add to history
                 history_entry = TransferHistory(
-                    source_group=source_group_name,
-                    timestamp=dt_util.utcnow(),
-                    heat_output=heat_output
+                    source_group=source_group_name, timestamp=dt_util.utcnow(), heat_output=heat_output
                 )
                 self._transfer_history[group.name].append(history_entry)
 
                 # Keep only last 2 hours of history
                 cutoff_time = dt_util.utcnow() - timedelta(hours=2)
                 self._transfer_history[group.name] = [
-                    h for h in self._transfer_history[group.name]
-                    if h.timestamp > cutoff_time
+                    h for h in self._transfer_history[group.name] if h.timestamp > cutoff_time
                 ]
 
     def calculate_feedforward(self, zone_id: str) -> float:
@@ -326,8 +310,11 @@ class ThermalGroupManager:
 
         _LOGGER.debug(
             "Zone %s feedforward: %.1f%% (source=%s, factor=%.2f, delay=%dm)",
-            zone_id, feedforward, group.receives_from, group.transfer_factor,
-            group.delay_minutes
+            zone_id,
+            feedforward,
+            group.receives_from,
+            group.transfer_factor,
+            group.delay_minutes,
         )
 
         return feedforward
@@ -422,9 +409,7 @@ def validate_thermal_groups_config(config: list[dict[str, Any]]) -> None:
         # Check for zone conflicts
         for zone in zones:
             if zone in zones_seen:
-                raise ValueError(
-                    f"Zone '{zone}' assigned to multiple groups"
-                )
+                raise ValueError(f"Zone '{zone}' assigned to multiple groups")
             zones_seen.add(zone)
 
         # Validate by creating ThermalGroup (will run __post_init__ validation)
@@ -446,11 +431,6 @@ def validate_thermal_groups_config(config: list[dict[str, Any]]) -> None:
         receives_from = group_config.get("receives_from")
         if receives_from:
             if receives_from not in groups_by_name:
-                raise ValueError(
-                    f"Group '{group_config['name']}' receives_from unknown group "
-                    f"'{receives_from}'"
-                )
+                raise ValueError(f"Group '{group_config['name']}' receives_from unknown group '{receives_from}'")
             if receives_from == group_config["name"]:
-                raise ValueError(
-                    f"Group '{group_config['name']}' cannot receive from itself"
-                )
+                raise ValueError(f"Group '{group_config['name']}' cannot receive from itself")

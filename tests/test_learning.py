@@ -112,16 +112,16 @@ class TestPhaseAwareOvershootTracker:
         base_time = datetime(2024, 1, 1, 12, 0, 0)
 
         # Samples during dead time (first 3 minutes) should be ignored
-        tracker.update(base_time, 18.0)                              # t=0: ignored
-        tracker.update(base_time + timedelta(minutes=1), 18.2)       # t=1: ignored
-        tracker.update(base_time + timedelta(minutes=2), 18.5)       # t=2: ignored
+        tracker.update(base_time, 18.0)  # t=0: ignored
+        tracker.update(base_time + timedelta(minutes=1), 18.2)  # t=1: ignored
+        tracker.update(base_time + timedelta(minutes=2), 18.5)  # t=2: ignored
 
         # Should still be in rise phase, no crossing detected
         assert tracker.phase == PhaseAwareOvershootTracker.PHASE_RISE
         assert tracker.setpoint_crossed is False
 
         # After dead time, samples are processed
-        tracker.update(base_time + timedelta(minutes=4), 21.5)       # t=4: processed
+        tracker.update(base_time + timedelta(minutes=4), 21.5)  # t=4: processed
 
         # Should now detect settling phase
         assert tracker.phase == PhaseAwareOvershootTracker.PHASE_SETTLING
@@ -133,13 +133,13 @@ class TestPhaseAwareOvershootTracker:
         base_time = datetime(2024, 1, 1, 12, 0, 0)
 
         # High temps during dead time should be ignored
-        tracker.update(base_time, 22.0)                              # t=0: ignored (would be overshoot)
-        tracker.update(base_time + timedelta(minutes=1), 22.5)       # t=1: ignored
+        tracker.update(base_time, 22.0)  # t=0: ignored (would be overshoot)
+        tracker.update(base_time + timedelta(minutes=1), 22.5)  # t=1: ignored
 
         # After dead time
-        tracker.update(base_time + timedelta(minutes=3), 21.0)       # t=3: cross setpoint
-        tracker.update(base_time + timedelta(minutes=5), 21.3)       # t=5: actual overshoot
-        tracker.update(base_time + timedelta(minutes=7), 21.0)       # t=7: settle
+        tracker.update(base_time + timedelta(minutes=3), 21.0)  # t=3: cross setpoint
+        tracker.update(base_time + timedelta(minutes=5), 21.3)  # t=5: actual overshoot
+        tracker.update(base_time + timedelta(minutes=7), 21.0)  # t=7: settle
 
         # Overshoot should be 0.3, not 1.5 (from dead time samples)
         overshoot = tracker.get_overshoot()
@@ -530,6 +530,7 @@ def test_overshoot_module_exists():
         PhaseAwareOvershootTracker,
         calculate_overshoot,
     )
+
     assert PhaseAwareOvershootTracker is not None
     assert calculate_overshoot is not None
 
@@ -548,12 +549,14 @@ class TestRuleConflicts:
 
         # Add cycles with both overshoot AND slow response
         for _ in range(6):
-            learner.add_cycle_metrics(CycleMetrics(
-                overshoot=0.6,     # Triggers moderate overshoot (increase Kd, Kp unchanged)
-                rise_time=70,      # Triggers slow response (increase Kp)
-                oscillations=0,
-                settling_time=30,
-            ))
+            learner.add_cycle_metrics(
+                CycleMetrics(
+                    overshoot=0.6,  # Triggers moderate overshoot (increase Kd, Kp unchanged)
+                    rise_time=70,  # Triggers slow response (increase Kp)
+                    oscillations=0,
+                    settling_time=30,
+                )
+            )
 
         # Start with Kd = 2.0 (within valid range of 0-5.0)
         result = learner.calculate_pid_adjustment(100.0, 1.0, 2.0)
@@ -570,12 +573,14 @@ class TestRuleConflicts:
 
         # Add cycles with oscillations AND slow response
         for _ in range(6):
-            learner.add_cycle_metrics(CycleMetrics(
-                overshoot=0.0,
-                oscillations=4,    # Many oscillations (reduce Kp by 10%)
-                rise_time=70,      # Slow response (increase Kp by 10%)
-                settling_time=30,
-            ))
+            learner.add_cycle_metrics(
+                CycleMetrics(
+                    overshoot=0.0,
+                    oscillations=4,  # Many oscillations (reduce Kp by 10%)
+                    rise_time=70,  # Slow response (increase Kp by 10%)
+                    settling_time=30,
+                )
+            )
 
         result = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
 
@@ -590,12 +595,14 @@ class TestRuleConflicts:
 
         # Add cycles where overshoot increases Kd and oscillations reduce Kp
         for _ in range(6):
-            learner.add_cycle_metrics(CycleMetrics(
-                overshoot=0.6,     # Moderate overshoot (increase Kd 20%)
-                oscillations=4,    # Many oscillations (reduce Kp 10%, increase Kd 20%)
-                rise_time=20,
-                settling_time=30,
-            ))
+            learner.add_cycle_metrics(
+                CycleMetrics(
+                    overshoot=0.6,  # Moderate overshoot (increase Kd 20%)
+                    oscillations=4,  # Many oscillations (reduce Kp 10%, increase Kd 20%)
+                    rise_time=20,
+                    settling_time=30,
+                )
+            )
 
         # Start with Kd = 2.0 (within valid range of 0-5.0)
         result = learner.calculate_pid_adjustment(100.0, 1.0, 2.0)
@@ -614,13 +621,15 @@ class TestRuleConflicts:
         # Add cycles with undershoot (increases Ki) and slow settling (increases Kd)
         # No conflict expected - they adjust different parameters
         for _ in range(6):
-            learner.add_cycle_metrics(CycleMetrics(
-                overshoot=0.0,
-                undershoot=0.5,    # Increase Ki
-                oscillations=0,
-                rise_time=20,
-                settling_time=100,  # Increase Kd
-            ))
+            learner.add_cycle_metrics(
+                CycleMetrics(
+                    overshoot=0.0,
+                    undershoot=0.5,  # Increase Ki
+                    oscillations=0,
+                    rise_time=20,
+                    settling_time=100,  # Increase Kd
+                )
+            )
 
         # Use realistic PID values within v0.7.0 limits (kd_max=5.0)
         result = learner.calculate_pid_adjustment(100.0, 1.0, 2.0)
@@ -636,12 +645,14 @@ class TestRuleConflicts:
 
         # Create scenario with multiple potential conflicts
         for _ in range(6):
-            learner.add_cycle_metrics(CycleMetrics(
-                overshoot=0.3,     # Moderate overshoot (reduce Kp by 5%)
-                oscillations=4,    # Many oscillations (reduce Kp 10%, increase Kd 20%)
-                rise_time=70,      # Slow response (increase Kp 10%)
-                settling_time=30,
-            ))
+            learner.add_cycle_metrics(
+                CycleMetrics(
+                    overshoot=0.3,  # Moderate overshoot (reduce Kp by 5%)
+                    oscillations=4,  # Many oscillations (reduce Kp 10%, increase Kd 20%)
+                    rise_time=70,  # Slow response (increase Kp 10%)
+                    settling_time=30,
+                )
+            )
 
         # Use realistic PID values within v0.7.0 limits (kd_max=5.0)
         result = learner.calculate_pid_adjustment(100.0, 1.0, 2.0)
@@ -651,7 +662,7 @@ class TestRuleConflicts:
         # Oscillation has highest priority, so slow response is suppressed
         assert result is not None
         assert result["kp"] < 100.0  # Should be reduced
-        assert result["kd"] > 2.0   # Kd should be increased by oscillation rule
+        assert result["kd"] > 2.0  # Kd should be increased by oscillation rule
 
 
 class TestConvergenceDetection:
@@ -663,12 +674,14 @@ class TestConvergenceDetection:
 
         # Add cycles with good metrics (within convergence thresholds)
         for _ in range(6):
-            learner.add_cycle_metrics(CycleMetrics(
-                overshoot=0.1,      # Below 0.2 threshold
-                oscillations=0,     # Below 1 threshold
-                settling_time=30,   # Below 60 threshold
-                rise_time=20,       # Below 45 threshold
-            ))
+            learner.add_cycle_metrics(
+                CycleMetrics(
+                    overshoot=0.1,  # Below 0.2 threshold
+                    oscillations=0,  # Below 1 threshold
+                    settling_time=30,  # Below 60 threshold
+                    rise_time=20,  # Below 45 threshold
+                )
+            )
 
         result = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
 
@@ -681,12 +694,14 @@ class TestConvergenceDetection:
 
         # Add cycles with one metric outside threshold
         for _ in range(6):
-            learner.add_cycle_metrics(CycleMetrics(
-                overshoot=0.3,      # Above 0.2 threshold
-                oscillations=0,
-                settling_time=30,
-                rise_time=20,
-            ))
+            learner.add_cycle_metrics(
+                CycleMetrics(
+                    overshoot=0.3,  # Above 0.2 threshold
+                    oscillations=0,
+                    settling_time=30,
+                    rise_time=20,
+                )
+            )
 
         result = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
 
@@ -698,12 +713,14 @@ class TestConvergenceDetection:
         learner = AdaptiveLearner()
 
         for _ in range(6):
-            learner.add_cycle_metrics(CycleMetrics(
-                overshoot=0.1,
-                oscillations=2,     # Above 1 threshold
-                settling_time=30,
-                rise_time=20,
-            ))
+            learner.add_cycle_metrics(
+                CycleMetrics(
+                    overshoot=0.1,
+                    oscillations=2,  # Above 1 threshold
+                    settling_time=30,
+                    rise_time=20,
+                )
+            )
 
         result = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
 
@@ -715,12 +732,14 @@ class TestConvergenceDetection:
         learner = AdaptiveLearner()
 
         for _ in range(6):
-            learner.add_cycle_metrics(CycleMetrics(
-                overshoot=0.1,
-                oscillations=0,
-                settling_time=70,   # Above 60 threshold
-                rise_time=20,
-            ))
+            learner.add_cycle_metrics(
+                CycleMetrics(
+                    overshoot=0.1,
+                    oscillations=0,
+                    settling_time=70,  # Above 60 threshold
+                    rise_time=20,
+                )
+            )
 
         result = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
 
@@ -746,12 +765,14 @@ class TestConvergenceDetection:
         learner = AdaptiveLearner()
 
         for _ in range(6):
-            learner.add_cycle_metrics(CycleMetrics(
-                overshoot=0.1,
-                oscillations=0,
-                settling_time=30,
-                rise_time=70,       # Above 45 threshold, triggers slow response
-            ))
+            learner.add_cycle_metrics(
+                CycleMetrics(
+                    overshoot=0.1,
+                    oscillations=0,
+                    settling_time=30,
+                    rise_time=70,  # Above 45 threshold, triggers slow response
+                )
+            )
 
         result = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
 
@@ -765,12 +786,14 @@ class TestConvergenceDetection:
 
         # Most metrics good, but overshoot is high
         for _ in range(6):
-            learner.add_cycle_metrics(CycleMetrics(
-                overshoot=0.5,      # Above threshold, triggers moderate overshoot
-                oscillations=0,
-                settling_time=30,
-                rise_time=20,
-            ))
+            learner.add_cycle_metrics(
+                CycleMetrics(
+                    overshoot=0.5,  # Above threshold, triggers moderate overshoot
+                    oscillations=0,
+                    settling_time=30,
+                    rise_time=20,
+                )
+            )
 
         # Start with Kd = 2.0 (within valid range of 0-5.0)
         result = learner.calculate_pid_adjustment(100.0, 1.0, 2.0)
@@ -786,12 +809,14 @@ class TestConvergenceDetection:
 
         # All metrics exactly at thresholds (should still be considered converged)
         for _ in range(6):
-            learner.add_cycle_metrics(CycleMetrics(
-                overshoot=0.2,      # Exactly at 0.2 threshold
-                oscillations=1,     # Exactly at 1 threshold
-                settling_time=60,   # Exactly at 60 threshold
-                rise_time=45,       # Exactly at 45 threshold
-            ))
+            learner.add_cycle_metrics(
+                CycleMetrics(
+                    overshoot=0.2,  # Exactly at 0.2 threshold
+                    oscillations=1,  # Exactly at 1 threshold
+                    settling_time=60,  # Exactly at 60 threshold
+                    rise_time=45,  # Exactly at 45 threshold
+                )
+            )
 
         result = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
 
@@ -944,12 +969,12 @@ class TestWeightedCycleLearning:
 
         # All metrics within bounds (including new metrics)
         result = learner._check_convergence(
-            avg_overshoot=0.15,           # < 0.2 threshold
-            avg_oscillations=0.5,         # < 1 threshold
-            avg_settling_time=50,         # < 60 threshold
-            avg_rise_time=40,             # < 45 threshold
-            avg_inter_cycle_drift=0.1,    # < 0.25 threshold
-            avg_settling_mae=0.15,        # < 0.25 threshold
+            avg_overshoot=0.15,  # < 0.2 threshold
+            avg_oscillations=0.5,  # < 1 threshold
+            avg_settling_time=50,  # < 60 threshold
+            avg_rise_time=40,  # < 45 threshold
+            avg_inter_cycle_drift=0.1,  # < 0.25 threshold
+            avg_settling_mae=0.15,  # < 0.25 threshold
         )
 
         # Should be converged
@@ -961,12 +986,12 @@ class TestWeightedCycleLearning:
 
         # All metrics good except inter_cycle_drift
         result = learner._check_convergence(
-            avg_overshoot=0.15,           # < 0.2 threshold
-            avg_oscillations=0.5,         # < 1 threshold
-            avg_settling_time=50,         # < 60 threshold
-            avg_rise_time=40,             # < 45 threshold
-            avg_inter_cycle_drift=0.3,    # > 0.25 threshold - EXCEEDS
-            avg_settling_mae=0.15,        # < 0.25 threshold
+            avg_overshoot=0.15,  # < 0.2 threshold
+            avg_oscillations=0.5,  # < 1 threshold
+            avg_settling_time=50,  # < 60 threshold
+            avg_rise_time=40,  # < 45 threshold
+            avg_inter_cycle_drift=0.3,  # > 0.25 threshold - EXCEEDS
+            avg_settling_mae=0.15,  # < 0.25 threshold
         )
 
         # Should NOT be converged
@@ -978,12 +1003,12 @@ class TestWeightedCycleLearning:
 
         # All metrics good except settling_mae
         result = learner._check_convergence(
-            avg_overshoot=0.15,           # < 0.2 threshold
-            avg_oscillations=0.5,         # < 1 threshold
-            avg_settling_time=50,         # < 60 threshold
-            avg_rise_time=40,             # < 45 threshold
-            avg_inter_cycle_drift=0.1,    # < 0.25 threshold
-            avg_settling_mae=0.3,         # > 0.25 threshold - EXCEEDS
+            avg_overshoot=0.15,  # < 0.2 threshold
+            avg_oscillations=0.5,  # < 1 threshold
+            avg_settling_time=50,  # < 60 threshold
+            avg_rise_time=40,  # < 45 threshold
+            avg_inter_cycle_drift=0.1,  # < 0.25 threshold
+            avg_settling_mae=0.3,  # > 0.25 threshold - EXCEEDS
         )
 
         # Should NOT be converged
@@ -995,12 +1020,12 @@ class TestWeightedCycleLearning:
 
         # Test negative drift that exceeds threshold in absolute value
         result = learner._check_convergence(
-            avg_overshoot=0.15,           # < 0.2 threshold
-            avg_oscillations=0.5,         # < 1 threshold
-            avg_settling_time=50,         # < 60 threshold
-            avg_rise_time=40,             # < 45 threshold
-            avg_inter_cycle_drift=-0.3,   # abs(-0.3) > 0.25 threshold - EXCEEDS
-            avg_settling_mae=0.15,        # < 0.25 threshold
+            avg_overshoot=0.15,  # < 0.2 threshold
+            avg_oscillations=0.5,  # < 1 threshold
+            avg_settling_time=50,  # < 60 threshold
+            avg_rise_time=40,  # < 45 threshold
+            avg_inter_cycle_drift=-0.3,  # abs(-0.3) > 0.25 threshold - EXCEEDS
+            avg_settling_mae=0.15,  # < 0.25 threshold
         )
 
         # Should NOT be converged (negative drift indicates Ki too low)
@@ -1012,7 +1037,7 @@ class TestWeightedCycleLearning:
             avg_oscillations=0.5,
             avg_settling_time=50,
             avg_rise_time=40,
-            avg_inter_cycle_drift=-0.2,   # abs(-0.2) < 0.25 threshold - OK
+            avg_inter_cycle_drift=-0.2,  # abs(-0.2) < 0.25 threshold - OK
             avg_settling_mae=0.15,
         )
 
@@ -1025,13 +1050,13 @@ class TestWeightedCycleLearning:
 
         # All metrics good except undershoot
         result = learner._check_convergence(
-            avg_overshoot=0.15,           # < 0.2 threshold
-            avg_oscillations=0.5,         # < 1 threshold
-            avg_settling_time=50,         # < 60 threshold
-            avg_rise_time=40,             # < 45 threshold
-            avg_inter_cycle_drift=0.1,    # < 0.25 threshold
-            avg_settling_mae=0.15,        # < 0.25 threshold
-            avg_undershoot=0.25,          # > 0.2 threshold - EXCEEDS
+            avg_overshoot=0.15,  # < 0.2 threshold
+            avg_oscillations=0.5,  # < 1 threshold
+            avg_settling_time=50,  # < 60 threshold
+            avg_rise_time=40,  # < 45 threshold
+            avg_inter_cycle_drift=0.1,  # < 0.25 threshold
+            avg_settling_mae=0.15,  # < 0.25 threshold
+            avg_undershoot=0.25,  # > 0.2 threshold - EXCEEDS
         )
 
         # Should NOT be converged
@@ -1043,13 +1068,13 @@ class TestWeightedCycleLearning:
 
         # All metrics within bounds including undershoot
         result = learner._check_convergence(
-            avg_overshoot=0.15,           # < 0.2 threshold
-            avg_oscillations=0.5,         # < 1 threshold
-            avg_settling_time=50,         # < 60 threshold
-            avg_rise_time=40,             # < 45 threshold
-            avg_inter_cycle_drift=0.1,    # < 0.25 threshold
-            avg_settling_mae=0.15,        # < 0.25 threshold
-            avg_undershoot=0.15,          # < 0.2 threshold - OK
+            avg_overshoot=0.15,  # < 0.2 threshold
+            avg_oscillations=0.5,  # < 1 threshold
+            avg_settling_time=50,  # < 60 threshold
+            avg_rise_time=40,  # < 45 threshold
+            avg_inter_cycle_drift=0.1,  # < 0.25 threshold
+            avg_settling_mae=0.15,  # < 0.25 threshold
+            avg_undershoot=0.15,  # < 0.2 threshold - OK
         )
 
         # Should be converged
@@ -1062,11 +1087,11 @@ class TestWeightedCycleLearning:
         # First, build up some consecutive converged cycles with good metrics
         for _ in range(3):
             metrics = CycleMetrics(
-                overshoot=0.1,      # Below 0.2 threshold
-                undershoot=0.1,     # Below 0.2 threshold
-                oscillations=0,     # Below 1 threshold
-                settling_time=30,   # Below 60 threshold
-                rise_time=20,       # Below 45 threshold
+                overshoot=0.1,  # Below 0.2 threshold
+                undershoot=0.1,  # Below 0.2 threshold
+                oscillations=0,  # Below 1 threshold
+                settling_time=30,  # Below 60 threshold
+                rise_time=20,  # Below 45 threshold
             )
             learner.update_convergence_tracking(metrics)
 
@@ -1075,11 +1100,11 @@ class TestWeightedCycleLearning:
 
         # Now add a cycle with high undershoot - should reset the counter
         high_undershoot_metrics = CycleMetrics(
-            overshoot=0.1,      # Below 0.2 threshold
-            undershoot=0.25,    # Above 0.2 threshold - EXCEEDS
-            oscillations=0,     # Below 1 threshold
-            settling_time=30,   # Below 60 threshold
-            rise_time=20,       # Below 45 threshold
+            overshoot=0.1,  # Below 0.2 threshold
+            undershoot=0.25,  # Above 0.2 threshold - EXCEEDS
+            oscillations=0,  # Below 1 threshold
+            settling_time=30,  # Below 60 threshold
+            rise_time=20,  # Below 45 threshold
         )
         result = learner.update_convergence_tracking(high_undershoot_metrics)
 
@@ -1095,11 +1120,11 @@ class TestWeightedCycleLearning:
         # Add cycles with undershoot within bounds
         for _ in range(5):
             metrics = CycleMetrics(
-                overshoot=0.1,      # Below 0.2 threshold
-                undershoot=0.15,    # Below 0.2 threshold - OK
-                oscillations=0,     # Below 1 threshold
-                settling_time=30,   # Below 60 threshold
-                rise_time=20,       # Below 45 threshold
+                overshoot=0.1,  # Below 0.2 threshold
+                undershoot=0.15,  # Below 0.2 threshold - OK
+                oscillations=0,  # Below 1 threshold
+                settling_time=30,  # Below 60 threshold
+                rise_time=20,  # Below 45 threshold
             )
             learner.update_convergence_tracking(metrics)
 
@@ -1114,11 +1139,11 @@ class TestWeightedCycleLearning:
         # Add cycles with None undershoot (should be treated as acceptable)
         for _ in range(5):
             metrics = CycleMetrics(
-                overshoot=0.1,      # Below 0.2 threshold
-                undershoot=None,    # None means no undershoot detected
-                oscillations=0,     # Below 1 threshold
-                settling_time=30,   # Below 60 threshold
-                rise_time=20,       # Below 45 threshold
+                overshoot=0.1,  # Below 0.2 threshold
+                undershoot=None,  # None means no undershoot detected
+                oscillations=0,  # Below 1 threshold
+                settling_time=30,  # Below 60 threshold
+                rise_time=20,  # Below 45 threshold
             )
             learner.update_convergence_tracking(metrics)
 
@@ -1137,11 +1162,11 @@ class TestConvergenceConfidence:
 
         # Good cycle - all metrics within convergence thresholds
         metrics = CycleMetrics(
-            overshoot=0.1,      # < 0.2 threshold
-            undershoot=0.1,     # < 0.2 threshold
-            oscillations=0,     # < 1 threshold
-            settling_time=30,   # < 60 threshold
-            rise_time=20,       # < 45 threshold
+            overshoot=0.1,  # < 0.2 threshold
+            undershoot=0.1,  # < 0.2 threshold
+            oscillations=0,  # < 1 threshold
+            settling_time=30,  # < 60 threshold
+            rise_time=20,  # < 45 threshold
         )
 
         learner.update_convergence_confidence(metrics)
@@ -1157,11 +1182,11 @@ class TestConvergenceConfidence:
 
         # Bad cycle - overshoot exceeds threshold
         metrics = CycleMetrics(
-            overshoot=0.3,      # > 0.2 threshold
-            undershoot=0.1,     # < 0.2 threshold
-            oscillations=0,     # < 1 threshold
-            settling_time=30,   # < 60 threshold
-            rise_time=20,       # < 45 threshold
+            overshoot=0.3,  # > 0.2 threshold
+            undershoot=0.1,  # < 0.2 threshold
+            oscillations=0,  # < 1 threshold
+            settling_time=30,  # < 60 threshold
+            rise_time=20,  # < 45 threshold
         )
 
         learner.update_convergence_confidence(metrics)
@@ -1177,11 +1202,11 @@ class TestConvergenceConfidence:
 
         # Bad cycle - undershoot exceeds threshold
         metrics = CycleMetrics(
-            overshoot=0.1,      # < 0.2 threshold
-            undershoot=0.3,     # > 0.2 threshold - EXCEEDS
-            oscillations=0,     # < 1 threshold
-            settling_time=30,   # < 60 threshold
-            rise_time=20,       # < 45 threshold
+            overshoot=0.1,  # < 0.2 threshold
+            undershoot=0.3,  # > 0.2 threshold - EXCEEDS
+            oscillations=0,  # < 1 threshold
+            settling_time=30,  # < 60 threshold
+            rise_time=20,  # < 45 threshold
         )
 
         learner.update_convergence_confidence(metrics)
@@ -1196,11 +1221,11 @@ class TestConvergenceConfidence:
 
         # All metrics good except undershoot
         metrics_high_undershoot = CycleMetrics(
-            overshoot=0.1,      # < 0.2 threshold
-            undershoot=0.25,    # > 0.2 threshold
-            oscillations=0,     # < 1 threshold
-            settling_time=30,   # < 60 threshold
-            rise_time=20,       # < 45 threshold
+            overshoot=0.1,  # < 0.2 threshold
+            undershoot=0.25,  # > 0.2 threshold
+            oscillations=0,  # < 1 threshold
+            settling_time=30,  # < 60 threshold
+            rise_time=20,  # < 45 threshold
         )
 
         learner.update_convergence_confidence(metrics_high_undershoot)
@@ -1212,11 +1237,11 @@ class TestConvergenceConfidence:
 
         # All metrics good including undershoot
         metrics_good = CycleMetrics(
-            overshoot=0.1,      # < 0.2 threshold
-            undershoot=0.1,     # < 0.2 threshold
-            oscillations=0,     # < 1 threshold
-            settling_time=30,   # < 60 threshold
-            rise_time=20,       # < 45 threshold
+            overshoot=0.1,  # < 0.2 threshold
+            undershoot=0.1,  # < 0.2 threshold
+            oscillations=0,  # < 1 threshold
+            settling_time=30,  # < 60 threshold
+            rise_time=20,  # < 45 threshold
         )
 
         learner.update_convergence_confidence(metrics_good)
@@ -1230,11 +1255,11 @@ class TestConvergenceConfidence:
 
         # Good cycle with None undershoot (acceptable)
         metrics = CycleMetrics(
-            overshoot=0.1,      # < 0.2 threshold
-            undershoot=None,    # None should be treated as OK
-            oscillations=0,     # < 1 threshold
-            settling_time=30,   # < 60 threshold
-            rise_time=20,       # < 45 threshold
+            overshoot=0.1,  # < 0.2 threshold
+            undershoot=None,  # None should be treated as OK
+            oscillations=0,  # < 1 threshold
+            settling_time=30,  # < 60 threshold
+            rise_time=20,  # < 45 threshold
         )
 
         learner.update_convergence_confidence(metrics)
@@ -1250,6 +1275,7 @@ def test_rule_conflicts_module_exists():
         PIDRule,
         PIDRuleResult,
     )
+
     assert PIDRule is not None
     assert PIDRuleResult is not None
     # Verify priority levels
@@ -1269,6 +1295,7 @@ class TestSegmentNoiseToleranceConstants:
     def test_noise_tolerance_constant_exists(self):
         """Test SEGMENT_NOISE_TOLERANCE constant exists and has correct default."""
         from custom_components.adaptive_climate.const import SEGMENT_NOISE_TOLERANCE
+
         assert SEGMENT_NOISE_TOLERANCE == 0.05
 
     def test_rate_bounds_constants_exist(self):
@@ -1277,6 +1304,7 @@ class TestSegmentNoiseToleranceConstants:
             SEGMENT_RATE_MIN,
             SEGMENT_RATE_MAX,
         )
+
         assert SEGMENT_RATE_MIN == 0.1
         assert SEGMENT_RATE_MAX == 10.0
 
@@ -1297,9 +1325,9 @@ class TestNoisyTemperatureData:
         history = [
             (base_time, 22.0),
             (base_time + timedelta(minutes=10), 21.8),
-            (base_time + timedelta(minutes=20), 21.82),   # +0.02 noise (below tolerance)
+            (base_time + timedelta(minutes=20), 21.82),  # +0.02 noise (below tolerance)
             (base_time + timedelta(minutes=30), 21.6),
-            (base_time + timedelta(minutes=40), 21.63),   # +0.03 noise (below tolerance)
+            (base_time + timedelta(minutes=40), 21.63),  # +0.03 noise (below tolerance)
             (base_time + timedelta(minutes=50), 21.4),
             (base_time + timedelta(minutes=60), 21.2),
         ]
@@ -1324,7 +1352,7 @@ class TestNoisyTemperatureData:
             (base_time + timedelta(minutes=10), 21.8),
             (base_time + timedelta(minutes=20), 21.6),
             (base_time + timedelta(minutes=30), 21.4),
-            (base_time + timedelta(minutes=40), 21.5),    # +0.1C reversal (above tolerance)
+            (base_time + timedelta(minutes=40), 21.5),  # +0.1C reversal (above tolerance)
             (base_time + timedelta(minutes=50), 21.3),
             (base_time + timedelta(minutes=60), 21.1),
             (base_time + timedelta(minutes=70), 20.9),
@@ -1348,10 +1376,10 @@ class TestNoisyTemperatureData:
         history = [
             (base_time, 18.0),
             (base_time + timedelta(minutes=10), 18.5),
-            (base_time + timedelta(minutes=20), 18.48),   # -0.02 noise (below tolerance)
+            (base_time + timedelta(minutes=20), 18.48),  # -0.02 noise (below tolerance)
             (base_time + timedelta(minutes=30), 19.0),
             (base_time + timedelta(minutes=40), 19.5),
-            (base_time + timedelta(minutes=50), 19.47),   # -0.03 noise (below tolerance)
+            (base_time + timedelta(minutes=50), 19.47),  # -0.03 noise (below tolerance)
             (base_time + timedelta(minutes=60), 20.0),
         ]
 
@@ -1546,7 +1574,7 @@ class TestSegmentDetectionEdgeCases:
             (base_time + timedelta(minutes=30), 25.0),
             (base_time + timedelta(minutes=45), 24.5),
             (base_time + timedelta(minutes=60), 24.0),
-            (base_time + timedelta(minutes=75), 24.1),   # +0.1 reversal (above 0.05 tolerance)
+            (base_time + timedelta(minutes=75), 24.1),  # +0.1 reversal (above 0.05 tolerance)
             (base_time + timedelta(minutes=90), 23.5),
             (base_time + timedelta(minutes=105), 23.0),
             (base_time + timedelta(minutes=120), 22.5),
@@ -1609,7 +1637,7 @@ def test_segment_detection_module():
     )
 
     learner = ThermalRateLearner()
-    assert hasattr(learner, 'noise_tolerance')
+    assert hasattr(learner, "noise_tolerance")
     assert learner.noise_tolerance == SEGMENT_NOISE_TOLERANCE
     assert SEGMENT_RATE_MIN == 0.1
     assert SEGMENT_RATE_MAX == 10.0
@@ -1626,11 +1654,13 @@ class TestCycleHistoryBounding:
     def test_max_cycle_history_constant_exists(self):
         """Test MAX_CYCLE_HISTORY constant exists and has correct default."""
         from custom_components.adaptive_climate.const import MAX_CYCLE_HISTORY
+
         assert MAX_CYCLE_HISTORY == 100
 
     def test_min_adjustment_interval_constant_exists(self):
         """Test MIN_ADJUSTMENT_INTERVAL constant exists and has correct default."""
         from custom_components.adaptive_climate.const import MIN_ADJUSTMENT_INTERVAL, MIN_ADJUSTMENT_CYCLES
+
         # Updated from 24h to 8h in v0.7.0 for hybrid rate limiting
         assert MIN_ADJUSTMENT_INTERVAL == 8
         assert MIN_ADJUSTMENT_CYCLES == 3
@@ -1654,12 +1684,14 @@ class TestCycleHistoryBounding:
 
         # Add 7 cycles
         for i in range(7):
-            learner.add_cycle_metrics(CycleMetrics(
-                overshoot=float(i),  # Use overshoot to track which entry
-                oscillations=0,
-                settling_time=30,
-                rise_time=20,
-            ))
+            learner.add_cycle_metrics(
+                CycleMetrics(
+                    overshoot=float(i),  # Use overshoot to track which entry
+                    oscillations=0,
+                    settling_time=30,
+                    rise_time=20,
+                )
+            )
 
         # Should only have 5 entries (max_history)
         assert learner.get_cycle_count() == 5
@@ -1674,12 +1706,14 @@ class TestCycleHistoryBounding:
 
         # Add 5 cycles
         for i in range(5):
-            learner.add_cycle_metrics(CycleMetrics(
-                overshoot=float(i * 0.1),
-                oscillations=i,
-                settling_time=float(i * 10),
-                rise_time=float(i * 5),
-            ))
+            learner.add_cycle_metrics(
+                CycleMetrics(
+                    overshoot=float(i * 0.1),
+                    oscillations=i,
+                    settling_time=float(i * 10),
+                    rise_time=float(i * 5),
+                )
+            )
 
         # Should have cycles 2, 3, 4 (0 and 1 evicted)
         assert learner.get_cycle_count() == 3
@@ -1693,12 +1727,14 @@ class TestCycleHistoryBounding:
 
         # Add only 5 cycles
         for i in range(5):
-            learner.add_cycle_metrics(CycleMetrics(
-                overshoot=float(i),
-                oscillations=0,
-                settling_time=30,
-                rise_time=20,
-            ))
+            learner.add_cycle_metrics(
+                CycleMetrics(
+                    overshoot=float(i),
+                    oscillations=0,
+                    settling_time=30,
+                    rise_time=20,
+                )
+            )
 
         # Should have all 5 entries
         assert learner.get_cycle_count() == 5
@@ -1711,24 +1747,28 @@ class TestCycleHistoryBounding:
 
         # Add exactly 5 cycles
         for i in range(5):
-            learner.add_cycle_metrics(CycleMetrics(
-                overshoot=float(i),
-                oscillations=0,
-                settling_time=30,
-                rise_time=20,
-            ))
+            learner.add_cycle_metrics(
+                CycleMetrics(
+                    overshoot=float(i),
+                    oscillations=0,
+                    settling_time=30,
+                    rise_time=20,
+                )
+            )
 
         # Should have exactly 5 entries, no eviction
         assert learner.get_cycle_count() == 5
         assert learner._cycle_history[0].overshoot == 0.0
 
         # Add one more - should trigger eviction
-        learner.add_cycle_metrics(CycleMetrics(
-            overshoot=5.0,
-            oscillations=0,
-            settling_time=30,
-            rise_time=20,
-        ))
+        learner.add_cycle_metrics(
+            CycleMetrics(
+                overshoot=5.0,
+                oscillations=0,
+                settling_time=30,
+                rise_time=20,
+            )
+        )
 
         assert learner.get_cycle_count() == 5
         assert learner._cycle_history[0].overshoot == 1.0  # 0 evicted
@@ -1739,12 +1779,14 @@ class TestCycleHistoryBounding:
 
         # Add some cycles
         for i in range(5):
-            learner.add_cycle_metrics(CycleMetrics(
-                overshoot=float(i),
-                oscillations=0,
-                settling_time=30,
-                rise_time=20,
-            ))
+            learner.add_cycle_metrics(
+                CycleMetrics(
+                    overshoot=float(i),
+                    oscillations=0,
+                    settling_time=30,
+                    rise_time=20,
+                )
+            )
 
         assert learner.get_cycle_count() == 5
 
@@ -1774,12 +1816,14 @@ class TestRateLimiting:
 
         # Add enough cycles to trigger adjustment
         for _ in range(6):
-            learner.add_cycle_metrics(CycleMetrics(
-                overshoot=0.6,  # High overshoot triggers adjustment
-                oscillations=0,
-                settling_time=30,
-                rise_time=20,
-            ))
+            learner.add_cycle_metrics(
+                CycleMetrics(
+                    overshoot=0.6,  # High overshoot triggers adjustment
+                    oscillations=0,
+                    settling_time=30,
+                    rise_time=20,
+                )
+            )
 
         assert learner._last_adjustment_time is None
 
@@ -1793,17 +1837,19 @@ class TestRateLimiting:
         learner = AdaptiveLearner()
 
         fake_now = datetime.now()
-        with patch('custom_components.adaptive_climate.adaptive.learning.dt_util') as mock_dt_util:
+        with patch("custom_components.adaptive_climate.adaptive.learning.dt_util") as mock_dt_util:
             mock_dt_util.utcnow.return_value = fake_now
 
             # Add enough cycles
             for _ in range(6):
-                learner.add_cycle_metrics(CycleMetrics(
-                    overshoot=0.6,
-                    oscillations=0,
-                    settling_time=30,
-                    rise_time=20,
-                ))
+                learner.add_cycle_metrics(
+                    CycleMetrics(
+                        overshoot=0.6,
+                        oscillations=0,
+                        settling_time=30,
+                        rise_time=20,
+                    )
+                )
 
             # First adjustment should work
             result1 = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
@@ -1811,12 +1857,14 @@ class TestRateLimiting:
 
             # Add more cycles for a potential second adjustment
             for _ in range(6):
-                learner.add_cycle_metrics(CycleMetrics(
-                    overshoot=0.6,
-                    oscillations=0,
-                    settling_time=30,
-                    rise_time=20,
-                ))
+                learner.add_cycle_metrics(
+                    CycleMetrics(
+                        overshoot=0.6,
+                        oscillations=0,
+                        settling_time=30,
+                        rise_time=20,
+                    )
+                )
 
             # Second adjustment immediately after should be rate limited
             result2 = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
@@ -1828,12 +1876,14 @@ class TestRateLimiting:
 
         # Add enough cycles
         for _ in range(6):
-            learner.add_cycle_metrics(CycleMetrics(
-                overshoot=0.6,
-                oscillations=0,
-                settling_time=30,
-                rise_time=20,
-            ))
+            learner.add_cycle_metrics(
+                CycleMetrics(
+                    overshoot=0.6,
+                    oscillations=0,
+                    settling_time=30,
+                    rise_time=20,
+                )
+            )
 
         # First adjustment
         result1 = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
@@ -1841,18 +1891,20 @@ class TestRateLimiting:
 
         # Manually set last adjustment time to 25 hours ago
         fake_now = datetime.now()
-        with patch('custom_components.adaptive_climate.adaptive.learning.dt_util') as mock_dt_util:
+        with patch("custom_components.adaptive_climate.adaptive.learning.dt_util") as mock_dt_util:
             mock_dt_util.utcnow.return_value = fake_now
             learner._last_adjustment_time = fake_now - timedelta(hours=25)
 
             # Add more cycles
             for _ in range(6):
-                learner.add_cycle_metrics(CycleMetrics(
-                    overshoot=0.6,
-                    oscillations=0,
-                    settling_time=30,
-                    rise_time=20,
-                ))
+                learner.add_cycle_metrics(
+                    CycleMetrics(
+                        overshoot=0.6,
+                        oscillations=0,
+                        settling_time=30,
+                        rise_time=20,
+                    )
+                )
 
             # Should now be allowed (25h > 24h interval)
             result2 = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
@@ -1864,12 +1916,14 @@ class TestRateLimiting:
 
         # Add enough cycles
         for _ in range(6):
-            learner.add_cycle_metrics(CycleMetrics(
-                overshoot=0.6,
-                oscillations=0,
-                settling_time=30,
-                rise_time=20,
-            ))
+            learner.add_cycle_metrics(
+                CycleMetrics(
+                    overshoot=0.6,
+                    oscillations=0,
+                    settling_time=30,
+                    rise_time=20,
+                )
+            )
 
         # First adjustment with short interval
         result1 = learner.calculate_pid_adjustment(100.0, 1.0, 10.0, min_interval_hours=1)
@@ -1877,18 +1931,20 @@ class TestRateLimiting:
 
         # Set last adjustment to 2 hours ago
         fake_now = datetime.now()
-        with patch('custom_components.adaptive_climate.adaptive.learning.dt_util') as mock_dt_util:
+        with patch("custom_components.adaptive_climate.adaptive.learning.dt_util") as mock_dt_util:
             mock_dt_util.utcnow.return_value = fake_now
             learner._last_adjustment_time = fake_now - timedelta(hours=2)
 
             # Add more cycles
             for _ in range(6):
-                learner.add_cycle_metrics(CycleMetrics(
-                    overshoot=0.6,
-                    oscillations=0,
-                    settling_time=30,
-                    rise_time=20,
-                ))
+                learner.add_cycle_metrics(
+                    CycleMetrics(
+                        overshoot=0.6,
+                        oscillations=0,
+                        settling_time=30,
+                        rise_time=20,
+                    )
+                )
 
             # Should be allowed with 1h interval (2h > 1h)
             result2 = learner.calculate_pid_adjustment(100.0, 1.0, 10.0, min_interval_hours=1)
@@ -1899,7 +1955,7 @@ class TestRateLimiting:
         learner = AdaptiveLearner()
 
         fake_now = datetime.now()
-        with patch('custom_components.adaptive_climate.adaptive.learning.dt_util') as mock_dt_util:
+        with patch("custom_components.adaptive_climate.adaptive.learning.dt_util") as mock_dt_util:
             mock_dt_util.utcnow.return_value = fake_now
 
             # Set last adjustment to exactly 8 hours ago (time gate at boundary)
@@ -1925,12 +1981,14 @@ class TestRateLimiting:
 
         # Add cycles and make adjustment
         for _ in range(6):
-            learner.add_cycle_metrics(CycleMetrics(
-                overshoot=0.6,
-                oscillations=0,
-                settling_time=30,
-                rise_time=20,
-            ))
+            learner.add_cycle_metrics(
+                CycleMetrics(
+                    overshoot=0.6,
+                    oscillations=0,
+                    settling_time=30,
+                    rise_time=20,
+                )
+            )
 
         result = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
         assert result is not None
@@ -1949,15 +2007,17 @@ class TestRateLimiting:
 
         # Add cycles and make adjustment
         for _ in range(6):
-            learner.add_cycle_metrics(CycleMetrics(
-                overshoot=0.6,
-                oscillations=0,
-                settling_time=30,
-                rise_time=20,
-            ))
+            learner.add_cycle_metrics(
+                CycleMetrics(
+                    overshoot=0.6,
+                    oscillations=0,
+                    settling_time=30,
+                    rise_time=20,
+                )
+            )
 
         fake_now = datetime.now()
-        with patch('custom_components.adaptive_climate.adaptive.learning.dt_util') as mock_dt_util:
+        with patch("custom_components.adaptive_climate.adaptive.learning.dt_util") as mock_dt_util:
             mock_dt_util.utcnow.return_value = fake_now
             result = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
 
@@ -1983,10 +2043,10 @@ def test_story_3_5_features():
     assert MIN_ADJUSTMENT_CYCLES == 3
 
     learner = AdaptiveLearner()
-    assert hasattr(learner, '_max_history')
-    assert hasattr(learner, '_last_adjustment_time')
-    assert hasattr(learner, '_cycles_since_last_adjustment')
-    assert hasattr(learner, 'get_last_adjustment_time')
+    assert hasattr(learner, "_max_history")
+    assert hasattr(learner, "_last_adjustment_time")
+    assert hasattr(learner, "_cycles_since_last_adjustment")
+    assert hasattr(learner, "get_last_adjustment_time")
 
 
 # ============================================================================
@@ -2256,19 +2316,17 @@ class TestCalculateRiseTime:
         """Test rise_time excludes transport delay dead time."""
         base_time = datetime(2024, 1, 1, 10, 0, 0)
         history = [
-            (base_time, 18.0),                              # t=0: dead time starts
-            (base_time + timedelta(minutes=2), 18.1),       # t=2: still in dead time
-            (base_time + timedelta(minutes=5), 18.5),       # t=5: dead time ends (3min delay)
-            (base_time + timedelta(minutes=10), 19.5),      # t=10
-            (base_time + timedelta(minutes=15), 21.0),      # t=15: reaches target
+            (base_time, 18.0),  # t=0: dead time starts
+            (base_time + timedelta(minutes=2), 18.1),  # t=2: still in dead time
+            (base_time + timedelta(minutes=5), 18.5),  # t=5: dead time ends (3min delay)
+            (base_time + timedelta(minutes=10), 19.5),  # t=10
+            (base_time + timedelta(minutes=15), 21.0),  # t=15: reaches target
         ]
 
         # With 3 minute (180 second) transport delay
         # Rise time should be (15min - 3min) = 12 minutes (excludes dead time)
         # Without delay it would be 15 minutes
-        rise_time = calculate_rise_time(
-            history, start_temp=18.0, target_temp=21.0, skip_seconds=180
-        )
+        rise_time = calculate_rise_time(history, start_temp=18.0, target_temp=21.0, skip_seconds=180)
         assert rise_time == pytest.approx(12.0, abs=0.01)
 
     def test_calculate_rise_time_with_zero_transport_delay(self):
@@ -2281,25 +2339,21 @@ class TestCalculateRiseTime:
         ]
 
         # With zero transport delay, should behave as before
-        rise_time = calculate_rise_time(
-            history, start_temp=18.0, target_temp=21.0, skip_seconds=0.0
-        )
+        rise_time = calculate_rise_time(history, start_temp=18.0, target_temp=21.0, skip_seconds=0.0)
         assert rise_time == pytest.approx(30.0, abs=0.01)
 
     def test_calculate_rise_time_target_reached_during_dead_time(self):
         """Test rise_time when target is reached during dead time (unrealistic but edge case)."""
         base_time = datetime(2024, 1, 1, 10, 0, 0)
         history = [
-            (base_time, 18.0),                              # t=0
-            (base_time + timedelta(minutes=1), 21.0),       # t=1: reaches target (during dead time)
-            (base_time + timedelta(minutes=5), 21.5),       # t=5: dead time ends
+            (base_time, 18.0),  # t=0
+            (base_time + timedelta(minutes=1), 21.0),  # t=1: reaches target (during dead time)
+            (base_time + timedelta(minutes=5), 21.5),  # t=5: dead time ends
         ]
 
         # With 3 minute (180s) transport delay, first valid sample is at t=5min (300s)
         # Rise time = (300s - 180s) / 60 = 120s / 60 = 2 minutes
-        rise_time = calculate_rise_time(
-            history, start_temp=18.0, target_temp=21.0, skip_seconds=180
-        )
+        rise_time = calculate_rise_time(history, start_temp=18.0, target_temp=21.0, skip_seconds=180)
         assert rise_time == pytest.approx(2.0, abs=0.01)
 
 
@@ -2309,6 +2363,7 @@ def test_calculate_rise_time_module_exists():
     from custom_components.adaptive_climate.adaptive.cycle_analysis import (
         calculate_rise_time,
     )
+
     assert calculate_rise_time is not None
 
 
@@ -2346,20 +2401,24 @@ class TestAdaptiveLearnerSerialization:
         learner = AdaptiveLearner()
 
         # Add cycles with various metrics
-        learner.add_cycle_metrics(CycleMetrics(
-            overshoot=0.5,
-            undershoot=0.2,
-            settling_time=45.0,
-            oscillations=1,
-            rise_time=30.0,
-        ))
-        learner.add_cycle_metrics(CycleMetrics(
-            overshoot=0.3,
-            undershoot=0.1,
-            settling_time=40.0,
-            oscillations=0,
-            rise_time=25.0,
-        ))
+        learner.add_cycle_metrics(
+            CycleMetrics(
+                overshoot=0.5,
+                undershoot=0.2,
+                settling_time=45.0,
+                oscillations=1,
+                rise_time=30.0,
+            )
+        )
+        learner.add_cycle_metrics(
+            CycleMetrics(
+                overshoot=0.3,
+                undershoot=0.1,
+                settling_time=40.0,
+                oscillations=0,
+                rise_time=25.0,
+            )
+        )
 
         result = learner.to_dict()
 
@@ -2392,16 +2451,18 @@ class TestAdaptiveLearnerSerialization:
 
         # Add cycles and make adjustment to set last_adjustment_time
         for _ in range(6):
-            learner.add_cycle_metrics(CycleMetrics(
-                overshoot=0.6,
-                oscillations=0,
-                settling_time=30,
-                rise_time=20,
-            ))
+            learner.add_cycle_metrics(
+                CycleMetrics(
+                    overshoot=0.6,
+                    oscillations=0,
+                    settling_time=30,
+                    rise_time=20,
+                )
+            )
 
         # Trigger adjustment with mocked time
         fake_now = datetime.now()
-        with patch('custom_components.adaptive_climate.adaptive.learning.dt_util') as mock_dt_util:
+        with patch("custom_components.adaptive_climate.adaptive.learning.dt_util") as mock_dt_util:
             mock_dt_util.utcnow.return_value = fake_now
             learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
 
@@ -2419,13 +2480,15 @@ class TestAdaptiveLearnerSerialization:
         learner = AdaptiveLearner()
 
         # Add cycle with some None values
-        learner.add_cycle_metrics(CycleMetrics(
-            overshoot=None,
-            undershoot=None,
-            settling_time=None,
-            oscillations=2,
-            rise_time=None,
-        ))
+        learner.add_cycle_metrics(
+            CycleMetrics(
+                overshoot=None,
+                undershoot=None,
+                settling_time=None,
+                oscillations=2,
+                rise_time=None,
+            )
+        )
 
         result = learner.to_dict()
 
@@ -2456,16 +2519,18 @@ class TestAdaptiveLearnerSerialization:
         learner = AdaptiveLearner()
 
         # Add cycle with decay metrics
-        learner.add_cycle_metrics(CycleMetrics(
-            overshoot=0.3,
-            undershoot=0.1,
-            settling_time=35.0,
-            oscillations=0,
-            rise_time=25.0,
-            integral_at_tolerance_entry=120.0,
-            integral_at_setpoint_cross=85.0,
-            decay_contribution=35.0,
-        ))
+        learner.add_cycle_metrics(
+            CycleMetrics(
+                overshoot=0.3,
+                undershoot=0.1,
+                settling_time=35.0,
+                oscillations=0,
+                rise_time=25.0,
+                integral_at_tolerance_entry=120.0,
+                integral_at_setpoint_cross=85.0,
+                decay_contribution=35.0,
+            )
+        )
 
         result = learner.to_dict()
 
@@ -2482,14 +2547,16 @@ class TestAdaptiveLearnerSerialization:
         learner = AdaptiveLearner()
 
         # Add cycle with None decay metrics
-        learner.add_cycle_metrics(CycleMetrics(
-            overshoot=0.2,
-            oscillations=1,
-            settling_time=30.0,
-            integral_at_tolerance_entry=None,
-            integral_at_setpoint_cross=None,
-            decay_contribution=None,
-        ))
+        learner.add_cycle_metrics(
+            CycleMetrics(
+                overshoot=0.2,
+                oscillations=1,
+                settling_time=30.0,
+                integral_at_tolerance_entry=None,
+                integral_at_setpoint_cross=None,
+                decay_contribution=None,
+            )
+        )
 
         result = learner.to_dict()
 
@@ -2503,14 +2570,16 @@ class TestAdaptiveLearnerSerialization:
         learner = AdaptiveLearner()
 
         # Add cycle with mode='heating'
-        learner.add_cycle_metrics(CycleMetrics(
-            overshoot=0.3,
-            undershoot=0.1,
-            settling_time=35.0,
-            oscillations=0,
-            rise_time=25.0,
-            mode="heating",
-        ))
+        learner.add_cycle_metrics(
+            CycleMetrics(
+                overshoot=0.3,
+                undershoot=0.1,
+                settling_time=35.0,
+                oscillations=0,
+                rise_time=25.0,
+                mode="heating",
+            )
+        )
 
         result = learner.to_dict()
 
@@ -2527,14 +2596,16 @@ class TestAdaptiveLearnerSerialization:
         learner = AdaptiveLearner()
 
         # Add cycle with mode='cooling'
-        learner.add_cycle_metrics(CycleMetrics(
-            overshoot=0.4,
-            undershoot=0.2,
-            settling_time=40.0,
-            oscillations=1,
-            rise_time=30.0,
-            mode="cooling",
-        ))
+        learner.add_cycle_metrics(
+            CycleMetrics(
+                overshoot=0.4,
+                undershoot=0.2,
+                settling_time=40.0,
+                oscillations=1,
+                rise_time=30.0,
+                mode="cooling",
+            )
+        )
 
         result = learner.to_dict()
 
@@ -2547,11 +2618,13 @@ class TestAdaptiveLearnerSerialization:
         learner = AdaptiveLearner()
 
         # Add cycle without mode field (defaults to None)
-        learner.add_cycle_metrics(CycleMetrics(
-            overshoot=0.2,
-            oscillations=1,
-            settling_time=30.0,
-        ))
+        learner.add_cycle_metrics(
+            CycleMetrics(
+                overshoot=0.2,
+                oscillations=1,
+                settling_time=30.0,
+            )
+        )
 
         result = learner.to_dict()
 
@@ -2563,7 +2636,7 @@ class TestAdaptiveLearnerSerialization:
 def test_adaptive_learner_serialization_exists():
     """Marker test to ensure to_dict method exists on AdaptiveLearner."""
     learner = AdaptiveLearner()
-    assert hasattr(learner, 'to_dict')
+    assert hasattr(learner, "to_dict")
     assert callable(learner.to_dict)
 
 
@@ -2715,20 +2788,24 @@ class TestAdaptiveLearnerRestoration:
         learner1 = AdaptiveLearner()
 
         # Set up state
-        learner1.add_cycle_metrics(CycleMetrics(
-            overshoot=0.5,
-            undershoot=0.2,
-            settling_time=45.0,
-            oscillations=1,
-            rise_time=30.0,
-        ))
-        learner1.add_cycle_metrics(CycleMetrics(
-            overshoot=None,
-            undershoot=None,
-            settling_time=None,
-            oscillations=2,
-            rise_time=None,
-        ))
+        learner1.add_cycle_metrics(
+            CycleMetrics(
+                overshoot=0.5,
+                undershoot=0.2,
+                settling_time=45.0,
+                oscillations=1,
+                rise_time=30.0,
+            )
+        )
+        learner1.add_cycle_metrics(
+            CycleMetrics(
+                overshoot=None,
+                undershoot=None,
+                settling_time=None,
+                oscillations=2,
+                rise_time=None,
+            )
+        )
         learner1._consecutive_converged_cycles = 5
         learner1._pid_converged_for_ke = True
         learner1._auto_apply_count = 3
@@ -2768,7 +2845,7 @@ class TestAdaptiveLearnerRestoration:
 def test_adaptive_learner_restoration_exists():
     """Marker test to ensure restore_from_dict method exists on AdaptiveLearner."""
     learner = AdaptiveLearner()
-    assert hasattr(learner, 'restore_from_dict')
+    assert hasattr(learner, "restore_from_dict")
     assert callable(learner.restore_from_dict)
 
 
@@ -2933,27 +3010,33 @@ def test_restore_cycle_mode_field_roundtrip():
     learner1 = AdaptiveLearner()
 
     # Add cycles with different modes
-    learner1.add_cycle_metrics(CycleMetrics(
-        overshoot=0.5,
-        undershoot=0.2,
-        settling_time=45.0,
-        oscillations=1,
-        rise_time=30.0,
-        mode="heating",
-    ))
-    learner1.add_cycle_metrics(CycleMetrics(
-        overshoot=0.3,
-        undershoot=0.1,
-        settling_time=40.0,
-        oscillations=0,
-        rise_time=25.0,
-        mode="cooling",
-    ))
-    learner1.add_cycle_metrics(CycleMetrics(
-        overshoot=0.4,
-        settling_time=38.0,
-        # mode defaults to None
-    ))
+    learner1.add_cycle_metrics(
+        CycleMetrics(
+            overshoot=0.5,
+            undershoot=0.2,
+            settling_time=45.0,
+            oscillations=1,
+            rise_time=30.0,
+            mode="heating",
+        )
+    )
+    learner1.add_cycle_metrics(
+        CycleMetrics(
+            overshoot=0.3,
+            undershoot=0.1,
+            settling_time=40.0,
+            oscillations=0,
+            rise_time=25.0,
+            mode="cooling",
+        )
+    )
+    learner1.add_cycle_metrics(
+        CycleMetrics(
+            overshoot=0.4,
+            settling_time=38.0,
+            # mode defaults to None
+        )
+    )
 
     # Serialize
     data = learner1.to_dict()
@@ -2994,18 +3077,20 @@ class TestDecayMetricsPassing:
 
         # Add cycles with decay metrics
         for i in range(6):
-            learner.add_cycle_metrics(CycleMetrics(
-                overshoot=0.3,
-                oscillations=0,
-                settling_time=40,
-                rise_time=25,
-                integral_at_tolerance_entry=50.0 + i,
-                integral_at_setpoint_cross=30.0 + i,
-                decay_contribution=10.0 + i,
-            ))
+            learner.add_cycle_metrics(
+                CycleMetrics(
+                    overshoot=0.3,
+                    oscillations=0,
+                    settling_time=40,
+                    rise_time=25,
+                    integral_at_tolerance_entry=50.0 + i,
+                    integral_at_setpoint_cross=30.0 + i,
+                    decay_contribution=10.0 + i,
+                )
+            )
 
         # Mock evaluate_pid_rules to inspect what it receives
-        with patch('custom_components.adaptive_climate.adaptive.learning.evaluate_pid_rules') as mock_evaluate:
+        with patch("custom_components.adaptive_climate.adaptive.learning.evaluate_pid_rules") as mock_evaluate:
             # Configure mock to return empty list (no rules triggered)
             mock_evaluate.return_value = []
 
@@ -3019,14 +3104,14 @@ class TestDecayMetricsPassing:
             call_args = mock_evaluate.call_args
 
             # Verify decay_contribution parameter was passed
-            assert 'decay_contribution' in call_args.kwargs
+            assert "decay_contribution" in call_args.kwargs
             # Should be the average of the last 6 cycles (10, 11, 12, 13, 14, 15)
-            assert call_args.kwargs['decay_contribution'] == pytest.approx(12.5, abs=0.01)
+            assert call_args.kwargs["decay_contribution"] == pytest.approx(12.5, abs=0.01)
 
             # Verify integral_at_tolerance_entry parameter was passed
-            assert 'integral_at_tolerance_entry' in call_args.kwargs
+            assert "integral_at_tolerance_entry" in call_args.kwargs
             # Should be the average of the last 6 cycles (50, 51, 52, 53, 54, 55)
-            assert call_args.kwargs['integral_at_tolerance_entry'] == pytest.approx(52.5, abs=0.01)
+            assert call_args.kwargs["integral_at_tolerance_entry"] == pytest.approx(52.5, abs=0.01)
 
     def test_pid_adjustment_passes_none_when_no_decay_metrics(self):
         """Test calculate_pid_adjustment passes None when cycles lack decay metrics."""
@@ -3036,16 +3121,18 @@ class TestDecayMetricsPassing:
 
         # Add cycles WITHOUT decay metrics
         for _ in range(6):
-            learner.add_cycle_metrics(CycleMetrics(
-                overshoot=0.3,
-                oscillations=0,
-                settling_time=40,
-                rise_time=25,
-                # No decay metrics
-            ))
+            learner.add_cycle_metrics(
+                CycleMetrics(
+                    overshoot=0.3,
+                    oscillations=0,
+                    settling_time=40,
+                    rise_time=25,
+                    # No decay metrics
+                )
+            )
 
         # Mock evaluate_pid_rules to inspect what it receives
-        with patch('custom_components.adaptive_climate.adaptive.learning.evaluate_pid_rules') as mock_evaluate:
+        with patch("custom_components.adaptive_climate.adaptive.learning.evaluate_pid_rules") as mock_evaluate:
             mock_evaluate.return_value = []
 
             # Call calculate_pid_adjustment
@@ -3053,8 +3140,8 @@ class TestDecayMetricsPassing:
 
             # Verify evaluate_pid_rules was called with None for decay metrics
             call_args = mock_evaluate.call_args
-            assert call_args.kwargs['decay_contribution'] is None
-            assert call_args.kwargs['integral_at_tolerance_entry'] is None
+            assert call_args.kwargs["decay_contribution"] is None
+            assert call_args.kwargs["integral_at_tolerance_entry"] is None
 
     def test_pid_adjustment_passes_partial_decay_metrics(self):
         """Test calculate_pid_adjustment handles mix of cycles with/without decay metrics."""
@@ -3066,25 +3153,29 @@ class TestDecayMetricsPassing:
         for i in range(6):
             if i < 3:
                 # First 3 cycles have decay metrics
-                learner.add_cycle_metrics(CycleMetrics(
-                    overshoot=0.3,
-                    oscillations=0,
-                    settling_time=40,
-                    rise_time=25,
-                    integral_at_tolerance_entry=50.0,
-                    decay_contribution=10.0,
-                ))
+                learner.add_cycle_metrics(
+                    CycleMetrics(
+                        overshoot=0.3,
+                        oscillations=0,
+                        settling_time=40,
+                        rise_time=25,
+                        integral_at_tolerance_entry=50.0,
+                        decay_contribution=10.0,
+                    )
+                )
             else:
                 # Last 3 cycles don't have decay metrics
-                learner.add_cycle_metrics(CycleMetrics(
-                    overshoot=0.3,
-                    oscillations=0,
-                    settling_time=40,
-                    rise_time=25,
-                ))
+                learner.add_cycle_metrics(
+                    CycleMetrics(
+                        overshoot=0.3,
+                        oscillations=0,
+                        settling_time=40,
+                        rise_time=25,
+                    )
+                )
 
         # Mock evaluate_pid_rules to inspect what it receives
-        with patch('custom_components.adaptive_climate.adaptive.learning.evaluate_pid_rules') as mock_evaluate:
+        with patch("custom_components.adaptive_climate.adaptive.learning.evaluate_pid_rules") as mock_evaluate:
             mock_evaluate.return_value = []
 
             # Call calculate_pid_adjustment
@@ -3093,9 +3184,9 @@ class TestDecayMetricsPassing:
             # Verify evaluate_pid_rules was called with averages of only the cycles with metrics
             call_args = mock_evaluate.call_args
             # Should average only the 3 cycles with decay_contribution (all 10.0)
-            assert call_args.kwargs['decay_contribution'] == pytest.approx(10.0, abs=0.01)
+            assert call_args.kwargs["decay_contribution"] == pytest.approx(10.0, abs=0.01)
             # Should average only the 3 cycles with integral_at_tolerance_entry (all 50.0)
-            assert call_args.kwargs['integral_at_tolerance_entry'] == pytest.approx(50.0, abs=0.01)
+            assert call_args.kwargs["integral_at_tolerance_entry"] == pytest.approx(50.0, abs=0.01)
 
 
 # Marker test for Story 6.4
@@ -3106,8 +3197,8 @@ def test_decay_metrics_passing_exists():
 
     # Verify evaluate_pid_rules has decay_contribution and integral_at_tolerance_entry parameters
     sig = inspect.signature(evaluate_pid_rules)
-    assert 'decay_contribution' in sig.parameters
-    assert 'integral_at_tolerance_entry' in sig.parameters
+    assert "decay_contribution" in sig.parameters
+    assert "integral_at_tolerance_entry" in sig.parameters
 
 
 # ============================================================================
@@ -3575,9 +3666,7 @@ class TestConvergenceThresholdsNewMetrics:
 
     def test_default_convergence_thresholds_includes_inter_cycle_drift(self):
         """Test DEFAULT_CONVERGENCE_THRESHOLDS includes inter_cycle_drift_max."""
-        from custom_components.adaptive_climate.const import (
-            DEFAULT_CONVERGENCE_THRESHOLDS
-        )
+        from custom_components.adaptive_climate.const import DEFAULT_CONVERGENCE_THRESHOLDS
 
         assert "inter_cycle_drift_max" in DEFAULT_CONVERGENCE_THRESHOLDS
         assert isinstance(DEFAULT_CONVERGENCE_THRESHOLDS["inter_cycle_drift_max"], (int, float))
@@ -3585,9 +3674,7 @@ class TestConvergenceThresholdsNewMetrics:
 
     def test_default_convergence_thresholds_includes_settling_mae(self):
         """Test DEFAULT_CONVERGENCE_THRESHOLDS includes settling_mae_max."""
-        from custom_components.adaptive_climate.const import (
-            DEFAULT_CONVERGENCE_THRESHOLDS
-        )
+        from custom_components.adaptive_climate.const import DEFAULT_CONVERGENCE_THRESHOLDS
 
         assert "settling_mae_max" in DEFAULT_CONVERGENCE_THRESHOLDS
         assert isinstance(DEFAULT_CONVERGENCE_THRESHOLDS["settling_mae_max"], (int, float))
@@ -3651,9 +3738,7 @@ class TestConvergenceThresholdsNewMetrics:
 
     def test_get_convergence_thresholds_returns_new_metrics_default(self):
         """Test get_convergence_thresholds() returns new metrics for default."""
-        from custom_components.adaptive_climate.const import (
-            get_convergence_thresholds
-        )
+        from custom_components.adaptive_climate.const import get_convergence_thresholds
 
         thresholds = get_convergence_thresholds(None)
 
@@ -3765,8 +3850,8 @@ class TestModeSpecificCycleHistories:
         learner = AdaptiveLearner()
 
         # Verify separate histories exist
-        assert hasattr(learner, '_heating_cycle_history')
-        assert hasattr(learner, '_cooling_cycle_history')
+        assert hasattr(learner, "_heating_cycle_history")
+        assert hasattr(learner, "_cooling_cycle_history")
         assert isinstance(learner._heating_cycle_history, list)
         assert isinstance(learner._cooling_cycle_history, list)
 
@@ -3779,8 +3864,8 @@ class TestModeSpecificCycleHistories:
         learner = AdaptiveLearner()
 
         # Verify separate confidence tracking exists
-        assert hasattr(learner, '_heating_convergence_confidence')
-        assert hasattr(learner, '_cooling_convergence_confidence')
+        assert hasattr(learner, "_heating_convergence_confidence")
+        assert hasattr(learner, "_cooling_convergence_confidence")
 
         # Both should start at 0.0
         assert learner._heating_convergence_confidence == 0.0
@@ -3791,8 +3876,8 @@ class TestModeSpecificCycleHistories:
         learner = AdaptiveLearner()
 
         # Verify separate auto_apply counters exist
-        assert hasattr(learner, '_heating_auto_apply_count')
-        assert hasattr(learner, '_cooling_auto_apply_count')
+        assert hasattr(learner, "_heating_auto_apply_count")
+        assert hasattr(learner, "_cooling_auto_apply_count")
 
         # Both should start at 0
         assert learner._heating_auto_apply_count == 0
@@ -3879,15 +3964,13 @@ class TestModeSpecificCycleHistories:
         # Add 7 heating cycles (should evict 2)
         for i in range(7):
             learner.add_cycle_metrics(
-                CycleMetrics(overshoot=float(i), oscillations=0, settling_time=30.0),
-                mode=HVACMode.HEAT
+                CycleMetrics(overshoot=float(i), oscillations=0, settling_time=30.0), mode=HVACMode.HEAT
             )
 
         # Add 3 cooling cycles (should not evict any)
         for i in range(3):
             learner.add_cycle_metrics(
-                CycleMetrics(overshoot=float(i), oscillations=0, settling_time=20.0),
-                mode=HVACMode.COOL
+                CycleMetrics(overshoot=float(i), oscillations=0, settling_time=20.0), mode=HVACMode.COOL
             )
 
         # Heating should have evicted oldest 2, keeping last 5
@@ -4067,24 +4150,19 @@ class TestModeSpecificCycleHistories:
         # Add heating cycles with overshoot (should trigger adjustment)
         for _ in range(6):
             learner.add_cycle_metrics(
-                CycleMetrics(overshoot=0.8, oscillations=0, settling_time=30.0, rise_time=20.0),
-                mode=HVACMode.HEAT
+                CycleMetrics(overshoot=0.8, oscillations=0, settling_time=30.0, rise_time=20.0), mode=HVACMode.HEAT
             )
 
         # Add different cooling cycles (should not affect heating calculation)
         for _ in range(6):
             learner.add_cycle_metrics(
-                CycleMetrics(overshoot=0.1, oscillations=0, settling_time=20.0, rise_time=15.0),
-                mode=HVACMode.COOL
+                CycleMetrics(overshoot=0.1, oscillations=0, settling_time=20.0, rise_time=15.0), mode=HVACMode.COOL
             )
 
         # Calculate adjustment for heating mode
         # Note: Use Kd=2.0 so 20% increase (to 2.4) stays under PID_LIMITS["kd_max"]=3.3
         adjustment = learner.calculate_pid_adjustment(
-            current_kp=100.0,
-            current_ki=1.0,
-            current_kd=2.0,
-            mode=HVACMode.HEAT
+            current_kp=100.0, current_ki=1.0, current_kd=2.0, mode=HVACMode.HEAT
         )
 
         # Should get adjustment based on heating overshoot
@@ -4101,24 +4179,19 @@ class TestModeSpecificCycleHistories:
         # Add cooling cycles with overshoot (should trigger adjustment)
         for _ in range(6):
             learner.add_cycle_metrics(
-                CycleMetrics(overshoot=0.8, oscillations=0, settling_time=30.0, rise_time=20.0),
-                mode=HVACMode.COOL
+                CycleMetrics(overshoot=0.8, oscillations=0, settling_time=30.0, rise_time=20.0), mode=HVACMode.COOL
             )
 
         # Add different heating cycles (should not affect cooling calculation)
         for _ in range(6):
             learner.add_cycle_metrics(
-                CycleMetrics(overshoot=0.1, oscillations=0, settling_time=20.0, rise_time=15.0),
-                mode=HVACMode.HEAT
+                CycleMetrics(overshoot=0.1, oscillations=0, settling_time=20.0, rise_time=15.0), mode=HVACMode.HEAT
             )
 
         # Calculate adjustment for cooling mode
         # Note: Use Kd=2.0 so 20% increase (to 2.4) stays under PID_LIMITS["kd_max"]=3.3
         adjustment = learner.calculate_pid_adjustment(
-            current_kp=100.0,
-            current_ki=1.0,
-            current_kd=2.0,
-            mode=HVACMode.COOL
+            current_kp=100.0, current_ki=1.0, current_kd=2.0, mode=HVACMode.COOL
         )
 
         # Should get adjustment based on cooling overshoot
@@ -4135,12 +4208,10 @@ class TestModeSpecificCycleHistories:
         # Add cycles to both modes
         for _ in range(3):
             learner.add_cycle_metrics(
-                CycleMetrics(overshoot=0.5, oscillations=0, settling_time=30.0),
-                mode=HVACMode.HEAT
+                CycleMetrics(overshoot=0.5, oscillations=0, settling_time=30.0), mode=HVACMode.HEAT
             )
             learner.add_cycle_metrics(
-                CycleMetrics(overshoot=0.3, oscillations=0, settling_time=20.0),
-                mode=HVACMode.COOL
+                CycleMetrics(overshoot=0.3, oscillations=0, settling_time=20.0), mode=HVACMode.COOL
             )
 
         assert len(learner._heating_cycle_history) == 3
@@ -4398,8 +4469,7 @@ class TestHeatingRateLearnerIntegration:
         # Add observations via heating_rate_learner
         for _ in range(3):
             learner._heating_rate_learner.add_observation(
-                rate=0.5, duration_min=60, source="session",
-                stalled=False, delta=3.0, outdoor_temp=8.0
+                rate=0.5, duration_min=60, source="session", stalled=False, delta=3.0, outdoor_temp=8.0
             )
 
         rate, source = learner.get_heating_rate(delta=3.0, outdoor_temp=8.0)

@@ -1,4 +1,5 @@
 """Tests for learning milestone notifications."""
+
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
@@ -67,7 +68,10 @@ def test_context_string_per_tier():
     """Correct context string for each tier."""
     assert "convergence" in TIER_CONTEXT["stable"].lower()
     assert "night setback" in TIER_CONTEXT["tuned"].lower() or "auto-apply" in TIER_CONTEXT["tuned"].lower()
-    assert "best performance" in TIER_CONTEXT["optimized"].lower() or "high confidence" in TIER_CONTEXT["optimized"].lower()
+    assert (
+        "best performance" in TIER_CONTEXT["optimized"].lower()
+        or "high confidence" in TIER_CONTEXT["optimized"].lower()
+    )
     assert "collecting" in TIER_CONTEXT
 
 
@@ -132,7 +136,9 @@ async def test_persistent_includes_context(tracker, mock_notification_manager):
 async def test_no_notification_manager(mock_notification_manager):
     """Gracefully handles missing notification manager."""
     tracker = LearningMilestoneTracker(
-        zone_id="test", zone_name="Test", notification_manager=None,
+        zone_id="test",
+        zone_name="Test",
+        notification_manager=None,
     )
     await tracker.async_check_milestone("collecting", 25)
     result = await tracker.async_check_milestone("stable", 40)

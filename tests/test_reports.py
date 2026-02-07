@@ -1,4 +1,5 @@
 """Tests for weekly performance reports."""
+
 from datetime import datetime
 import pytest
 
@@ -15,17 +16,28 @@ def test_markdown_report_all_zones():
 
     report = WeeklyReport(start_date, end_date)
     report.add_zone_data(
-        "living_room", duty_cycle=45.0, comfort_score=85.0,
-        learning_status="tuned", confidence=63, confidence_prev=55,
+        "living_room",
+        duty_cycle=45.0,
+        comfort_score=85.0,
+        learning_status="tuned",
+        confidence=63,
+        confidence_prev=55,
         recovery_cycles=2,
     )
     report.add_zone_data(
-        "kitchen", duty_cycle=30.0, comfort_score=72.0,
-        learning_status="collecting", confidence=28,
+        "kitchen",
+        duty_cycle=30.0,
+        comfort_score=72.0,
+        learning_status="collecting",
+        confidence=28,
     )
     report.add_zone_data(
-        "office", duty_cycle=50.0, comfort_score=62.0,
-        learning_status="stable", confidence=45, comfort_score_prev=81.0,
+        "office",
+        duty_cycle=50.0,
+        comfort_score=62.0,
+        learning_status="stable",
+        confidence=45,
+        comfort_score_prev=81.0,
         contact_pauses=3,
     )
 
@@ -50,8 +62,11 @@ def test_markdown_report_no_problems():
 
     report = WeeklyReport(start_date, end_date)
     report.add_zone_data(
-        "living_room", duty_cycle=45.0, comfort_score=85.0,
-        learning_status="tuned", confidence=63,
+        "living_room",
+        duty_cycle=45.0,
+        comfort_score=85.0,
+        learning_status="tuned",
+        confidence=63,
     )
 
     md = report.format_markdown_report()
@@ -66,8 +81,12 @@ def test_markdown_report_confidence_delta():
 
     report = WeeklyReport(start_date, end_date)
     report.add_zone_data(
-        "living_room", duty_cycle=45.0, comfort_score=85.0,
-        learning_status="stable", confidence=45, confidence_prev=37,
+        "living_room",
+        duty_cycle=45.0,
+        comfort_score=85.0,
+        learning_status="stable",
+        confidence=45,
+        confidence_prev=37,
     )
 
     md = report.format_markdown_report()
@@ -81,12 +100,20 @@ def test_ios_summary_with_highlights():
 
     report = WeeklyReport(start_date, end_date)
     report.add_zone_data(
-        "living_room", duty_cycle=45.0, comfort_score=85.0,
-        learning_status="tuned", confidence=63, learning_status_prev="stable",
+        "living_room",
+        duty_cycle=45.0,
+        comfort_score=85.0,
+        learning_status="tuned",
+        confidence=63,
+        learning_status_prev="stable",
     )
     report.add_zone_data(
-        "office", duty_cycle=50.0, comfort_score=62.0,
-        learning_status="collecting", confidence=20, comfort_score_prev=81.0,
+        "office",
+        duty_cycle=50.0,
+        comfort_score=62.0,
+        learning_status="collecting",
+        confidence=20,
+        comfort_score_prev=81.0,
     )
     report.health_status = "healthy"
 
@@ -103,8 +130,11 @@ def test_ios_summary_no_highlights():
 
     report = WeeklyReport(start_date, end_date)
     report.add_zone_data(
-        "living_room", duty_cycle=45.0, comfort_score=85.0,
-        learning_status="stable", confidence=45,
+        "living_room",
+        duty_cycle=45.0,
+        comfort_score=85.0,
+        learning_status="stable",
+        confidence=45,
     )
     report.health_status = "healthy"
 
@@ -134,10 +164,14 @@ def test_zone_sorting_by_status():
 def test_zone_report_data_properties():
     """Test ZoneReportData computed properties."""
     z = ZoneReportData(
-        zone_id="living_room", duty_cycle=45.0,
-        comfort_score=60.0, comfort_score_prev=80.0,
-        learning_status="tuned", learning_status_prev="stable",
-        confidence=63, confidence_prev=55,
+        zone_id="living_room",
+        duty_cycle=45.0,
+        comfort_score=60.0,
+        comfort_score_prev=80.0,
+        learning_status="tuned",
+        learning_status_prev="stable",
+        confidence=63,
+        confidence_prev=55,
     )
     assert z.display_name == "Living Room"
     assert z.confidence_delta == 8
@@ -148,8 +182,11 @@ def test_zone_report_data_properties():
 def test_zone_no_problems():
     """Zone with good metrics has no problems."""
     z = ZoneReportData(
-        zone_id="bedroom", duty_cycle=30.0,
-        comfort_score=85.0, humidity_pauses=1, contact_pauses=0,
+        zone_id="bedroom",
+        duty_cycle=30.0,
+        comfort_score=85.0,
+        humidity_pauses=1,
+        contact_pauses=0,
     )
     assert z.has_comfort_problem is False
     assert z.has_pause_problems is False
@@ -163,8 +200,11 @@ def test_report_to_dict():
 
     report = WeeklyReport(start_date, end_date)
     report.add_zone_data(
-        "living_room", duty_cycle=45.0, comfort_score=85.0,
-        learning_status="tuned", confidence=63,
+        "living_room",
+        duty_cycle=45.0,
+        comfort_score=85.0,
+        learning_status="tuned",
+        confidence=63,
     )
 
     d = report.to_dict()
@@ -194,8 +234,11 @@ def test_problem_line_format():
     """Problem line includes comfort and pause details."""
     report = WeeklyReport(datetime(2024, 1, 27), datetime(2024, 2, 2))
     report.add_zone_data(
-        "bathroom", duty_cycle=30.0, comfort_score=50.0,
-        humidity_pauses=5, contact_pauses=4,
+        "bathroom",
+        duty_cycle=30.0,
+        comfort_score=50.0,
+        humidity_pauses=5,
+        contact_pauses=4,
     )
     md = report.format_markdown_report()
     assert "5 humidity" in md

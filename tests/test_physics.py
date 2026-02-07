@@ -83,10 +83,7 @@ class TestThermalTimeConstant:
         # At baseline, expect 15% reduction
         tau_base = 200 / 50.0  # 4.0
         tau_with_windows = calculate_thermal_time_constant(
-            volume_m3=200,
-            window_area_m2=5.0,
-            floor_area_m2=25.0,
-            window_rating="hr++"
+            volume_m3=200, window_area_m2=5.0, floor_area_m2=25.0, window_rating="hr++"
         )
         # Heat loss factor = (1.1/1.1) * (0.2/0.2) = 1.0 (baseline)
         # tau = tau_base * (1 - 0.15 * 1.0) = 4.0 * 0.85 = 3.4
@@ -98,10 +95,7 @@ class TestThermalTimeConstant:
         # 25 m2 floor, 5 m2 window = 20% ratio
         tau_base = 200 / 50.0  # 4.0
         tau_with_single = calculate_thermal_time_constant(
-            volume_m3=200,
-            window_area_m2=5.0,
-            floor_area_m2=25.0,
-            window_rating="single"
+            volume_m3=200, window_area_m2=5.0, floor_area_m2=25.0, window_rating="single"
         )
         # Heat loss factor = (5.8/1.1) * (0.2/0.2) = 5.27
         # tau reduction = 0.15 * 5.27 = 0.79 (clamped to 0.4 max)
@@ -114,10 +108,7 @@ class TestThermalTimeConstant:
         # 25 m2 floor, 5 m2 window = 20% ratio
         tau_base = 200 / 50.0  # 4.0
         tau_with_triple = calculate_thermal_time_constant(
-            volume_m3=200,
-            window_area_m2=5.0,
-            floor_area_m2=25.0,
-            window_rating="triple"
+            volume_m3=200, window_area_m2=5.0, floor_area_m2=25.0, window_rating="triple"
         )
         # Heat loss factor = (0.6/1.1) * (0.2/0.2) = 0.55
         # tau = 4.0 * (1 - 0.15 * 0.55) = 4.0 * 0.92 = 3.67
@@ -128,10 +119,7 @@ class TestThermalTimeConstant:
         # 25 m2 floor, 10 m2 window = 40% ratio (double baseline)
         tau_base = 200 / 50.0  # 4.0
         tau_with_large = calculate_thermal_time_constant(
-            volume_m3=200,
-            window_area_m2=10.0,
-            floor_area_m2=25.0,
-            window_rating="hr++"
+            volume_m3=200, window_area_m2=10.0, floor_area_m2=25.0, window_rating="hr++"
         )
         # Heat loss factor = (1.1/1.1) * (0.4/0.2) = 2.0
         # tau = 4.0 * (1 - 0.15 * 2.0) = 4.0 * 0.7 = 2.8
@@ -391,8 +379,8 @@ class TestKeCalculation:
 
         # Check approximate values (A rating base is 0.45)
         assert ke_floor == pytest.approx(0.54, abs=0.05)  # 0.45 * 1.2
-        assert ke_rad == pytest.approx(0.45, abs=0.05)    # 0.45 * 1.0
-        assert ke_air == pytest.approx(0.27, abs=0.05)    # 0.45 * 0.6
+        assert ke_rad == pytest.approx(0.45, abs=0.05)  # 0.45 * 1.0
+        assert ke_air == pytest.approx(0.27, abs=0.05)  # 0.45 * 0.6
 
     def test_ke_vs_p_term_ratio(self):
         """Test that Ke contributes 10-30% outdoor compensation in typical scenarios.
@@ -433,11 +421,7 @@ class TestKeCalculation:
 
         # Ke with 20% window ratio (baseline)
         ke_with_windows = calculate_initial_ke(
-            energy_rating="B",
-            window_area_m2=5.0,
-            floor_area_m2=25.0,
-            window_rating="hr++",
-            heating_type="radiator"
+            energy_rating="B", window_area_m2=5.0, floor_area_m2=25.0, window_rating="hr++", heating_type="radiator"
         )
 
         # Both should be in valid range
@@ -527,9 +511,7 @@ class TestKdValues:
                 # All reference profile Kd values should be within limits
                 # (extrapolated values may exceed, but will be clamped at runtime)
                 if heating_type == "floor_hydronic" and tau <= 8.0:
-                    assert kd <= kd_max, (
-                        f"{heating_type} tau={tau}: Kd={kd} exceeds kd_max={kd_max}"
-                    )
+                    assert kd <= kd_max, f"{heating_type} tau={tau}: Kd={kd} exceeds kd_max={kd_max}"
 
     def test_kd_forced_air_specific(self):
         """Test forced air Kd reduced from 2.0 to 0.8 (60% reduction)."""
@@ -570,9 +552,7 @@ class TestKdValues:
             # - Slow systems (floor_hydronic) can have Kd/Ki up to 40
             if ki > 0:  # Avoid division by zero
                 ratio = kd / ki
-                assert 0.05 <= ratio <= 50.0, (
-                    f"{heating_type}: Kd/Ki ratio {ratio:.2f} out of expected range"
-                )
+                assert 0.05 <= ratio <= 50.0, f"{heating_type}: Kd/Ki ratio {ratio:.2f} out of expected range"
 
 
 class TestTauAdjustmentExtreme:
@@ -643,8 +623,8 @@ class TestTauAdjustmentExtreme:
         # For slow buildings with high tau, Ki should be reduced significantly
         # to prevent excessive integral windup in slow-responding systems
 
-        tau_fast = 1.0   # Fast convector
-        tau_slow = 4.0   # Slow convector
+        tau_fast = 1.0  # Fast convector
+        tau_slow = 4.0  # Slow convector
 
         kp_fast, ki_fast, kd_fast = calculate_initial_pid(tau_fast, "convector")
         kp_slow, ki_slow, kd_slow = calculate_initial_pid(tau_slow, "convector")
@@ -656,7 +636,7 @@ class TestTauAdjustmentExtreme:
         assert ki_slow == pytest.approx(2.8, abs=0.3)
 
         # Ki should be significantly reduced for slow buildings
-        assert ki_slow < ki_fast / 2, f"Ki_slow={ki_slow} should be < Ki_fast/2={ki_fast/2}"
+        assert ki_slow < ki_fast / 2, f"Ki_slow={ki_slow} should be < Ki_fast/2={ki_fast / 2}"
 
     def test_tau_adjustment_continuity(self):
         """Test that PID gains change smoothly across tau range (no discontinuities)."""
@@ -986,8 +966,8 @@ class TestFloorConstruction:
     def test_basic_ceramic_tile_cement_screed(self):
         """Test basic floor construction: 10mm ceramic tile + 50mm cement screed."""
         layers = [
-            {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
-            {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            {"type": "top_floor", "material": "ceramic_tile", "thickness_mm": 10},
+            {"type": "screed", "material": "cement", "thickness_mm": 50},
         ]
         area_m2 = 50.0
 
@@ -996,25 +976,25 @@ class TestFloorConstruction:
         # Ceramic tile: 0.01m × 50m² × 2300kg/m³ × 840J/(kg·K) = 966,000 J/K
         # Cement screed: 0.05m × 50m² × 2100kg/m³ × 840J/(kg·K) = 4,410,000 J/K
         # Total: 5,376,000 J/K = 5376.0 kJ/K
-        assert result['thermal_mass_kj_k'] == pytest.approx(5376.0, abs=1.0)
+        assert result["thermal_mass_kj_k"] == pytest.approx(5376.0, abs=1.0)
 
         # Thermal resistance:
         # Ceramic tile: 0.01m / 1.3 W/(m·K) = 0.00769 (m²·K)/W
         # Cement screed: 0.05m / 1.4 W/(m·K) = 0.03571 (m²·K)/W
         # Total: 0.0434 (m²·K)/W
-        assert result['thermal_resistance'] == pytest.approx(0.0434, abs=0.001)
+        assert result["thermal_resistance"] == pytest.approx(0.0434, abs=0.001)
 
         # Reference mass (50mm cement screed):
         # 0.05m × 50m² × 2000kg/m³ × 1000J/(kg·K) = 5,000,000 J/K
         # tau_modifier = 5,376,000 / 5,000,000 = 1.0752
         # With 150mm pipe spacing (efficiency 0.87): 1.0752 / 0.87 = 1.24
-        assert result['tau_modifier'] == pytest.approx(1.24, abs=0.05)
+        assert result["tau_modifier"] == pytest.approx(1.24, abs=0.05)
 
     def test_heavy_stone_construction(self):
         """Test heavy floor construction with natural stone."""
         layers = [
-            {'type': 'top_floor', 'material': 'natural_stone', 'thickness_mm': 20},
-            {'type': 'screed', 'material': 'cement', 'thickness_mm': 60},
+            {"type": "top_floor", "material": "natural_stone", "thickness_mm": 20},
+            {"type": "screed", "material": "cement", "thickness_mm": 60},
         ]
         area_m2 = 40.0
 
@@ -1023,18 +1003,18 @@ class TestFloorConstruction:
         # Natural stone: 0.02m × 40m² × 2700kg/m³ × 900J/(kg·K) = 1,944,000 J/K
         # Cement screed: 0.06m × 40m² × 2100kg/m³ × 840J/(kg·K) = 4,233,600 J/K
         # Total: 6,177,600 J/K = 6177.6 kJ/K
-        assert result['thermal_mass_kj_k'] == pytest.approx(6177.6, abs=10.0)
+        assert result["thermal_mass_kj_k"] == pytest.approx(6177.6, abs=10.0)
 
         # Reference mass: 0.05m × 40m² × 2000kg/m³ × 1000J/(kg·K) = 4,000,000 J/K
         # tau_modifier = 6,177,600 / 4,000,000 = 1.544
         # With 150mm pipe spacing: 1.544 / 0.87 = 1.77
-        assert result['tau_modifier'] == pytest.approx(1.77, abs=0.05)
+        assert result["tau_modifier"] == pytest.approx(1.77, abs=0.05)
 
     def test_lightweight_construction(self):
         """Test lightweight floor construction with vinyl and lightweight screed."""
         layers = [
-            {'type': 'top_floor', 'material': 'vinyl', 'thickness_mm': 5},
-            {'type': 'screed', 'material': 'lightweight', 'thickness_mm': 40},
+            {"type": "top_floor", "material": "vinyl", "thickness_mm": 5},
+            {"type": "screed", "material": "lightweight", "thickness_mm": 40},
         ]
         area_m2 = 30.0
 
@@ -1043,57 +1023,57 @@ class TestFloorConstruction:
         # Vinyl: 0.005m × 30m² × 1200kg/m³ × 1400J/(kg·K) = 252,000 J/K
         # Lightweight screed: 0.04m × 30m² × 1000kg/m³ × 1000J/(kg·K) = 1,200,000 J/K
         # Total: 1,452,000 J/K = 1452.0 kJ/K
-        assert result['thermal_mass_kj_k'] == pytest.approx(1452.0, abs=5.0)
+        assert result["thermal_mass_kj_k"] == pytest.approx(1452.0, abs=5.0)
 
         # Reference mass: 0.05m × 30m² × 2000kg/m³ × 1000J/(kg·K) = 3,000,000 J/K
         # tau_modifier = 1,452,000 / 3,000,000 = 0.484
         # With 150mm pipe spacing: 0.484 / 0.87 = 0.56
-        assert result['tau_modifier'] == pytest.approx(0.56, abs=0.02)
+        assert result["tau_modifier"] == pytest.approx(0.56, abs=0.02)
 
     def test_pipe_spacing_100mm(self):
         """Test pipe spacing effect with 100mm spacing (higher efficiency)."""
         layers = [
-            {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
-            {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            {"type": "top_floor", "material": "ceramic_tile", "thickness_mm": 10},
+            {"type": "screed", "material": "cement", "thickness_mm": 50},
         ]
         area_m2 = 50.0
 
         result = calculate_floor_thermal_properties(layers, area_m2, pipe_spacing_mm=100)
 
         # Same thermal mass as test_basic_ceramic_tile_cement_screed
-        assert result['thermal_mass_kj_k'] == pytest.approx(5376.0, abs=1.0)
+        assert result["thermal_mass_kj_k"] == pytest.approx(5376.0, abs=1.0)
 
         # tau_modifier with 100mm spacing (efficiency 0.92): 1.0752 / 0.92 = 1.17
-        assert result['tau_modifier'] == pytest.approx(1.17, abs=0.02)
+        assert result["tau_modifier"] == pytest.approx(1.17, abs=0.02)
 
     def test_pipe_spacing_300mm(self):
         """Test pipe spacing effect with 300mm spacing (lower efficiency)."""
         layers = [
-            {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
-            {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            {"type": "top_floor", "material": "ceramic_tile", "thickness_mm": 10},
+            {"type": "screed", "material": "cement", "thickness_mm": 50},
         ]
         area_m2 = 50.0
 
         result = calculate_floor_thermal_properties(layers, area_m2, pipe_spacing_mm=300)
 
         # Same thermal mass as test_basic_ceramic_tile_cement_screed
-        assert result['thermal_mass_kj_k'] == pytest.approx(5376.0, abs=1.0)
+        assert result["thermal_mass_kj_k"] == pytest.approx(5376.0, abs=1.0)
 
         # tau_modifier with 300mm spacing (efficiency 0.68): 1.0752 / 0.68 = 1.58
-        assert result['tau_modifier'] == pytest.approx(1.58, abs=0.02)
+        assert result["tau_modifier"] == pytest.approx(1.58, abs=0.02)
 
     def test_custom_material_properties(self):
         """Test custom material properties override material lookup."""
         layers = [
             {
-                'type': 'top_floor',
-                'material': 'custom_tile',  # Unknown material
-                'thickness_mm': 15,
-                'conductivity': 2.0,  # Custom properties
-                'density': 2500,
-                'specific_heat': 900,
+                "type": "top_floor",
+                "material": "custom_tile",  # Unknown material
+                "thickness_mm": 15,
+                "conductivity": 2.0,  # Custom properties
+                "density": 2500,
+                "specific_heat": 900,
             },
-            {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            {"type": "screed", "material": "cement", "thickness_mm": 50},
         ]
         area_m2 = 50.0
 
@@ -1102,20 +1082,20 @@ class TestFloorConstruction:
         # Custom tile: 0.015m × 50m² × 2500kg/m³ × 900J/(kg·K) = 1,687,500 J/K
         # Cement screed: 0.05m × 50m² × 2100kg/m³ × 840J/(kg·K) = 4,410,000 J/K
         # Total: 6,097,500 J/K = 6097.5 kJ/K
-        assert result['thermal_mass_kj_k'] == pytest.approx(6097.5, abs=10.0)
+        assert result["thermal_mass_kj_k"] == pytest.approx(6097.5, abs=10.0)
 
         # Thermal resistance:
         # Custom tile: 0.015m / 2.0 W/(m·K) = 0.0075 (m²·K)/W
         # Cement screed: 0.05m / 1.4 W/(m·K) = 0.0357 (m²·K)/W
         # Total: 0.0432 (m²·K)/W
-        assert result['thermal_resistance'] == pytest.approx(0.0432, abs=0.001)
+        assert result["thermal_resistance"] == pytest.approx(0.0432, abs=0.001)
 
     def test_multi_layer_construction(self):
         """Test multi-layer construction with multiple screed layers."""
         layers = [
-            {'type': 'top_floor', 'material': 'porcelain', 'thickness_mm': 12},
-            {'type': 'screed', 'material': 'self_leveling', 'thickness_mm': 5},
-            {'type': 'screed', 'material': 'cement', 'thickness_mm': 45},
+            {"type": "top_floor", "material": "porcelain", "thickness_mm": 12},
+            {"type": "screed", "material": "self_leveling", "thickness_mm": 5},
+            {"type": "screed", "material": "cement", "thickness_mm": 45},
         ]
         area_m2 = 60.0
 
@@ -1125,20 +1105,20 @@ class TestFloorConstruction:
         # Self-leveling: 0.005m × 60m² × 1900kg/m³ × 900J/(kg·K) = 513,000 J/K
         # Cement: 0.045m × 60m² × 2100kg/m³ × 840J/(kg·K) = 4,762,800 J/K
         # Total: 6,796,440 J/K = 6796.44 kJ/K
-        assert result['thermal_mass_kj_k'] == pytest.approx(6796.44, abs=10.0)
+        assert result["thermal_mass_kj_k"] == pytest.approx(6796.44, abs=10.0)
 
         # Thermal resistance:
         # Porcelain: 0.012m / 1.5 = 0.008
         # Self-leveling: 0.005m / 1.3 = 0.00385
         # Cement: 0.045m / 1.4 = 0.03214
         # Total: 0.04399
-        assert result['thermal_resistance'] == pytest.approx(0.044, abs=0.001)
+        assert result["thermal_resistance"] == pytest.approx(0.044, abs=0.001)
 
     def test_thermal_resistance_high(self):
         """Test thermal resistance calculation with insulating materials."""
         layers = [
-            {'type': 'top_floor', 'material': 'carpet', 'thickness_mm': 8},
-            {'type': 'screed', 'material': 'dry_screed', 'thickness_mm': 40},
+            {"type": "top_floor", "material": "carpet", "thickness_mm": 8},
+            {"type": "screed", "material": "dry_screed", "thickness_mm": 40},
         ]
         area_m2 = 25.0
 
@@ -1148,12 +1128,12 @@ class TestFloorConstruction:
         # Carpet: 0.008m / 0.06 W/(m·K) = 0.1333 (m²·K)/W
         # Dry screed: 0.04m / 0.2 W/(m·K) = 0.2000 (m²·K)/W
         # Total: 0.3333 (m²·K)/W
-        assert result['thermal_resistance'] == pytest.approx(0.3333, abs=0.01)
+        assert result["thermal_resistance"] == pytest.approx(0.3333, abs=0.01)
 
     def test_unknown_material_raises_error(self):
         """Test that unknown material raises ValueError."""
         layers = [
-            {'type': 'top_floor', 'material': 'unobtanium', 'thickness_mm': 10},
+            {"type": "top_floor", "material": "unobtanium", "thickness_mm": 10},
         ]
         area_m2 = 50.0
 
@@ -1163,7 +1143,7 @@ class TestFloorConstruction:
     def test_unknown_layer_type_raises_error(self):
         """Test that unknown layer type raises ValueError."""
         layers = [
-            {'type': 'insulation', 'material': 'ceramic_tile', 'thickness_mm': 10},
+            {"type": "insulation", "material": "ceramic_tile", "thickness_mm": 10},
         ]
         area_m2 = 50.0
 
@@ -1173,7 +1153,7 @@ class TestFloorConstruction:
     def test_invalid_thickness_raises_error(self):
         """Test that invalid thickness raises ValueError."""
         layers = [
-            {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 0},
+            {"type": "top_floor", "material": "ceramic_tile", "thickness_mm": 0},
         ]
         area_m2 = 50.0
 
@@ -1183,7 +1163,7 @@ class TestFloorConstruction:
     def test_missing_thickness_raises_error(self):
         """Test that missing thickness raises ValueError."""
         layers = [
-            {'type': 'top_floor', 'material': 'ceramic_tile'},
+            {"type": "top_floor", "material": "ceramic_tile"},
         ]
         area_m2 = 50.0
 
@@ -1196,15 +1176,15 @@ class TestFloorConstruction:
 
         for material in TOP_FLOOR_MATERIALS.keys():
             layers = [
-                {'type': 'top_floor', 'material': material, 'thickness_mm': 10},
-                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+                {"type": "top_floor", "material": material, "thickness_mm": 10},
+                {"type": "screed", "material": "cement", "thickness_mm": 50},
             ]
             result = calculate_floor_thermal_properties(layers, area_m2=50.0)
 
             # All should produce valid results
-            assert result['thermal_mass_kj_k'] > 0
-            assert result['thermal_resistance'] > 0
-            assert result['tau_modifier'] > 0
+            assert result["thermal_mass_kj_k"] > 0
+            assert result["thermal_resistance"] > 0
+            assert result["tau_modifier"] > 0
 
     def test_all_screed_materials(self):
         """Test that all defined screed materials work."""
@@ -1212,39 +1192,39 @@ class TestFloorConstruction:
 
         for material in SCREED_MATERIALS.keys():
             layers = [
-                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
-                {'type': 'screed', 'material': material, 'thickness_mm': 50},
+                {"type": "top_floor", "material": "ceramic_tile", "thickness_mm": 10},
+                {"type": "screed", "material": material, "thickness_mm": 50},
             ]
             result = calculate_floor_thermal_properties(layers, area_m2=50.0)
 
             # All should produce valid results
-            assert result['thermal_mass_kj_k'] > 0
-            assert result['thermal_resistance'] > 0
-            assert result['tau_modifier'] > 0
+            assert result["thermal_mass_kj_k"] > 0
+            assert result["thermal_resistance"] > 0
+            assert result["tau_modifier"] > 0
 
     def test_tau_modifier_range_validation(self):
         """Test that tau_modifier values are in reasonable range (0.3 - 3.0)."""
         # Lightweight construction
         layers_light = [
-            {'type': 'top_floor', 'material': 'vinyl', 'thickness_mm': 5},
-            {'type': 'screed', 'material': 'lightweight', 'thickness_mm': 35},
+            {"type": "top_floor", "material": "vinyl", "thickness_mm": 5},
+            {"type": "screed", "material": "lightweight", "thickness_mm": 35},
         ]
         result_light = calculate_floor_thermal_properties(layers_light, area_m2=30.0)
-        assert 0.3 <= result_light['tau_modifier'] <= 3.0
+        assert 0.3 <= result_light["tau_modifier"] <= 3.0
 
         # Heavy construction
         layers_heavy = [
-            {'type': 'top_floor', 'material': 'natural_stone', 'thickness_mm': 25},
-            {'type': 'screed', 'material': 'cement', 'thickness_mm': 70},
+            {"type": "top_floor", "material": "natural_stone", "thickness_mm": 25},
+            {"type": "screed", "material": "cement", "thickness_mm": 70},
         ]
         result_heavy = calculate_floor_thermal_properties(layers_heavy, area_m2=40.0)
-        assert 0.3 <= result_heavy['tau_modifier'] <= 3.0
+        assert 0.3 <= result_heavy["tau_modifier"] <= 3.0
 
     def test_default_pipe_spacing(self):
         """Test that default pipe spacing is 150mm."""
         layers = [
-            {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
-            {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            {"type": "top_floor", "material": "ceramic_tile", "thickness_mm": 10},
+            {"type": "screed", "material": "cement", "thickness_mm": 50},
         ]
         area_m2 = 50.0
 
@@ -1253,7 +1233,7 @@ class TestFloorConstruction:
 
         # Should use 150mm spacing (efficiency 0.87)
         # Same as test_basic_ceramic_tile_cement_screed
-        assert result['tau_modifier'] == pytest.approx(1.24, abs=0.05)
+        assert result["tau_modifier"] == pytest.approx(1.24, abs=0.05)
 
 
 class TestFloorConstructionValidation:
@@ -1262,11 +1242,11 @@ class TestFloorConstructionValidation:
     def test_valid_basic_configuration(self):
         """Test valid basic floor configuration."""
         config = {
-            'layers': [
-                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
-                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            "layers": [
+                {"type": "top_floor", "material": "ceramic_tile", "thickness_mm": 10},
+                {"type": "screed", "material": "cement", "thickness_mm": 50},
             ],
-            'pipe_spacing_mm': 150,
+            "pipe_spacing_mm": 150,
         }
         errors = validate_floor_construction(config)
         assert errors == []
@@ -1275,11 +1255,11 @@ class TestFloorConstructionValidation:
         """Test all valid pipe spacing values."""
         for spacing in [100, 150, 200, 300]:
             config = {
-                'layers': [
-                    {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
-                    {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+                "layers": [
+                    {"type": "top_floor", "material": "ceramic_tile", "thickness_mm": 10},
+                    {"type": "screed", "material": "cement", "thickness_mm": 50},
                 ],
-                'pipe_spacing_mm': spacing,
+                "pipe_spacing_mm": spacing,
             }
             errors = validate_floor_construction(config)
             assert errors == [], f"Valid spacing {spacing} should not produce errors"
@@ -1287,11 +1267,11 @@ class TestFloorConstructionValidation:
     def test_invalid_pipe_spacing(self):
         """Test invalid pipe spacing value."""
         config = {
-            'layers': [
-                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
-                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            "layers": [
+                {"type": "top_floor", "material": "ceramic_tile", "thickness_mm": 10},
+                {"type": "screed", "material": "cement", "thickness_mm": 50},
             ],
-            'pipe_spacing_mm': 175,  # Invalid spacing
+            "pipe_spacing_mm": 175,  # Invalid spacing
         }
         errors = validate_floor_construction(config)
         assert len(errors) == 1
@@ -1301,9 +1281,9 @@ class TestFloorConstructionValidation:
     def test_missing_pipe_spacing(self):
         """Test missing pipe_spacing_mm."""
         config = {
-            'layers': [
-                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
-                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            "layers": [
+                {"type": "top_floor", "material": "ceramic_tile", "thickness_mm": 10},
+                {"type": "screed", "material": "cement", "thickness_mm": 50},
             ],
         }
         errors = validate_floor_construction(config)
@@ -1313,8 +1293,8 @@ class TestFloorConstructionValidation:
     def test_empty_layers_list(self):
         """Test empty layers list."""
         config = {
-            'layers': [],
-            'pipe_spacing_mm': 150,
+            "layers": [],
+            "pipe_spacing_mm": 150,
         }
         errors = validate_floor_construction(config)
         assert len(errors) == 1
@@ -1323,7 +1303,7 @@ class TestFloorConstructionValidation:
     def test_missing_layers(self):
         """Test missing layers key."""
         config = {
-            'pipe_spacing_mm': 150,
+            "pipe_spacing_mm": 150,
         }
         errors = validate_floor_construction(config)
         assert len(errors) == 1
@@ -1332,8 +1312,8 @@ class TestFloorConstructionValidation:
     def test_layers_not_a_list(self):
         """Test layers is not a list."""
         config = {
-            'layers': "not a list",
-            'pipe_spacing_mm': 150,
+            "layers": "not a list",
+            "pipe_spacing_mm": 150,
         }
         errors = validate_floor_construction(config)
         assert len(errors) == 1
@@ -1342,11 +1322,11 @@ class TestFloorConstructionValidation:
     def test_top_floor_thickness_at_min_boundary(self):
         """Test top_floor thickness at minimum boundary (5mm)."""
         config = {
-            'layers': [
-                {'type': 'top_floor', 'material': 'vinyl', 'thickness_mm': 5},
-                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            "layers": [
+                {"type": "top_floor", "material": "vinyl", "thickness_mm": 5},
+                {"type": "screed", "material": "cement", "thickness_mm": 50},
             ],
-            'pipe_spacing_mm': 150,
+            "pipe_spacing_mm": 150,
         }
         errors = validate_floor_construction(config)
         assert errors == []
@@ -1354,11 +1334,11 @@ class TestFloorConstructionValidation:
     def test_top_floor_thickness_at_max_boundary(self):
         """Test top_floor thickness at maximum boundary (25mm)."""
         config = {
-            'layers': [
-                {'type': 'top_floor', 'material': 'natural_stone', 'thickness_mm': 25},
-                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            "layers": [
+                {"type": "top_floor", "material": "natural_stone", "thickness_mm": 25},
+                {"type": "screed", "material": "cement", "thickness_mm": 50},
             ],
-            'pipe_spacing_mm': 150,
+            "pipe_spacing_mm": 150,
         }
         errors = validate_floor_construction(config)
         assert errors == []
@@ -1366,11 +1346,11 @@ class TestFloorConstructionValidation:
     def test_top_floor_thickness_below_min(self):
         """Test top_floor thickness below minimum."""
         config = {
-            'layers': [
-                {'type': 'top_floor', 'material': 'vinyl', 'thickness_mm': 3},
-                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            "layers": [
+                {"type": "top_floor", "material": "vinyl", "thickness_mm": 3},
+                {"type": "screed", "material": "cement", "thickness_mm": 50},
             ],
-            'pipe_spacing_mm': 150,
+            "pipe_spacing_mm": 150,
         }
         errors = validate_floor_construction(config)
         assert len(errors) == 1
@@ -1380,11 +1360,11 @@ class TestFloorConstructionValidation:
     def test_top_floor_thickness_above_max(self):
         """Test top_floor thickness above maximum."""
         config = {
-            'layers': [
-                {'type': 'top_floor', 'material': 'natural_stone', 'thickness_mm': 30},
-                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            "layers": [
+                {"type": "top_floor", "material": "natural_stone", "thickness_mm": 30},
+                {"type": "screed", "material": "cement", "thickness_mm": 50},
             ],
-            'pipe_spacing_mm': 150,
+            "pipe_spacing_mm": 150,
         }
         errors = validate_floor_construction(config)
         assert len(errors) == 1
@@ -1394,11 +1374,11 @@ class TestFloorConstructionValidation:
     def test_screed_thickness_at_min_boundary(self):
         """Test screed thickness at minimum boundary (30mm)."""
         config = {
-            'layers': [
-                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
-                {'type': 'screed', 'material': 'cement', 'thickness_mm': 30},
+            "layers": [
+                {"type": "top_floor", "material": "ceramic_tile", "thickness_mm": 10},
+                {"type": "screed", "material": "cement", "thickness_mm": 30},
             ],
-            'pipe_spacing_mm': 150,
+            "pipe_spacing_mm": 150,
         }
         errors = validate_floor_construction(config)
         assert errors == []
@@ -1406,11 +1386,11 @@ class TestFloorConstructionValidation:
     def test_screed_thickness_at_max_boundary(self):
         """Test screed thickness at maximum boundary (100mm)."""
         config = {
-            'layers': [
-                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
-                {'type': 'screed', 'material': 'cement', 'thickness_mm': 100},
+            "layers": [
+                {"type": "top_floor", "material": "ceramic_tile", "thickness_mm": 10},
+                {"type": "screed", "material": "cement", "thickness_mm": 100},
             ],
-            'pipe_spacing_mm': 150,
+            "pipe_spacing_mm": 150,
         }
         errors = validate_floor_construction(config)
         assert errors == []
@@ -1418,11 +1398,11 @@ class TestFloorConstructionValidation:
     def test_screed_thickness_below_min(self):
         """Test screed thickness below minimum."""
         config = {
-            'layers': [
-                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
-                {'type': 'screed', 'material': 'cement', 'thickness_mm': 25},
+            "layers": [
+                {"type": "top_floor", "material": "ceramic_tile", "thickness_mm": 10},
+                {"type": "screed", "material": "cement", "thickness_mm": 25},
             ],
-            'pipe_spacing_mm': 150,
+            "pipe_spacing_mm": 150,
         }
         errors = validate_floor_construction(config)
         assert len(errors) == 1
@@ -1432,11 +1412,11 @@ class TestFloorConstructionValidation:
     def test_screed_thickness_above_max(self):
         """Test screed thickness above maximum."""
         config = {
-            'layers': [
-                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
-                {'type': 'screed', 'material': 'cement', 'thickness_mm': 105},
+            "layers": [
+                {"type": "top_floor", "material": "ceramic_tile", "thickness_mm": 10},
+                {"type": "screed", "material": "cement", "thickness_mm": 105},
             ],
-            'pipe_spacing_mm': 150,
+            "pipe_spacing_mm": 150,
         }
         errors = validate_floor_construction(config)
         assert len(errors) == 1
@@ -1446,11 +1426,11 @@ class TestFloorConstructionValidation:
     def test_unknown_top_floor_material(self):
         """Test unknown top floor material."""
         config = {
-            'layers': [
-                {'type': 'top_floor', 'material': 'unobtanium', 'thickness_mm': 10},
-                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            "layers": [
+                {"type": "top_floor", "material": "unobtanium", "thickness_mm": 10},
+                {"type": "screed", "material": "cement", "thickness_mm": 50},
             ],
-            'pipe_spacing_mm': 150,
+            "pipe_spacing_mm": 150,
         }
         errors = validate_floor_construction(config)
         assert len(errors) == 1
@@ -1459,11 +1439,11 @@ class TestFloorConstructionValidation:
     def test_unknown_screed_material(self):
         """Test unknown screed material."""
         config = {
-            'layers': [
-                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
-                {'type': 'screed', 'material': 'vibranium', 'thickness_mm': 50},
+            "layers": [
+                {"type": "top_floor", "material": "ceramic_tile", "thickness_mm": 10},
+                {"type": "screed", "material": "vibranium", "thickness_mm": 50},
             ],
-            'pipe_spacing_mm': 150,
+            "pipe_spacing_mm": 150,
         }
         errors = validate_floor_construction(config)
         assert len(errors) == 1
@@ -1472,18 +1452,18 @@ class TestFloorConstructionValidation:
     def test_valid_custom_material_properties(self):
         """Test valid custom material properties."""
         config = {
-            'layers': [
+            "layers": [
                 {
-                    'type': 'top_floor',
-                    'material': 'custom_tile',
-                    'thickness_mm': 10,
-                    'conductivity': 1.5,
-                    'density': 2400,
-                    'specific_heat': 900,
+                    "type": "top_floor",
+                    "material": "custom_tile",
+                    "thickness_mm": 10,
+                    "conductivity": 1.5,
+                    "density": 2400,
+                    "specific_heat": 900,
                 },
-                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+                {"type": "screed", "material": "cement", "thickness_mm": 50},
             ],
-            'pipe_spacing_mm': 150,
+            "pipe_spacing_mm": 150,
         }
         errors = validate_floor_construction(config)
         assert errors == []
@@ -1491,18 +1471,18 @@ class TestFloorConstructionValidation:
     def test_custom_properties_incomplete(self):
         """Test incomplete custom properties (missing specific_heat)."""
         config = {
-            'layers': [
+            "layers": [
                 {
-                    'type': 'top_floor',
-                    'material': 'custom_tile',
-                    'thickness_mm': 10,
-                    'conductivity': 1.5,
-                    'density': 2400,
+                    "type": "top_floor",
+                    "material": "custom_tile",
+                    "thickness_mm": 10,
+                    "conductivity": 1.5,
+                    "density": 2400,
                     # Missing specific_heat
                 },
-                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+                {"type": "screed", "material": "cement", "thickness_mm": 50},
             ],
-            'pipe_spacing_mm': 150,
+            "pipe_spacing_mm": 150,
         }
         errors = validate_floor_construction(config)
         assert len(errors) == 1
@@ -1512,18 +1492,18 @@ class TestFloorConstructionValidation:
     def test_custom_properties_invalid_value(self):
         """Test invalid custom property value (negative conductivity)."""
         config = {
-            'layers': [
+            "layers": [
                 {
-                    'type': 'top_floor',
-                    'material': 'custom_tile',
-                    'thickness_mm': 10,
-                    'conductivity': -1.5,
-                    'density': 2400,
-                    'specific_heat': 900,
+                    "type": "top_floor",
+                    "material": "custom_tile",
+                    "thickness_mm": 10,
+                    "conductivity": -1.5,
+                    "density": 2400,
+                    "specific_heat": 900,
                 },
-                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+                {"type": "screed", "material": "cement", "thickness_mm": 50},
             ],
-            'pipe_spacing_mm': 150,
+            "pipe_spacing_mm": 150,
         }
         errors = validate_floor_construction(config)
         assert len(errors) == 1
@@ -1532,11 +1512,11 @@ class TestFloorConstructionValidation:
     def test_layer_order_valid_top_floor_then_screed(self):
         """Test valid layer order: top_floor before screed."""
         config = {
-            'layers': [
-                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
-                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            "layers": [
+                {"type": "top_floor", "material": "ceramic_tile", "thickness_mm": 10},
+                {"type": "screed", "material": "cement", "thickness_mm": 50},
             ],
-            'pipe_spacing_mm': 150,
+            "pipe_spacing_mm": 150,
         }
         errors = validate_floor_construction(config)
         assert errors == []
@@ -1544,12 +1524,12 @@ class TestFloorConstructionValidation:
     def test_layer_order_valid_multiple_top_floors(self):
         """Test valid layer order: multiple top_floor layers before screed."""
         config = {
-            'layers': [
-                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 8},
-                {'type': 'top_floor', 'material': 'vinyl', 'thickness_mm': 5},
-                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            "layers": [
+                {"type": "top_floor", "material": "ceramic_tile", "thickness_mm": 8},
+                {"type": "top_floor", "material": "vinyl", "thickness_mm": 5},
+                {"type": "screed", "material": "cement", "thickness_mm": 50},
             ],
-            'pipe_spacing_mm': 150,
+            "pipe_spacing_mm": 150,
         }
         errors = validate_floor_construction(config)
         assert errors == []
@@ -1557,12 +1537,12 @@ class TestFloorConstructionValidation:
     def test_layer_order_valid_multiple_screeds(self):
         """Test valid layer order: top_floor before multiple screed layers."""
         config = {
-            'layers': [
-                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
-                {'type': 'screed', 'material': 'anhydrite', 'thickness_mm': 35},
-                {'type': 'screed', 'material': 'cement', 'thickness_mm': 45},
+            "layers": [
+                {"type": "top_floor", "material": "ceramic_tile", "thickness_mm": 10},
+                {"type": "screed", "material": "anhydrite", "thickness_mm": 35},
+                {"type": "screed", "material": "cement", "thickness_mm": 45},
             ],
-            'pipe_spacing_mm': 150,
+            "pipe_spacing_mm": 150,
         }
         errors = validate_floor_construction(config)
         assert errors == []
@@ -1570,11 +1550,11 @@ class TestFloorConstructionValidation:
     def test_layer_order_invalid_screed_before_top_floor(self):
         """Test invalid layer order: screed before top_floor."""
         config = {
-            'layers': [
-                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
-                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
+            "layers": [
+                {"type": "screed", "material": "cement", "thickness_mm": 50},
+                {"type": "top_floor", "material": "ceramic_tile", "thickness_mm": 10},
             ],
-            'pipe_spacing_mm': 150,
+            "pipe_spacing_mm": 150,
         }
         errors = validate_floor_construction(config)
         assert len(errors) == 1
@@ -1584,12 +1564,12 @@ class TestFloorConstructionValidation:
     def test_layer_order_invalid_interleaved(self):
         """Test invalid layer order: interleaved top_floor and screed."""
         config = {
-            'layers': [
-                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
-                {'type': 'screed', 'material': 'cement', 'thickness_mm': 30},
-                {'type': 'top_floor', 'material': 'vinyl', 'thickness_mm': 5},  # Invalid position
+            "layers": [
+                {"type": "top_floor", "material": "ceramic_tile", "thickness_mm": 10},
+                {"type": "screed", "material": "cement", "thickness_mm": 30},
+                {"type": "top_floor", "material": "vinyl", "thickness_mm": 5},  # Invalid position
             ],
-            'pipe_spacing_mm': 150,
+            "pipe_spacing_mm": 150,
         }
         errors = validate_floor_construction(config)
         assert len(errors) == 1
@@ -1598,11 +1578,11 @@ class TestFloorConstructionValidation:
     def test_missing_thickness(self):
         """Test missing thickness_mm."""
         config = {
-            'layers': [
-                {'type': 'top_floor', 'material': 'ceramic_tile'},  # Missing thickness
-                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            "layers": [
+                {"type": "top_floor", "material": "ceramic_tile"},  # Missing thickness
+                {"type": "screed", "material": "cement", "thickness_mm": 50},
             ],
-            'pipe_spacing_mm': 150,
+            "pipe_spacing_mm": 150,
         }
         errors = validate_floor_construction(config)
         assert len(errors) == 1
@@ -1611,11 +1591,11 @@ class TestFloorConstructionValidation:
     def test_invalid_thickness_zero(self):
         """Test invalid thickness value (zero)."""
         config = {
-            'layers': [
-                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 0},
-                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            "layers": [
+                {"type": "top_floor", "material": "ceramic_tile", "thickness_mm": 0},
+                {"type": "screed", "material": "cement", "thickness_mm": 50},
             ],
-            'pipe_spacing_mm': 150,
+            "pipe_spacing_mm": 150,
         }
         errors = validate_floor_construction(config)
         assert len(errors) == 1
@@ -1624,11 +1604,11 @@ class TestFloorConstructionValidation:
     def test_invalid_thickness_negative(self):
         """Test invalid thickness value (negative)."""
         config = {
-            'layers': [
-                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': -10},
-                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            "layers": [
+                {"type": "top_floor", "material": "ceramic_tile", "thickness_mm": -10},
+                {"type": "screed", "material": "cement", "thickness_mm": 50},
             ],
-            'pipe_spacing_mm': 150,
+            "pipe_spacing_mm": 150,
         }
         errors = validate_floor_construction(config)
         assert len(errors) == 1
@@ -1637,10 +1617,10 @@ class TestFloorConstructionValidation:
     def test_invalid_layer_type(self):
         """Test invalid layer type."""
         config = {
-            'layers': [
-                {'type': 'insulation', 'material': 'foam', 'thickness_mm': 20},
+            "layers": [
+                {"type": "insulation", "material": "foam", "thickness_mm": 20},
             ],
-            'pipe_spacing_mm': 150,
+            "pipe_spacing_mm": 150,
         }
         errors = validate_floor_construction(config)
         assert len(errors) == 1
@@ -1650,17 +1630,17 @@ class TestFloorConstructionValidation:
     def test_multiple_validation_errors(self):
         """Test multiple validation errors are collected."""
         config = {
-            'layers': [
-                {'type': 'top_floor', 'material': 'unobtanium', 'thickness_mm': 3},  # Unknown material + too thin
-                {'type': 'screed', 'material': 'vibranium', 'thickness_mm': 110},  # Unknown material + too thick
+            "layers": [
+                {"type": "top_floor", "material": "unobtanium", "thickness_mm": 3},  # Unknown material + too thin
+                {"type": "screed", "material": "vibranium", "thickness_mm": 110},  # Unknown material + too thick
             ],
-            'pipe_spacing_mm': 175,  # Invalid spacing
+            "pipe_spacing_mm": 175,  # Invalid spacing
         }
         errors = validate_floor_construction(config)
         # Should have at least 5 errors
         assert len(errors) >= 5
         # Check that different types of errors are present
-        error_text = ' '.join(errors)
+        error_text = " ".join(errors)
         assert "pipe_spacing_mm" in error_text
         assert "thickness_mm" in error_text
         assert "unknown material" in error_text
@@ -1668,11 +1648,11 @@ class TestFloorConstructionValidation:
     def test_missing_material_without_custom_properties(self):
         """Test missing material name without custom properties."""
         config = {
-            'layers': [
-                {'type': 'top_floor', 'thickness_mm': 10},  # Missing material
-                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            "layers": [
+                {"type": "top_floor", "thickness_mm": 10},  # Missing material
+                {"type": "screed", "material": "cement", "thickness_mm": 50},
             ],
-            'pipe_spacing_mm': 150,
+            "pipe_spacing_mm": 150,
         }
         errors = validate_floor_construction(config)
         assert len(errors) == 1
@@ -1685,11 +1665,11 @@ class TestThermalTimeConstantWithFloor:
     def test_floor_construction_applied_only_for_floor_hydronic(self):
         """Test floor construction tau modifier only applied for floor_hydronic heating."""
         floor_config = {
-            'layers': [
-                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
-                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            "layers": [
+                {"type": "top_floor", "material": "ceramic_tile", "thickness_mm": 10},
+                {"type": "screed", "material": "cement", "thickness_mm": 50},
             ],
-            'pipe_spacing_mm': 150,
+            "pipe_spacing_mm": 150,
         }
         area_m2 = 50.0
 
@@ -1699,10 +1679,7 @@ class TestThermalTimeConstantWithFloor:
 
         # With floor_hydronic - should apply modifier
         tau_floor_hydronic = calculate_thermal_time_constant(
-            energy_rating="A",
-            floor_construction=floor_config,
-            area_m2=area_m2,
-            heating_type='floor_hydronic'
+            energy_rating="A", floor_construction=floor_config, area_m2=area_m2, heating_type="floor_hydronic"
         )
         # tau_modifier for this config is approximately 1.24
         # tau = 4.0 * 1.24 = 4.96
@@ -1711,21 +1688,18 @@ class TestThermalTimeConstantWithFloor:
 
         # With radiator - should NOT apply modifier
         tau_radiator = calculate_thermal_time_constant(
-            energy_rating="A",
-            floor_construction=floor_config,
-            area_m2=area_m2,
-            heating_type='radiator'
+            energy_rating="A", floor_construction=floor_config, area_m2=area_m2, heating_type="radiator"
         )
         assert tau_radiator == tau_base  # Unchanged
 
     def test_floor_construction_with_heavy_construction(self):
         """Test floor construction with heavy construction increases tau significantly."""
         heavy_floor_config = {
-            'layers': [
-                {'type': 'top_floor', 'material': 'natural_stone', 'thickness_mm': 20},
-                {'type': 'screed', 'material': 'cement', 'thickness_mm': 60},
+            "layers": [
+                {"type": "top_floor", "material": "natural_stone", "thickness_mm": 20},
+                {"type": "screed", "material": "cement", "thickness_mm": 60},
             ],
-            'pipe_spacing_mm': 150,
+            "pipe_spacing_mm": 150,
         }
         area_m2 = 40.0
 
@@ -1733,10 +1707,7 @@ class TestThermalTimeConstantWithFloor:
         assert tau_base == 3.0
 
         tau_with_heavy_floor = calculate_thermal_time_constant(
-            energy_rating="B",
-            floor_construction=heavy_floor_config,
-            area_m2=area_m2,
-            heating_type='floor_hydronic'
+            energy_rating="B", floor_construction=heavy_floor_config, area_m2=area_m2, heating_type="floor_hydronic"
         )
 
         # tau_modifier for heavy construction is approximately 1.77
@@ -1747,11 +1718,11 @@ class TestThermalTimeConstantWithFloor:
     def test_floor_construction_with_lightweight_construction(self):
         """Test floor construction with lightweight construction decreases tau."""
         lightweight_floor_config = {
-            'layers': [
-                {'type': 'top_floor', 'material': 'vinyl', 'thickness_mm': 5},
-                {'type': 'screed', 'material': 'lightweight', 'thickness_mm': 40},
+            "layers": [
+                {"type": "top_floor", "material": "vinyl", "thickness_mm": 5},
+                {"type": "screed", "material": "lightweight", "thickness_mm": 40},
             ],
-            'pipe_spacing_mm': 150,
+            "pipe_spacing_mm": 150,
         }
         area_m2 = 30.0
 
@@ -1762,7 +1733,7 @@ class TestThermalTimeConstantWithFloor:
             energy_rating="A",
             floor_construction=lightweight_floor_config,
             area_m2=area_m2,
-            heating_type='floor_hydronic'
+            heating_type="floor_hydronic",
         )
 
         # tau_modifier for lightweight construction is approximately 0.56
@@ -1773,9 +1744,9 @@ class TestThermalTimeConstantWithFloor:
     def test_floor_construction_with_different_pipe_spacings(self):
         """Test floor construction tau modifier varies with pipe spacing."""
         floor_config_base = {
-            'layers': [
-                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
-                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            "layers": [
+                {"type": "top_floor", "material": "ceramic_tile", "thickness_mm": 10},
+                {"type": "screed", "material": "cement", "thickness_mm": 50},
             ],
         }
         area_m2 = 50.0
@@ -1783,30 +1754,21 @@ class TestThermalTimeConstantWithFloor:
         tau_base = calculate_thermal_time_constant(volume_m3=200)  # tau = 4.0
 
         # 100mm spacing (higher efficiency 0.92)
-        floor_config_100 = {**floor_config_base, 'pipe_spacing_mm': 100}
+        floor_config_100 = {**floor_config_base, "pipe_spacing_mm": 100}
         tau_100mm = calculate_thermal_time_constant(
-            volume_m3=200,
-            floor_construction=floor_config_100,
-            area_m2=area_m2,
-            heating_type='floor_hydronic'
+            volume_m3=200, floor_construction=floor_config_100, area_m2=area_m2, heating_type="floor_hydronic"
         )
 
         # 150mm spacing (baseline efficiency 0.87)
-        floor_config_150 = {**floor_config_base, 'pipe_spacing_mm': 150}
+        floor_config_150 = {**floor_config_base, "pipe_spacing_mm": 150}
         tau_150mm = calculate_thermal_time_constant(
-            volume_m3=200,
-            floor_construction=floor_config_150,
-            area_m2=area_m2,
-            heating_type='floor_hydronic'
+            volume_m3=200, floor_construction=floor_config_150, area_m2=area_m2, heating_type="floor_hydronic"
         )
 
         # 300mm spacing (lower efficiency 0.68)
-        floor_config_300 = {**floor_config_base, 'pipe_spacing_mm': 300}
+        floor_config_300 = {**floor_config_base, "pipe_spacing_mm": 300}
         tau_300mm = calculate_thermal_time_constant(
-            volume_m3=200,
-            floor_construction=floor_config_300,
-            area_m2=area_m2,
-            heating_type='floor_hydronic'
+            volume_m3=200, floor_construction=floor_config_300, area_m2=area_m2, heating_type="floor_hydronic"
         )
 
         # Wider spacing = lower efficiency = higher tau
@@ -1817,21 +1779,18 @@ class TestThermalTimeConstantWithFloor:
     def test_floor_construction_combined_with_window_adjustment(self):
         """Test floor construction modifier applies after window adjustment."""
         floor_config = {
-            'layers': [
-                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
-                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            "layers": [
+                {"type": "top_floor", "material": "ceramic_tile", "thickness_mm": 10},
+                {"type": "screed", "material": "cement", "thickness_mm": 50},
             ],
-            'pipe_spacing_mm': 150,
+            "pipe_spacing_mm": 150,
         }
         area_m2 = 25.0
         window_area_m2 = 5.0  # 20% window ratio
 
         # Base tau with window adjustment
         tau_base_with_windows = calculate_thermal_time_constant(
-            volume_m3=200,
-            window_area_m2=window_area_m2,
-            floor_area_m2=area_m2,
-            window_rating="hr++"
+            volume_m3=200, window_area_m2=window_area_m2, floor_area_m2=area_m2, window_rating="hr++"
         )
         # tau = 4.0 * 0.85 (window reduction) = 3.4
 
@@ -1843,7 +1802,7 @@ class TestThermalTimeConstantWithFloor:
             window_rating="hr++",
             floor_construction=floor_config,
             area_m2=area_m2,
-            heating_type='floor_hydronic'
+            heating_type="floor_hydronic",
         )
 
         # tau = (4.0 * 0.85) * 1.24 = 3.4 * 1.24 = 4.216
@@ -1853,57 +1812,54 @@ class TestThermalTimeConstantWithFloor:
     def test_floor_construction_requires_area_m2(self):
         """Test floor_construction requires area_m2 parameter."""
         floor_config = {
-            'layers': [
-                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
-                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            "layers": [
+                {"type": "top_floor", "material": "ceramic_tile", "thickness_mm": 10},
+                {"type": "screed", "material": "cement", "thickness_mm": 50},
             ],
-            'pipe_spacing_mm': 150,
+            "pipe_spacing_mm": 150,
         }
 
         with pytest.raises(ValueError, match="area_m2 is required when floor_construction is provided"):
             calculate_thermal_time_constant(
                 energy_rating="A",
                 floor_construction=floor_config,
-                heating_type='floor_hydronic'
+                heating_type="floor_hydronic",
                 # Missing area_m2
             )
 
     def test_floor_construction_requires_heating_type(self):
         """Test floor_construction requires heating_type parameter."""
         floor_config = {
-            'layers': [
-                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
-                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            "layers": [
+                {"type": "top_floor", "material": "ceramic_tile", "thickness_mm": 10},
+                {"type": "screed", "material": "cement", "thickness_mm": 50},
             ],
-            'pipe_spacing_mm': 150,
+            "pipe_spacing_mm": 150,
         }
 
         with pytest.raises(ValueError, match="heating_type is required when floor_construction is provided"):
             calculate_thermal_time_constant(
                 energy_rating="A",
                 floor_construction=floor_config,
-                area_m2=50.0
+                area_m2=50.0,
                 # Missing heating_type
             )
 
     def test_floor_construction_with_volume_m3(self):
         """Test floor construction works with volume_m3 as base tau."""
         floor_config = {
-            'layers': [
-                {'type': 'top_floor', 'material': 'porcelain', 'thickness_mm': 12},
-                {'type': 'screed', 'material': 'cement', 'thickness_mm': 45},
+            "layers": [
+                {"type": "top_floor", "material": "porcelain", "thickness_mm": 12},
+                {"type": "screed", "material": "cement", "thickness_mm": 45},
             ],
-            'pipe_spacing_mm': 150,
+            "pipe_spacing_mm": 150,
         }
         area_m2 = 60.0
 
         tau_base = calculate_thermal_time_constant(volume_m3=300)  # tau = 6.0
 
         tau_with_floor = calculate_thermal_time_constant(
-            volume_m3=300,
-            floor_construction=floor_config,
-            area_m2=area_m2,
-            heating_type='floor_hydronic'
+            volume_m3=300, floor_construction=floor_config, area_m2=area_m2, heating_type="floor_hydronic"
         )
 
         # Should apply tau_modifier to volume-based tau
@@ -1913,18 +1869,18 @@ class TestThermalTimeConstantWithFloor:
     def test_floor_construction_with_custom_materials(self):
         """Test floor construction with custom material properties."""
         floor_config = {
-            'layers': [
+            "layers": [
                 {
-                    'type': 'top_floor',
-                    'material': 'custom_tile',
-                    'thickness_mm': 15,
-                    'conductivity': 2.0,
-                    'density': 2500,
-                    'specific_heat': 900,
+                    "type": "top_floor",
+                    "material": "custom_tile",
+                    "thickness_mm": 15,
+                    "conductivity": 2.0,
+                    "density": 2500,
+                    "specific_heat": 900,
                 },
-                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+                {"type": "screed", "material": "cement", "thickness_mm": 50},
             ],
-            'pipe_spacing_mm': 150,
+            "pipe_spacing_mm": 150,
         }
         area_m2 = 50.0
 
@@ -1932,10 +1888,7 @@ class TestThermalTimeConstantWithFloor:
         assert tau_base == 5.0
 
         tau_with_custom = calculate_thermal_time_constant(
-            energy_rating="A+",
-            floor_construction=floor_config,
-            area_m2=area_m2,
-            heating_type='floor_hydronic'
+            energy_rating="A+", floor_construction=floor_config, area_m2=area_m2, heating_type="floor_hydronic"
         )
 
         # Custom material should work and modify tau
@@ -1944,23 +1897,20 @@ class TestThermalTimeConstantWithFloor:
     def test_floor_construction_does_not_affect_other_heating_types(self):
         """Test floor construction ignored for non-floor_hydronic heating types."""
         floor_config = {
-            'layers': [
-                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
-                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            "layers": [
+                {"type": "top_floor", "material": "ceramic_tile", "thickness_mm": 10},
+                {"type": "screed", "material": "cement", "thickness_mm": 50},
             ],
-            'pipe_spacing_mm': 150,
+            "pipe_spacing_mm": 150,
         }
         area_m2 = 50.0
 
         tau_base = calculate_thermal_time_constant(energy_rating="B")
 
         # Test all non-floor_hydronic heating types
-        for heating_type in ['radiator', 'convector', 'forced_air']:
+        for heating_type in ["radiator", "convector", "forced_air"]:
             tau_with_floor = calculate_thermal_time_constant(
-                energy_rating="B",
-                floor_construction=floor_config,
-                area_m2=area_m2,
-                heating_type=heating_type
+                energy_rating="B", floor_construction=floor_config, area_m2=area_m2, heating_type=heating_type
             )
             assert tau_with_floor == tau_base, f"Floor construction should not affect {heating_type}"
 
@@ -1980,20 +1930,17 @@ class TestFloorHydronicIntegration:
 
         # Floor construction: ceramic tile + anhydrite screed (typical floor heating)
         floor_config = {
-            'layers': [
-                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
-                {'type': 'screed', 'material': 'anhydrite', 'thickness_mm': 50},
+            "layers": [
+                {"type": "top_floor", "material": "ceramic_tile", "thickness_mm": 10},
+                {"type": "screed", "material": "anhydrite", "thickness_mm": 50},
             ],
-            'pipe_spacing_mm': 150,
+            "pipe_spacing_mm": 150,
         }
         area_m2 = 40.0
 
         # Calculate tau with floor construction
         tau_with_floor = calculate_thermal_time_constant(
-            volume_m3=200,
-            floor_construction=floor_config,
-            area_m2=area_m2,
-            heating_type='floor_hydronic'
+            volume_m3=200, floor_construction=floor_config, area_m2=area_m2, heating_type="floor_hydronic"
         )
 
         # Floor construction should increase tau due to thermal mass
@@ -2011,28 +1958,25 @@ class TestFloorHydronicIntegration:
         """Test that thick screed → higher tau → lower Kp."""
         # Heavy floor construction: thick cement screed
         floor_config_heavy = {
-            'layers': [
-                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 12},
-                {'type': 'screed', 'material': 'cement', 'thickness_mm': 70},  # Thick screed
+            "layers": [
+                {"type": "top_floor", "material": "ceramic_tile", "thickness_mm": 12},
+                {"type": "screed", "material": "cement", "thickness_mm": 70},  # Thick screed
             ],
-            'pipe_spacing_mm': 150,
+            "pipe_spacing_mm": 150,
         }
         area_m2 = 50.0
 
         # Calculate tau with heavy floor
         tau_heavy = calculate_thermal_time_constant(
-            volume_m3=200,
-            floor_construction=floor_config_heavy,
-            area_m2=area_m2,
-            heating_type='floor_hydronic'
+            volume_m3=200, floor_construction=floor_config_heavy, area_m2=area_m2, heating_type="floor_hydronic"
         )
 
         # Calculate PID gains for heavy floor
-        kp_heavy, ki_heavy, kd_heavy = calculate_initial_pid(tau_heavy, 'floor_hydronic')
+        kp_heavy, ki_heavy, kd_heavy = calculate_initial_pid(tau_heavy, "floor_hydronic")
 
         # Base tau without floor construction
         tau_base = calculate_thermal_time_constant(volume_m3=200)
-        kp_base, ki_base, kd_base = calculate_initial_pid(tau_base, 'floor_hydronic')
+        kp_base, ki_base, kd_base = calculate_initial_pid(tau_base, "floor_hydronic")
 
         # Heavy floor should have:
         # - Higher tau (more thermal mass)
@@ -2051,28 +1995,25 @@ class TestFloorHydronicIntegration:
         """Test that thin lightweight screed → lower tau → higher Kp."""
         # Light floor construction: thin lightweight screed
         floor_config_light = {
-            'layers': [
-                {'type': 'top_floor', 'material': 'vinyl', 'thickness_mm': 5},
-                {'type': 'screed', 'material': 'lightweight', 'thickness_mm': 35},  # Thin lightweight
+            "layers": [
+                {"type": "top_floor", "material": "vinyl", "thickness_mm": 5},
+                {"type": "screed", "material": "lightweight", "thickness_mm": 35},  # Thin lightweight
             ],
-            'pipe_spacing_mm': 100,  # Tighter spacing for better efficiency
+            "pipe_spacing_mm": 100,  # Tighter spacing for better efficiency
         }
         area_m2 = 50.0
 
         # Calculate tau with light floor
         tau_light = calculate_thermal_time_constant(
-            volume_m3=200,
-            floor_construction=floor_config_light,
-            area_m2=area_m2,
-            heating_type='floor_hydronic'
+            volume_m3=200, floor_construction=floor_config_light, area_m2=area_m2, heating_type="floor_hydronic"
         )
 
         # Calculate PID gains for light floor
-        kp_light, ki_light, kd_light = calculate_initial_pid(tau_light, 'floor_hydronic')
+        kp_light, ki_light, kd_light = calculate_initial_pid(tau_light, "floor_hydronic")
 
         # Base tau without floor construction
         tau_base = calculate_thermal_time_constant(volume_m3=200)
-        kp_base, ki_base, kd_base = calculate_initial_pid(tau_base, 'floor_hydronic')
+        kp_base, ki_base, kd_base = calculate_initial_pid(tau_base, "floor_hydronic")
 
         # Light floor should have:
         # - Lower tau (less thermal mass)
@@ -2091,36 +2032,30 @@ class TestFloorHydronicIntegration:
         """Test that tile floor has higher tau than carpet due to thermal mass."""
         # Tile floor construction
         floor_config_tile = {
-            'layers': [
-                {'type': 'top_floor', 'material': 'ceramic_tile', 'thickness_mm': 10},
-                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            "layers": [
+                {"type": "top_floor", "material": "ceramic_tile", "thickness_mm": 10},
+                {"type": "screed", "material": "cement", "thickness_mm": 50},
             ],
-            'pipe_spacing_mm': 150,
+            "pipe_spacing_mm": 150,
         }
 
         # Carpet floor construction
         floor_config_carpet = {
-            'layers': [
-                {'type': 'top_floor', 'material': 'carpet', 'thickness_mm': 15},
-                {'type': 'screed', 'material': 'cement', 'thickness_mm': 50},
+            "layers": [
+                {"type": "top_floor", "material": "carpet", "thickness_mm": 15},
+                {"type": "screed", "material": "cement", "thickness_mm": 50},
             ],
-            'pipe_spacing_mm': 150,
+            "pipe_spacing_mm": 150,
         }
         area_m2 = 40.0
 
         # Calculate tau for both configurations
         tau_tile = calculate_thermal_time_constant(
-            volume_m3=200,
-            floor_construction=floor_config_tile,
-            area_m2=area_m2,
-            heating_type='floor_hydronic'
+            volume_m3=200, floor_construction=floor_config_tile, area_m2=area_m2, heating_type="floor_hydronic"
         )
 
         tau_carpet = calculate_thermal_time_constant(
-            volume_m3=200,
-            floor_construction=floor_config_carpet,
-            area_m2=area_m2,
-            heating_type='floor_hydronic'
+            volume_m3=200, floor_construction=floor_config_carpet, area_m2=area_m2, heating_type="floor_hydronic"
         )
 
         # Tile has higher thermal mass (2300 kg/m³ × 840 J/(kg·K) = 1,932,000 J/(m³·K))
@@ -2130,8 +2065,8 @@ class TestFloorHydronicIntegration:
         assert tau_tile > tau_carpet
 
         # Calculate PID gains for both
-        kp_tile, ki_tile, kd_tile = calculate_initial_pid(tau_tile, 'floor_hydronic')
-        kp_carpet, ki_carpet, kd_carpet = calculate_initial_pid(tau_carpet, 'floor_hydronic')
+        kp_tile, ki_tile, kd_tile = calculate_initial_pid(tau_tile, "floor_hydronic")
+        kp_carpet, ki_carpet, kd_carpet = calculate_initial_pid(tau_carpet, "floor_hydronic")
 
         # Tile floor should have more conservative gains due to higher tau
         assert kp_tile < kp_carpet
@@ -2149,9 +2084,7 @@ class TestSupplyTemperatureScaling:
         heating_type = "floor_hydronic"
         area_m2 = 50.0
 
-        scaling = calculate_power_scaling_factor(
-            heating_type, area_m2, max_power_w=None, supply_temperature=35.0
-        )
+        scaling = calculate_power_scaling_factor(heating_type, area_m2, max_power_w=None, supply_temperature=35.0)
 
         assert scaling == pytest.approx(1.67, abs=0.02)
 
@@ -2162,9 +2095,7 @@ class TestSupplyTemperatureScaling:
         heating_type = "radiator"
         area_m2 = 30.0
 
-        scaling = calculate_power_scaling_factor(
-            heating_type, area_m2, max_power_w=None, supply_temperature=55.0
-        )
+        scaling = calculate_power_scaling_factor(heating_type, area_m2, max_power_w=None, supply_temperature=55.0)
 
         assert scaling == pytest.approx(1.43, abs=0.02)
 
@@ -2173,9 +2104,7 @@ class TestSupplyTemperatureScaling:
         heating_type = "floor_hydronic"
         area_m2 = 50.0
 
-        scaling = calculate_power_scaling_factor(
-            heating_type, area_m2, max_power_w=None, supply_temperature=None
-        )
+        scaling = calculate_power_scaling_factor(heating_type, area_m2, max_power_w=None, supply_temperature=None)
 
         assert scaling == pytest.approx(1.0, abs=0.01)
 
@@ -2185,9 +2114,7 @@ class TestSupplyTemperatureScaling:
         heating_type = "floor_hydronic"
         area_m2 = 50.0
 
-        scaling = calculate_power_scaling_factor(
-            heating_type, area_m2, max_power_w=None, supply_temperature=45.0
-        )
+        scaling = calculate_power_scaling_factor(heating_type, area_m2, max_power_w=None, supply_temperature=45.0)
 
         assert scaling == pytest.approx(1.0, abs=0.01)
 
@@ -2198,9 +2125,7 @@ class TestSupplyTemperatureScaling:
         heating_type = "radiator"
         area_m2 = 30.0
 
-        scaling = calculate_power_scaling_factor(
-            heating_type, area_m2, max_power_w=None, supply_temperature=80.0
-        )
+        scaling = calculate_power_scaling_factor(heating_type, area_m2, max_power_w=None, supply_temperature=80.0)
 
         assert scaling == pytest.approx(0.83, abs=0.02)
 
@@ -2225,9 +2150,7 @@ class TestSupplyTemperatureScaling:
         heating_type = "floor_hydronic"
         area_m2 = 50.0
 
-        scaling = calculate_power_scaling_factor(
-            heating_type, area_m2, max_power_w=None, supply_temperature=80.0
-        )
+        scaling = calculate_power_scaling_factor(heating_type, area_m2, max_power_w=None, supply_temperature=80.0)
 
         assert scaling == pytest.approx(0.5, abs=0.02)
 
@@ -2239,9 +2162,7 @@ class TestSupplyTemperatureScaling:
         heating_type = "floor_hydronic"
         area_m2 = 50.0
 
-        scaling = calculate_power_scaling_factor(
-            heating_type, area_m2, max_power_w=None, supply_temperature=25.0
-        )
+        scaling = calculate_power_scaling_factor(heating_type, area_m2, max_power_w=None, supply_temperature=25.0)
 
         assert scaling == pytest.approx(2.0, abs=0.01)
 
@@ -2256,9 +2177,7 @@ class TestSupplyTemperatureScaling:
         max_power_w = 500.0
         supply_temperature = 35.0
 
-        scaling = calculate_power_scaling_factor(
-            heating_type, area_m2, max_power_w, supply_temperature
-        )
+        scaling = calculate_power_scaling_factor(heating_type, area_m2, max_power_w, supply_temperature)
 
         assert scaling == pytest.approx(3.33, abs=0.05)
 
@@ -2273,9 +2192,7 @@ class TestSupplyTemperatureScaling:
         max_power_w = 200.0
         supply_temperature = 25.0
 
-        scaling = calculate_power_scaling_factor(
-            heating_type, area_m2, max_power_w, supply_temperature
-        )
+        scaling = calculate_power_scaling_factor(heating_type, area_m2, max_power_w, supply_temperature)
 
         assert scaling == pytest.approx(4.0, abs=0.01)
 
@@ -2340,9 +2257,7 @@ class TestCoolingPIDCalculations:
         heating_tau = 1.5  # hours
         cooling_type = "forced_air"
 
-        from custom_components.adaptive_climate.adaptive.physics import (
-            estimate_cooling_time_constant
-        )
+        from custom_components.adaptive_climate.adaptive.physics import estimate_cooling_time_constant
 
         cooling_tau = estimate_cooling_time_constant(heating_tau, cooling_type)
 
@@ -2355,9 +2270,7 @@ class TestCoolingPIDCalculations:
         heating_tau = 4.0  # hours
         cooling_type = "radiator"
 
-        from custom_components.adaptive_climate.adaptive.physics import (
-            estimate_cooling_time_constant
-        )
+        from custom_components.adaptive_climate.adaptive.physics import estimate_cooling_time_constant
 
         cooling_tau = estimate_cooling_time_constant(heating_tau, cooling_type)
 
@@ -2370,9 +2283,7 @@ class TestCoolingPIDCalculations:
         heating_tau = 8.0  # hours
         cooling_type = "floor_hydronic"
 
-        from custom_components.adaptive_climate.adaptive.physics import (
-            estimate_cooling_time_constant
-        )
+        from custom_components.adaptive_climate.adaptive.physics import estimate_cooling_time_constant
 
         cooling_tau = estimate_cooling_time_constant(heating_tau, cooling_type)
 
@@ -2385,9 +2296,7 @@ class TestCoolingPIDCalculations:
         heating_tau = 2.5  # hours
         cooling_type = "convector"
 
-        from custom_components.adaptive_climate.adaptive.physics import (
-            estimate_cooling_time_constant
-        )
+        from custom_components.adaptive_climate.adaptive.physics import estimate_cooling_time_constant
 
         cooling_tau = estimate_cooling_time_constant(heating_tau, cooling_type)
 
@@ -2400,9 +2309,7 @@ class TestCoolingPIDCalculations:
         cooling_tau = 0.45  # hours (from heating_tau=1.5 × tau_ratio=0.3)
         cooling_type = "forced_air"
 
-        from custom_components.adaptive_climate.adaptive.physics import (
-            calculate_initial_cooling_pid
-        )
+        from custom_components.adaptive_climate.adaptive.physics import calculate_initial_cooling_pid
 
         kp, ki, kd = calculate_initial_cooling_pid(cooling_tau, cooling_type)
 
@@ -2419,9 +2326,7 @@ class TestCoolingPIDCalculations:
         cooling_tau = 2.0  # hours (from heating_tau=4.0 × tau_ratio=0.5)
         cooling_type = "radiator"
 
-        from custom_components.adaptive_climate.adaptive.physics import (
-            calculate_initial_cooling_pid
-        )
+        from custom_components.adaptive_climate.adaptive.physics import calculate_initial_cooling_pid
 
         kp, ki, kd = calculate_initial_cooling_pid(cooling_tau, cooling_type)
 
@@ -2438,9 +2343,7 @@ class TestCoolingPIDCalculations:
         cooling_tau = 6.4  # hours (from heating_tau=8.0 × tau_ratio=0.8)
         cooling_type = "floor_hydronic"
 
-        from custom_components.adaptive_climate.adaptive.physics import (
-            calculate_initial_cooling_pid
-        )
+        from custom_components.adaptive_climate.adaptive.physics import calculate_initial_cooling_pid
 
         kp, ki, kd = calculate_initial_cooling_pid(cooling_tau, cooling_type)
 
@@ -2455,9 +2358,7 @@ class TestCoolingPIDCalculations:
         # Compare cooling vs heating PID for same tau value
         tau = 1.5  # hours
 
-        from custom_components.adaptive_climate.adaptive.physics import (
-            calculate_initial_cooling_pid
-        )
+        from custom_components.adaptive_climate.adaptive.physics import calculate_initial_cooling_pid
 
         # Heating PID for forced_air at tau=1.5
         kp_heating, ki_heating, kd_heating = calculate_initial_pid(tau, "forced_air")
@@ -2474,9 +2375,7 @@ class TestCoolingPIDCalculations:
         """Test cooling Kp multiplier for radiator system."""
         tau = 3.0  # hours
 
-        from custom_components.adaptive_climate.adaptive.physics import (
-            calculate_initial_cooling_pid
-        )
+        from custom_components.adaptive_climate.adaptive.physics import calculate_initial_cooling_pid
 
         # Heating PID for radiator
         kp_heating, _, _ = calculate_initial_pid(tau, "radiator")
@@ -2494,15 +2393,13 @@ class TestCoolingPIDCalculations:
         # This test verifies the function reads tau_ratio from COOLING_TYPE_CHARACTERISTICS
         heating_tau = 10.0
 
-        from custom_components.adaptive_climate.adaptive.physics import (
-            estimate_cooling_time_constant
-        )
+        from custom_components.adaptive_climate.adaptive.physics import estimate_cooling_time_constant
 
         # Test each cooling type has appropriate tau_ratio
         cooling_types_expected = {
-            "forced_air": (0.2, 0.4),      # Fast cooling, tau_ratio ~0.3
-            "radiator": (0.4, 0.6),        # Moderate cooling, tau_ratio ~0.5
-            "convector": (0.5, 0.7),       # Moderate cooling, tau_ratio ~0.6
+            "forced_air": (0.2, 0.4),  # Fast cooling, tau_ratio ~0.3
+            "radiator": (0.4, 0.6),  # Moderate cooling, tau_ratio ~0.5
+            "convector": (0.5, 0.7),  # Moderate cooling, tau_ratio ~0.6
             "floor_hydronic": (0.7, 0.9),  # Slow cooling, tau_ratio ~0.8
         }
 
@@ -2510,8 +2407,7 @@ class TestCoolingPIDCalculations:
             cooling_tau = estimate_cooling_time_constant(heating_tau, cooling_type)
             actual_ratio = cooling_tau / heating_tau
             assert min_ratio <= actual_ratio <= max_ratio, (
-                f"{cooling_type}: tau_ratio {actual_ratio:.2f} not in expected range "
-                f"[{min_ratio}, {max_ratio}]"
+                f"{cooling_type}: tau_ratio {actual_ratio:.2f} not in expected range [{min_ratio}, {max_ratio}]"
             )
 
     def test_calculate_initial_cooling_pid_with_power_scaling(self):
@@ -2521,14 +2417,10 @@ class TestCoolingPIDCalculations:
         area_m2 = 50.0
         max_power_w = 1000.0  # Undersized for 50m² (baseline 50 W/m² = 2500W)
 
-        from custom_components.adaptive_climate.adaptive.physics import (
-            calculate_initial_cooling_pid
-        )
+        from custom_components.adaptive_climate.adaptive.physics import calculate_initial_cooling_pid
 
         # Calculate baseline (no power scaling)
-        kp_baseline, ki_baseline, kd_baseline = calculate_initial_cooling_pid(
-            cooling_tau, cooling_type
-        )
+        kp_baseline, ki_baseline, kd_baseline = calculate_initial_cooling_pid(cooling_tau, cooling_type)
 
         # Calculate with power scaling (undersized system needs higher gains)
         kp_scaled, ki_scaled, kd_scaled = calculate_initial_cooling_pid(
@@ -2546,9 +2438,7 @@ class TestCoolingPIDCalculations:
         cooling_tau = 3.5
         cooling_type = "convector"
 
-        from custom_components.adaptive_climate.adaptive.physics import (
-            calculate_initial_cooling_pid
-        )
+        from custom_components.adaptive_climate.adaptive.physics import calculate_initial_cooling_pid
 
         kp, ki, kd = calculate_initial_cooling_pid(cooling_tau, cooling_type)
 

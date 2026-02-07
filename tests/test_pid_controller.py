@@ -1,4 +1,5 @@
 """Tests for PID controller."""
+
 import pytest
 import sys
 from pathlib import Path
@@ -108,11 +109,10 @@ class TestPIDController:
     def test_pid_mode_off(self):
         """Test PID behavior when mode is OFF."""
         # Create PID controller
-        pid = PID(kp=10, ki=0.5, kd=2, out_min=0, out_max=100,
-                  cold_tolerance=0.3, hot_tolerance=0.3)
+        pid = PID(kp=10, ki=0.5, kd=2, out_min=0, out_max=100, cold_tolerance=0.3, hot_tolerance=0.3)
 
         # Set mode to OFF
-        pid.mode = 'OFF'
+        pid.mode = "OFF"
 
         # Below setpoint - cold tolerance: should turn on (max output)
         output, changed = pid.calc(input_val=19.5, set_point=20.0, input_time=0.0)
@@ -134,12 +134,7 @@ class TestPIDController:
         pid = PID(kp=10, ki=0.5, kd=2, ke=0.8, out_min=0, out_max=100)
 
         # Calculate with external temperature
-        output_with_ext, _ = pid.calc(
-            input_val=20.0,
-            set_point=22.0,
-            input_time=0.0,
-            ext_temp=5.0
-        )
+        output_with_ext, _ = pid.calc(input_val=20.0, set_point=22.0, input_time=0.0, ext_temp=5.0)
 
         # External term should be: ke * (setpoint - ext_temp) = 0.8 * (22 - 5) = 13.6
         assert pid.external == pytest.approx(13.6, rel=0.01)
@@ -190,7 +185,7 @@ class TestPIDController:
         # Mock time() to control the timing
         mock_time = 1000.0
 
-        with patch('pid_controller.time', return_value=mock_time):
+        with patch("pid_controller.time", return_value=mock_time):
             # First calculation should always run (no last_input_time yet)
             output1, changed1 = pid.calc(input_val=20.0, set_point=22.0)
             assert changed1 is True
@@ -201,7 +196,7 @@ class TestPIDController:
         # Second call at t=1030 (30s later) - still runs because _last_input_time
         # becomes set after this call (it gets the previous _input_time)
         mock_time = 1030.0
-        with patch('pid_controller.time', return_value=mock_time):
+        with patch("pid_controller.time", return_value=mock_time):
             output2, changed2 = pid.calc(input_val=20.5, set_point=22.0)
             assert changed2 is True  # Runs because _last_input_time was still None
             assert pid._last_input_time == 1000.0  # Now set from previous _input_time
@@ -210,7 +205,7 @@ class TestPIDController:
         # Third call at t=1040 (10s after second call) - should be SKIPPED
         # because 10s < 60s sampling period
         mock_time = 1040.0
-        with patch('pid_controller.time', return_value=mock_time):
+        with patch("pid_controller.time", return_value=mock_time):
             output3, changed3 = pid.calc(input_val=21.0, set_point=22.0)
             assert changed3 is False  # Skipped - too soon
             assert output3 == output2  # Returns cached output
@@ -221,7 +216,7 @@ class TestPIDController:
         # Fourth call at t=1100 (70s after second call's _last_input_time)
         # Should run: 1100 - 1000 = 100s > 60s sampling period
         mock_time = 1100.0
-        with patch('pid_controller.time', return_value=mock_time):
+        with patch("pid_controller.time", return_value=mock_time):
             output4, changed4 = pid.calc(input_val=21.5, set_point=22.0)
             assert changed4 is True
             # Error is now 0.5 (22 - 21.5)
@@ -257,12 +252,7 @@ class TestPIDController:
 
         # Call with input_time provided - should NOT log warning
         with caplog.at_level(logging.WARNING):
-            output2, changed2 = pid.calc(
-                input_val=21.0,
-                set_point=22.0,
-                input_time=100.0,
-                last_input_time=0.0
-            )
+            output2, changed2 = pid.calc(input_val=21.0, set_point=22.0, input_time=100.0, last_input_time=0.0)
 
         # No warning should be logged when timestamp is provided
         assert "event-driven mode" not in caplog.text
@@ -314,7 +304,7 @@ class TestPIDController:
         assert pid._last_input is not None
 
         # Switch to OFF mode
-        pid.mode = 'OFF'
+        pid.mode = "OFF"
 
         # Samples should still exist (OFF mode doesn't clear)
         assert pid._input is not None
@@ -323,7 +313,7 @@ class TestPIDController:
         pid.calc(input_val=19.0, set_point=22.0, input_time=100.0)
 
         # Switch back to AUTO - this should clear samples
-        pid.mode = 'AUTO'
+        pid.mode = "AUTO"
 
         # Samples should be cleared for fresh PID calculation
         assert pid._input is None
@@ -354,75 +344,55 @@ class TestPIDController:
         pid = PID(kp=10, ki=0.5, kd=2, out_min=0, out_max=100)
 
         # First valid calculation to establish baseline
-        output1, changed1 = pid.calc(
-            input_val=20.0, set_point=22.0,
-            input_time=0.0, last_input_time=None
-        )
+        output1, changed1 = pid.calc(input_val=20.0, set_point=22.0, input_time=0.0, last_input_time=None)
         assert changed1 is True
         baseline_output = output1
 
         # NaN input_val should return cached output
-        output2, changed2 = pid.calc(
-            input_val=float('nan'), set_point=22.0,
-            input_time=1.0, last_input_time=0.0
-        )
+        output2, changed2 = pid.calc(input_val=float("nan"), set_point=22.0, input_time=1.0, last_input_time=0.0)
         assert changed2 is False
         assert output2 == baseline_output
 
         # Inf input_val should return cached output
-        output3, changed3 = pid.calc(
-            input_val=float('inf'), set_point=22.0,
-            input_time=2.0, last_input_time=1.0
-        )
+        output3, changed3 = pid.calc(input_val=float("inf"), set_point=22.0, input_time=2.0, last_input_time=1.0)
         assert changed3 is False
         assert output3 == baseline_output
 
         # Negative Inf input_val should return cached output
-        output4, changed4 = pid.calc(
-            input_val=float('-inf'), set_point=22.0,
-            input_time=3.0, last_input_time=2.0
-        )
+        output4, changed4 = pid.calc(input_val=float("-inf"), set_point=22.0, input_time=3.0, last_input_time=2.0)
         assert changed4 is False
         assert output4 == baseline_output
 
         # NaN set_point should return cached output
-        output5, changed5 = pid.calc(
-            input_val=20.0, set_point=float('nan'),
-            input_time=4.0, last_input_time=3.0
-        )
+        output5, changed5 = pid.calc(input_val=20.0, set_point=float("nan"), input_time=4.0, last_input_time=3.0)
         assert changed5 is False
         assert output5 == baseline_output
 
         # Inf set_point should return cached output
-        output6, changed6 = pid.calc(
-            input_val=20.0, set_point=float('inf'),
-            input_time=5.0, last_input_time=4.0
-        )
+        output6, changed6 = pid.calc(input_val=20.0, set_point=float("inf"), input_time=5.0, last_input_time=4.0)
         assert changed6 is False
         assert output6 == baseline_output
 
         # NaN ext_temp should return cached output
         output7, changed7 = pid.calc(
-            input_val=20.0, set_point=22.0,
-            input_time=6.0, last_input_time=5.0,
-            ext_temp=float('nan')
+            input_val=20.0, set_point=22.0, input_time=6.0, last_input_time=5.0, ext_temp=float("nan")
         )
         assert changed7 is False
         assert output7 == baseline_output
 
         # Inf ext_temp should return cached output
         output8, changed8 = pid.calc(
-            input_val=20.0, set_point=22.0,
-            input_time=7.0, last_input_time=6.0,
-            ext_temp=float('inf')
+            input_val=20.0, set_point=22.0, input_time=7.0, last_input_time=6.0, ext_temp=float("inf")
         )
         assert changed8 is False
         assert output8 == baseline_output
 
         # Valid calculation after invalid inputs should work correctly
         output9, changed9 = pid.calc(
-            input_val=21.0, set_point=22.0,
-            input_time=8.0, last_input_time=0.0  # Use last valid time
+            input_val=21.0,
+            set_point=22.0,
+            input_time=8.0,
+            last_input_time=0.0,  # Use last valid time
         )
         assert changed9 is True
         # State should still be valid and produce reasonable output
@@ -545,10 +515,8 @@ class TestPIDDerivativeFilter:
         derivative is more stable than unfiltered.
         """
         # Create two PIDs: one with filtering (alpha=0.15), one without (alpha=1.0)
-        pid_filtered = PID(kp=10, ki=1.0, kd=5.0, out_min=0, out_max=100,
-                          derivative_filter_alpha=0.15)
-        pid_unfiltered = PID(kp=10, ki=1.0, kd=5.0, out_min=0, out_max=100,
-                            derivative_filter_alpha=1.0)
+        pid_filtered = PID(kp=10, ki=1.0, kd=5.0, out_min=0, out_max=100, derivative_filter_alpha=0.15)
+        pid_unfiltered = PID(kp=10, ki=1.0, kd=5.0, out_min=0, out_max=100, derivative_filter_alpha=1.0)
 
         # Start at 20.0°C, target 22.0°C
         pid_filtered.calc(input_val=20.0, set_point=22.0, input_time=0.0, last_input_time=None)
@@ -580,12 +548,14 @@ class TestPIDDerivativeFilter:
         # Calculate variance of derivative values (measure of noise)
         # Filtered should have lower variance (more stable)
         import statistics
+
         variance_filtered = statistics.variance([deriv_filtered_1, deriv_filtered_2, deriv_filtered_3])
         variance_unfiltered = statistics.variance([deriv_unfiltered_1, deriv_unfiltered_2, deriv_unfiltered_3])
 
         # Filtered derivative should be more stable (lower variance)
-        assert variance_filtered < variance_unfiltered, \
+        assert variance_filtered < variance_unfiltered, (
             f"Filtered variance {variance_filtered} should be < unfiltered {variance_unfiltered}"
+        )
 
     def test_derivative_filter_alpha_range(self):
         """Test derivative filter behavior across alpha range 0.0 to 1.0.
@@ -595,8 +565,7 @@ class TestPIDDerivativeFilter:
         Alpha = 0.5: moderate filtering
         """
         # Test alpha = 0.0 (maximum filtering)
-        pid_max_filter = PID(kp=10, ki=1.0, kd=5.0, out_min=0, out_max=100,
-                            derivative_filter_alpha=0.0)
+        pid_max_filter = PID(kp=10, ki=1.0, kd=5.0, out_min=0, out_max=100, derivative_filter_alpha=0.0)
 
         # First calculation
         pid_max_filter.calc(input_val=20.0, set_point=22.0, input_time=0.0, last_input_time=None)
@@ -609,8 +578,7 @@ class TestPIDDerivativeFilter:
         assert pid_max_filter.derivative == 0.0
 
         # Test alpha = 1.0 (no filtering)
-        pid_no_filter = PID(kp=10, ki=1.0, kd=5.0, out_min=0, out_max=100,
-                           derivative_filter_alpha=1.0)
+        pid_no_filter = PID(kp=10, ki=1.0, kd=5.0, out_min=0, out_max=100, derivative_filter_alpha=1.0)
 
         pid_no_filter.calc(input_val=20.0, set_point=22.0, input_time=0.0, last_input_time=None)
         pid_no_filter.calc(input_val=20.5, set_point=22.0, input_time=60.0, last_input_time=0.0)
@@ -622,8 +590,7 @@ class TestPIDDerivativeFilter:
         assert abs(pid_no_filter.derivative - expected_derivative) < 0.1
 
         # Test alpha = 0.5 (moderate filtering)
-        pid_moderate = PID(kp=10, ki=1.0, kd=5.0, out_min=0, out_max=100,
-                          derivative_filter_alpha=0.5)
+        pid_moderate = PID(kp=10, ki=1.0, kd=5.0, out_min=0, out_max=100, derivative_filter_alpha=0.5)
 
         pid_moderate.calc(input_val=20.0, set_point=22.0, input_time=0.0, last_input_time=None)
         pid_moderate.calc(input_val=20.5, set_point=22.0, input_time=60.0, last_input_time=0.0)
@@ -634,8 +601,7 @@ class TestPIDDerivativeFilter:
     def test_derivative_filter_disable(self):
         """Test that alpha=1.0 completely disables filter (raw derivative passthrough)."""
         # Alpha = 1.0 should give unfiltered derivative
-        pid = PID(kp=10, ki=1.0, kd=5.0, out_min=0, out_max=100,
-                 derivative_filter_alpha=1.0)
+        pid = PID(kp=10, ki=1.0, kd=5.0, out_min=0, out_max=100, derivative_filter_alpha=1.0)
 
         # First calculation
         pid.calc(input_val=20.0, set_point=22.0, input_time=0.0, last_input_time=None)
@@ -657,8 +623,7 @@ class TestPIDDerivativeFilter:
 
     def test_derivative_filter_persistence_through_samples_clear(self):
         """Test that derivative filter resets when samples are cleared."""
-        pid = PID(kp=10, ki=1.0, kd=5.0, out_min=0, out_max=100,
-                 derivative_filter_alpha=0.15)
+        pid = PID(kp=10, ki=1.0, kd=5.0, out_min=0, out_max=100, derivative_filter_alpha=0.15)
 
         # Build up filtered derivative
         pid.calc(input_val=20.0, set_point=22.0, input_time=0.0, last_input_time=None)
@@ -680,8 +645,7 @@ class TestPIDOutdoorTempLag:
 
     def test_outdoor_temp_passed_directly_to_dext(self):
         """PID uses ext_temp directly for _dext calculation (no EMA filter)."""
-        pid = PID(kp=1.0, ki=0.01, kd=10.0, ke=0.5,
-                  out_min=0, out_max=100, sampling_period=0)
+        pid = PID(kp=1.0, ki=0.01, kd=10.0, ke=0.5, out_min=0, out_max=100, sampling_period=0)
         # First call with ext_temp=10, setpoint=20
         pid.calc(19.0, 20.0, 100, 0, ext_temp=10.0)
         assert pid._dext == 20.0 - 10.0  # = 10.0
@@ -702,22 +666,22 @@ class TestPIDBumplessTransfer:
         # Run in AUTO mode to establish an output value
         # With P-on-M, first call has P=0, so output starts at 0
         t = 0.0
-        output1, _ = pid.calc(input_val=19.5, set_point=21.0, input_time=t,
-                             last_input_time=None, ext_temp=10.0)
+        output1, _ = pid.calc(input_val=19.5, set_point=21.0, input_time=t, last_input_time=None, ext_temp=10.0)
         # First call has P=0 with P-on-M
 
         # Continue running to build up integral term
         for i in range(1, 6):
             t = i * 60.0  # 1 minute intervals
-            output_before, _ = pid.calc(input_val=19.8, set_point=21.0, input_time=t,
-                                       last_input_time=t - 60.0, ext_temp=10.0)
+            output_before, _ = pid.calc(
+                input_val=19.8, set_point=21.0, input_time=t, last_input_time=t - 60.0, ext_temp=10.0
+            )
 
         # Store the last output value - should have accumulated integral by now
         last_output = pid._output
         assert pid.integral > 0  # Integral should have accumulated
 
         # Switch to OFF mode
-        pid.mode = 'OFF'
+        pid.mode = "OFF"
 
         # Verify transfer state was stored
         assert pid.has_transfer_state
@@ -728,17 +692,19 @@ class TestPIDBumplessTransfer:
         pid.calc(input_val=20.5, set_point=21.0, input_time=t, last_input_time=t - 60.0)
 
         # Switch back to AUTO mode
-        pid.mode = 'AUTO'
+        pid.mode = "AUTO"
 
         # First calc after switching to AUTO should use bumpless transfer
         t += 60.0
-        output_after, _ = pid.calc(input_val=20.0, set_point=21.0, input_time=t,
-                                   last_input_time=t - 60.0, ext_temp=10.0)
+        output_after, _ = pid.calc(
+            input_val=20.0, set_point=21.0, input_time=t, last_input_time=t - 60.0, ext_temp=10.0
+        )
 
         # Output should be close to the last output before OFF
         # Allow some tolerance since D term will be different
-        assert abs(output_after - last_output) < 5.0, \
+        assert abs(output_after - last_output) < 5.0, (
             f"Output changed too much: {last_output:.2f} -> {output_after:.2f}"
+        )
 
         # Transfer state should be cleared after use
         assert not pid.has_transfer_state
@@ -760,11 +726,11 @@ class TestPIDBumplessTransfer:
         last_integral = pid.integral
 
         # Switch to OFF mode
-        pid.mode = 'OFF'
+        pid.mode = "OFF"
         assert pid.has_transfer_state
 
         # Switch back to AUTO with significantly different setpoint
-        pid.mode = 'AUTO'
+        pid.mode = "AUTO"
         t += 60.0
         pid.calc(input_val=20.0, set_point=24.0, input_time=t, last_input_time=t - 60.0)
 
@@ -788,11 +754,11 @@ class TestPIDBumplessTransfer:
             pid.calc(input_val=20.0, set_point=21.0, input_time=t, last_input_time=t - 60.0)
 
         # Switch to OFF mode
-        pid.mode = 'OFF'
+        pid.mode = "OFF"
         assert pid.has_transfer_state
 
         # Switch back to AUTO with large error (> 2°C)
-        pid.mode = 'AUTO'
+        pid.mode = "AUTO"
         t += 60.0
         pid.calc(input_val=17.0, set_point=21.0, input_time=t, last_input_time=t - 60.0)
 
@@ -804,9 +770,9 @@ class TestPIDBumplessTransfer:
         pid = PID(kp=10.0, ki=1.2, kd=2.5, out_min=0, out_max=100)
 
         # Verify properties and methods exist
-        assert hasattr(pid, 'has_transfer_state')
-        assert hasattr(pid, 'prepare_bumpless_transfer')
-        assert hasattr(pid, '_last_output_before_off')
+        assert hasattr(pid, "has_transfer_state")
+        assert hasattr(pid, "prepare_bumpless_transfer")
+        assert hasattr(pid, "_last_output_before_off")
 
 
 class TestPIDKeIntegralClamping:
@@ -835,7 +801,7 @@ class TestPIDKeIntegralClamping:
             kd=2.5,
             ke=0.013,  # G-rated house (worst insulation)
             out_min=0,
-            out_max=100
+            out_max=100,
         )
 
         # First calculation to initialize
@@ -874,7 +840,7 @@ class TestPIDKeIntegralClamping:
             kd=2.5,
             ke=0.013,  # G-rated house
             out_min=0,
-            out_max=100
+            out_max=100,
         )
 
         # Initialize PID
@@ -935,7 +901,7 @@ class TestPIDKeIntegralClamping:
             kd=2.0,
             ke=0.005,  # A-rated house
             out_min=0,
-            out_max=100
+            out_max=100,
         )
 
         # Initialize at 20°C indoor, 0°C outdoor
@@ -987,9 +953,7 @@ class TestPIDKeIntegralClamping:
 
         # Calculate with wind
         output_with_wind, _ = pid.calc(
-            input_val, set_point,
-            input_time=100.0, last_input_time=0.0,
-            ext_temp=ext_temp, wind_speed=wind_speed
+            input_val, set_point, input_time=100.0, last_input_time=0.0, ext_temp=ext_temp, wind_speed=wind_speed
         )
 
         # dext = 20 - 5 = 15
@@ -1002,9 +966,7 @@ class TestPIDKeIntegralClamping:
         # Calculate without wind (wind_speed=0)
         pid2 = PID(kp=10, ki=1, kd=2, ke=0.005, ke_wind=0.02, out_min=0, out_max=100)
         output_no_wind, _ = pid2.calc(
-            input_val, set_point,
-            input_time=100.0, last_input_time=0.0,
-            ext_temp=ext_temp, wind_speed=0.0
+            input_val, set_point, input_time=100.0, last_input_time=0.0, ext_temp=ext_temp, wind_speed=0.0
         )
 
         # External term without wind = Ke * dext = 0.005 * 15 = 0.075
@@ -1019,11 +981,7 @@ class TestPIDKeIntegralClamping:
         pid = PID(kp=10, ki=1, kd=2, ke=0.005, ke_wind=0.02, out_min=0, out_max=100)
 
         # Call without wind_speed (defaults to None)
-        output, _ = pid.calc(
-            18.0, 20.0,
-            input_time=100.0, last_input_time=0.0,
-            ext_temp=5.0
-        )
+        output, _ = pid.calc(18.0, 20.0, input_time=100.0, last_input_time=0.0, ext_temp=5.0)
 
         # Should treat as wind_speed=0
         # External = Ke * dext = 0.005 * 15 = 0.075
@@ -1040,20 +998,12 @@ class TestPIDKeIntegralClamping:
         ext_temp = -10.0
 
         # No wind
-        pid.calc(
-            input_val, set_point,
-            input_time=100.0, last_input_time=0.0,
-            ext_temp=ext_temp, wind_speed=0.0
-        )
+        pid.calc(input_val, set_point, input_time=100.0, last_input_time=0.0, ext_temp=ext_temp, wind_speed=0.0)
         external_no_wind = pid.external
 
         # High wind (15 m/s)
         pid2 = PID(kp=10, ki=1, kd=2, ke=0.005, ke_wind=0.02, out_min=0, out_max=100)
-        pid2.calc(
-            input_val, set_point,
-            input_time=100.0, last_input_time=0.0,
-            ext_temp=ext_temp, wind_speed=15.0
-        )
+        pid2.calc(input_val, set_point, input_time=100.0, last_input_time=0.0, ext_temp=ext_temp, wind_speed=15.0)
         external_with_wind = pid2.external
 
         # dext = 20 - (-10) = 30
@@ -1096,7 +1046,7 @@ class TestWindCompensationPhysics:
             energy_rating="B",
             window_area_m2=20.0,
             floor_area_m2=50.0,  # 40% window ratio
-            window_rating="single"
+            window_rating="single",
         )
 
         # Small window area with good glazing
@@ -1104,7 +1054,7 @@ class TestWindCompensationPhysics:
             energy_rating="B",
             window_area_m2=5.0,
             floor_area_m2=50.0,  # 10% window ratio
-            window_rating="triple"
+            window_rating="triple",
         )
 
         assert ke_wind_high_windows > ke_wind_low_windows
@@ -1231,8 +1181,7 @@ class TestPIDDerivativeTimingProtection:
 
     def test_ema_filter_state_preserved_when_frozen(self):
         """Test that EMA filter state is preserved during freeze."""
-        pid = PID(kp=10, ki=1.0, kd=50, out_min=0, out_max=100,
-                  derivative_filter_alpha=0.3)
+        pid = PID(kp=10, ki=1.0, kd=50, out_min=0, out_max=100, derivative_filter_alpha=0.3)
 
         # First call
         pid.calc(input_val=20.0, set_point=22.0, input_time=0.0, last_input_time=None)
@@ -1341,8 +1290,9 @@ class TestPIDAntiWindupWindDown:
         # Integral should decrease (wind down) because error is negative
         # dt = 100s = 100/3600 hours, error = -2.0, Ki = 10
         # delta_I = 10 * (-2.0) * (100/3600) ≈ -0.556
-        assert pid.integral < initial_integral, \
+        assert pid.integral < initial_integral, (
             f"Integral should wind down when error opposes saturation: I={pid.integral} vs initial={initial_integral}"
+        )
 
     def test_antiwindup_allows_winddown_from_low_saturation(self):
         """Test integral can wind down when saturated low but error positive."""
@@ -1378,8 +1328,9 @@ class TestPIDAntiWindupWindDown:
         # Integral should increase because error is positive
         # dt = 100s = 100/3600 hours, error = 2.0, Ki = 10
         # delta_I = 10 * 2.0 * (100/3600) ≈ 0.556
-        assert pid.integral > initial_integral, \
+        assert pid.integral > initial_integral, (
             f"Integral should wind up when error opposes low saturation: {pid.integral} <= {initial_integral}"
+        )
 
     def test_antiwindup_blocks_further_windup_at_saturation(self):
         """Test integral blocked when saturated AND error drives further saturation."""
@@ -1409,8 +1360,9 @@ class TestPIDAntiWindupWindDown:
 
         # Integral should NOT increase beyond saturation point
         # New directional check should PREVENT integration entirely
-        assert pid.integral == saturated_integral, \
+        assert pid.integral == saturated_integral, (
             f"Integral should be blocked when error drives further saturation: {pid.integral} != {saturated_integral}"
+        )
 
     def test_antiwindup_wind_down_with_measurement_change(self):
         """Test anti-windup wind-down works with varying measurements."""
@@ -1426,10 +1378,14 @@ class TestPIDAntiWindupWindDown:
             current_time = 100.0 * i
             # Vary measurement slightly to generate P term
             measurement = 10.0 - 0.01 * (i % 2)  # Oscillate slightly
-            output, _ = pid.calc(input_val=measurement, set_point=20.0, input_time=current_time, last_input_time=last_time)
+            output, _ = pid.calc(
+                input_val=measurement, set_point=20.0, input_time=current_time, last_input_time=last_time
+            )
 
         # Should be saturated at 100%
-        assert output == 100.0 or pid.integral > 70.0, f"Expected high integral or saturation, got output={output}, I={pid.integral}"
+        assert output == 100.0 or pid.integral > 70.0, (
+            f"Expected high integral or saturation, got output={output}, I={pid.integral}"
+        )
         initial_integral = pid.integral
 
         # Create situation where measurement increases (overshoot)
@@ -1440,8 +1396,9 @@ class TestPIDAntiWindupWindDown:
         # Should allow wind-down
         # error = 20.0 - 22.0 = -2.0 (negative)
         # _last_output >= 100, error < 0 → saturated_high = False → integration proceeds
-        assert pid.integral < initial_integral, \
+        assert pid.integral < initial_integral, (
             f"Integral should wind down when error opposes saturation: {pid.integral} >= {initial_integral}"
+        )
 
 
 class TestPIDFeedforward:
@@ -1556,10 +1513,12 @@ class TestPIDFeedforward:
         for i in range(5):
             t = i * 60.0
             last_t = t - 60.0 if i > 0 else None
-            out1, _ = pid_with_ff.calc(input_val=19.0 + i * 0.2, set_point=21.0,
-                                        input_time=t, last_input_time=last_t, ext_temp=10.0)
-            out2, _ = pid_without_ff.calc(input_val=19.0 + i * 0.2, set_point=21.0,
-                                           input_time=t, last_input_time=last_t, ext_temp=10.0)
+            out1, _ = pid_with_ff.calc(
+                input_val=19.0 + i * 0.2, set_point=21.0, input_time=t, last_input_time=last_t, ext_temp=10.0
+            )
+            out2, _ = pid_without_ff.calc(
+                input_val=19.0 + i * 0.2, set_point=21.0, input_time=t, last_input_time=last_t, ext_temp=10.0
+            )
             # With feedforward = 0, behavior should be identical
             assert out1 == out2
             assert pid_with_ff.integral == pid_without_ff.integral
@@ -1640,8 +1599,9 @@ class TestAsymmetricIntegralDecay:
 
         assert delta_i < 0, "Integral should decrease on overhang"
         # Allow 1% tolerance for floating point
-        assert abs(delta_i - expected_with_decay) < abs(expected_with_decay * 0.01), \
+        assert abs(delta_i - expected_with_decay) < abs(expected_with_decay * 0.01), (
             f"Decay should be 3x faster: got {delta_i}, expected {expected_with_decay}"
+        )
 
     def test_integral_decay_not_applied_same_sign(self):
         """With integral>0, error>0, multiplier=1.0 (no extra decay)."""
@@ -1660,8 +1620,9 @@ class TestAsymmetricIntegralDecay:
         expected_normal = 10 * 0.3 * (10 / 3600)  # Normal accumulation, no multiplier
 
         assert delta_i > 0, "Integral should increase when error is positive"
-        assert abs(delta_i - expected_normal) < abs(expected_normal * 0.01), \
+        assert abs(delta_i - expected_normal) < abs(expected_normal * 0.01), (
             f"Should not apply decay multiplier: got {delta_i}, expected {expected_normal}"
+        )
 
     def test_integral_decay_negative_overhang(self):
         """With integral<0, error>0, decay multiplier applied."""
@@ -1684,8 +1645,9 @@ class TestAsymmetricIntegralDecay:
         expected_with_decay = expected_without_decay * 2.0  # +0.0278
 
         assert delta_i > 0, "Integral should increase toward zero on cooling undershoot"
-        assert abs(delta_i - expected_with_decay) < abs(expected_with_decay * 0.01), \
+        assert abs(delta_i - expected_with_decay) < abs(expected_with_decay * 0.01), (
             f"Decay should be 2x faster: got {delta_i}, expected {expected_with_decay}"
+        )
 
     def test_integral_decay_default_value(self):
         """Without param, uses default 1.5 multiplier during overhang."""
@@ -1704,8 +1666,9 @@ class TestAsymmetricIntegralDecay:
         delta_i = pid.integral - initial_integral
         expected_with_decay = 10 * (-0.5) * (10 / 3600) * 1.5  # default 1.5x decay
 
-        assert abs(delta_i - expected_with_decay) < abs(expected_with_decay * 0.01), \
+        assert abs(delta_i - expected_with_decay) < abs(expected_with_decay * 0.01), (
             f"Should use default 1.5x decay: got {delta_i}, expected {expected_with_decay}"
+        )
 
     def test_integral_decay_zero_integral(self):
         """When integral is zero, no special decay behavior needed."""
@@ -1763,9 +1726,11 @@ class TestExponentialIntegralDecay:
     def test_exponential_decay_during_overhang(self):
         """Verify integral decays by exp(-dt/tau) during overhang."""
         import math
+
         tau = 0.18  # 7.5 min half-life (floor hydronic)
-        pid = PID(kp=0, ki=10, kd=0, out_min=-100, out_max=100,
-                  integral_decay_multiplier=1.0, integral_exp_decay_tau=tau)
+        pid = PID(
+            kp=0, ki=10, kd=0, out_min=-100, out_max=100, integral_decay_multiplier=1.0, integral_exp_decay_tau=tau
+        )
 
         # Build up positive integral
         base_time = 1000.0
@@ -1789,15 +1754,16 @@ class TestExponentialIntegralDecay:
         # Expected integral after exponential decay: after_linear * exp(-dt/tau)
         expected_integral = after_linear * math.exp(-dt_hours / tau)
 
-        assert abs(pid.integral - expected_integral) < 0.1, \
+        assert abs(pid.integral - expected_integral) < 0.1, (
             f"Expected integral ~{expected_integral}, got {pid.integral}"
+        )
 
     def test_no_exponential_decay_when_not_overhang(self):
         """Integral unchanged by exp decay when error and integral same sign."""
         import math
+
         tau = 0.18
-        pid = PID(kp=0, ki=10, kd=0, out_min=0, out_max=100,
-                  integral_decay_multiplier=1.0, integral_exp_decay_tau=tau)
+        pid = PID(kp=0, ki=10, kd=0, out_min=0, out_max=100, integral_decay_multiplier=1.0, integral_exp_decay_tau=tau)
 
         # Build up positive integral
         base_time = 1000.0
@@ -1812,13 +1778,15 @@ class TestExponentialIntegralDecay:
         expected_delta = 10 * 0.3 * dt_hours  # error = 20.0 - 19.7 = 0.3
         expected_integral = initial_integral + expected_delta
 
-        assert abs(pid.integral - expected_integral) < 0.001, \
+        assert abs(pid.integral - expected_integral) < 0.001, (
             f"Expected integral ~{expected_integral}, got {pid.integral}"
+        )
 
     def test_exponential_decay_disabled_when_tau_none(self):
         """With integral_exp_decay_tau=None, no exponential decay applied."""
-        pid = PID(kp=0, ki=10, kd=0, out_min=-100, out_max=100,
-                  integral_decay_multiplier=1.0, integral_exp_decay_tau=None)
+        pid = PID(
+            kp=0, ki=10, kd=0, out_min=-100, out_max=100, integral_decay_multiplier=1.0, integral_exp_decay_tau=None
+        )
 
         # Build up positive integral
         base_time = 1000.0
@@ -1834,8 +1802,9 @@ class TestExponentialIntegralDecay:
         expected_delta = 10 * (-0.5) * dt_hours
         expected_integral = integral_before + expected_delta
 
-        assert abs(pid.integral - expected_integral) < 0.01, \
+        assert abs(pid.integral - expected_integral) < 0.01, (
             f"Without exp decay tau, should only have linear: expected ~{expected_integral}, got {pid.integral}"
+        )
 
 
 class TestOutputClampingOnWrongSide:
@@ -1898,8 +1867,9 @@ class TestOutputClampingOnWrongSide:
     def test_clamping_with_exp_decay_integration(self):
         """Verify output clamping works together with exponential decay."""
         tau = 0.18
-        pid = PID(kp=0, ki=10, kd=0, out_min=-100, out_max=100,
-                  integral_decay_multiplier=1.0, integral_exp_decay_tau=tau)
+        pid = PID(
+            kp=0, ki=10, kd=0, out_min=-100, out_max=100, integral_decay_multiplier=1.0, integral_exp_decay_tau=tau
+        )
 
         # Build up positive integral
         base_time = 1000.0
@@ -1968,12 +1938,10 @@ class TestOutputClampingOnWrongSide:
         # Output should be clamped to 0 (no heating when beyond tolerance)
         assert output <= 0, f"Output should be ≤ 0 when beyond tolerance, got {output}"
 
-
     def test_should_apply_decay_untuned_excessive_integral_in_tolerance(self):
         """Test should_apply_decay returns True when untuned + excessive integral + within tolerance."""
         # Floor hydronic: threshold=30%, cold_tolerance=0.5°C
-        pid = PID(kp=0, ki=100, kd=0, out_min=0, out_max=100,
-                  cold_tolerance=0.5, heating_type="floor_hydronic")
+        pid = PID(kp=0, ki=100, kd=0, out_min=0, out_max=100, cold_tolerance=0.5, heating_type="floor_hydronic")
 
         # Build up integral to 40% (above 30% threshold)
         # Ki=100, error=2.0, dt=100s = 2.0 * 100 * (100/3600) = 5.555% per iteration
@@ -1995,8 +1963,7 @@ class TestOutputClampingOnWrongSide:
 
     def test_should_apply_decay_disabled_after_first_autoapply(self):
         """Test should_apply_decay returns False after first auto-apply (safety net disabled)."""
-        pid = PID(kp=0, ki=100, kd=0, out_min=0, out_max=100,
-                  cold_tolerance=0.5, heating_type="floor_hydronic")
+        pid = PID(kp=0, ki=100, kd=0, out_min=0, out_max=100, cold_tolerance=0.5, heating_type="floor_hydronic")
 
         # Build up excessive integral
         base_time = 1000.0
@@ -2015,8 +1982,7 @@ class TestOutputClampingOnWrongSide:
 
     def test_should_apply_decay_integral_below_threshold(self):
         """Test should_apply_decay returns False when integral below threshold."""
-        pid = PID(kp=100, ki=10, kd=0, out_min=0, out_max=100,
-                  cold_tolerance=0.5, heating_type="floor_hydronic")
+        pid = PID(kp=100, ki=10, kd=0, out_min=0, out_max=100, cold_tolerance=0.5, heating_type="floor_hydronic")
 
         # Build up small integral (below 30% threshold)
         base_time = 1000.0
@@ -2035,8 +2001,7 @@ class TestOutputClampingOnWrongSide:
 
     def test_should_apply_decay_outside_tolerance(self):
         """Test should_apply_decay returns False when error outside tolerance."""
-        pid = PID(kp=0, ki=100, kd=0, out_min=0, out_max=100,
-                  cold_tolerance=0.5, heating_type="floor_hydronic")
+        pid = PID(kp=0, ki=100, kd=0, out_min=0, out_max=100, cold_tolerance=0.5, heating_type="floor_hydronic")
 
         # Build up excessive integral
         base_time = 1000.0
@@ -2070,8 +2035,7 @@ class TestOutputClampingOnWrongSide:
         With the lowered threshold of 30% (from 35%), floor_hydronic systems
         should trigger safety net decay earlier to prevent overshoot.
         """
-        pid = PID(kp=0, ki=100, kd=0, out_min=0, out_max=100,
-                  cold_tolerance=0.5, heating_type="floor_hydronic")
+        pid = PID(kp=0, ki=100, kd=0, out_min=0, out_max=100, cold_tolerance=0.5, heating_type="floor_hydronic")
 
         # Build up integral to ~32% (above 30% threshold, below old 35%)
         # Ki=100, error=2.0, dt=100s = 2.0 * 100 * (100/3600) = 5.555% per iteration
@@ -2089,17 +2053,25 @@ class TestOutputClampingOnWrongSide:
         pid.calc(19.6, 20.0, input_time=base_time + 1000, last_input_time=base_time + 900)
 
         # Should apply decay: untuned + integral > 30% + within tolerance
-        assert pid.should_apply_decay() is True, \
+        assert pid.should_apply_decay() is True, (
             f"Safety net should fire at integral={pid.integral}% (above 30% threshold)"
+        )
 
     def test_progressive_decay_floor_hydronic_quadratic(self):
         """Test progressive decay with floor_hydronic (decay_exponent=2.0) produces quadratic curve.
 
         Verifies that at 25% progress through tolerance zone, decay is only 6.25% (0.25^2).
         """
-        pid = PID(kp=0, ki=100, kd=0, out_min=0, out_max=100,
-                  cold_tolerance=0.5, heating_type="floor_hydronic",
-                  integral_decay_multiplier=1.5)
+        pid = PID(
+            kp=0,
+            ki=100,
+            kd=0,
+            out_min=0,
+            out_max=100,
+            cold_tolerance=0.5,
+            heating_type="floor_hydronic",
+            integral_decay_multiplier=1.5,
+        )
 
         # Build up excessive integral
         base_time = 1000.0
@@ -2134,9 +2106,16 @@ class TestOutputClampingOnWrongSide:
 
         Verifies that at 25% progress through tolerance zone, decay is 50% (sqrt(0.25)=0.5).
         """
-        pid = PID(kp=0, ki=100, kd=0, out_min=0, out_max=100,
-                  cold_tolerance=0.15, heating_type="forced_air",
-                  integral_decay_multiplier=1.5)
+        pid = PID(
+            kp=0,
+            ki=100,
+            kd=0,
+            out_min=0,
+            out_max=100,
+            cold_tolerance=0.15,
+            heating_type="forced_air",
+            integral_decay_multiplier=1.5,
+        )
 
         # Build up excessive integral
         base_time = 1000.0
@@ -2167,9 +2146,16 @@ class TestOutputClampingOnWrongSide:
 
     def test_progressive_decay_at_tolerance_edge(self):
         """Test progressive decay at tolerance edge (progress=0) applies no additional decay."""
-        pid = PID(kp=0, ki=100, kd=0, out_min=0, out_max=100,
-                  cold_tolerance=0.3, heating_type="radiator",
-                  integral_decay_multiplier=1.5)
+        pid = PID(
+            kp=0,
+            ki=100,
+            kd=0,
+            out_min=0,
+            out_max=100,
+            cold_tolerance=0.3,
+            heating_type="radiator",
+            integral_decay_multiplier=1.5,
+        )
 
         # Build up excessive integral
         base_time = 1000.0
@@ -2195,9 +2181,16 @@ class TestOutputClampingOnWrongSide:
 
     def test_progressive_decay_at_setpoint(self):
         """Test progressive decay at setpoint (progress=1) applies full decay multiplier."""
-        pid = PID(kp=0, ki=100, kd=0, out_min=0, out_max=100,
-                  cold_tolerance=0.3, heating_type="radiator",
-                  integral_decay_multiplier=1.5)
+        pid = PID(
+            kp=0,
+            ki=100,
+            kd=0,
+            out_min=0,
+            out_max=100,
+            cold_tolerance=0.3,
+            heating_type="radiator",
+            integral_decay_multiplier=1.5,
+        )
 
         # Build up excessive integral
         base_time = 1000.0
@@ -2243,7 +2236,7 @@ class TestPIDClampingStateTracking:
 
         assert output <= 0, f"Output should be clamped to ≤ 0, got {output}"
         assert pid.was_clamped is True
-        assert pid.clamp_reason == 'tolerance'
+        assert pid.clamp_reason == "tolerance"
 
     def test_pid_tracks_cooling_tolerance_clamp(self):
         """Test was_clamped=True when error > hot_tolerance (cooling mode)."""
@@ -2263,13 +2256,12 @@ class TestPIDClampingStateTracking:
 
         assert output >= 0, f"Output should be clamped to ≥ 0, got {output}"
         assert pid.was_clamped is True
-        assert pid.clamp_reason == 'tolerance'
+        assert pid.clamp_reason == "tolerance"
 
     def test_pid_tracks_safety_net_decay(self):
         """Test was_clamped=True, clamp_reason='safety_net' when should_apply_decay() returns True."""
         # Floor hydronic: threshold=30%, cold_tolerance=0.5°C
-        pid = PID(kp=0, ki=100, kd=0, out_min=0, out_max=100,
-                  cold_tolerance=0.5, heating_type="floor_hydronic")
+        pid = PID(kp=0, ki=100, kd=0, out_min=0, out_max=100, cold_tolerance=0.5, heating_type="floor_hydronic")
 
         # Build up integral to above 30% threshold
         base_time = 1000.0
@@ -2284,7 +2276,7 @@ class TestPIDClampingStateTracking:
 
         assert pid.should_apply_decay() is True
         assert pid.was_clamped is True
-        assert pid.clamp_reason == 'safety_net'
+        assert pid.clamp_reason == "safety_net"
 
     def test_pid_clamp_sticky_within_cycle(self):
         """Test was_clamped stays True even if later calc doesn't clamp."""
@@ -2305,7 +2297,7 @@ class TestPIDClampingStateTracking:
 
         # Flag should remain True (sticky)
         assert pid.was_clamped is True
-        assert pid.clamp_reason == 'tolerance'
+        assert pid.clamp_reason == "tolerance"
 
     def test_pid_clamp_reset_on_cycle_start(self):
         """Test reset_clamp_state() clears was_clamped and clamp_reason."""
@@ -2329,8 +2321,7 @@ class TestPIDClampingStateTracking:
     def test_pid_clamp_reason_updates_to_last(self):
         """Test that clamp_reason reflects the most recent clamping event."""
         # Floor hydronic: threshold=30%
-        pid = PID(kp=0, ki=100, kd=0, out_min=-100, out_max=100,
-                  cold_tolerance=0.5, heating_type="floor_hydronic")
+        pid = PID(kp=0, ki=100, kd=0, out_min=-100, out_max=100, cold_tolerance=0.5, heating_type="floor_hydronic")
 
         # Build up integral to above threshold
         base_time = 1000.0
@@ -2340,11 +2331,11 @@ class TestPIDClampingStateTracking:
 
         # First, trigger safety net
         pid.calc(19.6, 20.0, input_time=base_time + 2100, last_input_time=base_time + 2000)
-        assert pid.clamp_reason == 'safety_net'
+        assert pid.clamp_reason == "safety_net"
 
         # Then trigger tolerance clamp (temp beyond tolerance)
         pid.calc(20.7, 20.0, input_time=base_time + 2200, last_input_time=base_time + 2100)
-        assert pid.clamp_reason == 'tolerance'
+        assert pid.clamp_reason == "tolerance"
 
     def test_no_clamping_sets_no_state(self):
         """Test that when tolerance clamp doesn't change output, was_clamped is not set."""
@@ -2368,8 +2359,7 @@ class TestPIDClampingStateTracking:
         The clamp_reason always reflects the most recent clamping event.
         """
         # Floor hydronic: threshold=30%, cold_tolerance=0.5°C
-        pid = PID(kp=0, ki=100, kd=0, out_min=-100, out_max=100,
-                  cold_tolerance=0.5, heating_type="floor_hydronic")
+        pid = PID(kp=0, ki=100, kd=0, out_min=-100, out_max=100, cold_tolerance=0.5, heating_type="floor_hydronic")
 
         # Build up integral to above 30% threshold
         base_time = 1000.0
@@ -2383,22 +2373,21 @@ class TestPIDClampingStateTracking:
         pid.calc(19.6, 20.0, input_time=base_time + 2100, last_input_time=base_time + 2000)
 
         assert pid.was_clamped is True
-        assert pid.clamp_reason == 'safety_net', "First clamp should be safety_net"
+        assert pid.clamp_reason == "safety_net", "First clamp should be safety_net"
 
         # Step 2: Temperature beyond tolerance triggers tolerance clamp
         # setpoint=20.0, cold_tolerance=0.5, so temp > 20.5 triggers tolerance clamp
         pid.calc(20.7, 20.0, input_time=base_time + 2200, last_input_time=base_time + 2100)
 
         assert pid.was_clamped is True, "was_clamped should remain True (sticky)"
-        assert pid.clamp_reason == 'tolerance', "clamp_reason should update to 'tolerance'"
+        assert pid.clamp_reason == "tolerance", "clamp_reason should update to 'tolerance'"
 
         # Step 3: Back to within tolerance - safety_net triggers again (if integral still > threshold)
         # This demonstrates that clamp_reason tracks the MOST RECENT clamping event
         pid.calc(19.8, 20.0, input_time=base_time + 2300, last_input_time=base_time + 2200)
         assert pid.was_clamped is True, "was_clamped should remain True (sticky)"
         # clamp_reason updates to safety_net since we're back within tolerance and conditions are met
-        assert pid.clamp_reason == 'safety_net', "clamp_reason updates to most recent clamp event"
-
+        assert pid.clamp_reason == "safety_net", "clamp_reason updates to most recent clamp event"
 
     def test_integral_accumulation_normal_without_dead_time(self):
         """Test baseline integral accumulation without dead time.
@@ -2453,7 +2442,7 @@ class TestPIDClampingStateTracking:
         pid = PID(kp=0.3, ki=1.2, kd=2.5, out_min=0, out_max=100)
 
         # Initially no dead time
-        assert not hasattr(pid, '_transport_delay') or pid._transport_delay is None or pid._transport_delay == 0
+        assert not hasattr(pid, "_transport_delay") or pid._transport_delay is None or pid._transport_delay == 0
 
         # First calculation establishes baseline
         pid.calc(input_val=19.0, set_point=20.0, input_time=0.0, last_input_time=None)
@@ -2463,7 +2452,7 @@ class TestPIDClampingStateTracking:
 
         # Verify dead time is active
         assert pid._transport_delay == 30.0
-        assert hasattr(pid, '_dead_time_start')
+        assert hasattr(pid, "_dead_time_start")
         assert pid._dead_time_start is not None
 
         # Verify integral accumulation is reduced
@@ -2510,13 +2499,13 @@ class TestPIDClampingStateTracking:
         # Set transport delay
         pid.set_transport_delay(30.0)
         assert pid._transport_delay == 30.0
-        assert hasattr(pid, '_dead_time_start') and pid._dead_time_start is not None
+        assert hasattr(pid, "_dead_time_start") and pid._dead_time_start is not None
 
         # Reset dead time
         pid.reset_dead_time()
 
         # Verify dead time state is cleared
-        assert not hasattr(pid, '_dead_time_start') or pid._dead_time_start is None
+        assert not hasattr(pid, "_dead_time_start") or pid._dead_time_start is None
 
         # Verify integral accumulation returns to normal rate
         pid.calc(input_val=19.0, set_point=20.0, input_time=900.0, last_input_time=0.0)
@@ -2660,8 +2649,7 @@ class TestDecayIntegral:
 
         # Should be 90% of original value
         expected = initial_integral * 0.9
-        assert abs(pid.integral - expected) < 0.001, \
-            f"Expected integral {expected}, got {pid.integral}"
+        assert abs(pid.integral - expected) < 0.001, f"Expected integral {expected}, got {pid.integral}"
 
     def test_decay_integral_zero_factor(self):
         """Test that decay_integral(0.0) sets integral to 0."""
@@ -2696,8 +2684,7 @@ class TestDecayIntegral:
         # Should be 80% of original (still negative)
         expected = initial_integral * 0.8
         assert pid.integral < 0, "Integral should still be negative"
-        assert abs(pid.integral - expected) < 0.001, \
-            f"Expected integral {expected}, got {pid.integral}"
+        assert abs(pid.integral - expected) < 0.001, f"Expected integral {expected}, got {pid.integral}"
 
 
 class TestETermSuppressionAboveSetpoint:
@@ -2720,8 +2707,9 @@ class TestETermSuppressionAboveSetpoint:
         setpoint = 20.0
         outdoor_temp = 5.0
 
-        output, _ = pid.calc(input_val=indoor_temp, set_point=setpoint,
-                            input_time=0.0, last_input_time=None, ext_temp=outdoor_temp)
+        output, _ = pid.calc(
+            input_val=indoor_temp, set_point=setpoint, input_time=0.0, last_input_time=None, ext_temp=outdoor_temp
+        )
 
         # E term should be 0 when above setpoint
         assert pid.external == 0.0, f"E term should be 0 when above setpoint, got {pid.external}"
@@ -2745,13 +2733,15 @@ class TestETermSuppressionAboveSetpoint:
         setpoint = 20.0
         outdoor_temp = 5.0
 
-        output, _ = pid.calc(input_val=indoor_temp, set_point=setpoint,
-                            input_time=0.0, last_input_time=None, ext_temp=outdoor_temp)
+        output, _ = pid.calc(
+            input_val=indoor_temp, set_point=setpoint, input_time=0.0, last_input_time=None, ext_temp=outdoor_temp
+        )
 
         # E term should be Ke * (setpoint - outdoor) = 0.25 * (20 - 5) = 3.75
         expected_e_term = 0.25 * (setpoint - outdoor_temp)
-        assert pid.external == expected_e_term, \
+        assert pid.external == expected_e_term, (
             f"E term should be {expected_e_term} when below setpoint, got {pid.external}"
+        )
 
         # Verify error is positive (below setpoint)
         assert pid.error > 0, f"Error should be positive (below setpoint), got {pid.error}"
@@ -2772,14 +2762,16 @@ class TestETermSuppressionAboveSetpoint:
         setpoint = 20.0
         outdoor_temp = 5.0
 
-        output, _ = pid.calc(input_val=indoor_temp, set_point=setpoint,
-                            input_time=0.0, last_input_time=None, ext_temp=outdoor_temp)
+        output, _ = pid.calc(
+            input_val=indoor_temp, set_point=setpoint, input_time=0.0, last_input_time=None, ext_temp=outdoor_temp
+        )
 
         # E term should apply when error = 0
         # E = Ke * (setpoint - outdoor) = 0.25 * (20 - 5) = 3.75
         expected_e_term = 0.25 * (setpoint - outdoor_temp)
-        assert pid.external == expected_e_term, \
+        assert pid.external == expected_e_term, (
             f"E term should be {expected_e_term} when at setpoint, got {pid.external}"
+        )
 
         # Verify error is zero
         assert pid.error == 0, f"Error should be 0 (at setpoint), got {pid.error}"
@@ -2799,12 +2791,12 @@ class TestETermSuppressionAboveSetpoint:
         setpoint = 20.0
         outdoor_temp = 0.0
 
-        output, _ = pid.calc(input_val=indoor_temp, set_point=setpoint,
-                            input_time=0.0, last_input_time=None, ext_temp=outdoor_temp)
+        output, _ = pid.calc(
+            input_val=indoor_temp, set_point=setpoint, input_time=0.0, last_input_time=None, ext_temp=outdoor_temp
+        )
 
         # E term should be 0 even for tiny negative error
-        assert pid.external == 0.0, \
-            f"E term should be 0 for any negative error, got {pid.external}"
+        assert pid.external == 0.0, f"E term should be 0 for any negative error, got {pid.external}"
 
         # Verify error is negative (above setpoint)
         assert pid.error < 0, f"Error should be negative, got {pid.error}"
@@ -2849,12 +2841,10 @@ class TestToleranceClampingWithNegativeIntegral:
         # Setpoint = 20.0, cold_tolerance = 0.5, temp = 20.6
         # Error = -0.6 (beyond -0.5 tolerance)
         # Even with negative integral, output should be clamped to ≤0
-        output, _ = pid.calc(20.6, 20.0, input_time=base_time + 3100,
-                            last_input_time=base_time + 3000)
+        output, _ = pid.calc(20.6, 20.0, input_time=base_time + 3100, last_input_time=base_time + 3000)
 
         # Output MUST be ≤ 0 (no heating when beyond cold_tolerance)
-        assert output <= 0, \
-            f"Output should be ≤ 0 when beyond cold_tolerance, got {output} (integral={pid.integral})"
+        assert output <= 0, f"Output should be ≤ 0 when beyond cold_tolerance, got {output} (integral={pid.integral})"
 
     def test_negative_integral_not_clamped_within_cold_tolerance(self):
         """Test output NOT clamped when error within cold_tolerance with negative integral.
@@ -2877,13 +2867,11 @@ class TestToleranceClampingWithNegativeIntegral:
         # Test within tolerance: temp = 20.2°C
         # Error = -0.2 (within -0.5 tolerance)
         # With Kp=0, output is purely integral (negative)
-        output, _ = pid.calc(20.2, 20.0, input_time=base_time + 3100,
-                            last_input_time=base_time + 3000)
+        output, _ = pid.calc(20.2, 20.0, input_time=base_time + 3100, last_input_time=base_time + 3000)
 
         # Output should NOT be clamped (can be negative from integral)
         # We just verify it's not artificially forced to 0
-        assert output < 0, \
-            f"Output should reflect negative integral when within tolerance, got {output}"
+        assert output < 0, f"Output should reflect negative integral when within tolerance, got {output}"
 
     def test_positive_integral_clamped_beyond_cold_tolerance(self):
         """Test output clamped when error < -cold_tolerance with positive integral.
@@ -2904,12 +2892,10 @@ class TestToleranceClampingWithNegativeIntegral:
 
         # Test beyond cold_tolerance: temp = 20.6°C
         # Error = -0.6 (beyond -0.5 tolerance)
-        output, _ = pid.calc(20.6, 20.0, input_time=base_time + 6100,
-                            last_input_time=base_time + 6000)
+        output, _ = pid.calc(20.6, 20.0, input_time=base_time + 6100, last_input_time=base_time + 6000)
 
         # Output should be clamped to ≤0
-        assert output <= 0, \
-            f"Output should be ≤ 0 when beyond cold_tolerance, got {output}"
+        assert output <= 0, f"Output should be ≤ 0 when beyond cold_tolerance, got {output}"
 
     def test_hot_tolerance_with_negative_integral(self):
         """Test hot_tolerance clamping works with negative integral (cooling mode).
@@ -2933,12 +2919,10 @@ class TestToleranceClampingWithNegativeIntegral:
         # Test beyond hot_tolerance: temp = 19.4°C
         # Error = +0.6 (beyond +0.5 hot_tolerance)
         # Even with negative integral wanting to cool, should clamp to ≥0 (no cooling)
-        output, _ = pid.calc(19.4, 20.0, input_time=base_time + 6100,
-                            last_input_time=base_time + 6000)
+        output, _ = pid.calc(19.4, 20.0, input_time=base_time + 6100, last_input_time=base_time + 6000)
 
         # Output should be clamped to ≥0 (no cooling when below setpoint + hot_tolerance)
-        assert output >= 0, \
-            f"Output should be ≥ 0 when beyond hot_tolerance, got {output}"
+        assert output >= 0, f"Output should be ≥ 0 when beyond hot_tolerance, got {output}"
 
     def test_clamping_state_tracked_with_positive_integral(self):
         """Test was_clamped flag set only when tolerance clamp actually affects output.
@@ -2963,13 +2947,11 @@ class TestToleranceClampingWithNegativeIntegral:
         pid.calc(19.9, 20.0, input_time=base_time + 5100, last_input_time=base_time + 5000)
 
         # Temperature rises above setpoint beyond cold_tolerance (residual integral still positive)
-        output, _ = pid.calc(20.6, 20.0, input_time=base_time + 5200,
-                            last_input_time=base_time + 5100)
+        output, _ = pid.calc(20.6, 20.0, input_time=base_time + 5200, last_input_time=base_time + 5100)
 
         # Verify clamping state tracked (positive output clamped to 0)
         assert pid.was_clamped is True, "was_clamped should be True when clamp affects output"
-        assert pid.clamp_reason == "tolerance", \
-            f"clamp_reason should be 'tolerance', got '{pid.clamp_reason}'"
+        assert pid.clamp_reason == "tolerance", f"clamp_reason should be 'tolerance', got '{pid.clamp_reason}'"
         assert output <= 0, f"Output should be clamped to ≤ 0, got {output}"
 
 

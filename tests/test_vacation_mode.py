@@ -1,4 +1,5 @@
 """Tests for VacationMode class."""
+
 import asyncio
 import pytest
 import sys
@@ -9,21 +10,25 @@ from unittest.mock import Mock, AsyncMock, MagicMock
 sys.path.insert(0, str(Path(__file__).parent.parent / "custom_components" / "adaptive_climate"))
 
 # Mock homeassistant modules before importing
-sys.modules['homeassistant'] = Mock()
+sys.modules["homeassistant"] = Mock()
+
 
 # Event needs to support subscripting for type hints like Event[EventStateChangedData]
 class MockEvent:
     """Mock Event class that supports generic subscripting."""
+
     def __class_getitem__(cls, item):
         return cls
 
+
 mock_core = Mock()
 mock_core.Event = MockEvent
-sys.modules['homeassistant.core'] = mock_core
-sys.modules['homeassistant.const'] = Mock()
-sys.modules['homeassistant.const'].SERVICE_SET_TEMPERATURE = "set_temperature"
-sys.modules['homeassistant.helpers'] = Mock()
-sys.modules['homeassistant.helpers.update_coordinator'] = Mock()
+sys.modules["homeassistant.core"] = mock_core
+sys.modules["homeassistant.const"] = Mock()
+sys.modules["homeassistant.const"].SERVICE_SET_TEMPERATURE = "set_temperature"
+sys.modules["homeassistant.helpers"] = Mock()
+sys.modules["homeassistant.helpers.update_coordinator"] = Mock()
+
 
 # Create mock base class
 class MockDataUpdateCoordinator:
@@ -33,7 +38,8 @@ class MockDataUpdateCoordinator:
         self.name = name
         self.update_interval = update_interval
 
-sys.modules['homeassistant.helpers.update_coordinator'].DataUpdateCoordinator = MockDataUpdateCoordinator
+
+sys.modules["homeassistant.helpers.update_coordinator"].DataUpdateCoordinator = MockDataUpdateCoordinator
 
 # Import coordinator module for creating coordinator
 import coordinator
@@ -71,18 +77,27 @@ class TestVacationModeEnable:
     async def test_enable_sets_all_zones_to_frost_protection(self, mock_hass, coord, vacation_mode):
         """Test that enabling vacation mode sets all zones to frost protection temp."""
         # Register zones with learning enabled
-        coord.register_zone("living_room", {
-            "climate_entity_id": "climate.living_room",
-            "learning_enabled": True,
-        })
-        coord.register_zone("bedroom", {
-            "climate_entity_id": "climate.bedroom",
-            "learning_enabled": True,
-        })
-        coord.register_zone("kitchen", {
-            "climate_entity_id": "climate.kitchen",
-            "learning_enabled": True,
-        })
+        coord.register_zone(
+            "living_room",
+            {
+                "climate_entity_id": "climate.living_room",
+                "learning_enabled": True,
+            },
+        )
+        coord.register_zone(
+            "bedroom",
+            {
+                "climate_entity_id": "climate.bedroom",
+                "learning_enabled": True,
+            },
+        )
+        coord.register_zone(
+            "kitchen",
+            {
+                "climate_entity_id": "climate.kitchen",
+                "learning_enabled": True,
+            },
+        )
 
         # Mock climate entity states with current temperatures
         def mock_get_state(entity_id):
@@ -112,14 +127,20 @@ class TestVacationModeEnable:
     async def test_enable_pauses_learning(self, mock_hass, coord, vacation_mode):
         """Test that enabling vacation mode pauses learning for all zones."""
         # Register zones with learning enabled
-        coord.register_zone("living_room", {
-            "climate_entity_id": "climate.living_room",
-            "learning_enabled": True,
-        })
-        coord.register_zone("bedroom", {
-            "climate_entity_id": "climate.bedroom",
-            "learning_enabled": True,
-        })
+        coord.register_zone(
+            "living_room",
+            {
+                "climate_entity_id": "climate.living_room",
+                "learning_enabled": True,
+            },
+        )
+        coord.register_zone(
+            "bedroom",
+            {
+                "climate_entity_id": "climate.bedroom",
+                "learning_enabled": True,
+            },
+        )
 
         # Mock climate entity states
         def mock_get_state(entity_id):
@@ -141,14 +162,20 @@ class TestVacationModeEnable:
     async def test_enable_stores_original_setpoints(self, mock_hass, coord, vacation_mode):
         """Test that enabling vacation mode stores original setpoints."""
         # Register zones
-        coord.register_zone("living_room", {
-            "climate_entity_id": "climate.living_room",
-            "learning_enabled": True,
-        })
-        coord.register_zone("bedroom", {
-            "climate_entity_id": "climate.bedroom",
-            "learning_enabled": True,
-        })
+        coord.register_zone(
+            "living_room",
+            {
+                "climate_entity_id": "climate.living_room",
+                "learning_enabled": True,
+            },
+        )
+        coord.register_zone(
+            "bedroom",
+            {
+                "climate_entity_id": "climate.bedroom",
+                "learning_enabled": True,
+            },
+        )
 
         # Mock different temperatures for each zone
         def mock_get_state(entity_id):
@@ -173,10 +200,13 @@ class TestVacationModeEnable:
     async def test_enable_default_temp(self, mock_hass, coord, vacation_mode):
         """Test that enabling vacation mode uses default temp (12) if not specified."""
         # Register a zone
-        coord.register_zone("living_room", {
-            "climate_entity_id": "climate.living_room",
-            "learning_enabled": True,
-        })
+        coord.register_zone(
+            "living_room",
+            {
+                "climate_entity_id": "climate.living_room",
+                "learning_enabled": True,
+            },
+        )
 
         # Mock climate entity state
         def mock_get_state(entity_id):
@@ -201,14 +231,20 @@ class TestVacationModeDisable:
     async def test_disable_restores_original_setpoints(self, mock_hass, coord, vacation_mode):
         """Test that disabling vacation mode restores original setpoints."""
         # Register zones
-        coord.register_zone("living_room", {
-            "climate_entity_id": "climate.living_room",
-            "learning_enabled": True,
-        })
-        coord.register_zone("bedroom", {
-            "climate_entity_id": "climate.bedroom",
-            "learning_enabled": True,
-        })
+        coord.register_zone(
+            "living_room",
+            {
+                "climate_entity_id": "climate.living_room",
+                "learning_enabled": True,
+            },
+        )
+        coord.register_zone(
+            "bedroom",
+            {
+                "climate_entity_id": "climate.bedroom",
+                "learning_enabled": True,
+            },
+        )
 
         # Mock different temperatures for each zone
         def mock_get_state(entity_id):
@@ -233,10 +269,7 @@ class TestVacationModeDisable:
 
         # Verify restored temperatures
         calls = mock_hass.services.async_call.call_args_list
-        restored_temps = {
-            call[0][2]["entity_id"]: call[0][2]["temperature"]
-            for call in calls
-        }
+        restored_temps = {call[0][2]["entity_id"]: call[0][2]["temperature"] for call in calls}
         assert restored_temps["climate.living_room"] == 21.0
         assert restored_temps["climate.bedroom"] == 19.5
 
@@ -247,14 +280,20 @@ class TestVacationModeDisable:
     async def test_disable_resumes_learning(self, mock_hass, coord, vacation_mode):
         """Test that disabling vacation mode resumes learning."""
         # Register zones with learning enabled
-        coord.register_zone("living_room", {
-            "climate_entity_id": "climate.living_room",
-            "learning_enabled": True,
-        })
-        coord.register_zone("bedroom", {
-            "climate_entity_id": "climate.bedroom",
-            "learning_enabled": True,
-        })
+        coord.register_zone(
+            "living_room",
+            {
+                "climate_entity_id": "climate.living_room",
+                "learning_enabled": True,
+            },
+        )
+        coord.register_zone(
+            "bedroom",
+            {
+                "climate_entity_id": "climate.bedroom",
+                "learning_enabled": True,
+            },
+        )
 
         # Mock climate entity states
         def mock_get_state(entity_id):
@@ -282,14 +321,20 @@ class TestVacationModeDisable:
     async def test_disable_respects_original_learning_state(self, mock_hass, coord, vacation_mode):
         """Test that disable restores original learning state (even if was disabled)."""
         # Register zones - one with learning disabled
-        coord.register_zone("living_room", {
-            "climate_entity_id": "climate.living_room",
-            "learning_enabled": True,
-        })
-        coord.register_zone("bedroom", {
-            "climate_entity_id": "climate.bedroom",
-            "learning_enabled": False,  # Already disabled before vacation
-        })
+        coord.register_zone(
+            "living_room",
+            {
+                "climate_entity_id": "climate.living_room",
+                "learning_enabled": True,
+            },
+        )
+        coord.register_zone(
+            "bedroom",
+            {
+                "climate_entity_id": "climate.bedroom",
+                "learning_enabled": False,  # Already disabled before vacation
+            },
+        )
 
         # Mock climate entity states
         def mock_get_state(entity_id):
@@ -316,10 +361,13 @@ class TestVacationModeEdgeCases:
     async def test_enable_when_already_enabled(self, mock_hass, coord, vacation_mode):
         """Test that enabling when already enabled logs warning and returns."""
         # Register a zone
-        coord.register_zone("living_room", {
-            "climate_entity_id": "climate.living_room",
-            "learning_enabled": True,
-        })
+        coord.register_zone(
+            "living_room",
+            {
+                "climate_entity_id": "climate.living_room",
+                "learning_enabled": True,
+            },
+        )
 
         # Mock climate entity state
         def mock_get_state(entity_id):
@@ -342,10 +390,13 @@ class TestVacationModeEdgeCases:
     async def test_disable_when_not_enabled(self, mock_hass, coord, vacation_mode):
         """Test that disabling when not enabled logs warning and returns."""
         # Register a zone
-        coord.register_zone("living_room", {
-            "climate_entity_id": "climate.living_room",
-            "learning_enabled": True,
-        })
+        coord.register_zone(
+            "living_room",
+            {
+                "climate_entity_id": "climate.living_room",
+                "learning_enabled": True,
+            },
+        )
 
         # Disable without enabling first
         await vacation_mode.async_disable()
@@ -357,13 +408,19 @@ class TestVacationModeEdgeCases:
     async def test_zone_without_climate_entity(self, mock_hass, coord, vacation_mode):
         """Test that zones without climate_entity_id are skipped."""
         # Register zone without climate_entity_id
-        coord.register_zone("sensor_only", {
-            "learning_enabled": True,
-        })
-        coord.register_zone("living_room", {
-            "climate_entity_id": "climate.living_room",
-            "learning_enabled": True,
-        })
+        coord.register_zone(
+            "sensor_only",
+            {
+                "learning_enabled": True,
+            },
+        )
+        coord.register_zone(
+            "living_room",
+            {
+                "climate_entity_id": "climate.living_room",
+                "learning_enabled": True,
+            },
+        )
 
         # Mock climate entity state
         def mock_get_state(entity_id):
@@ -386,10 +443,13 @@ class TestVacationModeEdgeCases:
     async def test_zone_with_no_temperature_attribute(self, mock_hass, coord, vacation_mode):
         """Test that zones without current temperature are handled gracefully."""
         # Register zones
-        coord.register_zone("living_room", {
-            "climate_entity_id": "climate.living_room",
-            "learning_enabled": True,
-        })
+        coord.register_zone(
+            "living_room",
+            {
+                "climate_entity_id": "climate.living_room",
+                "learning_enabled": True,
+            },
+        )
 
         # Mock state without temperature attribute
         def mock_get_state(entity_id):
@@ -427,14 +487,20 @@ class TestVacationModeStatus:
     async def test_status_when_enabled(self, mock_hass, coord, vacation_mode):
         """Test status when vacation mode is enabled."""
         # Register zones
-        coord.register_zone("living_room", {
-            "climate_entity_id": "climate.living_room",
-            "learning_enabled": True,
-        })
-        coord.register_zone("bedroom", {
-            "climate_entity_id": "climate.bedroom",
-            "learning_enabled": True,
-        })
+        coord.register_zone(
+            "living_room",
+            {
+                "climate_entity_id": "climate.living_room",
+                "learning_enabled": True,
+            },
+        )
+        coord.register_zone(
+            "bedroom",
+            {
+                "climate_entity_id": "climate.bedroom",
+                "learning_enabled": True,
+            },
+        )
 
         # Mock climate entity states
         def mock_get_state(entity_id):

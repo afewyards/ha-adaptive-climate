@@ -37,9 +37,9 @@ class KeObservation:
 
     timestamp: datetime
     outdoor_temp: float  # Outdoor temperature in Celsius
-    pid_output: float    # Steady-state PID control output (0-100%)
-    indoor_temp: float   # Indoor temperature when observation was taken
-    target_temp: float   # Target temperature at time of observation
+    pid_output: float  # Steady-state PID control output (0-100%)
+    indoor_temp: float  # Indoor temperature when observation was taken
+    target_temp: float  # Target temperature at time of observation
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert observation to dictionary for persistence."""
@@ -166,7 +166,7 @@ class KeLearner:
         # FIFO eviction when exceeding max observations
         if len(self._observations) > self._max_observations:
             evicted = len(self._observations) - self._max_observations
-            self._observations = self._observations[-self._max_observations:]
+            self._observations = self._observations[-self._max_observations :]
             _LOGGER.debug(
                 "Ke observations exceeded max (%d), evicted %d oldest",
                 self._max_observations,
@@ -174,8 +174,7 @@ class KeLearner:
             )
 
         _LOGGER.debug(
-            "Ke observation added: outdoor=%.1f, pid_output=%.1f, "
-            "indoor=%.1f, target=%.1f (total: %d)",
+            "Ke observation added: outdoor=%.1f, pid_output=%.1f, indoor=%.1f, target=%.1f (total: %d)",
             outdoor_temp,
             pid_output,
             indoor_temp,
@@ -217,9 +216,7 @@ class KeLearner:
             return None
 
         # Calculate covariance using sample formula (n-1 denominator)
-        covariance = sum(
-            (x - mean_x) * (y - mean_y) for x, y in zip(x_values, y_values)
-        ) / (n - 1)
+        covariance = sum((x - mean_x) * (y - mean_y) for x, y in zip(x_values, y_values)) / (n - 1)
 
         correlation = covariance / (std_x * std_y)
         return correlation
@@ -284,8 +281,7 @@ class KeLearner:
         temp_range = max(outdoor_temps) - min(outdoor_temps)
         if temp_range < KE_MIN_TEMP_RANGE:
             _LOGGER.debug(
-                "Ke adjustment skipped: insufficient temperature range "
-                "(%.1f < %.1f)",
+                "Ke adjustment skipped: insufficient temperature range (%.1f < %.1f)",
                 temp_range,
                 KE_MIN_TEMP_RANGE,
             )
@@ -298,8 +294,7 @@ class KeLearner:
             return None
 
         _LOGGER.info(
-            "Ke correlation analysis: r=%.3f (outdoor temp vs PID output), "
-            "temp range=%.1f, observations=%d",
+            "Ke correlation analysis: r=%.3f (outdoor temp vs PID output), temp range=%.1f, observations=%d",
             correlation,
             temp_range,
             len(self._observations),
@@ -327,8 +322,7 @@ class KeLearner:
             # Strong positive correlation: decrease Ke (overcompensating)
             new_ke = self._current_ke - KE_ADJUSTMENT_STEP
             _LOGGER.info(
-                "Ke decrease recommended: correlation %.3f indicates "
-                "overcompensation. Ke: %.2f -> %.2f",
+                "Ke decrease recommended: correlation %.3f indicates overcompensation. Ke: %.2f -> %.2f",
                 correlation,
                 self._current_ke,
                 new_ke,
@@ -422,11 +416,7 @@ class KeLearner:
             "current_ke": self._current_ke,
             "enabled": self._enabled,
             "max_observations": self._max_observations,
-            "last_adjustment_time": (
-                self._last_adjustment_time.isoformat()
-                if self._last_adjustment_time
-                else None
-            ),
+            "last_adjustment_time": (self._last_adjustment_time.isoformat() if self._last_adjustment_time else None),
             "observations": [obs.to_dict() for obs in self._observations],
         }
 
@@ -448,9 +438,7 @@ class KeLearner:
         learner._enabled = data.get("enabled", False)
 
         if data.get("last_adjustment_time"):
-            learner._last_adjustment_time = datetime.fromisoformat(
-                data["last_adjustment_time"]
-            )
+            learner._last_adjustment_time = datetime.fromisoformat(data["last_adjustment_time"])
 
         # Restore observations
         for obs_data in data.get("observations", []):

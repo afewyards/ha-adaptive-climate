@@ -1,4 +1,5 @@
 """Tests for the AdaptiveThermostatCoordinator."""
+
 import pytest
 import sys
 from pathlib import Path
@@ -14,38 +15,40 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "custom_components" / "ada
 # DO NOT replace sys.modules['homeassistant.components.climate'] - use the one from conftest.py
 
 # Just ensure the mocks exist (conftest.py should have already set these up)
-if 'homeassistant' not in sys.modules:
-    sys.modules['homeassistant'] = Mock()
+if "homeassistant" not in sys.modules:
+    sys.modules["homeassistant"] = Mock()
 
-if 'homeassistant.core' not in sys.modules:
+if "homeassistant.core" not in sys.modules:
     # Event needs to support subscripting for type hints like Event[EventStateChangedData]
     class MockEvent:
         """Mock Event class that supports generic subscripting."""
+
         def __class_getitem__(cls, item):
             return cls
 
     mock_core = Mock()
     mock_core.Event = MockEvent
     mock_core.callback = lambda f: f  # Mock the callback decorator
-    sys.modules['homeassistant.core'] = mock_core
+    sys.modules["homeassistant.core"] = mock_core
 
-if 'homeassistant.helpers' not in sys.modules:
-    sys.modules['homeassistant.helpers'] = Mock()
-if 'homeassistant.helpers.update_coordinator' not in sys.modules:
-    sys.modules['homeassistant.helpers.update_coordinator'] = Mock()
-if 'homeassistant.helpers.event' not in sys.modules:
-    sys.modules['homeassistant.helpers.event'] = Mock()
-if 'homeassistant.exceptions' not in sys.modules:
-    sys.modules['homeassistant.exceptions'] = Mock()
-if 'homeassistant.components' not in sys.modules:
-    sys.modules['homeassistant.components'] = Mock()
+if "homeassistant.helpers" not in sys.modules:
+    sys.modules["homeassistant.helpers"] = Mock()
+if "homeassistant.helpers.update_coordinator" not in sys.modules:
+    sys.modules["homeassistant.helpers.update_coordinator"] = Mock()
+if "homeassistant.helpers.event" not in sys.modules:
+    sys.modules["homeassistant.helpers.event"] = Mock()
+if "homeassistant.exceptions" not in sys.modules:
+    sys.modules["homeassistant.exceptions"] = Mock()
+if "homeassistant.components" not in sys.modules:
+    sys.modules["homeassistant.components"] = Mock()
 
 # DO NOT replace homeassistant.components.climate - it's already set up in conftest.py
 # with the correct MockHVACMode that uses global singleton values
 
 # Mock managers.auto_mode_switching
-sys.modules['managers'] = Mock()
-sys.modules['managers.auto_mode_switching'] = Mock()
+sys.modules["managers"] = Mock()
+sys.modules["managers.auto_mode_switching"] = Mock()
+
 
 # Create mock base class
 class MockDataUpdateCoordinator:
@@ -55,7 +58,8 @@ class MockDataUpdateCoordinator:
         self.name = name
         self.update_interval = update_interval
 
-sys.modules['homeassistant.helpers.update_coordinator'].DataUpdateCoordinator = MockDataUpdateCoordinator
+
+sys.modules["homeassistant.helpers.update_coordinator"].DataUpdateCoordinator = MockDataUpdateCoordinator
 
 # Import const to get DOMAIN
 import const
@@ -244,6 +248,7 @@ def test_unregister_zone_cleans_up_demand_state(coord):
 def test_unregister_zone_not_found(coord, caplog):
     """Test that unregistering a non-existent zone is handled gracefully."""
     import logging
+
     caplog.set_level(logging.DEBUG)
 
     # Register a zone
@@ -275,6 +280,7 @@ def test_unregister_zone_idempotent(coord):
 def test_duplicate_registration_warning(coord, caplog):
     """Test that registering the same zone twice logs a warning."""
     import logging
+
     caplog.set_level(logging.WARNING)
 
     # Register a zone
@@ -339,11 +345,7 @@ def test_unregister_all_zones(coord):
 def test_coordinator_outdoor_temp_access(hass):
     """Test that coordinator provides outdoor temperature."""
     # Set up weather entity in hass.data
-    hass.data = {
-        const.DOMAIN: {
-            "weather_entity": "weather.home"
-        }
-    }
+    hass.data = {const.DOMAIN: {"weather_entity": "weather.home"}}
 
     # Mock weather entity state with temperature attribute
     mock_state = MagicMock()
@@ -370,11 +372,7 @@ def test_coordinator_outdoor_temp_unavailable(hass):
 
 def test_coordinator_outdoor_temp_missing_attribute(hass):
     """Test that outdoor_temp returns None when temperature attribute missing."""
-    hass.data = {
-        const.DOMAIN: {
-            "weather_entity": "weather.home"
-        }
-    }
+    hass.data = {const.DOMAIN: {"weather_entity": "weather.home"}}
 
     # Mock weather entity state without temperature attribute
     mock_state = MagicMock()

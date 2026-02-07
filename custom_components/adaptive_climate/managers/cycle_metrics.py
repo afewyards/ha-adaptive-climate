@@ -183,10 +183,7 @@ class CycleMetricsRecorder:
             minutes: Transport delay in minutes (can be 0 for warm manifold)
         """
         self._transport_delay_minutes = minutes
-        self._logger.debug(
-            "Transport delay set to %.1f minutes for current cycle",
-            minutes
-        )
+        self._logger.debug("Transport delay set to %.1f minutes for current cycle", minutes)
 
     def _get_temperature_history_excluding_dead_time(
         self, temperature_history: list[tuple[datetime, float]]
@@ -214,10 +211,7 @@ class CycleMetricsRecorder:
         dead_time_seconds = transport_delay * 60
         start_time = temperature_history[0][0]
 
-        return [
-            (t, temp) for t, temp in temperature_history
-            if (t - start_time).total_seconds() >= dead_time_seconds
-        ]
+        return [(t, temp) for t, temp in temperature_history if (t - start_time).total_seconds() >= dead_time_seconds]
 
     def _calculate_mad(self, values: list[float]) -> float:
         """Calculate Median Absolute Deviation (MAD) for robust variability measure.
@@ -419,6 +413,7 @@ class CycleMetricsRecorder:
 
         # Get convergence thresholds for heating type
         from ..const import get_convergence_thresholds
+
         convergence = get_convergence_thresholds(self._heating_type)
         rise_threshold = convergence.get("undershoot_max", 0.05)
 
@@ -428,7 +423,7 @@ class CycleMetricsRecorder:
         overshoot = calculate_overshoot(
             filtered_history if filtered_history else temperature_history,
             target_temp,
-            transport_delay_seconds=transport_delay_seconds
+            transport_delay_seconds=transport_delay_seconds,
         )
         undershoot = calculate_undershoot(temperature_history, target_temp)
         settling_time = calculate_settling_time(temperature_history, target_temp, reference_time=self._device_off_time)
@@ -439,12 +434,7 @@ class CycleMetricsRecorder:
         }
         if self._cold_tolerance is not None:
             rise_time_kwargs["threshold"] = self._cold_tolerance
-        rise_time = calculate_rise_time(
-            temperature_history,
-            start_temp,
-            target_temp,
-            **rise_time_kwargs
-        )
+        rise_time = calculate_rise_time(temperature_history, start_temp, target_temp, **rise_time_kwargs)
 
         # Detect disturbances (requires environmental sensor data - not yet wired up)
         # For now, heater_active_periods is estimated from cycle start/stop times
@@ -462,8 +452,8 @@ class CycleMetricsRecorder:
             temperature_history=temperature_history,
             heater_active_periods=heater_active_periods,
             outdoor_temps=None,  # TODO: Wire up outdoor sensor data
-            solar_values=None,   # TODO: Wire up solar sensor data
-            wind_speeds=None,    # TODO: Wire up wind sensor data
+            solar_values=None,  # TODO: Wire up solar sensor data
+            wind_speeds=None,  # TODO: Wire up wind sensor data
         )
 
         # Calculate outdoor temperature average if available
@@ -537,20 +527,16 @@ class CycleMetricsRecorder:
         if self._adaptive_learner.is_in_validation_mode():
             validation_result = self._adaptive_learner.add_validation_cycle(metrics)
 
-            if validation_result == 'rollback':
+            if validation_result == "rollback":
                 # Validation failed - call rollback callback if available
                 if self._on_validation_failed is not None:
                     self._logger.warning("Validation failed, triggering rollback callback")
                     # Schedule callback as async task
                     self._hass.async_create_task(self._on_validation_failed())
                 else:
-                    self._logger.warning(
-                        "Validation failed but no rollback callback configured"
-                    )
-            elif validation_result == 'success':
-                self._logger.info(
-                    "Validation completed successfully - PID changes verified"
-                )
+                    self._logger.warning("Validation failed but no rollback callback configured")
+            elif validation_result == "success":
+                self._logger.info("Validation completed successfully - PID changes verified")
 
         # Log cycle completion with all metrics
         disturbance_str = f", disturbances={disturbances}" if disturbances else ""
@@ -661,6 +647,7 @@ class CycleMetricsRecorder:
         # Apply delay if any
         if total_delay_seconds > 0:
             from datetime import timedelta
+
             settling_start = settling_start + timedelta(seconds=total_delay_seconds)
 
         return settling_start

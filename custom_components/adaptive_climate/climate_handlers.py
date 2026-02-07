@@ -35,7 +35,7 @@ class ClimateHandlersMixin:
         self._previous_temp_time = self._cur_temp_time
         self._cur_temp_time = time.monotonic()
         self._async_update_temp(new_state)
-        self._trigger_source = 'sensor'
+        self._trigger_source = "sensor"
         _LOGGER.debug("%s: Received new temperature: %s", self.entity_id, self._current_temp)
         await self._async_control_heating(calc_pid=True, is_temp_sensor_update=True)
         self.async_write_ha_state()
@@ -47,7 +47,7 @@ class ClimateHandlersMixin:
             return
 
         self._async_update_ext_temp(new_state)
-        self._trigger_source = 'ext_sensor'
+        self._trigger_source = "ext_sensor"
         _LOGGER.debug("%s: Received new external temperature: %s", self.entity_id, self._ext_temp)
         await self._async_control_heating(calc_pid=False, is_temp_sensor_update=False)
 
@@ -58,7 +58,7 @@ class ClimateHandlersMixin:
             return
 
         self._async_update_ext_temp_from_weather(new_state)
-        self._trigger_source = 'weather_entity'
+        self._trigger_source = "weather_entity"
         _LOGGER.debug("%s: Received outdoor temperature from weather entity: %s", self.entity_id, self._ext_temp)
         await self._async_control_heating(calc_pid=False, is_temp_sensor_update=False)
 
@@ -93,7 +93,9 @@ class ClimateHandlersMixin:
         if self._zone_id:
             coordinator = self.hass.data.get(const.DOMAIN, {}).get("coordinator")
             if coordinator:
-                coordinator.update_zone_demand(self._zone_id, self._is_device_active, self._hvac_mode.value if self._hvac_mode else None)
+                coordinator.update_zone_demand(
+                    self._zone_id, self._is_device_active, self._hvac_mode.value if self._hvac_mode else None
+                )
 
         self.async_write_ha_state()
 
@@ -108,10 +110,7 @@ class ClimateHandlersMixin:
 
         entity_id = event.data["entity_id"]
         is_open = new_state.state == STATE_ON
-        _LOGGER.debug(
-            "%s: Contact sensor %s changed to %s",
-            self.entity_id, entity_id, "open" if is_open else "closed"
-        )
+        _LOGGER.debug("%s: Contact sensor %s changed to %s", self.entity_id, entity_id, "open" if is_open else "closed")
 
         # Emit contact pause/resume events
         if self._cycle_dispatcher:
@@ -172,18 +171,14 @@ class ClimateHandlersMixin:
                 # Increment humidity pause counter
                 self._humidity_pause_count += 1
 
-            _LOGGER.debug(
-                "%s: Humidity sensor changed to %.1f%% (state=%s)",
-                self.entity_id, humidity, current_state
-            )
+            _LOGGER.debug("%s: Humidity sensor changed to %.1f%% (state=%s)", self.entity_id, humidity, current_state)
 
             # Trigger control heating to potentially pause/resume
             await self._async_control_heating(calc_pid=False, is_temp_sensor_update=False)
 
         except (ValueError, TypeError) as e:
             _LOGGER.warning(
-                "%s: Failed to parse humidity sensor value: %s (error: %s)",
-                self.entity_id, new_state.state, e
+                "%s: Failed to parse humidity sensor value: %s (error: %s)", self.entity_id, new_state.state, e
             )
 
     def _update_contact_sensor_states(self):
@@ -198,10 +193,7 @@ class ClimateHandlersMixin:
                 # Contact sensors: 'on' = open, 'off' = closed
                 contact_states[sensor_id] = state.state == STATE_ON
             else:
-                _LOGGER.warning(
-                    "%s: Contact sensor %s not found",
-                    self.entity_id, sensor_id
-                )
+                _LOGGER.warning("%s: Contact sensor %s not found", self.entity_id, sensor_id)
         self._contact_sensor_handler.update_contact_states(contact_states)
 
     async def _async_leader_changed(self, event: Event[EventStateChangedData]):
@@ -232,10 +224,7 @@ class ClimateHandlersMixin:
         if self._target_temp == leader_temp:
             return
 
-        _LOGGER.info(
-            "%s: Syncing follower setpoint to leader: %.1f°C",
-            self.entity_id, leader_temp
-        )
+        _LOGGER.info("%s: Syncing follower setpoint to leader: %.1f°C", self.entity_id, leader_temp)
 
         # Update target temperature
         await self._temperature_manager.async_set_temperature(leader_temp)
@@ -244,37 +233,39 @@ class ClimateHandlersMixin:
     def _async_update_temp(self, state):
         """Update thermostat with latest state from sensor."""
         if state.state in (STATE_UNKNOWN, STATE_UNAVAILABLE, None):
-            _LOGGER.debug("%s: Sensor %s is %s, skipping update",
-                          self.entity_id, self._sensor_entity_id, state.state)
+            _LOGGER.debug("%s: Sensor %s is %s, skipping update", self.entity_id, self._sensor_entity_id, state.state)
             return
         try:
             self._previous_temp = self._current_temp
             self._current_temp = float(state.state)
             self._last_sensor_update = time.monotonic()
         except ValueError as ex:
-            _LOGGER.debug("%s: Unable to update from sensor %s: %s", self.entity_id,
-                          self._sensor_entity_id, ex)
+            _LOGGER.debug("%s: Unable to update from sensor %s: %s", self.entity_id, self._sensor_entity_id, ex)
 
     @callback
     def _async_update_ext_temp(self, state):
         """Update thermostat with latest state from sensor."""
         if state.state in (STATE_UNKNOWN, STATE_UNAVAILABLE, None):
-            _LOGGER.debug("%s: External sensor %s is %s, skipping update",
-                          self.entity_id, self._ext_sensor_entity_id, state.state)
+            _LOGGER.debug(
+                "%s: External sensor %s is %s, skipping update", self.entity_id, self._ext_sensor_entity_id, state.state
+            )
             return
         try:
             self._ext_temp = float(state.state)
             self._last_ext_sensor_update = time.monotonic()
         except ValueError as ex:
-            _LOGGER.debug("%s: Unable to update from sensor %s: %s", self.entity_id,
-                          self._ext_sensor_entity_id, ex)
+            _LOGGER.debug("%s: Unable to update from sensor %s: %s", self.entity_id, self._ext_sensor_entity_id, ex)
 
     @callback
     def _async_update_ext_temp_from_weather(self, state):
         """Update outdoor temp from weather entity's temperature attribute."""
         if state.state in (STATE_UNKNOWN, STATE_UNAVAILABLE, None):
-            _LOGGER.debug("%s: Weather entity %s is %s, skipping outdoor temp update",
-                          self.entity_id, self._weather_entity_id, state.state)
+            _LOGGER.debug(
+                "%s: Weather entity %s is %s, skipping outdoor temp update",
+                self.entity_id,
+                self._weather_entity_id,
+                state.state,
+            )
             return
 
         temp = state.attributes.get("temperature")
@@ -283,22 +274,34 @@ class ClimateHandlersMixin:
                 self._ext_temp = float(temp)
                 self._last_ext_sensor_update = time.monotonic()
             except (ValueError, TypeError) as ex:
-                _LOGGER.debug("%s: Unable to get temperature from weather entity %s: %s",
-                              self.entity_id, self._weather_entity_id, ex)
+                _LOGGER.debug(
+                    "%s: Unable to get temperature from weather entity %s: %s",
+                    self.entity_id,
+                    self._weather_entity_id,
+                    ex,
+                )
 
     @callback
     def _async_update_wind_speed(self, state):
         """Update wind speed from sensor."""
         if state.state in (STATE_UNKNOWN, STATE_UNAVAILABLE, None):
-            _LOGGER.debug("%s: Wind speed sensor %s is %s, treating as 0 m/s",
-                          self.entity_id, self._wind_speed_sensor_entity_id, state.state)
+            _LOGGER.debug(
+                "%s: Wind speed sensor %s is %s, treating as 0 m/s",
+                self.entity_id,
+                self._wind_speed_sensor_entity_id,
+                state.state,
+            )
             self._wind_speed = None
             return
         try:
             self._wind_speed = float(state.state)
         except ValueError as ex:
-            _LOGGER.debug("%s: Unable to update from wind speed sensor %s: %s", self.entity_id,
-                          self._wind_speed_sensor_entity_id, ex)
+            _LOGGER.debug(
+                "%s: Unable to update from wind speed sensor %s: %s",
+                self.entity_id,
+                self._wind_speed_sensor_entity_id,
+                ex,
+            )
             self._wind_speed = None
 
     @callback

@@ -55,13 +55,7 @@ class TestPreheatLearner:
         learner = PreheatLearner(HEATING_TYPE_CONVECTOR)
         now = datetime(2024, 1, 1, 12, 0, 0)
 
-        learner.add_observation(
-            start_temp=18.0,
-            end_temp=21.0,
-            outdoor_temp=8.0,
-            duration_minutes=90,
-            timestamp=now
-        )
+        learner.add_observation(start_temp=18.0, end_temp=21.0, outdoor_temp=8.0, duration_minutes=90, timestamp=now)
 
         # Delta = 3.0 -> "2-4" bin
         # Outdoor = 8.0 -> "mild" bin
@@ -132,7 +126,7 @@ class TestPreheatLearner:
         # margin = (1.0 + 3.0/10 * 0.3) * 1.2 = 1.308
         # time = (3.0 / 2.0) * 60 * 1.308 = 117.72 minutes
         result = learner.estimate_time_to_target(18.0, 21.0, 10.0)
-        expected = (3.0 / 2.0) * 60 * (1.0 + 3.0/10 * 0.3) * 1.2
+        expected = (3.0 / 2.0) * 60 * (1.0 + 3.0 / 10 * 0.3) * 1.2
         assert result == pytest.approx(expected, abs=1.0)
 
     def test_estimate_time_to_target_with_sufficient_data(self):
@@ -142,18 +136,18 @@ class TestPreheatLearner:
 
         # Add 5 observations with different rates
         # Delta ~3.0, outdoor ~10.0
-        learner.add_observation(18.0, 21.0, 10.0, 60, now)   # rate = 3.0 C/h
-        learner.add_observation(18.0, 21.0, 10.0, 90, now)   # rate = 2.0 C/h
+        learner.add_observation(18.0, 21.0, 10.0, 60, now)  # rate = 3.0 C/h
+        learner.add_observation(18.0, 21.0, 10.0, 90, now)  # rate = 2.0 C/h
         learner.add_observation(18.0, 21.0, 10.0, 120, now)  # rate = 1.5 C/h
         learner.add_observation(18.0, 21.0, 10.0, 100, now)  # rate = 1.8 C/h
-        learner.add_observation(18.0, 21.0, 10.0, 80, now)   # rate = 2.25 C/h
+        learner.add_observation(18.0, 21.0, 10.0, 80, now)  # rate = 2.25 C/h
 
         # Median of [1.5, 1.8, 2.0, 2.25, 3.0] = 2.0 C/h
         # Delta = 3.0, outdoor = 10.0
         # margin = (1.0 + 3.0/10 * 0.3) * 1.3 = 1.417
         # time = (3.0 / 2.0) * 60 * 1.417 = 127.53 minutes
         result = learner.estimate_time_to_target(18.0, 21.0, 10.0)
-        expected = (3.0 / 2.0) * 60 * (1.0 + 3.0/10 * 0.3) * 1.3
+        expected = (3.0 / 2.0) * 60 * (1.0 + 3.0 / 10 * 0.3) * 1.3
         assert result == pytest.approx(expected, abs=1.0)
 
     def test_estimate_time_to_target_clamped_to_max_hours(self):
@@ -219,12 +213,12 @@ class TestPreheatLearner:
 
         # Add 5 more (total 10) -> 1.0
         for i in range(5):
-            learner.add_observation(18.0, 20.0, 10.0, 60, now + timedelta(hours=10+i))
+            learner.add_observation(18.0, 20.0, 10.0, 60, now + timedelta(hours=10 + i))
         assert learner.get_confidence() == pytest.approx(1.0, abs=0.01)
 
         # Add more (total 15) -> still 1.0 (capped)
         for i in range(5):
-            learner.add_observation(18.0, 20.0, 10.0, 60, now + timedelta(hours=20+i))
+            learner.add_observation(18.0, 20.0, 10.0, 60, now + timedelta(hours=20 + i))
         assert learner.get_confidence() == pytest.approx(1.0, abs=0.01)
 
     def test_get_observation_count(self):
@@ -235,8 +229,8 @@ class TestPreheatLearner:
         assert learner.get_observation_count() == 0
 
         # Add to different bins
-        learner.add_observation(19.0, 20.0, 2.0, 60, now)    # 0-2, cold
-        learner.add_observation(18.0, 21.0, 8.0, 90, now)    # 2-4, mild
+        learner.add_observation(19.0, 20.0, 2.0, 60, now)  # 0-2, cold
+        learner.add_observation(18.0, 21.0, 8.0, 90, now)  # 2-4, mild
         learner.add_observation(15.0, 21.0, 15.0, 180, now)  # 6+, moderate
 
         assert learner.get_observation_count() == 3
@@ -248,8 +242,8 @@ class TestPreheatLearner:
 
         # Add observations to "2-4", "mild" bin with rates: 1.5, 2.0, 2.5 C/h
         learner.add_observation(18.0, 21.0, 8.0, 120, now)  # rate = 1.5
-        learner.add_observation(18.0, 21.0, 8.0, 90, now)   # rate = 2.0
-        learner.add_observation(18.0, 21.0, 8.0, 72, now)   # rate = 2.5
+        learner.add_observation(18.0, 21.0, 8.0, 90, now)  # rate = 2.0
+        learner.add_observation(18.0, 21.0, 8.0, 72, now)  # rate = 2.5
 
         rate = learner.get_learned_rate(delta=3.0, outdoor_temp=8.0)
         assert rate == pytest.approx(2.0, abs=0.01)
@@ -434,16 +428,13 @@ class TestPreheatLearnerDelegation:
         # Pre-populate with data
         for _ in range(3):
             hr_learner.add_observation(
-                rate=0.6, duration_min=60, source="session",
-                stalled=False, delta=3.0, outdoor_temp=8.0
+                rate=0.6, duration_min=60, source="session", stalled=False, delta=3.0, outdoor_temp=8.0
             )
 
         preheat = PreheatLearner("floor_hydronic", heating_rate_learner=hr_learner)
 
         # estimate_time_to_target should use the learned rate
-        time_min = preheat.estimate_time_to_target(
-            current_temp=18.0, target_temp=21.0, outdoor_temp=8.0
-        )
+        time_min = preheat.estimate_time_to_target(current_temp=18.0, target_temp=21.0, outdoor_temp=8.0)
 
         # delta=3, rate=0.6 C/h -> time = 3/0.6 = 5 hours = 300 min
         assert time_min == pytest.approx(300, rel=0.1)

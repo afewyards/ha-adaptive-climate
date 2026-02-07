@@ -21,10 +21,10 @@ class InterruptionType(Enum):
 
     SETPOINT_MAJOR = "setpoint_major"  # >0.5°C change with device inactive
     SETPOINT_MINOR = "setpoint_minor"  # ≤0.5°C change or device active
-    MODE_CHANGE = "mode_change"         # HVAC mode changed (heat→off, cool→heat, etc.)
-    CONTACT_SENSOR = "contact_sensor"   # Window/door opened
-    TIMEOUT = "timeout"                 # Settling timeout reached
-    EXTERNAL = "external"               # Other external interruption
+    MODE_CHANGE = "mode_change"  # HVAC mode changed (heat→off, cool→heat, etc.)
+    CONTACT_SENSOR = "contact_sensor"  # Window/door opened
+    TIMEOUT = "timeout"  # Settling timeout reached
+    EXTERNAL = "external"  # Other external interruption
 
 
 class InterruptionClassifier:
@@ -32,14 +32,10 @@ class InterruptionClassifier:
 
     # Classification thresholds
     SETPOINT_MAJOR_THRESHOLD = 0.5  # °C - setpoint changes above this are "major"
-    CONTACT_GRACE_PERIOD = 300      # seconds - grace period for contact sensor
+    CONTACT_GRACE_PERIOD = 300  # seconds - grace period for contact sensor
 
     @staticmethod
-    def classify_setpoint_change(
-        old_temp: float,
-        new_temp: float,
-        is_device_active: bool
-    ) -> InterruptionType:
+    def classify_setpoint_change(old_temp: float, new_temp: float, is_device_active: bool) -> InterruptionType:
         """Classify a setpoint change interruption.
 
         Args:
@@ -64,11 +60,7 @@ class InterruptionClassifier:
             return InterruptionType.SETPOINT_MINOR
 
     @staticmethod
-    def classify_mode_change(
-        old_mode: str,
-        new_mode: str,
-        current_cycle_state: str
-    ) -> InterruptionType | None:
+    def classify_mode_change(old_mode: str, new_mode: str, current_cycle_state: str) -> InterruptionType | None:
         """Classify a mode change interruption.
 
         Args:
@@ -95,9 +87,7 @@ class InterruptionClassifier:
         return None  # Compatible mode change, no interruption
 
     @staticmethod
-    def classify_contact_sensor(
-        contact_open_duration: float
-    ) -> InterruptionType | None:
+    def classify_contact_sensor(contact_open_duration: float) -> InterruptionType | None:
         """Classify a contact sensor interruption.
 
         Args:
@@ -426,10 +416,7 @@ def calculate_overshoot(
         return max(0.0, overshoot)
 
     # Phase-aware calculation: only consider temps after setpoint crossing
-    tracker = PhaseAwareOvershootTracker(
-        target_temp,
-        transport_delay_seconds=transport_delay_seconds
-    )
+    tracker = PhaseAwareOvershootTracker(target_temp, transport_delay_seconds=transport_delay_seconds)
 
     for timestamp, temp in temperature_history:
         tracker.update(timestamp, temp)
@@ -437,9 +424,7 @@ def calculate_overshoot(
     return tracker.get_overshoot()
 
 
-def calculate_undershoot(
-    temperature_history: List[Tuple[datetime, float]], target_temp: float
-) -> float | None:
+def calculate_undershoot(temperature_history: List[Tuple[datetime, float]], target_temp: float) -> float | None:
     """
     Calculate maximum undershoot below target temperature.
 
@@ -554,17 +539,13 @@ def calculate_settling_time(
             remaining = temperature_history[i:]
             if len(remaining) >= 3:
                 # Check if next samples stay within tolerance
-                stays_settled = all(
-                    abs(t - target_temp) <= tolerance for _, t in remaining[:3]
-                )
+                stays_settled = all(abs(t - target_temp) <= tolerance for _, t in remaining[:3])
                 if stays_settled:
                     settle_index = i
                     break
             elif len(remaining) > 0:
                 # At end of history, check if all remaining stay within tolerance
-                stays_settled = all(
-                    abs(t - target_temp) <= tolerance for _, t in remaining
-                )
+                stays_settled = all(abs(t - target_temp) <= tolerance for _, t in remaining)
                 if stays_settled:
                     settle_index = i
                     break
@@ -659,10 +640,7 @@ def calculate_settling_mae(
         return None
 
     # Filter to temps after settling_start_time
-    settling_temps = [
-        temp for timestamp, temp in temperature_history
-        if timestamp >= settling_start_time
-    ]
+    settling_temps = [temp for timestamp, temp in temperature_history if timestamp >= settling_start_time]
 
     if not settling_temps:
         return None

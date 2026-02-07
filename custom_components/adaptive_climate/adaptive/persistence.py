@@ -30,6 +30,7 @@ SAVE_DELAY_SECONDS = 30
 def _create_store(hass, version: int, key: str):
     """Create a Store instance."""
     from homeassistant.helpers.storage import Store
+
     return Store(hass, version, key)
 
 
@@ -87,9 +88,7 @@ class LearningDataStore:
 
         # Validate version is an integer
         if not isinstance(data["version"], int):
-            _LOGGER.warning(
-                f"Invalid data structure: version must be int, got {type(data['version']).__name__}"
-            )
+            _LOGGER.warning(f"Invalid data structure: version must be int, got {type(data['version']).__name__}")
             return False
 
         # Check version is within supported range (1-5)
@@ -101,9 +100,7 @@ class LearningDataStore:
 
         # Validate zones is a dict
         if not isinstance(data["zones"], dict):
-            _LOGGER.warning(
-                f"Invalid data structure: zones must be dict, got {type(data['zones']).__name__}"
-            )
+            _LOGGER.warning(f"Invalid data structure: zones must be dict, got {type(data['zones']).__name__}")
             return False
 
         # Validate each zone has a dict value
@@ -146,9 +143,7 @@ class LearningDataStore:
 
         # Validate loaded data
         if not self._validate_data(data):
-            _LOGGER.warning(
-                "Persisted learning data failed validation, using default structure"
-            )
+            _LOGGER.warning("Persisted learning data failed validation, using default structure")
             self._data = {"version": 5, "zones": {}}
             return self._data
 
@@ -172,16 +167,13 @@ class LearningDataStore:
             _LOGGER.debug("No old storage file found - skipping migration")
             return None
 
-        _LOGGER.info(
-            f"Migrating learning data from '{OLD_STORAGE_KEY}' to '{STORAGE_KEY}'"
-        )
+        _LOGGER.info(f"Migrating learning data from '{OLD_STORAGE_KEY}' to '{STORAGE_KEY}'")
 
         # Save to new storage location
         await self._store.async_save(old_data)
 
         _LOGGER.info(
-            f"Successfully migrated learning data to '{STORAGE_KEY}' "
-            f"(old file will be removed automatically by HA)"
+            f"Successfully migrated learning data to '{STORAGE_KEY}' (old file will be removed automatically by HA)"
         )
 
         return old_data
@@ -370,9 +362,7 @@ class LearningDataStore:
             from .thermal_rates import ThermalRateLearner
 
             thermal_data = data["thermal_learner"]
-            learner = ThermalRateLearner(
-                outlier_threshold=thermal_data.get("outlier_threshold", 2.0)
-            )
+            learner = ThermalRateLearner(outlier_threshold=thermal_data.get("outlier_threshold", 2.0))
 
             # Validate data types
             cooling_rates = thermal_data.get("cooling_rates", [])
@@ -445,12 +435,8 @@ class LearningDataStore:
                 learner._last_adjustment_time = datetime.fromisoformat(last_adj_time_str)
 
             # Restore convergence tracking state (version 2+)
-            learner._consecutive_converged_cycles = adaptive_data.get(
-                "consecutive_converged_cycles", 0
-            )
-            learner._pid_converged_for_ke = adaptive_data.get(
-                "pid_converged_for_ke", False
-            )
+            learner._consecutive_converged_cycles = adaptive_data.get("consecutive_converged_cycles", 0)
+            learner._pid_converged_for_ke = adaptive_data.get("pid_converged_for_ke", False)
 
             _LOGGER.info(
                 f"Restored AdaptiveLearner: {learner.get_cycle_count()} cycles, "

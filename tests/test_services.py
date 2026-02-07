@@ -1,4 +1,5 @@
 """Tests for service registration and handlers in adaptive_climate."""
+
 import asyncio
 import pytest
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
@@ -8,6 +9,7 @@ from datetime import datetime
 # Mock Home Assistant modules before importing services
 class MockServiceCall:
     """Mock ServiceCall for testing."""
+
     def __init__(self, data=None):
         self.data = data or {}
 
@@ -44,16 +46,18 @@ def mock_hass():
 def mock_coordinator():
     """Create a mock coordinator."""
     coordinator = Mock()
-    coordinator.get_all_zones = Mock(return_value={
-        "living_room": {
-            "climate_entity_id": "climate.living_room",
-            "adaptive_learner": None,
-        },
-        "bedroom": {
-            "climate_entity_id": "climate.bedroom",
-            "adaptive_learner": None,
-        },
-    })
+    coordinator.get_all_zones = Mock(
+        return_value={
+            "living_room": {
+                "climate_entity_id": "climate.living_room",
+                "adaptive_learner": None,
+            },
+            "bedroom": {
+                "climate_entity_id": "climate.bedroom",
+                "adaptive_learner": None,
+            },
+        }
+    )
     return coordinator
 
 
@@ -83,7 +87,9 @@ def mock_notification_funcs():
 class TestServiceRegistration:
     """Tests for service registration."""
 
-    def test_public_services_registered_without_debug(self, mock_hass, mock_coordinator, mock_vacation_mode, mock_notification_funcs):
+    def test_public_services_registered_without_debug(
+        self, mock_hass, mock_coordinator, mock_vacation_mode, mock_notification_funcs
+    ):
         """Verify only public services are registered when debug=False."""
         from custom_components.adaptive_climate.services import (
             async_register_services,
@@ -109,9 +115,7 @@ class TestServiceRegistration:
         assert mock_hass.services.async_register.call_count == 2
 
         # Get all registered service names
-        registered_services = [
-            call[0][1] for call in mock_hass.services.async_register.call_args_list
-        ]
+        registered_services = [call[0][1] for call in mock_hass.services.async_register.call_args_list]
 
         # Verify each public service was registered
         expected_services = [
@@ -121,7 +125,9 @@ class TestServiceRegistration:
         for service in expected_services:
             assert service in registered_services, f"Public service {service} not registered"
 
-    def test_all_services_registered_with_debug(self, mock_hass, mock_coordinator, mock_vacation_mode, mock_notification_funcs):
+    def test_all_services_registered_with_debug(
+        self, mock_hass, mock_coordinator, mock_vacation_mode, mock_notification_funcs
+    ):
         """Verify all services are registered when debug=True."""
         from custom_components.adaptive_climate.services import (
             async_register_services,
@@ -149,9 +155,7 @@ class TestServiceRegistration:
         assert mock_hass.services.async_register.call_count == 4
 
         # Get all registered service names
-        registered_services = [
-            call[0][1] for call in mock_hass.services.async_register.call_args_list
-        ]
+        registered_services = [call[0][1] for call in mock_hass.services.async_register.call_args_list]
 
         # Verify each expected service was registered
         expected_services = [
@@ -163,7 +167,9 @@ class TestServiceRegistration:
         for service in expected_services:
             assert service in registered_services, f"Service {service} not registered"
 
-    def test_debug_services_not_registered_without_debug(self, mock_hass, mock_coordinator, mock_vacation_mode, mock_notification_funcs):
+    def test_debug_services_not_registered_without_debug(
+        self, mock_hass, mock_coordinator, mock_vacation_mode, mock_notification_funcs
+    ):
         """Verify debug services are NOT registered when debug=False."""
         from custom_components.adaptive_climate.services import (
             async_register_services,
@@ -186,15 +192,17 @@ class TestServiceRegistration:
         )
 
         # Get all registered service names
-        registered_services = [
-            call[0][1] for call in mock_hass.services.async_register.call_args_list
-        ]
+        registered_services = [call[0][1] for call in mock_hass.services.async_register.call_args_list]
 
         # Verify debug services were NOT registered
         assert SERVICE_RUN_LEARNING not in registered_services, "Debug service run_learning should not be registered"
-        assert SERVICE_PID_RECOMMENDATIONS not in registered_services, "Debug service pid_recommendations should not be registered"
+        assert SERVICE_PID_RECOMMENDATIONS not in registered_services, (
+            "Debug service pid_recommendations should not be registered"
+        )
 
-    def test_services_registered_with_correct_domain(self, mock_hass, mock_coordinator, mock_vacation_mode, mock_notification_funcs):
+    def test_services_registered_with_correct_domain(
+        self, mock_hass, mock_coordinator, mock_vacation_mode, mock_notification_funcs
+    ):
         """Verify services are registered under correct domain."""
         from custom_components.adaptive_climate.services import async_register_services
         from custom_components.adaptive_climate.const import DOMAIN
@@ -214,7 +222,6 @@ class TestServiceRegistration:
         # All services should be registered under the DOMAIN
         for call in mock_hass.services.async_register.call_args_list:
             assert call[0][0] == DOMAIN
-
 
 
 # =============================================================================
@@ -238,6 +245,7 @@ class TestHealthCheckDeduplication:
 
         # Verify the function signature accepts is_scheduled parameter
         import inspect
+
         sig = inspect.signature(_run_health_check_core)
         assert "is_scheduled" in sig.parameters
 
@@ -259,15 +267,17 @@ class TestHealthCheckDeduplication:
             MockHealthMonitor.return_value = mock_monitor
 
             # Run scheduled health check (is_scheduled=True)
-            result = _run_async(_run_health_check_core(
-                hass=mock_hass,
-                coordinator=mock_coordinator,
-                notify_service="test_notify",
-                persistent_notification=True,
-                async_send_notification_func=mock_notification_funcs["send_notification"],
-                async_send_persistent_notification_func=mock_notification_funcs["send_persistent"],
-                is_scheduled=True,
-            ))
+            result = _run_async(
+                _run_health_check_core(
+                    hass=mock_hass,
+                    coordinator=mock_coordinator,
+                    notify_service="test_notify",
+                    persistent_notification=True,
+                    async_send_notification_func=mock_notification_funcs["send_notification"],
+                    async_send_persistent_notification_func=mock_notification_funcs["send_persistent"],
+                    is_scheduled=True,
+                )
+            )
 
             # Should NOT have sent notifications for healthy status in scheduled mode
             mock_notification_funcs["send_notification"].assert_not_called()
@@ -291,15 +301,17 @@ class TestHealthCheckDeduplication:
             MockHealthMonitor.return_value = mock_monitor
 
             # Run scheduled health check with issues
-            _run_async(_run_health_check_core(
-                hass=mock_hass,
-                coordinator=mock_coordinator,
-                notify_service="test_notify",
-                persistent_notification=True,
-                async_send_notification_func=mock_notification_funcs["send_notification"],
-                async_send_persistent_notification_func=mock_notification_funcs["send_persistent"],
-                is_scheduled=True,
-            ))
+            _run_async(
+                _run_health_check_core(
+                    hass=mock_hass,
+                    coordinator=mock_coordinator,
+                    notify_service="test_notify",
+                    persistent_notification=True,
+                    async_send_notification_func=mock_notification_funcs["send_notification"],
+                    async_send_persistent_notification_func=mock_notification_funcs["send_persistent"],
+                    is_scheduled=True,
+                )
+            )
 
             # Should have sent notifications for warning status
             mock_notification_funcs["send_notification"].assert_called_once()
@@ -323,15 +335,17 @@ class TestWeeklyReportDeduplication:
         monday.weekday = Mock(return_value=0)
 
         with patch("custom_components.adaptive_climate.services.scheduled._run_weekly_report_core") as mock_core:
-            _run_async(async_scheduled_weekly_report(
-                hass=mock_hass,
-                coordinator=mock_coordinator,
-                notify_service="test_notify",
-                persistent_notification=True,
-                async_send_notification_func=mock_notification_funcs["send_notification"],
-                async_send_persistent_notification_func=mock_notification_funcs["send_persistent"],
-                _now=monday,
-            ))
+            _run_async(
+                async_scheduled_weekly_report(
+                    hass=mock_hass,
+                    coordinator=mock_coordinator,
+                    notify_service="test_notify",
+                    persistent_notification=True,
+                    async_send_notification_func=mock_notification_funcs["send_notification"],
+                    async_send_persistent_notification_func=mock_notification_funcs["send_persistent"],
+                    _now=monday,
+                )
+            )
 
             # Should NOT have called the core function on Monday
             mock_core.assert_not_called()
@@ -347,15 +361,17 @@ class TestWeeklyReportDeduplication:
         with patch("custom_components.adaptive_climate.services.scheduled._run_weekly_report_core") as mock_core:
             mock_core.return_value = {"report": Mock(), "has_energy_data": False, "total_cost": 0}
 
-            _run_async(async_scheduled_weekly_report(
-                hass=mock_hass,
-                coordinator=mock_coordinator,
-                notify_service="test_notify",
-                persistent_notification=True,
-                async_send_notification_func=mock_notification_funcs["send_notification"],
-                async_send_persistent_notification_func=mock_notification_funcs["send_persistent"],
-                _now=sunday,
-            ))
+            _run_async(
+                async_scheduled_weekly_report(
+                    hass=mock_hass,
+                    coordinator=mock_coordinator,
+                    notify_service="test_notify",
+                    persistent_notification=True,
+                    async_send_notification_func=mock_notification_funcs["send_notification"],
+                    async_send_persistent_notification_func=mock_notification_funcs["send_persistent"],
+                    _now=sunday,
+                )
+            )
 
             # Should have called the core function on Sunday
             mock_core.assert_called_once()
@@ -389,18 +405,22 @@ class TestPIDRecommendationsHandler:
         # Set up a zone with adaptive learner
         mock_learner = Mock()
         mock_learner.get_cycle_count = Mock(return_value=10)
-        mock_learner.calculate_pid_adjustment = Mock(return_value={
-            "kp": 110.0,
-            "ki": 0.011,
-            "kd": 0.1,
-        })
+        mock_learner.calculate_pid_adjustment = Mock(
+            return_value={
+                "kp": 110.0,
+                "ki": 0.011,
+                "kd": 0.1,
+            }
+        )
 
-        mock_coordinator.get_all_zones = Mock(return_value={
-            "living_room": {
-                "climate_entity_id": "climate.living_room",
-                "adaptive_learner": mock_learner,
-            },
-        })
+        mock_coordinator.get_all_zones = Mock(
+            return_value={
+                "living_room": {
+                    "climate_entity_id": "climate.living_room",
+                    "adaptive_learner": mock_learner,
+                },
+            }
+        )
 
         # Set up mock state
         mock_state = Mock()
@@ -420,12 +440,14 @@ class TestPIDRecommendationsHandler:
         from custom_components.adaptive_climate.services import async_handle_pid_recommendations
 
         # Zone without adaptive learner
-        mock_coordinator.get_all_zones = Mock(return_value={
-            "living_room": {
-                "climate_entity_id": "climate.living_room",
-                "adaptive_learner": None,
-            },
-        })
+        mock_coordinator.get_all_zones = Mock(
+            return_value={
+                "living_room": {
+                    "climate_entity_id": "climate.living_room",
+                    "adaptive_learner": None,
+                },
+            }
+        )
 
         call = MockServiceCall()
         result = _run_async(async_handle_pid_recommendations(mock_hass, mock_coordinator, call))
@@ -520,12 +542,14 @@ class TestDailyLearningCallback:
         mock_learner = Mock()
         mock_learner.calculate_pid_adjustment = Mock(return_value=None)
 
-        mock_coordinator.get_all_zones = Mock(return_value={
-            "living_room": {
-                "climate_entity_id": "climate.living_room",
-                "adaptive_learner": mock_learner,
-            },
-        })
+        mock_coordinator.get_all_zones = Mock(
+            return_value={
+                "living_room": {
+                    "climate_entity_id": "climate.living_room",
+                    "adaptive_learner": mock_learner,
+                },
+            }
+        )
 
         # Set up mock state
         mock_state = Mock()

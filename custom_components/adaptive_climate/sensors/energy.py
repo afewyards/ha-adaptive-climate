@@ -6,6 +6,7 @@ This module contains sensors that track energy consumption and costs:
 - TotalPowerSensor: Tracks total heating power across all zones
 - WeeklyCostSensor: Tracks weekly heating energy cost
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -161,9 +162,7 @@ class HeatOutputSensor(AdaptiveThermostatSensor):
         self._fallback_flow_rate = fallback_flow_rate
 
         # Create heat output calculator with fallback flow rate
-        self._calculator = HeatOutputCalculator(
-            fallback_flow_rate_lpm=fallback_flow_rate
-        )
+        self._calculator = HeatOutputCalculator(fallback_flow_rate_lpm=fallback_flow_rate)
 
         # Cached values for attributes
         self._supply_temp: float | None = None
@@ -242,8 +241,7 @@ class HeatOutputSensor(AdaptiveThermostatSensor):
 
         if heat_output is not None:
             _LOGGER.debug(
-                "%s: Heat output calculated: %.3f kW "
-                "(supply=%.1f C, return=%.1f C, delta_t=%.1f C, flow=%.2f L/min)",
+                "%s: Heat output calculated: %.3f kW (supply=%.1f C, return=%.1f C, delta_t=%.1f C, flow=%.2f L/min)",
                 self._attr_unique_id,
                 heat_output,
                 supply_temp,
@@ -467,8 +465,7 @@ class WeeklyCostSensor(SensorEntity, RestoreEntity):
 
         if current_year != stored_year or current_week != stored_week:
             _LOGGER.info(
-                "New week detected (week %d/%d -> %d/%d). "
-                "Previous week energy: %.2f kWh, cost: %.2f",
+                "New week detected (week %d/%d -> %d/%d). Previous week energy: %.2f kWh, cost: %.2f",
                 stored_year,
                 stored_week,
                 current_year,
@@ -509,11 +506,7 @@ class WeeklyCostSensor(SensorEntity, RestoreEntity):
             "cost_entity": self._energy_cost_entity,
             # Persistence attributes
             "week_start_reading": self._week_start_reading,
-            "week_start_timestamp": (
-                self._week_start_timestamp.isoformat()
-                if self._week_start_timestamp
-                else None
-            ),
+            "week_start_timestamp": (self._week_start_timestamp.isoformat() if self._week_start_timestamp else None),
             "last_meter_reading": self._last_meter_reading,
         }
 

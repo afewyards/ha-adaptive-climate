@@ -1,4 +1,5 @@
 """Setpoint boost manager for Adaptive Climate integration."""
+
 from __future__ import annotations
 
 import logging
@@ -64,9 +65,7 @@ class SetpointBoostManager:
         self._debounce_seconds = debounce_seconds
 
         # Get boost/decay factors for this heating type
-        default_boost, default_decay = HEATING_TYPE_BOOST_FACTORS.get(
-            heating_type, (15.0, 0.20)
-        )
+        default_boost, default_decay = HEATING_TYPE_BOOST_FACTORS.get(heating_type, (15.0, 0.20))
         self._boost_factor = boost_factor if boost_factor is not None else default_boost
         self._decay_rate = default_decay
 
@@ -139,9 +138,7 @@ class SetpointBoostManager:
 
         # Skip during night setback
         if self._is_night_period_cb():
-            _LOGGER.debug(
-                "Setpoint boost: delta=%.2f skipped (night setback active)", delta
-            )
+            _LOGGER.debug("Setpoint boost: delta=%.2f skipped (night setback active)", delta)
             return
 
         if delta > 0:

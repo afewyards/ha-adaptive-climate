@@ -34,7 +34,7 @@ class TestHybridRateLimiting:
         """Verify both time AND cycle gates must be satisfied."""
         fake_now = datetime.now()
 
-        with patch('custom_components.adaptive_climate.adaptive.learning.dt_util') as mock_dt_util:
+        with patch("custom_components.adaptive_climate.adaptive.learning.dt_util") as mock_dt_util:
             mock_dt_util.utcnow.return_value = fake_now
 
             # Add 6 cycles to meet minimum for learning
@@ -104,9 +104,7 @@ class TestHybridRateLimiting:
             learner.add_cycle_metrics(problem_cycle)
 
         # First adjustment
-        adjustment = learner.calculate_pid_adjustment(
-            current_kp=100.0, current_ki=2.0, current_kd=1.2
-        )
+        adjustment = learner.calculate_pid_adjustment(current_kp=100.0, current_ki=2.0, current_kd=1.2)
         assert adjustment is not None
 
         # Add 3 more cycles
@@ -115,14 +113,12 @@ class TestHybridRateLimiting:
 
         # Simulate 8 hours passing (new hybrid gate)
         fake_now = datetime.now()
-        with patch('custom_components.adaptive_climate.adaptive.learning.dt_util') as mock_dt_util:
+        with patch("custom_components.adaptive_climate.adaptive.learning.dt_util") as mock_dt_util:
             mock_dt_util.utcnow.return_value = fake_now
             learner._last_adjustment_time = fake_now - timedelta(hours=8)
 
             # Should succeed with 8h hybrid gate
-            adjustment = learner.calculate_pid_adjustment(
-                current_kp=100.0, current_ki=2.0, current_kd=1.2
-            )
+            adjustment = learner.calculate_pid_adjustment(current_kp=100.0, current_ki=2.0, current_kd=1.2)
             assert adjustment is not None, "8h hybrid should allow adjustment"
 
         # Reset for 24h test
@@ -130,9 +126,7 @@ class TestHybridRateLimiting:
         for _ in range(6):
             learner.add_cycle_metrics(problem_cycle)
 
-        adjustment = learner.calculate_pid_adjustment(
-            current_kp=100.0, current_ki=2.0, current_kd=1.2
-        )
+        adjustment = learner.calculate_pid_adjustment(current_kp=100.0, current_ki=2.0, current_kd=1.2)
         assert adjustment is not None
 
         # Add 3 more cycles
@@ -141,7 +135,7 @@ class TestHybridRateLimiting:
 
         # Simulate only 8 hours passing (would fail with 24h gate)
         fake_now = datetime.now()
-        with patch('custom_components.adaptive_climate.adaptive.learning.dt_util') as mock_dt_util:
+        with patch("custom_components.adaptive_climate.adaptive.learning.dt_util") as mock_dt_util:
             mock_dt_util.utcnow.return_value = fake_now
             learner._last_adjustment_time = fake_now - timedelta(hours=8)
 
@@ -176,9 +170,7 @@ class TestHybridRateLimiting:
         assert learner._cycles_since_last_adjustment == 6
 
         # Make adjustment
-        adjustment = learner.calculate_pid_adjustment(
-            current_kp=100.0, current_ki=2.0, current_kd=1.2
-        )
+        adjustment = learner.calculate_pid_adjustment(current_kp=100.0, current_ki=2.0, current_kd=1.2)
         assert adjustment is not None
         assert learner._cycles_since_last_adjustment == 0
 
@@ -201,9 +193,7 @@ class TestHybridRateLimiting:
         for _ in range(6):
             learner.add_cycle_metrics(problem_cycle)
 
-        adjustment = learner.calculate_pid_adjustment(
-            current_kp=100.0, current_ki=2.0, current_kd=1.2
-        )
+        adjustment = learner.calculate_pid_adjustment(current_kp=100.0, current_ki=2.0, current_kd=1.2)
         assert adjustment is not None
 
         # Add 3 cycles (satisfies cycle gate)
@@ -212,7 +202,7 @@ class TestHybridRateLimiting:
 
         # Simulate only 4 hours passing (less than 8h minimum)
         fake_now = datetime.now()
-        with patch('custom_components.adaptive_climate.adaptive.learning.dt_util') as mock_dt_util:
+        with patch("custom_components.adaptive_climate.adaptive.learning.dt_util") as mock_dt_util:
             mock_dt_util.utcnow.return_value = fake_now
             learner._last_adjustment_time = fake_now - timedelta(hours=4)
 
@@ -232,9 +222,7 @@ class TestHybridRateLimiting:
         for _ in range(6):
             learner.add_cycle_metrics(problem_cycle)
 
-        adjustment = learner.calculate_pid_adjustment(
-            current_kp=100.0, current_ki=2.0, current_kd=1.2
-        )
+        adjustment = learner.calculate_pid_adjustment(current_kp=100.0, current_ki=2.0, current_kd=1.2)
         assert adjustment is not None
 
         # Add only 2 cycles (less than 3 minimum)
@@ -243,7 +231,7 @@ class TestHybridRateLimiting:
 
         # Simulate 8 hours passing (satisfies time gate)
         fake_now = datetime.now()
-        with patch('custom_components.adaptive_climate.adaptive.learning.dt_util') as mock_dt_util:
+        with patch("custom_components.adaptive_climate.adaptive.learning.dt_util") as mock_dt_util:
             mock_dt_util.utcnow.return_value = fake_now
             learner._last_adjustment_time = fake_now - timedelta(hours=8)
 
@@ -280,9 +268,7 @@ class TestHybridRateLimiting:
         for _ in range(10):
             learner.add_cycle_metrics(problem_cycle)
 
-        adjustment = learner.calculate_pid_adjustment(
-            current_kp=100.0, current_ki=2.0, current_kd=1.2
-        )
+        adjustment = learner.calculate_pid_adjustment(current_kp=100.0, current_ki=2.0, current_kd=1.2)
         assert adjustment is not None
 
         # Add 4 cycles
@@ -291,7 +277,7 @@ class TestHybridRateLimiting:
 
         # Simulate 12 hours passing
         fake_now = datetime.now()
-        with patch('custom_components.adaptive_climate.adaptive.learning.dt_util') as mock_dt_util:
+        with patch("custom_components.adaptive_climate.adaptive.learning.dt_util") as mock_dt_util:
             mock_dt_util.utcnow.return_value = fake_now
             learner._last_adjustment_time = fake_now - timedelta(hours=12)
 

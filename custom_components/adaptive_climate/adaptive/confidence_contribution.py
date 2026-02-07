@@ -212,9 +212,7 @@ class ConfidenceContributionTracker:
         }
 
     @classmethod
-    def from_dict(
-        cls, data: dict, heating_type: HeatingType
-    ) -> ConfidenceContributionTracker:
+    def from_dict(cls, data: dict, heating_type: HeatingType) -> ConfidenceContributionTracker:
         """Deserialize from dict.
 
         Args:

@@ -165,4 +165,5 @@ class TestAdaptiveLearnerHeatingTypeThresholds:
 def test_convergence_thresholds_module_exists():
     """Marker test to ensure convergence threshold helpers are importable."""
     from custom_components.adaptive_climate.const import get_convergence_thresholds
+
     assert get_convergence_thresholds is not None

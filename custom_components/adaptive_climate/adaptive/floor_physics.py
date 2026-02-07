@@ -47,17 +47,15 @@ def validate_floor_construction(floor_config: dict) -> list[str]:
     errors = []
 
     # Check pipe_spacing_mm is valid
-    pipe_spacing_mm = floor_config.get('pipe_spacing_mm')
+    pipe_spacing_mm = floor_config.get("pipe_spacing_mm")
     if pipe_spacing_mm is None:
         errors.append("pipe_spacing_mm is required")
     elif pipe_spacing_mm not in PIPE_SPACING_EFFICIENCY:
         valid_spacings = sorted(PIPE_SPACING_EFFICIENCY.keys())
-        errors.append(
-            f"pipe_spacing_mm must be one of {valid_spacings}, got {pipe_spacing_mm}"
-        )
+        errors.append(f"pipe_spacing_mm must be one of {valid_spacings}, got {pipe_spacing_mm}")
 
     # Check layers list exists and is not empty
-    layers = floor_config.get('layers')
+    layers = floor_config.get("layers")
     if layers is None:
         errors.append("layers is required")
         return errors  # Can't proceed without layers
@@ -76,30 +74,26 @@ def validate_floor_construction(floor_config: dict) -> list[str]:
 
     # Validate each layer
     for i, layer in enumerate(layers):
-        layer_type = layer.get('type')
-        material_name = layer.get('material')
-        thickness_mm = layer.get('thickness_mm')
+        layer_type = layer.get("type")
+        material_name = layer.get("material")
+        thickness_mm = layer.get("thickness_mm")
 
         # Validate layer type
-        if layer_type not in ['top_floor', 'screed']:
-            errors.append(
-                f"Layer {i}: type must be 'top_floor' or 'screed', got '{layer_type}'"
-            )
+        if layer_type not in ["top_floor", "screed"]:
+            errors.append(f"Layer {i}: type must be 'top_floor' or 'screed', got '{layer_type}'")
             continue
 
         # Track layer indices for order validation
-        if layer_type == 'top_floor':
+        if layer_type == "top_floor":
             top_floor_indices.append(i)
-        elif layer_type == 'screed':
+        elif layer_type == "screed":
             screed_indices.append(i)
 
         # Validate thickness
         if thickness_mm is None:
             errors.append(f"Layer {i} ({layer_type}): thickness_mm is required")
         elif not isinstance(thickness_mm, (int, float)) or thickness_mm <= 0:
-            errors.append(
-                f"Layer {i} ({layer_type}): thickness_mm must be a positive number, got {thickness_mm}"
-            )
+            errors.append(f"Layer {i} ({layer_type}): thickness_mm must be a positive number, got {thickness_mm}")
         else:
             # Check thickness range for layer type
             min_thickness, max_thickness = FLOOR_THICKNESS_LIMITS[layer_type]
@@ -111,9 +105,7 @@ def validate_floor_construction(floor_config: dict) -> list[str]:
 
         # Validate material specification
         # Material can be specified either by name (lookup) or custom properties
-        has_custom_properties = all(
-            prop in layer for prop in ['conductivity', 'density', 'specific_heat']
-        )
+        has_custom_properties = all(prop in layer for prop in ["conductivity", "density", "specific_heat"])
 
         if not has_custom_properties:
             # Must have valid material name for lookup
@@ -124,33 +116,25 @@ def validate_floor_construction(floor_config: dict) -> list[str]:
                 )
             else:
                 # Check if material exists in lookup
-                if layer_type == 'top_floor':
+                if layer_type == "top_floor":
                     if material_name not in TOP_FLOOR_MATERIALS:
-                        errors.append(
-                            f"Layer {i} ({layer_type}): unknown material '{material_name}'"
-                        )
-                elif layer_type == 'screed':
+                        errors.append(f"Layer {i} ({layer_type}): unknown material '{material_name}'")
+                elif layer_type == "screed":
                     if material_name not in SCREED_MATERIALS:
-                        errors.append(
-                            f"Layer {i} ({layer_type}): unknown material '{material_name}'"
-                        )
+                        errors.append(f"Layer {i} ({layer_type}): unknown material '{material_name}'")
         else:
             # Validate custom properties are valid numbers
-            for prop in ['conductivity', 'density', 'specific_heat']:
+            for prop in ["conductivity", "density", "specific_heat"]:
                 value = layer.get(prop)
                 if not isinstance(value, (int, float)) or value <= 0:
-                    errors.append(
-                        f"Layer {i} ({layer_type}): {prop} must be a positive number, got {value}"
-                    )
+                    errors.append(f"Layer {i} ({layer_type}): {prop} must be a positive number, got {value}")
 
     # Validate layer order: all top_floor layers must precede all screed layers
     if top_floor_indices and screed_indices:
         max_top_floor_index = max(top_floor_indices)
         min_screed_index = min(screed_indices)
         if max_top_floor_index > min_screed_index:
-            errors.append(
-                "Layer order invalid: all 'top_floor' layers must precede all 'screed' layers"
-            )
+            errors.append("Layer order invalid: all 'top_floor' layers must precede all 'screed' layers")
 
     return errors
 
@@ -204,9 +188,9 @@ def calculate_floor_thermal_properties(
     total_thermal_resistance = 0.0  # (m²·K)/W
 
     for layer in layers:
-        layer_type = layer.get('type')
-        material_name = layer.get('material')
-        thickness_mm = layer.get('thickness_mm')
+        layer_type = layer.get("type")
+        material_name = layer.get("material")
+        thickness_mm = layer.get("thickness_mm")
 
         if thickness_mm is None or thickness_mm <= 0:
             raise ValueError(f"Layer must have valid thickness_mm > 0, got {thickness_mm}")
@@ -215,16 +199,16 @@ def calculate_floor_thermal_properties(
         thickness_m = thickness_mm / 1000.0
 
         # Get material properties (either from lookup or custom overrides)
-        if 'conductivity' in layer and 'density' in layer and 'specific_heat' in layer:
+        if "conductivity" in layer and "density" in layer and "specific_heat" in layer:
             # Custom material properties provided
-            conductivity = layer['conductivity']
-            density = layer['density']
-            specific_heat = layer['specific_heat']
+            conductivity = layer["conductivity"]
+            density = layer["density"]
+            specific_heat = layer["specific_heat"]
         else:
             # Lookup material properties from const.py
-            if layer_type == 'top_floor':
+            if layer_type == "top_floor":
                 material_props = TOP_FLOOR_MATERIALS.get(material_name)
-            elif layer_type == 'screed':
+            elif layer_type == "screed":
                 material_props = SCREED_MATERIALS.get(material_name)
             else:
                 raise ValueError(f"Unknown layer type '{layer_type}', must be 'top_floor' or 'screed'")
@@ -232,9 +216,9 @@ def calculate_floor_thermal_properties(
             if material_props is None:
                 raise ValueError(f"Unknown material '{material_name}' for layer type '{layer_type}'")
 
-            conductivity = material_props['conductivity']
-            density = material_props['density']
-            specific_heat = material_props['specific_heat']
+            conductivity = material_props["conductivity"]
+            density = material_props["density"]
+            specific_heat = material_props["specific_heat"]
 
         # Calculate thermal mass for this layer: thickness × area × density × specific_heat
         # Result in J/K
@@ -254,9 +238,7 @@ def calculate_floor_thermal_properties(
     reference_thickness_m = 0.05
     reference_density = 2000  # kg/m³
     reference_specific_heat = 1000  # J/(kg·K)
-    reference_mass = (
-        reference_thickness_m * area_m2 * reference_density * reference_specific_heat
-    )  # J/K
+    reference_mass = reference_thickness_m * area_m2 * reference_density * reference_specific_heat  # J/K
 
     # Calculate tau modifier (ratio of actual mass to reference mass)
     tau_modifier = total_thermal_mass / reference_mass
@@ -267,7 +249,7 @@ def calculate_floor_thermal_properties(
     effective_tau_modifier = tau_modifier / spacing_efficiency
 
     return {
-        'thermal_mass_kj_k': round(thermal_mass_kj_k, 2),
-        'thermal_resistance': round(total_thermal_resistance, 4),
-        'tau_modifier': round(effective_tau_modifier, 2),
+        "thermal_mass_kj_k": round(thermal_mass_kj_k, 2),
+        "thermal_resistance": round(total_thermal_resistance, 4),
+        "tau_modifier": round(effective_tau_modifier, 2),
     }

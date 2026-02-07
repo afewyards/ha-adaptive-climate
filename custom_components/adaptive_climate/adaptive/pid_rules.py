@@ -84,7 +84,7 @@ class PIDRuleResult(NamedTuple):
     kp_factor: float  # Multiplier for Kp (1.0 = no change)
     ki_factor: float  # Multiplier for Ki (1.0 = no change)
     kd_factor: float  # Multiplier for Kd (1.0 = no change)
-    reason: str       # Human-readable reason for adjustment
+    reason: str  # Human-readable reason for adjustment
 
 
 class RuleStateTracker:
@@ -108,12 +108,7 @@ class RuleStateTracker:
         self._hysteresis_band_pct = hysteresis_band_pct
         self._rule_states: Dict[PIDRule, bool] = {}  # True = active, False = inactive
 
-    def update_state(
-        self,
-        rule: PIDRule,
-        metric_value: float,
-        activation_threshold: float
-    ) -> bool:
+    def update_state(self, rule: PIDRule, metric_value: float, activation_threshold: float) -> bool:
         """Update and return the state of a rule with hysteresis logic.
 
         Args:
@@ -135,17 +130,13 @@ class RuleStateTracker:
             # Currently inactive: activate if metric exceeds activation threshold
             if metric_value > activation_threshold:
                 self._rule_states[rule] = True
-                _LOGGER.debug(
-                    f"Rule '{rule.rule_name}' activated: {metric_value:.3f} > {activation_threshold:.3f}"
-                )
+                _LOGGER.debug(f"Rule '{rule.rule_name}' activated: {metric_value:.3f} > {activation_threshold:.3f}")
                 return True
         else:
             # Currently active: deactivate only if metric drops below release threshold
             if metric_value < release_threshold:
                 self._rule_states[rule] = False
-                _LOGGER.debug(
-                    f"Rule '{rule.rule_name}' deactivated: {metric_value:.3f} < {release_threshold:.3f}"
-                )
+                _LOGGER.debug(f"Rule '{rule.rule_name}' deactivated: {metric_value:.3f} < {release_threshold:.3f}")
                 return False
 
         # Maintain current state (in hysteresis band)
@@ -209,13 +200,13 @@ def evaluate_pid_rules(
     # Default thresholds for backward compatibility
     if rule_thresholds is None:
         rule_thresholds = {
-            'moderate_overshoot': 0.2,
-            'high_overshoot': 1.0,
-            'slow_response': 60,
-            'slow_settling': 90,
-            'undershoot': 0.3,
-            'many_oscillations': 3,
-            'some_oscillations': 1,
+            "moderate_overshoot": 0.2,
+            "high_overshoot": 1.0,
+            "slow_response": 60,
+            "slow_settling": 90,
+            "undershoot": 0.3,
+            "many_oscillations": 3,
+            "some_oscillations": 1,
         }
 
     results: List[PIDRuleResult] = []
@@ -231,37 +222,44 @@ def evaluate_pid_rules(
 
     # Rule 1: High overshoot (>1.0C) - Extreme case
     # Thermal lag is root cause, Kd addresses it. For extreme cases, also reduce Kp.
-    if should_fire(PIDRule.HIGH_OVERSHOOT, avg_overshoot, rule_thresholds['high_overshoot']):
-        results.append(PIDRuleResult(
-            rule=PIDRule.HIGH_OVERSHOOT,
-            kp_factor=0.90,  # Reduce Kp by 10% for extreme overshoot
-            ki_factor=0.9,
-            kd_factor=1.20,  # Increase Kd by 20% to handle thermal lag
-            reason=f"Extreme overshoot ({avg_overshoot:.2f}°C, increase Kd+reduce Kp)"
-        ))
+    if should_fire(PIDRule.HIGH_OVERSHOOT, avg_overshoot, rule_thresholds["high_overshoot"]):
+        results.append(
+            PIDRuleResult(
+                rule=PIDRule.HIGH_OVERSHOOT,
+                kp_factor=0.90,  # Reduce Kp by 10% for extreme overshoot
+                ki_factor=0.9,
+                kd_factor=1.20,  # Increase Kd by 20% to handle thermal lag
+                reason=f"Extreme overshoot ({avg_overshoot:.2f}°C, increase Kd+reduce Kp)",
+            )
+        )
     # Rule 2: Moderate overshoot (0.2-1.0C) - Increase Kd only
     # Thermal lag is root cause, Kd addresses it without touching Kp
-    elif should_fire(PIDRule.MODERATE_OVERSHOOT, avg_overshoot, rule_thresholds['moderate_overshoot']):
-        results.append(PIDRuleResult(
-            rule=PIDRule.MODERATE_OVERSHOOT,
-            kp_factor=1.0,
-            ki_factor=1.0,
-            kd_factor=1.20,  # Increase Kd by 20% to dampen overshoot
-            reason=f"Moderate overshoot ({avg_overshoot:.2f}°C, increase Kd)"
-        ))
+    elif should_fire(PIDRule.MODERATE_OVERSHOOT, avg_overshoot, rule_thresholds["moderate_overshoot"]):
+        results.append(
+            PIDRuleResult(
+                rule=PIDRule.MODERATE_OVERSHOOT,
+                kp_factor=1.0,
+                ki_factor=1.0,
+                kd_factor=1.20,  # Increase Kd by 20% to dampen overshoot
+                reason=f"Moderate overshoot ({avg_overshoot:.2f}°C, increase Kd)",
+            )
+        )
 
     # Rule 3: Slow response (rise time >60 min)
     # Diagnose root cause: Ki (outdoor correlation) vs Kp (no correlation)
-    if should_fire(PIDRule.SLOW_RESPONSE, avg_rise_time, rule_thresholds['slow_response']):
+    if should_fire(PIDRule.SLOW_RESPONSE, avg_rise_time, rule_thresholds["slow_response"]):
         # Default to old behavior (increase Kp)
         kp_factor = 1.10
         ki_factor = 1.0
         reason = f"Slow rise time ({avg_rise_time:.1f} min)"
 
         # Try to diagnose root cause if outdoor data available
-        if (recent_rise_times is not None and recent_outdoor_temps is not None and
-            len(recent_rise_times) >= 3 and len(recent_outdoor_temps) >= 3):
-
+        if (
+            recent_rise_times is not None
+            and recent_outdoor_temps is not None
+            and len(recent_rise_times) >= 3
+            and len(recent_outdoor_temps) >= 3
+        ):
             # Check if outdoor temps have sufficient variation for correlation
             outdoor_range = max(recent_outdoor_temps) - min(recent_outdoor_temps)
 
@@ -284,23 +282,23 @@ def evaluate_pid_rules(
                         ki_factor = 1.0
                         reason = f"Slow rise time ({avg_rise_time:.1f} min, no cold correlation r={correlation:.2f}, increase Kp)"
 
-        results.append(PIDRuleResult(
-            rule=PIDRule.SLOW_RESPONSE,
-            kp_factor=kp_factor,
-            ki_factor=ki_factor,
-            kd_factor=1.0,
-            reason=reason
-        ))
+        results.append(
+            PIDRuleResult(
+                rule=PIDRule.SLOW_RESPONSE, kp_factor=kp_factor, ki_factor=ki_factor, kd_factor=1.0, reason=reason
+            )
+        )
 
     # Rule 4: Undershoot (>0.3C)
-    if should_fire(PIDRule.UNDERSHOOT, avg_undershoot, rule_thresholds['undershoot']):
+    if should_fire(PIDRule.UNDERSHOOT, avg_undershoot, rule_thresholds["undershoot"]):
         increase = min(1.0, avg_undershoot * 2.0)  # Up to 100% increase (doubling)
 
         # Calculate decay_ratio to scale Ki increase inversely
         decay_ratio = 0.0
-        if (decay_contribution is not None and
-            integral_at_tolerance_entry is not None and
-            integral_at_tolerance_entry != 0.0):
+        if (
+            decay_contribution is not None
+            and integral_at_tolerance_entry is not None
+            and integral_at_tolerance_entry != 0.0
+        ):
             decay_ratio = min(1.0, max(0.0, decay_contribution / integral_at_tolerance_entry))
 
         # Scale increase inversely by (1 - decay_ratio)
@@ -309,46 +307,54 @@ def evaluate_pid_rules(
         scaled_increase = increase * (1.0 - decay_ratio)
 
         increase_pct = scaled_increase * 100.0
-        results.append(PIDRuleResult(
-            rule=PIDRule.UNDERSHOOT,
-            kp_factor=1.0,
-            ki_factor=1.0 + scaled_increase,
-            kd_factor=1.0,
-            reason=f"Undershoot ({avg_undershoot:.2f}°C, +{increase_pct:.0f}% Ki)"
-        ))
+        results.append(
+            PIDRuleResult(
+                rule=PIDRule.UNDERSHOOT,
+                kp_factor=1.0,
+                ki_factor=1.0 + scaled_increase,
+                kd_factor=1.0,
+                reason=f"Undershoot ({avg_undershoot:.2f}°C, +{increase_pct:.0f}% Ki)",
+            )
+        )
 
     # Rule 5: Many oscillations (>3)
-    if should_fire(PIDRule.MANY_OSCILLATIONS, avg_oscillations, rule_thresholds['many_oscillations']):
-        results.append(PIDRuleResult(
-            rule=PIDRule.MANY_OSCILLATIONS,
-            kp_factor=0.90,
-            ki_factor=1.0,
-            kd_factor=1.20,
-            reason=f"Many oscillations ({avg_oscillations:.1f})"
-        ))
+    if should_fire(PIDRule.MANY_OSCILLATIONS, avg_oscillations, rule_thresholds["many_oscillations"]):
+        results.append(
+            PIDRuleResult(
+                rule=PIDRule.MANY_OSCILLATIONS,
+                kp_factor=0.90,
+                ki_factor=1.0,
+                kd_factor=1.20,
+                reason=f"Many oscillations ({avg_oscillations:.1f})",
+            )
+        )
     # Rule 6: Some oscillations (>1, only if many didn't fire)
-    elif should_fire(PIDRule.SOME_OSCILLATIONS, avg_oscillations, rule_thresholds['some_oscillations']):
-        results.append(PIDRuleResult(
-            rule=PIDRule.SOME_OSCILLATIONS,
-            kp_factor=1.0,
-            ki_factor=1.0,
-            kd_factor=1.10,
-            reason=f"Some oscillations ({avg_oscillations:.1f})"
-        ))
+    elif should_fire(PIDRule.SOME_OSCILLATIONS, avg_oscillations, rule_thresholds["some_oscillations"]):
+        results.append(
+            PIDRuleResult(
+                rule=PIDRule.SOME_OSCILLATIONS,
+                kp_factor=1.0,
+                ki_factor=1.0,
+                kd_factor=1.10,
+                reason=f"Some oscillations ({avg_oscillations:.1f})",
+            )
+        )
 
     # Rule 7: Slow settling (>90 min)
     # Case 3: Sluggish system with low decay -> increase Ki by 10%
     # Case 4: High decay + good overshoot + slow settling -> gentle Ki reduction (3%)
     # Case 5: High decay with good result -> no Ki change (Kd only)
-    if should_fire(PIDRule.SLOW_SETTLING, avg_settling_time, rule_thresholds['slow_settling']):
+    if should_fire(PIDRule.SLOW_SETTLING, avg_settling_time, rule_thresholds["slow_settling"]):
         ki_factor = 1.0
         reason = f"Slow settling ({avg_settling_time:.1f} min)"
 
         # Calculate decay_ratio if decay data available
         decay_ratio = None
-        if (decay_contribution is not None and
-            integral_at_tolerance_entry is not None and
-            integral_at_tolerance_entry != 0.0):
+        if (
+            decay_contribution is not None
+            and integral_at_tolerance_entry is not None
+            and integral_at_tolerance_entry != 0.0
+        ):
             decay_ratio = min(1.0, max(0.0, decay_contribution / integral_at_tolerance_entry))
 
         # Case 3: Low decay ratio (<0.2) indicates sluggish system -> increase Ki
@@ -368,31 +374,27 @@ def evaluate_pid_rules(
         else:
             reason = f"Slow settling ({avg_settling_time:.1f} min, +15% Kd)"
 
-        results.append(PIDRuleResult(
-            rule=PIDRule.SLOW_SETTLING,
-            kp_factor=1.0,
-            ki_factor=ki_factor,
-            kd_factor=1.15,
-            reason=reason
-        ))
+        results.append(
+            PIDRuleResult(rule=PIDRule.SLOW_SETTLING, kp_factor=1.0, ki_factor=ki_factor, kd_factor=1.15, reason=reason)
+        )
 
     # Rule 8: Inter-cycle drift (negative drift = room cooling between cycles)
     drift_threshold = rule_thresholds.get("inter_cycle_drift_max", 0.3)
     if avg_inter_cycle_drift < -drift_threshold:
-        results.append(PIDRuleResult(
-            rule=PIDRule.INTER_CYCLE_DRIFT,
-            kp_factor=1.0,
-            ki_factor=1.15,  # Increase Ki 15%
-            kd_factor=1.0,
-            reason=f"Inter-cycle drift {avg_inter_cycle_drift:.2f}°C indicates Ki too low"
-        ))
+        results.append(
+            PIDRuleResult(
+                rule=PIDRule.INTER_CYCLE_DRIFT,
+                kp_factor=1.0,
+                ki_factor=1.15,  # Increase Ki 15%
+                kd_factor=1.0,
+                reason=f"Inter-cycle drift {avg_inter_cycle_drift:.2f}°C indicates Ki too low",
+            )
+        )
 
     return results
 
 
-def detect_rule_conflicts(
-    rule_results: List[PIDRuleResult]
-) -> List[Tuple[PIDRuleResult, PIDRuleResult, str]]:
+def detect_rule_conflicts(rule_results: List[PIDRuleResult]) -> List[Tuple[PIDRuleResult, PIDRuleResult, str]]:
     """
     Detect conflicts between applicable rules.
 
@@ -408,28 +410,24 @@ def detect_rule_conflicts(
     conflicts: List[Tuple[PIDRuleResult, PIDRuleResult, str]] = []
 
     for i, r1 in enumerate(rule_results):
-        for r2 in rule_results[i + 1:]:
+        for r2 in rule_results[i + 1 :]:
             # Check Kp conflicts (one increases, one decreases)
-            if (r1.kp_factor > 1.0 and r2.kp_factor < 1.0) or \
-               (r1.kp_factor < 1.0 and r2.kp_factor > 1.0):
+            if (r1.kp_factor > 1.0 and r2.kp_factor < 1.0) or (r1.kp_factor < 1.0 and r2.kp_factor > 1.0):
                 conflicts.append((r1, r2, "kp"))
 
             # Check Ki conflicts
-            if (r1.ki_factor > 1.0 and r2.ki_factor < 1.0) or \
-               (r1.ki_factor < 1.0 and r2.ki_factor > 1.0):
+            if (r1.ki_factor > 1.0 and r2.ki_factor < 1.0) or (r1.ki_factor < 1.0 and r2.ki_factor > 1.0):
                 conflicts.append((r1, r2, "ki"))
 
             # Check Kd conflicts
-            if (r1.kd_factor > 1.0 and r2.kd_factor < 1.0) or \
-               (r1.kd_factor < 1.0 and r2.kd_factor > 1.0):
+            if (r1.kd_factor > 1.0 and r2.kd_factor < 1.0) or (r1.kd_factor < 1.0 and r2.kd_factor > 1.0):
                 conflicts.append((r1, r2, "kd"))
 
     return conflicts
 
 
 def resolve_rule_conflicts(
-    rule_results: List[PIDRuleResult],
-    conflicts: List[Tuple[PIDRuleResult, PIDRuleResult, str]]
+    rule_results: List[PIDRuleResult], conflicts: List[Tuple[PIDRuleResult, PIDRuleResult, str]]
 ) -> List[PIDRuleResult]:
     """
     Resolve conflicts by applying higher priority rules.
@@ -469,13 +467,15 @@ def resolve_rule_conflicts(
         if result.rule in suppressed:
             # Create new result with suppressed parameters neutralized
             suppressed_params = suppressed[result.rule]
-            resolved.append(PIDRuleResult(
-                rule=result.rule,
-                kp_factor=1.0 if "kp" in suppressed_params else result.kp_factor,
-                ki_factor=1.0 if "ki" in suppressed_params else result.ki_factor,
-                kd_factor=1.0 if "kd" in suppressed_params else result.kd_factor,
-                reason=result.reason + " (partially suppressed)"
-            ))
+            resolved.append(
+                PIDRuleResult(
+                    rule=result.rule,
+                    kp_factor=1.0 if "kp" in suppressed_params else result.kp_factor,
+                    ki_factor=1.0 if "ki" in suppressed_params else result.ki_factor,
+                    kd_factor=1.0 if "kd" in suppressed_params else result.kd_factor,
+                    reason=result.reason + " (partially suppressed)",
+                )
+            )
         else:
             resolved.append(result)
 

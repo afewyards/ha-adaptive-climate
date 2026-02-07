@@ -1,4 +1,5 @@
 """The adaptive_climate component."""
+
 from __future__ import annotations
 
 import logging
@@ -18,6 +19,7 @@ try:
     from homeassistant.helpers import config_validation as cv
     from homeassistant.helpers.typing import ConfigType
     from homeassistant.helpers.event import async_track_time_change
+
     HAS_HOMEASSISTANT = True
 except ImportError:
     HAS_HOMEASSISTANT = False
@@ -142,9 +144,7 @@ def valid_notify_service(value: Any) -> str:
         vol.Invalid: If the value is not a valid notify service format
     """
     if not isinstance(value, str):
-        raise vol.Invalid(
-            f"notify_service must be a string, got {type(value).__name__}"
-        )
+        raise vol.Invalid(f"notify_service must be a string, got {type(value).__name__}")
 
     value = value.strip()
     if not value:
@@ -168,176 +168,128 @@ def valid_notify_service(value: Any) -> str:
 # This validates the configuration under the adaptive_climate: key
 if HAS_HOMEASSISTANT:
     # Thermal group schema
-    THERMAL_GROUP_SCHEMA = vol.Schema({
-        vol.Required("name"): cv.string,
-        vol.Required("zones"): vol.All(cv.ensure_list, [cv.string]),
-        vol.Optional("type", default="open_plan"): vol.In(["open_plan"]),
-        vol.Optional("leader"): cv.string,
-        vol.Optional("receives_from"): cv.string,
-        vol.Optional("transfer_factor", default=0.0): vol.All(
-            vol.Coerce(float),
-            vol.Range(min=0.0, max=1.0)
-        ),
-        vol.Optional("delay_minutes", default=0): vol.All(
-            vol.Coerce(int),
-            vol.Range(min=0)
-        ),
-    })
+    THERMAL_GROUP_SCHEMA = vol.Schema(
+        {
+            vol.Required("name"): cv.string,
+            vol.Required("zones"): vol.All(cv.ensure_list, [cv.string]),
+            vol.Optional("type", default="open_plan"): vol.In(["open_plan"]),
+            vol.Optional("leader"): cv.string,
+            vol.Optional("receives_from"): cv.string,
+            vol.Optional("transfer_factor", default=0.0): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=1.0)),
+            vol.Optional("delay_minutes", default=0): vol.All(vol.Coerce(int), vol.Range(min=0)),
+        }
+    )
 
     # Manifold schema
-    MANIFOLD_SCHEMA = vol.Schema({
-        vol.Required("name"): cv.string,
-        vol.Required("zones"): vol.All(cv.ensure_list, [cv.entity_id], vol.Length(min=1)),
-        vol.Required(CONF_PIPE_VOLUME): vol.All(vol.Coerce(float), vol.Range(min=0.1)),
-        vol.Optional(CONF_FLOW_PER_LOOP, default=DEFAULT_FLOW_PER_LOOP): vol.All(
-            vol.Coerce(float), vol.Range(min=0.1)
-        ),
-    })
+    MANIFOLD_SCHEMA = vol.Schema(
+        {
+            vol.Required("name"): cv.string,
+            vol.Required("zones"): vol.All(cv.ensure_list, [cv.entity_id], vol.Length(min=1)),
+            vol.Required(CONF_PIPE_VOLUME): vol.All(vol.Coerce(float), vol.Range(min=0.1)),
+            vol.Optional(CONF_FLOW_PER_LOOP, default=DEFAULT_FLOW_PER_LOOP): vol.All(
+                vol.Coerce(float), vol.Range(min=0.1)
+            ),
+        }
+    )
 
     # Auto mode switching schema
-    AUTO_MODE_SWITCHING_SCHEMA = vol.Schema({
-        vol.Required("enabled"): cv.boolean,
-        vol.Optional(CONF_AUTO_MODE_THRESHOLD, default=DEFAULT_AUTO_MODE_THRESHOLD): vol.Coerce(float),
-        vol.Optional(CONF_MIN_SWITCH_INTERVAL, default=DEFAULT_MIN_SWITCH_INTERVAL): cv.positive_int,
-        vol.Optional(CONF_FORECAST_HOURS, default=DEFAULT_FORECAST_HOURS): cv.positive_int,
-        vol.Optional(CONF_SEASON_THRESHOLDS): vol.Schema({
-            vol.Optional(CONF_WINTER_BELOW, default=DEFAULT_WINTER_BELOW): vol.Coerce(float),
-            vol.Optional(CONF_SUMMER_ABOVE, default=DEFAULT_SUMMER_ABOVE): vol.Coerce(float),
-        }),
-    })
+    AUTO_MODE_SWITCHING_SCHEMA = vol.Schema(
+        {
+            vol.Required("enabled"): cv.boolean,
+            vol.Optional(CONF_AUTO_MODE_THRESHOLD, default=DEFAULT_AUTO_MODE_THRESHOLD): vol.Coerce(float),
+            vol.Optional(CONF_MIN_SWITCH_INTERVAL, default=DEFAULT_MIN_SWITCH_INTERVAL): cv.positive_int,
+            vol.Optional(CONF_FORECAST_HOURS, default=DEFAULT_FORECAST_HOURS): cv.positive_int,
+            vol.Optional(CONF_SEASON_THRESHOLDS): vol.Schema(
+                {
+                    vol.Optional(CONF_WINTER_BELOW, default=DEFAULT_WINTER_BELOW): vol.Coerce(float),
+                    vol.Optional(CONF_SUMMER_ABOVE, default=DEFAULT_SUMMER_ABOVE): vol.Coerce(float),
+                }
+            ),
+        }
+    )
 
     CONFIG_SCHEMA = vol.Schema(
         {
-            DOMAIN: vol.Schema({
-                # Notification settings
-                vol.Optional(CONF_NOTIFY_SERVICE): valid_notify_service,
-                vol.Optional(
-                    CONF_PERSISTENT_NOTIFICATION,
-                    default=DEFAULT_PERSISTENT_NOTIFICATION
-                ): cv.boolean,
-
-                # Debug mode
-                vol.Optional(CONF_DEBUG, default=DEFAULT_DEBUG): cv.boolean,
-
-                # Energy tracking
-                vol.Optional(CONF_ENERGY_METER_ENTITY): cv.entity_id,
-                vol.Optional(CONF_ENERGY_COST_ENTITY): cv.entity_id,
-
-                # Supply temperature for physics-based PID scaling
-                vol.Optional(CONF_SUPPLY_TEMPERATURE): vol.All(
-                    vol.Coerce(float),
-                    vol.Range(
-                        min=SUPPLY_TEMP_MIN,
-                        max=SUPPLY_TEMP_MAX,
-                        msg=f"supply_temperature must be between {SUPPLY_TEMP_MIN} and {SUPPLY_TEMP_MAX}°C"
-                    )
-                ),
-
-                # Central heat source control
-                vol.Optional(CONF_MAIN_HEATER_SWITCH): cv.entity_ids,
-                vol.Optional(CONF_MAIN_COOLER_SWITCH): cv.entity_ids,
-                vol.Optional(
-                    CONF_SOURCE_STARTUP_DELAY,
-                    default=DEFAULT_SOURCE_STARTUP_DELAY
-                ): vol.All(
-                    vol.Coerce(int),
-                    vol.Range(
-                        min=0,
-                        max=300,
-                        msg="source_startup_delay must be between 0 and 300 seconds"
-                    )
-                ),
-
-                # Mode synchronization
-                vol.Optional(
-                    CONF_SYNC_MODES,
-                    default=DEFAULT_SYNC_MODES
-                ): cv.boolean,
-
-                # Learning configuration
-                vol.Optional(
-                    CONF_LEARNING_WINDOW_DAYS,
-                    default=DEFAULT_LEARNING_WINDOW_DAYS
-                ): vol.All(
-                    vol.Coerce(int),
-                    vol.Range(
-                        min=1,
-                        max=30,
-                        msg="learning_window_days must be between 1 and 30 days"
-                    )
-                ),
-                vol.Optional(
-                    CONF_CHRONIC_APPROACH_HISTORIC_SCAN,
-                    default=False
-                ): cv.boolean,
-
-                # Weather and physics
-                vol.Optional(CONF_WEATHER_ENTITY): cv.entity_id,
-                vol.Optional(CONF_OUTDOOR_SENSOR): cv.entity_id,
-                vol.Optional(CONF_WIND_SPEED_SENSOR): cv.entity_id,
-                vol.Optional(CONF_HOUSE_ENERGY_RATING): vol.In(
-                    VALID_ENERGY_RATINGS,
-                    msg=f"house_energy_rating must be one of: {', '.join(VALID_ENERGY_RATINGS)}"
-                ),
-                vol.Optional(
-                    CONF_WINDOW_RATING,
-                    default=DEFAULT_WINDOW_RATING
-                ): cv.string,
-
-                # Heat output sensors
-                vol.Optional(CONF_SUPPLY_TEMP_SENSOR): cv.entity_id,
-                vol.Optional(CONF_RETURN_TEMP_SENSOR): cv.entity_id,
-                vol.Optional(CONF_FLOW_RATE_SENSOR): cv.entity_id,
-                vol.Optional(CONF_VOLUME_METER_ENTITY): cv.entity_id,
-                vol.Optional(
-                    CONF_FALLBACK_FLOW_RATE,
-                    default=DEFAULT_FALLBACK_FLOW_RATE
-                ): vol.All(
-                    vol.Coerce(float),
-                    vol.Range(
-                        min=0.01,
-                        max=10.0,
-                        msg="fallback_flow_rate must be between 0.01 and 10.0 L/s"
-                    )
-                ),
-
-                # Preset temperatures
-                vol.Optional(CONF_AWAY_TEMP): vol.Coerce(float),
-                vol.Optional(CONF_ECO_TEMP): vol.Coerce(float),
-                vol.Optional(CONF_BOOST_TEMP): vol.Coerce(float),
-                vol.Optional(CONF_COMFORT_TEMP): vol.Coerce(float),
-                vol.Optional(CONF_HOME_TEMP): vol.Coerce(float),
-                vol.Optional(CONF_ACTIVITY_TEMP): vol.Coerce(float),
-                vol.Optional(
-                    CONF_PRESET_SYNC_MODE,
-                    default=DEFAULT_PRESET_SYNC_MODE
-                ): vol.In(['sync', 'none']),
-                vol.Optional(CONF_BOOST_PID_OFF, default=False): cv.boolean,
-
-                # Climate settings (domain-level defaults, can be overridden per-entity)
-                vol.Optional(CONF_MIN_TEMP): vol.Coerce(float),
-                vol.Optional(CONF_MAX_TEMP): vol.Coerce(float),
-                vol.Optional(CONF_TARGET_TEMP): vol.Coerce(float),
-                vol.Optional(CONF_TARGET_TEMP_STEP): vol.In([0.1, 0.5, 1.0]),
-                vol.Optional(CONF_HOT_TOLERANCE): vol.Coerce(float),
-                vol.Optional(CONF_COLD_TOLERANCE): vol.Coerce(float),
-                vol.Optional(CONF_PRECISION): vol.In([0.1, 0.5, 1.0]),
-                vol.Optional(CONF_PWM): vol.All(cv.time_period, cv.positive_timedelta),
-                vol.Optional(CONF_MIN_OPEN_TIME): vol.All(cv.time_period, cv.positive_timedelta),
-                vol.Optional(CONF_MIN_CLOSED_TIME): vol.All(cv.time_period, cv.positive_timedelta),
-
-                # Thermal groups for static multi-zone coordination
-                vol.Optional(CONF_THERMAL_GROUPS): vol.All(
-                    cv.ensure_list,
-                    [THERMAL_GROUP_SCHEMA]
-                ),
-
-                # Manifolds for hydraulic transport delay tracking
-                vol.Optional(CONF_MANIFOLDS): vol.All(cv.ensure_list, [MANIFOLD_SCHEMA]),
-
-                # Auto mode switching for heat/cool based on outdoor temperature
-                vol.Optional(CONF_AUTO_MODE_SWITCHING): AUTO_MODE_SWITCHING_SCHEMA,
-            })
+            DOMAIN: vol.Schema(
+                {
+                    # Notification settings
+                    vol.Optional(CONF_NOTIFY_SERVICE): valid_notify_service,
+                    vol.Optional(CONF_PERSISTENT_NOTIFICATION, default=DEFAULT_PERSISTENT_NOTIFICATION): cv.boolean,
+                    # Debug mode
+                    vol.Optional(CONF_DEBUG, default=DEFAULT_DEBUG): cv.boolean,
+                    # Energy tracking
+                    vol.Optional(CONF_ENERGY_METER_ENTITY): cv.entity_id,
+                    vol.Optional(CONF_ENERGY_COST_ENTITY): cv.entity_id,
+                    # Supply temperature for physics-based PID scaling
+                    vol.Optional(CONF_SUPPLY_TEMPERATURE): vol.All(
+                        vol.Coerce(float),
+                        vol.Range(
+                            min=SUPPLY_TEMP_MIN,
+                            max=SUPPLY_TEMP_MAX,
+                            msg=f"supply_temperature must be between {SUPPLY_TEMP_MIN} and {SUPPLY_TEMP_MAX}°C",
+                        ),
+                    ),
+                    # Central heat source control
+                    vol.Optional(CONF_MAIN_HEATER_SWITCH): cv.entity_ids,
+                    vol.Optional(CONF_MAIN_COOLER_SWITCH): cv.entity_ids,
+                    vol.Optional(CONF_SOURCE_STARTUP_DELAY, default=DEFAULT_SOURCE_STARTUP_DELAY): vol.All(
+                        vol.Coerce(int),
+                        vol.Range(min=0, max=300, msg="source_startup_delay must be between 0 and 300 seconds"),
+                    ),
+                    # Mode synchronization
+                    vol.Optional(CONF_SYNC_MODES, default=DEFAULT_SYNC_MODES): cv.boolean,
+                    # Learning configuration
+                    vol.Optional(CONF_LEARNING_WINDOW_DAYS, default=DEFAULT_LEARNING_WINDOW_DAYS): vol.All(
+                        vol.Coerce(int),
+                        vol.Range(min=1, max=30, msg="learning_window_days must be between 1 and 30 days"),
+                    ),
+                    vol.Optional(CONF_CHRONIC_APPROACH_HISTORIC_SCAN, default=False): cv.boolean,
+                    # Weather and physics
+                    vol.Optional(CONF_WEATHER_ENTITY): cv.entity_id,
+                    vol.Optional(CONF_OUTDOOR_SENSOR): cv.entity_id,
+                    vol.Optional(CONF_WIND_SPEED_SENSOR): cv.entity_id,
+                    vol.Optional(CONF_HOUSE_ENERGY_RATING): vol.In(
+                        VALID_ENERGY_RATINGS,
+                        msg=f"house_energy_rating must be one of: {', '.join(VALID_ENERGY_RATINGS)}",
+                    ),
+                    vol.Optional(CONF_WINDOW_RATING, default=DEFAULT_WINDOW_RATING): cv.string,
+                    # Heat output sensors
+                    vol.Optional(CONF_SUPPLY_TEMP_SENSOR): cv.entity_id,
+                    vol.Optional(CONF_RETURN_TEMP_SENSOR): cv.entity_id,
+                    vol.Optional(CONF_FLOW_RATE_SENSOR): cv.entity_id,
+                    vol.Optional(CONF_VOLUME_METER_ENTITY): cv.entity_id,
+                    vol.Optional(CONF_FALLBACK_FLOW_RATE, default=DEFAULT_FALLBACK_FLOW_RATE): vol.All(
+                        vol.Coerce(float),
+                        vol.Range(min=0.01, max=10.0, msg="fallback_flow_rate must be between 0.01 and 10.0 L/s"),
+                    ),
+                    # Preset temperatures
+                    vol.Optional(CONF_AWAY_TEMP): vol.Coerce(float),
+                    vol.Optional(CONF_ECO_TEMP): vol.Coerce(float),
+                    vol.Optional(CONF_BOOST_TEMP): vol.Coerce(float),
+                    vol.Optional(CONF_COMFORT_TEMP): vol.Coerce(float),
+                    vol.Optional(CONF_HOME_TEMP): vol.Coerce(float),
+                    vol.Optional(CONF_ACTIVITY_TEMP): vol.Coerce(float),
+                    vol.Optional(CONF_PRESET_SYNC_MODE, default=DEFAULT_PRESET_SYNC_MODE): vol.In(["sync", "none"]),
+                    vol.Optional(CONF_BOOST_PID_OFF, default=False): cv.boolean,
+                    # Climate settings (domain-level defaults, can be overridden per-entity)
+                    vol.Optional(CONF_MIN_TEMP): vol.Coerce(float),
+                    vol.Optional(CONF_MAX_TEMP): vol.Coerce(float),
+                    vol.Optional(CONF_TARGET_TEMP): vol.Coerce(float),
+                    vol.Optional(CONF_TARGET_TEMP_STEP): vol.In([0.1, 0.5, 1.0]),
+                    vol.Optional(CONF_HOT_TOLERANCE): vol.Coerce(float),
+                    vol.Optional(CONF_COLD_TOLERANCE): vol.Coerce(float),
+                    vol.Optional(CONF_PRECISION): vol.In([0.1, 0.5, 1.0]),
+                    vol.Optional(CONF_PWM): vol.All(cv.time_period, cv.positive_timedelta),
+                    vol.Optional(CONF_MIN_OPEN_TIME): vol.All(cv.time_period, cv.positive_timedelta),
+                    vol.Optional(CONF_MIN_CLOSED_TIME): vol.All(cv.time_period, cv.positive_timedelta),
+                    # Thermal groups for static multi-zone coordination
+                    vol.Optional(CONF_THERMAL_GROUPS): vol.All(cv.ensure_list, [THERMAL_GROUP_SCHEMA]),
+                    # Manifolds for hydraulic transport delay tracking
+                    vol.Optional(CONF_MANIFOLDS): vol.All(cv.ensure_list, [MANIFOLD_SCHEMA]),
+                    # Auto mode switching for heat/cool based on outdoor temperature
+                    vol.Optional(CONF_AUTO_MODE_SWITCHING): AUTO_MODE_SWITCHING_SCHEMA,
+                }
+            )
         },
         extra=vol.ALLOW_EXTRA,  # Allow other domains in config
     )
@@ -386,8 +338,7 @@ async def async_send_notification(
     # Check if service exists
     if not hass.services.has_service("notify", service_name):
         _LOGGER.warning(
-            "Notification service 'notify.%s' is not available. "
-            "Check your Home Assistant notification configuration.",
+            "Notification service 'notify.%s' is not available. Check your Home Assistant notification configuration.",
             service_name,
         )
         return False
@@ -466,10 +417,12 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     from .adaptive.vacation import VacationMode
 
     # Service schemas
-    VACATION_MODE_SCHEMA = vol.Schema({
-        vol.Required("enabled"): cv.boolean,
-        vol.Optional("target_temp", default=DEFAULT_VACATION_TARGET_TEMP): vol.Coerce(float),
-    })
+    VACATION_MODE_SCHEMA = vol.Schema(
+        {
+            vol.Required("enabled"): cv.boolean,
+            vol.Optional("target_temp", default=DEFAULT_VACATION_TARGET_TEMP): vol.Coerce(float),
+        }
+    )
 
     # Migrate from old domain if exists
     old_domain_data = hass.data.get("adaptive_thermostat")
@@ -483,6 +436,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
     # Create www directory for chart images
     from pathlib import Path
+
     www_dir = Path(hass.config.path("www")) / "adaptive_climate"
     try:
         www_dir.mkdir(parents=True, exist_ok=True)
@@ -519,12 +473,11 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
     # Notification and energy tracking
     notify_service = domain_config.get(CONF_NOTIFY_SERVICE)
-    persistent_notification = domain_config.get(
-        CONF_PERSISTENT_NOTIFICATION, DEFAULT_PERSISTENT_NOTIFICATION
-    )
+    persistent_notification = domain_config.get(CONF_PERSISTENT_NOTIFICATION, DEFAULT_PERSISTENT_NOTIFICATION)
 
     # Create notification manager for event-driven notifications
     from .managers.notification_manager import NotificationManager
+
     notification_manager = NotificationManager(
         hass=hass,
         notify_service=notify_service,
@@ -554,9 +507,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     # Central heat source control
     main_heater_switch = domain_config.get(CONF_MAIN_HEATER_SWITCH)
     main_cooler_switch = domain_config.get(CONF_MAIN_COOLER_SWITCH)
-    source_startup_delay = domain_config.get(
-        CONF_SOURCE_STARTUP_DELAY, DEFAULT_SOURCE_STARTUP_DELAY
-    )
+    source_startup_delay = domain_config.get(CONF_SOURCE_STARTUP_DELAY, DEFAULT_SOURCE_STARTUP_DELAY)
 
     hass.data[DOMAIN]["main_heater_switch"] = main_heater_switch
     hass.data[DOMAIN]["main_cooler_switch"] = main_cooler_switch
@@ -597,6 +548,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     if thermal_groups_config:
         try:
             from .adaptive.thermal_groups import ThermalGroupManager, validate_thermal_groups_config
+
             # Validate config
             validate_thermal_groups_config(thermal_groups_config)
             # Create manager
@@ -615,6 +567,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     if manifolds_config:
         try:
             from .adaptive.manifold_registry import ManifoldRegistry, Manifold
+
             # Create Manifold objects from config
             manifolds = [
                 Manifold(
@@ -645,9 +598,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             hass.data[DOMAIN]["manifold_registry"] = None
 
     # Learning configuration
-    learning_window_days = domain_config.get(
-        CONF_LEARNING_WINDOW_DAYS, DEFAULT_LEARNING_WINDOW_DAYS
-    )
+    learning_window_days = domain_config.get(CONF_LEARNING_WINDOW_DAYS, DEFAULT_LEARNING_WINDOW_DAYS)
     hass.data[DOMAIN]["learning_window_days"] = learning_window_days
 
     # Chronic approach historic scan flag
@@ -666,9 +617,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     return_temp_sensor = domain_config.get(CONF_RETURN_TEMP_SENSOR)
     flow_rate_sensor = domain_config.get(CONF_FLOW_RATE_SENSOR)
     volume_meter_entity = domain_config.get(CONF_VOLUME_METER_ENTITY)
-    fallback_flow_rate = domain_config.get(
-        CONF_FALLBACK_FLOW_RATE, DEFAULT_FALLBACK_FLOW_RATE
-    )
+    fallback_flow_rate = domain_config.get(CONF_FALLBACK_FLOW_RATE, DEFAULT_FALLBACK_FLOW_RATE)
 
     hass.data[DOMAIN]["supply_temp_sensor"] = supply_temp_sensor
     hass.data[DOMAIN]["return_temp_sensor"] = return_temp_sensor
@@ -683,9 +632,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     hass.data[DOMAIN]["comfort_temp"] = domain_config.get(CONF_COMFORT_TEMP)
     hass.data[DOMAIN]["home_temp"] = domain_config.get(CONF_HOME_TEMP)
     hass.data[DOMAIN]["activity_temp"] = domain_config.get(CONF_ACTIVITY_TEMP)
-    hass.data[DOMAIN]["preset_sync_mode"] = domain_config.get(
-        CONF_PRESET_SYNC_MODE, DEFAULT_PRESET_SYNC_MODE
-    )
+    hass.data[DOMAIN]["preset_sync_mode"] = domain_config.get(CONF_PRESET_SYNC_MODE, DEFAULT_PRESET_SYNC_MODE)
     hass.data[DOMAIN]["boost_pid_off"] = domain_config.get(CONF_BOOST_PID_OFF, False)
 
     # Climate settings (domain-level defaults, can be overridden per-entity)
@@ -752,17 +699,20 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         learning_window = hass.data[DOMAIN].get("learning_window_days", DEFAULT_LEARNING_WINDOW_DAYS)
         await async_daily_learning(hass, coordinator, learning_window, _now)
 
-    unsub_callbacks.append(
-        async_track_time_change(hass, _async_daily_learning_callback, hour=3, minute=0, second=0)
-    )
+    unsub_callbacks.append(async_track_time_change(hass, _async_daily_learning_callback, hour=3, minute=0, second=0))
     _LOGGER.debug("Scheduled daily adaptive learning at 3:00 AM")
 
     # Schedule health check every 6 hours (at 0:00, 6:00, 12:00, 18:00)
     async def _async_scheduled_health_check_callback(_now) -> None:
         """Wrapper for scheduled health check."""
         await async_scheduled_health_check(
-            hass, coordinator, notify_service, persistent_notification,
-            async_send_notification, async_send_persistent_notification, _now,
+            hass,
+            coordinator,
+            notify_service,
+            persistent_notification,
+            async_send_notification,
+            async_send_persistent_notification,
+            _now,
         )
 
     for hour in [0, 6, 12, 18]:
@@ -775,8 +725,13 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     async def _async_scheduled_weekly_report_callback(_now) -> None:
         """Wrapper for scheduled weekly report."""
         await async_scheduled_weekly_report(
-            hass, coordinator, notify_service, persistent_notification,
-            async_send_notification, async_send_persistent_notification, _now,
+            hass,
+            coordinator,
+            notify_service,
+            persistent_notification,
+            async_send_notification,
+            async_send_persistent_notification,
+            _now,
         )
 
     unsub_callbacks.append(

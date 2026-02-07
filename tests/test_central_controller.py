@@ -1,4 +1,5 @@
 """Tests for Central Controller functionality."""
+
 import asyncio
 import pytest
 import sys
@@ -10,28 +11,34 @@ from datetime import timedelta
 sys.path.insert(0, str(Path(__file__).parent.parent / "custom_components" / "adaptive_climate"))
 
 # Mock homeassistant modules before importing coordinator
-sys.modules['homeassistant'] = Mock()
+sys.modules["homeassistant"] = Mock()
+
 
 # Event needs to support subscripting for type hints like Event[EventStateChangedData]
 class MockEvent:
     """Mock Event class that supports generic subscripting."""
+
     def __class_getitem__(cls, item):
         return cls
 
+
 mock_core = Mock()
 mock_core.Event = MockEvent
-sys.modules['homeassistant.core'] = mock_core
-sys.modules['homeassistant.helpers'] = Mock()
-sys.modules['homeassistant.helpers.update_coordinator'] = Mock()
+sys.modules["homeassistant.core"] = mock_core
+sys.modules["homeassistant.helpers"] = Mock()
+sys.modules["homeassistant.helpers.update_coordinator"] = Mock()
+
 
 # Create mock exception classes
 class MockServiceNotFound(Exception):
     """Mock ServiceNotFound exception."""
+
     pass
 
 
 class MockHomeAssistantError(Exception):
     """Mock HomeAssistantError exception."""
+
     pass
 
 
@@ -39,7 +46,8 @@ class MockHomeAssistantError(Exception):
 mock_exceptions_module = Mock()
 mock_exceptions_module.ServiceNotFound = MockServiceNotFound
 mock_exceptions_module.HomeAssistantError = MockHomeAssistantError
-sys.modules['homeassistant.exceptions'] = mock_exceptions_module
+sys.modules["homeassistant.exceptions"] = mock_exceptions_module
+
 
 # Create mock base class
 class MockDataUpdateCoordinator:
@@ -49,20 +57,21 @@ class MockDataUpdateCoordinator:
         self.name = name
         self.update_interval = update_interval
 
-sys.modules['homeassistant.helpers.update_coordinator'].DataUpdateCoordinator = MockDataUpdateCoordinator
+
+sys.modules["homeassistant.helpers.update_coordinator"].DataUpdateCoordinator = MockDataUpdateCoordinator
 
 # Mock homeassistant.helpers.event for async_track_state_change_event
-sys.modules['homeassistant.helpers.event'] = Mock()
+sys.modules["homeassistant.helpers.event"] = Mock()
 
 # DO NOT replace homeassistant.components.climate - it's already set up in conftest.py
 # with the correct MockHVACMode that uses global singleton values
-if 'homeassistant.components' not in sys.modules:
-    sys.modules['homeassistant.components'] = Mock()
+if "homeassistant.components" not in sys.modules:
+    sys.modules["homeassistant.components"] = Mock()
 # DO NOT set sys.modules['homeassistant.components.climate'] - use the one from conftest.py
 
 # Mock managers.auto_mode_switching
-sys.modules['managers'] = Mock()
-sys.modules['managers.auto_mode_switching'] = Mock()
+sys.modules["managers"] = Mock()
+sys.modules["managers.auto_mode_switching"] = Mock()
 
 # Import coordinator module
 import coordinator
@@ -273,10 +282,7 @@ async def test_heater_and_cooler_independence(mock_hass, coord):
     assert call_args.kwargs.get("blocking") == True
 
     # Cooler should not have been called
-    cooler_calls = [
-        call for call in calls
-        if "switch.chiller" in str(call)
-    ]
+    cooler_calls = [call for call in calls if "switch.chiller" in str(call)]
     assert len(cooler_calls) == 0
 
 
@@ -356,10 +362,7 @@ async def test_demand_lost_during_delay(mock_hass, coord):
 
     # Verify heater was NOT turned on (only turn_off was called)
     calls = mock_hass.services.async_call.call_args_list
-    turn_on_calls = [
-        call for call in calls
-        if call[0][1] == "turn_on"
-    ]
+    turn_on_calls = [call for call in calls if call[0][1] == "turn_on"]
     assert len(turn_on_calls) == 0
 
 
@@ -402,10 +405,7 @@ async def test_concurrent_update_calls_during_startup_delay(mock_hass, coord):
     await asyncio.sleep(2.5)
 
     # Verify heater was turned on exactly once
-    turn_on_calls = [
-        call for call in mock_hass.services.async_call.call_args_list
-        if call[0][1] == "turn_on"
-    ]
+    turn_on_calls = [call for call in mock_hass.services.async_call.call_args_list if call[0][1] == "turn_on"]
     assert len(turn_on_calls) == 1
 
     # Verify state is clean
@@ -597,9 +597,7 @@ async def test_service_not_found_no_retry(mock_hass, coord):
     mock_hass.states.get.return_value = mock_state
 
     # Make service call raise ServiceNotFound
-    mock_hass.services.async_call = AsyncMock(
-        side_effect=MockServiceNotFound("Service not found")
-    )
+    mock_hass.services.async_call = AsyncMock(side_effect=MockServiceNotFound("Service not found"))
 
     # Register zone and add demand
     coord.register_zone("living_room", {"name": "Living Room"})
@@ -671,9 +669,7 @@ async def test_all_retries_exhausted(mock_hass, coord):
     mock_hass.states.get.return_value = mock_state
 
     # Make service call always fail
-    mock_hass.services.async_call = AsyncMock(
-        side_effect=MockHomeAssistantError("Persistent error")
-    )
+    mock_hass.services.async_call = AsyncMock(side_effect=MockHomeAssistantError("Persistent error"))
 
     # Register zone and add demand
     coord.register_zone("living_room", {"name": "Living Room"})
@@ -705,9 +701,7 @@ async def test_consecutive_failure_warning_threshold(mock_hass, coord):
     mock_hass.states.get.return_value = mock_state
 
     # Make service call always fail with ServiceNotFound (immediate failure, no retry)
-    mock_hass.services.async_call = AsyncMock(
-        side_effect=MockServiceNotFound("Service not found")
-    )
+    mock_hass.services.async_call = AsyncMock(side_effect=MockServiceNotFound("Service not found"))
 
     # Register zone and add demand
     coord.register_zone("living_room", {"name": "Living Room"})
@@ -720,8 +714,7 @@ async def test_consecutive_failure_warning_threshold(mock_hass, coord):
 
     # Verify consecutive failures equals threshold
     assert (
-        controller.get_consecutive_failures("switch.boiler")
-        == central_controller.CONSECUTIVE_FAILURE_WARNING_THRESHOLD
+        controller.get_consecutive_failures("switch.boiler") == central_controller.CONSECUTIVE_FAILURE_WARNING_THRESHOLD
     )
 
 
@@ -1077,6 +1070,7 @@ async def test_multiple_heaters_partial_failure_continues(mock_hass, coord):
 
     # First call fails, second succeeds
     call_count = [0]
+
     async def mock_service_call(*args, **kwargs):
         call_count[0] += 1
         if call_count[0] <= central_controller.MAX_SERVICE_CALL_RETRIES:

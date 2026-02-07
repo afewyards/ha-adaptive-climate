@@ -1,12 +1,15 @@
 """Tests for comfort sensors."""
+
 import sys
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, AsyncMock, patch
 import pytest
 
+
 # Mock base classes that need to be distinct
 class MockSensorEntity:
     """Mock SensorEntity base class."""
+
     pass
 
 
@@ -45,11 +48,14 @@ mock_event = MagicMock()
 mock_event.async_track_time_interval = MagicMock()
 mock_event.async_track_state_change_event = MagicMock()
 
+
 # Event needs to support subscripting for type hints like Event[EventStateChangedData]
 class MockEvent:
     """Mock Event class that supports generic subscripting."""
+
     def __class_getitem__(cls, item):
         return cls
+
 
 mock_core = MagicMock()
 mock_core.HomeAssistant = MagicMock
@@ -59,16 +65,16 @@ mock_core.Event = MockEvent
 mock_restore = MagicMock()
 mock_restore.RestoreEntity = MockRestoreEntity
 
-sys.modules['homeassistant'] = MagicMock()
-sys.modules['homeassistant.core'] = mock_core
-sys.modules['homeassistant.components'] = MagicMock()
-sys.modules['homeassistant.components.sensor'] = mock_sensor_module
-sys.modules['homeassistant.const'] = mock_const
-sys.modules['homeassistant.helpers'] = MagicMock()
-sys.modules['homeassistant.helpers.event'] = mock_event
-sys.modules['homeassistant.helpers.restore_state'] = mock_restore
-sys.modules['homeassistant.helpers.entity_platform'] = MagicMock()
-sys.modules['homeassistant.helpers.typing'] = MagicMock()
+sys.modules["homeassistant"] = MagicMock()
+sys.modules["homeassistant.core"] = mock_core
+sys.modules["homeassistant.components"] = MagicMock()
+sys.modules["homeassistant.components.sensor"] = mock_sensor_module
+sys.modules["homeassistant.const"] = mock_const
+sys.modules["homeassistant.helpers"] = MagicMock()
+sys.modules["homeassistant.helpers.event"] = mock_event
+sys.modules["homeassistant.helpers.restore_state"] = mock_restore
+sys.modules["homeassistant.helpers.entity_platform"] = MagicMock()
+sys.modules["homeassistant.helpers.typing"] = MagicMock()
 
 # Now import the sensors module
 from custom_components.adaptive_climate.sensors.comfort import (
@@ -131,7 +137,7 @@ def test_time_at_target_record_sample(mock_hass):
     assert sensor._samples[0].setpoint == 21.0
 
 
-@patch('custom_components.adaptive_climate.sensors.comfort.dt_util')
+@patch("custom_components.adaptive_climate.sensors.comfort.dt_util")
 def test_time_at_target_calculation(mock_dt_util, mock_hass):
     """Test time at target percentage calculation."""
     sensor = TimeAtTargetSensor(
@@ -148,18 +154,22 @@ def test_time_at_target_calculation(mock_dt_util, mock_hass):
 
     # Add 10 samples: 7 within tolerance, 3 outside
     for i in range(7):
-        sensor._samples.append(TemperatureSample(
-            timestamp=now - timedelta(minutes=5 * i),
-            temperature=21.0 + (i % 3) * 0.2,  # Within 0.5°C of setpoint
-            setpoint=21.0,
-        ))
+        sensor._samples.append(
+            TemperatureSample(
+                timestamp=now - timedelta(minutes=5 * i),
+                temperature=21.0 + (i % 3) * 0.2,  # Within 0.5°C of setpoint
+                setpoint=21.0,
+            )
+        )
 
     for i in range(3):
-        sensor._samples.append(TemperatureSample(
-            timestamp=now - timedelta(minutes=35 + 5 * i),
-            temperature=22.5,  # Outside tolerance (1.5°C off)
-            setpoint=21.0,
-        ))
+        sensor._samples.append(
+            TemperatureSample(
+                timestamp=now - timedelta(minutes=35 + 5 * i),
+                temperature=22.5,  # Outside tolerance (1.5°C off)
+                setpoint=21.0,
+            )
+        )
 
     # Calculate time at target
     result = sensor._calculate_time_at_target()
@@ -258,7 +268,7 @@ async def test_comfort_score_with_missing_data(mock_hass):
 
 
 @pytest.mark.asyncio
-@patch('custom_components.adaptive_climate.sensors.comfort.dt_util')
+@patch("custom_components.adaptive_climate.sensors.comfort.dt_util")
 async def test_time_at_target_async_update(mock_dt_util, mock_hass):
     """Test async_update records sample from climate entity."""
     now = datetime.now()
@@ -308,7 +318,7 @@ def test_comfort_score_extra_attributes(mock_hass):
     assert attrs["oscillation_score"] == 85.0
 
 
-@patch('custom_components.adaptive_climate.sensors.comfort.dt_util')
+@patch("custom_components.adaptive_climate.sensors.comfort.dt_util")
 def test_time_at_target_custom_tolerance(mock_dt_util, mock_hass):
     """Test TimeAtTargetSensor with custom tolerance."""
     sensor = TimeAtTargetSensor(
@@ -326,11 +336,13 @@ def test_time_at_target_custom_tolerance(mock_dt_util, mock_hass):
 
     # Add samples: all within 1°C of setpoint
     for i in range(5):
-        sensor._samples.append(TemperatureSample(
-            timestamp=now - timedelta(minutes=5 * i),
-            temperature=21.0 + i * 0.2,  # 21.0 to 21.8
-            setpoint=21.0,
-        ))
+        sensor._samples.append(
+            TemperatureSample(
+                timestamp=now - timedelta(minutes=5 * i),
+                temperature=21.0 + i * 0.2,  # 21.0 to 21.8
+                setpoint=21.0,
+            )
+        )
 
     result = sensor._calculate_time_at_target()
     assert result == 100.0  # All within 1°C tolerance

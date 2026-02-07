@@ -7,6 +7,7 @@ This module contains sensors that track heating system performance metrics:
 - SettlingTimeSensor: Tracks time to reach stable temperature
 - OscillationsSensor: Tracks temperature oscillation count
 """
+
 from __future__ import annotations
 
 from collections import deque
@@ -72,6 +73,7 @@ class AdaptiveThermostatSensor(SensorEntity):
     def _coordinator(self):
         """Return the coordinator instance (cached lookup)."""
         from ..const import DOMAIN
+
         return self.hass.data.get(DOMAIN, {}).get("coordinator")
 
 
@@ -201,9 +203,7 @@ class DutyCycleSensor(AdaptiveThermostatSensor):
         Args:
             is_on: Whether the heater is now on
         """
-        self._state_changes.append(
-            HeaterStateChange(timestamp=dt_util.utcnow(), is_on=is_on)
-        )
+        self._state_changes.append(HeaterStateChange(timestamp=dt_util.utcnow(), is_on=is_on))
 
     async def async_update(self) -> None:
         """Update the sensor state."""
@@ -572,11 +572,7 @@ class OvershootSensor(AdaptiveThermostatSensor):
             return 0.0
 
         # Calculate average overshoot from recent cycles
-        overshoots = [
-            cycle.overshoot
-            for cycle in adaptive_learner.cycle_history
-            if cycle.overshoot is not None
-        ]
+        overshoots = [cycle.overshoot for cycle in adaptive_learner.cycle_history if cycle.overshoot is not None]
 
         if not overshoots:
             return 0.0
@@ -642,9 +638,7 @@ class SettlingTimeSensor(AdaptiveThermostatSensor):
 
         # Calculate average settling time from recent cycles
         settling_times = [
-            cycle.settling_time
-            for cycle in adaptive_learner.cycle_history
-            if cycle.settling_time is not None
+            cycle.settling_time for cycle in adaptive_learner.cycle_history if cycle.settling_time is not None
         ]
 
         if not settling_times:
@@ -709,9 +703,7 @@ class OscillationsSensor(AdaptiveThermostatSensor):
 
         # Calculate average oscillations from recent cycles
         oscillations = [
-            cycle.oscillations
-            for cycle in adaptive_learner.cycle_history
-            if cycle.oscillations is not None
+            cycle.oscillations for cycle in adaptive_learner.cycle_history if cycle.oscillations is not None
         ]
 
         if not oscillations:

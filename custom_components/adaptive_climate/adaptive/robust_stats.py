@@ -70,10 +70,7 @@ def calculate_mad(values: List[float], median: float = None) -> float:
     return calculate_median(absolute_deviations)
 
 
-def detect_outliers_modified_zscore(
-    values: List[float],
-    threshold: float = 3.5
-) -> Tuple[List[int], List[float]]:
+def detect_outliers_modified_zscore(values: List[float], threshold: float = 3.5) -> Tuple[List[int], List[float]]:
     """Detect outliers using modified Z-score with MAD.
 
     The modified Z-score uses MAD instead of standard deviation, making it
@@ -125,10 +122,7 @@ def detect_outliers_modified_zscore(
 
 
 def robust_average(
-    values: List[float],
-    max_outlier_fraction: float = 0.3,
-    min_valid_count: int = 4,
-    outlier_threshold: float = 3.5
+    values: List[float], max_outlier_fraction: float = 0.3, min_valid_count: int = 4, outlier_threshold: float = 3.5
 ) -> Tuple[float, List[int]]:
     """Calculate robust average using median with outlier removal.
 
@@ -153,31 +147,20 @@ def robust_average(
 
     if len(values) < min_valid_count:
         # Not enough values - just return median without outlier detection
-        _LOGGER.debug(
-            "Insufficient values for outlier detection (%d < %d), using median",
-            len(values),
-            min_valid_count
-        )
+        _LOGGER.debug("Insufficient values for outlier detection (%d < %d), using median", len(values), min_valid_count)
         return (calculate_median(values), [])
 
     # Detect outliers
-    outlier_indices, modified_zscores = detect_outliers_modified_zscore(
-        values, outlier_threshold
-    )
+    outlier_indices, modified_zscores = detect_outliers_modified_zscore(values, outlier_threshold)
 
     # Safety check: ensure we don't remove too many values
     max_outliers = int(len(values) * max_outlier_fraction)
     if len(outlier_indices) > max_outliers:
         _LOGGER.warning(
-            "Too many outliers detected (%d > %d), using highest Z-score subset",
-            len(outlier_indices),
-            max_outliers
+            "Too many outliers detected (%d > %d), using highest Z-score subset", len(outlier_indices), max_outliers
         )
         # Sort outliers by Z-score and only keep the most extreme ones
-        outlier_data = [
-            (idx, modified_zscores[idx])
-            for idx in outlier_indices
-        ]
+        outlier_data = [(idx, modified_zscores[idx]) for idx in outlier_indices]
         outlier_data.sort(key=lambda x: x[1], reverse=True)
         outlier_indices = [idx for idx, _ in outlier_data[:max_outliers]]
 
@@ -185,24 +168,19 @@ def robust_average(
     valid_count = len(values) - len(outlier_indices)
     if valid_count < min_valid_count:
         _LOGGER.warning(
-            "Insufficient valid values after outlier removal (%d < %d), using all values",
-            valid_count,
-            min_valid_count
+            "Insufficient valid values after outlier removal (%d < %d), using all values", valid_count, min_valid_count
         )
         outlier_indices = []
 
     # Calculate median of valid (non-outlier) values
-    valid_values = [
-        value for i, value in enumerate(values)
-        if i not in outlier_indices
-    ]
+    valid_values = [value for i, value in enumerate(values) if i not in outlier_indices]
 
     if outlier_indices:
         _LOGGER.debug(
             "Removed %d outliers from %d values (%.1f%%)",
             len(outlier_indices),
             len(values),
-            100.0 * len(outlier_indices) / len(values)
+            100.0 * len(outlier_indices) / len(values),
         )
 
     return (calculate_median(valid_values), outlier_indices)

@@ -3,6 +3,7 @@
 This test suite verifies that KeManager works correctly with the new Protocol-based
 approach using KeManagerState for read-only state access and explicit callbacks for actions.
 """
+
 import pytest
 import time
 from unittest.mock import AsyncMock, Mock, MagicMock
@@ -24,27 +25,27 @@ class MockKeManagerState:
     def __init__(self):
         """Initialize mock state with default values."""
         # Use __dict__ to set internal values directly
-        self.__dict__['_current_temperature_value'] = 20.0
-        self.__dict__['_target_temperature_value'] = 21.0
-        self.__dict__['_ext_temp_value'] = 5.0
-        self.__dict__['_cold_tolerance_value'] = 0.3
-        self.__dict__['_hot_tolerance_value'] = 0.3
+        self.__dict__["_current_temperature_value"] = 20.0
+        self.__dict__["_target_temperature_value"] = 21.0
+        self.__dict__["_ext_temp_value"] = 5.0
+        self.__dict__["_cold_tolerance_value"] = 0.3
+        self.__dict__["_hot_tolerance_value"] = 0.3
 
         # PIDState properties
-        self.__dict__['_kp_value'] = 1.0
-        self.__dict__['_ki_value'] = 0.1
-        self.__dict__['_kd_value'] = 10.0
-        self.__dict__['_ke_value'] = 0.0
-        self.__dict__['_control_output_value'] = 50.0
-        self.__dict__['_pid_control_p_value'] = 20.0
-        self.__dict__['_pid_control_i_value'] = 15.0
-        self.__dict__['_pid_control_d_value'] = 10.0
-        self.__dict__['_pid_control_e_value'] = 5.0
+        self.__dict__["_kp_value"] = 1.0
+        self.__dict__["_ki_value"] = 0.1
+        self.__dict__["_kd_value"] = 10.0
+        self.__dict__["_ke_value"] = 0.0
+        self.__dict__["_control_output_value"] = 50.0
+        self.__dict__["_pid_control_p_value"] = 20.0
+        self.__dict__["_pid_control_i_value"] = 15.0
+        self.__dict__["_pid_control_d_value"] = 10.0
+        self.__dict__["_pid_control_e_value"] = 5.0
 
         # HVACState properties
-        self.__dict__['_hvac_mode_value'] = HVACMode.HEAT
-        self.__dict__['_heating_type_value'] = HeatingType.RADIATOR
-        self.__dict__['_is_device_active_value'] = True
+        self.__dict__["_hvac_mode_value"] = HVACMode.HEAT
+        self.__dict__["_heating_type_value"] = HeatingType.RADIATOR
+        self.__dict__["_is_device_active_value"] = True
 
         # Entity ID for logging
         self.entity_id = "climate.test_zone"
@@ -52,122 +53,122 @@ class MockKeManagerState:
     @property
     def current_temperature(self):
         """Return current temperature."""
-        return self.__dict__.get('_current_temperature_value')
+        return self.__dict__.get("_current_temperature_value")
 
     @current_temperature.setter
     def current_temperature(self, value):
         """Set current temperature."""
-        self.__dict__['_current_temperature_value'] = value
+        self.__dict__["_current_temperature_value"] = value
 
     @property
     def target_temperature(self):
         """Return target temperature."""
-        return self.__dict__.get('_target_temperature_value')
+        return self.__dict__.get("_target_temperature_value")
 
     @target_temperature.setter
     def target_temperature(self, value):
         """Set target temperature."""
-        self.__dict__['_target_temperature_value'] = value
+        self.__dict__["_target_temperature_value"] = value
 
     @property
     def _ext_temp(self):
         """Return external temperature."""
-        return self.__dict__.get('_ext_temp_value')
+        return self.__dict__.get("_ext_temp_value")
 
     @_ext_temp.setter
     def _ext_temp(self, value):
         """Set external temperature."""
-        self.__dict__['_ext_temp_value'] = value
+        self.__dict__["_ext_temp_value"] = value
 
     @property
     def _cold_tolerance(self):
         """Return cold tolerance."""
-        return self.__dict__.get('_cold_tolerance_value', 0.3)
+        return self.__dict__.get("_cold_tolerance_value", 0.3)
 
     @_cold_tolerance.setter
     def _cold_tolerance(self, value):
         """Set cold tolerance."""
-        self.__dict__['_cold_tolerance_value'] = value
+        self.__dict__["_cold_tolerance_value"] = value
 
     @property
     def _hot_tolerance(self):
         """Return hot tolerance."""
-        return self.__dict__.get('_hot_tolerance_value', 0.3)
+        return self.__dict__.get("_hot_tolerance_value", 0.3)
 
     @_hot_tolerance.setter
     def _hot_tolerance(self, value):
         """Set hot tolerance."""
-        self.__dict__['_hot_tolerance_value'] = value
+        self.__dict__["_hot_tolerance_value"] = value
 
     @property
     def _kp(self):
         """Return proportional gain."""
-        return self.__dict__.get('_kp_value', 1.0)
+        return self.__dict__.get("_kp_value", 1.0)
 
     @property
     def _ki(self):
         """Return integral gain."""
-        return self.__dict__.get('_ki_value', 0.1)
+        return self.__dict__.get("_ki_value", 0.1)
 
     @property
     def _kd(self):
         """Return derivative gain."""
-        return self.__dict__.get('_kd_value', 10.0)
+        return self.__dict__.get("_kd_value", 10.0)
 
     @property
     def _ke(self):
         """Return outdoor compensation gain."""
-        return self.__dict__.get('_ke_value', 0.0)
+        return self.__dict__.get("_ke_value", 0.0)
 
     @_ke.setter
     def _ke(self, value):
         """Set outdoor compensation gain."""
-        self.__dict__['_ke_value'] = value
+        self.__dict__["_ke_value"] = value
 
     @property
     def _control_output(self):
         """Return control output."""
-        return self.__dict__.get('_control_output_value', 50.0)
+        return self.__dict__.get("_control_output_value", 50.0)
 
     @property
     def pid_control_p(self):
         """Return P component."""
-        return self.__dict__.get('_pid_control_p_value')
+        return self.__dict__.get("_pid_control_p_value")
 
     @property
     def pid_control_i(self):
         """Return I component."""
-        return self.__dict__.get('_pid_control_i_value')
+        return self.__dict__.get("_pid_control_i_value")
 
     @property
     def pid_control_d(self):
         """Return D component."""
-        return self.__dict__.get('_pid_control_d_value')
+        return self.__dict__.get("_pid_control_d_value")
 
     @property
     def pid_control_e(self):
         """Return E component."""
-        return self.__dict__.get('_pid_control_e_value')
+        return self.__dict__.get("_pid_control_e_value")
 
     @property
     def _hvac_mode(self):
         """Return HVAC mode."""
-        return self.__dict__.get('_hvac_mode_value', HVACMode.HEAT)
+        return self.__dict__.get("_hvac_mode_value", HVACMode.HEAT)
 
     @_hvac_mode.setter
     def _hvac_mode(self, value):
         """Set HVAC mode."""
-        self.__dict__['_hvac_mode_value'] = value
+        self.__dict__["_hvac_mode_value"] = value
 
     @property
     def heating_type(self):
         """Return heating type."""
-        return self.__dict__.get('_heating_type_value')
+        return self.__dict__.get("_heating_type_value")
 
     @property
     def _is_device_active(self):
         """Return device active state."""
-        return self.__dict__.get('_is_device_active_value')
+        return self.__dict__.get("_is_device_active_value")
 
 
 @pytest.fixture
@@ -193,11 +194,9 @@ def mock_ke_learner():
     learner.add_observation = Mock()
     learner.calculate_ke_adjustment = Mock(return_value=0.6)
     learner.apply_ke_adjustment = Mock()
-    learner.get_observations_summary = Mock(return_value={
-        "count": 10,
-        "outdoor_temp_range": "5-15",
-        "correlation": 0.8
-    })
+    learner.get_observations_summary = Mock(
+        return_value={"count": 10, "outdoor_temp_range": "5-15", "correlation": 0.8}
+    )
     learner.enable = Mock()
     return learner
 
@@ -214,14 +213,15 @@ def mock_gains_manager():
 def action_callbacks():
     """Create action callbacks for KeManager."""
     return {
-        'async_control_heating': AsyncMock(),
-        'async_write_ha_state': AsyncMock(),
+        "async_control_heating": AsyncMock(),
+        "async_write_ha_state": AsyncMock(),
     }
 
 
 # =============================================================================
 # Protocol-based Initialization Tests
 # =============================================================================
+
 
 class TestKeManagerProtocolInitialization:
     """Test KeManager initialization with KeManagerState protocol."""
@@ -242,10 +242,10 @@ class TestKeManagerProtocolInitialization:
             get_cold_tolerance=lambda: mock_state._cold_tolerance,
             get_hot_tolerance=lambda: mock_state._hot_tolerance,
             get_ke=lambda: mock_state._ke,
-            set_ke=lambda ke: setattr(mock_state, '_ke', ke),
+            set_ke=lambda ke: setattr(mock_state, "_ke", ke),
             get_pid_controller=Mock(),
-            async_control_heating=action_callbacks['async_control_heating'],
-            async_write_ha_state=action_callbacks['async_write_ha_state'],
+            async_control_heating=action_callbacks["async_control_heating"],
+            async_write_ha_state=action_callbacks["async_write_ha_state"],
             get_is_pid_converged=lambda: True,
             gains_manager=mock_gains_manager,
         )
@@ -256,9 +256,7 @@ class TestKeManagerProtocolInitialization:
         assert manager_old.steady_state_start is None
         assert manager_old.last_ke_observation_time is None
 
-    def test_state_access_through_callbacks(
-        self, mock_thermostat, mock_state, mock_ke_learner, action_callbacks
-    ):
+    def test_state_access_through_callbacks(self, mock_thermostat, mock_state, mock_ke_learner, action_callbacks):
         """Test that all state reading works through callbacks."""
         manager = KeManager(
             thermostat=mock_thermostat,
@@ -271,10 +269,10 @@ class TestKeManagerProtocolInitialization:
             get_cold_tolerance=lambda: mock_state._cold_tolerance,
             get_hot_tolerance=lambda: mock_state._hot_tolerance,
             get_ke=lambda: mock_state._ke,
-            set_ke=lambda ke: setattr(mock_state, '_ke', ke),
+            set_ke=lambda ke: setattr(mock_state, "_ke", ke),
             get_pid_controller=Mock(),
-            async_control_heating=action_callbacks['async_control_heating'],
-            async_write_ha_state=action_callbacks['async_write_ha_state'],
+            async_control_heating=action_callbacks["async_control_heating"],
+            async_write_ha_state=action_callbacks["async_write_ha_state"],
         )
 
         # Verify callbacks work
@@ -291,6 +289,7 @@ class TestKeManagerProtocolInitialization:
 # =============================================================================
 # Steady State Detection Tests
 # =============================================================================
+
 
 class TestKeManagerSteadyState:
     """Test steady state detection logic."""
@@ -309,10 +308,10 @@ class TestKeManagerSteadyState:
             get_cold_tolerance=lambda: mock_state._cold_tolerance,
             get_hot_tolerance=lambda: mock_state._hot_tolerance,
             get_ke=lambda: mock_state._ke,
-            set_ke=lambda ke: setattr(mock_state, '_ke', ke),
+            set_ke=lambda ke: setattr(mock_state, "_ke", ke),
             get_pid_controller=Mock(),
-            async_control_heating=action_callbacks['async_control_heating'],
-            async_write_ha_state=action_callbacks['async_write_ha_state'],
+            async_control_heating=action_callbacks["async_control_heating"],
+            async_write_ha_state=action_callbacks["async_write_ha_state"],
         )
 
     def test_not_steady_when_hvac_off(self, manager, mock_state):
@@ -402,11 +401,14 @@ class TestKeManagerSteadyState:
 # Ke Observation Recording Tests
 # =============================================================================
 
+
 class TestKeManagerObservationRecording:
     """Test Ke observation recording logic."""
 
     @pytest.fixture
-    def manager_with_converged(self, mock_thermostat, mock_state, mock_ke_learner, action_callbacks, mock_gains_manager):
+    def manager_with_converged(
+        self, mock_thermostat, mock_state, mock_ke_learner, action_callbacks, mock_gains_manager
+    ):
         """Create KeManager with PID converged callback."""
         return KeManager(
             thermostat=mock_thermostat,
@@ -419,10 +421,10 @@ class TestKeManagerObservationRecording:
             get_cold_tolerance=lambda: mock_state._cold_tolerance,
             get_hot_tolerance=lambda: mock_state._hot_tolerance,
             get_ke=lambda: mock_state._ke,
-            set_ke=lambda ke: setattr(mock_state, '_ke', ke),
+            set_ke=lambda ke: setattr(mock_state, "_ke", ke),
             get_pid_controller=Mock(),
-            async_control_heating=action_callbacks['async_control_heating'],
-            async_write_ha_state=action_callbacks['async_write_ha_state'],
+            async_control_heating=action_callbacks["async_control_heating"],
+            async_write_ha_state=action_callbacks["async_write_ha_state"],
             get_is_pid_converged=lambda: True,
             gains_manager=mock_gains_manager,
         )
@@ -442,10 +444,10 @@ class TestKeManagerObservationRecording:
             get_cold_tolerance=lambda: mock_state._cold_tolerance,
             get_hot_tolerance=lambda: mock_state._hot_tolerance,
             get_ke=lambda: mock_state._ke,
-            set_ke=lambda ke: setattr(mock_state, '_ke', ke),
+            set_ke=lambda ke: setattr(mock_state, "_ke", ke),
             get_pid_controller=Mock(),
-            async_control_heating=action_callbacks['async_control_heating'],
-            async_write_ha_state=action_callbacks['async_write_ha_state'],
+            async_control_heating=action_callbacks["async_control_heating"],
+            async_write_ha_state=action_callbacks["async_write_ha_state"],
             get_is_pid_converged=lambda: False,  # Not converged
         )
 
@@ -456,9 +458,7 @@ class TestKeManagerObservationRecording:
         mock_ke_learner.enable.assert_not_called()
         mock_ke_learner.add_observation.assert_not_called()
 
-    def test_learner_enabled_when_pid_converges(
-        self, manager_with_converged, mock_ke_learner, mock_gains_manager
-    ):
+    def test_learner_enabled_when_pid_converges(self, manager_with_converged, mock_ke_learner, mock_gains_manager):
         """Test that learner is enabled and physics Ke applied when PID converges."""
         mock_ke_learner.enabled = False
         mock_ke_learner.current_ke = 0.5
@@ -474,9 +474,7 @@ class TestKeManagerObservationRecording:
             ke=0.5,
         )
 
-    def test_observation_recorded_at_steady_state(
-        self, manager_with_converged, mock_state, mock_ke_learner
-    ):
+    def test_observation_recorded_at_steady_state(self, manager_with_converged, mock_state, mock_ke_learner):
         """Test that observation is recorded when at steady state."""
         from custom_components.adaptive_climate import const
 
@@ -503,9 +501,7 @@ class TestKeManagerObservationRecording:
         )
         assert manager_with_converged.last_ke_observation_time is not None
 
-    def test_observation_rate_limited(
-        self, manager_with_converged, mock_state, mock_ke_learner
-    ):
+    def test_observation_rate_limited(self, manager_with_converged, mock_state, mock_ke_learner):
         """Test that observations are rate limited to 5 minutes."""
         from custom_components.adaptive_climate import const
 
@@ -536,9 +532,7 @@ class TestKeManagerObservationRecording:
         # Should record again
         assert mock_ke_learner.add_observation.call_count == 2
 
-    def test_no_observation_when_no_outdoor_temp(
-        self, manager_with_converged, mock_state, mock_ke_learner
-    ):
+    def test_no_observation_when_no_outdoor_temp(self, manager_with_converged, mock_state, mock_ke_learner):
         """Test that no observation is recorded when outdoor temp unavailable."""
         from custom_components.adaptive_climate import const
 
@@ -562,6 +556,7 @@ class TestKeManagerObservationRecording:
 # Adaptive Ke Application Tests
 # =============================================================================
 
+
 class TestKeManagerAdaptiveApplication:
     """Test adaptive Ke application logic."""
 
@@ -579,10 +574,10 @@ class TestKeManagerAdaptiveApplication:
             get_cold_tolerance=lambda: mock_state._cold_tolerance,
             get_hot_tolerance=lambda: mock_state._hot_tolerance,
             get_ke=lambda: mock_state._ke,
-            set_ke=lambda ke: setattr(mock_state, '_ke', ke),
+            set_ke=lambda ke: setattr(mock_state, "_ke", ke),
             get_pid_controller=Mock(),
-            async_control_heating=action_callbacks['async_control_heating'],
-            async_write_ha_state=action_callbacks['async_write_ha_state'],
+            async_control_heating=action_callbacks["async_control_heating"],
+            async_write_ha_state=action_callbacks["async_write_ha_state"],
             gains_manager=mock_gains_manager,
         )
 
@@ -607,8 +602,8 @@ class TestKeManagerAdaptiveApplication:
         )
 
         # Should trigger control and state update
-        action_callbacks['async_control_heating'].assert_called_once_with(calc_pid=True)
-        action_callbacks['async_write_ha_state'].assert_called_once()
+        action_callbacks["async_control_heating"].assert_called_once_with(calc_pid=True)
+        action_callbacks["async_write_ha_state"].assert_called_once()
 
     @pytest.mark.asyncio
     async def test_apply_adaptive_ke_no_learner(self, manager, action_callbacks):
@@ -618,13 +613,11 @@ class TestKeManagerAdaptiveApplication:
         await manager.async_apply_adaptive_ke()
 
         # Should not crash or call callbacks
-        action_callbacks['async_control_heating'].assert_not_called()
-        action_callbacks['async_write_ha_state'].assert_not_called()
+        action_callbacks["async_control_heating"].assert_not_called()
+        action_callbacks["async_write_ha_state"].assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_apply_adaptive_ke_learner_disabled(
-        self, manager, mock_ke_learner, action_callbacks
-    ):
+    async def test_apply_adaptive_ke_learner_disabled(self, manager, mock_ke_learner, action_callbacks):
         """Test that apply fails when learner not enabled."""
         mock_ke_learner.enabled = False
 
@@ -632,13 +625,11 @@ class TestKeManagerAdaptiveApplication:
 
         # Should not apply or call callbacks
         mock_ke_learner.apply_ke_adjustment.assert_not_called()
-        action_callbacks['async_control_heating'].assert_not_called()
-        action_callbacks['async_write_ha_state'].assert_not_called()
+        action_callbacks["async_control_heating"].assert_not_called()
+        action_callbacks["async_write_ha_state"].assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_apply_adaptive_ke_insufficient_data(
-        self, manager, mock_ke_learner, action_callbacks
-    ):
+    async def test_apply_adaptive_ke_insufficient_data(self, manager, mock_ke_learner, action_callbacks):
         """Test that apply fails when insufficient data."""
         mock_ke_learner.enabled = True
         mock_ke_learner.calculate_ke_adjustment.return_value = None  # Insufficient data
@@ -647,13 +638,14 @@ class TestKeManagerAdaptiveApplication:
 
         # Should not apply or call callbacks
         mock_ke_learner.apply_ke_adjustment.assert_not_called()
-        action_callbacks['async_control_heating'].assert_not_called()
-        action_callbacks['async_write_ha_state'].assert_not_called()
+        action_callbacks["async_control_heating"].assert_not_called()
+        action_callbacks["async_write_ha_state"].assert_not_called()
 
 
 # =============================================================================
 # State Restoration Tests
 # =============================================================================
+
 
 class TestKeManagerStateRestoration:
     """Test state restoration."""
@@ -672,10 +664,10 @@ class TestKeManagerStateRestoration:
             get_cold_tolerance=lambda: mock_state._cold_tolerance,
             get_hot_tolerance=lambda: mock_state._hot_tolerance,
             get_ke=lambda: mock_state._ke,
-            set_ke=lambda ke: setattr(mock_state, '_ke', ke),
+            set_ke=lambda ke: setattr(mock_state, "_ke", ke),
             get_pid_controller=Mock(),
-            async_control_heating=action_callbacks['async_control_heating'],
-            async_write_ha_state=action_callbacks['async_write_ha_state'],
+            async_control_heating=action_callbacks["async_control_heating"],
+            async_write_ha_state=action_callbacks["async_write_ha_state"],
         )
 
     def test_restore_state_full(self, manager):
@@ -715,6 +707,7 @@ class TestKeManagerStateRestoration:
 # Backward Compatibility Tests
 # =============================================================================
 
+
 class TestKeManagerBackwardCompatibility:
     """Test backward compatibility with fallback set_ke."""
 
@@ -742,8 +735,8 @@ class TestKeManagerBackwardCompatibility:
             get_ke=lambda: mock_state._ke,
             set_ke=mock_set_ke,
             get_pid_controller=Mock(),
-            async_control_heating=action_callbacks['async_control_heating'],
-            async_write_ha_state=action_callbacks['async_write_ha_state'],
+            async_control_heating=action_callbacks["async_control_heating"],
+            async_write_ha_state=action_callbacks["async_write_ha_state"],
             get_is_pid_converged=lambda: True,
             gains_manager=None,  # No gains manager
         )
@@ -763,6 +756,7 @@ class TestKeManagerBackwardCompatibility:
 # Properties and Utilities Tests
 # =============================================================================
 
+
 class TestKeManagerPropertiesAndUtilities:
     """Test KeManager properties and utility methods."""
 
@@ -780,10 +774,10 @@ class TestKeManagerPropertiesAndUtilities:
             get_cold_tolerance=lambda: mock_state._cold_tolerance,
             get_hot_tolerance=lambda: mock_state._hot_tolerance,
             get_ke=lambda: mock_state._ke,
-            set_ke=lambda ke: setattr(mock_state, '_ke', ke),
+            set_ke=lambda ke: setattr(mock_state, "_ke", ke),
             get_pid_controller=Mock(),
-            async_control_heating=action_callbacks['async_control_heating'],
-            async_write_ha_state=action_callbacks['async_write_ha_state'],
+            async_control_heating=action_callbacks["async_control_heating"],
+            async_write_ha_state=action_callbacks["async_write_ha_state"],
         )
 
     def test_ke_learner_property(self, manager, mock_ke_learner):

@@ -3,6 +3,7 @@
 This module serves as the entry point for the sensor platform,
 importing and re-exporting sensor classes from submodules.
 """
+
 from __future__ import annotations
 
 from datetime import timedelta
@@ -98,7 +99,10 @@ async def async_setup_platform(
     if heater_rated_cycles:
         sensors.append(
             ActuatorWearSensor(
-                hass, zone_id, zone_name, climate_entity_id,
+                hass,
+                zone_id,
+                zone_name,
+                climate_entity_id,
                 actuator_type="heater",
                 rated_cycles=heater_rated_cycles,
             )
@@ -106,7 +110,10 @@ async def async_setup_platform(
     if cooler_rated_cycles:
         sensors.append(
             ActuatorWearSensor(
-                hass, zone_id, zone_name, climate_entity_id,
+                hass,
+                zone_id,
+                zone_name,
+                climate_entity_id,
                 actuator_type="cooler",
                 rated_cycles=cooler_rated_cycles,
             )
@@ -114,6 +121,7 @@ async def async_setup_platform(
 
     # Create system-wide sensors on first zone setup
     from .const import DOMAIN
+
     if not hass.data[DOMAIN].get("system_sensors_created"):
         _LOGGER.info("Creating system-wide sensors (TotalPowerSensor, WeeklyCostSensor)")
 
@@ -139,9 +147,7 @@ async def async_setup_platform(
                 energy_cost,
             )
         else:
-            _LOGGER.warning(
-                "No energy_meter_entity configured - WeeklyCostSensor will not be created"
-            )
+            _LOGGER.warning("No energy_meter_entity configured - WeeklyCostSensor will not be created")
 
         # Mark as created
         hass.data[DOMAIN]["system_sensors_created"] = True

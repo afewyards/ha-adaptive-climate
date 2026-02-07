@@ -3,6 +3,7 @@
 This module contains sensors that track overall system health:
 - SystemHealthSensor: Monitors health status across all heating zones
 """
+
 from __future__ import annotations
 
 import logging
@@ -45,6 +46,7 @@ class SystemHealthSensor(SensorEntity):
     def _coordinator(self):
         """Return the coordinator instance (cached lookup)."""
         from ..const import DOMAIN
+
         return self.hass.data.get(DOMAIN, {}).get("coordinator")
 
     @property

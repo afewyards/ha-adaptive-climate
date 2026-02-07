@@ -1,4 +1,5 @@
 """Scheduled task handlers for Adaptive Climate integration."""
+
 from __future__ import annotations
 
 import logging
@@ -9,6 +10,7 @@ from typing import Any, TYPE_CHECKING
 try:
     from homeassistant.core import HomeAssistant
     from homeassistant.util import dt as dt_util
+
     HAS_HOMEASSISTANT = True
 except ImportError:
     HAS_HOMEASSISTANT = False
@@ -124,7 +126,9 @@ async def _run_health_check_core(
         zone_count = len(zone_issues)
 
         # Short message for mobile notification
-        short_message = f"{zone_count} zone{'s' if zone_count != 1 else ''} need{'s' if zone_count == 1 else ''} attention"
+        short_message = (
+            f"{zone_count} zone{'s' if zone_count != 1 else ''} need{'s' if zone_count == 1 else ''} attention"
+        )
 
         # Detailed message for persistent notification
         message_parts = [summary]
@@ -239,12 +243,13 @@ async def _run_weekly_report_core(
             confidence = round(confidence_raw * 100)
 
             # Get recovery cycle count from contribution tracker
-            contribution_tracker = getattr(adaptive_learner, '_contribution_tracker', None)
+            contribution_tracker = getattr(adaptive_learner, "_contribution_tracker", None)
             if contribution_tracker:
                 recovery_cycles = contribution_tracker.get_recovery_cycle_count()
 
             # Compute learning status using same logic as state attributes
             from ..managers.state_attributes import _compute_learning_status
+
             cycle_count = adaptive_learner.get_cycle_count()
             heating_type = zone_data.get("heating_type") if zone_data else None
 
@@ -253,21 +258,29 @@ async def _run_weekly_report_core(
             climate_entity = zone_data.get("climate_entity") if zone_data else None
             if climate_entity:
                 # Check learning grace period
-                if hasattr(climate_entity, '_night_setback_controller') and climate_entity._night_setback_controller:
+                if hasattr(climate_entity, "_night_setback_controller") and climate_entity._night_setback_controller:
                     try:
                         is_paused = climate_entity._night_setback_controller.in_learning_grace_period
                     except (TypeError, AttributeError):
                         pass
 
                 # Check contact sensor pause
-                if not is_paused and hasattr(climate_entity, '_contact_sensor_handler') and climate_entity._contact_sensor_handler:
+                if (
+                    not is_paused
+                    and hasattr(climate_entity, "_contact_sensor_handler")
+                    and climate_entity._contact_sensor_handler
+                ):
                     try:
                         is_paused = climate_entity._contact_sensor_handler.is_any_contact_open()
                     except (TypeError, AttributeError):
                         pass
 
                 # Check humidity pause
-                if not is_paused and hasattr(climate_entity, '_humidity_detector') and climate_entity._humidity_detector:
+                if (
+                    not is_paused
+                    and hasattr(climate_entity, "_humidity_detector")
+                    and climate_entity._humidity_detector
+                ):
                     try:
                         is_paused = climate_entity._humidity_detector.should_pause()
                     except (TypeError, AttributeError):
@@ -297,9 +310,9 @@ async def _run_weekly_report_core(
         contact_pauses = 0
         climate_entity = zone_data.get("climate_entity") if zone_data else None
         if climate_entity:
-            if hasattr(climate_entity, 'humidity_pause_count'):
+            if hasattr(climate_entity, "humidity_pause_count"):
                 humidity_pauses = climate_entity.humidity_pause_count
-            if hasattr(climate_entity, 'contact_pause_count'):
+            if hasattr(climate_entity, "contact_pause_count"):
                 contact_pauses = climate_entity.contact_pause_count
 
         # Add all zone data to report
@@ -354,7 +367,7 @@ async def _run_weekly_report_core(
     for zone_id in all_zones:
         zone_data = coordinator.get_zone_data(zone_id)
         climate_entity = zone_data.get("climate_entity") if zone_data else None
-        if climate_entity and hasattr(climate_entity, 'reset_pause_counters'):
+        if climate_entity and hasattr(climate_entity, "reset_pause_counters"):
             climate_entity.reset_pause_counters()
 
     # Format and send report
@@ -500,9 +513,12 @@ async def async_daily_learning(
                 _LOGGER.info(
                     "Zone %s PID recommendation: Kp=%.2f (%.1f%%), Ki=%.4f (%.1f%%), Kd=%.2f (%.1f%%)",
                     zone_id,
-                    recommendation["kp"], kp_change,
-                    recommendation["ki"], ki_change,
-                    recommendation["kd"], kd_change,
+                    recommendation["kp"],
+                    kp_change,
+                    recommendation["ki"],
+                    ki_change,
+                    recommendation["kd"],
+                    kd_change,
                 )
             else:
                 _LOGGER.debug(

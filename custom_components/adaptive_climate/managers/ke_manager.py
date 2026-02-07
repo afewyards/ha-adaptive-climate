@@ -1,4 +1,5 @@
 """Ke (outdoor temperature compensation) learning manager for Adaptive Climate integration."""
+
 from __future__ import annotations
 
 import logging
@@ -8,6 +9,7 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable
 # These imports are only needed when running in Home Assistant
 try:
     from homeassistant.components.climate import HVACMode
+
     HAS_HOMEASSISTANT = True
 except ImportError:
     HAS_HOMEASSISTANT = False
@@ -321,17 +323,11 @@ class KeManager:
         entity_id = self._state.entity_id if self._state is not None else self._thermostat.entity_id
 
         if not self._ke_learner:
-            _LOGGER.warning(
-                "%s: Cannot apply adaptive Ke - no Ke learner (outdoor sensor not configured?)",
-                entity_id
-            )
+            _LOGGER.warning("%s: Cannot apply adaptive Ke - no Ke learner (outdoor sensor not configured?)", entity_id)
             return
 
         if not self._ke_learner.enabled:
-            _LOGGER.warning(
-                "%s: Cannot apply adaptive Ke - learning not enabled (PID not converged yet)",
-                entity_id
-            )
+            _LOGGER.warning("%s: Cannot apply adaptive Ke - learning not enabled (PID not converged yet)", entity_id)
             return
 
         recommendation = self._ke_learner.calculate_ke_adjustment()
@@ -339,8 +335,7 @@ class KeManager:
         if recommendation is None:
             summary = self._ke_learner.get_observations_summary()
             _LOGGER.warning(
-                "%s: Insufficient data for adaptive Ke (observations: %d, "
-                "temp_range: %s, correlation: %s)",
+                "%s: Insufficient data for adaptive Ke (observations: %d, temp_range: %s, correlation: %s)",
                 entity_id,
                 summary.get("count", 0),
                 summary.get("outdoor_temp_range"),
@@ -362,10 +357,7 @@ class KeManager:
             # Fallback for backward compatibility
             self._set_ke(recommendation)
 
-        _LOGGER.info(
-            "%s: Applied adaptive Ke: %.2f (was %.2f)",
-            entity_id, recommendation, old_ke
-        )
+        _LOGGER.info("%s: Applied adaptive Ke: %.2f (was %.2f)", entity_id, recommendation, old_ke)
 
         await self._async_control_heating(calc_pid=True)
         await self._async_write_ha_state()

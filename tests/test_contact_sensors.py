@@ -1,10 +1,11 @@
 """Tests for contact sensor module."""
+
 import pytest
 from datetime import datetime, timedelta
 from custom_components.adaptive_climate.adaptive.contact_sensors import (
     ContactSensorHandler,
     ContactSensorManager,
-    ContactAction
+    ContactAction,
 )
 
 
@@ -15,15 +16,13 @@ class TestContactSensorHandler:
         """Test that action is delayed after contact opens."""
         handler = ContactSensorHandler(
             contact_sensors=["binary_sensor.window_bedroom"],
-            contact_delay_seconds=300  # 5 minutes
+            contact_delay_seconds=300,  # 5 minutes
         )
 
         current_time = datetime(2024, 1, 15, 10, 0)
 
         # Update state: window opens
-        handler.update_contact_states({
-            "binary_sensor.window_bedroom": True
-        }, current_time)
+        handler.update_contact_states({"binary_sensor.window_bedroom": True}, current_time)
 
         # Immediately after opening - no action yet
         assert handler.should_take_action(current_time) is False
@@ -46,22 +45,18 @@ class TestContactSensorHandler:
         handler = ContactSensorHandler(
             contact_sensors=["binary_sensor.window_bedroom"],
             contact_delay_seconds=0,  # No delay for testing
-            action=ContactAction.PAUSE
+            action=ContactAction.PAUSE,
         )
 
         current_time = datetime(2024, 1, 15, 10, 0)
         base_setpoint = 20.0
 
         # Window closed - no adjustment
-        handler.update_contact_states({
-            "binary_sensor.window_bedroom": False
-        }, current_time)
+        handler.update_contact_states({"binary_sensor.window_bedroom": False}, current_time)
         assert handler.get_adjusted_setpoint(base_setpoint, current_time) is None
 
         # Window opens - pause heating (returns None)
-        handler.update_contact_states({
-            "binary_sensor.window_bedroom": True
-        }, current_time)
+        handler.update_contact_states({"binary_sensor.window_bedroom": True}, current_time)
         adjusted = handler.get_adjusted_setpoint(base_setpoint, current_time)
         assert adjusted is None  # None indicates pause
         assert handler.get_action() == ContactAction.PAUSE
@@ -73,22 +68,18 @@ class TestContactSensorHandler:
             contact_sensors=["binary_sensor.door_bathroom"],
             contact_delay_seconds=0,  # No delay for testing
             action=ContactAction.FROST_PROTECTION,
-            frost_protection_temp=frost_temp
+            frost_protection_temp=frost_temp,
         )
 
         current_time = datetime(2024, 1, 15, 10, 0)
         base_setpoint = 20.0
 
         # Door closed - no adjustment
-        handler.update_contact_states({
-            "binary_sensor.door_bathroom": False
-        }, current_time)
+        handler.update_contact_states({"binary_sensor.door_bathroom": False}, current_time)
         assert handler.get_adjusted_setpoint(base_setpoint, current_time) is None
 
         # Door opens - frost protection
-        handler.update_contact_states({
-            "binary_sensor.door_bathroom": True
-        }, current_time)
+        handler.update_contact_states({"binary_sensor.door_bathroom": True}, current_time)
         adjusted = handler.get_adjusted_setpoint(base_setpoint, current_time)
         assert adjusted == frost_temp
         assert handler.get_action() == ContactAction.FROST_PROTECTION
@@ -98,15 +89,13 @@ class TestContactSensorHandler:
         handler = ContactSensorHandler(
             contact_sensors=["binary_sensor.window_living_room"],
             contact_delay_seconds=0,  # No contact delay
-            learning_grace_seconds=3600  # 1 hour grace period
+            learning_grace_seconds=3600,  # 1 hour grace period
         )
 
         current_time = datetime(2024, 1, 15, 10, 0)
 
         # Window opens immediately
-        handler.update_contact_states({
-            "binary_sensor.window_living_room": True
-        }, current_time)
+        handler.update_contact_states({"binary_sensor.window_living_room": True}, current_time)
 
         # During grace period - no action
         assert handler.should_take_action(current_time) is False
@@ -128,46 +117,58 @@ class TestContactSensorHandler:
             contact_sensors=[
                 "binary_sensor.window_bedroom_1",
                 "binary_sensor.window_bedroom_2",
-                "binary_sensor.door_bedroom"
+                "binary_sensor.door_bedroom",
             ],
-            contact_delay_seconds=0  # No delay for testing
+            contact_delay_seconds=0,  # No delay for testing
         )
 
         current_time = datetime(2024, 1, 15, 10, 0)
 
         # All closed - no action
-        handler.update_contact_states({
-            "binary_sensor.window_bedroom_1": False,
-            "binary_sensor.window_bedroom_2": False,
-            "binary_sensor.door_bedroom": False
-        }, current_time)
+        handler.update_contact_states(
+            {
+                "binary_sensor.window_bedroom_1": False,
+                "binary_sensor.window_bedroom_2": False,
+                "binary_sensor.door_bedroom": False,
+            },
+            current_time,
+        )
         assert handler.is_any_contact_open() is False
         assert handler.should_take_action(current_time) is False
 
         # One window opens - action taken (ANY open triggers)
-        handler.update_contact_states({
-            "binary_sensor.window_bedroom_1": True,
-            "binary_sensor.window_bedroom_2": False,
-            "binary_sensor.door_bedroom": False
-        }, current_time)
+        handler.update_contact_states(
+            {
+                "binary_sensor.window_bedroom_1": True,
+                "binary_sensor.window_bedroom_2": False,
+                "binary_sensor.door_bedroom": False,
+            },
+            current_time,
+        )
         assert handler.is_any_contact_open() is True
         assert handler.should_take_action(current_time) is True
 
         # Multiple open - still triggers action
-        handler.update_contact_states({
-            "binary_sensor.window_bedroom_1": True,
-            "binary_sensor.window_bedroom_2": True,
-            "binary_sensor.door_bedroom": False
-        }, current_time)
+        handler.update_contact_states(
+            {
+                "binary_sensor.window_bedroom_1": True,
+                "binary_sensor.window_bedroom_2": True,
+                "binary_sensor.door_bedroom": False,
+            },
+            current_time,
+        )
         assert handler.is_any_contact_open() is True
         assert handler.should_take_action(current_time) is True
 
         # All closed again - no action
-        handler.update_contact_states({
-            "binary_sensor.window_bedroom_1": False,
-            "binary_sensor.window_bedroom_2": False,
-            "binary_sensor.door_bedroom": False
-        }, current_time)
+        handler.update_contact_states(
+            {
+                "binary_sensor.window_bedroom_1": False,
+                "binary_sensor.window_bedroom_2": False,
+                "binary_sensor.door_bedroom": False,
+            },
+            current_time,
+        )
         assert handler.is_any_contact_open() is False
         assert handler.should_take_action(current_time) is False
 
@@ -175,21 +176,17 @@ class TestContactSensorHandler:
         """Test getting time remaining until action."""
         handler = ContactSensorHandler(
             contact_sensors=["binary_sensor.window_kitchen"],
-            contact_delay_seconds=600  # 10 minutes
+            contact_delay_seconds=600,  # 10 minutes
         )
 
         current_time = datetime(2024, 1, 15, 10, 0)
 
         # No contact open - no action pending
-        handler.update_contact_states({
-            "binary_sensor.window_kitchen": False
-        }, current_time)
+        handler.update_contact_states({"binary_sensor.window_kitchen": False}, current_time)
         assert handler.get_time_until_action(current_time) is None
 
         # Contact opens
-        handler.update_contact_states({
-            "binary_sensor.window_kitchen": True
-        }, current_time)
+        handler.update_contact_states({"binary_sensor.window_kitchen": True}, current_time)
 
         # Immediately - 600 seconds until action
         assert handler.get_time_until_action(current_time) == 600
@@ -204,10 +201,7 @@ class TestContactSensorHandler:
 
     def test_contact_state_transitions(self):
         """Test contact open/close transitions are tracked correctly."""
-        handler = ContactSensorHandler(
-            contact_sensors=["binary_sensor.window_study"],
-            contact_delay_seconds=300
-        )
+        handler = ContactSensorHandler(contact_sensors=["binary_sensor.window_study"], contact_delay_seconds=300)
 
         current_time = datetime(2024, 1, 15, 10, 0)
 
@@ -215,9 +209,7 @@ class TestContactSensorHandler:
         assert handler.is_any_contact_open() is False
 
         # Opens
-        handler.update_contact_states({
-            "binary_sensor.window_study": True
-        }, current_time)
+        handler.update_contact_states({"binary_sensor.window_study": True}, current_time)
         assert handler.is_any_contact_open() is True
 
         # Wait for delay
@@ -225,9 +217,7 @@ class TestContactSensorHandler:
         assert handler.should_take_action(time_after_delay) is True
 
         # Closes - should reset
-        handler.update_contact_states({
-            "binary_sensor.window_study": False
-        }, current_time)
+        handler.update_contact_states({"binary_sensor.window_study": False}, current_time)
         assert handler.is_any_contact_open() is False
         assert handler.should_take_action(time_after_delay) is False
 
@@ -243,7 +233,7 @@ class TestContactSensorManager:
             zone_id="bedroom",
             contact_sensors=["binary_sensor.window_bedroom"],
             contact_delay_seconds=300,
-            action="pause"
+            action="pause",
         )
 
         config = manager.get_zone_config("bedroom")
@@ -257,23 +247,17 @@ class TestContactSensorManager:
         manager = ContactSensorManager()
 
         manager.configure_zone(
-            zone_id="kitchen",
-            contact_sensors=["binary_sensor.window_kitchen"],
-            contact_delay_seconds=0
+            zone_id="kitchen", contact_sensors=["binary_sensor.window_kitchen"], contact_delay_seconds=0
         )
 
         current_time = datetime(2024, 1, 15, 10, 0)
 
         # Contact closed - no action
-        manager.update_contact_states("kitchen", {
-            "binary_sensor.window_kitchen": False
-        }, current_time)
+        manager.update_contact_states("kitchen", {"binary_sensor.window_kitchen": False}, current_time)
         assert manager.should_take_action("kitchen", current_time) is False
 
         # Contact opens - action
-        manager.update_contact_states("kitchen", {
-            "binary_sensor.window_kitchen": True
-        }, current_time)
+        manager.update_contact_states("kitchen", {"binary_sensor.window_kitchen": True}, current_time)
         assert manager.should_take_action("kitchen", current_time) is True
 
     def test_get_adjusted_setpoint_for_zone(self):
@@ -285,23 +269,19 @@ class TestContactSensorManager:
             contact_sensors=["binary_sensor.window_bathroom"],
             contact_delay_seconds=0,
             action="frost_protection",
-            frost_protection_temp=7.0
+            frost_protection_temp=7.0,
         )
 
         current_time = datetime(2024, 1, 15, 10, 0)
         base_setpoint = 22.0
 
         # Contact closed - no adjustment
-        manager.update_contact_states("bathroom", {
-            "binary_sensor.window_bathroom": False
-        }, current_time)
+        manager.update_contact_states("bathroom", {"binary_sensor.window_bathroom": False}, current_time)
         adjusted = manager.get_adjusted_setpoint("bathroom", base_setpoint, current_time)
         assert adjusted is None
 
         # Contact opens - frost protection
-        manager.update_contact_states("bathroom", {
-            "binary_sensor.window_bathroom": True
-        }, current_time)
+        manager.update_contact_states("bathroom", {"binary_sensor.window_bathroom": True}, current_time)
         adjusted = manager.get_adjusted_setpoint("bathroom", base_setpoint, current_time)
         assert adjusted == 7.0
 
@@ -319,10 +299,7 @@ class TestContactSensorManager:
 
         # Configure two zones
         manager.configure_zone(
-            zone_id="bedroom",
-            contact_sensors=["binary_sensor.window_bedroom"],
-            contact_delay_seconds=0,
-            action="pause"
+            zone_id="bedroom", contact_sensors=["binary_sensor.window_bedroom"], contact_delay_seconds=0, action="pause"
         )
 
         manager.configure_zone(
@@ -330,18 +307,14 @@ class TestContactSensorManager:
             contact_sensors=["binary_sensor.window_living_room"],
             contact_delay_seconds=0,
             action="frost_protection",
-            frost_protection_temp=5.0
+            frost_protection_temp=5.0,
         )
 
         current_time = datetime(2024, 1, 15, 10, 0)
 
         # Open bedroom window only
-        manager.update_contact_states("bedroom", {
-            "binary_sensor.window_bedroom": True
-        }, current_time)
-        manager.update_contact_states("living_room", {
-            "binary_sensor.window_living_room": False
-        }, current_time)
+        manager.update_contact_states("bedroom", {"binary_sensor.window_bedroom": True}, current_time)
+        manager.update_contact_states("living_room", {"binary_sensor.window_living_room": False}, current_time)
 
         # Bedroom should take action, living room should not
         assert manager.should_take_action("bedroom", current_time) is True
@@ -367,8 +340,7 @@ class TestContactAccumulatorReset:
 
         # Create mock contact sensor handler
         contact_handler = ContactSensorHandler(
-            contact_sensors=["binary_sensor.window_bedroom"],
-            contact_delay_seconds=0
+            contact_sensors=["binary_sensor.window_bedroom"], contact_delay_seconds=0
         )
 
         # Create a mock climate-like object that simulates contact sensor state change
@@ -410,8 +382,7 @@ class TestContactAccumulatorReset:
 
         # Create mock contact sensor handler
         contact_handler = ContactSensorHandler(
-            contact_sensors=["binary_sensor.window_bedroom"],
-            contact_delay_seconds=0
+            contact_sensors=["binary_sensor.window_bedroom"], contact_delay_seconds=0
         )
 
         # Create a mock climate-like object that simulates contact sensor state change

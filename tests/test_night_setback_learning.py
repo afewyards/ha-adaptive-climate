@@ -13,6 +13,7 @@ is complete in tasks #4, #5, and #6. The tests verify:
 
 Current implementation status: Tests written ✓, Implementation pending
 """
+
 import pytest
 from datetime import datetime, time
 from unittest.mock import Mock, MagicMock, patch
@@ -83,7 +84,7 @@ class TestNightSetbackLearningGate:
         # During night period (23:00)
         current = datetime(2024, 1, 15, 23, 0)
 
-        with patch('homeassistant.util.dt.utcnow', return_value=current):
+        with patch("homeassistant.util.dt.utcnow", return_value=current):
             effective_target, in_night_period, info = manager.calculate_night_setback_adjustment(current)
 
         # Should return original temperature without adjustment
@@ -104,7 +105,7 @@ class TestNightSetbackLearningGate:
         # During night period (02:00)
         current = datetime(2024, 1, 15, 2, 0)
 
-        with patch('homeassistant.util.dt.utcnow', return_value=current):
+        with patch("homeassistant.util.dt.utcnow", return_value=current):
             effective_target, in_night_period, info = manager.calculate_night_setback_adjustment(current)
 
         # Should return original temperature without adjustment
@@ -125,7 +126,7 @@ class TestNightSetbackLearningGate:
         # During night period (23:00)
         current = datetime(2024, 1, 15, 23, 0)
 
-        with patch('homeassistant.util.dt.utcnow', return_value=current):
+        with patch("homeassistant.util.dt.utcnow", return_value=current):
             effective_target, in_night_period, info = manager.calculate_night_setback_adjustment(current)
 
         # Should NOT apply setback - stable is not tuned yet
@@ -146,7 +147,7 @@ class TestNightSetbackLearningGate:
         # During night period (01:00)
         current = datetime(2024, 1, 15, 1, 0)
 
-        with patch('homeassistant.util.dt.utcnow', return_value=current):
+        with patch("homeassistant.util.dt.utcnow", return_value=current):
             effective_target, in_night_period, info = manager.calculate_night_setback_adjustment(current)
 
         # Should apply the setback delta
@@ -167,7 +168,7 @@ class TestNightSetbackLearningGate:
         # During night period (04:00)
         current = datetime(2024, 1, 15, 4, 0)
 
-        with patch('homeassistant.util.dt.utcnow', return_value=current):
+        with patch("homeassistant.util.dt.utcnow", return_value=current):
             effective_target, in_night_period, info = manager.calculate_night_setback_adjustment(current)
 
         # Should apply the setback delta
@@ -187,7 +188,7 @@ class TestNightSetbackLearningGate:
         # During day (10:00)
         current = datetime(2024, 1, 15, 10, 0)
 
-        with patch('homeassistant.util.dt.utcnow', return_value=current):
+        with patch("homeassistant.util.dt.utcnow", return_value=current):
             effective_target, in_night_period, info = manager.calculate_night_setback_adjustment(current)
 
         # Not in night period, so no setback
@@ -208,7 +209,7 @@ class TestNightSetbackLearningGate:
         # During night period
         current = datetime(2024, 1, 15, 23, 0)
 
-        with patch('homeassistant.util.dt.utcnow', return_value=current):
+        with patch("homeassistant.util.dt.utcnow", return_value=current):
             _, _, info = manager.calculate_night_setback_adjustment(current)
 
         # Verify suppressed_reason is present
@@ -228,7 +229,7 @@ class TestNightSetbackLearningGate:
         # During night period
         current = datetime(2024, 1, 15, 23, 0)
 
-        with patch('homeassistant.util.dt.utcnow', return_value=current):
+        with patch("homeassistant.util.dt.utcnow", return_value=current):
             _, _, info = manager.calculate_night_setback_adjustment(current)
 
         # Verify suppressed_reason is NOT present
@@ -247,7 +248,7 @@ class TestNightSetbackLearningGate:
         # During night period, immediately after restoration
         current = datetime(2024, 1, 15, 23, 0)
 
-        with patch('homeassistant.util.dt.utcnow', return_value=current):
+        with patch("homeassistant.util.dt.utcnow", return_value=current):
             effective_target, in_night_period, info = manager.calculate_night_setback_adjustment(current)
 
         # Should apply setback immediately since learning status is "tuned"
@@ -266,7 +267,7 @@ class TestNightSetbackLearningGate:
         # During night period
         current = datetime(2024, 1, 15, 23, 0)
 
-        with patch('homeassistant.util.dt.utcnow', return_value=current):
+        with patch("homeassistant.util.dt.utcnow", return_value=current):
             effective_target, in_night_period, info = manager.calculate_night_setback_adjustment(current)
 
         # Should apply setback (backward compatibility)
@@ -278,42 +279,40 @@ class TestNightSetbackLearningGate:
 class TestNightSetbackLearningGateHeatingTypeScaling:
     """Test heating-type-specific confidence thresholds for night setback gate."""
 
-    @pytest.mark.parametrize("heating_type,cycles,confidence,expected_status", [
-        # Floor hydronic: tier_1=32%, tier_2=56%, tier_3=95%
-        (HeatingType.FLOOR_HYDRONIC, 6, 0.31, "collecting"),  # Below tier 1
-        (HeatingType.FLOOR_HYDRONIC, 6, 0.32, "stable"),      # At tier 1
-        (HeatingType.FLOOR_HYDRONIC, 6, 0.40, "stable"),      # Between tier 1 and 2
-        (HeatingType.FLOOR_HYDRONIC, 6, 0.56, "tuned"),       # At tier 2
-        (HeatingType.FLOOR_HYDRONIC, 6, 0.70, "tuned"),       # Between tier 2 and 3
-        (HeatingType.FLOOR_HYDRONIC, 6, 0.95, "optimized"),   # At tier 3
-
-        # Radiator: tier_1=36%, tier_2=63%, tier_3=95%
-        (HeatingType.RADIATOR, 6, 0.35, "collecting"),        # Below tier 1
-        (HeatingType.RADIATOR, 6, 0.36, "stable"),            # At tier 1
-        (HeatingType.RADIATOR, 6, 0.50, "stable"),            # Between tier 1 and 2
-        (HeatingType.RADIATOR, 6, 0.63, "tuned"),             # At tier 2
-        (HeatingType.RADIATOR, 6, 0.80, "tuned"),             # Between tier 2 and 3
-        (HeatingType.RADIATOR, 6, 0.95, "optimized"),         # At tier 3
-
-        # Convector: tier_1=40%, tier_2=70%, tier_3=95%
-        (HeatingType.CONVECTOR, 6, 0.39, "collecting"),       # Below tier 1
-        (HeatingType.CONVECTOR, 6, 0.40, "stable"),           # At tier 1
-        (HeatingType.CONVECTOR, 6, 0.60, "stable"),           # Between tier 1 and 2
-        (HeatingType.CONVECTOR, 6, 0.70, "tuned"),            # At tier 2
-        (HeatingType.CONVECTOR, 6, 0.85, "tuned"),            # Between tier 2 and 3
-        (HeatingType.CONVECTOR, 6, 0.95, "optimized"),        # At tier 3
-
-        # Forced air: tier_1=44%, tier_2=77%, tier_3=95%
-        (HeatingType.FORCED_AIR, 6, 0.43, "collecting"),      # Below tier 1
-        (HeatingType.FORCED_AIR, 6, 0.44, "stable"),          # At tier 1
-        (HeatingType.FORCED_AIR, 6, 0.60, "stable"),          # Between tier 1 and 2
-        (HeatingType.FORCED_AIR, 6, 0.77, "tuned"),           # At tier 2
-        (HeatingType.FORCED_AIR, 6, 0.90, "tuned"),           # Between tier 2 and 3
-        (HeatingType.FORCED_AIR, 6, 0.95, "optimized"),       # At tier 3
-    ])
-    def test_heating_type_confidence_thresholds(
-        self, heating_type, cycles, confidence, expected_status
-    ):
+    @pytest.mark.parametrize(
+        "heating_type,cycles,confidence,expected_status",
+        [
+            # Floor hydronic: tier_1=32%, tier_2=56%, tier_3=95%
+            (HeatingType.FLOOR_HYDRONIC, 6, 0.31, "collecting"),  # Below tier 1
+            (HeatingType.FLOOR_HYDRONIC, 6, 0.32, "stable"),  # At tier 1
+            (HeatingType.FLOOR_HYDRONIC, 6, 0.40, "stable"),  # Between tier 1 and 2
+            (HeatingType.FLOOR_HYDRONIC, 6, 0.56, "tuned"),  # At tier 2
+            (HeatingType.FLOOR_HYDRONIC, 6, 0.70, "tuned"),  # Between tier 2 and 3
+            (HeatingType.FLOOR_HYDRONIC, 6, 0.95, "optimized"),  # At tier 3
+            # Radiator: tier_1=36%, tier_2=63%, tier_3=95%
+            (HeatingType.RADIATOR, 6, 0.35, "collecting"),  # Below tier 1
+            (HeatingType.RADIATOR, 6, 0.36, "stable"),  # At tier 1
+            (HeatingType.RADIATOR, 6, 0.50, "stable"),  # Between tier 1 and 2
+            (HeatingType.RADIATOR, 6, 0.63, "tuned"),  # At tier 2
+            (HeatingType.RADIATOR, 6, 0.80, "tuned"),  # Between tier 2 and 3
+            (HeatingType.RADIATOR, 6, 0.95, "optimized"),  # At tier 3
+            # Convector: tier_1=40%, tier_2=70%, tier_3=95%
+            (HeatingType.CONVECTOR, 6, 0.39, "collecting"),  # Below tier 1
+            (HeatingType.CONVECTOR, 6, 0.40, "stable"),  # At tier 1
+            (HeatingType.CONVECTOR, 6, 0.60, "stable"),  # Between tier 1 and 2
+            (HeatingType.CONVECTOR, 6, 0.70, "tuned"),  # At tier 2
+            (HeatingType.CONVECTOR, 6, 0.85, "tuned"),  # Between tier 2 and 3
+            (HeatingType.CONVECTOR, 6, 0.95, "optimized"),  # At tier 3
+            # Forced air: tier_1=44%, tier_2=77%, tier_3=95%
+            (HeatingType.FORCED_AIR, 6, 0.43, "collecting"),  # Below tier 1
+            (HeatingType.FORCED_AIR, 6, 0.44, "stable"),  # At tier 1
+            (HeatingType.FORCED_AIR, 6, 0.60, "stable"),  # Between tier 1 and 2
+            (HeatingType.FORCED_AIR, 6, 0.77, "tuned"),  # At tier 2
+            (HeatingType.FORCED_AIR, 6, 0.90, "tuned"),  # Between tier 2 and 3
+            (HeatingType.FORCED_AIR, 6, 0.95, "optimized"),  # At tier 3
+        ],
+    )
+    def test_heating_type_confidence_thresholds(self, heating_type, cycles, confidence, expected_status):
         """Test that heating-type-specific confidence thresholds work correctly.
 
         This test verifies that the learning status computation uses the correct
@@ -444,7 +443,7 @@ class TestNightSetbackLearningGateEdgeCases:
         current = datetime(2024, 1, 15, 23, 0)
 
         # First call - should suppress setback
-        with patch('homeassistant.util.dt.utcnow', return_value=current):
+        with patch("homeassistant.util.dt.utcnow", return_value=current):
             effective_target_1, _, info_1 = manager.calculate_night_setback_adjustment(current)
 
         assert effective_target_1 == 20.0  # No setback
@@ -454,7 +453,7 @@ class TestNightSetbackLearningGateEdgeCases:
         get_learning_status.return_value = "tuned"
 
         # Second call - should now apply setback
-        with patch('homeassistant.util.dt.utcnow', return_value=current):
+        with patch("homeassistant.util.dt.utcnow", return_value=current):
             effective_target_2, _, info_2 = manager.calculate_night_setback_adjustment(current)
 
         assert effective_target_2 == 18.0  # Setback applied
@@ -489,7 +488,7 @@ class TestNightSetbackLearningGateEdgeCases:
         current = datetime(2024, 1, 15, 23, 0)
 
         # First call - should suppress setback (stable is not tuned)
-        with patch('homeassistant.util.dt.utcnow', return_value=current):
+        with patch("homeassistant.util.dt.utcnow", return_value=current):
             effective_target_1, _, info_1 = manager.calculate_night_setback_adjustment(current)
 
         assert effective_target_1 == 20.0  # No setback
@@ -499,7 +498,7 @@ class TestNightSetbackLearningGateEdgeCases:
         get_learning_status.return_value = "tuned"
 
         # Second call - should now apply setback
-        with patch('homeassistant.util.dt.utcnow', return_value=current):
+        with patch("homeassistant.util.dt.utcnow", return_value=current):
             effective_target_2, _, info_2 = manager.calculate_night_setback_adjustment(current)
 
         assert effective_target_2 == 18.0  # Setback applied
@@ -534,7 +533,7 @@ class TestNightSetbackLearningGateEdgeCases:
         current = datetime(2024, 1, 15, 23, 0)
 
         # First call - should apply setback
-        with patch('homeassistant.util.dt.utcnow', return_value=current):
+        with patch("homeassistant.util.dt.utcnow", return_value=current):
             effective_target_1, _, info_1 = manager.calculate_night_setback_adjustment(current)
 
         assert effective_target_1 == 18.0  # Setback applied
@@ -544,7 +543,7 @@ class TestNightSetbackLearningGateEdgeCases:
         get_learning_status.return_value = "idle"
 
         # Second call - should now suppress setback
-        with patch('homeassistant.util.dt.utcnow', return_value=current):
+        with patch("homeassistant.util.dt.utcnow", return_value=current):
             effective_target_2, _, info_2 = manager.calculate_night_setback_adjustment(current)
 
         assert effective_target_2 == 20.0  # No setback
@@ -569,7 +568,7 @@ class TestNightSetbackLearningGateEdgeCases:
         # During night period
         current = datetime(2024, 1, 15, 23, 0)
 
-        with patch('homeassistant.util.dt.utcnow', return_value=current):
+        with patch("homeassistant.util.dt.utcnow", return_value=current):
             effective_target, in_night_period, info = manager.calculate_night_setback_adjustment(current)
 
         # No night setback configured, so just return target temp
@@ -603,10 +602,10 @@ class TestNightSetbackLearningGateEdgeCases:
                 get_current_temp=lambda: 19.0,
                 get_learning_status=get_learning_status,
             )
-    
+
             current = datetime(2024, 1, 15, 23, 0)
 
-            with patch('homeassistant.util.dt.utcnow', return_value=current):
+            with patch("homeassistant.util.dt.utcnow", return_value=current):
                 effective_target, _, info = manager.calculate_night_setback_adjustment(current)
 
             assert effective_target == 18.0, f"Status '{status}' should allow setback"
@@ -633,10 +632,10 @@ class TestNightSetbackLearningGateEdgeCases:
                 get_current_temp=lambda: 19.0,
                 get_learning_status=get_learning_status,
             )
-    
+
             current = datetime(2024, 1, 15, 23, 0)
 
-            with patch('homeassistant.util.dt.utcnow', return_value=current):
+            with patch("homeassistant.util.dt.utcnow", return_value=current):
                 effective_target, _, info = manager.calculate_night_setback_adjustment(current)
 
             assert effective_target == 20.0, f"Status '{status}' should suppress setback"

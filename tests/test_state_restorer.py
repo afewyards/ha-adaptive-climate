@@ -9,22 +9,27 @@ from enum import IntFlag
 # Mock homeassistant modules before importing StateRestorer
 mock_ha_const = MagicMock()
 mock_ha_const.ATTR_TEMPERATURE = "temperature"
-sys.modules['homeassistant.const'] = mock_ha_const
+sys.modules["homeassistant.const"] = mock_ha_const
+
 
 # ClimateEntity must use ABC to be compatible with RestoreEntity's ABCMeta
 class MockClimateEntity(ABC):
     """Mock ClimateEntity base class."""
+
     pass
+
 
 class MockClimateEntityFeature(IntFlag):
     """Mock ClimateEntityFeature enum."""
+
     TARGET_TEMPERATURE = 1
+
 
 mock_ha_climate = MagicMock()
 mock_ha_climate.ATTR_PRESET_MODE = "preset_mode"
 mock_ha_climate.ClimateEntity = MockClimateEntity
 mock_ha_climate.ClimateEntityFeature = MockClimateEntityFeature
-sys.modules['homeassistant.components.climate'] = mock_ha_climate
+sys.modules["homeassistant.components.climate"] = mock_ha_climate
 
 from custom_components.adaptive_climate.managers.state_restorer import StateRestorer
 
@@ -257,7 +262,7 @@ class TestCycleCountRestoration:
         old_state.attributes = {
             "cycle_count": {"heater": 100, "cooler": 20},  # New structure
             "heater_cycle_count": 150,  # Old structure (should be ignored)
-            "cooler_cycle_count": 50,   # Old structure (should be ignored)
+            "cooler_cycle_count": 50,  # Old structure (should be ignored)
             "integral": 5.0,
             "pid_integral_migrated": True,
         }
@@ -399,8 +404,24 @@ class TestPidHistoryPersistence:
 
         # Simulate saved state with pid_history at top level (as build_state_attributes produces)
         saved_history = [
-            {"timestamp": "2024-01-15T10:00:00", "kp": 25.0, "ki": 0.02, "kd": 120.0, "ke": 0.5, "reason": "physics_init", "actor": "system"},
-            {"timestamp": "2024-01-15T12:00:00", "kp": 22.0, "ki": 0.015, "kd": 110.0, "ke": 0.3, "reason": "auto_apply", "actor": "learning"},
+            {
+                "timestamp": "2024-01-15T10:00:00",
+                "kp": 25.0,
+                "ki": 0.02,
+                "kd": 120.0,
+                "ke": 0.5,
+                "reason": "physics_init",
+                "actor": "system",
+            },
+            {
+                "timestamp": "2024-01-15T12:00:00",
+                "kp": 22.0,
+                "ki": 0.015,
+                "kd": 110.0,
+                "ke": 0.3,
+                "reason": "auto_apply",
+                "actor": "learning",
+            },
         ]
         old_state = MagicMock()
         old_state.state = "heat"
@@ -463,7 +484,15 @@ class TestPidHistoryPersistence:
             "temperature": 21.0,
             "integral": 5.0,
             "pid_history": [
-                {"timestamp": "2024-01-15T10:00:00", "kp": 30.0, "ki": 0.03, "kd": 150.0, "ke": 0.8, "reason": "auto_apply", "actor": "learning"},
+                {
+                    "timestamp": "2024-01-15T10:00:00",
+                    "kp": 30.0,
+                    "ki": 0.03,
+                    "kd": 150.0,
+                    "ke": 0.8,
+                    "reason": "auto_apply",
+                    "actor": "learning",
+                },
             ],
         }
 

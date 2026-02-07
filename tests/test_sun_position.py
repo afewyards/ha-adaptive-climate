@@ -1,4 +1,5 @@
 """Tests for sun position calculator."""
+
 import pytest
 from datetime import datetime, date, timezone, timedelta
 from unittest.mock import Mock, patch
@@ -180,12 +181,8 @@ class TestSunPositionCalculator:
         summer = date(2025, 6, 21)
         winter = date(2025, 12, 21)
 
-        summer_entry = amsterdam_calculator.calculate_window_sun_entry_time(
-            "south", summer, min_elevation=10.0
-        )
-        winter_entry = amsterdam_calculator.calculate_window_sun_entry_time(
-            "south", winter, min_elevation=10.0
-        )
+        summer_entry = amsterdam_calculator.calculate_window_sun_entry_time("south", summer, min_elevation=10.0)
+        winter_entry = amsterdam_calculator.calculate_window_sun_entry_time("south", winter, min_elevation=10.0)
 
         assert summer_entry is not None
         assert winter_entry is not None
@@ -243,12 +240,8 @@ class TestSunPositionCalculator:
         """Test that different latitudes produce different timings."""
         target = date(2025, 6, 21)
 
-        amsterdam_entry = amsterdam_calculator.calculate_window_sun_entry_time(
-            "south", target, min_elevation=10.0
-        )
-        london_entry = london_calculator.calculate_window_sun_entry_time(
-            "south", target, min_elevation=10.0
-        )
+        amsterdam_entry = amsterdam_calculator.calculate_window_sun_entry_time("south", target, min_elevation=10.0)
+        london_entry = london_calculator.calculate_window_sun_entry_time("south", target, min_elevation=10.0)
 
         # Both should find entry times
         assert amsterdam_entry is not None
@@ -268,13 +261,9 @@ class TestSunPositionCalculator:
         effective_angle = 45
 
         # Low sun should not be effective
-        assert not amsterdam_calculator._is_sun_effective(
-            low_sun, window_azimuth, min_elevation, effective_angle
-        )
+        assert not amsterdam_calculator._is_sun_effective(low_sun, window_azimuth, min_elevation, effective_angle)
         # High sun should be effective
-        assert amsterdam_calculator._is_sun_effective(
-            high_sun, window_azimuth, min_elevation, effective_angle
-        )
+        assert amsterdam_calculator._is_sun_effective(high_sun, window_azimuth, min_elevation, effective_angle)
 
     def test_is_sun_effective_checks_azimuth(self, amsterdam_calculator):
         """Test that _is_sun_effective checks azimuth angle."""
@@ -289,17 +278,11 @@ class TestSunPositionCalculator:
         effective_angle = 45
 
         # Sun in south should be effective for south window
-        assert amsterdam_calculator._is_sun_effective(
-            sun_south, window_azimuth, min_elevation, effective_angle
-        )
+        assert amsterdam_calculator._is_sun_effective(sun_south, window_azimuth, min_elevation, effective_angle)
         # Sun in east should not be effective for south window
-        assert not amsterdam_calculator._is_sun_effective(
-            sun_east, window_azimuth, min_elevation, effective_angle
-        )
+        assert not amsterdam_calculator._is_sun_effective(sun_east, window_azimuth, min_elevation, effective_angle)
         # Sun in north should not be effective for south window
-        assert not amsterdam_calculator._is_sun_effective(
-            sun_north, window_azimuth, min_elevation, effective_angle
-        )
+        assert not amsterdam_calculator._is_sun_effective(sun_north, window_azimuth, min_elevation, effective_angle)
 
     def test_azimuth_wraparound_at_360(self, amsterdam_calculator):
         """Test that azimuth comparison handles 360/0 degree wraparound."""
@@ -312,9 +295,7 @@ class TestSunPositionCalculator:
         effective_angle = 45
 
         # 350 degrees should be within 45 degrees of 0/360 (diff is 10 degrees)
-        assert amsterdam_calculator._is_sun_effective(
-            sun_near_north, window_azimuth, min_elevation, effective_angle
-        )
+        assert amsterdam_calculator._is_sun_effective(sun_near_north, window_azimuth, min_elevation, effective_angle)
 
 
 class TestSunPositionCalculatorFromHass:

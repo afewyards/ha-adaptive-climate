@@ -1,4 +1,5 @@
 """Tests for HeatingRateLearner."""
+
 import pytest
 from datetime import datetime, timezone
 
@@ -107,7 +108,9 @@ class TestAddObservation:
         """Test total observation count across all bins."""
         learner = HeatingRateLearner(HeatingType.RADIATOR)
         learner.add_observation(rate=0.5, duration_min=60, source="session", stalled=False, delta=1.0, outdoor_temp=3.0)
-        learner.add_observation(rate=0.6, duration_min=60, source="session", stalled=False, delta=3.0, outdoor_temp=10.0)
+        learner.add_observation(
+            rate=0.6, duration_min=60, source="session", stalled=False, delta=3.0, outdoor_temp=10.0
+        )
         assert learner.get_observation_count() == 2
 
 
@@ -119,7 +122,9 @@ class TestGetHeatingRate:
         learner = HeatingRateLearner(HeatingType.RADIATOR)
         # Add 3 session observations
         for rate in [0.4, 0.5, 0.6]:
-            learner.add_observation(rate=rate, duration_min=60, source="session", stalled=False, delta=3.0, outdoor_temp=8.0)
+            learner.add_observation(
+                rate=rate, duration_min=60, source="session", stalled=False, delta=3.0, outdoor_temp=8.0
+            )
 
         rate, source = learner.get_heating_rate(delta=3.5, outdoor_temp=10.0)
         assert rate == pytest.approx(0.5)
@@ -130,10 +135,14 @@ class TestGetHeatingRate:
         learner = HeatingRateLearner(HeatingType.RADIATOR)
         # Add cycle observations
         for rate in [0.3, 0.3, 0.3]:
-            learner.add_observation(rate=rate, duration_min=30, source="cycle", stalled=False, delta=3.0, outdoor_temp=8.0)
+            learner.add_observation(
+                rate=rate, duration_min=30, source="cycle", stalled=False, delta=3.0, outdoor_temp=8.0
+            )
         # Add session observations
         for rate in [0.5, 0.5, 0.5]:
-            learner.add_observation(rate=rate, duration_min=90, source="session", stalled=False, delta=3.0, outdoor_temp=8.0)
+            learner.add_observation(
+                rate=rate, duration_min=90, source="session", stalled=False, delta=3.0, outdoor_temp=8.0
+            )
 
         rate, source = learner.get_heating_rate(delta=3.0, outdoor_temp=8.0)
         assert rate == pytest.approx(0.5)
@@ -147,7 +156,9 @@ class TestGetHeatingRate:
         learner.add_observation(rate=0.5, duration_min=90, source="session", stalled=False, delta=3.0, outdoor_temp=8.0)
         # Add 3 cycle observations
         for rate in [0.3, 0.3, 0.3]:
-            learner.add_observation(rate=rate, duration_min=30, source="cycle", stalled=False, delta=3.0, outdoor_temp=8.0)
+            learner.add_observation(
+                rate=rate, duration_min=30, source="cycle", stalled=False, delta=3.0, outdoor_temp=8.0
+            )
 
         rate, source = learner.get_heating_rate(delta=3.0, outdoor_temp=8.0)
         assert rate == pytest.approx(0.3)
@@ -178,9 +189,7 @@ class TestSessionTracking:
         learner = HeatingRateLearner(HeatingType.RADIATOR)
         now = datetime(2026, 1, 15, 10, 0, tzinfo=timezone.utc)
 
-        learner.start_session(
-            temp=18.0, setpoint=21.0, outdoor_temp=5.0, timestamp=now
-        )
+        learner.start_session(temp=18.0, setpoint=21.0, outdoor_temp=5.0, timestamp=now)
 
         assert learner._active_session is not None
         assert learner._active_session.start_temp == 18.0
@@ -194,9 +203,7 @@ class TestSessionTracking:
         end = datetime(2026, 1, 15, 10, 45, tzinfo=timezone.utc)  # 45 min
 
         learner.start_session(temp=18.0, setpoint=21.0, outdoor_temp=5.0, timestamp=start)
-        obs = learner.end_session(
-            end_temp=20.8, reason="reached_setpoint", timestamp=end
-        )
+        obs = learner.end_session(end_temp=20.8, reason="reached_setpoint", timestamp=end)
 
         assert obs is not None
         # Rate = (20.8 - 18.0) / (45/60) = 2.8 / 0.75 = 3.73 C/h
@@ -306,7 +313,7 @@ class TestSessionUpdates:
         learner.start_session(temp=18.0, setpoint=21.0, outdoor_temp=5.0, timestamp=now)
         learner.update_session(temp=18.05, duty=0.75)  # no progress
         learner.update_session(temp=18.08, duty=0.75)  # no progress
-        learner.update_session(temp=18.3, duty=0.75)   # progress! (0.22 rise)
+        learner.update_session(temp=18.3, duty=0.75)  # progress! (0.22 rise)
 
         assert learner._active_session.last_progress_cycle == 3
         assert learner.is_stalled() is False
@@ -448,14 +455,11 @@ class TestRateComparison:
         # Add 5 session observations (enough for comparison)
         for _ in range(5):
             learner.add_observation(
-                rate=1.0, duration_min=60, source="session",
-                stalled=False, delta=3.0, outdoor_temp=8.0
+                rate=1.0, duration_min=60, source="session", stalled=False, delta=3.0, outdoor_temp=8.0
             )
 
         # Current rate is 0.4, expected is 1.0 -> ratio = 0.4
-        ratio = learner.get_rate_ratio(
-            current_rate=0.4, delta=3.0, outdoor_temp=8.0
-        )
+        ratio = learner.get_rate_ratio(current_rate=0.4, delta=3.0, outdoor_temp=8.0)
         assert ratio == pytest.approx(0.4)
 
     def test_get_rate_ratio_insufficient_data(self):
@@ -465,13 +469,10 @@ class TestRateComparison:
         # Only 3 observations (need 5 for comparison)
         for _ in range(3):
             learner.add_observation(
-                rate=1.0, duration_min=60, source="session",
-                stalled=False, delta=3.0, outdoor_temp=8.0
+                rate=1.0, duration_min=60, source="session", stalled=False, delta=3.0, outdoor_temp=8.0
             )
 
-        ratio = learner.get_rate_ratio(
-            current_rate=0.4, delta=3.0, outdoor_temp=8.0
-        )
+        ratio = learner.get_rate_ratio(current_rate=0.4, delta=3.0, outdoor_temp=8.0)
         assert ratio is None
 
     def test_is_underperforming_at_60_percent(self):
@@ -480,8 +481,7 @@ class TestRateComparison:
 
         for _ in range(5):
             learner.add_observation(
-                rate=1.0, duration_min=60, source="session",
-                stalled=False, delta=3.0, outdoor_temp=8.0
+                rate=1.0, duration_min=60, source="session", stalled=False, delta=3.0, outdoor_temp=8.0
             )
 
         # 0.5 is 50% of expected 1.0 -> underperforming
@@ -502,10 +502,7 @@ class TestSerialization:
         learner = HeatingRateLearner(HeatingType.RADIATOR)
 
         # Add some observations
-        learner.add_observation(
-            rate=0.5, duration_min=60, source="session",
-            stalled=False, delta=3.0, outdoor_temp=8.0
-        )
+        learner.add_observation(rate=0.5, duration_min=60, source="session", stalled=False, delta=3.0, outdoor_temp=8.0)
 
         data = learner.to_dict()
 
@@ -522,8 +519,7 @@ class TestSerialization:
         # Add observations and create state
         for _ in range(3):
             learner.add_observation(
-                rate=0.5, duration_min=60, source="session",
-                stalled=False, delta=3.0, outdoor_temp=8.0
+                rate=0.5, duration_min=60, source="session", stalled=False, delta=3.0, outdoor_temp=8.0
             )
 
         # Serialize and restore
@@ -540,8 +536,7 @@ class TestSerialization:
         ts = datetime(2026, 1, 15, 10, 0, tzinfo=timezone.utc)
 
         learner.add_observation(
-            rate=0.5, duration_min=60, source="session",
-            stalled=True, delta=3.0, outdoor_temp=8.0, timestamp=ts
+            rate=0.5, duration_min=60, source="session", stalled=True, delta=3.0, outdoor_temp=8.0, timestamp=ts
         )
 
         data = learner.to_dict()

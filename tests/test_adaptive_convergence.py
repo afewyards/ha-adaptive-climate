@@ -50,15 +50,11 @@ class TestConfidenceTracking:
 
         # Add first good cycle
         learner.update_convergence_confidence(good_cycle)
-        assert learner.get_convergence_confidence() == pytest.approx(
-            CONFIDENCE_INCREASE_PER_GOOD_CYCLE
-        )
+        assert learner.get_convergence_confidence() == pytest.approx(CONFIDENCE_INCREASE_PER_GOOD_CYCLE)
 
         # Add second good cycle
         learner.update_convergence_confidence(good_cycle)
-        assert learner.get_convergence_confidence() == pytest.approx(
-            CONFIDENCE_INCREASE_PER_GOOD_CYCLE * 2
-        )
+        assert learner.get_convergence_confidence() == pytest.approx(CONFIDENCE_INCREASE_PER_GOOD_CYCLE * 2)
 
     def test_confidence_decreases_with_poor_cycles(self, learner, good_cycle, poor_cycle):
         """Test that confidence decreases when poor cycles are observed."""
@@ -83,9 +79,7 @@ class TestConfidenceTracking:
             learner.update_convergence_confidence(good_cycle)
 
         # Should be capped at maximum
-        assert learner.get_convergence_confidence() == pytest.approx(
-            CONVERGENCE_CONFIDENCE_HIGH
-        )
+        assert learner.get_convergence_confidence() == pytest.approx(CONVERGENCE_CONFIDENCE_HIGH)
 
     def test_confidence_floored_at_zero(self, learner, poor_cycle):
         """Test that confidence cannot go below 0.0."""
@@ -115,9 +109,7 @@ class TestLearningRateMultiplier:
         for _ in range(20):
             learner.update_convergence_confidence(good_cycle)
 
-        assert learner.get_convergence_confidence() == pytest.approx(
-            CONVERGENCE_CONFIDENCE_HIGH
-        )
+        assert learner.get_convergence_confidence() == pytest.approx(CONVERGENCE_CONFIDENCE_HIGH)
 
         # Should get 0.5x multiplier (slower learning)
         multiplier = learner.get_learning_rate_multiplier()
@@ -237,7 +229,7 @@ class TestSeasonalShift:
         """Test that no shift is detected with stable outdoor temperature."""
         # Add 15 readings around 10°C
         now = datetime.now()
-        with patch('custom_components.adaptive_climate.adaptive.validation.dt_util') as mock_dt_util:
+        with patch("custom_components.adaptive_climate.adaptive.validation.dt_util") as mock_dt_util:
             mock_dt_util.utcnow.return_value = now
             for _ in range(15):
                 assert not learner.check_seasonal_shift(outdoor_temp=10.0)
@@ -245,7 +237,7 @@ class TestSeasonalShift:
     def test_shift_detected_with_large_change(self, learner):
         """Test that shift is detected with 10°C+ change."""
         now = datetime.now()
-        with patch('custom_components.adaptive_climate.adaptive.validation.dt_util') as mock_dt_util:
+        with patch("custom_components.adaptive_climate.adaptive.validation.dt_util") as mock_dt_util:
             mock_dt_util.utcnow.return_value = now
 
             # Add 10 readings at 5°C
@@ -270,7 +262,7 @@ class TestSeasonalShift:
         """Test that shift detection requires sufficient history."""
         # Add only 5 readings (need at least 10)
         now = datetime.now()
-        with patch('custom_components.adaptive_climate.adaptive.validation.dt_util') as mock_dt_util:
+        with patch("custom_components.adaptive_climate.adaptive.validation.dt_util") as mock_dt_util:
             mock_dt_util.utcnow.return_value = now
             for _ in range(5):
                 assert not learner.check_seasonal_shift(outdoor_temp=10.0)
@@ -278,7 +270,7 @@ class TestSeasonalShift:
     def test_shift_check_rate_limited(self, learner):
         """Test that shift check is rate-limited to once per day."""
         now = datetime.now()
-        with patch('custom_components.adaptive_climate.adaptive.validation.dt_util') as mock_dt_util:
+        with patch("custom_components.adaptive_climate.adaptive.validation.dt_util") as mock_dt_util:
             mock_dt_util.utcnow.return_value = now
 
             # Add 20 readings to build history
@@ -364,14 +356,14 @@ def test_adaptive_convergence_module_exists():
     learner = AdaptiveLearner()
 
     # Verify all new methods exist
-    assert hasattr(learner, 'update_convergence_confidence')
-    assert hasattr(learner, 'check_performance_degradation')
-    assert hasattr(learner, 'check_seasonal_shift')
-    assert hasattr(learner, 'apply_confidence_decay')
-    assert hasattr(learner, 'get_learning_rate_multiplier')
-    assert hasattr(learner, 'get_convergence_confidence')
+    assert hasattr(learner, "update_convergence_confidence")
+    assert hasattr(learner, "check_performance_degradation")
+    assert hasattr(learner, "check_seasonal_shift")
+    assert hasattr(learner, "apply_confidence_decay")
+    assert hasattr(learner, "get_learning_rate_multiplier")
+    assert hasattr(learner, "get_convergence_confidence")
 
     # Verify new attributes exist
-    assert hasattr(learner, '_convergence_confidence')
-    assert hasattr(learner, '_last_seasonal_check')
-    assert hasattr(learner, '_outdoor_temp_history')
+    assert hasattr(learner, "_convergence_confidence")
+    assert hasattr(learner, "_last_seasonal_check")
+    assert hasattr(learner, "_outdoor_temp_history")

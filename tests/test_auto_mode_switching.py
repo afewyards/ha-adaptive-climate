@@ -1,4 +1,5 @@
 """Tests for AutoModeSwitchingManager."""
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -109,7 +110,6 @@ class TestAutoModeSwitchingManager:
 
         assert manager.current_mode == HVACMode.HEAT
         assert manager.last_switch_time == 12345.0
-
 
     def test_stores_coordinator_reference(self, mock_hass, mock_coordinator, default_config):
         """Test that manager stores coordinator reference."""
@@ -363,9 +363,7 @@ class TestGetSeason:
             },
         }
         mock_state = MagicMock()
-        mock_state.attributes = {
-            "forecast": [{"temperature": 15.0}]
-        }
+        mock_state.attributes = {"forecast": [{"temperature": 15.0}]}
         mock_hass.states.get.return_value = mock_state
         mock_coordinator.weather_entity = "weather.home"
         manager = AutoModeSwitchingManager(mock_hass, config, mock_coordinator)
@@ -446,9 +444,7 @@ class TestCheckForecast:
     async def test_returns_none_when_no_zones(self, mock_hass, mock_coordinator, default_config):
         """Test returns None when no active zones."""
         mock_state = MagicMock()
-        mock_state.attributes = {
-            "forecast": [{"temperature": 25.0}]
-        }
+        mock_state.attributes = {"forecast": [{"temperature": 25.0}]}
         mock_hass.states.get.return_value = mock_state
         mock_coordinator.weather_entity = "weather.home"
         mock_coordinator.get_active_zone_setpoints.return_value = []

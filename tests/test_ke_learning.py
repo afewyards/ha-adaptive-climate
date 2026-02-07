@@ -393,7 +393,7 @@ class TestKeLearnerRateLimiting:
 
         # Apply the adjustment (sets rate limit)
         current_time = datetime(2024, 1, 15, 10, 0)
-        with patch('custom_components.adaptive_climate.adaptive.ke_learning.dt_util') as mock_dt_util:
+        with patch("custom_components.adaptive_climate.adaptive.ke_learning.dt_util") as mock_dt_util:
             mock_dt_util.utcnow.return_value = current_time
             learner.apply_ke_adjustment(result1)
 
@@ -407,7 +407,7 @@ class TestKeLearnerRateLimiting:
             )
 
         # Second adjustment should be rate limited
-        with patch('custom_components.adaptive_climate.adaptive.ke_learning.dt_util') as mock_dt_util:
+        with patch("custom_components.adaptive_climate.adaptive.ke_learning.dt_util") as mock_dt_util:
             mock_dt_util.utcnow.return_value = current_time
             result2 = learner.calculate_ke_adjustment()
             assert result2 is None  # Rate limited
@@ -444,7 +444,7 @@ class TestKeLearnerRateLimiting:
             )
 
         # Adjustment should now succeed
-        with patch('custom_components.adaptive_climate.adaptive.ke_learning.dt_util') as mock_dt_util:
+        with patch("custom_components.adaptive_climate.adaptive.ke_learning.dt_util") as mock_dt_util:
             mock_dt_util.utcnow.return_value = current_time
             result2 = learner.calculate_ke_adjustment()
             assert result2 is not None
@@ -654,11 +654,11 @@ class TestAdaptiveLearnerConvergenceTracking:
         # Add converged cycles (within all thresholds)
         for _ in range(MIN_CONVERGENCE_CYCLES_FOR_KE):
             metrics = CycleMetrics(
-                overshoot=0.1,       # Within 0.2 threshold
+                overshoot=0.1,  # Within 0.2 threshold
                 undershoot=0.05,
-                settling_time=30,    # Within 60 min threshold
-                oscillations=0,      # Within 1 threshold
-                rise_time=20,        # Within 45 min threshold
+                settling_time=30,  # Within 60 min threshold
+                oscillations=0,  # Within 1 threshold
+                rise_time=20,  # Within 45 min threshold
             )
             learner.update_convergence_tracking(metrics)
 

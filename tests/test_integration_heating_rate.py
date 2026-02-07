@@ -381,7 +381,7 @@ class TestSessionEndStalled:
             learner.update_session(temp=19.05, duty=60.0)
 
         # End as stalled
-        with patch('homeassistant.util.dt.utcnow', return_value=end_time):
+        with patch("homeassistant.util.dt.utcnow", return_value=end_time):
             learner.end_session(end_temp=19.05, reason="stalled")
 
         # Verify stall counter incremented
@@ -587,7 +587,7 @@ class TestNightSetbackSessionManagement:
         mock_night_setback.calculate_night_setback_adjustment.return_value = (
             -2.0,  # adjustment
             True,  # in_night_period
-            {},    # night_setback_info
+            {},  # night_setback_info
         )
         mock_thermostat._night_setback_controller = mock_night_setback
 
@@ -641,7 +641,7 @@ class TestNightSetbackSessionManagement:
         mock_night_setback.calculate_night_setback_adjustment.return_value = (
             -2.0,  # adjustment
             True,  # in_night_period
-            {},    # night_setback_info
+            {},  # night_setback_info
         )
         mock_thermostat._night_setback_controller = mock_night_setback
         mock_thermostat._current_temp = 19.3
@@ -669,9 +669,9 @@ class TestNightSetbackSessionManagement:
         # Set up night setback controller that returns in_night_period = False
         mock_night_setback = MagicMock()
         mock_night_setback.calculate_night_setback_adjustment.return_value = (
-            0.0,   # adjustment (no setback)
-            False, # in_night_period
-            {},    # night_setback_info
+            0.0,  # adjustment (no setback)
+            False,  # in_night_period
+            {},  # night_setback_info
         )
         mock_thermostat._night_setback_controller = mock_night_setback
 

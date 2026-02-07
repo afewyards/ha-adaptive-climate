@@ -6,6 +6,7 @@ These tests verify:
 3. Week boundary reset on Sunday midnight (ISO week)
 4. Meter reset/replacement handling
 """
+
 import sys
 import pytest
 from datetime import datetime, timedelta
@@ -14,6 +15,7 @@ from unittest.mock import Mock, MagicMock, AsyncMock, patch
 
 class MockSensorEntity:
     """Mock base class for SensorEntity."""
+
     pass
 
 
@@ -59,6 +61,7 @@ def _setup_mocks():
     # Event needs to support subscripting for type hints like Event[EventStateChangedData]
     class MockEvent:
         """Mock Event class that supports generic subscripting."""
+
         def __class_getitem__(cls, item):
             return cls
 
@@ -116,6 +119,7 @@ class TestWeeklyDeltaCalculation:
         """Test basic weekly delta: current - week_start."""
         # Use dt_util.utcnow() to match production code
         from homeassistant.util import dt as dt_util
+
         now = dt_util.utcnow()
 
         # Set up week start
@@ -127,15 +131,11 @@ class TestWeeklyDeltaCalculation:
         meter_state.state = "150.0"
         meter_state.attributes = {"unit_of_measurement": "kWh"}
         mock_hass.states.get = Mock(
-            side_effect=lambda entity_id: meter_state
-            if entity_id == "sensor.energy_meter"
-            else None
+            side_effect=lambda entity_id: meter_state if entity_id == "sensor.energy_meter" else None
         )
 
         # Patch dt_util.utcnow to return same week
-        with patch(
-            "custom_components.adaptive_climate.sensors.energy.dt_util"
-        ) as mock_dt_util:
+        with patch("custom_components.adaptive_climate.sensors.energy.dt_util") as mock_dt_util:
             mock_dt_util.utcnow.return_value = datetime.now()
 
             import asyncio
@@ -148,6 +148,7 @@ class TestWeeklyDeltaCalculation:
     def test_weekly_delta_accumulates(self, sensor, mock_hass):
         """Test delta accumulates over multiple updates."""
         from homeassistant.util import dt as dt_util
+
         now = dt_util.utcnow()
 
         sensor._week_start_reading = 100.0
@@ -158,9 +159,7 @@ class TestWeeklyDeltaCalculation:
         meter_state.state = "120.0"
         meter_state.attributes = {"unit_of_measurement": "kWh"}
         mock_hass.states.get = Mock(
-            side_effect=lambda entity_id: meter_state
-            if entity_id == "sensor.energy_meter"
-            else None
+            side_effect=lambda entity_id: meter_state if entity_id == "sensor.energy_meter" else None
         )
 
         import asyncio
@@ -176,6 +175,7 @@ class TestWeeklyDeltaCalculation:
     def test_weekly_delta_with_unit_conversion(self, sensor, mock_hass):
         """Test delta calculation with different energy units."""
         from homeassistant.util import dt as dt_util
+
         now = dt_util.utcnow()
 
         sensor._week_start_reading = 100.0  # kWh
@@ -186,9 +186,7 @@ class TestWeeklyDeltaCalculation:
         meter_state.state = "0.5"  # 0.5 GJ = ~138.889 kWh
         meter_state.attributes = {"unit_of_measurement": "GJ"}
         mock_hass.states.get = Mock(
-            side_effect=lambda entity_id: meter_state
-            if entity_id == "sensor.energy_meter"
-            else None
+            side_effect=lambda entity_id: meter_state if entity_id == "sensor.energy_meter" else None
         )
 
         import asyncio
@@ -202,6 +200,7 @@ class TestWeeklyDeltaCalculation:
     def test_weekly_cost_calculation(self, sensor, mock_hass):
         """Test cost calculation based on delta and price."""
         from homeassistant.util import dt as dt_util
+
         now = dt_util.utcnow()
 
         sensor._week_start_reading = 100.0
@@ -216,9 +215,7 @@ class TestWeeklyDeltaCalculation:
         price_state.attributes = {"unit_of_measurement": "EUR/kWh"}
 
         mock_hass.states.get = Mock(
-            side_effect=lambda entity_id: meter_state
-            if entity_id == "sensor.energy_meter"
-            else price_state
+            side_effect=lambda entity_id: meter_state if entity_id == "sensor.energy_meter" else price_state
         )
 
         import asyncio
@@ -314,6 +311,7 @@ class TestPersistenceAcrossRestarts:
         """Test weekly calculation continues correctly after restart."""
         import asyncio
         from homeassistant.util import dt as dt_util
+
         now = dt_util.utcnow()
 
         # Restore state from before restart
@@ -336,9 +334,7 @@ class TestPersistenceAcrossRestarts:
         meter_state.state = "150.0"
         meter_state.attributes = {"unit_of_measurement": "kWh"}
         mock_hass.states.get = Mock(
-            side_effect=lambda entity_id: meter_state
-            if entity_id == "sensor.energy_meter"
-            else None
+            side_effect=lambda entity_id: meter_state if entity_id == "sensor.energy_meter" else None
         )
 
         asyncio.get_event_loop().run_until_complete(sensor.async_update())
@@ -391,17 +387,13 @@ class TestWeekBoundaryReset:
         meter_state.state = "200.0"
         meter_state.attributes = {"unit_of_measurement": "kWh"}
         mock_hass.states.get = Mock(
-            side_effect=lambda entity_id: meter_state
-            if entity_id == "sensor.energy_meter"
-            else None
+            side_effect=lambda entity_id: meter_state if entity_id == "sensor.energy_meter" else None
         )
 
         # Simulate update in week 3 (two weeks later)
         week3_date = datetime(2025, 1, 20, 12, 0, 0)  # Monday of week 4
 
-        with patch(
-            "custom_components.adaptive_climate.sensors.energy.dt_util"
-        ) as mock_dt_util:
+        with patch("custom_components.adaptive_climate.sensors.energy.dt_util") as mock_dt_util:
             mock_dt_util.utcnow.return_value = week3_date
 
             import asyncio
@@ -423,17 +415,13 @@ class TestWeekBoundaryReset:
         meter_state.state = "150.0"
         meter_state.attributes = {"unit_of_measurement": "kWh"}
         mock_hass.states.get = Mock(
-            side_effect=lambda entity_id: meter_state
-            if entity_id == "sensor.energy_meter"
-            else None
+            side_effect=lambda entity_id: meter_state if entity_id == "sensor.energy_meter" else None
         )
 
         # Update on Friday of same week
         friday = datetime(2025, 1, 10, 18, 0, 0)
 
-        with patch(
-            "custom_components.adaptive_climate.sensors.energy.dt_util"
-        ) as mock_dt_util:
+        with patch("custom_components.adaptive_climate.sensors.energy.dt_util") as mock_dt_util:
             mock_dt_util.utcnow.return_value = friday
 
             import asyncio
@@ -454,17 +442,13 @@ class TestWeekBoundaryReset:
         meter_state.state = "175.0"
         meter_state.attributes = {"unit_of_measurement": "kWh"}
         mock_hass.states.get = Mock(
-            side_effect=lambda entity_id: meter_state
-            if entity_id == "sensor.energy_meter"
-            else None
+            side_effect=lambda entity_id: meter_state if entity_id == "sensor.energy_meter" else None
         )
 
         # Update in new week
         new_week = datetime(2025, 1, 13, 10, 0, 0)
 
-        with patch(
-            "custom_components.adaptive_climate.sensors.energy.dt_util"
-        ) as mock_dt_util:
+        with patch("custom_components.adaptive_climate.sensors.energy.dt_util") as mock_dt_util:
             mock_dt_util.utcnow.return_value = new_week
 
             import asyncio
@@ -485,17 +469,13 @@ class TestWeekBoundaryReset:
         meter_state.state = "550.0"
         meter_state.attributes = {"unit_of_measurement": "kWh"}
         mock_hass.states.get = Mock(
-            side_effect=lambda entity_id: meter_state
-            if entity_id == "sensor.energy_meter"
-            else None
+            side_effect=lambda entity_id: meter_state if entity_id == "sensor.energy_meter" else None
         )
 
         # Update in week 2 of 2025
         new_year = datetime(2025, 1, 6, 10, 0, 0)
 
-        with patch(
-            "custom_components.adaptive_climate.sensors.energy.dt_util"
-        ) as mock_dt_util:
+        with patch("custom_components.adaptive_climate.sensors.energy.dt_util") as mock_dt_util:
             mock_dt_util.utcnow.return_value = new_year
 
             import asyncio
@@ -537,9 +517,7 @@ class TestMeterResetHandling:
         meter_state.state = "50.0"
         meter_state.attributes = {"unit_of_measurement": "kWh"}
         mock_hass.states.get = Mock(
-            side_effect=lambda entity_id: meter_state
-            if entity_id == "sensor.energy_meter"
-            else None
+            side_effect=lambda entity_id: meter_state if entity_id == "sensor.energy_meter" else None
         )
 
         import asyncio
@@ -562,9 +540,7 @@ class TestMeterResetHandling:
         # First: meter resets to 0
         meter_state.state = "0.0"
         mock_hass.states.get = Mock(
-            side_effect=lambda entity_id: meter_state
-            if entity_id == "sensor.energy_meter"
-            else None
+            side_effect=lambda entity_id: meter_state if entity_id == "sensor.energy_meter" else None
         )
 
         import asyncio
@@ -591,9 +567,7 @@ class TestMeterResetHandling:
         meter_state.state = "100.0"
         meter_state.attributes = {"unit_of_measurement": "kWh"}
         mock_hass.states.get = Mock(
-            side_effect=lambda entity_id: meter_state
-            if entity_id == "sensor.energy_meter"
-            else None
+            side_effect=lambda entity_id: meter_state if entity_id == "sensor.energy_meter" else None
         )
 
         import asyncio
@@ -700,9 +674,7 @@ class TestEdgeCases:
         meter_state.state = "not_a_number"
         meter_state.attributes = {"unit_of_measurement": "kWh"}
         mock_hass.states.get = Mock(
-            side_effect=lambda entity_id: meter_state
-            if entity_id == "sensor.energy_meter"
-            else None
+            side_effect=lambda entity_id: meter_state if entity_id == "sensor.energy_meter" else None
         )
 
         import asyncio
@@ -735,9 +707,7 @@ class TestEdgeCases:
         meter_state.state = "100.0"
         meter_state.attributes = {"unit_of_measurement": "kWh"}
         mock_hass.states.get = Mock(
-            side_effect=lambda entity_id: meter_state
-            if entity_id == "sensor.energy_meter"
-            else None
+            side_effect=lambda entity_id: meter_state if entity_id == "sensor.energy_meter" else None
         )
 
         import asyncio

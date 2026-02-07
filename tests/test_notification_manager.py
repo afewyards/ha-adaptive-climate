@@ -1,4 +1,5 @@
 """Tests for NotificationManager."""
+
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 import pytest
@@ -88,11 +89,17 @@ async def test_persistent_uses_ios_message_as_fallback(manager, mock_hass):
 async def test_cooldown_suppresses(manager, mock_hass):
     """Second call within cooldown returns False."""
     await manager.async_send(
-        notification_id="cd_test", title="T", ios_message="M", cooldown_hours=1.0,
+        notification_id="cd_test",
+        title="T",
+        ios_message="M",
+        cooldown_hours=1.0,
     )
     assert mock_hass.services.async_call.call_count == 2
     result = await manager.async_send(
-        notification_id="cd_test", title="T", ios_message="M", cooldown_hours=1.0,
+        notification_id="cd_test",
+        title="T",
+        ios_message="M",
+        cooldown_hours=1.0,
     )
     assert result is False
     assert mock_hass.services.async_call.call_count == 2
@@ -102,11 +109,17 @@ async def test_cooldown_suppresses(manager, mock_hass):
 async def test_cooldown_expires(manager, mock_hass):
     """Call after cooldown succeeds."""
     await manager.async_send(
-        notification_id="cd_test", title="T", ios_message="M", cooldown_hours=1.0,
+        notification_id="cd_test",
+        title="T",
+        ios_message="M",
+        cooldown_hours=1.0,
     )
     manager._cooldowns["cd_test"] = datetime.now() - timedelta(hours=2)
     result = await manager.async_send(
-        notification_id="cd_test", title="T", ios_message="M", cooldown_hours=1.0,
+        notification_id="cd_test",
+        title="T",
+        ios_message="M",
+        cooldown_hours=1.0,
     )
     assert result is True
     assert mock_hass.services.async_call.call_count == 4
@@ -116,10 +129,16 @@ async def test_cooldown_expires(manager, mock_hass):
 async def test_different_ids_independent(manager, mock_hass):
     """Cooldowns are per notification_id."""
     await manager.async_send(
-        notification_id="id_a", title="T", ios_message="M", cooldown_hours=1.0,
+        notification_id="id_a",
+        title="T",
+        ios_message="M",
+        cooldown_hours=1.0,
     )
     result = await manager.async_send(
-        notification_id="id_b", title="T", ios_message="M", cooldown_hours=1.0,
+        notification_id="id_b",
+        title="T",
+        ios_message="M",
+        cooldown_hours=1.0,
     )
     assert result is True
     assert mock_hass.services.async_call.call_count == 4
@@ -129,10 +148,14 @@ async def test_different_ids_independent(manager, mock_hass):
 async def test_no_notify_service(mock_hass):
     """Gracefully handles missing notify service."""
     manager = NotificationManager(
-        hass=mock_hass, notify_service=None, persistent_notification=True,
+        hass=mock_hass,
+        notify_service=None,
+        persistent_notification=True,
     )
     result = await manager.async_send(
-        notification_id="test", title="T", ios_message="M",
+        notification_id="test",
+        title="T",
+        ios_message="M",
     )
     assert result is True
     assert mock_hass.services.async_call.call_count == 1  # only persistent
@@ -143,7 +166,10 @@ async def test_zero_cooldown_never_suppresses(manager, mock_hass):
     """Zero cooldown (default) never suppresses."""
     for _ in range(3):
         result = await manager.async_send(
-            notification_id="test", title="T", ios_message="M", cooldown_hours=0,
+            notification_id="test",
+            title="T",
+            ios_message="M",
+            cooldown_hours=0,
         )
         assert result is True
     assert mock_hass.services.async_call.call_count == 6

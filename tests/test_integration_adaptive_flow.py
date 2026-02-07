@@ -2,6 +2,7 @@
 
 Tests the complete flow: Cycle analysis -> PID recommendations -> application
 """
+
 import pytest
 
 from custom_components.adaptive_climate.adaptive.learning import (

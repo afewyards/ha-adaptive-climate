@@ -1,4 +1,5 @@
 """Tests for NightSetbackCalculator preheat functionality."""
+
 import pytest
 from datetime import datetime, time as dt_time, timedelta
 from unittest.mock import Mock
@@ -10,11 +11,7 @@ class TestNightSetbackCalculatorPreheat:
     """Test preheat start calculation in NightSetbackCalculator."""
 
     def create_calculator(
-        self,
-        preheat_learner=None,
-        preheat_enabled=False,
-        night_setback_config=None,
-        manifold_transport_delay=0.0
+        self, preheat_learner=None, preheat_enabled=False, night_setback_config=None, manifold_transport_delay=0.0
     ):
         """Helper to create NightSetbackCalculator with preheat support."""
         hass = Mock()
@@ -26,11 +23,7 @@ class TestNightSetbackCalculatorPreheat:
             hass=hass,
             entity_id=entity_id,
             night_setback=None,
-            night_setback_config=night_setback_config or {
-                "start": "22:00",
-                "delta": 3.0,
-                "recovery_deadline": "07:00"
-            },
+            night_setback_config=night_setback_config or {"start": "22:00", "delta": 3.0, "recovery_deadline": "07:00"},
             window_orientation=None,
             get_target_temp=get_target_temp,
             get_current_temp=get_current_temp,
@@ -51,13 +44,10 @@ class TestNightSetbackCalculatorPreheat:
             end_temp=20.0,
             outdoor_temp=5.0,
             duration_minutes=120.0,
-            timestamp=datetime(2024, 1, 15, 0, 0)
+            timestamp=datetime(2024, 1, 15, 0, 0),
         )
 
-        calculator = self.create_calculator(
-            preheat_learner=learner,
-            preheat_enabled=True
-        )
+        calculator = self.create_calculator(preheat_learner=learner, preheat_enabled=True)
 
         # Test: 18°C current, 20°C target, 5°C outdoor
         # Delta = 2°C, fallback rate ~1.2°C/h for radiator
@@ -67,9 +57,7 @@ class TestNightSetbackCalculatorPreheat:
         target_temp = 20.0
         outdoor_temp = 5.0
 
-        preheat_start = calculator.calculate_preheat_start(
-            deadline, current_temp, target_temp, outdoor_temp
-        )
+        preheat_start = calculator.calculate_preheat_start(deadline, current_temp, target_temp, outdoor_temp)
 
         # Should return a datetime before the deadline
         assert preheat_start is not None
@@ -85,18 +73,13 @@ class TestNightSetbackCalculatorPreheat:
             end_temp=20.0,
             outdoor_temp=8.0,
             duration_minutes=30.0,
-            timestamp=datetime(2024, 1, 15, 0, 0)
+            timestamp=datetime(2024, 1, 15, 0, 0),
         )
 
-        calculator = self.create_calculator(
-            preheat_learner=learner,
-            preheat_enabled=True
-        )
+        calculator = self.create_calculator(preheat_learner=learner, preheat_enabled=True)
 
         deadline = datetime(2024, 1, 15, 7, 0)
-        preheat_start = calculator.calculate_preheat_start(
-            deadline, 18.0, 20.0, 8.0
-        )
+        preheat_start = calculator.calculate_preheat_start(deadline, 18.0, 20.0, 8.0)
 
         # 30 min estimated + 10% buffer (3 min) -> 15 min minimum buffer = 45 min total
         # Should be approximately 45 minutes before deadline
@@ -114,24 +97,18 @@ class TestNightSetbackCalculatorPreheat:
             end_temp=12.0,
             outdoor_temp=0.0,
             duration_minutes=360.0,  # 2°C in 6 hours = 0.33°C/h
-            timestamp=datetime(2024, 1, 15, 0, 0)
+            timestamp=datetime(2024, 1, 15, 0, 0),
         )
 
         calculator = self.create_calculator(
             preheat_learner=learner,
             preheat_enabled=True,
-            night_setback_config={
-                "start": "22:00",
-                "delta": 5.0,
-                "recovery_deadline": "07:00"
-            }
+            night_setback_config={"start": "22:00", "delta": 5.0, "recovery_deadline": "07:00"},
         )
 
         deadline = datetime(2024, 1, 15, 7, 0)
         # Large delta would normally require many hours
-        preheat_start = calculator.calculate_preheat_start(
-            deadline, 12.0, 20.0, 0.0
-        )
+        preheat_start = calculator.calculate_preheat_start(deadline, 12.0, 20.0, 0.0)
 
         # Should be clamped to max_preheat_hours (3.0 hours = 180 minutes)
         max_start = deadline - timedelta(minutes=180)
@@ -145,13 +122,11 @@ class TestNightSetbackCalculatorPreheat:
 
         calculator = self.create_calculator(
             preheat_learner=learner,
-            preheat_enabled=False  # Disabled
+            preheat_enabled=False,  # Disabled
         )
 
         deadline = datetime(2024, 1, 15, 7, 0)
-        preheat_start = calculator.calculate_preheat_start(
-            deadline, 18.0, 20.0, 5.0
-        )
+        preheat_start = calculator.calculate_preheat_start(deadline, 18.0, 20.0, 5.0)
 
         assert preheat_start is None
 
@@ -167,36 +142,27 @@ class TestNightSetbackCalculatorPreheat:
                 "start": "22:00",
                 "delta": 3.0,
                 # No recovery_deadline
-            }
+            },
         )
 
         deadline = datetime(2024, 1, 15, 7, 0)
-        preheat_start = calculator.calculate_preheat_start(
-            deadline, 18.0, 20.0, 5.0
-        )
+        preheat_start = calculator.calculate_preheat_start(deadline, 18.0, 20.0, 5.0)
 
         assert preheat_start is None
 
     def test_calculate_preheat_start_already_at_target(self):
         """Test when already at or above target temperature."""
         learner = PreheatLearner(heating_type="radiator")
-        calculator = self.create_calculator(
-            preheat_learner=learner,
-            preheat_enabled=True
-        )
+        calculator = self.create_calculator(preheat_learner=learner, preheat_enabled=True)
 
         deadline = datetime(2024, 1, 15, 7, 0)
 
         # At target
-        preheat_start = calculator.calculate_preheat_start(
-            deadline, 20.0, 20.0, 5.0
-        )
+        preheat_start = calculator.calculate_preheat_start(deadline, 20.0, 20.0, 5.0)
         assert preheat_start == deadline  # No preheat needed
 
         # Above target
-        preheat_start = calculator.calculate_preheat_start(
-            deadline, 21.0, 20.0, 5.0
-        )
+        preheat_start = calculator.calculate_preheat_start(deadline, 21.0, 20.0, 5.0)
         assert preheat_start == deadline  # No preheat needed
 
     def test_get_preheat_info_with_scheduled_start(self):
@@ -204,17 +170,12 @@ class TestNightSetbackCalculatorPreheat:
         learner = PreheatLearner(heating_type="radiator")
         learner.add_observation(18.0, 20.0, 5.0, 60.0, timestamp=datetime(2024, 1, 15, 0, 0))
 
-        calculator = self.create_calculator(
-            preheat_learner=learner,
-            preheat_enabled=True
-        )
+        calculator = self.create_calculator(preheat_learner=learner, preheat_enabled=True)
 
         now = datetime(2024, 1, 15, 5, 0)
         deadline = datetime(2024, 1, 15, 7, 0)
 
-        info = calculator.get_preheat_info(
-            now, 18.0, 20.0, 5.0, deadline
-        )
+        info = calculator.get_preheat_info(now, 18.0, 20.0, 5.0, deadline)
 
         assert isinstance(info, dict)
         assert "scheduled_start" in info
@@ -232,41 +193,29 @@ class TestNightSetbackCalculatorPreheat:
         # Quick heating: 2°C in 15 minutes
         learner.add_observation(18.0, 20.0, 10.0, 15.0, timestamp=datetime(2024, 1, 15, 0, 0))
 
-        calculator = self.create_calculator(
-            preheat_learner=learner,
-            preheat_enabled=True
-        )
+        calculator = self.create_calculator(preheat_learner=learner, preheat_enabled=True)
 
         deadline = datetime(2024, 1, 15, 7, 0)
 
         # Current time is before scheduled start
         now_before = datetime(2024, 1, 15, 5, 0)
-        info_before = calculator.get_preheat_info(
-            now_before, 18.0, 20.0, 10.0, deadline
-        )
+        info_before = calculator.get_preheat_info(now_before, 18.0, 20.0, 10.0, deadline)
         assert info_before["active"] is False
 
         # Current time is after scheduled start
         now_after = datetime(2024, 1, 15, 6, 50)
-        info_after = calculator.get_preheat_info(
-            now_after, 18.0, 20.0, 10.0, deadline
-        )
+        info_after = calculator.get_preheat_info(now_after, 18.0, 20.0, 10.0, deadline)
         assert info_after["active"] is True
 
     def test_get_preheat_info_disabled(self):
         """Test get_preheat_info when preheat is disabled."""
         learner = PreheatLearner(heating_type="radiator")
-        calculator = self.create_calculator(
-            preheat_learner=learner,
-            preheat_enabled=False
-        )
+        calculator = self.create_calculator(preheat_learner=learner, preheat_enabled=False)
 
         now = datetime(2024, 1, 15, 5, 0)
         deadline = datetime(2024, 1, 15, 7, 0)
 
-        info = calculator.get_preheat_info(
-            now, 18.0, 20.0, 5.0, deadline
-        )
+        info = calculator.get_preheat_info(now, 18.0, 20.0, 5.0, deadline)
 
         assert info["scheduled_start"] is None
         assert info["estimated_duration"] == 0
@@ -279,15 +228,10 @@ class TestNightSetbackCalculatorPreheat:
         # it will use fallback rate of 4.0 C/h
         learner.add_observation(18.0, 20.0, 10.0, 10.0, timestamp=datetime(2024, 1, 15, 0, 0))
 
-        calculator = self.create_calculator(
-            preheat_learner=learner,
-            preheat_enabled=True
-        )
+        calculator = self.create_calculator(preheat_learner=learner, preheat_enabled=True)
 
         deadline = datetime(2024, 1, 15, 7, 0)
-        preheat_start = calculator.calculate_preheat_start(
-            deadline, 18.0, 20.0, 10.0
-        )
+        preheat_start = calculator.calculate_preheat_start(deadline, 18.0, 20.0, 10.0)
 
         # With fallback rate (4.0 C/h) and margins:
         # margin = (1.0 + 2.0/10*0.3) * 1.1 = 1.166
@@ -307,13 +251,11 @@ class TestNightSetbackCalculatorPreheat:
         calculator = self.create_calculator(
             preheat_learner=learner,
             preheat_enabled=True,
-            manifold_transport_delay=0.0  # No manifold delay
+            manifold_transport_delay=0.0,  # No manifold delay
         )
 
         deadline = datetime(2024, 1, 15, 7, 0)
-        preheat_start = calculator.calculate_preheat_start(
-            deadline, 18.0, 20.0, 5.0
-        )
+        preheat_start = calculator.calculate_preheat_start(deadline, 18.0, 20.0, 5.0)
 
         # Should return a datetime before the deadline
         assert preheat_start is not None
@@ -329,26 +271,18 @@ class TestNightSetbackCalculatorPreheat:
         # Create calculator with 5 minutes manifold delay
         manifold_delay_min = 5.0
         calculator = self.create_calculator(
-            preheat_learner=learner,
-            preheat_enabled=True,
-            manifold_transport_delay=manifold_delay_min
+            preheat_learner=learner, preheat_enabled=True, manifold_transport_delay=manifold_delay_min
         )
 
         deadline = datetime(2024, 1, 15, 7, 0)
-        preheat_start = calculator.calculate_preheat_start(
-            deadline, 18.0, 20.0, 5.0
-        )
+        preheat_start = calculator.calculate_preheat_start(deadline, 18.0, 20.0, 5.0)
 
         # Create a calculator without manifold delay for comparison
         calculator_no_delay = self.create_calculator(
-            preheat_learner=learner,
-            preheat_enabled=True,
-            manifold_transport_delay=0.0
+            preheat_learner=learner, preheat_enabled=True, manifold_transport_delay=0.0
         )
 
-        preheat_start_no_delay = calculator_no_delay.calculate_preheat_start(
-            deadline, 18.0, 20.0, 5.0
-        )
+        preheat_start_no_delay = calculator_no_delay.calculate_preheat_start(deadline, 18.0, 20.0, 5.0)
 
         # With manifold delay, should start earlier by the delay amount
         assert preheat_start is not None
@@ -367,26 +301,18 @@ class TestNightSetbackCalculatorPreheat:
         # 10 minute manifold delay (e.g., large manifold with low flow)
         manifold_delay_min = 10.0
         calculator = self.create_calculator(
-            preheat_learner=learner,
-            preheat_enabled=True,
-            manifold_transport_delay=manifold_delay_min
+            preheat_learner=learner, preheat_enabled=True, manifold_transport_delay=manifold_delay_min
         )
 
         deadline = datetime(2024, 1, 15, 7, 0)
-        preheat_start = calculator.calculate_preheat_start(
-            deadline, 18.0, 20.0, 5.0
-        )
+        preheat_start = calculator.calculate_preheat_start(deadline, 18.0, 20.0, 5.0)
 
         # Compare with no delay version
         calculator_no_delay = self.create_calculator(
-            preheat_learner=learner,
-            preheat_enabled=True,
-            manifold_transport_delay=0.0
+            preheat_learner=learner, preheat_enabled=True, manifold_transport_delay=0.0
         )
 
-        preheat_start_no_delay = calculator_no_delay.calculate_preheat_start(
-            deadline, 18.0, 20.0, 5.0
-        )
+        preheat_start_no_delay = calculator_no_delay.calculate_preheat_start(deadline, 18.0, 20.0, 5.0)
 
         # Should start 10 minutes earlier
         assert preheat_start is not None
@@ -400,10 +326,7 @@ class TestNightSetbackCalculatorPreheat:
         # Simple fallback rate: ~1.2°C/hour for radiator
         # So 1°C takes ~50 minutes
 
-        calculator = self.create_calculator(
-            preheat_learner=learner,
-            preheat_enabled=True
-        )
+        calculator = self.create_calculator(preheat_learner=learner, preheat_enabled=True)
 
         deadline = datetime(2024, 1, 15, 7, 0)
         current_temp = 17.0
@@ -422,9 +345,7 @@ class TestNightSetbackCalculatorPreheat:
         )
 
         # Test 3: effective_delta = 0.0 (fully suppressed)
-        preheat_zero = calculator.calculate_preheat_start(
-            deadline, current_temp, target_temp, outdoor_temp, False, 0.0
-        )
+        preheat_zero = calculator.calculate_preheat_start(deadline, current_temp, target_temp, outdoor_temp, False, 0.0)
 
         # Assertions
         assert preheat_full is not None, "Full delta should return preheat time"
@@ -447,10 +368,7 @@ class TestNightSetbackCalculatorPreheat:
         """Test that get_preheat_info correctly uses effective_delta."""
         learner = PreheatLearner(heating_type="radiator")
 
-        calculator = self.create_calculator(
-            preheat_learner=learner,
-            preheat_enabled=True
-        )
+        calculator = self.create_calculator(preheat_learner=learner, preheat_enabled=True)
 
         now = datetime(2024, 1, 15, 3, 0)
         deadline = datetime(2024, 1, 15, 7, 0)
@@ -459,19 +377,13 @@ class TestNightSetbackCalculatorPreheat:
         outdoor_temp = 5.0
 
         # Test 1: No effective_delta
-        info_full = calculator.get_preheat_info(
-            now, current_temp, target_temp, outdoor_temp, deadline, False, None
-        )
+        info_full = calculator.get_preheat_info(now, current_temp, target_temp, outdoor_temp, deadline, False, None)
 
         # Test 2: effective_delta = 1.0°C
-        info_limited = calculator.get_preheat_info(
-            now, current_temp, target_temp, outdoor_temp, deadline, False, 1.0
-        )
+        info_limited = calculator.get_preheat_info(now, current_temp, target_temp, outdoor_temp, deadline, False, 1.0)
 
         # Test 3: effective_delta = 0.0°C
-        info_zero = calculator.get_preheat_info(
-            now, current_temp, target_temp, outdoor_temp, deadline, False, 0.0
-        )
+        info_zero = calculator.get_preheat_info(now, current_temp, target_temp, outdoor_temp, deadline, False, 0.0)
 
         # Assertions
         assert info_full["scheduled_start"] is not None
@@ -504,11 +416,7 @@ class TestNightSetbackCalculatorTimezone:
             hass=hass,
             entity_id=entity_id,
             night_setback=None,
-            night_setback_config=night_setback_config or {
-                "start": "22:00",
-                "delta": 3.0,
-                "recovery_deadline": "08:57"
-            },
+            night_setback_config=night_setback_config or {"start": "22:00", "delta": 3.0, "recovery_deadline": "08:57"},
             window_orientation=None,
             get_target_temp=get_target_temp,
             get_current_temp=get_current_temp,
@@ -527,11 +435,7 @@ class TestNightSetbackCalculatorTimezone:
         """
         from zoneinfo import ZoneInfo
 
-        calculator = self.create_calculator_with_config({
-            "start": "22:00",
-            "delta": 3.0,
-            "recovery_deadline": "08:57"
-        })
+        calculator = self.create_calculator_with_config({"start": "22:00", "delta": 3.0, "recovery_deadline": "08:57"})
 
         # Amsterdam timezone (UTC+1 in winter)
         tz = ZoneInfo("Europe/Amsterdam")
@@ -554,11 +458,7 @@ class TestNightSetbackCalculatorTimezone:
         """
         from zoneinfo import ZoneInfo
 
-        calculator = self.create_calculator_with_config({
-            "start": "23:00",
-            "delta": 3.0,
-            "recovery_deadline": "09:00"
-        })
+        calculator = self.create_calculator_with_config({"start": "23:00", "delta": 3.0, "recovery_deadline": "09:00"})
 
         tz = ZoneInfo("America/New_York")
 
@@ -575,11 +475,7 @@ class TestNightSetbackCalculatorTimezone:
         """Test calculator correctly identifies night period with timezone."""
         from zoneinfo import ZoneInfo
 
-        calculator = self.create_calculator_with_config({
-            "start": "22:00",
-            "delta": 3.0,
-            "recovery_deadline": "07:00"
-        })
+        calculator = self.create_calculator_with_config({"start": "22:00", "delta": 3.0, "recovery_deadline": "07:00"})
 
         tz = ZoneInfo("Europe/Amsterdam")
 
@@ -604,11 +500,9 @@ class TestNightSetbackCalculatorTimezone:
 
         for tz_name in timezones:
             tz = ZoneInfo(tz_name)
-            calculator = self.create_calculator_with_config({
-                "start": "22:00",
-                "delta": 2.5,
-                "recovery_deadline": "07:00"
-            })
+            calculator = self.create_calculator_with_config(
+                {"start": "22:00", "delta": 2.5, "recovery_deadline": "07:00"}
+            )
 
             # Local time 10:00 AM - past end time
             local_time = datetime(2024, 1, 15, 10, 0, tzinfo=tz)

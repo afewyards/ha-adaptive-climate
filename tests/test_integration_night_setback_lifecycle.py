@@ -5,6 +5,7 @@ Tests the full lifecycle of night setback functionality including:
 - Learning gate graduation through learning stages
 - Setback + pause interaction (priority stacking)
 """
+
 import pytest
 from datetime import datetime, time as dt_time, timedelta, timezone
 from unittest.mock import MagicMock
@@ -98,18 +99,14 @@ class TestNightSetbackLifecycle:
 
         # Step 1: At 22:59 - normal operation, no setback
         time_travel._current_dt = datetime(2024, 1, 1, 22, 59, 0, tzinfo=timezone.utc)
-        effective_target, in_night_period, info = calculator.calculate_night_setback_adjustment(
-            time_travel.now()
-        )
+        effective_target, in_night_period, info = calculator.calculate_night_setback_adjustment(time_travel.now())
         assert in_night_period is False
         assert effective_target == 21.0
 
         # Step 2: At 23:00 - night period starts, setpoint drops
         time_travel._current_dt = datetime(2024, 1, 1, 23, 0, 0, tzinfo=timezone.utc)
         current_temp = 21.0  # Still at old target
-        effective_target, in_night_period, info = calculator.calculate_night_setback_adjustment(
-            time_travel.now()
-        )
+        effective_target, in_night_period, info = calculator.calculate_night_setback_adjustment(time_travel.now())
         assert in_night_period is True
         assert effective_target == 19.0  # 21.0 - 2.0
         assert info["night_setback_delta"] == 2.0
@@ -188,9 +185,7 @@ class TestNightSetbackLifecycle:
         assert heating_rate_learner.get_observation_count() == 2  # Initial + new
 
         # Verify night setback is no longer active
-        effective_target, in_night_period, info = calculator.calculate_night_setback_adjustment(
-            time_travel.now()
-        )
+        effective_target, in_night_period, info = calculator.calculate_night_setback_adjustment(time_travel.now())
         assert in_night_period is False
         assert effective_target == 21.0
 
@@ -300,9 +295,7 @@ class TestSetbackPausePriority:
         )
 
         # Step 1: Verify night setback is active
-        effective_target, in_night_period, info = calculator.calculate_night_setback_adjustment(
-            time_travel.now()
-        )
+        effective_target, in_night_period, info = calculator.calculate_night_setback_adjustment(time_travel.now())
         assert in_night_period is True
         assert effective_target == 19.0  # 21.0 - 2.0
         assert info["night_setback_delta"] == 2.0
@@ -329,9 +322,7 @@ class TestSetbackPausePriority:
         assert contact_handler.get_action() == ContactAction.PAUSE
 
         # Night setback is still technically active, but heating should be paused
-        effective_target, in_night_period, info = calculator.calculate_night_setback_adjustment(
-            time_travel.now()
-        )
+        effective_target, in_night_period, info = calculator.calculate_night_setback_adjustment(time_travel.now())
         assert in_night_period is True  # Still in night period
         assert effective_target == 19.0  # Setback still applies to setpoint
 
@@ -350,17 +341,13 @@ class TestSetbackPausePriority:
         assert contact_handler.should_take_action() is False
 
         # Night setback should still be active
-        effective_target, in_night_period, info = calculator.calculate_night_setback_adjustment(
-            time_travel.now()
-        )
+        effective_target, in_night_period, info = calculator.calculate_night_setback_adjustment(time_travel.now())
         assert in_night_period is True
         assert effective_target == 19.0
 
         # Step 5: Night period ends at 07:00
         time_travel._current_dt = datetime(2024, 1, 2, 7, 0, 0, tzinfo=timezone.utc)
-        effective_target, in_night_period, info = calculator.calculate_night_setback_adjustment(
-            time_travel.now()
-        )
+        effective_target, in_night_period, info = calculator.calculate_night_setback_adjustment(time_travel.now())
         assert in_night_period is False
         assert effective_target == 21.0  # Back to normal target
 
@@ -399,9 +386,7 @@ class TestSetbackPausePriority:
         )
 
         # Verify night setback is active
-        effective_target, in_night_period, info = calculator.calculate_night_setback_adjustment(
-            time_travel.now()
-        )
+        effective_target, in_night_period, info = calculator.calculate_night_setback_adjustment(time_travel.now())
         assert in_night_period is True
         assert effective_target == 19.0
 
@@ -429,9 +414,7 @@ class TestSetbackPausePriority:
         assert detector.get_state() in ["paused", "stabilizing"]
 
         # Night setback still active, but heating should pause
-        effective_target, in_night_period, info = calculator.calculate_night_setback_adjustment(
-            time_travel.now()
-        )
+        effective_target, in_night_period, info = calculator.calculate_night_setback_adjustment(time_travel.now())
         assert in_night_period is True
         assert effective_target == 19.0
 

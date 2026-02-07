@@ -25,19 +25,27 @@ class ClimateControlMixin:
     """
 
     async def _async_control_heating(
-            self, time_func: object = None, calc_pid: object = False, is_temp_sensor_update: bool = False) -> object:
+        self, time_func: object = None, calc_pid: object = False, is_temp_sensor_update: bool = False
+    ) -> object:
         """Run PID controller, optional autotune for faster integration"""
         async with self._temp_lock:
             if not self._active and None not in (self._current_temp, self._target_temp):
                 self._active = True
-                _LOGGER.info("%s: Obtained temperature %s with set point %s. Activating Smart"
-                             "Thermostat.", self.entity_id, self._current_temp, self._target_temp)
+                _LOGGER.info(
+                    "%s: Obtained temperature %s with set point %s. Activating SmartThermostat.",
+                    self.entity_id,
+                    self._current_temp,
+                    self._target_temp,
+                )
 
             if not self._active or self._hvac_mode == HVACMode.OFF:
-                if self._force_off_state and self._hvac_mode == HVACMode.OFF and \
-                        self._is_device_active:
-                    _LOGGER.debug("%s: %s is active while HVAC mode is %s. Turning it OFF.",
-                                  self.entity_id, ", ".join([entity for entity in self.heater_or_cooler_entity]), self._hvac_mode)
+                if self._force_off_state and self._hvac_mode == HVACMode.OFF and self._is_device_active:
+                    _LOGGER.debug(
+                        "%s: %s is active while HVAC mode is %s. Turning it OFF.",
+                        self.entity_id,
+                        ", ".join([entity for entity in self.heater_or_cooler_entity]),
+                        self._hvac_mode,
+                    )
                     if self._pwm:
                         await self._async_heater_turn_off(force=True)
                     else:
@@ -47,7 +55,9 @@ class ClimateControlMixin:
                 if self._zone_id:
                     coordinator = self.hass.data.get(DOMAIN, {}).get("coordinator")
                     if coordinator:
-                        coordinator.update_zone_demand(self._zone_id, False, self._hvac_mode.value if self._hvac_mode else None)
+                        coordinator.update_zone_demand(
+                            self._zone_id, False, self._hvac_mode.value if self._hvac_mode else None
+                        )
                 self.async_write_ha_state()
                 return
 
@@ -90,13 +100,14 @@ class ClimateControlMixin:
 
                 # Update zone demand to False when paused
                 if coordinator:
-                    coordinator.update_zone_demand(self._zone_id, False, self._hvac_mode.value if self._hvac_mode else None)
+                    coordinator.update_zone_demand(
+                        self._zone_id, False, self._hvac_mode.value if self._hvac_mode else None
+                    )
 
                 self.async_write_ha_state()
                 return
 
-            if self._sensor_stall != 0 and time.monotonic() - self._last_sensor_update > \
-                    self._sensor_stall:
+            if self._sensor_stall != 0 and time.monotonic() - self._last_sensor_update > self._sensor_stall:
                 # sensor not updated for too long, considered as stall, set to safety level
                 self._control_output = self._output_safety
             else:
@@ -162,13 +173,18 @@ class ClimateControlMixin:
                                     )
 
                                 # Update Ki via PIDGainsManager with comprehensive metrics
-                                undershoot_amount = self._target_temp - self._current_temp if self._target_temp and self._current_temp else 0.0
+                                undershoot_amount = (
+                                    self._target_temp - self._current_temp
+                                    if self._target_temp and self._current_temp
+                                    else 0.0
+                                )
                                 self._gains_manager.set_gains(
                                     PIDChangeReason.UNDERSHOOT_BOOST,
                                     ki=new_ki,
                                     metrics={
                                         "undershoot_amount": undershoot_amount,
-                                        "time_below_target_hours": adaptive_learner.undershoot_detector.time_below_target / 3600.0,
+                                        "time_below_target_hours": adaptive_learner.undershoot_detector.time_below_target
+                                        / 3600.0,
                                         "thermal_debt": adaptive_learner.undershoot_detector.thermal_debt,
                                         "consecutive_failures": adaptive_learner.undershoot_detector._consecutive_failures,
                                     },
@@ -187,7 +203,9 @@ class ClimateControlMixin:
                             # Check night setback state for heating rate session management
                             in_night_setback = False
                             if self._night_setback_controller:
-                                _, in_night_period, _ = self._night_setback_controller.calculate_night_setback_adjustment()
+                                _, in_night_period, _ = (
+                                    self._night_setback_controller.calculate_night_setback_adjustment()
+                                )
                                 in_night_setback = in_night_period
 
                             # Check if we should start a heating rate session
@@ -212,6 +230,7 @@ class ClimateControlMixin:
                             ):
                                 # Determine recovery threshold by heating type
                                 from .const import HeatingType
+
                                 threshold = 0.3 if self._heating_type == HeatingType.FLOOR_HYDRONIC else 0.5
 
                                 # Start session if temp is below threshold
@@ -235,7 +254,9 @@ class ClimateControlMixin:
 
             # Update zone demand for CentralController (based on actual device state, not PID output)
             if coordinator:
-                coordinator.update_zone_demand(self._zone_id, self._is_device_active, self._hvac_mode.value if self._hvac_mode else None)
+                coordinator.update_zone_demand(
+                    self._zone_id, self._is_device_active, self._hvac_mode.value if self._hvac_mode else None
+                )
 
             # Record Ke observation if at steady state
             self._maybe_record_ke_observation()

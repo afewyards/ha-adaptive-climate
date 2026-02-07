@@ -3,6 +3,7 @@
 Pauses or adjusts heating when windows/doors are open to save energy,
 with configurable delays, grace periods, and multiple action types.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta
@@ -14,6 +15,7 @@ from homeassistant.util import dt as dt_util
 
 class ContactAction(Enum):
     """Action to take when contact sensor opens."""
+
     PAUSE = "pause"  # Stop heating completely
     FROST_PROTECTION = "frost_protection"  # Lower to frost protection temp (e.g., 5°C)
 
@@ -32,7 +34,7 @@ class ContactSensorHandler:
         contact_delay_seconds: int = 300,  # 5 minutes default
         action: ContactAction = ContactAction.PAUSE,
         frost_protection_temp: float = 5.0,
-        learning_grace_seconds: int = 0
+        learning_grace_seconds: int = 0,
     ):
         """Initialize contact sensor handler.
 
@@ -57,11 +59,7 @@ class ContactSensorHandler:
         # Track when handler was created (for grace period)
         self._created_at: datetime | None = None
 
-    def update_contact_states(
-        self,
-        contact_states: Dict[str, bool],
-        current_time: datetime | None = None
-    ):
+    def update_contact_states(self, contact_states: Dict[str, bool], current_time: datetime | None = None):
         """Update contact sensor states.
 
         Args:
@@ -77,9 +75,7 @@ class ContactSensorHandler:
 
         # Track which sensors are open
         self._open_sensor_ids = [
-            sensor_id
-            for sensor_id in self.contact_sensors
-            if contact_states.get(sensor_id, False)
+            sensor_id for sensor_id in self.contact_sensors if contact_states.get(sensor_id, False)
         ]
 
         # Aggregate: ANY sensor open means contact is open
@@ -153,11 +149,7 @@ class ContactSensorHandler:
         """
         return self.action
 
-    def get_adjusted_setpoint(
-        self,
-        base_setpoint: float,
-        current_time: datetime | None = None
-    ) -> float | None:
+    def get_adjusted_setpoint(self, base_setpoint: float, current_time: datetime | None = None) -> float | None:
         """Get adjusted setpoint based on contact state.
 
         Args:
@@ -236,7 +228,7 @@ class ContactSensorManager:
         contact_delay_seconds: int = 300,
         action: str = "pause",
         frost_protection_temp: float = 5.0,
-        learning_grace_seconds: int = 0
+        learning_grace_seconds: int = 0,
     ):
         """Configure contact sensor handling for a zone.
 
@@ -256,14 +248,11 @@ class ContactSensorManager:
             contact_delay_seconds=contact_delay_seconds,
             action=action_enum,
             frost_protection_temp=frost_protection_temp,
-            learning_grace_seconds=learning_grace_seconds
+            learning_grace_seconds=learning_grace_seconds,
         )
 
     def update_contact_states(
-        self,
-        zone_id: str,
-        contact_states: Dict[str, bool],
-        current_time: datetime | None = None
+        self, zone_id: str, contact_states: Dict[str, bool], current_time: datetime | None = None
     ):
         """Update contact sensor states for a zone.
 
@@ -278,11 +267,7 @@ class ContactSensorManager:
         handler = self._zone_handlers[zone_id]
         handler.update_contact_states(contact_states, current_time)
 
-    def should_take_action(
-        self,
-        zone_id: str,
-        current_time: datetime | None = None
-    ) -> bool:
+    def should_take_action(self, zone_id: str, current_time: datetime | None = None) -> bool:
         """Check if action should be taken for a zone.
 
         Args:
@@ -299,10 +284,7 @@ class ContactSensorManager:
         return handler.should_take_action(current_time)
 
     def get_adjusted_setpoint(
-        self,
-        zone_id: str,
-        base_setpoint: float,
-        current_time: datetime | None = None
+        self, zone_id: str, base_setpoint: float, current_time: datetime | None = None
     ) -> float | None:
         """Get adjusted setpoint for a zone based on contact state.
 
@@ -349,5 +331,5 @@ class ContactSensorManager:
             "contact_delay_seconds": handler.contact_delay_seconds,
             "action": handler.action.value,
             "frost_protection_temp": handler.frost_protection_temp,
-            "learning_grace_seconds": handler.learning_grace_seconds
+            "learning_grace_seconds": handler.learning_grace_seconds,
         }

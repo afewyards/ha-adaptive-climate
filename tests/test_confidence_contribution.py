@@ -159,9 +159,7 @@ class TestSerialization:
             "heating_rate_contribution": 0.12,
             "recovery_cycle_count": 8,
         }
-        tracker = ConfidenceContributionTracker.from_dict(
-            data, HeatingType.FLOOR_HYDRONIC
-        )
+        tracker = ConfidenceContributionTracker.from_dict(data, HeatingType.FLOOR_HYDRONIC)
 
         assert tracker.maintenance_contribution == pytest.approx(0.20, rel=0.01)
         assert tracker.heating_rate_contribution == pytest.approx(0.12, rel=0.01)

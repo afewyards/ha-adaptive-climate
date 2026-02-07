@@ -1,4 +1,5 @@
 """Tests for shared test fixtures in conftest.py."""
+
 from datetime import datetime, timezone, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
@@ -7,7 +8,7 @@ class TestMockHass:
     """Tests for the shared mock_hass fixture."""
 
     def test_mock_hass_has_states(self, mock_hass):
-        assert hasattr(mock_hass, 'states')
+        assert hasattr(mock_hass, "states")
         assert isinstance(mock_hass.states, MagicMock)
 
     def test_mock_hass_has_async_services(self, mock_hass):
@@ -23,12 +24,12 @@ class TestMockHass:
         assert "learning_store" in ac_data
 
     def test_mock_hass_has_async_create_task(self, mock_hass):
-        assert hasattr(mock_hass, 'async_create_task')
+        assert hasattr(mock_hass, "async_create_task")
         assert isinstance(mock_hass.async_create_task, MagicMock)
 
     def test_mock_hass_has_async_call_later(self, mock_hass):
         """async_call_later should return a cancel callback."""
-        assert hasattr(mock_hass, 'async_call_later')
+        assert hasattr(mock_hass, "async_call_later")
         cancel = mock_hass.async_call_later(10, lambda: None)
         assert callable(cancel)
 
@@ -97,12 +98,12 @@ class TestMakeThermostat:
     def test_returns_namespace_with_all_components(self, make_thermostat):
         """Factory returns object with all expected components."""
         t = make_thermostat()
-        assert hasattr(t, 'learner')
-        assert hasattr(t, 'pid')
-        assert hasattr(t, 'gains_manager')
-        assert hasattr(t, 'cycle_tracker')
-        assert hasattr(t, 'dispatcher')
-        assert hasattr(t, 'heating_rate_learner')
+        assert hasattr(t, "learner")
+        assert hasattr(t, "pid")
+        assert hasattr(t, "gains_manager")
+        assert hasattr(t, "cycle_tracker")
+        assert hasattr(t, "dispatcher")
+        assert hasattr(t, "heating_rate_learner")
 
     def test_components_are_real_instances(self, make_thermostat):
         """Components are real instances, not mocks."""

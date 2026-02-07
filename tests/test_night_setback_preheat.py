@@ -1,4 +1,5 @@
 """Tests for NightSetback integration with PreheatLearner."""
+
 import pytest
 from datetime import datetime
 from custom_components.adaptive_climate.adaptive.night_setback import NightSetback
@@ -18,7 +19,7 @@ class TestNightSetbackPreheatIntegration:
             end_temp=20.0,
             outdoor_temp=5.0,
             duration_minutes=120.0,
-            timestamp=datetime(2024, 1, 15, 0, 0)
+            timestamp=datetime(2024, 1, 15, 0, 0),
         )
 
         setback = NightSetback(
@@ -27,7 +28,7 @@ class TestNightSetbackPreheatIntegration:
             setback_delta=3.0,
             recovery_deadline="07:00",
             preheat_learner=learner,
-            heating_type="radiator"
+            heating_type="radiator",
         )
 
         # Current: 05:00, 2 hours until deadline
@@ -44,9 +45,7 @@ class TestNightSetbackPreheatIntegration:
         current_temp = 16.0
         outdoor_temp = 5.0
 
-        should_recover = setback.should_start_recovery(
-            current, current_temp, base_setpoint, outdoor_temp
-        )
+        should_recover = setback.should_start_recovery(current, current_temp, base_setpoint, outdoor_temp)
         assert should_recover is True
 
     def test_should_start_recovery_preheat_learner_with_data(self):
@@ -59,7 +58,7 @@ class TestNightSetbackPreheatIntegration:
                 end_temp=20.0,
                 outdoor_temp=8.0,
                 duration_minutes=60.0,  # 2°C in 60 min = 2.0°C/h
-                timestamp=datetime(2024, 1, 15, i, 0)
+                timestamp=datetime(2024, 1, 15, i, 0),
             )
 
         setback = NightSetback(
@@ -68,7 +67,7 @@ class TestNightSetbackPreheatIntegration:
             setback_delta=2.0,
             recovery_deadline="07:00",
             preheat_learner=learner,
-            heating_type="radiator"
+            heating_type="radiator",
         )
 
         # Current: 05:30, 1.5 hours until deadline
@@ -84,9 +83,7 @@ class TestNightSetbackPreheatIntegration:
         current_temp = 18.0
         outdoor_temp = 8.0
 
-        should_recover = setback.should_start_recovery(
-            current, current_temp, base_setpoint, outdoor_temp
-        )
+        should_recover = setback.should_start_recovery(current, current_temp, base_setpoint, outdoor_temp)
         assert should_recover is False
 
     def test_should_start_recovery_fallback_to_heating_type(self):
@@ -97,7 +94,7 @@ class TestNightSetbackPreheatIntegration:
             setback_delta=3.0,
             recovery_deadline="07:00",
             preheat_learner=None,  # No learner
-            heating_type="forced_air"
+            heating_type="forced_air",
         )
 
         # Current: 05:00, 2 hours until deadline
@@ -111,9 +108,7 @@ class TestNightSetbackPreheatIntegration:
         base_setpoint = 20.0
         current_temp = 16.0
 
-        should_recover = setback.should_start_recovery(
-            current, current_temp, base_setpoint
-        )
+        should_recover = setback.should_start_recovery(current, current_temp, base_setpoint)
         assert should_recover is False
 
     def test_should_start_recovery_returns_true_when_time_is_up(self):
@@ -126,7 +121,7 @@ class TestNightSetbackPreheatIntegration:
                 end_temp=20.0,
                 outdoor_temp=10.0,
                 duration_minutes=60.0,
-                timestamp=datetime(2024, 1, 15, i, 0)
+                timestamp=datetime(2024, 1, 15, i, 0),
             )
 
         setback = NightSetback(
@@ -135,7 +130,7 @@ class TestNightSetbackPreheatIntegration:
             setback_delta=3.0,
             recovery_deadline="07:00",
             preheat_learner=learner,
-            heating_type="radiator"
+            heating_type="radiator",
         )
 
         # Current: 06:30, 0.5 hours until deadline
@@ -150,9 +145,7 @@ class TestNightSetbackPreheatIntegration:
         current_temp = 16.0
         outdoor_temp = 10.0
 
-        should_recover = setback.should_start_recovery(
-            current, current_temp, base_setpoint, outdoor_temp
-        )
+        should_recover = setback.should_start_recovery(current, current_temp, base_setpoint, outdoor_temp)
         assert should_recover is True
 
     def test_should_start_recovery_returns_false_when_plenty_of_time(self):
@@ -165,7 +158,7 @@ class TestNightSetbackPreheatIntegration:
                 end_temp=20.0,
                 outdoor_temp=10.0,
                 duration_minutes=30.0,
-                timestamp=datetime(2024, 1, 15, i, 0)
+                timestamp=datetime(2024, 1, 15, i, 0),
             )
 
         setback = NightSetback(
@@ -174,7 +167,7 @@ class TestNightSetbackPreheatIntegration:
             setback_delta=2.0,
             recovery_deadline="07:00",
             preheat_learner=learner,
-            heating_type="forced_air"
+            heating_type="forced_air",
         )
 
         # Current: 03:00, 4 hours until deadline
@@ -189,9 +182,7 @@ class TestNightSetbackPreheatIntegration:
         current_temp = 18.0
         outdoor_temp = 10.0
 
-        should_recover = setback.should_start_recovery(
-            current, current_temp, base_setpoint, outdoor_temp
-        )
+        should_recover = setback.should_start_recovery(current, current_temp, base_setpoint, outdoor_temp)
         assert should_recover is False
 
     def test_should_start_recovery_respects_max_preheat_hours(self):
@@ -204,7 +195,7 @@ class TestNightSetbackPreheatIntegration:
             end_temp=12.0,
             outdoor_temp=0.0,
             duration_minutes=360.0,
-            timestamp=datetime(2024, 1, 15, 0, 0)
+            timestamp=datetime(2024, 1, 15, 0, 0),
         )
 
         setback = NightSetback(
@@ -213,7 +204,7 @@ class TestNightSetbackPreheatIntegration:
             setback_delta=5.0,
             recovery_deadline="07:00",
             preheat_learner=learner,
-            heating_type="floor_hydronic"
+            heating_type="floor_hydronic",
         )
 
         # Current: 04:00, 3 hours until deadline
@@ -230,17 +221,13 @@ class TestNightSetbackPreheatIntegration:
         current_temp = 12.0
         outdoor_temp = 0.0
 
-        should_recover = setback.should_start_recovery(
-            current, current_temp, base_setpoint, outdoor_temp
-        )
+        should_recover = setback.should_start_recovery(current, current_temp, base_setpoint, outdoor_temp)
         # With 2 hour max and 3 hours available, should NOT start yet
         assert should_recover is False
 
         # But at 05:30 (1.5 hours until deadline), should start
         current = datetime(2024, 1, 15, 5, 30)
-        should_recover = setback.should_start_recovery(
-            current, current_temp, base_setpoint, outdoor_temp
-        )
+        should_recover = setback.should_start_recovery(current, current_temp, base_setpoint, outdoor_temp)
         assert should_recover is True
 
     def test_should_start_recovery_without_outdoor_temp_backward_compat(self):
@@ -254,7 +241,7 @@ class TestNightSetbackPreheatIntegration:
             setback_delta=2.0,
             recovery_deadline="07:00",
             preheat_learner=learner,
-            heating_type="radiator"
+            heating_type="radiator",
         )
 
         # Current: 05:00, 2 hours until deadline
@@ -267,9 +254,7 @@ class TestNightSetbackPreheatIntegration:
         base_setpoint = 20.0
         current_temp = 17.0
 
-        should_recover = setback.should_start_recovery(
-            current, current_temp, base_setpoint
-        )
+        should_recover = setback.should_start_recovery(current, current_temp, base_setpoint)
         assert should_recover is True
 
     def test_should_start_recovery_no_recovery_deadline(self):
@@ -283,7 +268,7 @@ class TestNightSetbackPreheatIntegration:
             setback_delta=2.0,
             recovery_deadline=None,  # No deadline
             preheat_learner=learner,
-            heating_type="radiator"
+            heating_type="radiator",
         )
 
         current = datetime(2024, 1, 15, 5, 0)
@@ -291,9 +276,7 @@ class TestNightSetbackPreheatIntegration:
         current_temp = 16.0
         outdoor_temp = 5.0
 
-        should_recover = setback.should_start_recovery(
-            current, current_temp, base_setpoint, outdoor_temp
-        )
+        should_recover = setback.should_start_recovery(current, current_temp, base_setpoint, outdoor_temp)
         assert should_recover is False
 
     def test_should_start_recovery_learner_no_outdoor_bin_data(self):
@@ -305,7 +288,7 @@ class TestNightSetbackPreheatIntegration:
             end_temp=20.0,
             outdoor_temp=8.0,  # mild bin
             duration_minutes=60.0,
-            timestamp=datetime(2024, 1, 15, 0, 0)
+            timestamp=datetime(2024, 1, 15, 0, 0),
         )
 
         setback = NightSetback(
@@ -314,7 +297,7 @@ class TestNightSetbackPreheatIntegration:
             setback_delta=2.0,
             recovery_deadline="07:00",
             preheat_learner=learner,
-            heating_type="radiator"
+            heating_type="radiator",
         )
 
         # Query with cold outdoor temp (different bin)
@@ -324,9 +307,7 @@ class TestNightSetbackPreheatIntegration:
         current_temp = 18.0
         outdoor_temp = 0.0  # cold bin - no observations
 
-        should_recover = setback.should_start_recovery(
-            current, current_temp, base_setpoint, outdoor_temp
-        )
+        should_recover = setback.should_start_recovery(current, current_temp, base_setpoint, outdoor_temp)
         # With fallback, should calculate appropriately
         # This is mostly checking it doesn't crash
         assert isinstance(should_recover, bool)
@@ -339,23 +320,14 @@ class TestNightSetbackPreheatLearnerParameter:
         """Test NightSetback can be initialized with preheat_learner."""
         learner = PreheatLearner(heating_type="radiator")
 
-        setback = NightSetback(
-            start_time="22:00",
-            end_time="06:00",
-            setback_delta=2.0,
-            preheat_learner=learner
-        )
+        setback = NightSetback(start_time="22:00", end_time="06:00", setback_delta=2.0, preheat_learner=learner)
 
-        assert hasattr(setback, 'preheat_learner')
+        assert hasattr(setback, "preheat_learner")
         assert setback.preheat_learner is learner
 
     def test_night_setback_preheat_learner_optional(self):
         """Test preheat_learner is optional."""
-        setback = NightSetback(
-            start_time="22:00",
-            end_time="06:00",
-            setback_delta=2.0
-        )
+        setback = NightSetback(start_time="22:00", end_time="06:00", setback_delta=2.0)
 
-        assert hasattr(setback, 'preheat_learner')
+        assert hasattr(setback, "preheat_learner")
         assert setback.preheat_learner is None

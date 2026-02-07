@@ -1,4 +1,5 @@
 """Tests for Adaptive Climate performance sensors."""
+
 import pytest
 import asyncio
 from unittest.mock import Mock, MagicMock
@@ -48,6 +49,7 @@ def test_duty_cycle_calculation():
     # Event needs to support subscripting for type hints like Event[EventStateChangedData]
     class MockEvent:
         """Mock Event class that supports generic subscripting."""
+
         def __class_getitem__(cls, item):
             return cls
 
@@ -59,16 +61,16 @@ def test_duty_cycle_calculation():
     mock_restore_state = Mock()
     mock_restore_state.RestoreEntity = MockRestoreEntity
 
-    sys.modules['homeassistant'] = Mock()
-    sys.modules['homeassistant.core'] = mock_core
-    sys.modules['homeassistant.components'] = Mock()
-    sys.modules['homeassistant.components.sensor'] = mock_sensor_module
-    sys.modules['homeassistant.const'] = mock_const
-    sys.modules['homeassistant.helpers'] = Mock()
-    sys.modules['homeassistant.helpers.entity_platform'] = Mock()
-    sys.modules['homeassistant.helpers.typing'] = Mock()
-    sys.modules['homeassistant.helpers.event'] = mock_event
-    sys.modules['homeassistant.helpers.restore_state'] = mock_restore_state
+    sys.modules["homeassistant"] = Mock()
+    sys.modules["homeassistant.core"] = mock_core
+    sys.modules["homeassistant.components"] = Mock()
+    sys.modules["homeassistant.components.sensor"] = mock_sensor_module
+    sys.modules["homeassistant.const"] = mock_const
+    sys.modules["homeassistant.helpers"] = Mock()
+    sys.modules["homeassistant.helpers.entity_platform"] = Mock()
+    sys.modules["homeassistant.helpers.typing"] = Mock()
+    sys.modules["homeassistant.helpers.event"] = mock_event
+    sys.modules["homeassistant.helpers.restore_state"] = mock_restore_state
 
     from custom_components.adaptive_climate.sensor import DutyCycleSensor
 
@@ -134,6 +136,7 @@ def test_power_m2_estimation():
     # Event needs to support subscripting for type hints like Event[EventStateChangedData]
     class MockEvent:
         """Mock Event class that supports generic subscripting."""
+
         def __class_getitem__(cls, item):
             return cls
 
@@ -143,16 +146,16 @@ def test_power_m2_estimation():
     mock_restore_state = Mock()
     mock_restore_state.RestoreEntity = MockRestoreEntity
 
-    sys.modules['homeassistant'] = Mock()
-    sys.modules['homeassistant.core'] = mock_core
-    sys.modules['homeassistant.components'] = Mock()
-    sys.modules['homeassistant.components.sensor'] = mock_sensor_module
-    sys.modules['homeassistant.const'] = Mock()
-    sys.modules['homeassistant.helpers'] = Mock()
-    sys.modules['homeassistant.helpers.entity_platform'] = Mock()
-    sys.modules['homeassistant.helpers.typing'] = Mock()
-    sys.modules['homeassistant.helpers.event'] = Mock()
-    sys.modules['homeassistant.helpers.restore_state'] = mock_restore_state
+    sys.modules["homeassistant"] = Mock()
+    sys.modules["homeassistant.core"] = mock_core
+    sys.modules["homeassistant.components"] = Mock()
+    sys.modules["homeassistant.components.sensor"] = mock_sensor_module
+    sys.modules["homeassistant.const"] = Mock()
+    sys.modules["homeassistant.helpers"] = Mock()
+    sys.modules["homeassistant.helpers.entity_platform"] = Mock()
+    sys.modules["homeassistant.helpers.typing"] = Mock()
+    sys.modules["homeassistant.helpers.event"] = Mock()
+    sys.modules["homeassistant.helpers.restore_state"] = mock_restore_state
 
     from custom_components.adaptive_climate.sensor import PowerPerM2Sensor
 
@@ -167,9 +170,7 @@ def test_power_m2_estimation():
         "max_power_w_m2": 100.0,
     }
 
-    mock_hass.data = {
-        "adaptive_climate": {"coordinator": coordinator}
-    }
+    mock_hass.data = {"adaptive_climate": {"coordinator": coordinator}}
 
     # Create sensor
     sensor = PowerPerM2Sensor(
@@ -231,6 +232,7 @@ def test_average_cycle_time():
     # Event needs to support subscripting for type hints like Event[EventStateChangedData]
     class MockEvent:
         """Mock Event class that supports generic subscripting."""
+
         def __class_getitem__(cls, item):
             return cls
 
@@ -242,17 +244,17 @@ def test_average_cycle_time():
     mock_restore_state = Mock()
     mock_restore_state.RestoreEntity = MockRestoreEntity
 
-    sys.modules['homeassistant'] = Mock()
-    sys.modules['homeassistant.core'] = mock_core
-    sys.modules['homeassistant.components'] = Mock()
-    sys.modules['homeassistant.components.sensor'] = mock_sensor_module
-    sys.modules['homeassistant.const'] = Mock()
-    sys.modules['homeassistant.const'].STATE_ON = "on"
-    sys.modules['homeassistant.helpers'] = Mock()
-    sys.modules['homeassistant.helpers.entity_platform'] = Mock()
-    sys.modules['homeassistant.helpers.typing'] = Mock()
-    sys.modules['homeassistant.helpers.event'] = Mock()
-    sys.modules['homeassistant.helpers.restore_state'] = mock_restore_state
+    sys.modules["homeassistant"] = Mock()
+    sys.modules["homeassistant.core"] = mock_core
+    sys.modules["homeassistant.components"] = Mock()
+    sys.modules["homeassistant.components.sensor"] = mock_sensor_module
+    sys.modules["homeassistant.const"] = Mock()
+    sys.modules["homeassistant.const"].STATE_ON = "on"
+    sys.modules["homeassistant.helpers"] = Mock()
+    sys.modules["homeassistant.helpers.entity_platform"] = Mock()
+    sys.modules["homeassistant.helpers.typing"] = Mock()
+    sys.modules["homeassistant.helpers.event"] = Mock()
+    sys.modules["homeassistant.helpers.restore_state"] = mock_restore_state
 
     from custom_components.adaptive_climate.sensor import CycleTimeSensor
 

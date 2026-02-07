@@ -166,6 +166,7 @@ class CycleTrackerManager:
 
         # Create metrics recorder
         from .cycle_metrics import CycleMetricsRecorder
+
         self._metrics_recorder = CycleMetricsRecorder(
             hass=hass,
             zone_id=zone_id,
@@ -342,10 +343,7 @@ class CycleTrackerManager:
             minutes: Transport delay in minutes (can be 0 for warm manifold)
         """
         self._metrics_recorder.set_transport_delay(minutes)
-        self._logger.debug(
-            "Transport delay set to %.1f minutes for current cycle",
-            minutes
-        )
+        self._logger.debug("Transport delay set to %.1f minutes for current cycle", minutes)
 
     def _on_cycle_started(self, event: "CycleStartedEvent") -> None:
         """Handle CYCLE_STARTED event.
@@ -404,14 +402,10 @@ class CycleTrackerManager:
         """
         # Verify we're in the correct state for settling
         if event.hvac_mode == "heat" and self._state != CycleState.HEATING:
-            self._logger.debug(
-                "Session ended while in state %s, ignoring", self._state
-            )
+            self._logger.debug("Session ended while in state %s, ignoring", self._state)
             return
         elif event.hvac_mode == "cool" and self._state != CycleState.COOLING:
-            self._logger.debug(
-                "Session ended while in state %s, ignoring", self._state
-            )
+            self._logger.debug("Session ended while in state %s, ignoring", self._state)
             return
 
         # Capture clamping state from event
@@ -458,9 +452,7 @@ class CycleTrackerManager:
 
         # Use centralized interruption handler
         self._handle_interruption(
-            InterruptionType.CONTACT_SENSOR.value,
-            should_abort=True,
-            reason="contact sensor pause (window/door opened)"
+            InterruptionType.CONTACT_SENSOR.value, should_abort=True, reason="contact sensor pause (window/door opened)"
         )
 
     def _on_contact_resume(self, event: "ContactResumeEvent") -> None:
@@ -499,20 +491,12 @@ class CycleTrackerManager:
         if interruption_type == InterruptionType.SETPOINT_MAJOR:
             # Major change, abort cycle
             reason = f"setpoint change: {event.old_target:.2f}°C -> {event.new_target:.2f}°C (device inactive)"
-            self._handle_interruption(
-                interruption_type.value,
-                should_abort=True,
-                reason=reason
-            )
+            self._handle_interruption(interruption_type.value, should_abort=True, reason=reason)
         else:
             # Minor change, continue tracking with new setpoint
             self._cycle_target_temp = event.new_target
             reason = f"setpoint change: {event.old_target:.2f}°C -> {event.new_target:.2f}°C (device active or minor)"
-            self._handle_interruption(
-                interruption_type.value,
-                should_abort=False,
-                reason=reason
-            )
+            self._handle_interruption(interruption_type.value, should_abort=False, reason=reason)
 
     def _on_mode_changed_event(self, event: "ModeChangedEvent") -> None:
         """Handle MODE_CHANGED event.
@@ -530,18 +514,12 @@ class CycleTrackerManager:
         cycle_state_str = self._state.value  # "heating", "cooling", or "settling"
 
         # Classify the interruption
-        interruption_type = InterruptionClassifier.classify_mode_change(
-            event.old_mode, event.new_mode, cycle_state_str
-        )
+        interruption_type = InterruptionClassifier.classify_mode_change(event.old_mode, event.new_mode, cycle_state_str)
 
         if interruption_type is not None:
             # Incompatible mode change, abort cycle
             reason = f"mode change: {event.old_mode} -> {event.new_mode} (incompatible with {cycle_state_str})"
-            self._handle_interruption(
-                interruption_type.value,
-                should_abort=True,
-                reason=reason
-            )
+            self._handle_interruption(interruption_type.value, should_abort=True, reason=reason)
 
     def _on_temperature_update(self, event: "TemperatureUpdateEvent") -> None:
         """Handle TEMPERATURE_UPDATE event for integral tracking.
@@ -639,12 +617,7 @@ class CycleTrackerManager:
                 self._logger.info("Settling complete, finalizing cycle")
                 await self._finalize_cycle()
 
-    def _handle_interruption(
-        self,
-        interruption_type: str,
-        should_abort: bool,
-        reason: str
-    ) -> None:
+    def _handle_interruption(self, interruption_type: str, should_abort: bool, reason: str) -> None:
         """Centralized interruption handler.
 
         Args:
@@ -703,7 +676,6 @@ class CycleTrackerManager:
 
         # Cancel settling timeout if active
         self._cancel_settling_timeout()
-
 
     def _is_cycle_valid(self) -> tuple[bool, str]:
         """Check if the current cycle is valid for recording.
@@ -779,7 +751,6 @@ class CycleTrackerManager:
 
         self._logger.debug("Temperature settled: MAD=%.3f°C", mad)
         return True
-
 
     async def _finalize_cycle(self) -> None:
         """Finalize cycle and record metrics.

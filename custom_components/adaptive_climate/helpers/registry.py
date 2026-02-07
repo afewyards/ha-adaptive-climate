@@ -16,9 +16,7 @@ except ImportError:
     pass
 
 
-def discover_zone_floors(
-    hass: "HomeAssistant", zone_entity_ids: List[str]
-) -> Dict[str, int | None]:
+def discover_zone_floors(hass: "HomeAssistant", zone_entity_ids: List[str]) -> Dict[str, int | None]:
     """Discover floor levels for zones using entity/area/floor registries.
 
     Args:

@@ -29,8 +29,8 @@ class TestOpenWindowDetector:
         detector = OpenWindowDetector(
             temp_drop=3.0,
             detection_window=600,  # 10 minutes
-            pause_duration=1800,   # 30 minutes
-            cooldown=600,          # 10 minutes
+            pause_duration=1800,  # 30 minutes
+            cooldown=600,  # 10 minutes
         )
 
         assert detector._temp_drop == 3.0

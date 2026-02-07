@@ -1,4 +1,5 @@
 """Energy consumption and cost tracking for adaptive thermostat."""
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta
@@ -7,9 +8,9 @@ from datetime import datetime, timedelta
 # Unit conversion constants to kWh
 UNIT_CONVERSIONS = {
     "GJ": 277.778,  # 1 GJ = 277.778 kWh
-    "KWH": 1.0,     # 1 kWh = 1 kWh
+    "KWH": 1.0,  # 1 kWh = 1 kWh
     "MWH": 1000.0,  # 1 MWh = 1000 kWh
-    "WH": 0.001,    # 1 Wh = 0.001 kWh
+    "WH": 0.001,  # 1 Wh = 0.001 kWh
 }
 
 
@@ -40,10 +41,7 @@ class EnergyTracker:
         self.price_entity_id = price_entity_id
 
         if self.unit not in UNIT_CONVERSIONS:
-            raise ValueError(
-                f"Unsupported unit: {unit}. "
-                f"Supported units: {', '.join(UNIT_CONVERSIONS.keys())}"
-            )
+            raise ValueError(f"Unsupported unit: {unit}. Supported units: {', '.join(UNIT_CONVERSIONS.keys())}")
 
         self._daily_readings: list[tuple[datetime, float]] = []
         self._weekly_readings: list[tuple[datetime, float]] = []

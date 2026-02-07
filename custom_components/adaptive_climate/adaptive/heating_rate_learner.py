@@ -1,4 +1,5 @@
 """Unified heating rate learning from cycle and session data."""
+
 from __future__ import annotations
 
 import logging
@@ -162,9 +163,7 @@ class HeatingRateLearner:
         """Get total observation count across all bins."""
         return sum(len(obs_list) for obs_list in self._bins.values())
 
-    def get_heating_rate(
-        self, delta: float, outdoor_temp: float
-    ) -> tuple[float, str]:
+    def get_heating_rate(self, delta: float, outdoor_temp: float) -> tuple[float, str]:
         """Get heating rate for given conditions.
 
         Args:
@@ -374,9 +373,7 @@ class HeatingRateLearner:
         """Acknowledge that Ki boost was applied, reset counter."""
         self._stall_counter = 0
 
-    def get_rate_ratio(
-        self, current_rate: float, delta: float, outdoor_temp: float
-    ) -> float | None:
+    def get_rate_ratio(self, current_rate: float, delta: float, outdoor_temp: float) -> float | None:
         """Get ratio of current rate to expected rate.
 
         Args:
@@ -401,9 +398,7 @@ class HeatingRateLearner:
 
         return current_rate / expected_rate
 
-    def is_underperforming(
-        self, current_rate: float, delta: float, outdoor_temp: float
-    ) -> bool:
+    def is_underperforming(self, current_rate: float, delta: float, outdoor_temp: float) -> bool:
         """Check if current rate is significantly below expected.
 
         Returns True if rate < 60% of expected AND we have sufficient data.

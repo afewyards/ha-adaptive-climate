@@ -194,13 +194,9 @@ class TestRobustAverage:
         """Test custom outlier threshold."""
         values = [1.0, 2.0, 3.0, 4.0, 10.0]
         # Strict threshold detects more outliers
-        avg_strict, outliers_strict = robust_average(
-            values, outlier_threshold=2.0
-        )
+        avg_strict, outliers_strict = robust_average(values, outlier_threshold=2.0)
         # Relaxed threshold detects fewer outliers
-        avg_relaxed, outliers_relaxed = robust_average(
-            values, outlier_threshold=5.0
-        )
+        avg_relaxed, outliers_relaxed = robust_average(values, outlier_threshold=5.0)
         assert len(outliers_strict) >= len(outliers_relaxed)
 
 

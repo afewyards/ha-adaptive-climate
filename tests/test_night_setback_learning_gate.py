@@ -18,6 +18,7 @@ Interface expectation:
         '''Returns max allowed setback delta, or None for unlimited.'''
         ...
 """
+
 import pytest
 from datetime import datetime
 from unittest.mock import Mock, patch
@@ -87,7 +88,7 @@ class TestGraduatedSetbackCallbackInterface:
         # During night period (23:00)
         current = datetime(2024, 1, 15, 23, 0)
 
-        with patch('homeassistant.util.dt.utcnow', return_value=current):
+        with patch("homeassistant.util.dt.utcnow", return_value=current):
             effective_target, in_night_period, info = manager.calculate_night_setback_adjustment(current)
 
         # Should return original temperature without adjustment
@@ -108,7 +109,7 @@ class TestGraduatedSetbackCallbackInterface:
         # During night period (02:00)
         current = datetime(2024, 1, 15, 2, 0)
 
-        with patch('homeassistant.util.dt.utcnow', return_value=current):
+        with patch("homeassistant.util.dt.utcnow", return_value=current):
             effective_target, in_night_period, info = manager.calculate_night_setback_adjustment(current)
 
         # Should return original temperature without adjustment
@@ -129,7 +130,7 @@ class TestGraduatedSetbackCallbackInterface:
         # During night period (23:00)
         current = datetime(2024, 1, 15, 23, 0)
 
-        with patch('homeassistant.util.dt.utcnow', return_value=current):
+        with patch("homeassistant.util.dt.utcnow", return_value=current):
             effective_target, in_night_period, info = manager.calculate_night_setback_adjustment(current)
 
         # Should apply 0.5°C setback (capped by allowed_delta)
@@ -152,7 +153,7 @@ class TestGraduatedSetbackCallbackInterface:
         # During night period (01:00)
         current = datetime(2024, 1, 15, 1, 0)
 
-        with patch('homeassistant.util.dt.utcnow', return_value=current):
+        with patch("homeassistant.util.dt.utcnow", return_value=current):
             effective_target, in_night_period, info = manager.calculate_night_setback_adjustment(current)
 
         # Should apply 1.0°C setback (capped by allowed_delta)
@@ -175,7 +176,7 @@ class TestGraduatedSetbackCallbackInterface:
         # During night period (04:00)
         current = datetime(2024, 1, 15, 4, 0)
 
-        with patch('homeassistant.util.dt.utcnow', return_value=current):
+        with patch("homeassistant.util.dt.utcnow", return_value=current):
             effective_target, in_night_period, info = manager.calculate_night_setback_adjustment(current)
 
         # Should apply the full setback delta
@@ -198,7 +199,7 @@ class TestGraduatedSetbackCallbackInterface:
         # During night period (05:00)
         current = datetime(2024, 1, 15, 5, 0)
 
-        with patch('homeassistant.util.dt.utcnow', return_value=current):
+        with patch("homeassistant.util.dt.utcnow", return_value=current):
             effective_target, in_night_period, info = manager.calculate_night_setback_adjustment(current)
 
         # Should apply the full setback delta
@@ -221,7 +222,7 @@ class TestGraduatedSetbackCallbackInterface:
         # During night period (23:00)
         current = datetime(2024, 1, 15, 23, 0)
 
-        with patch('homeassistant.util.dt.utcnow', return_value=current):
+        with patch("homeassistant.util.dt.utcnow", return_value=current):
             effective_target, in_night_period, info = manager.calculate_night_setback_adjustment(current)
 
         # Should apply only the configured delta (capped by config)
@@ -246,7 +247,7 @@ class TestGraduatedSetbackCallbackInterface:
         current = datetime(2024, 1, 15, 23, 0)
 
         # First call - should suppress setback
-        with patch('homeassistant.util.dt.utcnow', return_value=current):
+        with patch("homeassistant.util.dt.utcnow", return_value=current):
             effective_target_1, _, info_1 = manager.calculate_night_setback_adjustment(current)
 
         assert effective_target_1 == 20.0  # No setback
@@ -256,7 +257,7 @@ class TestGraduatedSetbackCallbackInterface:
         get_allowed_setback_delta.return_value = 0.5
 
         # Second call - should now apply 0.5°C setback
-        with patch('homeassistant.util.dt.utcnow', return_value=current):
+        with patch("homeassistant.util.dt.utcnow", return_value=current):
             effective_target_2, _, info_2 = manager.calculate_night_setback_adjustment(current)
 
         assert effective_target_2 == 19.5  # 0.5°C setback
@@ -279,7 +280,7 @@ class TestGraduatedSetbackCallbackInterface:
         current = datetime(2024, 1, 15, 23, 0)
 
         # First call - should apply 0.5°C setback
-        with patch('homeassistant.util.dt.utcnow', return_value=current):
+        with patch("homeassistant.util.dt.utcnow", return_value=current):
             effective_target_1, _, info_1 = manager.calculate_night_setback_adjustment(current)
 
         assert effective_target_1 == 19.5  # 0.5°C setback
@@ -291,7 +292,7 @@ class TestGraduatedSetbackCallbackInterface:
         get_allowed_setback_delta.return_value = None
 
         # Second call - should now apply full setback
-        with patch('homeassistant.util.dt.utcnow', return_value=current):
+        with patch("homeassistant.util.dt.utcnow", return_value=current):
             effective_target_2, _, info_2 = manager.calculate_night_setback_adjustment(current)
 
         assert effective_target_2 == 18.0  # 2.0°C setback (full)
@@ -310,7 +311,7 @@ class TestGraduatedSetbackCallbackInterface:
         # During night period
         current = datetime(2024, 1, 15, 23, 0)
 
-        with patch('homeassistant.util.dt.utcnow', return_value=current):
+        with patch("homeassistant.util.dt.utcnow", return_value=current):
             effective_target, in_night_period, info = manager.calculate_night_setback_adjustment(current)
 
         # Should apply full setback (backward compatibility)
@@ -331,7 +332,7 @@ class TestGraduatedSetbackCallbackInterface:
         # During day (10:00)
         current = datetime(2024, 1, 15, 10, 0)
 
-        with patch('homeassistant.util.dt.utcnow', return_value=current):
+        with patch("homeassistant.util.dt.utcnow", return_value=current):
             effective_target, in_night_period, info = manager.calculate_night_setback_adjustment(current)
 
         # Not in night period, so no setback
@@ -386,7 +387,7 @@ class TestGraduatedSetbackEdgeCases:
         # During night period
         current = datetime(2024, 1, 15, 23, 0)
 
-        with patch('homeassistant.util.dt.utcnow', return_value=current):
+        with patch("homeassistant.util.dt.utcnow", return_value=current):
             effective_target, in_night_period, info = manager.calculate_night_setback_adjustment(current)
 
         # Should apply only 0.1°C setback
@@ -409,7 +410,7 @@ class TestGraduatedSetbackEdgeCases:
         # During night period
         current = datetime(2024, 1, 15, 23, 0)
 
-        with patch('homeassistant.util.dt.utcnow', return_value=current):
+        with patch("homeassistant.util.dt.utcnow", return_value=current):
             effective_target, in_night_period, info = manager.calculate_night_setback_adjustment(current)
 
         # Should apply full 2.0°C setback
@@ -432,7 +433,7 @@ class TestGraduatedSetbackEdgeCases:
         # During night period
         current = datetime(2024, 1, 15, 23, 0)
 
-        with patch('homeassistant.util.dt.utcnow', return_value=current):
+        with patch("homeassistant.util.dt.utcnow", return_value=current):
             effective_target, in_night_period, info = manager.calculate_night_setback_adjustment(current)
 
         # Negative falls through to None case (unlimited) - applies full setback

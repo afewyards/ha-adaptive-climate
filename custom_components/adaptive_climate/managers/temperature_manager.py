@@ -1,4 +1,5 @@
 """Temperature and preset mode manager for Adaptive Climate integration."""
+
 from __future__ import annotations
 
 import logging
@@ -16,6 +17,7 @@ try:
         PRESET_SLEEP,
         PRESET_ACTIVITY,
     )
+
     HAS_HOMEASSISTANT = True
 except ImportError:
     HAS_HOMEASSISTANT = False
@@ -172,7 +174,8 @@ class TemperatureManager:
     def has_preset_support(self) -> bool:
         """Return True if any preset temperatures are configured."""
         return any(
-            temp is not None for temp in [
+            temp is not None
+            for temp in [
                 self._away_temp,
                 self._eco_temp,
                 self._boost_temp,
@@ -238,7 +241,7 @@ class TemperatureManager:
             self._set_force_off(True)
 
         # Check if temperature matches a preset and sync mode is enabled
-        if temperature in self._preset_temp_modes and self._preset_sync_mode == 'sync':
+        if temperature in self._preset_temp_modes and self._preset_sync_mode == "sync":
             await self.async_set_preset_mode(self._preset_temp_modes[temperature])
         else:
             await self.async_set_preset_mode(PRESET_NONE)
@@ -283,10 +286,10 @@ class TemperatureManager:
         # Handle PID mode changes for boost preset
         if self._boost_pid_off and self._attr_preset_mode == PRESET_BOOST:
             # Force PID OFF if requested and boost mode is active
-            await self._async_set_pid_mode('off')
+            await self._async_set_pid_mode("off")
         elif self._boost_pid_off and self._attr_preset_mode != PRESET_BOOST:
             # Force PID Auto if managed by boost_pid_off and not in boost mode
-            await self._async_set_pid_mode('auto')
+            await self._async_set_pid_mode("auto")
         else:
             # if boost_pid_off is false, don't change the PID mode
             await self._async_control_heating(True)
@@ -305,26 +308,26 @@ class TemperatureManager:
         """
         for preset_name, preset_temp in kwargs.items():
             # Handle disable variants
-            if 'disable' in preset_name and preset_temp:
+            if "disable" in preset_name and preset_temp:
                 value = None
             else:
                 value = max(min(float(preset_temp), self._max_temp), self._min_temp)
 
             # Map preset name to internal attribute
-            attr_name = preset_name.replace('_disable', '')
-            if attr_name == 'away_temp':
+            attr_name = preset_name.replace("_disable", "")
+            if attr_name == "away_temp":
                 self._away_temp = value
-            elif attr_name == 'eco_temp':
+            elif attr_name == "eco_temp":
                 self._eco_temp = value
-            elif attr_name == 'boost_temp':
+            elif attr_name == "boost_temp":
                 self._boost_temp = value
-            elif attr_name == 'comfort_temp':
+            elif attr_name == "comfort_temp":
                 self._comfort_temp = value
-            elif attr_name == 'home_temp':
+            elif attr_name == "home_temp":
                 self._home_temp = value
-            elif attr_name == 'sleep_temp':
+            elif attr_name == "sleep_temp":
                 self._sleep_temp = value
-            elif attr_name == 'activity_temp':
+            elif attr_name == "activity_temp":
                 self._activity_temp = value
 
         await self._async_control_heating(True)

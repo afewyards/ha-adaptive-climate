@@ -1,4 +1,5 @@
 """Heat output calculation from supply/return delta-T for adaptive thermostat."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -38,8 +39,7 @@ def calculate_heat_output_kw(
     """
     if supply_temp_c <= return_temp_c:
         raise ValueError(
-            f"Supply temperature ({supply_temp_c}°C) must be higher than "
-            f"return temperature ({return_temp_c}°C)"
+            f"Supply temperature ({supply_temp_c}°C) must be higher than return temperature ({return_temp_c}°C)"
         )
 
     if flow_rate_lpm < 0:
@@ -82,18 +82,14 @@ def calculate_flow_rate(
         ValueError: If time period is zero or negative
     """
     if volume_end < volume_start:
-        raise ValueError(
-            f"Volume cannot decrease: {volume_start}L → {volume_end}L"
-        )
+        raise ValueError(f"Volume cannot decrease: {volume_start}L → {volume_end}L")
 
     # Calculate time difference in seconds
     time_delta = time_end - time_start
     time_seconds = time_delta.total_seconds()
 
     if time_seconds <= 0:
-        raise ValueError(
-            f"Time period must be positive, got {time_seconds} seconds"
-        )
+        raise ValueError(f"Time period must be positive, got {time_seconds} seconds")
 
     # Calculate volume difference
     volume_delta = volume_end - volume_start

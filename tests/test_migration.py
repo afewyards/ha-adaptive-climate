@@ -6,16 +6,16 @@ import sys
 
 # Mock Home Assistant modules before importing
 # DO NOT replace homeassistant.components.climate - it's already set up in conftest.py
-if 'homeassistant.components' not in sys.modules:
-    sys.modules['homeassistant.components'] = MagicMock()
-if 'homeassistant' not in sys.modules:
-    sys.modules['homeassistant'] = MagicMock()
-if 'homeassistant.core' not in sys.modules:
-    sys.modules['homeassistant.core'] = MagicMock()
-if 'homeassistant.helpers' not in sys.modules:
-    sys.modules['homeassistant.helpers'] = MagicMock()
-if 'homeassistant.helpers.storage' not in sys.modules:
-    sys.modules['homeassistant.helpers.storage'] = MagicMock()
+if "homeassistant.components" not in sys.modules:
+    sys.modules["homeassistant.components"] = MagicMock()
+if "homeassistant" not in sys.modules:
+    sys.modules["homeassistant"] = MagicMock()
+if "homeassistant.core" not in sys.modules:
+    sys.modules["homeassistant.core"] = MagicMock()
+if "homeassistant.helpers" not in sys.modules:
+    sys.modules["homeassistant.helpers"] = MagicMock()
+if "homeassistant.helpers.storage" not in sys.modules:
+    sys.modules["homeassistant.helpers.storage"] = MagicMock()
 # DO NOT set sys.modules['homeassistant.components.climate'] - use the one from conftest.py
 
 
@@ -231,9 +231,7 @@ class TestPersistenceStorageMigration:
             "zones": {
                 "climate.living_room": {
                     "adaptive_learner": {
-                        "cycle_history": [
-                            {"overshoot": 0.3, "undershoot": 0.1, "settling_time": 300}
-                        ],
+                        "cycle_history": [{"overshoot": 0.3, "undershoot": 0.1, "settling_time": 300}],
                         "max_history": 100,
                     },
                     "ke_learner": {"current_ke": 0.5, "enabled": True},
@@ -312,9 +310,7 @@ class TestPersistenceStorageMigration:
             "zones": {
                 "climate.bedroom": {
                     "adaptive_learner": {
-                        "cycle_history": [
-                            {"overshoot": 0.2, "undershoot": 0.05, "settling_time": 250}
-                        ],
+                        "cycle_history": [{"overshoot": 0.2, "undershoot": 0.05, "settling_time": 250}],
                         "max_history": 100,
                     },
                     "last_updated": "2024-01-16T12:00:00+00:00",

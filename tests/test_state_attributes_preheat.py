@@ -1,4 +1,5 @@
 """Tests for preheat state attributes."""
+
 import pytest
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
@@ -104,7 +105,7 @@ class TestPreheatStateAttributes:
         assert "preheat_heating_rate_learned" not in attrs  # Not set when no learned rate
         assert attrs["preheat_observation_count"] == 0
 
-    @patch('custom_components.adaptive_climate.managers.state_attributes.dt_util')
+    @patch("custom_components.adaptive_climate.managers.state_attributes.dt_util")
     def test_preheat_scheduled_not_active(self, mock_dt_util):
         """Test preheat attributes when preheat is scheduled but not yet active."""
         # Mock dt_util.utcnow() to return a real datetime
@@ -137,9 +138,7 @@ class TestPreheatStateAttributes:
         controller = MagicMock()
         controller.calculator = calculator
         # Mock calculate_night_setback_adjustment to return (target, in_period, info)
-        controller.calculate_night_setback_adjustment.return_value = (
-            21.0, False, {"effective_delta": 0.0}
-        )
+        controller.calculate_night_setback_adjustment.return_value = (21.0, False, {"effective_delta": 0.0})
         thermostat._night_setback_controller = controller
 
         attrs = build_state_attributes(thermostat)
@@ -151,7 +150,7 @@ class TestPreheatStateAttributes:
         assert attrs["preheat_heating_rate_learned"] == 2.5
         assert attrs["preheat_observation_count"] == 6
 
-    @patch('custom_components.adaptive_climate.managers.state_attributes.dt_util')
+    @patch("custom_components.adaptive_climate.managers.state_attributes.dt_util")
     def test_preheat_active(self, mock_dt_util):
         """Test preheat attributes when preheat is currently active."""
         # Mock dt_util.utcnow() to return a real datetime
@@ -185,7 +184,9 @@ class TestPreheatStateAttributes:
         controller.calculator = calculator
         # Mock calculate_night_setback_adjustment
         controller.calculate_night_setback_adjustment.return_value = (
-            18.0, True, {"effective_delta": 3.0}  # In night period with setback
+            18.0,
+            True,
+            {"effective_delta": 3.0},  # In night period with setback
         )
         thermostat._night_setback_controller = controller
 
@@ -273,7 +274,7 @@ class TestPreheatStateAttributes:
         assert "preheat_scheduled_start" not in attrs
         assert "preheat_estimated_duration_min" not in attrs
 
-    @patch('custom_components.adaptive_climate.managers.state_attributes.dt_util')
+    @patch("custom_components.adaptive_climate.managers.state_attributes.dt_util")
     def test_preheat_timestamp_formatting(self, mock_dt_util):
         """Test that scheduled_start is formatted as ISO 8601."""
         # Mock dt_util.utcnow() to return a real datetime
@@ -305,9 +306,7 @@ class TestPreheatStateAttributes:
         controller = MagicMock()
         controller.calculator = calculator
         # Mock calculate_night_setback_adjustment
-        controller.calculate_night_setback_adjustment.return_value = (
-            21.0, False, {"effective_delta": 0.0}
-        )
+        controller.calculate_night_setback_adjustment.return_value = (21.0, False, {"effective_delta": 0.0})
         thermostat._night_setback_controller = controller
 
         attrs = build_state_attributes(thermostat)

@@ -1,4 +1,5 @@
 """State restoration manager for Adaptive Climate integration."""
+
 from __future__ import annotations
 
 import logging
@@ -77,8 +78,11 @@ class StateRestorer:
                         thermostat._target_temp = thermostat.max_temp
                     else:
                         thermostat._target_temp = thermostat.min_temp
-                _LOGGER.warning("%s: No setpoint available in old state, falling back to %s",
-                                thermostat.entity_id, thermostat._target_temp)
+                _LOGGER.warning(
+                    "%s: No setpoint available in old state, falling back to %s",
+                    thermostat.entity_id,
+                    thermostat._target_temp,
+                )
             else:
                 thermostat._target_temp = float(old_state.attributes.get(ATTR_TEMPERATURE))
 
@@ -102,8 +106,7 @@ class StateRestorer:
                     thermostat._target_temp = thermostat.max_temp
                 else:
                     thermostat._target_temp = thermostat.min_temp
-            _LOGGER.warning("%s: No setpoint to restore, setting to %s", thermostat.entity_id,
-                            thermostat._target_temp)
+            _LOGGER.warning("%s: No setpoint to restore, setting to %s", thermostat.entity_id, thermostat._target_temp)
 
     def _restore_pid_values(self, old_state: State) -> None:
         """Restore PID controller values from Home Assistant's state restoration.
@@ -122,9 +125,9 @@ class StateRestorer:
             return
 
         # Restore PID integral value (check new name first, then legacy)
-        integral_value = old_state.attributes.get('integral')
+        integral_value = old_state.attributes.get("integral")
         if integral_value is None:
-            integral_value = old_state.attributes.get('pid_i')  # Legacy name
+            integral_value = old_state.attributes.get("pid_i")  # Legacy name
         if isinstance(integral_value, (float, int)):
             thermostat._i = float(integral_value)
             thermostat._pid_controller.integral = thermostat._i
@@ -133,9 +136,9 @@ class StateRestorer:
             _LOGGER.warning(
                 "%s: No integral in old_state (integral=%s, pid_i=%s). Available attrs: %s",
                 thermostat.entity_id,
-                old_state.attributes.get('integral'),
-                old_state.attributes.get('pid_i'),
-                list(old_state.attributes.keys())
+                old_state.attributes.get("integral"),
+                old_state.attributes.get("pid_i"),
+                list(old_state.attributes.keys()),
             )
 
         # Restore PID gains (kp, ki, kd, ke) via gains_manager
@@ -151,13 +154,21 @@ class StateRestorer:
             thermostat._gains_manager.ensure_initial_history_recorded()
 
             # Log restored values (access via properties which read from gains_manager)
-            _LOGGER.info("%s: Restored PID values via gains_manager - Kp=%.4f, Ki=%.5f, Kd=%.3f, Ke=%s",
-                        thermostat.entity_id, thermostat._kp, thermostat._ki, thermostat._kd, thermostat._ke or 0)
+            _LOGGER.info(
+                "%s: Restored PID values via gains_manager - Kp=%.4f, Ki=%.5f, Kd=%.3f, Ke=%s",
+                thermostat.entity_id,
+                thermostat._kp,
+                thermostat._ki,
+                thermostat._kd,
+                thermostat._ke or 0,
+            )
         else:
             # This should never happen since gains_manager is initialized in async_setup_managers()
             # before restore() is called. Log error and skip gain restoration.
-            _LOGGER.error("%s: gains_manager not available during restoration - this indicates an initialization order bug",
-                         thermostat.entity_id)
+            _LOGGER.error(
+                "%s: gains_manager not available during restoration - this indicates an initialization order bug",
+                thermostat.entity_id,
+            )
 
         # Restore actuator cycle counts for wear tracking
         if thermostat._heater_controller:
@@ -176,21 +187,23 @@ class StateRestorer:
                 # Apply counts from new structure
                 thermostat._heater_controller.set_heater_cycle_count(int(heater_count))
                 thermostat._heater_controller.set_cooler_cycle_count(int(cooler_count))
-                _LOGGER.info("%s: Restored cycle_count heater=%d, cooler=%d",
-                            thermostat.entity_id, int(heater_count), int(cooler_count))
+                _LOGGER.info(
+                    "%s: Restored cycle_count heater=%d, cooler=%d",
+                    thermostat.entity_id,
+                    int(heater_count),
+                    int(cooler_count),
+                )
             else:
                 # Old structure: separate fields (backward compatibility)
                 heater_count = old_state.attributes.get("heater_cycle_count")
                 if heater_count is not None:
                     thermostat._heater_controller.set_heater_cycle_count(int(heater_count))
-                    _LOGGER.info("%s: Restored heater_cycle_count=%d",
-                                thermostat.entity_id, int(heater_count))
+                    _LOGGER.info("%s: Restored heater_cycle_count=%d", thermostat.entity_id, int(heater_count))
 
                 cooler_count = old_state.attributes.get("cooler_cycle_count")
                 if cooler_count is not None:
                     thermostat._heater_controller.set_cooler_cycle_count(int(cooler_count))
-                    _LOGGER.info("%s: Restored cooler_cycle_count=%d",
-                                thermostat.entity_id, int(cooler_count))
+                    _LOGGER.info("%s: Restored cooler_cycle_count=%d", thermostat.entity_id, int(cooler_count))
 
             # NOTE: duty_accumulator is intentionally NOT restored across restarts.
             # The accumulator handles sub-threshold duty within a single session, but

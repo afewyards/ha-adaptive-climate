@@ -1,4 +1,5 @@
 """Tests for StatusManager."""
+
 import pytest
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
@@ -34,7 +35,7 @@ class TestCalculateResumeAt:
         # Mock dt_util.utcnow to return a fixed time
         fixed_now = datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
 
-        with patch('custom_components.adaptive_climate.managers.status_manager.dt_util.utcnow', return_value=fixed_now):
+        with patch("custom_components.adaptive_climate.managers.status_manager.dt_util.utcnow", return_value=fixed_now):
             result = calculate_resume_at(300)  # 5 minutes
 
         assert result is not None
@@ -46,7 +47,7 @@ class TestCalculateResumeAt:
         # Mock dt_util.utcnow
         fixed_now = datetime(2024, 1, 15, 23, 45, 0, tzinfo=timezone.utc)
 
-        with patch('custom_components.adaptive_climate.managers.status_manager.dt_util.utcnow', return_value=fixed_now):
+        with patch("custom_components.adaptive_climate.managers.status_manager.dt_util.utcnow", return_value=fixed_now):
             result = calculate_resume_at(3600)  # 1 hour
 
         assert result is not None
@@ -227,7 +228,7 @@ class TestConvertSetbackEnd:
         # Don't provide now parameter - should use dt_util.now()
         fixed_now = datetime(2024, 1, 15, 6, 0, 0, tzinfo=timezone.utc)
 
-        with patch('custom_components.adaptive_climate.managers.status_manager.dt_util.now', return_value=fixed_now):
+        with patch("custom_components.adaptive_climate.managers.status_manager.dt_util.now", return_value=fixed_now):
             result = convert_setback_end("07:00")
 
         assert result is not None
@@ -240,6 +241,7 @@ class TestThermostatState:
     def test_enum_values_exist(self):
         """Test that all required ThermostatState values exist."""
         from custom_components.adaptive_climate.const import ThermostatState
+
         assert ThermostatState.IDLE == "idle"
         assert ThermostatState.HEATING == "heating"
         assert ThermostatState.COOLING == "cooling"
@@ -248,6 +250,7 @@ class TestThermostatState:
     def test_enum_is_string(self):
         """Test that ThermostatState enum values are strings."""
         from custom_components.adaptive_climate.const import ThermostatState
+
         assert isinstance(ThermostatState.IDLE, str)
         assert isinstance(ThermostatState.HEATING, str)
         assert isinstance(ThermostatState.COOLING, str)
@@ -256,10 +259,12 @@ class TestThermostatState:
     def test_enum_str_conversion(self):
         """Test that str() returns the enum value."""
         from custom_components.adaptive_climate.const import ThermostatState
+
         assert str(ThermostatState.IDLE) == "idle"
         assert str(ThermostatState.HEATING) == "heating"
         assert str(ThermostatState.COOLING) == "cooling"
         assert str(ThermostatState.SETTLING) == "settling"
+
 
 class TestFormatIso8601:
     """Test ISO8601 formatting helper function."""
@@ -322,10 +327,7 @@ class TestBuildConditions:
         """Test that multiple conditions are returned in priority order."""
         from custom_components.adaptive_climate.managers.status_manager import build_conditions
 
-        result = build_conditions(
-            night_setback_active=True,
-            open_window_detected=True
-        )
+        result = build_conditions(night_setback_active=True, open_window_detected=True)
         # Both should be present
         assert len(result) == 2
         # Open window should come before night setback
@@ -340,7 +342,7 @@ class TestBuildConditions:
             open_window_detected=False,
             humidity_spike_active=False,
             contact_open=False,
-            learning_grace_active=False
+            learning_grace_active=False,
         )
         assert result == []
 
@@ -384,10 +386,7 @@ class TestBuildConditions:
         from custom_components.adaptive_climate.managers.status_manager import build_conditions
 
         result = build_conditions(
-            contact_open=True,
-            humidity_spike_active=True,
-            open_window_detected=True,
-            night_setback_active=True
+            contact_open=True, humidity_spike_active=True, open_window_detected=True, night_setback_active=True
         )
         assert len(result) == 4
         assert result == ["contact_open", "humidity_spike", "open_window", "night_setback"]
@@ -396,10 +395,7 @@ class TestBuildConditions:
         """Test contact open + night setback returns both in correct order."""
         from custom_components.adaptive_climate.managers.status_manager import build_conditions
 
-        result = build_conditions(
-            contact_open=True,
-            night_setback_active=True
-        )
+        result = build_conditions(contact_open=True, night_setback_active=True)
         assert len(result) == 2
         assert result == ["contact_open", "night_setback"]
 
@@ -420,7 +416,7 @@ class TestBuildConditions:
             humidity_spike_active=True,
             open_window_detected=True,
             night_setback_active=True,
-            learning_grace_active=True
+            learning_grace_active=True,
         )
         assert len(result) == 5
         assert result == ["contact_open", "humidity_spike", "open_window", "night_setback", "learning_grace"]
@@ -429,10 +425,7 @@ class TestBuildConditions:
         """Test night setback + learning grace returns both in correct order."""
         from custom_components.adaptive_climate.managers.status_manager import build_conditions
 
-        result = build_conditions(
-            night_setback_active=True,
-            learning_grace_active=True
-        )
+        result = build_conditions(night_setback_active=True, learning_grace_active=True)
         assert len(result) == 2
         assert result == ["night_setback", "learning_grace"]
 
@@ -598,10 +591,7 @@ class TestStatusManagerBuildStatus:
         manager = StatusManager()
 
         result = manager.build_status(
-            hvac_mode="heat",
-            night_setback_active=True,
-            night_setback_delta=-2.0,
-            night_setback_ends_at="07:00"
+            hvac_mode="heat", night_setback_active=True, night_setback_delta=-2.0, night_setback_ends_at="07:00"
         )
 
         assert result["activity"] == "idle"
@@ -613,7 +603,7 @@ class TestStatusManagerBuildStatus:
         manager = StatusManager()
 
         fixed_now = datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
-        with patch('custom_components.adaptive_climate.managers.status_manager.dt_util.utcnow', return_value=fixed_now):
+        with patch("custom_components.adaptive_climate.managers.status_manager.dt_util.utcnow", return_value=fixed_now):
             result = manager.build_status(
                 hvac_mode="heat",
                 contact_open=True,
@@ -631,10 +621,7 @@ class TestStatusManagerBuildStatus:
         manager = StatusManager()
 
         result = manager.build_status(
-            hvac_mode="heat",
-            night_setback_active=True,
-            night_setback_delta=-2.0,
-            night_setback_ends_at="07:00"
+            hvac_mode="heat", night_setback_active=True, night_setback_delta=-2.0, night_setback_ends_at="07:00"
         )
 
         assert result["activity"] == "idle"
@@ -647,10 +634,7 @@ class TestStatusManagerBuildStatus:
         manager = StatusManager()
 
         result = manager.build_status(
-            hvac_mode="heat",
-            night_setback_active=True,
-            night_setback_delta=-2.0,
-            night_setback_ends_at="07:00"
+            hvac_mode="heat", night_setback_active=True, night_setback_delta=-2.0, night_setback_ends_at="07:00"
         )
 
         assert result["activity"] == "idle"
@@ -672,7 +656,7 @@ class TestStatusManagerBuildStatus:
             humidity_resume_at="2024-01-15T11:00:00+00:00",
             night_setback_active=True,
             night_setback_delta=-2.0,
-            night_setback_ends_at="07:00"
+            night_setback_ends_at="07:00",
         )
 
         assert result["activity"] == "idle"
@@ -707,11 +691,7 @@ class TestStatusManagerBuildStatus:
         """Test that humidity override doesn't include resume_at when not stabilizing."""
         manager = StatusManager()
 
-        result = manager.build_status(
-            hvac_mode="heat",
-            humidity_active=True,
-            humidity_state="paused"
-        )
+        result = manager.build_status(hvac_mode="heat", humidity_active=True, humidity_state="paused")
 
         assert result["activity"] == "idle"
         assert len(result["overrides"]) == 1
@@ -726,7 +706,7 @@ class TestStatusManagerBuildStatus:
             hvac_mode="heat",
             humidity_active=True,
             humidity_state="stabilizing",
-            humidity_resume_at="2024-01-15T11:00:00+00:00"
+            humidity_resume_at="2024-01-15T11:00:00+00:00",
         )
 
         assert result["activity"] == "idle"
@@ -744,7 +724,7 @@ class TestStatusManagerBuildStatus:
             preheating_active=True,
             preheating_target_time="07:00",
             preheating_started_at="2024-01-15T05:30:00+00:00",
-            preheating_target_delta=2.0
+            preheating_target_delta=2.0,
         )
 
         assert result["activity"] == "preheating"
@@ -755,10 +735,7 @@ class TestStatusManagerBuildStatus:
         """Test status with cycle_state='settling' returns settling activity."""
         manager = StatusManager()
 
-        result = manager.build_status(
-            hvac_mode="heat",
-            cycle_state="settling"
-        )
+        result = manager.build_status(hvac_mode="heat", cycle_state="settling")
 
         assert result["activity"] == "settling"
         assert result["overrides"] == []
@@ -768,9 +745,7 @@ class TestStatusManagerBuildStatus:
         manager = StatusManager()
 
         result = manager.build_status(
-            hvac_mode="heat",
-            learning_grace_active=True,
-            learning_grace_until="2024-01-15T11:00:00+00:00"
+            hvac_mode="heat", learning_grace_active=True, learning_grace_until="2024-01-15T11:00:00+00:00"
         )
 
         assert result["activity"] == "idle"

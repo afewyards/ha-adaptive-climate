@@ -1,4 +1,5 @@
 """Simple tests for actuator wear tracking logic."""
+
 import pytest
 import sys
 from pathlib import Path

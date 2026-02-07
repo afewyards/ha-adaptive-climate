@@ -145,7 +145,9 @@ class TestUndershootDetectionIntegration:
         # Verify Ki was updated
         assert pid_controller.ki == new_ki
 
-    def test_no_adjustment_when_enough_cycles_completed_without_severe_undershoot(self, mock_thermostat, adaptive_learner):
+    def test_no_adjustment_when_enough_cycles_completed_without_severe_undershoot(
+        self, mock_thermostat, adaptive_learner
+    ):
         """Test that detector does not trigger adjustments after MIN_CYCLES when undershoot is not severe."""
         # Set up conditions for Ki adjustment - but NOT severe undershoot
         detector = adaptive_learner.undershoot_detector
@@ -173,9 +175,7 @@ class TestUndershootDetectionIntegration:
         detector.thermal_debt = 3.5  # Above threshold but < severe (4.0)
 
         # Check with MIN_CYCLES completed - should NOT adjust (normal learning handles it)
-        new_ki = adaptive_learner.check_undershoot_adjustment(
-            cycles_completed=MIN_CYCLES_FOR_LEARNING, current_ki=10.0
-        )
+        new_ki = adaptive_learner.check_undershoot_adjustment(cycles_completed=MIN_CYCLES_FOR_LEARNING, current_ki=10.0)
         assert new_ki is None
 
     def test_adjustment_respects_cumulative_cap(self, mock_thermostat, adaptive_learner):
@@ -258,12 +258,15 @@ class TestUndershootDetectionIntegration:
 class TestUndershootDetectionDifferentHeatingTypes:
     """Test undershoot detection behavior across different heating types."""
 
-    @pytest.mark.parametrize("heating_type,time_threshold", [
-        (HeatingType.FLOOR_HYDRONIC, 4.0),
-        (HeatingType.RADIATOR, 2.0),
-        (HeatingType.CONVECTOR, 1.5),
-        (HeatingType.FORCED_AIR, 0.75),
-    ])
+    @pytest.mark.parametrize(
+        "heating_type,time_threshold",
+        [
+            (HeatingType.FLOOR_HYDRONIC, 4.0),
+            (HeatingType.RADIATOR, 2.0),
+            (HeatingType.CONVECTOR, 1.5),
+            (HeatingType.FORCED_AIR, 0.75),
+        ],
+    )
     def test_heating_type_specific_thresholds(self, heating_type, time_threshold):
         """Test that different heating types use correct thresholds."""
         learner = AdaptiveLearner(heating_type=heating_type)
@@ -381,9 +384,7 @@ class TestPersistentUndershootCatch22:
         detector.time_below_target = 5.0 * 3600.0  # 5 hours (> 4 hour threshold)
 
         # With MIN_CYCLES completed, should NOT adjust (normal learning takes over)
-        new_ki = learner.check_undershoot_adjustment(
-            cycles_completed=MIN_CYCLES_FOR_LEARNING, current_ki=10.0
-        )
+        new_ki = learner.check_undershoot_adjustment(cycles_completed=MIN_CYCLES_FOR_LEARNING, current_ki=10.0)
         assert new_ki is None, "Expected no adjustment for moderate undershoot after min cycles"
 
     def test_catch22_multiple_adjustments_with_cooldown(self):
@@ -442,6 +443,4 @@ class TestPersistentUndershootCatch22:
 
             # Should allow adjustment even with many cycles
             new_ki = learner.check_undershoot_adjustment(cycles_completed=20, current_ki=10.0)
-            assert new_ki is not None, (
-                f"Expected Ki adjustment for {heating_type} with severe undershoot"
-            )
+            assert new_ki is not None, f"Expected Ki adjustment for {heating_type} with severe undershoot"

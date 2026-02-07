@@ -92,7 +92,7 @@ class TestSetpointBoostManagerInitialization:
 class TestSetpointBoostManagerDebounce:
     """Tests for debounce behavior."""
 
-    @patch('custom_components.adaptive_climate.managers.setpoint_boost.async_call_later')
+    @patch("custom_components.adaptive_climate.managers.setpoint_boost.async_call_later")
     def test_single_setpoint_change_schedules_timer(
         self, mock_call_later, mock_hass, mock_pid, is_night_period_callback
     ):
@@ -115,7 +115,7 @@ class TestSetpointBoostManagerDebounce:
         # Pending delta should accumulate
         assert manager._pending_delta == 2.0
 
-    @patch('custom_components.adaptive_climate.managers.setpoint_boost.async_call_later')
+    @patch("custom_components.adaptive_climate.managers.setpoint_boost.async_call_later")
     def test_multiple_rapid_changes_accumulate_delta(
         self, mock_call_later, mock_hass, mock_pid, is_night_period_callback
     ):
@@ -143,10 +143,8 @@ class TestSetpointBoostManagerDebounce:
         # Timer should be called 3 times (once per change)
         assert mock_call_later.call_count == 3
 
-    @patch('custom_components.adaptive_climate.managers.setpoint_boost.async_call_later')
-    def test_timer_cancellation_on_new_change(
-        self, mock_call_later, mock_hass, mock_pid, is_night_period_callback
-    ):
+    @patch("custom_components.adaptive_climate.managers.setpoint_boost.async_call_later")
+    def test_timer_cancellation_on_new_change(self, mock_call_later, mock_hass, mock_pid, is_night_period_callback):
         """Test pending timer is cancelled when new setpoint change occurs."""
         mock_cancel = Mock()
         mock_call_later.return_value = mock_cancel
@@ -169,7 +167,7 @@ class TestSetpointBoostManagerDebounce:
         # First timer should be cancelled
         first_timer.assert_called_once()
 
-    @patch('custom_components.adaptive_climate.managers.setpoint_boost.async_call_later')
+    @patch("custom_components.adaptive_climate.managers.setpoint_boost.async_call_later")
     def test_setpoint_decrease_accumulates_negative_delta(
         self, mock_call_later, mock_hass, mock_pid, is_night_period_callback
     ):
@@ -185,7 +183,7 @@ class TestSetpointBoostManagerDebounce:
         manager.on_setpoint_change(old_temp=22.0, new_temp=20.0)
         assert manager._pending_delta == -2.0
 
-    @patch('custom_components.adaptive_climate.managers.setpoint_boost.async_call_later')
+    @patch("custom_components.adaptive_climate.managers.setpoint_boost.async_call_later")
     def test_mixed_up_down_changes_accumulate_net_delta(
         self, mock_call_later, mock_hass, mock_pid, is_night_period_callback
     ):
@@ -656,7 +654,7 @@ class TestSetpointBoostPendingDeltaReset:
 class TestSetpointBoostTimerCancellation:
     """Tests for timer cancellation."""
 
-    @patch('custom_components.adaptive_climate.managers.setpoint_boost.async_call_later')
+    @patch("custom_components.adaptive_climate.managers.setpoint_boost.async_call_later")
     def test_cancel_pending_timer(self, mock_call_later, mock_hass, mock_pid, is_night_period_callback):
         """Test cancel() cancels pending timer."""
         mock_cancel = Mock()

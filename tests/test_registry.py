@@ -9,21 +9,24 @@ from unittest.mock import MagicMock, Mock, patch
 sys.path.insert(0, str(Path(__file__).parent.parent / "custom_components" / "adaptive_climate"))
 
 # Mock homeassistant modules before importing
-sys.modules['homeassistant'] = Mock()
+sys.modules["homeassistant"] = Mock()
+
 
 # Event needs to support subscripting for type hints like Event[EventStateChangedData]
 class MockEvent:
     """Mock Event class that supports generic subscripting."""
+
     def __class_getitem__(cls, item):
         return cls
 
+
 mock_core = Mock()
 mock_core.Event = MockEvent
-sys.modules['homeassistant.core'] = mock_core
-sys.modules['homeassistant.helpers'] = Mock()
-sys.modules['homeassistant.helpers.entity_registry'] = Mock()
-sys.modules['homeassistant.helpers.area_registry'] = Mock()
-sys.modules['homeassistant.helpers.floor_registry'] = Mock()
+sys.modules["homeassistant.core"] = mock_core
+sys.modules["homeassistant.helpers"] = Mock()
+sys.modules["homeassistant.helpers.entity_registry"] = Mock()
+sys.modules["homeassistant.helpers.area_registry"] = Mock()
+sys.modules["homeassistant.helpers.floor_registry"] = Mock()
 
 
 @pytest.fixture
@@ -35,9 +38,9 @@ def hass():
 class TestDiscoverZoneFloors:
     """Tests for discover_zone_floors() function."""
 
-    @patch('helpers.registry.er')
-    @patch('helpers.registry.ar')
-    @patch('helpers.registry.fr')
+    @patch("helpers.registry.er")
+    @patch("helpers.registry.ar")
+    @patch("helpers.registry.fr")
     def test_discover_zone_floors_all_assigned(self, mock_fr, mock_ar, mock_er, hass):
         """Test returns floor levels for all zones with complete registry chain.
 
@@ -96,9 +99,9 @@ class TestDiscoverZoneFloors:
             "climate.bedroom": 1,
         }
 
-    @patch('helpers.registry.er')
-    @patch('helpers.registry.ar')
-    @patch('helpers.registry.fr')
+    @patch("helpers.registry.er")
+    @patch("helpers.registry.ar")
+    @patch("helpers.registry.fr")
     def test_discover_zone_floors_missing_area(self, mock_fr, mock_ar, mock_er, hass):
         """Test returns None for entity without area_id.
 
@@ -149,9 +152,9 @@ class TestDiscoverZoneFloors:
             "climate.bedroom": 1,
         }
 
-    @patch('helpers.registry.er')
-    @patch('helpers.registry.ar')
-    @patch('helpers.registry.fr')
+    @patch("helpers.registry.er")
+    @patch("helpers.registry.ar")
+    @patch("helpers.registry.fr")
     def test_discover_zone_floors_missing_floor(self, mock_fr, mock_ar, mock_er, hass):
         """Test returns None for area without floor_id.
 
@@ -205,9 +208,9 @@ class TestDiscoverZoneFloors:
             "climate.bedroom": 1,
         }
 
-    @patch('helpers.registry.er')
-    @patch('helpers.registry.ar')
-    @patch('helpers.registry.fr')
+    @patch("helpers.registry.er")
+    @patch("helpers.registry.ar")
+    @patch("helpers.registry.fr")
     def test_discover_zone_floors_mixed(self, mock_fr, mock_ar, mock_er, hass):
         """Test returns partial results with some None, some int.
 
@@ -278,9 +281,9 @@ class TestDiscoverZoneFloors:
         # Verify loop continues processing after None cases (step 8)
         assert len(result) == 4
 
-    @patch('helpers.registry.er')
-    @patch('helpers.registry.ar')
-    @patch('helpers.registry.fr')
+    @patch("helpers.registry.er")
+    @patch("helpers.registry.ar")
+    @patch("helpers.registry.fr")
     def test_discover_zone_floors_entity_not_in_registry(self, mock_fr, mock_ar, mock_er, hass):
         """Test handles entity not found in entity registry."""
         from helpers.registry import discover_zone_floors
@@ -305,9 +308,9 @@ class TestDiscoverZoneFloors:
             "climate.nonexistent": None,
         }
 
-    @patch('helpers.registry.er')
-    @patch('helpers.registry.ar')
-    @patch('helpers.registry.fr')
+    @patch("helpers.registry.er")
+    @patch("helpers.registry.ar")
+    @patch("helpers.registry.fr")
     def test_discover_zone_floors_empty_list(self, mock_fr, mock_ar, mock_er, hass):
         """Test handles empty zone list gracefully."""
         from helpers.registry import discover_zone_floors

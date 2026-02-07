@@ -16,6 +16,7 @@ Detects when the heating system is too weak to reach the setpoint using three mo
 All modes share cumulative multiplier tracking and cooldown enforcement to
 prevent runaway integral gain.
 """
+
 from __future__ import annotations
 
 import logging
@@ -190,9 +191,7 @@ class UndershootDetector:
         else:
             # Reset on any successful cycle (has rise_time)
             if cycle.rise_time is not None and self._consecutive_failures > 0:
-                _LOGGER.debug(
-                    "Cycle reached setpoint, resetting consecutive failures counter"
-                )
+                _LOGGER.debug("Cycle reached setpoint, resetting consecutive failures counter")
                 self._consecutive_failures = 0
 
     def _is_chronic_approach_failure(
@@ -295,10 +294,7 @@ class UndershootDetector:
         # Check thresholds
         time_threshold_seconds = self._thresholds["time_threshold_hours"] * 3600.0
 
-        return (
-            self._time_below_target >= time_threshold_seconds
-            or self._thermal_debt >= debt_threshold
-        )
+        return self._time_below_target >= time_threshold_seconds or self._thermal_debt >= debt_threshold
 
     def _check_cycle_mode(self, cycles_completed: int) -> bool:
         """Check if cycle mode should trigger.
@@ -395,8 +391,7 @@ class UndershootDetector:
             if elapsed < cooldown_seconds:
                 remaining_hours = (cooldown_seconds - elapsed) / 3600.0
                 _LOGGER.debug(
-                    "Undershoot Ki boost blocked by history cooldown: "
-                    "last boost was %.1fh ago, %.1fh remaining",
+                    "Undershoot Ki boost blocked by history cooldown: last boost was %.1fh ago, %.1fh remaining",
                     elapsed / 3600.0,
                     remaining_hours,
                 )
@@ -473,9 +468,7 @@ class UndershootDetector:
             return None
 
         # Check if rate is underperforming (< 60% of expected)
-        if not self._heating_rate_learner.is_underperforming(
-            current_rate, delta, outdoor_temp
-        ):
+        if not self._heating_rate_learner.is_underperforming(current_rate, delta, outdoor_temp):
             return None
 
         # Check if learner recommends Ki boost (2 stalls + duty < 85%)

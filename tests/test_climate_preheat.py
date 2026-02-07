@@ -60,9 +60,7 @@ def mock_night_setback_config_no_preheat():
 class TestPreheatLearnerInitialization:
     """Test PreheatLearner initialization in climate entity."""
 
-    def test_preheat_learner_initialized_when_enabled(
-        self, mock_night_setback_config
-    ):
+    def test_preheat_learner_initialized_when_enabled(self, mock_night_setback_config):
         """Test PreheatLearner is initialized when preheat_enabled=True."""
         # Simulate the initialization logic from climate.py
         night_setback_config = mock_night_setback_config
@@ -83,9 +81,7 @@ class TestPreheatLearnerInitialization:
         assert preheat_learner.heating_type == "floor_hydronic"
         assert preheat_learner.max_hours == 2.0
 
-    def test_preheat_learner_not_initialized_when_disabled(
-        self, mock_night_setback_config_no_preheat
-    ):
+    def test_preheat_learner_not_initialized_when_disabled(self, mock_night_setback_config_no_preheat):
         """Test PreheatLearner is NOT initialized when preheat_enabled=False."""
         night_setback_config = mock_night_setback_config_no_preheat
         heating_type = "floor_hydronic"
@@ -144,9 +140,7 @@ class TestPreheatLearnerPersistence:
 
         # Mock coordinator with stored data
         mock_coordinator = Mock()
-        mock_coordinator.get_zone_data = Mock(
-            return_value={"stored_preheat_data": stored_preheat_data}
-        )
+        mock_coordinator.get_zone_data = Mock(return_value={"stored_preheat_data": stored_preheat_data})
         mock_hass.data["adaptive_climate"]["coordinator"] = mock_coordinator
 
         # Simulate restoration from storage (as in async_added_to_hass)
@@ -173,9 +167,7 @@ class TestPreheatObservationRecording:
     """Test observation recording on cycle completion."""
 
     @pytest.mark.asyncio
-    async def test_observation_recorded_on_cycle_completion(
-        self, mock_hass, mock_night_setback_config
-    ):
+    async def test_observation_recorded_on_cycle_completion(self, mock_hass, mock_night_setback_config):
         """Test observation is recorded when heating cycle completes successfully."""
         # Create dispatcher and preheat learner
         dispatcher = CycleEventDispatcher()
@@ -223,9 +215,7 @@ class TestPreheatObservationRecording:
         assert preheat_learner.get_observation_count() == 1
 
     @pytest.mark.asyncio
-    async def test_observation_not_recorded_when_interrupted(
-        self, mock_hass, mock_night_setback_config
-    ):
+    async def test_observation_not_recorded_when_interrupted(self, mock_hass, mock_night_setback_config):
         """Test observation is NOT recorded when cycle was interrupted."""
         dispatcher = CycleEventDispatcher()
         preheat_learner = PreheatLearner(heating_type="floor_hydronic", max_hours=2.0)
@@ -266,9 +256,7 @@ class TestPreheatObservationRecording:
         assert preheat_learner.get_observation_count() == 0
 
     @pytest.mark.asyncio
-    async def test_observation_not_recorded_without_outdoor_temp(
-        self, mock_hass, mock_night_setback_config
-    ):
+    async def test_observation_not_recorded_without_outdoor_temp(self, mock_hass, mock_night_setback_config):
         """Test observation is NOT recorded when outdoor temp is unavailable."""
         dispatcher = CycleEventDispatcher()
         preheat_learner = PreheatLearner(heating_type="floor_hydronic", max_hours=2.0)
@@ -312,9 +300,7 @@ class TestPreheatObservationRecording:
 class TestPreheatLearnerPassedToNightSetback:
     """Test PreheatLearner is passed to NightSetback components."""
 
-    def test_preheat_learner_passed_to_night_setback_calculator(
-        self, mock_hass, mock_night_setback_config
-    ):
+    def test_preheat_learner_passed_to_night_setback_calculator(self, mock_hass, mock_night_setback_config):
         """Test PreheatLearner is passed to NightSetbackCalculator."""
         from custom_components.adaptive_climate.adaptive.night_setback import (
             NightSetback,
@@ -354,7 +340,7 @@ class TestPreheatSchemaValidation:
         # This test documents the expected schema structure.
 
         # For now, test that the constant exists
-        assert hasattr(const, 'CONF_PREHEAT_ENABLED')
+        assert hasattr(const, "CONF_PREHEAT_ENABLED")
         assert const.CONF_PREHEAT_ENABLED == "preheat_enabled"
 
         # When implemented, the schema at line ~159 in climate.py should have:
@@ -363,7 +349,7 @@ class TestPreheatSchemaValidation:
     def test_night_setback_schema_has_max_preheat_hours_key(self):
         """Test that night_setback schema includes max_preheat_hours key definition."""
         # For now, test that the constant exists
-        assert hasattr(const, 'CONF_MAX_PREHEAT_HOURS')
+        assert hasattr(const, "CONF_MAX_PREHEAT_HOURS")
         assert const.CONF_MAX_PREHEAT_HOURS == "max_preheat_hours"
 
         # When implemented, the schema at line ~159 in climate.py should have:
@@ -398,24 +384,20 @@ class TestPreheatSchemaValidation:
 
         # Simulate the _night_setback_config creation logic from climate.py
         _night_setback_config = {
-            'start': night_setback_config.get(const.CONF_NIGHT_SETBACK_START),
-            'end': night_setback_config.get(const.CONF_NIGHT_SETBACK_END),
-            'delta': night_setback_config.get(
-                const.CONF_NIGHT_SETBACK_DELTA,
-                const.DEFAULT_NIGHT_SETBACK_DELTA
+            "start": night_setback_config.get(const.CONF_NIGHT_SETBACK_START),
+            "end": night_setback_config.get(const.CONF_NIGHT_SETBACK_END),
+            "delta": night_setback_config.get(const.CONF_NIGHT_SETBACK_DELTA, const.DEFAULT_NIGHT_SETBACK_DELTA),
+            "recovery_deadline": night_setback_config.get(const.CONF_NIGHT_SETBACK_RECOVERY_DEADLINE),
+            "min_effective_elevation": night_setback_config.get(
+                const.CONF_MIN_EFFECTIVE_ELEVATION, const.DEFAULT_MIN_EFFECTIVE_ELEVATION
             ),
-            'recovery_deadline': night_setback_config.get(const.CONF_NIGHT_SETBACK_RECOVERY_DEADLINE),
-            'min_effective_elevation': night_setback_config.get(
-                const.CONF_MIN_EFFECTIVE_ELEVATION,
-                const.DEFAULT_MIN_EFFECTIVE_ELEVATION
-            ),
-            'preheat_enabled': night_setback_config.get(const.CONF_PREHEAT_ENABLED),
-            'max_preheat_hours': night_setback_config.get(const.CONF_MAX_PREHEAT_HOURS),
+            "preheat_enabled": night_setback_config.get(const.CONF_PREHEAT_ENABLED),
+            "max_preheat_hours": night_setback_config.get(const.CONF_MAX_PREHEAT_HOURS),
         }
 
         # Assert preheat keys were copied
-        assert _night_setback_config['preheat_enabled'] is True
-        assert _night_setback_config['max_preheat_hours'] == 2.5
+        assert _night_setback_config["preheat_enabled"] is True
+        assert _night_setback_config["max_preheat_hours"] == 2.5
 
     def test_preheat_config_defaults_to_none_when_missing(self):
         """Test that preheat keys default to None when not provided."""
@@ -427,21 +409,17 @@ class TestPreheatSchemaValidation:
 
         # Simulate the _night_setback_config creation logic
         _night_setback_config = {
-            'start': night_setback_config.get(const.CONF_NIGHT_SETBACK_START),
-            'end': night_setback_config.get(const.CONF_NIGHT_SETBACK_END),
-            'delta': night_setback_config.get(
-                const.CONF_NIGHT_SETBACK_DELTA,
-                const.DEFAULT_NIGHT_SETBACK_DELTA
+            "start": night_setback_config.get(const.CONF_NIGHT_SETBACK_START),
+            "end": night_setback_config.get(const.CONF_NIGHT_SETBACK_END),
+            "delta": night_setback_config.get(const.CONF_NIGHT_SETBACK_DELTA, const.DEFAULT_NIGHT_SETBACK_DELTA),
+            "recovery_deadline": night_setback_config.get(const.CONF_NIGHT_SETBACK_RECOVERY_DEADLINE),
+            "min_effective_elevation": night_setback_config.get(
+                const.CONF_MIN_EFFECTIVE_ELEVATION, const.DEFAULT_MIN_EFFECTIVE_ELEVATION
             ),
-            'recovery_deadline': night_setback_config.get(const.CONF_NIGHT_SETBACK_RECOVERY_DEADLINE),
-            'min_effective_elevation': night_setback_config.get(
-                const.CONF_MIN_EFFECTIVE_ELEVATION,
-                const.DEFAULT_MIN_EFFECTIVE_ELEVATION
-            ),
-            'preheat_enabled': night_setback_config.get(const.CONF_PREHEAT_ENABLED),
-            'max_preheat_hours': night_setback_config.get(const.CONF_MAX_PREHEAT_HOURS),
+            "preheat_enabled": night_setback_config.get(const.CONF_PREHEAT_ENABLED),
+            "max_preheat_hours": night_setback_config.get(const.CONF_MAX_PREHEAT_HOURS),
         }
 
         # Assert preheat keys default to None
-        assert _night_setback_config['preheat_enabled'] is None
-        assert _night_setback_config['max_preheat_hours'] is None
+        assert _night_setback_config["preheat_enabled"] is None
+        assert _night_setback_config["max_preheat_hours"] is None

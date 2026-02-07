@@ -1,4 +1,5 @@
 """Disturbance detection for filtering invalid learning cycles."""
+
 from __future__ import annotations
 
 import logging
@@ -49,8 +50,10 @@ class DisturbanceDetector:
             disturbances.append("solar_gain")
 
         # Check for wind loss
-        if outdoor_temps and wind_speeds and self._detect_wind_loss(
-            temperature_history, outdoor_temps, wind_speeds, heater_active_periods
+        if (
+            outdoor_temps
+            and wind_speeds
+            and self._detect_wind_loss(temperature_history, outdoor_temps, wind_speeds, heater_active_periods)
         ):
             disturbances.append("wind_loss")
 
@@ -105,17 +108,14 @@ class DisturbanceDetector:
             # Check if this occurred during settling phase (heater off)
             if heater_active_periods:
                 last_heater_stop = heater_active_periods[-1][1]
-                settling_temps = [
-                    (ts, temp) for ts, temp in temperature_history
-                    if ts > last_heater_stop
-                ]
+                settling_temps = [(ts, temp) for ts, temp in temperature_history if ts > last_heater_stop]
                 if len(settling_temps) >= 2:
                     settling_rise = settling_temps[-1][1] - settling_temps[0][1]
                     if settling_rise > 0.3:  # >0.3°C rise during settling
                         self._logger.info(
-                            "Solar gain detected: temp rose %.2f°C during settling "
-                            "with solar increase %.1f",
-                            settling_rise, solar_increase
+                            "Solar gain detected: temp rose %.2f°C during settling with solar increase %.1f",
+                            settling_rise,
+                            solar_increase,
                         )
                         return True
 
@@ -155,10 +155,7 @@ class DisturbanceDetector:
         # Check for indoor temperature drop during heater-off period
         if heater_active_periods:
             last_heater_stop = heater_active_periods[-1][1]
-            settling_temps = [
-                (ts, temp) for ts, temp in temperature_history
-                if ts > last_heater_stop
-            ]
+            settling_temps = [(ts, temp) for ts, temp in temperature_history if ts > last_heater_stop]
             if len(settling_temps) >= 2:
                 duration_hours = (settling_temps[-1][0] - settling_temps[0][0]).total_seconds() / 3600.0
                 if duration_hours < 0.1:
@@ -171,9 +168,10 @@ class DisturbanceDetector:
                 # Wind loss should cause faster-than-normal cooling (>1.0°C/hour)
                 if settling_drop > 0.5 and drop_rate > 1.0:
                     self._logger.info(
-                        "Wind loss detected: temp dropped %.2f°C (%.2f°C/h) during settling "
-                        "with avg wind %.1f m/s",
-                        settling_drop, drop_rate, avg_wind
+                        "Wind loss detected: temp dropped %.2f°C (%.2f°C/h) during settling with avg wind %.1f m/s",
+                        settling_drop,
+                        drop_rate,
+                        avg_wind,
                     )
                     return True
 
@@ -197,10 +195,7 @@ class DisturbanceDetector:
         outdoor_range = max(t for _, t in outdoor_temps) - min(t for _, t in outdoor_temps)
 
         if outdoor_range > 5.0:
-            self._logger.info(
-                "Outdoor temperature swing detected: %.2f°C change during cycle",
-                outdoor_range
-            )
+            self._logger.info("Outdoor temperature swing detected: %.2f°C change during cycle", outdoor_range)
             return True
 
         return False
@@ -224,10 +219,7 @@ class DisturbanceDetector:
 
         # Check for temperature rise during heater-off period
         last_heater_stop = heater_active_periods[-1][1]
-        settling_temps = [
-            (ts, temp) for ts, temp in temperature_history
-            if ts > last_heater_stop
-        ]
+        settling_temps = [(ts, temp) for ts, temp in temperature_history if ts > last_heater_stop]
 
         if len(settling_temps) >= 3:  # Need at least 3 samples to avoid false positives
             duration_hours = (settling_temps[-1][0] - settling_temps[0][0]).total_seconds() / 3600.0
@@ -242,8 +234,7 @@ class DisturbanceDetector:
             # Raised threshold from 0.3 to 0.5 to reduce false positives
             if rise_rate > 0.5:
                 self._logger.info(
-                    "Occupancy detected: temp rose %.2f°C (%.2f°C/h) during heater-off period",
-                    temp_rise, rise_rate
+                    "Occupancy detected: temp rose %.2f°C (%.2f°C/h) during heater-off period", temp_rise, rise_rate
                 )
                 return True
 

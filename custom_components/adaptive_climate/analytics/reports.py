@@ -1,4 +1,5 @@
 """Weekly performance reports for adaptive thermostat."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

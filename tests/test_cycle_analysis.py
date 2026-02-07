@@ -43,10 +43,7 @@ class TestCalculateSettlingTime:
 
         # Calculate settling time from device_off_time
         settling_time = calculate_settling_time(
-            temperature_history,
-            target_temp,
-            tolerance=tolerance,
-            reference_time=device_off_time
+            temperature_history, target_temp, tolerance=tolerance, reference_time=device_off_time
         )
 
         # Settling time should be from device_off_time (20 min) to settle point (35 min)
@@ -80,10 +77,7 @@ class TestCalculateSettlingTime:
 
         # Calculate settling time without reference_time (legacy behavior)
         settling_time = calculate_settling_time(
-            temperature_history,
-            target_temp,
-            tolerance=tolerance,
-            reference_time=None
+            temperature_history, target_temp, tolerance=tolerance, reference_time=None
         )
 
         # Settling time should be from first sample (0 min) to settle point (35 min)
@@ -107,10 +101,7 @@ class TestCalculateSettlingTime:
         ]
 
         settling_time = calculate_settling_time(
-            temperature_history,
-            target_temp,
-            tolerance=tolerance,
-            reference_time=reference_time
+            temperature_history, target_temp, tolerance=tolerance, reference_time=reference_time
         )
 
         # Should calculate from first sample (base_time), not reference_time
@@ -137,10 +128,7 @@ class TestCalculateSettlingTime:
         reference_time = base_time + timedelta(minutes=10)
 
         settling_time = calculate_settling_time(
-            temperature_history,
-            target_temp,
-            tolerance=tolerance,
-            reference_time=reference_time
+            temperature_history, target_temp, tolerance=tolerance, reference_time=reference_time
         )
 
         # Temperature was already settled at reference_time, so settling_time
@@ -167,10 +155,7 @@ class TestCalculateSettlingTime:
         ]
 
         settling_time = calculate_settling_time(
-            temperature_history,
-            target_temp,
-            tolerance=tolerance,
-            reference_time=reference_time
+            temperature_history, target_temp, tolerance=tolerance, reference_time=reference_time
         )
 
         assert settling_time is None
@@ -196,10 +181,7 @@ class TestCalculateSettlingTime:
         ]
 
         settling_time = calculate_settling_time(
-            temperature_history,
-            target_temp,
-            tolerance=tolerance,
-            reference_time=reference_time
+            temperature_history, target_temp, tolerance=tolerance, reference_time=reference_time
         )
 
         # Should measure from reference_time (15 min) to settling (30 min) = 15 min
@@ -604,5 +586,3 @@ def test_cycle_metrics_overshoot_split_fields_optional():
     # Verify total overshoot still works
     assert metrics.overshoot == 0.4
     assert metrics.settling_time == 12.0
-
-

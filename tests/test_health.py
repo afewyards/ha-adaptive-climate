@@ -1,4 +1,5 @@
 """Tests for health monitoring system."""
+
 import pytest
 from custom_components.adaptive_climate.analytics.health import (
     HealthMonitor,

@@ -54,7 +54,7 @@ class TestV9FormatSerialization:
         learner = AdaptiveLearner(heating_type=HeatingType.RADIATOR)
 
         # Manually set contribution values (will be set by integration in Task 6)
-        if hasattr(learner, '_contribution_tracker'):
+        if hasattr(learner, "_contribution_tracker"):
             learner._contribution_tracker._maintenance_contribution = 15.0
             learner._contribution_tracker._heating_rate_contribution = 8.0
             learner._contribution_tracker._recovery_cycle_count = 5
@@ -64,7 +64,7 @@ class TestV9FormatSerialization:
 
         # Check serialized values
         tracker_data = data["contribution_tracker"]
-        if hasattr(learner, '_contribution_tracker'):
+        if hasattr(learner, "_contribution_tracker"):
             assert tracker_data["maintenance_contribution"] == 15.0
             assert tracker_data["heating_rate_contribution"] == 8.0
             assert tracker_data["recovery_cycle_count"] == 5
@@ -133,7 +133,7 @@ class TestV9FormatSerialization:
             learner1.add_cycle_metrics(cycle)
 
         # Manually set contributions if tracker exists
-        if hasattr(learner1, '_contribution_tracker'):
+        if hasattr(learner1, "_contribution_tracker"):
             learner1._contribution_tracker._maintenance_contribution = 20.0
             learner1._contribution_tracker._heating_rate_contribution = 10.0
             learner1._contribution_tracker._recovery_cycle_count = 2
@@ -146,7 +146,7 @@ class TestV9FormatSerialization:
         learner2.restore_from_dict(data)
 
         # Check that contribution tracker was restored
-        if hasattr(learner2, '_contribution_tracker'):
+        if hasattr(learner2, "_contribution_tracker"):
             assert learner2._contribution_tracker.maintenance_contribution == 20.0
             assert learner2._contribution_tracker.heating_rate_contribution == 10.0
             assert learner2._contribution_tracker.recovery_cycle_count == 2
@@ -233,7 +233,7 @@ class TestV8ToV9Migration:
         assert learner2._heating_cycle_history[4].overshoot == pytest.approx(0.24)
 
         # Check that contribution tracker defaults are set
-        if hasattr(learner2, '_contribution_tracker'):
+        if hasattr(learner2, "_contribution_tracker"):
             assert learner2._contribution_tracker.maintenance_contribution == 0.0
             assert learner2._contribution_tracker.heating_rate_contribution == 0.0
             assert learner2._contribution_tracker.recovery_cycle_count == 0
@@ -482,6 +482,7 @@ class TestV9ToV10Migration:
         # Add heating rate data
         if hasattr(learner, "_heating_rate_learner"):
             from datetime import datetime, timezone
+
             learner._heating_rate_learner.add_observation(
                 rate=0.5,
                 duration_min=60,
@@ -489,7 +490,7 @@ class TestV9ToV10Migration:
                 stalled=False,
                 delta=3.0,
                 outdoor_temp=8.0,
-                timestamp=datetime.now(timezone.utc)
+                timestamp=datetime.now(timezone.utc),
             )
 
         # Serialize

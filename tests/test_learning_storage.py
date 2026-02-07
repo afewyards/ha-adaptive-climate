@@ -11,8 +11,8 @@ from enum import Enum
 
 # DO NOT replace homeassistant.components.climate - it's already set up in conftest.py
 # with the correct MockHVACMode that uses global singleton values
-if 'homeassistant.components' not in sys.modules:
-    sys.modules['homeassistant.components'] = MagicMock()
+if "homeassistant.components" not in sys.modules:
+    sys.modules["homeassistant.components"] = MagicMock()
 # DO NOT set sys.modules['homeassistant.components.climate'] - use the one from conftest.py
 
 
@@ -88,31 +88,18 @@ def test_data_loading(temp_storage_dir):
     # Create test data file manually (since save() method was removed)
     test_data = {
         "version": 2,
-        "thermal_learner": {
-            "cooling_rates": [0.5],
-            "heating_rates": [2.0],
-            "outlier_threshold": 2.0
-        },
+        "thermal_learner": {"cooling_rates": [0.5], "heating_rates": [2.0], "outlier_threshold": 2.0},
         "adaptive_learner": {
             "cycle_history": [
-                {
-                    "overshoot": 0.4,
-                    "undershoot": 0.1,
-                    "settling_time": 50.0,
-                    "oscillations": 0,
-                    "rise_time": None
-                }
+                {"overshoot": 0.4, "undershoot": 0.1, "settling_time": 50.0, "oscillations": 0, "rise_time": None}
             ],
             "last_adjustment_time": None,
             "max_history": 50,
             "heating_type": None,
             "consecutive_converged_cycles": 0,
-            "pid_converged_for_ke": False
+            "pid_converged_for_ke": False,
         },
-        "valve_tracker": {
-            "cycle_count": 1,
-            "last_state": True
-        }
+        "valve_tracker": {"cycle_count": 1, "last_state": True},
     }
 
     # Write test data to file
@@ -173,7 +160,7 @@ def test_corrupt_data_handling(temp_storage_dir):
         "version": 1,
         "thermal_learner": {
             "cooling_rates": "not_a_list",  # Invalid type
-        }
+        },
     }
     with open(store.storage_file, "w") as f:
         json.dump(valid_data, f)
@@ -188,7 +175,7 @@ def test_corrupt_data_handling(temp_storage_dir):
         "version": 1,
         "adaptive_learner": {
             "cycle_history": "not_a_list",  # Invalid type
-        }
+        },
     }
     with open(store.storage_file, "w") as f:
         json.dump(valid_data, f)
@@ -230,11 +217,7 @@ def test_partial_save(temp_storage_dir):
     # Create test data with only thermal learner
     test_data = {
         "version": 2,
-        "thermal_learner": {
-            "cooling_rates": [0.5],
-            "heating_rates": [],
-            "outlier_threshold": 2.0
-        }
+        "thermal_learner": {"cooling_rates": [0.5], "heating_rates": [], "outlier_threshold": 2.0},
     }
 
     # Write test data to file
@@ -261,23 +244,16 @@ def test_empty_learners(temp_storage_dir):
     # Create test data with empty learners
     test_data = {
         "version": 2,
-        "thermal_learner": {
-            "cooling_rates": [],
-            "heating_rates": [],
-            "outlier_threshold": 2.0
-        },
+        "thermal_learner": {"cooling_rates": [], "heating_rates": [], "outlier_threshold": 2.0},
         "adaptive_learner": {
             "cycle_history": [],
             "last_adjustment_time": None,
             "max_history": 50,
             "heating_type": None,
             "consecutive_converged_cycles": 0,
-            "pid_converged_for_ke": False
+            "pid_converged_for_ke": False,
         },
-        "valve_tracker": {
-            "cycle_count": 0,
-            "last_state": None
-        }
+        "valve_tracker": {"cycle_count": 0, "last_state": None},
     }
 
     # Write test data to file
@@ -332,7 +308,7 @@ async def test_learning_store_async_load_empty(mock_hass):
     """Test async_load returns default structure when no file exists."""
     mock_storage_module = create_mock_storage_module(load_data=None)
 
-    with patch.dict('sys.modules', {'homeassistant.helpers.storage': mock_storage_module}):
+    with patch.dict("sys.modules", {"homeassistant.helpers.storage": mock_storage_module}):
         store = LearningDataStore(mock_hass)
         data = await store.async_load()
 
@@ -350,15 +326,13 @@ async def test_learning_store_get_zone_data(mock_hass):
             "living_room": {
                 "thermal_learner": {"cooling_rates": [0.5], "heating_rates": [2.0], "outlier_threshold": 2.0}
             },
-            "bedroom": {
-                "thermal_learner": {"cooling_rates": [0.4], "heating_rates": [1.8], "outlier_threshold": 2.0}
-            },
+            "bedroom": {"thermal_learner": {"cooling_rates": [0.4], "heating_rates": [1.8], "outlier_threshold": 2.0}},
         },
     }
 
     mock_storage_module = create_mock_storage_module(load_data=v5_data)
 
-    with patch.dict('sys.modules', {'homeassistant.helpers.storage': mock_storage_module}):
+    with patch.dict("sys.modules", {"homeassistant.helpers.storage": mock_storage_module}):
         store = LearningDataStore(mock_hass)
         await store.async_load()
 
@@ -385,7 +359,7 @@ async def test_learning_store_async_save_zone(mock_hass):
     """Test async_save_zone saves zone data with lock protection."""
     mock_storage_module = create_mock_storage_module(load_data=None)
 
-    with patch.dict('sys.modules', {'homeassistant.helpers.storage': mock_storage_module}):
+    with patch.dict("sys.modules", {"homeassistant.helpers.storage": mock_storage_module}):
         store = LearningDataStore(mock_hass)
         await store.async_load()
 
@@ -422,7 +396,7 @@ async def test_learning_store_schedule_zone_save(mock_hass):
     """Test schedule_zone_save uses async_delay_save."""
     mock_storage_module = create_mock_storage_module(load_data=None)
 
-    with patch.dict('sys.modules', {'homeassistant.helpers.storage': mock_storage_module}):
+    with patch.dict("sys.modules", {"homeassistant.helpers.storage": mock_storage_module}):
         store = LearningDataStore(mock_hass)
         await store.async_load()
 
@@ -440,7 +414,7 @@ async def test_learning_store_concurrent_saves(mock_hass):
 
     mock_storage_module = create_mock_storage_module(load_data=None)
 
-    with patch.dict('sys.modules', {'homeassistant.helpers.storage': mock_storage_module}):
+    with patch.dict("sys.modules", {"homeassistant.helpers.storage": mock_storage_module}):
         store = LearningDataStore(mock_hass)
         await store.async_load()
 
@@ -452,12 +426,8 @@ async def test_learning_store_concurrent_saves(mock_hass):
         ke_data_2 = {"current_ke": 0.6}
 
         # Launch concurrent saves
-        task1 = asyncio.create_task(
-            store.async_save_zone("zone_1", adaptive_data_1, ke_data_1)
-        )
-        task2 = asyncio.create_task(
-            store.async_save_zone("zone_2", adaptive_data_2, ke_data_2)
-        )
+        task1 = asyncio.create_task(store.async_save_zone("zone_1", adaptive_data_1, ke_data_1))
+        task2 = asyncio.create_task(store.async_save_zone("zone_2", adaptive_data_2, ke_data_2))
 
         # Wait for both to complete
         await asyncio.gather(task1, task2)
@@ -537,13 +507,14 @@ def test_update_zone_data_with_ke_data(mock_hass):
 
 # Task #21 tests: async_load validation
 
+
 @pytest.mark.asyncio
 async def test_async_load_validates_not_dict(mock_hass):
     """Test async_load returns default data when loaded data is not a dict."""
     # Return a list instead of dict
     mock_storage_module = create_mock_storage_module(load_data=["not", "a", "dict"])
 
-    with patch.dict('sys.modules', {'homeassistant.helpers.storage': mock_storage_module}):
+    with patch.dict("sys.modules", {"homeassistant.helpers.storage": mock_storage_module}):
         store = LearningDataStore(mock_hass)
         data = await store.async_load()
 
@@ -557,7 +528,7 @@ async def test_async_load_validates_missing_version(mock_hass):
     # Missing version key
     mock_storage_module = create_mock_storage_module(load_data={"zones": {}})
 
-    with patch.dict('sys.modules', {'homeassistant.helpers.storage': mock_storage_module}):
+    with patch.dict("sys.modules", {"homeassistant.helpers.storage": mock_storage_module}):
         store = LearningDataStore(mock_hass)
         data = await store.async_load()
 
@@ -570,7 +541,7 @@ async def test_async_load_validates_missing_zones(mock_hass):
     # Missing zones key
     mock_storage_module = create_mock_storage_module(load_data={"version": 5})
 
-    with patch.dict('sys.modules', {'homeassistant.helpers.storage': mock_storage_module}):
+    with patch.dict("sys.modules", {"homeassistant.helpers.storage": mock_storage_module}):
         store = LearningDataStore(mock_hass)
         data = await store.async_load()
 
@@ -583,7 +554,7 @@ async def test_async_load_validates_version_not_int(mock_hass):
     # Version is a string
     mock_storage_module = create_mock_storage_module(load_data={"version": "5", "zones": {}})
 
-    with patch.dict('sys.modules', {'homeassistant.helpers.storage': mock_storage_module}):
+    with patch.dict("sys.modules", {"homeassistant.helpers.storage": mock_storage_module}):
         store = LearningDataStore(mock_hass)
         data = await store.async_load()
 
@@ -596,7 +567,7 @@ async def test_async_load_validates_version_out_of_range(mock_hass):
     # Version 0 (below minimum)
     mock_storage_module = create_mock_storage_module(load_data={"version": 0, "zones": {}})
 
-    with patch.dict('sys.modules', {'homeassistant.helpers.storage': mock_storage_module}):
+    with patch.dict("sys.modules", {"homeassistant.helpers.storage": mock_storage_module}):
         store = LearningDataStore(mock_hass)
         data = await store.async_load()
 
@@ -605,7 +576,7 @@ async def test_async_load_validates_version_out_of_range(mock_hass):
     # Version 99 (above maximum)
     mock_storage_module = create_mock_storage_module(load_data={"version": 99, "zones": {}})
 
-    with patch.dict('sys.modules', {'homeassistant.helpers.storage': mock_storage_module}):
+    with patch.dict("sys.modules", {"homeassistant.helpers.storage": mock_storage_module}):
         store = LearningDataStore(mock_hass)
         data = await store.async_load()
 
@@ -618,7 +589,7 @@ async def test_async_load_validates_zones_not_dict(mock_hass):
     # Zones is a list
     mock_storage_module = create_mock_storage_module(load_data={"version": 5, "zones": []})
 
-    with patch.dict('sys.modules', {'homeassistant.helpers.storage': mock_storage_module}):
+    with patch.dict("sys.modules", {"homeassistant.helpers.storage": mock_storage_module}):
         store = LearningDataStore(mock_hass)
         data = await store.async_load()
 
@@ -629,11 +600,9 @@ async def test_async_load_validates_zones_not_dict(mock_hass):
 async def test_async_load_validates_zone_data_not_dict(mock_hass):
     """Test async_load returns default data when zone data is not a dict."""
     # Zone data is a string
-    mock_storage_module = create_mock_storage_module(
-        load_data={"version": 5, "zones": {"living_room": "not a dict"}}
-    )
+    mock_storage_module = create_mock_storage_module(load_data={"version": 5, "zones": {"living_room": "not a dict"}})
 
-    with patch.dict('sys.modules', {'homeassistant.helpers.storage': mock_storage_module}):
+    with patch.dict("sys.modules", {"homeassistant.helpers.storage": mock_storage_module}):
         store = LearningDataStore(mock_hass)
         data = await store.async_load()
 
@@ -658,7 +627,7 @@ async def test_async_load_accepts_valid_data(mock_hass):
 
     mock_storage_module = create_mock_storage_module(load_data=valid_data)
 
-    with patch.dict('sys.modules', {'homeassistant.helpers.storage': mock_storage_module}):
+    with patch.dict("sys.modules", {"homeassistant.helpers.storage": mock_storage_module}):
         store = LearningDataStore(mock_hass)
         data = await store.async_load()
 

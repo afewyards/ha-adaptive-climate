@@ -68,16 +68,20 @@ class TestFullPIDFeedbackLoop:
 
         # 2. Notify cycle tracker that heating started
         start_time = time_travel.now()
-        t.dispatcher.emit(CycleStartedEvent(
-            hvac_mode="heat",
-            timestamp=start_time,
-            target_temp=t.target_temp,
-            current_temp=t.current_temp,
-        ))
-        t.dispatcher.emit(HeatingStartedEvent(
-            hvac_mode="heat",
-            timestamp=start_time,
-        ))
+        t.dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat",
+                timestamp=start_time,
+                target_temp=t.target_temp,
+                current_temp=t.current_temp,
+            )
+        )
+        t.dispatcher.emit(
+            HeatingStartedEvent(
+                hvac_mode="heat",
+                timestamp=start_time,
+            )
+        )
 
         # Mark restoration complete so cycle tracker will accept temperature updates
         t.cycle_tracker.set_restoration_complete()
@@ -89,8 +93,16 @@ class TestFullPIDFeedbackLoop:
         # Temperature rises from 19.0 to 21.5°C (slight overshoot), then settles to 21.0°C
         heating_duration_minutes = 20
         temp_schedule = [
-            (0, 19.0), (2, 19.2), (4, 19.5), (6, 19.8), (8, 20.1),
-            (10, 20.4), (12, 20.7), (14, 21.0), (16, 21.2), (18, 21.4),
+            (0, 19.0),
+            (2, 19.2),
+            (4, 19.5),
+            (6, 19.8),
+            (8, 20.1),
+            (10, 20.4),
+            (12, 20.7),
+            (14, 21.0),
+            (16, 21.2),
+            (18, 21.4),
             (20, 21.5),  # Peak overshoot
         ]
 
@@ -100,6 +112,7 @@ class TestFullPIDFeedbackLoop:
 
             # Update cycle tracker with temperature sample
             import asyncio
+
             asyncio.run(t.cycle_tracker.update_temperature(time_travel.now(), temp))
 
             # Calculate PID output - should decrease as we approach target
@@ -113,15 +126,19 @@ class TestFullPIDFeedbackLoop:
 
         # 4. Heater turns off, settling phase begins
         heating_end_time = time_travel.now()
-        t.dispatcher.emit(HeatingEndedEvent(
-            hvac_mode="heat",
-            timestamp=heating_end_time,
-        ))
-        t.dispatcher.emit(SettlingStartedEvent(
-            hvac_mode="heat",
-            timestamp=heating_end_time,
-            was_clamped=False,
-        ))
+        t.dispatcher.emit(
+            HeatingEndedEvent(
+                hvac_mode="heat",
+                timestamp=heating_end_time,
+            )
+        )
+        t.dispatcher.emit(
+            SettlingStartedEvent(
+                hvac_mode="heat",
+                timestamp=heating_end_time,
+                was_clamped=False,
+            )
+        )
 
         # 5. Temperature settles back to target over next 10 samples
         settling_temps = [21.4, 21.3, 21.2, 21.1, 21.0, 21.0, 21.0, 21.0, 21.0, 21.0]
@@ -135,8 +152,9 @@ class TestFullPIDFeedbackLoop:
 
         # 7. Verify that learner received the cycle observation
         final_cycle_count = t.learner.get_cycle_count()
-        assert final_cycle_count == initial_cycle_count + 1, \
+        assert final_cycle_count == initial_cycle_count + 1, (
             "Learner should have recorded one cycle after settling completed"
+        )
 
         # 8. Verify cycle metrics were recorded
         # Check that the learner's cycle history contains the cycle
@@ -192,6 +210,7 @@ class TestSetpointChangeResponse:
 
         # Advance time past debounce window to trigger boost
         import asyncio
+
         time_travel.advance(seconds=6)
         # Execute pending callbacks manually since we're not in real async context
         # The boost_manager schedules a callback, we need to trigger it manually
@@ -200,8 +219,9 @@ class TestSetpointChangeResponse:
 
         # Verify integral increased
         final_integral = t.pid.integral
-        assert final_integral > initial_integral, \
+        assert final_integral > initial_integral, (
             f"Integral should increase after setpoint boost (was {initial_integral}, now {final_integral})"
+        )
 
     def test_setpoint_decrease_applies_decay(self, make_thermostat, time_travel, mock_hass):
         """Test that setpoint decrease triggers integral decay.
@@ -244,13 +264,15 @@ class TestSetpointChangeResponse:
 
         # Advance time past debounce window to trigger decay
         import asyncio
+
         time_travel.advance(seconds=6)
         asyncio.run(boost_manager._apply_boost(time_travel.now()))
 
         # Verify integral decreased
         final_integral = t.pid.integral
-        assert final_integral < initial_integral, \
+        assert final_integral < initial_integral, (
             f"Integral should decrease after setpoint decay (was {initial_integral}, now {final_integral})"
+        )
 
 
 class TestCycleMetricsPropagation:
@@ -292,21 +314,31 @@ class TestCycleMetricsPropagation:
 
         # Start heating cycle
         start_time = time_travel.now()
-        t.dispatcher.emit(CycleStartedEvent(
-            hvac_mode="heat",
-            timestamp=start_time,
-            target_temp=t.target_temp,
-            current_temp=t.current_temp,
-        ))
-        t.dispatcher.emit(HeatingStartedEvent(
-            hvac_mode="heat",
-            timestamp=start_time,
-        ))
+        t.dispatcher.emit(
+            CycleStartedEvent(
+                hvac_mode="heat",
+                timestamp=start_time,
+                target_temp=t.target_temp,
+                current_temp=t.current_temp,
+            )
+        )
+        t.dispatcher.emit(
+            HeatingStartedEvent(
+                hvac_mode="heat",
+                timestamp=start_time,
+            )
+        )
 
         # Simulate heating with clean rise to target (no overshoot)
         temp_schedule = [
-            (0, 19.0), (2, 19.3), (4, 19.6), (6, 19.9),
-            (8, 20.2), (10, 20.5), (12, 20.8), (14, 21.0),
+            (0, 19.0),
+            (2, 19.3),
+            (4, 19.6),
+            (6, 19.9),
+            (8, 20.2),
+            (10, 20.5),
+            (12, 20.8),
+            (14, 21.0),
         ]
 
         for minute_offset, temp in temp_schedule:
@@ -318,15 +350,19 @@ class TestCycleMetricsPropagation:
         # Stop heating
         time_travel.advance(minutes=2)
         heating_end_time = time_travel.now()
-        t.dispatcher.emit(HeatingEndedEvent(
-            hvac_mode="heat",
-            timestamp=heating_end_time,
-        ))
-        t.dispatcher.emit(SettlingStartedEvent(
-            hvac_mode="heat",
-            timestamp=heating_end_time,
-            was_clamped=False,
-        ))
+        t.dispatcher.emit(
+            HeatingEndedEvent(
+                hvac_mode="heat",
+                timestamp=heating_end_time,
+            )
+        )
+        t.dispatcher.emit(
+            SettlingStartedEvent(
+                hvac_mode="heat",
+                timestamp=heating_end_time,
+                was_clamped=False,
+            )
+        )
 
         # Settle at target (10 samples for settling detection)
         settling_temps = [21.0] * 10
@@ -336,8 +372,7 @@ class TestCycleMetricsPropagation:
 
         # Verify cycle was recorded
         final_count = t.learner.get_cycle_count()
-        assert final_count == initial_count + 1, \
-            "One cycle should be recorded after settling"
+        assert final_count == initial_count + 1, "One cycle should be recorded after settling"
 
         # Verify metrics structure
         assert len(t.learner.cycle_history) > 0
@@ -351,5 +386,4 @@ class TestCycleMetricsPropagation:
 
         # Overshoot should be zero or very small (clean rise)
         if cycle.overshoot is not None:
-            assert cycle.overshoot <= 0.3, \
-                "Clean rise should have minimal overshoot"
+            assert cycle.overshoot <= 0.3, "Clean rise should have minimal overshoot"

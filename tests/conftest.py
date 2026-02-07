@@ -21,16 +21,21 @@ mock_util.slugify = lambda x: x.lower().replace(" ", "_")
 
 # Mock homeassistant.util.dt for timestamp operations
 from datetime import datetime
+
 mock_dt = MagicMock()
 mock_dt.utcnow = lambda: datetime.utcnow()
+
+
 # Add parse_datetime for manifold persistence
 def _parse_datetime(s):
     """Parse ISO 8601 datetime string."""
     try:
         # Try parsing with timezone
-        return datetime.fromisoformat(s.replace('Z', '+00:00'))
+        return datetime.fromisoformat(s.replace("Z", "+00:00"))
     except (ValueError, AttributeError):
         return None
+
+
 mock_dt.parse_datetime = _parse_datetime
 mock_util.dt = mock_dt
 
@@ -54,11 +59,14 @@ mock_core = MagicMock()
 mock_core.DOMAIN = "homeassistant"
 mock_core.CoreState = MagicMock()
 
+
 # Event needs to support subscripting for type hints like Event[EventStateChangedData]
 class MockEvent:
     """Mock Event class that supports generic subscripting."""
+
     def __class_getitem__(cls, item):
         return cls
+
 
 mock_core.Event = MockEvent
 mock_core.EventStateChangedData = MagicMock()
@@ -86,10 +94,13 @@ mock_typing.ConfigType = MagicMock()
 mock_typing.DiscoveryInfoType = MagicMock()
 mock_helpers.typing = mock_typing
 
+
 # RestoreEntity must use ABCMeta to be compatible with ClimateEntity
 class MockRestoreEntity(metaclass=ABCMeta):
     """Mock RestoreEntity base class."""
+
     pass
+
 
 mock_restore_state = MagicMock()
 mock_restore_state.RestoreEntity = MockRestoreEntity
@@ -115,27 +126,32 @@ mock_valve.SERVICE_SET_VALVE_POSITION = "set_valve_position"
 mock_valve.ATTR_POSITION = "position"
 mock_components.valve = mock_valve
 
+
 # Climate - needs proper class definitions to avoid metaclass conflicts
 class MockClimateEntity(metaclass=ABCMeta):
     """Mock ClimateEntity base class."""
+
     pass
+
 
 class MockClimateEntityFeature(IntFlag):
     """Mock ClimateEntityFeature enum."""
+
     TARGET_TEMPERATURE = 1
     TARGET_TEMPERATURE_RANGE = 2
     TURN_ON = 4
     TURN_OFF = 8
     PRESET_MODE = 16
 
+
 # Create global singleton HVACMode values that persist even if modules are replaced
 # Store them in a way that ensures they're always the same object
 _HVAC_MODE_VALUES = {
-    'OFF': sys.intern("off"),
-    'HEAT': sys.intern("heat"),
-    'COOL': sys.intern("cool"),
-    'HEAT_COOL': sys.intern("heat_cool"),
-    'AUTO': sys.intern("auto"),
+    "OFF": sys.intern("off"),
+    "HEAT": sys.intern("heat"),
+    "COOL": sys.intern("cool"),
+    "HEAT_COOL": sys.intern("heat_cool"),
+    "AUTO": sys.intern("auto"),
 }
 
 
@@ -149,12 +165,12 @@ class _ImmutableHVACModeMeta(type):
         return super().__getattribute__(name)
 
     def __setattr__(cls, name, value):
-        if name in ('OFF', 'HEAT', 'COOL', 'HEAT_COOL', 'AUTO'):
+        if name in ("OFF", "HEAT", "COOL", "HEAT_COOL", "AUTO"):
             raise AttributeError(f"Cannot modify HVACMode.{name}")
         super().__setattr__(name, value)
 
     def __delattr__(cls, name):
-        if name in ('OFF', 'HEAT', 'COOL', 'HEAT_COOL', 'AUTO'):
+        if name in ("OFF", "HEAT", "COOL", "HEAT_COOL", "AUTO"):
             raise AttributeError(f"Cannot delete HVACMode.{name}")
         super().__delattr__(name)
 
@@ -166,19 +182,23 @@ class MockHVACMode(metaclass=_ImmutableHVACModeMeta):
     interned string object, even if sys.modules['homeassistant.components.climate']
     is replaced by other tests. The values are stored in a global dictionary.
     """
+
     # Set initial values (but __getattribute__ will return the global singletons)
-    OFF = _HVAC_MODE_VALUES['OFF']
-    HEAT = _HVAC_MODE_VALUES['HEAT']
-    COOL = _HVAC_MODE_VALUES['COOL']
-    HEAT_COOL = _HVAC_MODE_VALUES['HEAT_COOL']
-    AUTO = _HVAC_MODE_VALUES['AUTO']
+    OFF = _HVAC_MODE_VALUES["OFF"]
+    HEAT = _HVAC_MODE_VALUES["HEAT"]
+    COOL = _HVAC_MODE_VALUES["COOL"]
+    HEAT_COOL = _HVAC_MODE_VALUES["HEAT_COOL"]
+    AUTO = _HVAC_MODE_VALUES["AUTO"]
+
 
 class MockHVACAction:
     """Mock HVACAction enum."""
+
     IDLE = "idle"
     HEATING = "heating"
     COOLING = "cooling"
     OFF = "off"
+
 
 mock_climate = MagicMock()
 mock_climate.ClimateEntity = MockClimateEntity
@@ -311,6 +331,7 @@ def time_travel():
     # conftest.py sets up sys.modules["homeassistant.util.dt"] as a MagicMock
     # We set utcnow to return our controlled time
     from homeassistant.util import dt as dt_util
+
     original_utcnow = dt_util.utcnow
     dt_util.utcnow = controller.now
 

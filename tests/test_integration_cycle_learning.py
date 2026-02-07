@@ -31,7 +31,7 @@ def mock_dt_util():
     # Set a far-future datetime to ensure all cycle durations are valid
     # Tests use various dates, so we set utcnow to 2025-01-01 (far enough in future)
     fixed_now = datetime(2025, 1, 1, 0, 0, 0)
-    with patch('custom_components.adaptive_climate.managers.cycle_metrics.dt_util.utcnow', return_value=fixed_now):
+    with patch("custom_components.adaptive_climate.managers.cycle_metrics.dt_util.utcnow", return_value=fixed_now):
         yield
 
 
@@ -99,9 +99,7 @@ class TestCompleteHeatingCycle:
     """Test complete heating cycle from start to finish."""
 
     @pytest.mark.asyncio
-    async def test_complete_heating_cycle(
-        self, cycle_tracker, mock_adaptive_learner, dispatcher
-    ):
+    async def test_complete_heating_cycle(self, cycle_tracker, mock_adaptive_learner, dispatcher):
         """Test complete heating cycle with realistic temperature progression."""
         # Start heating at 19.0°C, target 21.0°C
         start_time = datetime(2024, 1, 1, 10, 0, 0)
@@ -112,12 +110,66 @@ class TestCompleteHeatingCycle:
         # Simulate temperature rising over 30 minutes (every 30 seconds)
         current_time = start_time
         temperatures = [
-            19.0, 19.1, 19.3, 19.5, 19.7, 20.0, 20.3, 20.6, 20.9, 21.1,  # First 5 minutes
-            21.2, 21.2, 21.3, 21.2, 21.2, 21.1, 21.1, 21.0, 21.0, 21.0,  # Next 5 minutes
-            21.0, 21.0, 21.0, 21.0, 21.0, 21.0, 21.0, 21.0, 21.0, 21.0,  # Next 5 minutes
-            21.0, 21.0, 21.0, 21.0, 21.0, 21.0, 21.0, 21.0, 21.0, 21.0,  # Next 5 minutes
-            21.0, 21.0, 21.0, 21.0, 21.0, 21.0, 21.0, 21.0, 21.0, 21.0,  # Next 5 minutes
-            21.0, 21.0, 21.0, 21.0, 21.0, 21.0, 21.0, 21.0, 21.0, 21.0,  # Final 5 minutes
+            19.0,
+            19.1,
+            19.3,
+            19.5,
+            19.7,
+            20.0,
+            20.3,
+            20.6,
+            20.9,
+            21.1,  # First 5 minutes
+            21.2,
+            21.2,
+            21.3,
+            21.2,
+            21.2,
+            21.1,
+            21.1,
+            21.0,
+            21.0,
+            21.0,  # Next 5 minutes
+            21.0,
+            21.0,
+            21.0,
+            21.0,
+            21.0,
+            21.0,
+            21.0,
+            21.0,
+            21.0,
+            21.0,  # Next 5 minutes
+            21.0,
+            21.0,
+            21.0,
+            21.0,
+            21.0,
+            21.0,
+            21.0,
+            21.0,
+            21.0,
+            21.0,  # Next 5 minutes
+            21.0,
+            21.0,
+            21.0,
+            21.0,
+            21.0,
+            21.0,
+            21.0,
+            21.0,
+            21.0,
+            21.0,  # Next 5 minutes
+            21.0,
+            21.0,
+            21.0,
+            21.0,
+            21.0,
+            21.0,
+            21.0,
+            21.0,
+            21.0,
+            21.0,  # Final 5 minutes
         ]
 
         for temp in temperatures:
@@ -154,14 +206,14 @@ class TestMultipleCyclesInSequence:
     """Test multiple heating cycles recorded in sequence."""
 
     @pytest.mark.asyncio
-    async def test_multiple_cycles_in_sequence(
-        self, cycle_tracker, mock_adaptive_learner, dispatcher
-    ):
+    async def test_multiple_cycles_in_sequence(self, cycle_tracker, mock_adaptive_learner, dispatcher):
         """Test that 3 complete cycles are all recorded."""
         for cycle_num in range(3):
             # Start heating
             start_time = datetime(2024, 1, 1, 10 + cycle_num * 2, 0, 0)
-            dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=start_time, target_temp=21.0, current_temp=19.0))
+            dispatcher.emit(
+                CycleStartedEvent(hvac_mode="heat", timestamp=start_time, target_temp=21.0, current_temp=19.0)
+            )
 
             # Collect temperature samples (20 samples = 10 minutes)
             current_time = start_time
@@ -191,9 +243,7 @@ class TestCycleAbortedBySetpointChange:
     """Test cycle abortion due to setpoint changes."""
 
     @pytest.mark.asyncio
-    async def test_cycle_aborted_by_setpoint_change(
-        self, cycle_tracker, mock_adaptive_learner, dispatcher
-    ):
+    async def test_cycle_aborted_by_setpoint_change(self, cycle_tracker, mock_adaptive_learner, dispatcher):
         """Test that setpoint change mid-cycle aborts and doesn't record."""
         # Start heating
         start_time = datetime(2024, 1, 1, 10, 0, 0)
@@ -207,7 +257,9 @@ class TestCycleAbortedBySetpointChange:
             current_time += timedelta(seconds=30)
 
         # Change setpoint mid-cycle
-        dispatcher.emit(SetpointChangedEvent(hvac_mode="heat", timestamp=current_time, old_target=21.0, new_target=22.0))
+        dispatcher.emit(
+            SetpointChangedEvent(hvac_mode="heat", timestamp=current_time, old_target=21.0, new_target=22.0)
+        )
 
         # Verify cycle was aborted
         assert cycle_tracker.state == CycleState.IDLE
@@ -221,9 +273,7 @@ class TestCycleAbortedByContactSensor:
     """Test cycle abortion due to contact sensor interruption."""
 
     @pytest.mark.asyncio
-    async def test_cycle_aborted_by_contact_sensor(
-        self, cycle_tracker, mock_adaptive_learner, dispatcher
-    ):
+    async def test_cycle_aborted_by_contact_sensor(self, cycle_tracker, mock_adaptive_learner, dispatcher):
         """Test that contact sensor pause aborts cycle and doesn't record."""
         # Start heating
         start_time = datetime(2024, 1, 1, 10, 0, 0)
@@ -299,16 +349,16 @@ class TestPWMModeCycleTracking:
     """Test cycle tracking with PWM mode (on/off cycling)."""
 
     @pytest.mark.asyncio
-    async def test_pwm_mode_cycle_tracking(
-        self, cycle_tracker, mock_adaptive_learner, dispatcher
-    ):
+    async def test_pwm_mode_cycle_tracking(self, cycle_tracker, mock_adaptive_learner, dispatcher):
         """Test that PWM on/off cycling is tracked correctly."""
         # Simulate PWM cycle: heater turns on and off multiple times
         start_time = datetime(2024, 1, 1, 10, 0, 0)
         current_time = start_time
 
         # First PWM on cycle
-        dispatcher.emit(CycleStartedEvent(hvac_mode="heat", timestamp=current_time, target_temp=21.0, current_temp=19.0))
+        dispatcher.emit(
+            CycleStartedEvent(hvac_mode="heat", timestamp=current_time, target_temp=21.0, current_temp=19.0)
+        )
 
         # Collect temps during first on period (10 minutes = 20 samples)
         for i in range(20):
@@ -333,9 +383,7 @@ class TestValveModeCycleTracking:
     """Test cycle tracking with valve mode (0-100% positioning)."""
 
     @pytest.mark.asyncio
-    async def test_valve_mode_cycle_tracking(
-        self, cycle_tracker, mock_adaptive_learner, dispatcher
-    ):
+    async def test_valve_mode_cycle_tracking(self, cycle_tracker, mock_adaptive_learner, dispatcher):
         """Test that valve transitions (0 to >0) are tracked as cycles."""
         # Valve opens to 50% (tracked as heating started)
         start_time = datetime(2024, 1, 1, 10, 0, 0)
@@ -404,7 +452,9 @@ class TestCycleResumedAfterSetpointChange:
             current_time += timedelta(seconds=30)
 
         # Change setpoint mid-cycle (heater still active)
-        dispatcher.emit(SetpointChangedEvent(hvac_mode="heat", timestamp=current_time, old_target=21.0, new_target=22.0))
+        dispatcher.emit(
+            SetpointChangedEvent(hvac_mode="heat", timestamp=current_time, old_target=21.0, new_target=22.0)
+        )
 
         # Assert state is still HEATING and cycle was interrupted (interruption_history not empty)
         assert tracker.state == CycleState.HEATING
@@ -479,7 +529,9 @@ class TestSetpointChangeInCoolingMode:
             current_time += timedelta(seconds=30)
 
         # Change setpoint mid-cycle while cooler is active (e.g., user wants it colder)
-        dispatcher.emit(SetpointChangedEvent(hvac_mode="heat", timestamp=current_time, old_target=24.0, new_target=23.0))
+        dispatcher.emit(
+            SetpointChangedEvent(hvac_mode="heat", timestamp=current_time, old_target=24.0, new_target=23.0)
+        )
 
         # Assert state is still COOLING (same behavior as heating)
         assert tracker.state == CycleState.COOLING
@@ -521,6 +573,7 @@ def test_integration_cycle_learning_module_exists(dispatcher):
         CycleTrackerManager,
         CycleState,
     )
+
     assert CycleTrackerManager is not None
     assert CycleState is not None
 
@@ -551,13 +604,58 @@ class TestPWMSessionTracking:
         # because control_output remains >0 throughout
         temperatures = [
             # First 10 minutes: temperature rising (20 samples)
-            19.0, 19.1, 19.2, 19.4, 19.6, 19.8, 20.0, 20.2, 20.5, 20.7,
-            20.9, 21.0, 21.1, 21.2, 21.2, 21.3, 21.3, 21.2, 21.2, 21.1,
+            19.0,
+            19.1,
+            19.2,
+            19.4,
+            19.6,
+            19.8,
+            20.0,
+            20.2,
+            20.5,
+            20.7,
+            20.9,
+            21.0,
+            21.1,
+            21.2,
+            21.2,
+            21.3,
+            21.3,
+            21.2,
+            21.2,
+            21.1,
             # Next 10 minutes: temperature stabilizing near setpoint
-            21.1, 21.0, 21.0, 21.1, 21.0, 21.0, 21.1, 21.0, 21.0, 21.0,
+            21.1,
+            21.0,
+            21.0,
+            21.1,
+            21.0,
+            21.0,
+            21.1,
+            21.0,
+            21.0,
+            21.0,
             # Final 10 minutes: stable at setpoint
-            21.0, 21.0, 21.0, 21.0, 21.0, 21.0, 21.0, 21.0, 21.0, 21.0,
-            21.0, 21.0, 21.0, 21.0, 21.0, 21.0, 21.0, 21.0, 21.0, 21.0,
+            21.0,
+            21.0,
+            21.0,
+            21.0,
+            21.0,
+            21.0,
+            21.0,
+            21.0,
+            21.0,
+            21.0,
+            21.0,
+            21.0,
+            21.0,
+            21.0,
+            21.0,
+            21.0,
+            21.0,
+            21.0,
+            21.0,
+            21.0,
         ]
 
         # Collect temperature samples during PWM cycling
@@ -681,12 +779,21 @@ class TestPersistenceRoundtrip:
         # Add observations using proper KeObservation objects
         base_time = datetime(2024, 1, 1, 10, 0, 0)
         original_learner._observations = [
-            KeObservation(timestamp=base_time, outdoor_temp=5.0, pid_output=50.0,
-                         indoor_temp=21.0, target_temp=21.0),
-            KeObservation(timestamp=base_time + timedelta(hours=1), outdoor_temp=0.0, pid_output=55.0,
-                         indoor_temp=20.5, target_temp=21.0),
-            KeObservation(timestamp=base_time + timedelta(hours=2), outdoor_temp=-5.0, pid_output=60.0,
-                         indoor_temp=20.0, target_temp=21.0),
+            KeObservation(timestamp=base_time, outdoor_temp=5.0, pid_output=50.0, indoor_temp=21.0, target_temp=21.0),
+            KeObservation(
+                timestamp=base_time + timedelta(hours=1),
+                outdoor_temp=0.0,
+                pid_output=55.0,
+                indoor_temp=20.5,
+                target_temp=21.0,
+            ),
+            KeObservation(
+                timestamp=base_time + timedelta(hours=2),
+                outdoor_temp=-5.0,
+                pid_output=60.0,
+                indoor_temp=20.0,
+                target_temp=21.0,
+            ),
         ]
         original_learner._current_ke = 0.65
 
@@ -745,8 +852,13 @@ class TestPersistenceRoundtrip:
         # Add some observations for the count
         base_time = datetime(2024, 1, 1, 10, 0, 0)
         ke_learner._observations = [
-            KeObservation(timestamp=base_time + timedelta(hours=i), outdoor_temp=i * 2.0, pid_output=50.0,
-                         indoor_temp=20.0, target_temp=21.0)
+            KeObservation(
+                timestamp=base_time + timedelta(hours=i),
+                outdoor_temp=i * 2.0,
+                pid_output=50.0,
+                indoor_temp=20.0,
+                target_temp=21.0,
+            )
             for i in range(5)
         ]
 
@@ -795,6 +907,7 @@ class TestEventDrivenCycleFlow:
     def dispatcher(self):
         """Create a CycleEventDispatcher for testing."""
         from custom_components.adaptive_climate.managers.events import CycleEventDispatcher
+
         return CycleEventDispatcher()
 
     @pytest.fixture
@@ -814,9 +927,7 @@ class TestEventDrivenCycleFlow:
         return tracker
 
     @pytest.mark.asyncio
-    async def test_full_cycle_event_flow(
-        self, event_tracker_with_dispatcher, dispatcher, mock_adaptive_learner
-    ):
+    async def test_full_cycle_event_flow(self, event_tracker_with_dispatcher, dispatcher, mock_adaptive_learner):
         """Test complete heating cycle with event sequence.
 
         Verifies: CYCLE_STARTED → HEATING_STARTED → HEATING_ENDED → SETTLING_STARTED → CYCLE_ENDED
@@ -1377,7 +1488,7 @@ class TestDecayAwareKiAdjustment:
                 oscillations=0,
                 rise_time=70.0,  # Above convergence (60) but below SLOW_RESPONSE (80)
                 integral_at_tolerance_entry=100.0,  # Entry integral
-                integral_at_setpoint_cross=100.0,   # Cross integral (no decay)
+                integral_at_setpoint_cross=100.0,  # Cross integral (no decay)
                 decay_contribution=0.0,  # decay_ratio = 0.0 / 100.0 = 0.0
             )
             learner.add_cycle_metrics(metrics)
@@ -1389,9 +1500,7 @@ class TestDecayAwareKiAdjustment:
         # Learning rate multiplier = 2.0x (confidence=0.0)
         # Scaled ki_factor = 1.0 + (2.0 - 1.0) * 2.0 = 3.0
         # Final Ki = 0.001 * 3.0 = 0.003
-        adjustment = learner.calculate_pid_adjustment(
-            current_kp=5.0, current_ki=0.001, current_kd=300.0
-        )
+        adjustment = learner.calculate_pid_adjustment(current_kp=5.0, current_ki=0.001, current_kd=300.0)
 
         assert adjustment is not None, "Expected adjustment for decay_ratio=0.0"
         expected_ki = 0.001 * 3.0  # Full Ki increase with 2.0x learning rate
@@ -1410,7 +1519,7 @@ class TestDecayAwareKiAdjustment:
                 oscillations=0,
                 rise_time=70.0,  # Above convergence (60) but below SLOW_RESPONSE (80)
                 integral_at_tolerance_entry=100.0,  # Entry integral
-                integral_at_setpoint_cross=0.0,     # Cross integral (full decay)
+                integral_at_setpoint_cross=0.0,  # Cross integral (full decay)
                 decay_contribution=100.0,  # decay_ratio = 100.0 / 100.0 = 1.0
             )
             learner.add_cycle_metrics(metrics)
@@ -1421,9 +1530,7 @@ class TestDecayAwareKiAdjustment:
         # ki_factor = 1.0 + scaled_increase = 1.0 (base factor, no increase)
         # Learning rate multiplier applied: 1.0 + (1.0 - 1.0) * 2.0 = 1.0
         # Final Ki = 0.001 * 1.0 = 0.001 (no change)
-        adjustment = learner.calculate_pid_adjustment(
-            current_kp=5.0, current_ki=0.001, current_kd=300.0
-        )
+        adjustment = learner.calculate_pid_adjustment(current_kp=5.0, current_ki=0.001, current_kd=300.0)
 
         assert adjustment is not None, "Expected adjustment for decay_ratio=1.0"
         expected_ki = 0.001 * 1.0  # No Ki increase
@@ -1442,7 +1549,7 @@ class TestDecayAwareKiAdjustment:
                 oscillations=0,
                 rise_time=70.0,  # Above convergence (60) but below SLOW_RESPONSE (80)
                 integral_at_tolerance_entry=100.0,  # Entry integral
-                integral_at_setpoint_cross=50.0,    # Cross integral (partial decay)
+                integral_at_setpoint_cross=50.0,  # Cross integral (partial decay)
                 decay_contribution=50.0,  # decay_ratio = 50.0 / 100.0 = 0.5
             )
             learner.add_cycle_metrics(metrics)
@@ -1453,9 +1560,7 @@ class TestDecayAwareKiAdjustment:
         # ki_factor = 1.0 + scaled_increase = 1.5 (base factor, 50% increase)
         # Learning rate multiplier applied: 1.0 + (1.5 - 1.0) * 2.0 = 2.0
         # Final Ki = 0.001 * 2.0 = 0.002
-        adjustment = learner.calculate_pid_adjustment(
-            current_kp=5.0, current_ki=0.001, current_kd=300.0
-        )
+        adjustment = learner.calculate_pid_adjustment(current_kp=5.0, current_ki=0.001, current_kd=300.0)
 
         assert adjustment is not None, "Expected adjustment for decay_ratio=0.5"
         expected_ki = 0.001 * 2.0  # 50% base increase * 2.0x learning rate
@@ -1484,9 +1589,7 @@ class TestDecayAwareKiAdjustment:
         # ki_factor = 1.0 + scaled_increase = 1.8 (base factor, 80% increase)
         # Learning rate multiplier applied: 1.0 + (1.8 - 1.0) * 2.0 = 2.6
         # Final Ki = 0.001 * 2.6 = 0.0026
-        adjustment = learner.calculate_pid_adjustment(
-            current_kp=5.0, current_ki=0.001, current_kd=300.0
-        )
+        adjustment = learner.calculate_pid_adjustment(current_kp=5.0, current_ki=0.001, current_kd=300.0)
 
         assert adjustment is not None, "Expected adjustment for decay_ratio=0.2"
         expected_ki = 0.001 * 2.6  # 80% base increase * 2.0x learning rate
@@ -1515,9 +1618,7 @@ class TestDecayAwareKiAdjustment:
         # ki_factor = 1.0 + scaled_increase = 1.2 (base factor, 20% increase)
         # Learning rate multiplier applied: 1.0 + (1.2 - 1.0) * 2.0 = 1.4
         # Final Ki = 0.001 * 1.4 = 0.0014
-        adjustment = learner.calculate_pid_adjustment(
-            current_kp=5.0, current_ki=0.001, current_kd=300.0
-        )
+        adjustment = learner.calculate_pid_adjustment(current_kp=5.0, current_ki=0.001, current_kd=300.0)
 
         assert adjustment is not None, "Expected adjustment for decay_ratio=0.8"
         expected_ki = 0.001 * 1.4  # 20% base increase * 2.0x learning rate
@@ -1542,9 +1643,7 @@ class TestDecayAwareKiAdjustment:
 
         # Without decay metrics, should get full Ki increase (decay_ratio=0.0 default)
         # Same as test case 1: full increase with 2.0x learning rate = 3.0x
-        adjustment = learner.calculate_pid_adjustment(
-            current_kp=5.0, current_ki=0.001, current_kd=300.0
-        )
+        adjustment = learner.calculate_pid_adjustment(current_kp=5.0, current_ki=0.001, current_kd=300.0)
 
         assert adjustment is not None, "Expected adjustment when decay metrics missing"
         expected_ki = 0.001 * 3.0  # Full 100% base increase * 2.0x learning rate (backward compatible)
@@ -1816,8 +1915,26 @@ class TestClampedCycleEndToEnd:
         # Temperature rises from 19.0°C to 21.3°C (overshoot that would trigger clamping)
         current_time = start_time
         temperatures = [
-            19.0, 19.2, 19.5, 19.8, 20.1, 20.4, 20.7, 20.9, 21.0, 21.1,
-            21.15, 21.2, 21.25, 21.3, 21.3, 21.3, 21.25, 21.2, 21.15, 21.1,
+            19.0,
+            19.2,
+            19.5,
+            19.8,
+            20.1,
+            20.4,
+            20.7,
+            20.9,
+            21.0,
+            21.1,
+            21.15,
+            21.2,
+            21.25,
+            21.3,
+            21.3,
+            21.3,
+            21.25,
+            21.2,
+            21.15,
+            21.1,
         ]
 
         for temp in temperatures:
@@ -1860,9 +1977,7 @@ class TestClampedCycleEndToEnd:
         # Verify CycleMetrics has was_clamped=True
         recorded_metrics = mock_adaptive_learner.add_cycle_metrics.call_args[0][0]
         assert isinstance(recorded_metrics, CycleMetrics)
-        assert recorded_metrics.was_clamped is True, (
-            "CycleMetrics should have was_clamped=True after clamped cycle"
-        )
+        assert recorded_metrics.was_clamped is True, "CycleMetrics should have was_clamped=True after clamped cycle"
 
         # Verify other metrics are still valid (cycle wasn't aborted)
         assert recorded_metrics.overshoot is not None, "Overshoot should be recorded"
@@ -1937,6 +2052,4 @@ class TestClampedCycleEndToEnd:
         # Verify CycleMetrics has was_clamped=False
         recorded_metrics = mock_adaptive_learner.add_cycle_metrics.call_args[0][0]
         assert isinstance(recorded_metrics, CycleMetrics)
-        assert recorded_metrics.was_clamped is False, (
-            "CycleMetrics should have was_clamped=False for unclamped cycle"
-        )
+        assert recorded_metrics.was_clamped is False, "CycleMetrics should have was_clamped=False for unclamped cycle"

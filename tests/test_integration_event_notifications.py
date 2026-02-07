@@ -1,4 +1,5 @@
 """Integration tests for event-driven notifications."""
+
 from unittest.mock import AsyncMock, MagicMock
 import pytest
 
@@ -94,11 +95,13 @@ async def test_comfort_drop_fires_notification(notification_manager, mock_hass):
 async def test_comfort_and_learning_independent(notification_manager, mock_hass):
     """Both notification types can fire for same zone without interfering."""
     tracker = LearningMilestoneTracker(
-        zone_id="office", zone_name="Office",
+        zone_id="office",
+        zone_name="Office",
         notification_manager=notification_manager,
     )
     detector = ComfortDegradationDetector(
-        zone_id="office", zone_name="Office",
+        zone_id="office",
+        zone_name="Office",
     )
 
     # Learning milestone
@@ -130,20 +133,25 @@ async def test_cooldown_across_events(notification_manager, mock_hass):
     # Send comfort alert with cooldown
     await notification_manager.async_send(
         notification_id="comfort_degradation_office",
-        title="Comfort", ios_message="M", cooldown_hours=24,
+        title="Comfort",
+        ios_message="M",
+        cooldown_hours=24,
     )
 
     # Comfort alert again — should be blocked
     result = await notification_manager.async_send(
         notification_id="comfort_degradation_office",
-        title="Comfort", ios_message="M", cooldown_hours=24,
+        title="Comfort",
+        ios_message="M",
+        cooldown_hours=24,
     )
     assert result is False
 
     # Learning milestone — different ID, should work
     result = await notification_manager.async_send(
         notification_id="learning_milestone_office",
-        title="Learning", ios_message="M",
+        title="Learning",
+        ios_message="M",
     )
     assert result is True
 

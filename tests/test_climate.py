@@ -21,6 +21,7 @@ Tests kept and rewritten:
 - HVAC mode transitions
 - PID controller integration behaviors
 """
+
 import asyncio
 import pytest
 from datetime import datetime, timezone
@@ -30,16 +31,19 @@ from unittest.mock import Mock, AsyncMock, MagicMock, patch
 # Mock Home Assistant exception classes
 class MockServiceNotFound(Exception):
     """Mock ServiceNotFound exception."""
+
     pass
 
 
 class MockHomeAssistantError(Exception):
     """Mock HomeAssistantError exception."""
+
     pass
 
 
 class MockHVACMode:
     """Mock HVAC mode constants."""
+
     HEAT = "heat"
     COOL = "cool"
     OFF = "off"
@@ -48,6 +52,7 @@ class MockHVACMode:
 
 class MockPresetMode:
     """Mock preset mode constants."""
+
     NONE = "none"
     AWAY = "away"
     ECO = "eco"
@@ -60,6 +65,7 @@ class MockPresetMode:
 
 class MockState:
     """Mock state object for restoration tests."""
+
     def __init__(self, state, attributes=None):
         self.state = state
         self.attributes = attributes or {}
@@ -71,6 +77,7 @@ class MockClimateEntity:
     Tests OBSERVABLE behavior only: public properties, extra_state_attributes,
     service call outcomes. No private attribute assertions.
     """
+
     def __init__(self, hass):
         self.hass = hass
         self.entity_id = "climate.test_thermostat"
@@ -184,9 +191,7 @@ class MockClimateEntity:
 
         return attrs
 
-    def _fire_heater_control_failed_event(
-        self, entity_id: str, operation: str, error: str
-    ) -> None:
+    def _fire_heater_control_failed_event(self, entity_id: str, operation: str, error: str) -> None:
         """Fire heater control failed event."""
         self.hass.bus.async_fire(
             "adaptive_climate_heater_control_failed",
@@ -198,9 +203,7 @@ class MockClimateEntity:
             },
         )
 
-    async def _async_call_heater_service(
-        self, entity_id: str, domain: str, service: str, data: dict
-    ) -> bool:
+    async def _async_call_heater_service(self, entity_id: str, domain: str, service: str, data: dict) -> bool:
         """Call heater/cooler service with error handling.
 
         Returns True on success, False on failure.
@@ -236,9 +239,7 @@ class MockClimateEntity:
         for heater_entity in self.heater_or_cooler_entity:
             data = {"entity_id": heater_entity}
             service = "turn_off" if self._heater_polarity_invert else "turn_on"
-            success = await self._async_call_heater_service(
-                heater_entity, "homeassistant", service, data
-            )
+            success = await self._async_call_heater_service(heater_entity, "homeassistant", service, data)
             if success:
                 self._is_device_active = True
 
@@ -247,29 +248,21 @@ class MockClimateEntity:
         for heater_entity in self.heater_or_cooler_entity:
             data = {"entity_id": heater_entity}
             service = "turn_on" if self._heater_polarity_invert else "turn_off"
-            await self._async_call_heater_service(
-                heater_entity, "homeassistant", service, data
-            )
+            await self._async_call_heater_service(heater_entity, "homeassistant", service, data)
         self._is_device_active = False
 
     async def _async_set_valve_value(self, value: float):
         """Set valve value with error handling."""
         for heater_entity in self.heater_or_cooler_entity:
-            if heater_entity.startswith('light.'):
+            if heater_entity.startswith("light."):
                 data = {"entity_id": heater_entity, "brightness_pct": value}
-                await self._async_call_heater_service(
-                    heater_entity, "light", "turn_on", data
-                )
-            elif heater_entity.startswith('valve.'):
+                await self._async_call_heater_service(heater_entity, "light", "turn_on", data)
+            elif heater_entity.startswith("valve."):
                 data = {"entity_id": heater_entity, "position": value}
-                await self._async_call_heater_service(
-                    heater_entity, "valve", "set_valve_position", data
-                )
+                await self._async_call_heater_service(heater_entity, "valve", "set_valve_position", data)
             else:
                 data = {"entity_id": heater_entity, "value": value}
-                await self._async_call_heater_service(
-                    heater_entity, "number", "set_value", data
-                )
+                await self._async_call_heater_service(heater_entity, "number", "set_value", data)
 
     def _restore_state(self, old_state):
         """Restore state from RestoreEntity (observable via public properties)."""
@@ -294,8 +287,13 @@ class MockClimateEntity:
 
         # Restore preset temperatures
         preset_attrs = [
-            "away_temp", "eco_temp", "boost_temp", "comfort_temp",
-            "home_temp", "sleep_temp", "activity_temp"
+            "away_temp",
+            "eco_temp",
+            "boost_temp",
+            "comfort_temp",
+            "home_temp",
+            "sleep_temp",
+            "activity_temp",
         ]
         for attr in preset_attrs:
             if old_state.attributes.get(attr) is not None:
@@ -420,9 +418,7 @@ class TestHeaterControl:
         _run_async(thermostat._async_heater_turn_off())
 
         # Observable: device is inactive
-        hass.services.async_call.assert_called_once_with(
-            "homeassistant", "turn_off", {"entity_id": "switch.heater"}
-        )
+        hass.services.async_call.assert_called_once_with("homeassistant", "turn_off", {"entity_id": "switch.heater"})
         assert thermostat._is_device_active is False
 
     def test_valve_entity_uses_correct_service(self):
@@ -435,9 +431,7 @@ class TestHeaterControl:
 
         # Observable: correct service called
         hass.services.async_call.assert_called_once_with(
-            "valve",
-            "set_valve_position",
-            {"entity_id": "valve.heating_valve", "position": 75.0}
+            "valve", "set_valve_position", {"entity_id": "valve.heating_valve", "position": 75.0}
         )
 
     def test_light_entity_uses_brightness(self):
@@ -450,9 +444,7 @@ class TestHeaterControl:
 
         # Observable: brightness service called
         hass.services.async_call.assert_called_once_with(
-            "light",
-            "turn_on",
-            {"entity_id": "light.heating_light", "brightness_pct": 50.0}
+            "light", "turn_on", {"entity_id": "light.heating_light", "brightness_pct": 50.0}
         )
 
     def test_multiple_heaters_partial_failure(self):
@@ -549,10 +541,7 @@ class TestStateRestoration:
         hass = _create_mock_hass()
         thermostat = MockClimateEntity(hass)
 
-        old_state = MockState(
-            "heat",
-            {"temperature": 21.0, "preset_mode": "away"}
-        )
+        old_state = MockState("heat", {"temperature": 21.0, "preset_mode": "away"})
         thermostat._restore_state(old_state)
 
         # Observable: preset restored
@@ -570,7 +559,7 @@ class TestStateRestoration:
                 "away_temp": 16.0,
                 "eco_temp": 18.0,
                 "boost_temp": 25.0,
-            }
+            },
         )
         thermostat._restore_state(old_state)
 
@@ -643,9 +632,7 @@ class TestHVACModes:
 
         # Observable: mode changed and heater turned off
         assert thermostat.hvac_mode == MockHVACMode.OFF
-        hass.services.async_call.assert_called_once_with(
-            "homeassistant", "turn_off", {"entity_id": "switch.heater"}
-        )
+        hass.services.async_call.assert_called_once_with("homeassistant", "turn_off", {"entity_id": "switch.heater"})
 
     def test_hvac_action_off_when_mode_off(self):
         """Verify hvac_action is 'off' when mode is OFF."""
@@ -760,12 +747,14 @@ class TestNightSetback:
 def test_climate_module_imports():
     """Verify core climate module can be imported."""
     from custom_components.adaptive_climate import climate
+
     assert climate is not None
 
 
 def test_state_attributes_module_imports():
     """Verify state attributes module can be imported."""
     from custom_components.adaptive_climate.managers import state_attributes
+
     assert state_attributes is not None
     assert hasattr(state_attributes, "build_state_attributes")
 

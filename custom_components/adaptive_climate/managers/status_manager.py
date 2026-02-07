@@ -4,6 +4,7 @@ Aggregates multiple status mechanisms (pause via contact sensors, humidity detec
 night setback adjustments, and learning grace periods) and provides a unified interface
 for checking status state and retrieving detailed status information.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta
@@ -28,6 +29,7 @@ class StatusInfo(TypedDict):
         activity: Current activity (idle|heating|cooling|settling)
         overrides: Priority-ordered list of active overrides
     """
+
     activity: str
     overrides: list[dict[str, Any]]
 
@@ -156,6 +158,7 @@ class StatusManager:
         # Check contact sensors (highest priority)
         if self._contact_sensor_handler and self._contact_sensor_handler.should_take_action():
             from ..adaptive.contact_sensors import ContactAction
+
             action = self._contact_sensor_handler.get_action()
             if action == ContactAction.PAUSE:
                 return True
@@ -371,51 +374,63 @@ def build_overrides(
 
     # 1. Contact open (highest priority)
     if contact_open:
-        overrides.append(build_override(
-            OverrideType.CONTACT_OPEN,
-            sensors=contact_sensors,
-            since=contact_since,
-        ))
+        overrides.append(
+            build_override(
+                OverrideType.CONTACT_OPEN,
+                sensors=contact_sensors,
+                since=contact_since,
+            )
+        )
 
     # 2. Humidity
     if humidity_active:
-        overrides.append(build_override(
-            OverrideType.HUMIDITY,
-            state=humidity_state,
-            resume_at=humidity_resume_at,
-        ))
+        overrides.append(
+            build_override(
+                OverrideType.HUMIDITY,
+                state=humidity_state,
+                resume_at=humidity_resume_at,
+            )
+        )
 
     # 3. Open window
     if open_window_active:
-        overrides.append(build_override(
-            OverrideType.OPEN_WINDOW,
-            since=open_window_since,
-            resume_at=open_window_resume_at,
-        ))
+        overrides.append(
+            build_override(
+                OverrideType.OPEN_WINDOW,
+                since=open_window_since,
+                resume_at=open_window_resume_at,
+            )
+        )
 
     # 4. Preheating
     if preheating_active:
-        overrides.append(build_override(
-            OverrideType.PREHEATING,
-            target_time=preheating_target_time,
-            started_at=preheating_started_at,
-            target_delta=preheating_target_delta,
-        ))
+        overrides.append(
+            build_override(
+                OverrideType.PREHEATING,
+                target_time=preheating_target_time,
+                started_at=preheating_started_at,
+                target_delta=preheating_target_delta,
+            )
+        )
 
     # 5. Night setback
     if night_setback_active:
-        overrides.append(build_override(
-            OverrideType.NIGHT_SETBACK,
-            delta=night_setback_delta,
-            ends_at=night_setback_ends_at,
-            limited_to=night_setback_limited_to,
-        ))
+        overrides.append(
+            build_override(
+                OverrideType.NIGHT_SETBACK,
+                delta=night_setback_delta,
+                ends_at=night_setback_ends_at,
+                limited_to=night_setback_limited_to,
+            )
+        )
 
     # 6. Learning grace (lowest priority)
     if learning_grace_active:
-        overrides.append(build_override(
-            OverrideType.LEARNING_GRACE,
-            until=learning_grace_until,
-        ))
+        overrides.append(
+            build_override(
+                OverrideType.LEARNING_GRACE,
+                until=learning_grace_until,
+            )
+        )
 
     return overrides

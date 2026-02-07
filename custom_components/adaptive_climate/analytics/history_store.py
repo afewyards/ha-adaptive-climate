@@ -3,6 +3,7 @@
 Stores weekly snapshots for week-over-week comparisons.
 Uses Home Assistant's storage helper for persistence.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, asdict
@@ -159,11 +160,7 @@ class HistoryStore:
             await self.async_load()
 
         # Remove any existing snapshot for the same week
-        self._data = [
-            s
-            for s in self._data
-            if not (s.year == snapshot.year and s.week_number == snapshot.week_number)
-        ]
+        self._data = [s for s in self._data if not (s.year == snapshot.year and s.week_number == snapshot.week_number)]
 
         # Add new snapshot
         self._data.append(snapshot)
@@ -173,9 +170,7 @@ class HistoryStore:
         self._data = self._data[:MAX_WEEKS_TO_KEEP]
 
         # Save to storage
-        await self._store.async_save(
-            {"snapshots": [s.to_dict() for s in self._data]}
-        )
+        await self._store.async_save({"snapshots": [s.to_dict() for s in self._data]})
 
         _LOGGER.debug(
             "Saved weekly snapshot for %d-W%02d, total stored: %d",
@@ -202,9 +197,7 @@ class HistoryStore:
 
         return None
 
-    def get_snapshot_for_week(
-        self, year: int, week_number: int
-    ) -> WeeklySnapshot | None:
+    def get_snapshot_for_week(self, year: int, week_number: int) -> WeeklySnapshot | None:
         """Get snapshot for a specific week.
 
         Args:
@@ -219,9 +212,7 @@ class HistoryStore:
                 return snapshot
         return None
 
-    def calculate_week_over_week(
-        self, current: WeeklySnapshot
-    ) -> dict[str, float | None]:
+    def calculate_week_over_week(self, current: WeeklySnapshot) -> dict[str, float | None]:
         """Calculate week-over-week changes.
 
         Args:
@@ -242,14 +233,8 @@ class HistoryStore:
         result = {}
 
         # Cost change
-        if (
-            current.total_cost is not None
-            and previous.total_cost is not None
-            and previous.total_cost > 0
-        ):
-            result["cost_change_pct"] = (
-                (current.total_cost - previous.total_cost) / previous.total_cost * 100
-            )
+        if current.total_cost is not None and previous.total_cost is not None and previous.total_cost > 0:
+            result["cost_change_pct"] = (current.total_cost - previous.total_cost) / previous.total_cost * 100
         else:
             result["cost_change_pct"] = None
 
@@ -260,9 +245,7 @@ class HistoryStore:
             and previous.total_energy_kwh > 0
         ):
             result["energy_change_pct"] = (
-                (current.total_energy_kwh - previous.total_energy_kwh)
-                / previous.total_energy_kwh
-                * 100
+                (current.total_energy_kwh - previous.total_energy_kwh) / previous.total_energy_kwh * 100
             )
         else:
             result["energy_change_pct"] = None
