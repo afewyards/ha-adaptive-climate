@@ -195,6 +195,9 @@ async def _run_weekly_report_core(
     history_store = HistoryStore(hass)
     await history_store.async_load()
 
+    # Get previous week's snapshot for WoW comparison
+    previous_snapshot = history_store.get_previous_week()
+
     # Collect data for each zone
     all_zones = coordinator.get_all_zones()
     zone_snapshots: dict[str, ZoneSnapshot] = {}
@@ -225,20 +228,108 @@ async def _run_weekly_report_core(
         # Get zone area
         area_m2 = zone_data.get("area_m2") if zone_data else None
 
-        # Add basic zone data to report
+        # Get learning status and confidence from AdaptiveLearner
+        adaptive_learner = zone_data.get("adaptive_learner") if zone_data else None
+        learning_status = None
+        confidence = None
+        recovery_cycles = None
+        if adaptive_learner:
+            # Get convergence confidence from confidence tracker
+            confidence_raw = adaptive_learner.get_convergence_confidence()
+            confidence = round(confidence_raw * 100)
+
+            # Get recovery cycle count from contribution tracker
+            contribution_tracker = getattr(adaptive_learner, '_contribution_tracker', None)
+            if contribution_tracker:
+                recovery_cycles = contribution_tracker.get_recovery_cycle_count()
+
+            # Compute learning status using same logic as state attributes
+            from ..managers.state_attributes import _compute_learning_status
+            cycle_count = adaptive_learner.get_cycle_count()
+            heating_type = zone_data.get("heating_type") if zone_data else None
+
+            # Detect pause conditions (needed for learning status calculation)
+            is_paused = False
+            climate_entity = zone_data.get("climate_entity") if zone_data else None
+            if climate_entity:
+                # Check learning grace period
+                if hasattr(climate_entity, '_night_setback_controller') and climate_entity._night_setback_controller:
+                    try:
+                        is_paused = climate_entity._night_setback_controller.in_learning_grace_period
+                    except (TypeError, AttributeError):
+                        pass
+
+                # Check contact sensor pause
+                if not is_paused and hasattr(climate_entity, '_contact_sensor_handler') and climate_entity._contact_sensor_handler:
+                    try:
+                        is_paused = climate_entity._contact_sensor_handler.is_any_contact_open()
+                    except (TypeError, AttributeError):
+                        pass
+
+                # Check humidity pause
+                if not is_paused and hasattr(climate_entity, '_humidity_detector') and climate_entity._humidity_detector:
+                    try:
+                        is_paused = climate_entity._humidity_detector.should_pause()
+                    except (TypeError, AttributeError):
+                        pass
+
+            learning_status = _compute_learning_status(
+                cycle_count,
+                confidence_raw,
+                heating_type,
+                is_paused,
+                contribution_tracker=contribution_tracker,
+            )
+
+        # Get previous week's data for this zone
+        prev_confidence = None
+        prev_comfort = None
+        prev_learning_status = None
+        if previous_snapshot and zone_id in previous_snapshot.zones:
+            prev_zone = previous_snapshot.zones[zone_id]
+            if prev_zone.confidence is not None:
+                prev_confidence = round(prev_zone.confidence * 100)
+            prev_comfort = prev_zone.comfort_score
+            prev_learning_status = prev_zone.learning_status
+
+        # Get pause counters from climate entity
+        humidity_pauses = 0
+        contact_pauses = 0
+        climate_entity = zone_data.get("climate_entity") if zone_data else None
+        if climate_entity:
+            if hasattr(climate_entity, 'humidity_pause_count'):
+                humidity_pauses = climate_entity.humidity_pause_count
+            if hasattr(climate_entity, 'contact_pause_count'):
+                contact_pauses = climate_entity.contact_pause_count
+
+        # Add all zone data to report
         report.add_zone_data(
             zone_id,
             duty_cycle,
             comfort_score=comfort_score,
+            comfort_score_prev=prev_comfort,
+            learning_status=learning_status,
+            learning_status_prev=prev_learning_status,
+            confidence=confidence,
+            confidence_prev=prev_confidence,
+            recovery_cycles=recovery_cycles,
+            humidity_pauses=humidity_pauses,
+            contact_pauses=contact_pauses,
             area_m2=area_m2,
         )
 
-        # Build zone snapshot for history
+        # Build zone snapshot for history (with v2 fields)
         zone_snapshots[zone_id] = ZoneSnapshot(
             zone_id=zone_id,
             duty_cycle=duty_cycle,
             comfort_score=comfort_score,
+            time_at_target=None,  # Not currently tracked
             area_m2=area_m2,
+            confidence=confidence_raw if adaptive_learner else None,
+            learning_status=learning_status,
+            recovery_cycles=recovery_cycles,
+            humidity_pauses=humidity_pauses,
+            contact_pauses=contact_pauses,
         )
 
     # Create snapshot for history
@@ -258,6 +349,13 @@ async def _run_weekly_report_core(
 
     # Save snapshot to history
     await history_store.async_save_snapshot(current_snapshot)
+
+    # Reset pause counters after snapshot is saved
+    for zone_id in all_zones:
+        zone_data = coordinator.get_zone_data(zone_id)
+        climate_entity = zone_data.get("climate_entity") if zone_data else None
+        if climate_entity and hasattr(climate_entity, 'reset_pause_counters'):
+            climate_entity.reset_pause_counters()
 
     # Format and send report
     report_text = report.format_markdown_report()
