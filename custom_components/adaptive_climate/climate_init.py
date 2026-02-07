@@ -86,7 +86,7 @@ async def async_setup_managers(thermostat: AdaptiveThermostat) -> None:
         heater_entity_id=thermostat._heater_entity_id,
         cooler_entity_id=thermostat._cooler_entity_id,
         demand_switch_entity_id=thermostat._demand_switch_entity_id,
-        heater_polarity_invert=thermostat._heater_polarity_invert,
+        heater_polarity_invert=bool(thermostat._heater_polarity_invert),
         pwm=thermostat._pwm,
         difference=thermostat._difference,
         min_open_time=thermostat._min_open_time.seconds,

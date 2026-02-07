@@ -515,7 +515,7 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
 
                     milestone_tracker = LearningMilestoneTracker(
                         zone_id=self._zone_id,
-                        zone_name=self._name,
+                        zone_name=str(self._name or self._zone_id),
                         notification_manager=notification_manager,
                     )
                     zone_data["milestone_tracker"] = milestone_tracker
@@ -1080,7 +1080,7 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
             self._control_output = self._output_min
             self._previous_temp = None
             self._previous_temp_time = None
-            if self._pid_controller is not None:
+            if self._pid_controller is not None:  # pyright: ignore[reportUnnecessaryComparison]
                 self._pid_controller.clear_samples()
         if self._pid_controller:
             self._pid_controller.out_max = self._max_out
@@ -1116,11 +1116,11 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
                 _LOGGER.debug(
                     "%s: Set heater to %s from async_set_hvac_mode(%s)", self.entity_id, self._control_output, hvac_mode
                 )
-                await self._async_set_valve_value(self._control_output)
+                await self._async_set_valve_value(float(self._control_output or 0))
             # Clear the samples to avoid integrating the off period
             self._previous_temp = None
             self._previous_temp_time = None
-            if self._pid_controller is not None:
+            if self._pid_controller is not None:  # pyright: ignore[reportUnnecessaryComparison]
                 self._pid_controller.clear_samples()
             # Reset PID calc timing to avoid stale dt when turned back on
             if self._control_output_manager is not None:
@@ -1425,7 +1425,7 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
         # Check for session end conditions
         if self._current_temp is not None and self._target_temp is not None:
             # Check if reached setpoint
-            if self._current_temp >= self._target_temp - self._cold_tolerance:
+            if self._current_temp >= float(self._target_temp) - float(self._cold_tolerance):
                 obs = heating_rate_learner.end_session(
                     end_temp=self._current_temp,
                     reason="reached_setpoint",

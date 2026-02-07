@@ -40,11 +40,11 @@ class KeManager:
 
     def __init__(
         self,
-        state: KeManagerState = None,
+        state: KeManagerState | None = None,
         ke_learner: KeLearner | None = None,
         gains_manager: PIDGainsManager | None = None,
         async_control_heating: Callable[..., Awaitable[None]] | None = None,
-        async_write_ha_state: Callable[[], None] | None = None,
+        async_write_ha_state: Callable[[], Any] | None = None,
         # Backward compatibility parameters
         thermostat: AdaptiveThermostat | None = None,
         get_hvac_mode: callable | None = None,
@@ -303,8 +303,8 @@ class KeManager:
         self._ke_learner.add_observation(
             outdoor_temp=ext_temp,
             pid_output=control_output,
-            indoor_temp=current_temp,
-            target_temp=target_temp,
+            indoor_temp=float(current_temp),  # type: ignore[arg-type]
+            target_temp=float(target_temp),  # type: ignore[arg-type]
         )
         self._last_ke_observation_time = current_time
 

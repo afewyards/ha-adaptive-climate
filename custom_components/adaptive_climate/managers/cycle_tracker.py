@@ -10,7 +10,7 @@ from collections import deque
 import logging
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import TYPE_CHECKING, Awaitable, Callable, Deque
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Deque
 
 from homeassistant.util import dt as dt_util
 
@@ -63,7 +63,7 @@ class CycleTrackerManager:
         adaptive_learner: AdaptiveLearner,
         get_target_temp: Callable[[], float | None],
         get_current_temp: Callable[[], float | None],
-        get_hvac_mode: Callable[[], str],
+        get_hvac_mode: Callable[[], Any],
         get_in_grace_period: Callable[[], bool],
         get_is_device_active: Callable[[], bool] | None = None,
         thermal_time_constant: float | None = None,
@@ -100,6 +100,7 @@ class CycleTrackerManager:
             SETTLING_TIMEOUT_MIN,
             SETTLING_TIMEOUT_MAX,
             HEATING_TYPE_CHARACTERISTICS,
+            HeatingType,
         )
 
         self._hass = hass
@@ -159,10 +160,10 @@ class CycleTrackerManager:
         self._unsubscribe_handles: list[Callable[[], None]] = []
 
         # Initialize cold_tolerance from heating type characteristics
+        cold_tolerance: float | None = None
         if heating_type and heating_type in HEATING_TYPE_CHARACTERISTICS:
-            cold_tolerance: float | None = HEATING_TYPE_CHARACTERISTICS[heating_type].get("cold_tolerance")
-        else:
-            cold_tolerance: float | None = None
+            _ct_val = HEATING_TYPE_CHARACTERISTICS[HeatingType(heating_type)].get("cold_tolerance")
+            cold_tolerance = float(_ct_val) if _ct_val is not None else None
 
         # Create metrics recorder
         from .cycle_metrics import CycleMetricsRecorder

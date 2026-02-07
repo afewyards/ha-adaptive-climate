@@ -389,15 +389,17 @@ class CentralController:
                 return True
         return False
 
-    async def _are_all_switches_on(self, entity_ids: list[str]) -> bool:
+    async def _are_all_switches_on(self, entity_ids: list[str] | None) -> bool:
         """Check if all switches in the list are currently on.
 
         Args:
             entity_ids: List of entity IDs to check
 
         Returns:
-            True if all switches are on, False if any is off
+            True if all switches are on, False if any is off or list is None
         """
+        if not entity_ids:
+            return False
         for entity_id in entity_ids:
             if not await self._is_switch_on(entity_id):
                 return False
@@ -428,7 +430,7 @@ class CentralController:
             return await self._call_switch_service(entity_id, "turn_off")
         return True
 
-    async def _turn_on_switches(self, entity_ids: list[str]) -> bool:
+    async def _turn_on_switches(self, entity_ids: list[str] | None) -> bool:
         """Turn on all switches in the list.
 
         Args:
@@ -437,6 +439,8 @@ class CentralController:
         Returns:
             True if all switches were turned on successfully, False if any failed
         """
+        if not entity_ids:
+            return False
         success = True
         for entity_id in entity_ids:
             if not await self._turn_on_switch(entity_id):
@@ -460,7 +464,7 @@ class CentralController:
 
     async def _turn_off_switches_smart(
         self,
-        entity_ids: list[str],
+        entity_ids: list[str] | None,
         other_mode_has_demand: bool,
     ) -> bool:
         """Turn off switches, skipping shared switches if other mode needs them.
@@ -472,6 +476,8 @@ class CentralController:
         Returns:
             True if all operations succeeded
         """
+        if not entity_ids:
+            return False
         shared = self._get_shared_switches()
         success = True
 

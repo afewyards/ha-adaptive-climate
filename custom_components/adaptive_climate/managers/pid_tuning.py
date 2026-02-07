@@ -42,7 +42,7 @@ class PIDTuningManager:
         pid_controller: PIDController,
         gains_manager: Any,  # PIDGainsManager
         async_control_heating: Callable[..., Awaitable[None]],
-        async_write_ha_state: Callable[[], None],
+        async_write_ha_state: Callable[[], Any],
     ):
         """Initialize the PIDTuningManager.
 
