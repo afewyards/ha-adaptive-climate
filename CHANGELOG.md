@@ -1,6 +1,35 @@
 # CHANGELOG
 
 
+## v0.61.1 (2026-02-07)
+
+### Bug Fixes
+
+- **persistence**: Restore pid_history from flat state attrs, not nested learning object
+  ([`7b574bc`](https://github.com/afewyards/ha-adaptive-climate/commit/7b574bc0e08585a848dce86f913dd074f05f30fe))
+
+pid_history was written to attrs["learning"]["pid_history"] but restore code read
+  attrs.get("pid_history") at top level — history lost on every restart. Move to flat restoration
+  field alongside integral/cycle_count.
+
+Also removes dead fallback to top-level kp/ki/kd/ke attrs in PIDGainsManager.restore_from_state() —
+  gains now only restore from pid_history. Deletes unused _add_learning_status_attributes function.
+
+### Code Style
+
+- Remove unused datetime import from heater_controller
+  ([`3b745df`](https://github.com/afewyards/ha-adaptive-climate/commit/3b745df27fae0ba84fb57073199a8219bcb7920a))
+
+### Refactoring
+
+- **pid**: Extract dead-time helper, name magic numbers, remove unused import
+  ([`b8abeb8`](https://github.com/afewyards/ha-adaptive-climate/commit/b8abeb8f0be74d72d6770655c991a9bf6faca68e))
+
+- Extract _accumulate_integral() from calc() to consolidate 3 repeated integral accumulation paths
+  into one method with early returns - Replace bare 2.0 and 0.25 literals with
+  BUMPLESS_TRANSFER_THRESHOLD and DEAD_TIME_INTEGRAL_RATE constants - Remove unused datetime import
+
+
 ## v0.61.0 (2026-02-06)
 
 ### Bug Fixes
