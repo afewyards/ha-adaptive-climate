@@ -43,7 +43,7 @@ class PID:
 
     def __init__(self, kp, ki, kd, ke=0, ke_wind=0.02, out_min=float('-inf'), out_max=float('+inf'),
                  sampling_period=0, cold_tolerance=0.3, hot_tolerance=0.3, derivative_filter_alpha=0.15,
-                 outdoor_temp_lag_tau=4.0, integral_decay_multiplier=1.5, integral_exp_decay_tau=None,
+                 integral_decay_multiplier=1.5, integral_exp_decay_tau=None,
                  heating_type="radiator"):
         """A proportional-integral-derivative controller using P-on-M (proportional-on-measurement).
             :param kp: Proportional coefficient.
@@ -69,9 +69,6 @@ class PID:
             :param derivative_filter_alpha: EMA filter alpha for derivative term (0.0-1.0).
                                            Lower values = more filtering. 1.0 = no filter.
             :type derivative_filter_alpha: float
-            :param outdoor_temp_lag_tau: Time constant in hours for outdoor temperature EMA filter.
-                                        Larger values = slower response to outdoor temp changes.
-            :type outdoor_temp_lag_tau: float
             :param integral_decay_multiplier: Multiplier for integral decay when error opposes integral sign.
                                               Higher values = faster decay during overhang. Minimum 1.0.
             :type integral_decay_multiplier: float
@@ -122,8 +119,6 @@ class PID:
         self._sampling_period = sampling_period
         self._cold_tolerance = cold_tolerance
         self._hot_tolerance = hot_tolerance
-        self._outdoor_temp_lag_tau = outdoor_temp_lag_tau  # Time constant in hours
-        self._outdoor_temp_lagged = None  # Will be initialized on first outdoor temp reading
         self._last_output_before_off = None  # Stores output before switching to OFF mode for bumpless transfer
         self._wind_speed = 0.0  # Current wind speed in m/s (defaults to 0 if unavailable)
         self._integral_decay_multiplier = max(1.0, integral_decay_multiplier)
@@ -231,21 +226,6 @@ class PID:
     @property
     def dt(self):
         return self._dt
-
-    @property
-    def outdoor_temp_lagged(self):
-        """Get the lagged (EMA-filtered) outdoor temperature."""
-        return self._outdoor_temp_lagged
-
-    @outdoor_temp_lagged.setter
-    def outdoor_temp_lagged(self, value):
-        """Set the lagged outdoor temperature (for state restoration)."""
-        self._outdoor_temp_lagged = value
-
-    @property
-    def outdoor_temp_lag_tau(self):
-        """Get the outdoor temperature lag time constant in hours."""
-        return self._outdoor_temp_lag_tau
 
     @property
     def integral_decay_multiplier(self):
@@ -401,7 +381,6 @@ class PID:
         self._last_input = None
         self._last_input_time = None
         self._derivative_filtered = 0.0
-        self._outdoor_temp_lagged = None
 
     def set_auto_apply_count(self, count):
         """Set the auto-apply count for tracking PID adjustments.
@@ -562,20 +541,10 @@ class PID:
         else:
             self._dt = 0
 
-        # Apply EMA filter to outdoor temperature to model thermal lag
+        # Use outdoor temperature directly for external compensation
+        # (EMA filtering is handled by the coordinator at house level)
         if ext_temp is not None:
-            if self._outdoor_temp_lagged is None:
-                # Initialize with first reading (no warmup needed)
-                self._outdoor_temp_lagged = ext_temp
-            else:
-                # Apply EMA filter: alpha = dt / (tau * 3600)
-                # tau is in hours, dt is in seconds, so convert tau to seconds
-                alpha = self._dt / (self._outdoor_temp_lag_tau * 3600.0)
-                # Clamp alpha to [0, 1] for numerical stability
-                alpha = max(0.0, min(1.0, alpha))
-                self._outdoor_temp_lagged = alpha * ext_temp + (1.0 - alpha) * self._outdoor_temp_lagged
-
-            self._dext = set_point - self._outdoor_temp_lagged
+            self._dext = set_point - ext_temp
         else:
             self._dext = 0
 
