@@ -52,6 +52,7 @@ class ContactSensorHandler:
         # Track when contacts opened
         self._contact_opened_at: datetime | None = None
         self._any_contact_open = False
+        self._open_sensor_ids: List[str] = []
 
         # Track when handler was created (for grace period)
         self._created_at: datetime | None = None
@@ -74,11 +75,15 @@ class ContactSensorHandler:
         if self._created_at is None:
             self._created_at = current_time
 
-        # Aggregate: ANY sensor open means contact is open
-        any_open = any(
-            contact_states.get(sensor_id, False)
+        # Track which sensors are open
+        self._open_sensor_ids = [
+            sensor_id
             for sensor_id in self.contact_sensors
-        )
+            if contact_states.get(sensor_id, False)
+        ]
+
+        # Aggregate: ANY sensor open means contact is open
+        any_open = len(self._open_sensor_ids) > 0
 
         # Track state changes
         if any_open and not self._any_contact_open:
@@ -97,6 +102,22 @@ class ContactSensorHandler:
             True if at least one contact sensor is open
         """
         return self._any_contact_open
+
+    def get_open_sensor_ids(self) -> List[str]:
+        """Get list of currently open contact sensor entity IDs.
+
+        Returns:
+            List of entity IDs for sensors that are currently open
+        """
+        return self._open_sensor_ids.copy()
+
+    def get_first_open_time(self) -> datetime | None:
+        """Get timestamp when contacts first opened.
+
+        Returns:
+            Datetime when the first contact opened, or None if all closed
+        """
+        return self._contact_opened_at
 
     def should_take_action(self, current_time: datetime | None = None) -> bool:
         """Check if action should be taken based on contact state and delay.

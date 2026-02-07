@@ -228,6 +228,92 @@ class TestContactPauseAndLearningResilience:
         assert source in ["learned", "fallback", "interpolated"]
 
 
+class TestContactOverrideSensorDetails:
+    """Test contact override includes sensor details (D1 extension).
+
+    Bug: state_attributes.py calls get_open_sensor_ids() and get_first_open_time()
+    on ContactSensorHandler, but these methods didn't exist → AttributeError.
+    """
+
+    def test_contact_override_includes_sensor_details(self, time_travel):
+        """Contact override should include which sensors are open and when."""
+        handler = ContactSensorHandler(
+            contact_sensors=["binary_sensor.window_1", "binary_sensor.window_2"],
+            contact_delay_seconds=0,
+        )
+
+        now = time_travel.now()
+
+        # Open one of two windows
+        handler.update_contact_states(
+            {"binary_sensor.window_1": True, "binary_sensor.window_2": False},
+            current_time=now,
+        )
+
+        # Handler must expose which sensors are open
+        assert handler.is_any_contact_open()
+        open_sensors = handler.get_open_sensor_ids()
+        assert open_sensors == ["binary_sensor.window_1"]
+
+        # Handler must expose when contacts first opened
+        first_open = handler.get_first_open_time()
+        assert first_open == now
+
+        # Build override with full details
+        overrides = build_overrides(
+            contact_open=True,
+            contact_sensors=open_sensors,
+            contact_since=format_iso8601(first_open),
+        )
+
+        assert len(overrides) == 1
+        assert overrides[0]["type"] == OverrideType.CONTACT_OPEN.value
+        assert overrides[0]["sensors"] == ["binary_sensor.window_1"]
+        assert "since" in overrides[0]
+
+    def test_contact_multiple_sensors_open(self, time_travel):
+        """Opening multiple sensors should list all in override."""
+        handler = ContactSensorHandler(
+            contact_sensors=["binary_sensor.window_1", "binary_sensor.window_2"],
+            contact_delay_seconds=0,
+        )
+
+        now = time_travel.now()
+
+        # Open both windows
+        handler.update_contact_states(
+            {"binary_sensor.window_1": True, "binary_sensor.window_2": True},
+            current_time=now,
+        )
+
+        open_sensors = handler.get_open_sensor_ids()
+        assert len(open_sensors) == 2
+        assert "binary_sensor.window_1" in open_sensors
+        assert "binary_sensor.window_2" in open_sensors
+
+    def test_contact_close_clears_sensor_list(self, time_travel):
+        """Closing all sensors should clear the open list and timestamp."""
+        handler = ContactSensorHandler(
+            contact_sensors=["binary_sensor.window"],
+            contact_delay_seconds=0,
+        )
+
+        now = time_travel.now()
+
+        # Open then close
+        handler.update_contact_states({"binary_sensor.window": True}, current_time=now)
+        assert handler.get_open_sensor_ids() == ["binary_sensor.window"]
+        assert handler.get_first_open_time() == now
+
+        time_travel.advance(minutes=1)
+        handler.update_contact_states(
+            {"binary_sensor.window": False}, current_time=time_travel.now()
+        )
+
+        assert handler.get_open_sensor_ids() == []
+        assert handler.get_first_open_time() is None
+
+
 class TestHumidityPauseAndIntegralDecay:
     """Test D3: Humidity pause applies integral decay."""
 
