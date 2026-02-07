@@ -478,10 +478,13 @@ class PIDTuningManager:
         This clears:
         - Cycle history from AdaptiveLearner
         - Ke observations from KeLearner
+        - Preheat observations from PreheatLearner
         - Convergence state
         - Resets PID to physics-based defaults
+        - Persists cleared state to disk
         """
         coordinator = self._state._coordinator
+        adaptive_learner = None
         if coordinator:
             adaptive_learner = coordinator.get_adaptive_learner(self._state.entity_id)
             if adaptive_learner:
@@ -499,6 +502,38 @@ class PIDTuningManager:
                 "%s: Cleared Ke learning observations",
                 self._state.entity_id
             )
+
+        # Clear preheat learner observations
+        preheat_learner = getattr(self._state, '_preheat_learner', None)
+        if preheat_learner:
+            preheat_learner._observations.clear()
+            preheat_learner._add_observation_counter = 0
+            _LOGGER.info(
+                "%s: Cleared preheat learning observations",
+                self._state.entity_id
+            )
+
+        # Persist cleared state to disk immediately (not debounced)
+        zone_id = getattr(self._state, '_zone_id', None)
+        hass = getattr(self._state, 'hass', None)
+        if zone_id and hass:
+            learning_store = hass.data.get(DOMAIN, {}).get("learning_store")
+            if learning_store:
+                adaptive_data = adaptive_learner.to_dict() if adaptive_learner else None
+                ke_data = ke_controller.ke_learner.to_dict() if (ke_controller and ke_controller.ke_learner) else None
+                preheat_data = preheat_learner.to_dict() if preheat_learner else None
+
+                await learning_store.async_save_zone(
+                    zone_id=zone_id,
+                    adaptive_data=adaptive_data,
+                    ke_data=ke_data,
+                    preheat_data=preheat_data,
+                )
+                _LOGGER.info(
+                    "%s: Persisted cleared learning state to disk for zone %s",
+                    self._state.entity_id,
+                    zone_id
+                )
 
         # Reset PID to physics defaults
         await self.async_reset_pid_to_physics()

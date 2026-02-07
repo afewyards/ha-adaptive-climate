@@ -886,6 +886,8 @@ class AdaptiveLearner:
         - Convergence confidence (both heating and cooling)
         - Validation mode state and collected validation cycles
         - Undershoot detector state (consecutive failures, Ki multiplier)
+        - Confidence contribution tracker (maintenance, heating rate caps)
+        - Heating rate learner (all observations)
         """
         self._heating_cycle_history.clear()
         self._cooling_cycle_history.clear()
@@ -894,6 +896,21 @@ class AdaptiveLearner:
         self._confidence.reset_confidence()  # Reset both modes
         self._validation.reset_validation_state()
         self._undershoot_detector.reset_all()  # Reset all undershoot state
+
+        # Reset contribution tracker (no reset method - create fresh instance)
+        from ..const import HeatingType as HeatingTypeEnum
+        if self._heating_type is None:
+            heating_type_enum = HeatingTypeEnum.RADIATOR
+        elif isinstance(self._heating_type, str):
+            heating_type_enum = HeatingTypeEnum(self._heating_type)
+        else:
+            heating_type_enum = self._heating_type
+        from .confidence_contribution import ConfidenceContributionTracker
+        self._contribution_tracker = ConfidenceContributionTracker(heating_type_enum)
+
+        # Reset heating rate learner (no reset method - create fresh instance)
+        from .heating_rate_learner import HeatingRateLearner
+        self._heating_rate_learner = HeatingRateLearner(self._heating_type or "radiator")
 
     def get_previous_pid(self) -> Dict[str, float] | None:
         """Get the previous PID configuration for rollback.
