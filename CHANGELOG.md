@@ -1,6 +1,151 @@
 # CHANGELOG
 
 
+## v0.63.0 (2026-02-07)
+
+### Chores
+
+- Add comfort degradation constants, update service descriptions
+  ([`a57f676`](https://github.com/afewyards/ha-adaptive-climate/commit/a57f6762bbb9224f22727a7171ba39884c5fe7b7))
+
+- Remove charts module (replaced by markdown reports)
+  ([`9392dfa`](https://github.com/afewyards/ha-adaptive-climate/commit/9392dfa9fe86b031c40db68f0281d9c4d5dc2ca6))
+
+- Remove local icon files, now served via HA brands repo
+  ([`38cffa2`](https://github.com/afewyards/ha-adaptive-climate/commit/38cffa2460d1960288fff84a2853bdfb6ef4c77c))
+
+### Documentation
+
+- Add reporting & notifications facelift design
+  ([`186ff1a`](https://github.com/afewyards/ha-adaptive-climate/commit/186ff1a6bf50255bbb9cbdce15594cde891886a8))
+
+Redesign weekly reports with markdown formatting, learning progress tracking, and problem zone
+  highlighting. Add event-driven notifications for learning milestones and comfort degradation.
+
+- Add reporting facelift implementation plan
+  ([`d3cac7f`](https://github.com/afewyards/ha-adaptive-climate/commit/d3cac7fe7fd9925e9fa5e9ca4bbe120ec3a29d14))
+
+13 TDD tasks covering NotificationManager, history store v2, weekly report rewrite, charts removal,
+  cost report removal, comfort degradation detector, learning milestones, and integration tests.
+
+- Add shared outdoor temp implementation plan
+  ([`c5e4de7`](https://github.com/afewyards/ha-adaptive-climate/commit/c5e4de70eafb7b360d53e7911902411dc7de8df3))
+
+- Add shared outdoor temperature design
+  ([`7516183`](https://github.com/afewyards/ha-adaptive-climate/commit/7516183cbe1628784c1abab76cad1a6e2efad670))
+
+- Update CLAUDE.md for shared outdoor temp
+  ([`6729de5`](https://github.com/afewyards/ha-adaptive-climate/commit/6729de5c00d79c0db235ffbd2f974fde9a5fa622))
+
+### Features
+
+- Add ComfortDegradationDetector with rolling average
+  ([`5cf00b1`](https://github.com/afewyards/ha-adaptive-climate/commit/5cf00b1d65bf15d9cbb09e9956646c57f55c90a8))
+
+Tracks a 24h rolling average of comfort scores (288 samples at 5-min intervals). Detects significant
+  degradation when: - Current score < 65 (absolute threshold) - Current score drops >15 points from
+  rolling average
+
+Includes context builder for attributing causes (contact/humidity pauses).
+
+- Add humidity/contact pause counters to climate entity
+  ([`c20d6e7`](https://github.com/afewyards/ha-adaptive-climate/commit/c20d6e7a9735fde8012bab8362ae1902861e5fa7))
+
+- Add _humidity_pause_count and _contact_pause_count attributes to AdaptiveThermostat - Increment
+  humidity counter when state transitions from "normal" to "paused" - Increment contact counter when
+  any contact sensor opens - Add properties humidity_pause_count and contact_pause_count for read
+  access - Add reset_pause_counters() method to reset both counters (for weekly reporting) -
+  Register climate_entity reference in zone_data during async_added_to_hass - Add comprehensive
+  tests for counter logic and state transitions
+
+- Add learning/pause fields to ZoneSnapshot (v2)
+  ([`b30ae13`](https://github.com/afewyards/ha-adaptive-climate/commit/b30ae13812fe01eca8d5bb22b6732faa556d1ab9))
+
+Add 5 new fields to ZoneSnapshot for tracking learning progress: - confidence: float | None -
+  learning_status: str | None - recovery_cycles: int | None - humidity_pauses: int | None -
+  contact_pauses: int | None
+
+Bump STORAGE_VERSION from 1 to 2. Backward compatible via .get() in from_dict.
+
+Tests verify v2 serialization/deserialization and v1-to-v2 migration.
+
+- Add LearningMilestoneTracker for tier change notifications
+  ([`38c7443`](https://github.com/afewyards/ha-adaptive-climate/commit/38c7443c9dd8fdfbf2ac8810fe293558962a1637))
+
+Implements milestone tracker that monitors learning status tier changes and sends notifications when
+  zones reach new tiers (stable, tuned, optimized) or drop back to collecting after rollback.
+
+- Tracks tier transitions (collecting -> stable -> tuned -> optimized) - Sends notifications on both
+  upgrades and downgrades - Silent for idle transitions and confidence changes within same tier -
+  Includes tier-specific context in persistent messages - Gracefully handles missing notification
+  manager
+
+- Add NotificationManager with cooldown support
+  ([`bcb91bf`](https://github.com/afewyards/ha-adaptive-climate/commit/bcb91bf23dfcba0d235639fb799b72d7a1457b1a))
+
+- Add shared outdoor temp EMA filter to coordinator
+  ([`026e152`](https://github.com/afewyards/ha-adaptive-climate/commit/026e1520eda9e5b14e1cefeb8ff6911192b8b2e3))
+
+- Rewrite WeeklyReport with markdown output and learning focus
+  ([`5db2161`](https://github.com/afewyards/ha-adaptive-climate/commit/5db2161df2e025a8883227a5540e8df6cf88987d))
+
+- Wire event-driven learning and comfort notifications
+  ([`7f394ed`](https://github.com/afewyards/ha-adaptive-climate/commit/7f394ed48b0ba7b2cdf9b3bf220da718a91d15c8))
+
+- Initialize NotificationManager in __init__.py after coordinator setup - Create
+  LearningMilestoneTracker per zone in climate.py async_added_to_hass - Hook milestone check into
+  state_attributes.py after learning status computation - Fire-and-forget milestone notifications
+  when learning tier changes - All tests passing (2765 passed, 11 skipped)
+
+- Wire weekly report to learning data and pause counters
+  ([`f997753`](https://github.com/afewyards/ha-adaptive-climate/commit/f9977534e200bbde45fcc112a7282d9f7978c319))
+
+- Collect learning status and confidence from AdaptiveLearner - Get recovery cycle count from
+  ConfidenceContributionTracker - Retrieve previous week's snapshot for WoW comparison - Extract
+  pause counters (humidity_pauses, contact_pauses) from climate entities - Pass all data to
+  report.add_zone_data with prev values - Store new v2 fields in ZoneSnapshot (confidence,
+  learning_status, recovery_cycles, pauses) - Reset pause counters after snapshot saved - Reuse
+  _compute_learning_status from state_attributes for consistency
+
+### Refactoring
+
+- Outdoor_temp_lagged from coordinator, remove per-zone restoration
+  ([`6352a77`](https://github.com/afewyards/ha-adaptive-climate/commit/6352a7781b99706162a8dd39a19a81ff566cde3b))
+
+- Remove EMA filter from PID controller
+  ([`ef319da`](https://github.com/afewyards/ha-adaptive-climate/commit/ef319da8495fb29fe8abd066a1a46f36ea81b2a4))
+
+Remove per-zone outdoor temperature EMA filtering from PID controller in preparation for centralized
+  house-level filtering in coordinator.
+
+Changes: - Remove outdoor_temp_lag_tau parameter from PID.__init__ - Remove outdoor_temp_lagged
+  property and setter - Remove outdoor_temp_lag_tau property - Replace EMA filter logic in calc()
+  with direct ext_temp usage - Remove outdoor_temp_lagged reset in clear_samples() - Update tests:
+  remove 4 EMA-specific tests, add test for direct usage
+
+The PID now uses ext_temp directly for _dext calculation. EMA filtering will be handled by the
+  coordinator (wired in a separate task).
+
+- Wire zones to coordinator's shared outdoor temp
+  ([`520af23`](https://github.com/afewyards/ha-adaptive-climate/commit/520af2381ec542b26eae90aadf4a2bd4841dd4c1))
+
+### Testing
+
+- Add integration tests for weekly report and event notifications
+  ([`6a48d56`](https://github.com/afewyards/ha-adaptive-climate/commit/6a48d5607d778be2d3c9e670873b11c3ee16ad63))
+
+Add comprehensive integration tests covering end-to-end flows for:
+
+- Weekly report generation with multiple zones - Week-over-week confidence delta calculation -
+  Report markdown and iOS summary formatting - Zone sorting and problem detection - Learning
+  milestone notification triggers - Comfort degradation detection and notification - Independent
+  operation of multiple notification types - Notification cooldown behavior - Context building for
+  comfort alerts
+
+- Fix outdoor temp mocks for shared coordinator model
+  ([`78913f8`](https://github.com/afewyards/ha-adaptive-climate/commit/78913f8a38b95d13c618616bf14061096b8f1ec3))
+
+
 ## v0.62.1 (2026-02-07)
 
 ### Bug Fixes
