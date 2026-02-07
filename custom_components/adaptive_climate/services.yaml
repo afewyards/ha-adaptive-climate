@@ -135,23 +135,6 @@ weekly_report:
   name: Weekly Report
   description: Generate and send a weekly performance report via the configured notification service. Shows learning progress per zone and highlights problem zones.
 
-cost_report:
-  name: Cost Report
-  description: Generate an energy cost report showing consumption and costs for each zone and the total system.
-  fields:
-    period:
-      name: Period
-      description: The reporting period (daily, weekly, or monthly)
-      required: false
-      default: weekly
-      example: weekly
-      selector:
-        select:
-          options:
-            - daily
-            - weekly
-            - monthly
-
 set_vacation_mode:
   name: Set Vacation Mode
   description: Enable or disable vacation mode. When enabled, all zones are set to frost protection temperature and learning is paused.

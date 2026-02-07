@@ -779,7 +779,6 @@ class TestAsyncUnregisterServices:
             async_unregister_services,
             SERVICE_RUN_LEARNING,
             SERVICE_WEEKLY_REPORT,
-            SERVICE_COST_REPORT,
             SERVICE_SET_VACATION_MODE,
             SERVICE_PID_RECOMMENDATIONS,
         )
@@ -793,11 +792,10 @@ class TestAsyncUnregisterServices:
         async_unregister_services(hass)
 
         # Verify async_remove was called for each service
-        # 3 public services + 2 debug services (health_check no longer exists)
+        # 2 public services + 2 debug services
         expected_services = [
             SERVICE_RUN_LEARNING,
             SERVICE_WEEKLY_REPORT,
-            SERVICE_COST_REPORT,
             SERVICE_SET_VACATION_MODE,
             SERVICE_PID_RECOMMENDATIONS,
         ]
@@ -988,7 +986,6 @@ class TestReloadWithoutLeftoverState:
             async_send_notification_func=MagicMock(),
             async_send_persistent_notification_func=MagicMock(),
             vacation_schema=None,
-            cost_report_schema=None,
             default_vacation_target_temp=12.0,
             debug=True,
         )
@@ -1012,7 +1009,6 @@ class TestReloadWithoutLeftoverState:
             async_send_notification_func=MagicMock(),
             async_send_persistent_notification_func=MagicMock(),
             vacation_schema=None,
-            cost_report_schema=None,
             default_vacation_target_temp=12.0,
             debug=True,
         )

@@ -88,7 +88,6 @@ class TestServiceRegistration:
         from custom_components.adaptive_climate.services import (
             async_register_services,
             SERVICE_WEEKLY_REPORT,
-            SERVICE_COST_REPORT,
             SERVICE_SET_VACATION_MODE,
         )
 
@@ -102,13 +101,12 @@ class TestServiceRegistration:
             async_send_notification_func=mock_notification_funcs["send_notification"],
             async_send_persistent_notification_func=mock_notification_funcs["send_persistent"],
             vacation_schema=Mock(),
-            cost_report_schema=Mock(),
             default_vacation_target_temp=15.0,
             debug=False,
         )
 
-        # Verify only 3 public services were registered
-        assert mock_hass.services.async_register.call_count == 3
+        # Verify only 2 public services were registered
+        assert mock_hass.services.async_register.call_count == 2
 
         # Get all registered service names
         registered_services = [
@@ -118,7 +116,6 @@ class TestServiceRegistration:
         # Verify each public service was registered
         expected_services = [
             SERVICE_SET_VACATION_MODE,
-            SERVICE_COST_REPORT,
             SERVICE_WEEKLY_REPORT,
         ]
         for service in expected_services:
@@ -130,7 +127,6 @@ class TestServiceRegistration:
             async_register_services,
             SERVICE_RUN_LEARNING,
             SERVICE_WEEKLY_REPORT,
-            SERVICE_COST_REPORT,
             SERVICE_SET_VACATION_MODE,
             SERVICE_PID_RECOMMENDATIONS,
         )
@@ -145,13 +141,12 @@ class TestServiceRegistration:
             async_send_notification_func=mock_notification_funcs["send_notification"],
             async_send_persistent_notification_func=mock_notification_funcs["send_persistent"],
             vacation_schema=Mock(),
-            cost_report_schema=Mock(),
             default_vacation_target_temp=15.0,
             debug=True,
         )
 
-        # Verify all 5 services were registered (3 public + 2 debug)
-        assert mock_hass.services.async_register.call_count == 5
+        # Verify all 4 services were registered (2 public + 2 debug)
+        assert mock_hass.services.async_register.call_count == 4
 
         # Get all registered service names
         registered_services = [
@@ -161,7 +156,6 @@ class TestServiceRegistration:
         # Verify each expected service was registered
         expected_services = [
             SERVICE_SET_VACATION_MODE,
-            SERVICE_COST_REPORT,
             SERVICE_WEEKLY_REPORT,
             SERVICE_RUN_LEARNING,
             SERVICE_PID_RECOMMENDATIONS,
@@ -187,7 +181,6 @@ class TestServiceRegistration:
             async_send_notification_func=mock_notification_funcs["send_notification"],
             async_send_persistent_notification_func=mock_notification_funcs["send_persistent"],
             vacation_schema=Mock(),
-            cost_report_schema=Mock(),
             default_vacation_target_temp=15.0,
             debug=False,
         )
@@ -215,7 +208,6 @@ class TestServiceRegistration:
             async_send_notification_func=mock_notification_funcs["send_notification"],
             async_send_persistent_notification_func=mock_notification_funcs["send_persistent"],
             vacation_schema=Mock(),
-            cost_report_schema=Mock(),
             default_vacation_target_temp=15.0,
         )
 
@@ -223,37 +215,6 @@ class TestServiceRegistration:
         for call in mock_hass.services.async_register.call_args_list:
             assert call[0][0] == DOMAIN
 
-    def test_cost_report_uses_schema(self, mock_hass, mock_coordinator, mock_vacation_mode, mock_notification_funcs):
-        """Verify cost_report service is registered with schema."""
-        from custom_components.adaptive_climate.services import (
-            async_register_services,
-            SERVICE_COST_REPORT,
-        )
-
-        mock_cost_schema = Mock()
-
-        async_register_services(
-            hass=mock_hass,
-            coordinator=mock_coordinator,
-            vacation_mode=mock_vacation_mode,
-            notify_service=None,
-            persistent_notification=False,
-            async_send_notification_func=mock_notification_funcs["send_notification"],
-            async_send_persistent_notification_func=mock_notification_funcs["send_persistent"],
-            vacation_schema=Mock(),
-            cost_report_schema=mock_cost_schema,
-            default_vacation_target_temp=15.0,
-        )
-
-        # Find the cost_report registration call
-        cost_report_call = None
-        for call in mock_hass.services.async_register.call_args_list:
-            if call[0][1] == SERVICE_COST_REPORT:
-                cost_report_call = call
-                break
-
-        assert cost_report_call is not None
-        assert cost_report_call[1].get("schema") == mock_cost_schema
 
 
 # =============================================================================
@@ -591,14 +552,12 @@ class TestServiceConstants:
         from custom_components.adaptive_climate.services import (
             SERVICE_RUN_LEARNING,
             SERVICE_WEEKLY_REPORT,
-            SERVICE_COST_REPORT,
             SERVICE_SET_VACATION_MODE,
             SERVICE_PID_RECOMMENDATIONS,
         )
 
         assert SERVICE_RUN_LEARNING == "run_learning"
         assert SERVICE_WEEKLY_REPORT == "weekly_report"
-        assert SERVICE_COST_REPORT == "cost_report"
         assert SERVICE_SET_VACATION_MODE == "set_vacation_mode"
         assert SERVICE_PID_RECOMMENDATIONS == "pid_recommendations"
 
@@ -615,7 +574,6 @@ def test_services_module_exists():
     assert services is not None
     assert hasattr(services, "async_register_services")
     assert hasattr(services, "async_handle_weekly_report")
-    assert hasattr(services, "async_handle_cost_report")
     assert hasattr(services, "async_handle_run_learning")
     assert hasattr(services, "async_handle_set_vacation_mode")
     assert hasattr(services, "async_handle_pid_recommendations")

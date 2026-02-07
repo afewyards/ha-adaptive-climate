@@ -178,13 +178,12 @@ async def _run_weekly_report_core(
         async_send_persistent_notification_func: Function to send persistent notifications
 
     Returns:
-        Report result dictionary with report object and metadata
+        Report result dictionary with report object
     """
     from ..analytics.reports import WeeklyReport
     from ..analytics.history_store import HistoryStore, WeeklySnapshot, ZoneSnapshot
-    from ..analytics.charts import ChartGenerator, save_chart_to_www, cleanup_old_charts
 
-    _LOGGER.info("Generating weekly report with charts")
+    _LOGGER.info("Generating weekly report")
 
     end_date = dt_util.utcnow()
     start_date = end_date - timedelta(days=7)
@@ -192,14 +191,12 @@ async def _run_weekly_report_core(
 
     report = WeeklyReport(start_date, end_date)
 
-    # Load history for week-over-week comparison
+    # Load history
     history_store = HistoryStore(hass)
     await history_store.async_load()
 
     # Collect data for each zone
     all_zones = coordinator.get_all_zones()
-    total_cost = 0.0
-    has_energy_data = False
     zone_snapshots: dict[str, ZoneSnapshot] = {}
 
     for zone_id in all_zones:
@@ -225,24 +222,14 @@ async def _run_weekly_report_core(
             except (ValueError, TypeError):
                 pass
 
-        # Get time at target
-        time_at_target_sensor_id = f"sensor.{zone_id}_time_at_target"
-        time_at_target_state = hass.states.get(time_at_target_sensor_id)
-        time_at_target = None
-        if time_at_target_state and time_at_target_state.state not in ("unknown", "unavailable"):
-            try:
-                time_at_target = float(time_at_target_state.state)
-            except (ValueError, TypeError):
-                pass
-
         # Get zone area
         area_m2 = zone_data.get("area_m2") if zone_data else None
 
+        # Add basic zone data to report
         report.add_zone_data(
             zone_id,
             duty_cycle,
             comfort_score=comfort_score,
-            time_at_target=time_at_target,
             area_m2=area_m2,
         )
 
@@ -251,41 +238,17 @@ async def _run_weekly_report_core(
             zone_id=zone_id,
             duty_cycle=duty_cycle,
             comfort_score=comfort_score,
-            time_at_target=time_at_target,
             area_m2=area_m2,
         )
-
-    # Get system totals if available
-    weekly_cost_state = hass.states.get("sensor.heating_weekly_cost")
-    weekly_energy = None
-
-    if weekly_cost_state and weekly_cost_state.state not in ("unknown", "unavailable"):
-        try:
-            total_cost = float(weekly_cost_state.state)
-            has_energy_data = True
-            weekly_energy = weekly_cost_state.attributes.get("weekly_energy_kwh", 0)
-            report.set_totals(weekly_energy, total_cost)
-        except (ValueError, TypeError):
-            pass
-
-    # Calculate zone cost breakdown
-    report.calculate_zone_costs()
 
     # Create snapshot for history
     current_snapshot = WeeklySnapshot(
         year=year,
         week_number=week_number,
-        total_cost=total_cost if has_energy_data else None,
-        total_energy_kwh=weekly_energy,
+        total_cost=None,
+        total_energy_kwh=None,
         zones=zone_snapshots,
         timestamp=dt_util.utcnow().isoformat(),
-    )
-
-    # Calculate week-over-week comparison
-    wow_changes = history_store.calculate_week_over_week(current_snapshot)
-    report.set_week_over_week(
-        cost_change_pct=wow_changes.get("cost_change_pct"),
-        energy_change_pct=wow_changes.get("energy_change_pct"),
     )
 
     # Get health status
@@ -296,53 +259,21 @@ async def _run_weekly_report_core(
     # Save snapshot to history
     await history_store.async_save_snapshot(current_snapshot)
 
-    # Generate charts
-    chart_url = None
-    chart_gen = ChartGenerator()
-
-    if chart_gen.available:
-        # Generate zone duty cycle chart
-        zone_duty_cycles = {
-            zone_id.replace("_", " ").title(): data["duty_cycle"]
-            for zone_id, data in report.zones.items()
-        }
-
-        chart_bytes = chart_gen.create_bar_chart(
-            zone_duty_cycles,
-            title="Zone Activity This Week",
-            unit="%",
-            max_value=100,
-        )
-
-        if chart_bytes:
-            filename = f"weekly_{year}_{week_number:02d}_duty.png"
-            chart_url = await save_chart_to_www(hass, chart_bytes, filename)
-            _LOGGER.debug("Chart saved to %s", chart_url)
-
-        # Cleanup old charts
-        await cleanup_old_charts(hass)
-
     # Format and send report
-    report_text = report.format_report()
+    report_text = report.format_markdown_report()
     _LOGGER.info("Weekly report generated:\n%s", report_text)
 
-    # Use the new digestible summary
-    short_message = report.format_summary()
+    short_message = report.format_ios_summary()
 
     title = "Weekly Heating Report"
 
-    # Build notification data with optional image
-    notification_data = {}
-    if chart_url:
-        notification_data["image"] = chart_url
-
-    # Send mobile notification with chart
+    # Send mobile notification
     await async_send_notification_func(
         hass,
         notify_service,
         title=title,
         message=short_message,
-        data=notification_data if notification_data else None,
+        data=None,
     )
 
     # Send persistent notification (detailed) if enabled
@@ -354,12 +285,7 @@ async def _run_weekly_report_core(
             message=report_text,
         )
 
-    return {
-        "report": report,
-        "has_energy_data": has_energy_data,
-        "total_cost": total_cost,
-        "chart_url": chart_url,
-    }
+    return {"report": report}
 
 
 # =============================================================================

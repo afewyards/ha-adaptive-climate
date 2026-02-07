@@ -35,7 +35,6 @@ _LOGGER = logging.getLogger(__name__)
 SERVICE_RUN_LEARNING = "run_learning"
 SERVICE_HEALTH_CHECK = "health_check"
 SERVICE_WEEKLY_REPORT = "weekly_report"
-SERVICE_COST_REPORT = "cost_report"
 SERVICE_SET_VACATION_MODE = "set_vacation_mode"
 SERVICE_PID_RECOMMENDATIONS = "pid_recommendations"
 
@@ -204,132 +203,6 @@ async def async_handle_weekly_report(
     )
 
 
-async def async_handle_cost_report(
-    hass: HomeAssistant,
-    coordinator: AdaptiveThermostatCoordinator,
-    call: ServiceCall,
-    notify_service: str | None,
-    persistent_notification: bool,
-    async_send_notification_func,
-    async_send_persistent_notification_func,
-) -> None:
-    """Handle the cost_report service call.
-
-    Supports daily, weekly, and monthly periods.
-    """
-    period = call.data.get("period", "weekly")
-    _LOGGER.info("Generating %s cost report", period)
-
-    # Calculate period days for estimation
-    period_days = {"daily": 1, "weekly": 7, "monthly": 30}
-    days = period_days.get(period, 7)
-
-    report_lines = [f"Energy Cost Report ({period.capitalize()})", "=" * 40]
-
-    # Get cost sensor data
-    cost_sensor_id = f"sensor.heating_{period}_cost"
-    cost_state = hass.states.get(cost_sensor_id)
-
-    cost = None  # Track if cost was set
-
-    # Fallback to weekly sensor and scale if specific period sensor doesn't exist
-    if not cost_state or cost_state.state in ("unknown", "unavailable"):
-        weekly_cost_state = hass.states.get("sensor.heating_weekly_cost")
-        if weekly_cost_state and weekly_cost_state.state not in ("unknown", "unavailable"):
-            try:
-                weekly_cost = float(weekly_cost_state.state)
-                weekly_energy = weekly_cost_state.attributes.get("weekly_energy_kwh", 0)
-                currency = weekly_cost_state.attributes.get("native_unit_of_measurement", "EUR")
-                price = weekly_cost_state.attributes.get("price_per_kwh")
-
-                # Scale from weekly to requested period
-                scale_factor = days / 7.0
-                energy = weekly_energy * scale_factor
-                cost = weekly_cost * scale_factor
-
-                report_lines.append(f"{period.capitalize()} Energy: {energy:.1f} kWh")
-                report_lines.append(f"{period.capitalize()} Cost: {cost:.2f} {currency}")
-                if price:
-                    report_lines.append(f"Price/kWh: {price:.4f} {currency}")
-                if scale_factor != 1.0:
-                    report_lines.append("(Estimated from weekly data)")
-            except (ValueError, TypeError):
-                report_lines.append("Cost data unavailable")
-        else:
-            report_lines.append("No energy meter configured")
-    else:
-        try:
-            cost = float(cost_state.state)
-            energy_key = f"{period}_energy_kwh"
-            energy = cost_state.attributes.get(energy_key, 0)
-            currency = cost_state.attributes.get("native_unit_of_measurement", "EUR")
-            price = cost_state.attributes.get("price_per_kwh")
-
-            report_lines.append(f"{period.capitalize()} Energy: {energy:.1f} kWh")
-            report_lines.append(f"{period.capitalize()} Cost: {cost:.2f} {currency}")
-            if price:
-                report_lines.append(f"Price/kWh: {price:.4f} {currency}")
-        except (ValueError, TypeError):
-            report_lines.append("Cost data unavailable")
-
-    # Get per-zone power data
-    report_lines.append("")
-    report_lines.append("Zone Power Consumption:")
-    report_lines.append("-" * 30)
-
-    total_power_state = hass.states.get("sensor.heating_total_power")
-    if total_power_state:
-        zone_powers = total_power_state.attributes.get("zone_powers", {})
-        for zone_id, power in sorted(zone_powers.items()):
-            report_lines.append(f"  {zone_id}: {power:.1f} W")
-
-        try:
-            total = float(total_power_state.state)
-            report_lines.append(f"  Total: {total:.1f} W")
-        except (ValueError, TypeError):
-            pass
-    else:
-        # Try to get power data from duty cycle sensors
-        all_zones = coordinator.get_all_zones()
-        for zone_id in sorted(all_zones.keys()):
-            duty_sensor_id = f"sensor.{zone_id}_duty_cycle"
-            duty_state = hass.states.get(duty_sensor_id)
-            if duty_state and duty_state.state not in ("unknown", "unavailable"):
-                try:
-                    duty_cycle = float(duty_state.state)
-                    report_lines.append(f"  {zone_id}: {duty_cycle:.1f}% duty cycle")
-                except (ValueError, TypeError):
-                    pass
-
-    report_text = "\n".join(report_lines)
-    _LOGGER.info("%s cost report:\n%s", period.capitalize(), report_text)
-
-    # Build short message
-    if cost is not None:
-        short_message = f"{cost:.2f} this {period}"
-    else:
-        short_message = f"{period.capitalize()} cost report ready"
-
-    title = f"Heating System Cost Report ({period.capitalize()})"
-
-    # Send mobile notification (short)
-    await async_send_notification_func(
-        hass,
-        notify_service,
-        title=title,
-        message=short_message,
-    )
-
-    # Send persistent notification (detailed) if enabled
-    if persistent_notification:
-        await async_send_persistent_notification_func(
-            hass,
-            notification_id="adaptive_climate_cost",
-            title=title,
-            message=report_text,
-        )
-
-
 async def async_handle_set_vacation_mode(
     hass: HomeAssistant,
     vacation_mode: VacationMode,
@@ -464,7 +337,6 @@ def async_register_services(
     async_send_notification_func,
     async_send_persistent_notification_func,
     vacation_schema,
-    cost_report_schema,
     default_vacation_target_temp: float,
     debug: bool = False,
 ) -> None:
@@ -479,7 +351,6 @@ def async_register_services(
         async_send_notification_func: Function to send mobile notifications
         async_send_persistent_notification_func: Function to send persistent notifications
         vacation_schema: Schema for vacation mode service
-        cost_report_schema: Schema for cost report service
         default_vacation_target_temp: Default target temp for vacation mode
         debug: Debug mode flag
     """
@@ -500,12 +371,6 @@ def async_register_services(
             async_send_notification_func, async_send_persistent_notification_func,
         )
 
-    async def _cost_report_handler(call: ServiceCall) -> None:
-        await async_handle_cost_report(
-            hass, coordinator, call, notify_service, persistent_notification,
-            async_send_notification_func, async_send_persistent_notification_func,
-        )
-
     async def _vacation_mode_handler(call: ServiceCall) -> None:
         await async_handle_set_vacation_mode(
             hass, vacation_mode, call, default_vacation_target_temp,
@@ -520,14 +385,10 @@ def async_register_services(
         schema=vacation_schema,
     )
     hass.services.async_register(
-        DOMAIN, SERVICE_COST_REPORT, _cost_report_handler,
-        schema=cost_report_schema,
-    )
-    hass.services.async_register(
         DOMAIN, SERVICE_WEEKLY_REPORT, _weekly_report_handler
     )
 
-    services_count = 3
+    services_count = 2
 
     # Register debug-only services
     if debug:
@@ -551,7 +412,6 @@ def async_unregister_services(hass: HomeAssistant) -> None:
     # Public services (always registered)
     services_to_remove = [
         SERVICE_SET_VACATION_MODE,
-        SERVICE_COST_REPORT,
         SERVICE_WEEKLY_REPORT,
     ]
 
@@ -582,14 +442,12 @@ __all__ = [
     "SERVICE_RUN_LEARNING",
     "SERVICE_HEALTH_CHECK",
     "SERVICE_WEEKLY_REPORT",
-    "SERVICE_COST_REPORT",
     "SERVICE_SET_VACATION_MODE",
     "SERVICE_PID_RECOMMENDATIONS",
     # Service handlers
     "async_handle_run_learning",
     "async_handle_health_check",
     "async_handle_weekly_report",
-    "async_handle_cost_report",
     "async_handle_set_vacation_mode",
     "async_handle_pid_recommendations",
     # Registration functions

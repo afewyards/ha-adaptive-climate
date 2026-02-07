@@ -111,7 +111,6 @@ from .services import (
     SERVICE_RUN_LEARNING,
     SERVICE_HEALTH_CHECK,
     SERVICE_WEEKLY_REPORT,
-    SERVICE_COST_REPORT,
     SERVICE_SET_VACATION_MODE,
     SERVICE_PID_RECOMMENDATIONS,
     async_register_services,
@@ -472,10 +471,6 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         vol.Optional("target_temp", default=DEFAULT_VACATION_TARGET_TEMP): vol.Coerce(float),
     })
 
-    COST_REPORT_SCHEMA = vol.Schema({
-        vol.Optional("period", default="weekly"): vol.In(["daily", "weekly", "monthly"]),
-    })
-
     # Migrate from old domain if exists
     old_domain_data = hass.data.get("adaptive_thermostat")
     if old_domain_data:
@@ -714,7 +709,6 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         async_send_notification_func=async_send_notification,
         async_send_persistent_notification_func=async_send_persistent_notification,
         vacation_schema=VACATION_MODE_SCHEMA,
-        cost_report_schema=COST_REPORT_SCHEMA,
         default_vacation_target_temp=DEFAULT_VACATION_TARGET_TEMP,
         debug=domain_config.get(CONF_DEBUG, DEFAULT_DEBUG),
     )
