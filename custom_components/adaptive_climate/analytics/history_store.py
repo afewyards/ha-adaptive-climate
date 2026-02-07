@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 STORAGE_KEY = "adaptive_climate_history"
-STORAGE_VERSION = 1
+STORAGE_VERSION = 2
 MAX_WEEKS_TO_KEEP = 12
 
 
@@ -31,6 +31,11 @@ class ZoneSnapshot:
     comfort_score: float | None
     time_at_target: float | None
     area_m2: float | None
+    confidence: float | None = None
+    learning_status: str | None = None
+    recovery_cycles: int | None = None
+    humidity_pauses: int | None = None
+    contact_pauses: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for storage."""
@@ -45,6 +50,11 @@ class ZoneSnapshot:
             comfort_score=data.get("comfort_score"),
             time_at_target=data.get("time_at_target"),
             area_m2=data.get("area_m2"),
+            confidence=data.get("confidence"),
+            learning_status=data.get("learning_status"),
+            recovery_cycles=data.get("recovery_cycles"),
+            humidity_pauses=data.get("humidity_pauses"),
+            contact_pauses=data.get("contact_pauses"),
         )
 
 

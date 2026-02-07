@@ -341,3 +341,71 @@ def test_get_snapshot_for_week():
     # Non-existent week
     not_found = store.get_snapshot_for_week(2024, 10)
     assert not_found is None
+
+
+def test_v2_snapshot_fields():
+    """New fields serialize and deserialize correctly."""
+    snap = ZoneSnapshot(
+        zone_id="living_room",
+        duty_cycle=42.0,
+        comfort_score=85.0,
+        time_at_target=78.0,
+        area_m2=25.0,
+        confidence=0.63,
+        learning_status="tuned",
+        recovery_cycles=5,
+        humidity_pauses=2,
+        contact_pauses=3,
+    )
+    d = snap.to_dict()
+    assert d["confidence"] == 0.63
+    assert d["learning_status"] == "tuned"
+    assert d["recovery_cycles"] == 5
+    assert d["humidity_pauses"] == 2
+    assert d["contact_pauses"] == 3
+
+    restored = ZoneSnapshot.from_dict(d)
+    assert restored.confidence == 0.63
+    assert restored.learning_status == "tuned"
+    assert restored.recovery_cycles == 5
+    assert restored.humidity_pauses == 2
+    assert restored.contact_pauses == 3
+
+
+def test_v1_to_v2_migration():
+    """Old v1 snapshots load with None for new fields."""
+    v1_data = {
+        "zone_id": "bedroom",
+        "duty_cycle": 30.0,
+        "comfort_score": 75.0,
+        "time_at_target": 70.0,
+        "area_m2": 15.0,
+    }
+    snap = ZoneSnapshot.from_dict(v1_data)
+    assert snap.zone_id == "bedroom"
+    assert snap.duty_cycle == 30.0
+    assert snap.confidence is None
+    assert snap.learning_status is None
+    assert snap.recovery_cycles is None
+    assert snap.humidity_pauses is None
+    assert snap.contact_pauses is None
+
+
+def test_confidence_delta_calculation():
+    """Current vs previous confidence delta computed correctly."""
+    current = ZoneSnapshot(
+        zone_id="living_room", duty_cycle=40.0, comfort_score=80.0,
+        time_at_target=75.0, area_m2=20.0, confidence=0.63,
+        learning_status="tuned", recovery_cycles=3,
+        humidity_pauses=0, contact_pauses=0,
+    )
+    previous = ZoneSnapshot(
+        zone_id="living_room", duty_cycle=38.0, comfort_score=78.0,
+        time_at_target=72.0, area_m2=20.0, confidence=0.55,
+        learning_status="stable", recovery_cycles=2,
+        humidity_pauses=1, contact_pauses=0,
+    )
+    delta = None
+    if current.confidence is not None and previous.confidence is not None:
+        delta = round((current.confidence - previous.confidence) * 100)
+    assert delta == 8
