@@ -10,6 +10,10 @@ Adaptive Climate: HA custom component with PID thermostat, adaptive learning, mu
 pytest                                    # all tests
 pytest tests/test_pid_controller.py       # specific file
 pytest --cov=custom_components/adaptive_climate  # coverage
+ruff check custom_components/ tests/       # lint
+ruff format custom_components/ tests/       # format
+pyright custom_components/adaptive_climate/ # type check
+pre-commit run --all-files                  # all checks
 ```
 
 ## Code Style
@@ -26,6 +30,9 @@ pytest --cov=custom_components/adaptive_climate  # coverage
 - **Manager interfaces:** Managers receive a `ThermostatState` Protocol, not raw callbacks or thermostat references
 - **Coordinator access:** Use `self._coordinator` cached property — never inline `hass.data.get(DOMAIN, {}).get("coordinator")`
 - **Persistence:** HA Store API only (`async_save_zone`) — no legacy file-based `save()`
+- **Linting:** Ruff enforces style (line-length 120, import sorting, pyupgrade)
+- **Type checking:** Pyright strict on source, excluded from tests
+- **Type ignores:** Use `# type: ignore[specific-code]` with comment for HA boundaries — never bare `# type: ignore`
 
 ## Architecture
 
