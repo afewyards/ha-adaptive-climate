@@ -549,6 +549,11 @@ HEATING_TYPE_CONFIDENCE_SCALE = {
     HeatingType.FORCED_AIR: 1.1,        # Higher threshold - fast response, quicker learning
 }
 
+# Comfort degradation notification thresholds
+COMFORT_DEGRADATION_THRESHOLD = 65  # Absolute floor for alert
+COMFORT_DROP_THRESHOLD = 15  # Points drop from rolling avg for alert
+COMFORT_ALERT_COOLDOWN_HOURS = 24  # Hours between alerts per zone
+
 # Recovery thresholds by heating type and learning status
 # Maps (heating_type, is_stable) -> threshold in °C
 RECOVERY_THRESHOLD_COLLECTING = {

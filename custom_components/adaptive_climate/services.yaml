@@ -133,7 +133,7 @@ pid_recommendations:
 
 weekly_report:
   name: Weekly Report
-  description: Generate and send a weekly performance report via the configured notification service. Includes duty cycles, energy usage, and zone statistics.
+  description: Generate and send a weekly performance report via the configured notification service. Shows learning progress per zone and highlights problem zones.
 
 cost_report:
   name: Cost Report
