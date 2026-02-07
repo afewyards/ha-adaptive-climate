@@ -214,7 +214,7 @@ class SystemHealthMonitor:
             Dictionary with health status and issues:
                 {
                     "status": HealthStatus,
-                    "zone_issues": Dict[str, List[HealthIssue]],
+                    "zone_issues": dict[str, list[HealthIssue]],
                     "summary": str
                 }
         """
