@@ -493,6 +493,22 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     # Get configuration options from domain config
     domain_config = config.get(DOMAIN, {})
 
+    # Store config values needed by coordinator during __init__
+    weather_entity = domain_config.get(CONF_WEATHER_ENTITY)
+    hass.data[DOMAIN]["weather_entity"] = weather_entity
+    if weather_entity:
+        _LOGGER.info("Weather entity configured: %s", weather_entity)
+
+    outdoor_sensor = domain_config.get(CONF_OUTDOOR_SENSOR)
+    hass.data[DOMAIN]["outdoor_sensor"] = outdoor_sensor
+    if outdoor_sensor:
+        _LOGGER.info("Outdoor sensor configured: %s", outdoor_sensor)
+
+    house_energy_rating = domain_config.get(CONF_HOUSE_ENERGY_RATING)
+    hass.data[DOMAIN]["house_energy_rating"] = house_energy_rating
+    if house_energy_rating:
+        _LOGGER.info("House energy rating: %s", house_energy_rating)
+
     # Create coordinator with domain config for auto mode switching
     coordinator = AdaptiveThermostatCoordinator(hass, domain_config)
     hass.data[DOMAIN]["coordinator"] = coordinator
@@ -639,24 +655,6 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     hass.data[DOMAIN]["chronic_approach_historic_scan"] = chronic_approach_historic_scan
     if chronic_approach_historic_scan:
         _LOGGER.info("Chronic approach historic scan enabled")
-
-    # Weather entity for solar gain prediction
-    weather_entity = domain_config.get(CONF_WEATHER_ENTITY)
-    hass.data[DOMAIN]["weather_entity"] = weather_entity
-    if weather_entity:
-        _LOGGER.info("Weather entity configured: %s", weather_entity)
-
-    # Outdoor temperature sensor for Ke learning (weather compensation)
-    outdoor_sensor = domain_config.get(CONF_OUTDOOR_SENSOR)
-    hass.data[DOMAIN]["outdoor_sensor"] = outdoor_sensor
-    if outdoor_sensor:
-        _LOGGER.info("Outdoor sensor configured: %s", outdoor_sensor)
-
-    # House energy rating for physics-based initialization
-    house_energy_rating = domain_config.get(CONF_HOUSE_ENERGY_RATING)
-    hass.data[DOMAIN]["house_energy_rating"] = house_energy_rating
-    if house_energy_rating:
-        _LOGGER.info("House energy rating: %s", house_energy_rating)
 
     # Default window rating for physics-based initialization (can be overridden per zone)
     window_rating = domain_config.get(CONF_WINDOW_RATING, DEFAULT_WINDOW_RATING)
