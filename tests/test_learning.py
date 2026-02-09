@@ -2383,18 +2383,18 @@ class TestAdaptiveLearnerSerialization:
 
         # Verify structure
         assert isinstance(result, dict)
-        assert "cycle_history" in result
+        assert "heating" in result
+        assert "cooling" in result
         assert "last_adjustment_time" in result
         assert "consecutive_converged_cycles" in result
         assert "pid_converged_for_ke" in result
-        assert "auto_apply_count" in result
 
         # Verify empty state
-        assert result["cycle_history"] == []
+        assert result["heating"]["cycle_history"] == []
+        assert result["heating"]["auto_apply_count"] == 0
         assert result["last_adjustment_time"] is None
         assert result["consecutive_converged_cycles"] == 0
         assert result["pid_converged_for_ke"] is False
-        assert result["auto_apply_count"] == 0
 
     def test_adaptive_learner_to_dict_with_cycles(self):
         """Test to_dict serializes CycleMetrics correctly."""
@@ -2422,11 +2422,11 @@ class TestAdaptiveLearnerSerialization:
 
         result = learner.to_dict()
 
-        # Verify cycle_history is serialized
-        assert len(result["cycle_history"]) == 2
+        # Verify cycle_history is serialized in heating sub-dict
+        assert len(result["heating"]["cycle_history"]) == 2
 
         # Verify first cycle structure
-        cycle1 = result["cycle_history"][0]
+        cycle1 = result["heating"]["cycle_history"][0]
         assert cycle1["overshoot"] == 0.5
         assert cycle1["undershoot"] == 0.2
         assert cycle1["settling_time"] == 45.0
@@ -2434,7 +2434,7 @@ class TestAdaptiveLearnerSerialization:
         assert cycle1["rise_time"] == 30.0
 
         # Verify second cycle structure
-        cycle2 = result["cycle_history"][1]
+        cycle2 = result["heating"]["cycle_history"][1]
         assert cycle2["overshoot"] == 0.3
         assert cycle2["undershoot"] == 0.1
         assert cycle2["settling_time"] == 40.0
@@ -2492,7 +2492,7 @@ class TestAdaptiveLearnerSerialization:
 
         result = learner.to_dict()
 
-        cycle = result["cycle_history"][0]
+        cycle = result["heating"]["cycle_history"][0]
         assert cycle["overshoot"] is None
         assert cycle["undershoot"] is None
         assert cycle["settling_time"] is None
@@ -2512,7 +2512,7 @@ class TestAdaptiveLearnerSerialization:
 
         assert result["consecutive_converged_cycles"] == 5
         assert result["pid_converged_for_ke"] is True
-        assert result["auto_apply_count"] == 3
+        assert result["heating"]["auto_apply_count"] == 3
 
     def test_serialize_cycle_includes_decay_fields(self):
         """Test to_dict serializes decay fields from CycleMetrics (Story 7.1)."""
@@ -2535,8 +2535,8 @@ class TestAdaptiveLearnerSerialization:
         result = learner.to_dict()
 
         # Verify decay fields are serialized
-        assert len(result["cycle_history"]) == 1
-        cycle = result["cycle_history"][0]
+        assert len(result["heating"]["cycle_history"]) == 1
+        cycle = result["heating"]["cycle_history"][0]
 
         assert cycle["integral_at_tolerance_entry"] == 120.0
         assert cycle["integral_at_setpoint_cross"] == 85.0
@@ -2560,7 +2560,7 @@ class TestAdaptiveLearnerSerialization:
 
         result = learner.to_dict()
 
-        cycle = result["cycle_history"][0]
+        cycle = result["heating"]["cycle_history"][0]
         assert cycle["integral_at_tolerance_entry"] is None
         assert cycle["integral_at_setpoint_cross"] is None
         assert cycle["decay_contribution"] is None
@@ -2584,8 +2584,8 @@ class TestAdaptiveLearnerSerialization:
         result = learner.to_dict()
 
         # Verify mode field is serialized
-        assert len(result["cycle_history"]) == 1
-        cycle = result["cycle_history"][0]
+        assert len(result["heating"]["cycle_history"]) == 1
+        cycle = result["heating"]["cycle_history"][0]
 
         assert cycle["mode"] == "heating"
         assert cycle["overshoot"] == 0.3
@@ -2609,8 +2609,8 @@ class TestAdaptiveLearnerSerialization:
 
         result = learner.to_dict()
 
-        # Verify mode field is serialized
-        cycle = result["cycle_history"][0]
+        # Verify mode field is serialized (cooling cycles go to heating list by default)
+        cycle = result["heating"]["cycle_history"][0]
         assert cycle["mode"] == "cooling"
 
     def test_serialize_cycle_includes_mode_field_none(self):
@@ -2628,7 +2628,7 @@ class TestAdaptiveLearnerSerialization:
 
         result = learner.to_dict()
 
-        cycle = result["cycle_history"][0]
+        cycle = result["heating"]["cycle_history"][0]
         assert cycle["mode"] is None
 
 
@@ -2658,13 +2658,21 @@ class TestAdaptiveLearnerRestoration:
         learner._pid_converged_for_ke = True
         learner._auto_apply_count = 2
 
-        # Restore empty state
+        # Restore empty state (v10 format)
         empty_data = {
-            "cycle_history": [],
+            "format_version": 10,
+            "heating": {"cycle_history": [], "auto_apply_count": 0, "convergence_confidence": 0.0},
+            "cooling": {"cycle_history": [], "auto_apply_count": 0, "convergence_confidence": 0.0},
+            "undershoot_detector": {},
+            "contribution_tracker": {
+                "maintenance_contribution": 0.0,
+                "heating_rate_contribution": 0.0,
+                "recovery_cycle_count": 0,
+            },
+            "heating_rate_learner": {},
             "last_adjustment_time": None,
             "consecutive_converged_cycles": 0,
             "pid_converged_for_ke": False,
-            "auto_apply_count": 0,
         }
         learner.restore_from_dict(empty_data)
 
@@ -2679,35 +2687,47 @@ class TestAdaptiveLearnerRestoration:
         """Test restore_from_dict restores CycleMetrics from dict list."""
         learner = AdaptiveLearner()
 
-        # Prepare data with cycles
+        # Prepare data with cycles (v10 format)
         data = {
-            "cycle_history": [
-                {
-                    "overshoot": 0.5,
-                    "undershoot": 0.2,
-                    "settling_time": 45.0,
-                    "oscillations": 1,
-                    "rise_time": 30.0,
-                },
-                {
-                    "overshoot": 0.3,
-                    "undershoot": 0.1,
-                    "settling_time": 40.0,
-                    "oscillations": 0,
-                    "rise_time": 25.0,
-                },
-                {
-                    "overshoot": None,
-                    "undershoot": None,
-                    "settling_time": None,
-                    "oscillations": 2,
-                    "rise_time": None,
-                },
-            ],
+            "format_version": 10,
+            "heating": {
+                "cycle_history": [
+                    {
+                        "overshoot": 0.5,
+                        "undershoot": 0.2,
+                        "settling_time": 45.0,
+                        "oscillations": 1,
+                        "rise_time": 30.0,
+                    },
+                    {
+                        "overshoot": 0.3,
+                        "undershoot": 0.1,
+                        "settling_time": 40.0,
+                        "oscillations": 0,
+                        "rise_time": 25.0,
+                    },
+                    {
+                        "overshoot": None,
+                        "undershoot": None,
+                        "settling_time": None,
+                        "oscillations": 2,
+                        "rise_time": None,
+                    },
+                ],
+                "auto_apply_count": 0,
+                "convergence_confidence": 0.0,
+            },
+            "cooling": {"cycle_history": [], "auto_apply_count": 0, "convergence_confidence": 0.0},
+            "undershoot_detector": {},
+            "contribution_tracker": {
+                "maintenance_contribution": 0.0,
+                "heating_rate_contribution": 0.0,
+                "recovery_cycle_count": 0,
+            },
+            "heating_rate_learner": {},
             "last_adjustment_time": None,
             "consecutive_converged_cycles": 0,
             "pid_converged_for_ke": False,
-            "auto_apply_count": 0,
         }
 
         learner.restore_from_dict(data)
@@ -2746,13 +2766,21 @@ class TestAdaptiveLearnerRestoration:
         """Test restore_from_dict restores convergence tracking state."""
         learner = AdaptiveLearner()
 
-        # Prepare data with convergence state
+        # Prepare data with convergence state (v10 format)
         data = {
-            "cycle_history": [],
+            "format_version": 10,
+            "heating": {"cycle_history": [], "auto_apply_count": 4, "convergence_confidence": 0.0},
+            "cooling": {"cycle_history": [], "auto_apply_count": 0, "convergence_confidence": 0.0},
+            "undershoot_detector": {},
+            "contribution_tracker": {
+                "maintenance_contribution": 0.0,
+                "heating_rate_contribution": 0.0,
+                "recovery_cycle_count": 0,
+            },
+            "heating_rate_learner": {},
             "last_adjustment_time": None,
             "consecutive_converged_cycles": 7,
             "pid_converged_for_ke": True,
-            "auto_apply_count": 4,
         }
 
         learner.restore_from_dict(data)
@@ -2766,14 +2794,22 @@ class TestAdaptiveLearnerRestoration:
         """Test restore_from_dict parses ISO string to datetime."""
         learner = AdaptiveLearner()
 
-        # Prepare data with timestamp
+        # Prepare data with timestamp (v10 format)
         test_time = datetime(2024, 1, 15, 10, 30, 45)
         data = {
-            "cycle_history": [],
+            "format_version": 10,
+            "heating": {"cycle_history": [], "auto_apply_count": 0, "convergence_confidence": 0.0},
+            "cooling": {"cycle_history": [], "auto_apply_count": 0, "convergence_confidence": 0.0},
+            "undershoot_detector": {},
+            "contribution_tracker": {
+                "maintenance_contribution": 0.0,
+                "heating_rate_contribution": 0.0,
+                "recovery_cycle_count": 0,
+            },
+            "heating_rate_learner": {},
             "last_adjustment_time": test_time.isoformat(),
             "consecutive_converged_cycles": 0,
             "pid_converged_for_ke": False,
-            "auto_apply_count": 0,
         }
 
         learner.restore_from_dict(data)
@@ -2853,34 +2889,46 @@ def test_restore_cycle_parses_decay_fields():
     """Test restore_from_dict() reconstructs CycleMetrics with decay fields."""
     learner = AdaptiveLearner()
 
-    # Prepare data with decay fields
+    # Prepare v10 format data with decay fields
     data = {
-        "cycle_history": [
-            {
-                "overshoot": 0.5,
-                "undershoot": 0.2,
-                "settling_time": 45.0,
-                "oscillations": 1,
-                "rise_time": 30.0,
-                "integral_at_tolerance_entry": 150.0,
-                "integral_at_setpoint_cross": 120.0,
-                "decay_contribution": 0.35,
-            },
-            {
-                "overshoot": 0.3,
-                "undershoot": 0.1,
-                "settling_time": 40.0,
-                "oscillations": 0,
-                "rise_time": 25.0,
-                "integral_at_tolerance_entry": None,
-                "integral_at_setpoint_cross": None,
-                "decay_contribution": None,
-            },
-        ],
+        "format_version": 10,
+        "heating": {
+            "cycle_history": [
+                {
+                    "overshoot": 0.5,
+                    "undershoot": 0.2,
+                    "settling_time": 45.0,
+                    "oscillations": 1,
+                    "rise_time": 30.0,
+                    "integral_at_tolerance_entry": 150.0,
+                    "integral_at_setpoint_cross": 120.0,
+                    "decay_contribution": 0.35,
+                },
+                {
+                    "overshoot": 0.3,
+                    "undershoot": 0.1,
+                    "settling_time": 40.0,
+                    "oscillations": 0,
+                    "rise_time": 25.0,
+                    "integral_at_tolerance_entry": None,
+                    "integral_at_setpoint_cross": None,
+                    "decay_contribution": None,
+                },
+            ],
+            "auto_apply_count": 0,
+            "convergence_confidence": 0.0,
+        },
+        "cooling": {"cycle_history": [], "auto_apply_count": 0, "convergence_confidence": 0.0},
+        "undershoot_detector": {},
+        "contribution_tracker": {
+            "maintenance_contribution": 0.0,
+            "heating_rate_contribution": 0.0,
+            "recovery_cycle_count": 0,
+        },
+        "heating_rate_learner": {},
         "last_adjustment_time": None,
         "consecutive_converged_cycles": 0,
         "pid_converged_for_ke": False,
-        "auto_apply_count": 0,
     }
 
     learner.restore_from_dict(data)
@@ -2917,22 +2965,34 @@ def test_restore_cycle_parses_mode_field_heating():
     """Test restore_from_dict() reconstructs CycleMetrics with mode='heating'."""
     learner = AdaptiveLearner()
 
-    # Prepare data with mode='heating'
+    # Prepare v10 format data with mode='heating'
     data = {
-        "cycle_history": [
-            {
-                "overshoot": 0.5,
-                "undershoot": 0.2,
-                "settling_time": 45.0,
-                "oscillations": 1,
-                "rise_time": 30.0,
-                "mode": "heating",
-            },
-        ],
+        "format_version": 10,
+        "heating": {
+            "cycle_history": [
+                {
+                    "overshoot": 0.5,
+                    "undershoot": 0.2,
+                    "settling_time": 45.0,
+                    "oscillations": 1,
+                    "rise_time": 30.0,
+                    "mode": "heating",
+                },
+            ],
+            "auto_apply_count": 0,
+            "convergence_confidence": 0.0,
+        },
+        "cooling": {"cycle_history": [], "auto_apply_count": 0, "convergence_confidence": 0.0},
+        "undershoot_detector": {},
+        "contribution_tracker": {
+            "maintenance_contribution": 0.0,
+            "heating_rate_contribution": 0.0,
+            "recovery_cycle_count": 0,
+        },
+        "heating_rate_learner": {},
         "last_adjustment_time": None,
         "consecutive_converged_cycles": 0,
         "pid_converged_for_ke": False,
-        "auto_apply_count": 0,
     }
 
     learner.restore_from_dict(data)
@@ -2950,51 +3010,76 @@ def test_restore_cycle_parses_mode_field_cooling():
     """Test restore_from_dict() reconstructs CycleMetrics with mode='cooling'."""
     learner = AdaptiveLearner()
 
-    # Prepare data with mode='cooling'
+    # Prepare v10 format data with mode='cooling' in cooling section
     data = {
-        "cycle_history": [
-            {
-                "overshoot": 0.3,
-                "undershoot": 0.1,
-                "settling_time": 40.0,
-                "oscillations": 0,
-                "rise_time": 25.0,
-                "mode": "cooling",
-            },
-        ],
+        "format_version": 10,
+        "heating": {"cycle_history": [], "auto_apply_count": 0, "convergence_confidence": 0.0},
+        "cooling": {
+            "cycle_history": [
+                {
+                    "overshoot": 0.3,
+                    "undershoot": 0.1,
+                    "settling_time": 40.0,
+                    "oscillations": 0,
+                    "rise_time": 25.0,
+                    "mode": "cooling",
+                },
+            ],
+            "auto_apply_count": 0,
+            "convergence_confidence": 0.0,
+        },
+        "undershoot_detector": {},
+        "contribution_tracker": {
+            "maintenance_contribution": 0.0,
+            "heating_rate_contribution": 0.0,
+            "recovery_cycle_count": 0,
+        },
+        "heating_rate_learner": {},
         "last_adjustment_time": None,
         "consecutive_converged_cycles": 0,
         "pid_converged_for_ke": False,
-        "auto_apply_count": 0,
     }
 
     learner.restore_from_dict(data)
 
-    # Verify cycle is restored with mode field
-    cycle = learner._cycle_history[0]
+    # Verify cycle is restored in cooling history with mode field
+    assert len(learner._cooling_cycle_history) == 1
+    cycle = learner._cooling_cycle_history[0]
     assert cycle.mode == "cooling"
 
 
 def test_restore_cycle_parses_mode_field_none():
-    """Test restore_from_dict() handles missing mode field for backwards compatibility."""
+    """Test restore_from_dict() handles missing mode field in cycle data."""
     learner = AdaptiveLearner()
 
-    # Prepare data without mode field (old format)
+    # Prepare v10 format data with cycle missing mode field
     data = {
-        "cycle_history": [
-            {
-                "overshoot": 0.4,
-                "undershoot": 0.15,
-                "settling_time": 35.0,
-                "oscillations": 1,
-                "rise_time": 28.0,
-                # mode field not present (old format)
-            },
-        ],
+        "format_version": 10,
+        "heating": {
+            "cycle_history": [
+                {
+                    "overshoot": 0.4,
+                    "undershoot": 0.15,
+                    "settling_time": 35.0,
+                    "oscillations": 1,
+                    "rise_time": 28.0,
+                    # mode field not present
+                },
+            ],
+            "auto_apply_count": 0,
+            "convergence_confidence": 0.0,
+        },
+        "cooling": {"cycle_history": [], "auto_apply_count": 0, "convergence_confidence": 0.0},
+        "undershoot_detector": {},
+        "contribution_tracker": {
+            "maintenance_contribution": 0.0,
+            "heating_rate_contribution": 0.0,
+            "recovery_cycle_count": 0,
+        },
+        "heating_rate_learner": {},
         "last_adjustment_time": None,
         "consecutive_converged_cycles": 0,
         "pid_converged_for_ke": False,
-        "auto_apply_count": 0,
     }
 
     learner.restore_from_dict(data)
@@ -4257,11 +4342,11 @@ class TestModeSpecificCycleHistories:
 # ============================================================================
 
 
-class TestChronicApproachDetectorSerialization:
-    """Tests for unified UndershootDetector state serialization (v8 format)."""
+class TestUndershootDetectorSerialization:
+    """Tests for unified UndershootDetector state serialization (v10 format)."""
 
-    def test_serialize_chronic_approach_detector_state(self):
-        """Test to_dict serializes unified detector state (v8 format)."""
+    def test_serialize_undershoot_detector_state(self):
+        """Test to_dict serializes unified detector state (v10 format)."""
         learner = AdaptiveLearner()
 
         # Simulate unified detector state (chronic approach fields now in UndershootDetector)
@@ -4277,8 +4362,8 @@ class TestChronicApproachDetectorSerialization:
         assert detector_state["cumulative_ki_multiplier"] == 1.5
         assert result["format_version"] == 10
 
-    def test_serialize_chronic_approach_detector_empty_state(self):
-        """Test to_dict serializes empty unified detector state (v9 format)."""
+    def test_serialize_undershoot_detector_empty_state(self):
+        """Test to_dict serializes empty unified detector state (v10 format)."""
         learner = AdaptiveLearner()
 
         result = learner.to_dict()
@@ -4290,131 +4375,8 @@ class TestChronicApproachDetectorSerialization:
         assert detector_state["cumulative_ki_multiplier"] == 1.0
         assert result["format_version"] == 10
 
-    def test_restore_chronic_approach_detector_state(self):
-        """Test restore_from_dict migrates v7 format to unified detector."""
-        learner = AdaptiveLearner()
-
-        # Prepare data with chronic approach detector state (v7 format)
-        data = {
-            "chronic_approach_detector": {
-                "consecutive_failures": 2,
-                "cumulative_multiplier": 1.3,
-            },
-            "undershoot_detector": {
-                "time_below_target": 60.0,
-                "thermal_debt": 0.2,
-                "cumulative_ki_multiplier": 1.1,
-            },
-            "heating": {
-                "cycle_history": [],
-                "auto_apply_count": 0,
-                "convergence_confidence": 0.0,
-            },
-            "cooling": {
-                "cycle_history": [],
-                "auto_apply_count": 0,
-                "convergence_confidence": 0.0,
-            },
-            "last_adjustment_time": None,
-            "consecutive_converged_cycles": 0,
-            "pid_converged_for_ke": False,
-        }
-
-        learner.restore_from_dict(data)
-
-        # Verify unified detector has merged state (takes max of multipliers)
-        assert learner._undershoot_detector._consecutive_failures == 2
-        assert learner._undershoot_detector.cumulative_ki_multiplier == 1.3  # max(1.1, 1.3)
-        assert learner._undershoot_detector.time_below_target == 60.0
-        assert learner._undershoot_detector.thermal_debt == 0.2
-
-    def test_restore_backward_compatibility_v6_format(self):
-        """Test restore_from_dict migrates v6 format to unified detector."""
-        learner = AdaptiveLearner()
-
-        # Prepare v6 data (has undershoot_detector but no chronic_approach_detector)
-        data = {
-            "undershoot_detector": {
-                "time_below_target": 120.0,
-                "thermal_debt": 0.5,
-                "cumulative_ki_multiplier": 1.2,
-            },
-            "heating": {
-                "cycle_history": [],
-                "auto_apply_count": 1,
-                "convergence_confidence": 0.5,
-            },
-            "cooling": {
-                "cycle_history": [],
-                "auto_apply_count": 0,
-                "convergence_confidence": 0.0,
-            },
-            "last_adjustment_time": None,
-            "consecutive_converged_cycles": 0,
-            "pid_converged_for_ke": False,
-        }
-
-        learner.restore_from_dict(data)
-
-        # Verify unified detector is initialized with v6 data + defaults for new fields
-        assert learner._undershoot_detector._consecutive_failures == 0  # New field in v8
-        assert learner._undershoot_detector.cumulative_ki_multiplier == 1.2
-        assert learner._undershoot_detector.time_below_target == 120.0
-        assert learner._undershoot_detector.thermal_debt == 0.5
-
-    def test_restore_backward_compatibility_v5_format(self):
-        """Test restore_from_dict handles v5 format without any detectors."""
-        learner = AdaptiveLearner()
-
-        # Prepare v5 data (has heating/cooling but no detector states)
-        data = {
-            "heating": {
-                "cycle_history": [],
-                "auto_apply_count": 2,
-                "convergence_confidence": 0.7,
-            },
-            "cooling": {
-                "cycle_history": [],
-                "auto_apply_count": 0,
-                "convergence_confidence": 0.0,
-            },
-            "last_adjustment_time": None,
-            "consecutive_converged_cycles": 3,
-            "pid_converged_for_ke": True,
-        }
-
-        learner.restore_from_dict(data)
-
-        # Verify unified detector is initialized with defaults
-        assert learner._undershoot_detector._consecutive_failures == 0
-        assert learner._undershoot_detector.cumulative_ki_multiplier == 1.0
-        assert learner._undershoot_detector.time_below_target == 0.0
-        assert learner._undershoot_detector.thermal_debt == 0.0
-
-    def test_restore_backward_compatibility_v4_format(self):
-        """Test restore_from_dict handles v4 format without heating/cooling split."""
-        learner = AdaptiveLearner()
-
-        # Prepare v4 data (flat structure, no detector states)
-        data = {
-            "cycle_history": [],
-            "auto_apply_count": 1,
-            "convergence_confidence": 0.4,
-            "last_adjustment_time": None,
-            "consecutive_converged_cycles": 0,
-            "pid_converged_for_ke": False,
-        }
-
-        learner.restore_from_dict(data)
-
-        # Verify unified detector is initialized with defaults
-        assert learner._undershoot_detector._consecutive_failures == 0
-        assert learner._undershoot_detector.cumulative_ki_multiplier == 1.0
-        assert learner._undershoot_detector.time_below_target == 0.0
-        assert learner._undershoot_detector.thermal_debt == 0.0
-
-    def test_serialization_round_trip_with_chronic_approach_detector(self):
-        """Test full serialization and restoration round-trip with unified detector state (v8)."""
+    def test_serialization_round_trip_with_undershoot_detector(self):
+        """Test full serialization and restoration round-trip with unified detector state (v10)."""
         learner1 = AdaptiveLearner()
 
         # Set up state (all in unified detector now)

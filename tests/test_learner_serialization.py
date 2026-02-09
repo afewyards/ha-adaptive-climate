@@ -75,10 +75,10 @@ class TestV9FormatSerialization:
             assert tracker_data["recovery_cycle_count"] == 0
 
     def test_v9_deserialization_restores_contribution_tracker(self):
-        """Test that v9 deserialization restores contribution tracker state."""
-        # Create v9 format data manually
-        v9_data = {
-            "format_version": 9,
+        """Test that v10 deserialization restores contribution tracker state."""
+        # Create v10 format data manually
+        v10_data = {
+            "format_version": 10,
             "heating": {
                 "cycle_history": [],
                 "auto_apply_count": 0,
@@ -95,19 +95,16 @@ class TestV9FormatSerialization:
                 "recovery_cycle_count": 3,
             },
             "undershoot_detector": {},
-            "cycle_history": [],
-            "auto_apply_count": 0,
-            "convergence_confidence": 0.0,
             "last_adjustment_time": None,
             "consecutive_converged_cycles": 0,
             "pid_converged_for_ke": False,
         }
 
         # Deserialize using the function directly
-        restored = restore_learner_from_dict(v9_data)
+        restored = restore_learner_from_dict(v10_data)
 
-        # Should detect v9 format
-        assert restored["format_version"] == "v9"
+        # Should detect v10 format
+        assert restored["format_version"] == "v10"
 
         # Should have contribution_tracker_state
         assert "contribution_tracker_state" in restored
@@ -152,125 +149,6 @@ class TestV9FormatSerialization:
             assert learner2._contribution_tracker.recovery_cycle_count == 2
 
 
-class TestV8ToV9Migration:
-    """Test migration from v8 to v9 format."""
-
-    def test_v8_format_missing_contribution_tracker(self):
-        """Test that v8 format data is migrated with default contributions."""
-        # Create v8 format data (no contribution_tracker field)
-        v8_data = {
-            "format_version": 8,
-            "heating": {
-                "cycle_history": [],
-                "auto_apply_count": 2,
-                "convergence_confidence": 0.65,
-            },
-            "cooling": {
-                "cycle_history": [],
-                "auto_apply_count": 0,
-                "convergence_confidence": 0.0,
-            },
-            "undershoot_detector": {
-                "cumulative_ki_multiplier": 1.0,
-                "last_adjustment_time": None,
-                "time_below_target": 0.0,
-                "thermal_debt": 0.0,
-                "consecutive_failures": 0,
-            },
-            "cycle_history": [],
-            "auto_apply_count": 2,
-            "convergence_confidence": 0.65,
-            "last_adjustment_time": None,
-            "consecutive_converged_cycles": 5,
-            "pid_converged_for_ke": True,
-        }
-
-        # Deserialize
-        restored = restore_learner_from_dict(v8_data)
-
-        # Should detect v8 format
-        assert restored["format_version"] == "v8"
-
-        # Should have contribution_tracker_state with defaults
-        assert "contribution_tracker_state" in restored
-        tracker_state = restored["contribution_tracker_state"]
-
-        # Should default to zero
-        assert tracker_state["maintenance_contribution"] == 0.0
-        assert tracker_state["heating_rate_contribution"] == 0.0
-        assert tracker_state["recovery_cycle_count"] == 0
-
-    def test_v8_to_v9_migration_preserves_existing_data(self):
-        """Test that v8 to v9 migration preserves all existing data."""
-        # Create learner with v8 format
-        learner1 = AdaptiveLearner(heating_type=HeatingType.RADIATOR)
-
-        # Add cycles
-        for i in range(5):
-            cycle = CycleMetrics(
-                overshoot=0.2 + i * 0.01,
-                undershoot=0.1,
-                settling_time=25.0,
-                oscillations=1,
-                rise_time=15.0,
-            )
-            learner1.add_cycle_metrics(cycle)
-
-        # Manually set to v8 format for testing
-        data = learner1.to_dict()
-        v8_data = data.copy()
-        v8_data["format_version"] = 8
-        if "contribution_tracker" in v8_data:
-            del v8_data["contribution_tracker"]
-
-        # Deserialize (should migrate to v9)
-        learner2 = AdaptiveLearner(heating_type=HeatingType.RADIATOR)
-        learner2.restore_from_dict(v8_data)
-
-        # Check that existing data is preserved
-        assert len(learner2._heating_cycle_history) == 5
-        assert learner2._heating_cycle_history[0].overshoot == 0.2
-        assert learner2._heating_cycle_history[4].overshoot == pytest.approx(0.24)
-
-        # Check that contribution tracker defaults are set
-        if hasattr(learner2, "_contribution_tracker"):
-            assert learner2._contribution_tracker.maintenance_contribution == 0.0
-            assert learner2._contribution_tracker.heating_rate_contribution == 0.0
-            assert learner2._contribution_tracker.recovery_cycle_count == 0
-
-    def test_older_format_migrations_still_work(self):
-        """Test that v7, v6, v5, v4 formats still migrate correctly."""
-        # v7 format (has chronic_approach_detector)
-        v7_data = {
-            "heating": {
-                "cycle_history": [],
-                "auto_apply_count": 1,
-                "convergence_confidence": 0.5,
-            },
-            "cooling": {
-                "cycle_history": [],
-                "auto_apply_count": 0,
-                "convergence_confidence": 0.0,
-            },
-            "undershoot_detector": {},
-            "chronic_approach_detector": {
-                "consecutive_failures": 2,
-                "cumulative_multiplier": 1.25,
-            },
-            "cycle_history": [],
-            "auto_apply_count": 1,
-            "convergence_confidence": 0.5,
-            "last_adjustment_time": None,
-            "consecutive_converged_cycles": 0,
-            "pid_converged_for_ke": False,
-        }
-
-        restored = restore_learner_from_dict(v7_data)
-        assert restored["format_version"] == "v7"
-        assert "contribution_tracker_state" in restored
-        assert restored["contribution_tracker_state"]["maintenance_contribution"] == 0.0
-
-
 class TestStartingDeltaSerialization:
     """Test that starting_delta is properly serialized and restored."""
 
@@ -300,8 +178,8 @@ class TestStartingDeltaSerialization:
     def test_starting_delta_is_deserialized(self):
         """Test that starting_delta is restored from serialized data."""
         # Create serialized data with starting_delta
-        v9_data = {
-            "format_version": 9,
+        v10_data = {
+            "format_version": 10,
             "heating": {
                 "cycle_history": [
                     {
@@ -328,16 +206,13 @@ class TestStartingDeltaSerialization:
                 "recovery_cycle_count": 0,
             },
             "undershoot_detector": {},
-            "cycle_history": [],
-            "auto_apply_count": 0,
-            "convergence_confidence": 0.0,
             "last_adjustment_time": None,
             "consecutive_converged_cycles": 0,
             "pid_converged_for_ke": False,
         }
 
         # Deserialize
-        restored = restore_learner_from_dict(v9_data)
+        restored = restore_learner_from_dict(v10_data)
 
         # Check that starting_delta was restored
         assert len(restored["heating_cycle_history"]) == 1
@@ -373,9 +248,9 @@ class TestStartingDeltaSerialization:
 
     def test_missing_starting_delta_defaults_to_none(self):
         """Test that missing starting_delta in old data defaults to None."""
-        # Create v9 data without starting_delta (simulating old persisted data)
-        v9_data = {
-            "format_version": 9,
+        # Create v10 data without starting_delta (simulating old persisted data)
+        v10_data = {
+            "format_version": 10,
             "heating": {
                 "cycle_history": [
                     {
@@ -402,16 +277,13 @@ class TestStartingDeltaSerialization:
                 "recovery_cycle_count": 0,
             },
             "undershoot_detector": {},
-            "cycle_history": [],
-            "auto_apply_count": 0,
-            "convergence_confidence": 0.0,
             "last_adjustment_time": None,
             "consecutive_converged_cycles": 0,
             "pid_converged_for_ke": False,
         }
 
         # Deserialize
-        restored = restore_learner_from_dict(v9_data)
+        restored = restore_learner_from_dict(v10_data)
 
         # Check that starting_delta defaults to None
         assert len(restored["heating_cycle_history"]) == 1
@@ -421,59 +293,6 @@ class TestStartingDeltaSerialization:
 
 class TestV9ToV10Migration:
     """Test migration from v9 to v10 format."""
-
-    def test_v9_to_v10_migration(self):
-        """Test v9 state migrates to v10 with heating_rate_learner."""
-        v9_data = {
-            "format_version": 9,
-            "heating": {
-                "cycle_history": [],
-                "auto_apply_count": 0,
-                "convergence_confidence": 0.0,
-            },
-            "cooling": {
-                "cycle_history": [],
-                "auto_apply_count": 0,
-                "convergence_confidence": 0.0,
-            },
-            "contribution_tracker": {
-                "maintenance_contribution": 0.0,
-                "heating_rate_contribution": 0.0,
-                "recovery_cycle_count": 0,
-            },
-            "undershoot_detector": {
-                "cumulative_ki_multiplier": 1.0,
-                "last_adjustment_time": None,
-                "time_below_target": 0.0,
-                "thermal_debt": 0.0,
-                "consecutive_failures": 0,
-            },
-            "cycle_history": [],
-            "auto_apply_count": 0,
-            "convergence_confidence": 0.0,
-            "last_adjustment_time": None,
-            "consecutive_converged_cycles": 0,
-            "pid_converged_for_ke": False,
-            # No heating_rate_learner in v9
-        }
-
-        # Deserialize - should migrate to v10
-        restored = restore_learner_from_dict(v9_data)
-
-        # Should detect v9 format and include empty heating_rate_learner_state
-        assert restored["format_version"] == "v9"
-        assert "heating_rate_learner_state" in restored
-
-        # Restored from v9 should have empty state (will create fresh learner during restore)
-        learner_state = restored["heating_rate_learner_state"]
-        assert learner_state == {}
-
-        # Verify that when restored into AdaptiveLearner, a fresh learner is created
-        learner = AdaptiveLearner(heating_type=HeatingType.RADIATOR)
-        learner.restore_from_dict(v9_data)
-        assert hasattr(learner, "_heating_rate_learner")
-        assert learner._heating_rate_learner is not None
-        assert learner._heating_rate_learner._heating_type == HeatingType.RADIATOR
 
     def test_v10_round_trip(self):
         """Test v10 state serializes and restores correctly."""
@@ -541,9 +360,6 @@ class TestBackwardCompatibility:
         assert "heating" in data
         assert "cooling" in data
         assert "undershoot_detector" in data
-        assert "cycle_history" in data  # v4 compat
-        assert "auto_apply_count" in data  # v4 compat
-        assert "convergence_confidence" in data  # v4 compat
         assert "last_adjustment_time" in data
         assert "consecutive_converged_cycles" in data
         assert "pid_converged_for_ke" in data

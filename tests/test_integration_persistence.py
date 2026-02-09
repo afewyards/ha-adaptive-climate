@@ -158,11 +158,11 @@ class TestPersistenceRoundTrip:
 class TestPersistenceVersionMigration:
     """Test restore with version migration from older formats."""
 
-    def test_restore_v9_format(self, make_thermostat):
-        """Restore from v9 format (contribution tracker, but no heating_rate_learner)."""
-        # Craft a v9 format payload (has contribution_tracker, no heating_rate_learner)
-        v9_data = {
-            "format_version": 9,
+    def test_restore_v10_format(self, make_thermostat):
+        """Restore from v10 format (has contribution tracker and heating_rate_learner)."""
+        # Craft a v10 format payload (has contribution_tracker and heating_rate_learner)
+        v10_data = {
+            "format_version": 10,
             "heating": {
                 "cycle_history": [
                     {
@@ -198,9 +198,7 @@ class TestPersistenceVersionMigration:
                 "thermal_debt": 0.0,
                 "consecutive_failures": 0,
             },
-            "cycle_history": [],  # v4 compat
-            "auto_apply_count": 2,
-            "convergence_confidence": 45.0,
+            "heating_rate_learner": {},
             "last_adjustment_time": None,
             "consecutive_converged_cycles": 0,
             "pid_converged_for_ke": False,
@@ -209,11 +207,11 @@ class TestPersistenceVersionMigration:
         # Create a thermostat and restore
         t = make_thermostat(heating_type=HeatingType.RADIATOR)
 
-        # Restore from v9 data
-        t.learner.restore_from_dict(v9_data)
+        # Restore from v10 data
+        t.learner.restore_from_dict(v10_data)
 
         # Verify no crash
-        assert t.learner.get_cycle_count() == 1, "Expected 1 cycle from v9 data"
+        assert t.learner.get_cycle_count() == 1, "Expected 1 cycle from v10 data"
 
         # Verify old fields are preserved
         assert t.learner.get_convergence_confidence() == 45.0, "Expected confidence 45.0"
@@ -227,73 +225,9 @@ class TestPersistenceVersionMigration:
         # Verify undershoot detector was restored
         assert t.learner._undershoot_detector.cumulative_ki_multiplier == 1.05
 
-        # Verify new fields have sensible defaults (heating_rate_learner should be empty)
+        # Verify heating_rate_learner initialized (empty since no data in payload)
         assert t.learner._heating_rate_learner.get_observation_count() == 0, (
-            "Expected heating rate learner to be empty after v9 migration"
-        )
-
-    def test_restore_v7_format(self, make_thermostat):
-        """Restore from v7 format (separate undershoot/chronic detectors)."""
-        # Craft a v7 format payload (separate undershoot_detector and chronic_approach_detector)
-        v7_data = {
-            "format_version": 7,
-            "heating": {
-                "cycle_history": [
-                    {
-                        "overshoot": 0.15,
-                        "undershoot": 0.08,
-                        "settling_time": 300.0,
-                        "oscillations": 0,
-                        "rise_time": 180.0,
-                        "integral_at_tolerance_entry": 2.8,
-                        "integral_at_setpoint_cross": 2.3,
-                        "decay_contribution": 0.12,
-                        "mode": "heat",
-                        "starting_delta": 1.8,
-                    },
-                ],
-                "auto_apply_count": 1,
-                "convergence_confidence": 30.0,
-            },
-            "cooling": {
-                "cycle_history": [],
-                "auto_apply_count": 0,
-                "convergence_confidence": 0.0,
-            },
-            "undershoot_detector": {
-                "cumulative_ki_multiplier": 1.10,
-                "time_below_target": 0.0,
-                "thermal_debt": 0.0,
-            },
-            "chronic_approach_detector": {
-                "cumulative_multiplier": 1.15,
-                "consecutive_failures": 2,
-            },
-            "cycle_history": [],
-            "auto_apply_count": 1,
-            "convergence_confidence": 30.0,
-            "last_adjustment_time": None,
-            "consecutive_converged_cycles": 0,
-            "pid_converged_for_ke": False,
-        }
-
-        # Create a thermostat and restore
-        t = make_thermostat(heating_type=HeatingType.CONVECTOR)
-
-        # Restore from v7 data
-        t.learner.restore_from_dict(v7_data)
-
-        # Verify no crash
-        assert t.learner.get_cycle_count() == 1
-
-        # Verify migration: unified detector should have max of both multipliers
-        assert t.learner._undershoot_detector.cumulative_ki_multiplier == 1.15, (
-            "Expected max(1.10, 1.15) = 1.15 after v7->v8 migration"
-        )
-
-        # Verify consecutive_failures was migrated
-        assert t.learner._undershoot_detector._consecutive_failures == 2, (
-            "Expected consecutive_failures=2 from chronic detector"
+            "Expected heating rate learner to be empty with no data"
         )
 
 
@@ -364,9 +298,6 @@ class TestPersistenceDegradedData:
             },
             "contribution_tracker": {},
             "undershoot_detector": {},
-            "cycle_history": [],
-            "auto_apply_count": 0,
-            "convergence_confidence": 0.0,
             "last_adjustment_time": None,
             "consecutive_converged_cycles": 0,
             "pid_converged_for_ke": False,
@@ -412,9 +343,6 @@ class TestPersistenceDegradedData:
                 "thermal_debt": 0.0,
                 "consecutive_failures": 0,
             },
-            "cycle_history": [],
-            "auto_apply_count": 0,
-            "convergence_confidence": 0.0,
             "last_adjustment_time": None,
             "consecutive_converged_cycles": 0,
             "pid_converged_for_ke": False,
@@ -469,9 +397,6 @@ class TestPersistenceDegradedData:
                 "consecutive_failures": 0,
             },
             "heating_rate_learner": {},
-            "cycle_history": [],
-            "auto_apply_count": 3,
-            "convergence_confidence": 60.0,
             "last_adjustment_time": None,
             "consecutive_converged_cycles": 0,
             "pid_converged_for_ke": False,
