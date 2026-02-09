@@ -730,17 +730,18 @@ class TestPersistenceRoundtrip:
         # Set some convergence state
         original_learner._consecutive_converged_cycles = 3
         original_learner._pid_converged_for_ke = True
-        original_learner._auto_apply_count = 2
+        original_learner._heating_auto_apply_count = 2
 
         # Serialize to dict
         serialized = original_learner.to_dict()
 
-        # Verify serialization contains expected data
-        assert "cycle_history" in serialized
-        assert len(serialized["cycle_history"]) == 5
+        # Verify serialization contains expected v10 data
+        assert serialized["format_version"] == 10
+        assert "heating" in serialized
+        assert len(serialized["heating"]["cycle_history"]) == 5
         assert serialized["consecutive_converged_cycles"] == 3
         assert serialized["pid_converged_for_ke"] is True
-        assert serialized["auto_apply_count"] == 2
+        assert serialized["heating"]["auto_apply_count"] == 2
 
         # Create new learner and restore from dict
         restored_learner = AdaptiveLearner(heating_type="floor_hydronic")
@@ -764,7 +765,7 @@ class TestPersistenceRoundtrip:
         # Verify convergence state matches
         assert restored_learner._consecutive_converged_cycles == original_learner._consecutive_converged_cycles
         assert restored_learner._pid_converged_for_ke == original_learner._pid_converged_for_ke
-        assert restored_learner._auto_apply_count == original_learner._auto_apply_count
+        assert restored_learner._heating_auto_apply_count == original_learner._heating_auto_apply_count
 
     def test_ke_learner_persistence_roundtrip(self):
         """Test KeLearner observations persist and restore correctly."""

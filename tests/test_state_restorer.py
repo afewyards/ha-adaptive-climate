@@ -367,17 +367,20 @@ class TestInitialPhysicsGainsRecording:
             "ki": 0.02,
             "kd": 120.0,
             "ke": 0.5,
-            "pid_history": [
-                {
-                    "timestamp": "2024-01-15T10:00:00",
-                    "kp": 25.0,
-                    "ki": 0.02,
-                    "kd": 120.0,
-                    "ke": 0.5,
-                    "reason": "adaptive_apply",
-                    "actor": "user",
-                }
-            ],
+            "pid_history": {
+                "heating": [
+                    {
+                        "timestamp": "2024-01-15T10:00:00",
+                        "kp": 25.0,
+                        "ki": 0.02,
+                        "kd": 120.0,
+                        "ke": 0.5,
+                        "reason": "adaptive_apply",
+                        "actor": "user",
+                    }
+                ],
+                "cooling": [],
+            },
         }
 
         # Restore
@@ -403,26 +406,29 @@ class TestPidHistoryPersistence:
         mock_thermostat._gains_manager = gains_manager
 
         # Simulate saved state with pid_history at top level (as build_state_attributes produces)
-        saved_history = [
-            {
-                "timestamp": "2024-01-15T10:00:00",
-                "kp": 25.0,
-                "ki": 0.02,
-                "kd": 120.0,
-                "ke": 0.5,
-                "reason": "physics_init",
-                "actor": "system",
-            },
-            {
-                "timestamp": "2024-01-15T12:00:00",
-                "kp": 22.0,
-                "ki": 0.015,
-                "kd": 110.0,
-                "ke": 0.3,
-                "reason": "auto_apply",
-                "actor": "learning",
-            },
-        ]
+        saved_history = {
+            "heating": [
+                {
+                    "timestamp": "2024-01-15T10:00:00",
+                    "kp": 25.0,
+                    "ki": 0.02,
+                    "kd": 120.0,
+                    "ke": 0.5,
+                    "reason": "physics_init",
+                    "actor": "system",
+                },
+                {
+                    "timestamp": "2024-01-15T12:00:00",
+                    "kp": 22.0,
+                    "ki": 0.015,
+                    "kd": 110.0,
+                    "ke": 0.3,
+                    "reason": "auto_apply",
+                    "actor": "learning",
+                },
+            ],
+            "cooling": [],
+        }
         old_state = MagicMock()
         old_state.state = "heat"
         old_state.attributes = {
@@ -483,17 +489,20 @@ class TestPidHistoryPersistence:
         old_state.attributes = {
             "temperature": 21.0,
             "integral": 5.0,
-            "pid_history": [
-                {
-                    "timestamp": "2024-01-15T10:00:00",
-                    "kp": 30.0,
-                    "ki": 0.03,
-                    "kd": 150.0,
-                    "ke": 0.8,
-                    "reason": "auto_apply",
-                    "actor": "learning",
-                },
-            ],
+            "pid_history": {
+                "heating": [
+                    {
+                        "timestamp": "2024-01-15T10:00:00",
+                        "kp": 30.0,
+                        "ki": 0.03,
+                        "kd": 150.0,
+                        "ke": 0.8,
+                        "reason": "auto_apply",
+                        "actor": "learning",
+                    },
+                ],
+                "cooling": [],
+            },
         }
 
         state_restorer.restore(old_state)

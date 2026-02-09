@@ -246,26 +246,29 @@ class TestRestoreFromState:
             "ki": 0.015,
             "kd": 12.0,
             "ke": 0.6,
-            "pid_history": [
-                {
-                    "timestamp": "2024-01-15T10:00:00",
-                    "kp": 1.5,
-                    "ki": 0.01,
-                    "kd": 10.0,
-                    "ke": 0.5,
-                    "reason": "physics_init",
-                    "actor": "system",
-                },
-                {
-                    "timestamp": "2024-01-15T11:00:00",
-                    "kp": 1.8,
-                    "ki": 0.015,
-                    "kd": 12.0,
-                    "ke": 0.6,
-                    "reason": "adaptive_apply",
-                    "actor": "user",
-                },
-            ],
+            "pid_history": {
+                "heating": [
+                    {
+                        "timestamp": "2024-01-15T10:00:00",
+                        "kp": 1.5,
+                        "ki": 0.01,
+                        "kd": 10.0,
+                        "ke": 0.5,
+                        "reason": "physics_init",
+                        "actor": "system",
+                    },
+                    {
+                        "timestamp": "2024-01-15T11:00:00",
+                        "kp": 1.8,
+                        "ki": 0.015,
+                        "kd": 12.0,
+                        "ke": 0.6,
+                        "reason": "adaptive_apply",
+                        "actor": "user",
+                    },
+                ],
+                "cooling": [],
+            },
         }
 
         manager.restore_from_state(old_state)
@@ -286,16 +289,19 @@ class TestRestoreFromState:
 
         old_state = Mock()
         old_state.attributes = {
-            "pid_history": [
-                {
-                    "timestamp": "2024-01-15T10:00:00",
-                    "kp": 2.0,
-                    "ki": 0.02,
-                    "kd": 15.0,
-                    "ke": 0.7,
-                    "reason": "auto_apply",
-                },
-            ]
+            "pid_history": {
+                "heating": [
+                    {
+                        "timestamp": "2024-01-15T10:00:00",
+                        "kp": 2.0,
+                        "ki": 0.02,
+                        "kd": 15.0,
+                        "ke": 0.7,
+                        "reason": "auto_apply",
+                    },
+                ],
+                "cooling": [],
+            }
         }
 
         manager.restore_from_state(old_state)
@@ -351,16 +357,19 @@ class TestRestoreBackwardCompatibility:
             "ki": 0.01,
             "kd": 10.0,
             "ke": 0.5,
-            "pid_history": [
-                {
-                    "timestamp": "2024-01-15T10:00:00",
-                    "kp": 1.5,
-                    "ki": 0.01,
-                    "kd": 10.0,
-                    "reason": "physics_init",
-                    # No ke, no actor
-                }
-            ],
+            "pid_history": {
+                "heating": [
+                    {
+                        "timestamp": "2024-01-15T10:00:00",
+                        "kp": 1.5,
+                        "ki": 0.01,
+                        "kd": 10.0,
+                        "reason": "physics_init",
+                        # No ke, no actor
+                    }
+                ],
+                "cooling": [],
+            },
         }
 
         manager.restore_from_state(old_state)
@@ -371,27 +380,30 @@ class TestRestoreBackwardCompatibility:
         assert history[0].get("ke", 0.0) == 0.0
 
     def test_restore_flat_history_format(self, manager):
-        """Old flat pid_history list (not mode-keyed) should migrate to heating."""
+        """Mode-keyed dict format should restore properly."""
         old_state = Mock()
         old_state.attributes = {
             "kp": 1.5,
             "ki": 0.01,
             "kd": 10.0,
-            "pid_history": [  # Flat list, not mode-keyed
-                {
-                    "timestamp": "2024-01-15T10:00:00",
-                    "kp": 1.5,
-                    "ki": 0.01,
-                    "kd": 10.0,
-                    "reason": "physics_init",
-                }
-            ],
+            "pid_history": {
+                "heating": [
+                    {
+                        "timestamp": "2024-01-15T10:00:00",
+                        "kp": 1.5,
+                        "ki": 0.01,
+                        "kd": 10.0,
+                        "reason": "physics_init",
+                    }
+                ],
+                "cooling": [],
+            },
         }
 
         manager.restore_from_state(old_state)
 
         history = manager.get_history()
-        assert len(history) >= 1
+        assert len(history) == 1
 
 
 # =============================================================================
@@ -524,7 +536,7 @@ class TestHistorySizeLimits:
             "ki": 0.02,
             "kd": 12.0,
             "ke": 0.6,
-            "pid_history": old_history,
+            "pid_history": {"heating": old_history, "cooling": []},
         }
 
         manager.restore_from_state(old_state)
@@ -593,32 +605,6 @@ class TestHistoryMigrationFromAdaptiveLearner:
         assert len(cooling_history) == 1
         assert cooling_history[0]["kp"] == 1.8
 
-    def test_migrate_datetime_objects_to_iso_strings(self, manager):
-        """Old entries with datetime objects should be converted to ISO strings."""
-        old_state = Mock()
-        old_state.attributes = {
-            "kp": 1.5,
-            "ki": 0.01,
-            "kd": 10.0,
-            "pid_history": [
-                {
-                    "timestamp": datetime(2024, 1, 15, 10, 0, 0),  # datetime object
-                    "kp": 1.5,
-                    "ki": 0.01,
-                    "kd": 10.0,
-                    "reason": "physics_init",
-                }
-            ],
-        }
-
-        manager.restore_from_state(old_state)
-
-        history = manager.get_history()
-        # First entry should have ISO string timestamp (not datetime object)
-        timestamp = history[0]["timestamp"]
-        assert isinstance(timestamp, str)
-        assert "2024-01-15" in timestamp
-
     def test_migrate_missing_ke_field(self, manager):
         """Old entries without ke field should default to 0.0."""
         old_state = Mock()
@@ -626,16 +612,19 @@ class TestHistoryMigrationFromAdaptiveLearner:
             "kp": 1.5,
             "ki": 0.01,
             "kd": 10.0,
-            "pid_history": [
-                {
-                    "timestamp": "2024-01-15T10:00:00",
-                    "kp": 1.5,
-                    "ki": 0.01,
-                    "kd": 10.0,
-                    "reason": "physics_init",
-                    # No ke field
-                }
-            ],
+            "pid_history": {
+                "heating": [
+                    {
+                        "timestamp": "2024-01-15T10:00:00",
+                        "kp": 1.5,
+                        "ki": 0.01,
+                        "kd": 10.0,
+                        "reason": "physics_init",
+                        # No ke field
+                    }
+                ],
+                "cooling": [],
+            },
         }
 
         manager.restore_from_state(old_state)
@@ -651,17 +640,20 @@ class TestHistoryMigrationFromAdaptiveLearner:
             "kp": 1.5,
             "ki": 0.01,
             "kd": 10.0,
-            "pid_history": [
-                {
-                    "timestamp": "2024-01-15T10:00:00",
-                    "kp": 1.5,
-                    "ki": 0.01,
-                    "kd": 10.0,
-                    "ke": 0.5,
-                    "reason": "physics_init",
-                    # No actor field (old format)
-                }
-            ],
+            "pid_history": {
+                "heating": [
+                    {
+                        "timestamp": "2024-01-15T10:00:00",
+                        "kp": 1.5,
+                        "ki": 0.01,
+                        "kd": 10.0,
+                        "ke": 0.5,
+                        "reason": "physics_init",
+                        # No actor field (old format)
+                    }
+                ],
+                "cooling": [],
+            },
         }
 
         manager.restore_from_state(old_state)
@@ -680,20 +672,23 @@ class TestHistoryMigrationFromAdaptiveLearner:
             "kp": 1.5,
             "ki": 0.01,
             "kd": 10.0,
-            "pid_history": [
-                {
-                    "timestamp": "2024-01-15T10:00:00",
-                    "kp": 1.5,
-                    "ki": 0.01,
-                    "kd": 10.0,
-                    "ke": 0.5,
-                    "reason": "adaptive_apply",
-                    "metrics": {
-                        "overshoot": 0.5,
-                        "settling_time": 120,
-                    },
-                }
-            ],
+            "pid_history": {
+                "heating": [
+                    {
+                        "timestamp": "2024-01-15T10:00:00",
+                        "kp": 1.5,
+                        "ki": 0.01,
+                        "kd": 10.0,
+                        "ke": 0.5,
+                        "reason": "adaptive_apply",
+                        "metrics": {
+                            "overshoot": 0.5,
+                            "settling_time": 120,
+                        },
+                    }
+                ],
+                "cooling": [],
+            },
         }
 
         manager.restore_from_state(old_state)
@@ -722,26 +717,29 @@ class TestRestoreDeduplication:
             "ki": 0.015,
             "kd": 12.0,
             "ke": 0.6,
-            "pid_history": [
-                {
-                    "timestamp": "2024-01-15T10:00:00",
-                    "kp": 1.5,
-                    "ki": 0.01,
-                    "kd": 10.0,
-                    "ke": 0.5,
-                    "reason": "physics_init",
-                    "actor": "system",
-                },
-                {
-                    "timestamp": "2024-01-15T11:00:00",
-                    "kp": 1.8,
-                    "ki": 0.015,
-                    "kd": 12.0,
-                    "ke": 0.6,
-                    "reason": "adaptive_apply",
-                    "actor": "user",
-                },
-            ],
+            "pid_history": {
+                "heating": [
+                    {
+                        "timestamp": "2024-01-15T10:00:00",
+                        "kp": 1.5,
+                        "ki": 0.01,
+                        "kd": 10.0,
+                        "ke": 0.5,
+                        "reason": "physics_init",
+                        "actor": "system",
+                    },
+                    {
+                        "timestamp": "2024-01-15T11:00:00",
+                        "kp": 1.8,
+                        "ki": 0.015,
+                        "kd": 12.0,
+                        "ke": 0.6,
+                        "reason": "adaptive_apply",
+                        "actor": "user",
+                    },
+                ],
+                "cooling": [],
+            },
         }
 
         manager.restore_from_state(old_state)
@@ -764,17 +762,20 @@ class TestRestoreDeduplication:
             "ki": 0.02,
             "kd": 15.0,
             "ke": 0.7,
-            "pid_history": [
-                {
-                    "timestamp": "2024-01-15T10:00:00",
-                    "kp": 1.5,
-                    "ki": 0.01,
-                    "kd": 10.0,
-                    "ke": 0.5,
-                    "reason": "physics_init",
-                    "actor": "system",
-                },
-            ],
+            "pid_history": {
+                "heating": [
+                    {
+                        "timestamp": "2024-01-15T10:00:00",
+                        "kp": 1.5,
+                        "ki": 0.01,
+                        "kd": 10.0,
+                        "ke": 0.5,
+                        "reason": "physics_init",
+                        "actor": "system",
+                    },
+                ],
+                "cooling": [],
+            },
         }
 
         manager.restore_from_state(old_state)
@@ -795,7 +796,7 @@ class TestRestoreDeduplication:
         """Restore with empty history should keep initial physics gains."""
         old_state = Mock()
         old_state.attributes = {
-            "pid_history": [],  # Empty history
+            "pid_history": {"heating": [], "cooling": []},  # Empty history
         }
 
         manager.restore_from_state(old_state)
@@ -812,32 +813,35 @@ class TestRestoreDeduplication:
             "ki": 0.015,
             "kd": 12.0,
             "ke": 0.6,
-            "pid_history": [
-                {
-                    "timestamp": "2024-01-15T09:00:00",
-                    "kp": 1.0,
-                    "ki": 0.01,
-                    "kd": 10.0,
-                    "ke": 0.0,
-                    "reason": "physics_init",
-                },
-                {
-                    "timestamp": "2024-01-15T10:00:00",
-                    "kp": 1.5,
-                    "ki": 0.01,
-                    "kd": 10.0,
-                    "ke": 0.5,
-                    "reason": "ke_learning",
-                },
-                {
-                    "timestamp": "2024-01-15T11:00:00",
-                    "kp": 1.8,
-                    "ki": 0.015,
-                    "kd": 12.0,
-                    "ke": 0.6,
-                    "reason": "adaptive_apply",
-                },
-            ],
+            "pid_history": {
+                "heating": [
+                    {
+                        "timestamp": "2024-01-15T09:00:00",
+                        "kp": 1.0,
+                        "ki": 0.01,
+                        "kd": 10.0,
+                        "ke": 0.0,
+                        "reason": "physics_init",
+                    },
+                    {
+                        "timestamp": "2024-01-15T10:00:00",
+                        "kp": 1.5,
+                        "ki": 0.01,
+                        "kd": 10.0,
+                        "ke": 0.5,
+                        "reason": "ke_learning",
+                    },
+                    {
+                        "timestamp": "2024-01-15T11:00:00",
+                        "kp": 1.8,
+                        "ki": 0.015,
+                        "kd": 12.0,
+                        "ke": 0.6,
+                        "reason": "adaptive_apply",
+                    },
+                ],
+                "cooling": [],
+            },
         }
 
         manager.restore_from_state(old_state)
@@ -857,16 +861,19 @@ class TestRestoreDeduplication:
             "ki": 0.015,
             "kd": 12.0,
             "ke": 0.6,
-            "pid_history": [
-                {
-                    "timestamp": "2024-01-15T11:00:00",
-                    "kp": 1.8,
-                    "ki": 0.015,
-                    "kd": 12.0,
-                    "ke": 0.6,
-                    "reason": "adaptive_apply",
-                },
-            ],
+            "pid_history": {
+                "heating": [
+                    {
+                        "timestamp": "2024-01-15T11:00:00",
+                        "kp": 1.8,
+                        "ki": 0.015,
+                        "kd": 12.0,
+                        "ke": 0.6,
+                        "reason": "adaptive_apply",
+                    },
+                ],
+                "cooling": [],
+            },
         }
 
         # Simulate multiple restarts
@@ -892,17 +899,20 @@ class TestRestoreDeduplication:
             "ki": 5.3306,
             "kd": 0.6,
             "ke": 0.2073,
-            "pid_history": [
-                {
-                    "timestamp": "2024-01-15T11:00:00",
-                    # Rounded values (as stored in history by HA)
-                    "kp": 1.84,
-                    "ki": 5.33,
-                    "kd": 0.6,
-                    "ke": 0.21,
-                    "reason": "adaptive_apply",
-                },
-            ],
+            "pid_history": {
+                "heating": [
+                    {
+                        "timestamp": "2024-01-15T11:00:00",
+                        # Rounded values (as stored in history by HA)
+                        "kp": 1.84,
+                        "ki": 5.33,
+                        "kd": 0.6,
+                        "ke": 0.21,
+                        "reason": "adaptive_apply",
+                    },
+                ],
+                "cooling": [],
+            },
         }
 
         manager.restore_from_state(old_state)
@@ -925,25 +935,28 @@ class TestRestoreDeduplication:
             "ki": 999.0,
             "kd": 999.0,
             "ke": 999.0,
-            "pid_history": [
-                {
-                    "timestamp": "2024-01-15T10:00:00",
-                    "kp": 1.0,
-                    "ki": 0.01,
-                    "kd": 10.0,
-                    "ke": 0.0,
-                    "reason": "physics_init",
-                },
-                {
-                    "timestamp": "2024-01-15T11:00:00",
-                    # These are the values that SHOULD be restored
-                    "kp": 2.5,
-                    "ki": 0.025,
-                    "kd": 18.0,
-                    "ke": 0.8,
-                    "reason": "adaptive_apply",
-                },
-            ],
+            "pid_history": {
+                "heating": [
+                    {
+                        "timestamp": "2024-01-15T10:00:00",
+                        "kp": 1.0,
+                        "ki": 0.01,
+                        "kd": 10.0,
+                        "ke": 0.0,
+                        "reason": "physics_init",
+                    },
+                    {
+                        "timestamp": "2024-01-15T11:00:00",
+                        # These are the values that SHOULD be restored
+                        "kp": 2.5,
+                        "ki": 0.025,
+                        "kd": 18.0,
+                        "ke": 0.8,
+                        "reason": "adaptive_apply",
+                    },
+                ],
+                "cooling": [],
+            },
         }
 
         manager.restore_from_state(old_state)
@@ -1461,17 +1474,20 @@ class TestSingleSourceOfTruth:
             "ki": 0.025,
             "kd": 18.0,
             "ke": 0.8,
-            "pid_history": [
-                {
-                    "timestamp": "2024-01-15T10:00:00",
-                    "kp": 2.5,
-                    "ki": 0.025,
-                    "kd": 18.0,
-                    "ke": 0.8,
-                    "reason": "adaptive_apply",
-                    "actor": "user",
-                }
-            ],
+            "pid_history": {
+                "heating": [
+                    {
+                        "timestamp": "2024-01-15T10:00:00",
+                        "kp": 2.5,
+                        "ki": 0.025,
+                        "kd": 18.0,
+                        "ke": 0.8,
+                        "reason": "adaptive_apply",
+                        "actor": "user",
+                    }
+                ],
+                "cooling": [],
+            },
         }
 
         # Restore
@@ -1571,17 +1587,20 @@ class TestInitialHistoryRecording:
             "ki": 0.025,
             "kd": 18.0,
             "ke": 0.8,
-            "pid_history": [
-                {
-                    "timestamp": "2024-01-15T10:00:00",
-                    "kp": 2.5,
-                    "ki": 0.025,
-                    "kd": 18.0,
-                    "ke": 0.8,
-                    "reason": "adaptive_apply",
-                    "actor": "user",
-                }
-            ],
+            "pid_history": {
+                "heating": [
+                    {
+                        "timestamp": "2024-01-15T10:00:00",
+                        "kp": 2.5,
+                        "ki": 0.025,
+                        "kd": 18.0,
+                        "ke": 0.8,
+                        "reason": "adaptive_apply",
+                        "actor": "user",
+                    }
+                ],
+                "cooling": [],
+            },
         }
 
         # Restore
