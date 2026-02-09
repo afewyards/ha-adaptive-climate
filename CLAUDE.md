@@ -338,7 +338,7 @@ Unified detector with dual modes: real-time thermal debt tracking and cycle-base
 - Detector initialized in `AdaptiveLearner.__init__`
 - Real-time updates via `update_real_time` (called from `_async_control_heating`)
 - Cycle updates via `add_cycle_metrics`
-- Serialized/restored via `learner_serialization.py` (v7 format)
+- Serialized/restored via `learner_serialization.py` (v10 format)
 
 ### PID Gains Manager
 
@@ -499,7 +499,7 @@ Exposed via `extra_state_attributes`. Structure: flat restoration fields + group
 
 ### Persistence
 
-`LearningDataStore` - zone-keyed JSON (v4), 30s debounce, auto-migrations.
+`LearningDataStore` - zone-keyed JSON (v10), 30s debounce.
 
 ## Caveats
 

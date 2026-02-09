@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import replace
-from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.climate import HVACMode
@@ -242,42 +241,34 @@ class PIDGainsManager:
                 mode=HVACMode.HEAT,
             )
 
-    def _restore_history(self, old_history: list[dict] | dict) -> None:
-        """Restore history from old format, handling migration.
+    def _restore_history(self, old_history: Any) -> None:
+        """Restore history from mode-keyed dict format.
 
         Called BEFORE set_gains() during restore, so history is populated
         before deduplication check runs.
         """
-        # Handle mode-keyed format: {"heating": [...], "cooling": [...]}
-        if isinstance(old_history, dict):
-            for mode_key in ["heating", "cooling"]:
-                if mode_key in old_history:
-                    entries = old_history[mode_key]
-                    if isinstance(entries, list):
-                        migrated = [self._migrate_history_entry(e) for e in entries]
-                        self._pid_history[mode_key] = migrated
-        # Handle flat list format (old AdaptiveLearner format) - migrate to heating
-        elif isinstance(old_history, list):
-            migrated = [self._migrate_history_entry(e) for e in old_history]
-            self._pid_history["heating"] = migrated
+        if not isinstance(old_history, dict):
+            return
+
+        for mode_key in ["heating", "cooling"]:
+            if mode_key in old_history:
+                entries = old_history[mode_key]
+                if isinstance(entries, list):
+                    migrated = [self._migrate_history_entry(e) for e in entries]
+                    self._pid_history[mode_key] = migrated
 
         # Enforce size limits
         for mode_key in ["heating", "cooling"]:
             if len(self._pid_history[mode_key]) > PID_HISTORY_SIZE:
                 self._pid_history[mode_key] = self._pid_history[mode_key][-PID_HISTORY_SIZE:]
 
-    def _migrate_history_entry(self, entry: dict) -> dict:
+    def _migrate_history_entry(self, entry: Any) -> dict:
         """Migrate a single history entry to new format."""
         if not isinstance(entry, dict):
             return {}
 
-        # Handle datetime objects
-        timestamp = entry.get("timestamp", "")
-        if isinstance(timestamp, datetime):
-            timestamp = timestamp.isoformat()
-
         migrated = {
-            "timestamp": timestamp,
+            "timestamp": entry.get("timestamp", ""),
             "kp": entry.get("kp", 0.0),
             "ki": entry.get("ki", 0.0),
             "kd": entry.get("kd", 0.0),

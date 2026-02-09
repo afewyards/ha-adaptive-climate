@@ -1547,7 +1547,6 @@ class AdaptiveLearner:
             consecutive_converged_cycles=self._consecutive_converged_cycles,
             pid_converged_for_ke=self._pid_converged_for_ke,
             undershoot_detector=self._undershoot_detector,
-            chronic_approach_detector=None,  # No longer used (merged into unified detector)
             contribution_tracker=self._contribution_tracker,
             heating_rate_learner=self._heating_rate_learner,
         )
@@ -1560,18 +1559,10 @@ class AdaptiveLearner:
 
         Delegates to learner_serialization module for actual deserialization logic.
 
-        Supports v4 (flat), v5 (mode-keyed), v6 (undershoot), v7 (chronic approach), v8 (unified),
-        v9 (contribution tracker), and v10 (heating rate learner) formats.
+        Supports v10 format only.
 
         Args:
-            data: Dictionary containing either:
-                v4 format: cycle_history, auto_apply_count, etc. at top level
-                v5 format: heating/cooling sub-dicts with mode-specific data
-                v6 format: v5 + undershoot_detector state
-                v7 format: v6 + chronic_approach_detector state (separate)
-                v8 format: v7 + unified_detector state (merged)
-                v9 format: v8 + contribution_tracker state
-                v10 format: v9 + heating_rate_learner state
+            data: Dictionary containing v10 format data
         """
         # Delegate to serialization module for parsing
         restored = restore_learner_from_dict(data)

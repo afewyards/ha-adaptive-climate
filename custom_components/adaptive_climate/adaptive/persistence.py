@@ -3,23 +3,15 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
-from typing import Any, TYPE_CHECKING
-import json
+from typing import Any
 import logging
-import os
 
 from homeassistant.util import dt as dt_util
 
-from ..const import MAX_CYCLE_HISTORY
-
-if TYPE_CHECKING:
-    from .thermal_rates import ThermalRateLearner
 
 _LOGGER = logging.getLogger(__name__)
 
 STORAGE_KEY = "adaptive_climate_learning"
-OLD_STORAGE_KEY = "adaptive_thermostat_learning"
 STORAGE_VERSION = 5
 SAVE_DELAY_SECONDS = 30
 
@@ -34,30 +26,17 @@ def _create_store(hass, version: int, key: str):
 class LearningDataStore:
     """Persist learning data across Home Assistant restarts."""
 
-    def __init__(self, hass_or_path):
+    def __init__(self, hass):
         """
         Initialize the LearningDataStore.
 
         Args:
-            hass_or_path: Either a HomeAssistant instance (new API) or a storage path string (legacy API)
+            hass: HomeAssistant instance
         """
-        # Support both new API (HomeAssistant instance) and legacy API (storage path)
-        if isinstance(hass_or_path, str):
-            # Legacy API - file I/O based (for backwards compatibility with existing tests)
-            self.storage_path = hass_or_path
-            self.storage_file = os.path.join(hass_or_path, "adaptive_thermostat_learning.json")
-            self.hass = None
-            self._store = None
-            self._data = {"version": 5, "zones": {}}
-            self._save_lock = None  # Legacy API doesn't need locks (synchronous)
-        else:
-            # New API - HA Store based
-            self.hass = hass_or_path
-            self.storage_path = None
-            self.storage_file = None
-            self._store = None
-            self._data = {"version": 5, "zones": {}}
-            self._save_lock = None  # Lazily initialized in async context
+        self.hass = hass
+        self._store = None
+        self._data = {"version": 5, "zones": {}}
+        self._save_lock = None  # Lazily initialized in async context
 
     def _validate_data(self, data: Any) -> bool:
         """
@@ -129,10 +108,6 @@ class LearningDataStore:
 
         data = await self._store.async_load()
 
-        # If no data found with new key, try migrating from old key
-        if data is None:
-            data = await self._migrate_from_old_storage()
-
         if data is None:
             # No existing data - return default structure
             self._data = {"version": 5, "zones": {}}
@@ -146,34 +121,6 @@ class LearningDataStore:
 
         self._data = data
         return data
-
-    async def _migrate_from_old_storage(self) -> dict[str, Any] | None:
-        """
-        Migrate data from old storage key to new storage key.
-
-        Returns:
-            Migrated data dictionary, or None if no old data found
-        """
-        # Create store with old key
-        old_store = _create_store(self.hass, STORAGE_VERSION, OLD_STORAGE_KEY)
-
-        # Try to load from old storage
-        old_data = await old_store.async_load()
-
-        if old_data is None:
-            _LOGGER.debug("No old storage file found - skipping migration")
-            return None
-
-        _LOGGER.info(f"Migrating learning data from '{OLD_STORAGE_KEY}' to '{STORAGE_KEY}'")
-
-        # Save to new storage location
-        await self._store.async_save(old_data)
-
-        _LOGGER.info(
-            f"Successfully migrated learning data to '{STORAGE_KEY}' (old file will be removed automatically by HA)"
-        )
-
-        return old_data
 
     def get_zone_data(self, zone_id: str) -> dict[str, Any] | None:
         """
@@ -310,230 +257,6 @@ class LearningDataStore:
             f"adaptive={adaptive_data is not None}, ke={ke_data is not None}, "
             f"preheat={preheat_data is not None}"
         )
-
-    def load(self) -> dict[str, Any] | None:
-        """
-        Load learning data from storage.
-
-        Returns:
-            Dictionary with learning data, or None if file doesn't exist or is corrupt
-        """
-        if not os.path.exists(self.storage_file):
-            _LOGGER.info(f"No existing learning data found at {self.storage_file}")
-            return None
-
-        try:
-            with open(self.storage_file) as f:
-                data = json.load(f)
-
-            # Validate version
-            if "version" not in data:
-                _LOGGER.warning("Learning data missing version field, treating as corrupt")
-                return None
-
-            _LOGGER.info(f"Learning data loaded from {self.storage_file}")
-            return data
-
-        except json.JSONDecodeError as e:
-            _LOGGER.error(f"Corrupt learning data (invalid JSON): {e}")
-            return None
-        except Exception as e:
-            _LOGGER.error(f"Failed to load learning data: {e}")
-            return None
-
-    def restore_thermal_learner(self, data: dict[str, Any]) -> ThermalRateLearner | None:
-        """
-        Restore ThermalRateLearner from saved data.
-
-        Args:
-            data: Loaded data dictionary from load()
-
-        Returns:
-            Restored ThermalRateLearner instance, or None if data missing
-        """
-        if "thermal_learner" not in data:
-            return None
-
-        try:
-            # Import here to avoid circular import
-            from .thermal_rates import ThermalRateLearner
-
-            thermal_data = data["thermal_learner"]
-            learner = ThermalRateLearner(outlier_threshold=thermal_data.get("outlier_threshold", 2.0))
-
-            # Validate data types
-            cooling_rates = thermal_data.get("cooling_rates", [])
-            heating_rates = thermal_data.get("heating_rates", [])
-
-            if not isinstance(cooling_rates, list):
-                raise TypeError("cooling_rates must be a list")
-            if not isinstance(heating_rates, list):
-                raise TypeError("heating_rates must be a list")
-
-            learner._cooling_rates = cooling_rates
-            learner._heating_rates = heating_rates
-
-            _LOGGER.info(
-                f"Restored ThermalRateLearner: "
-                f"{len(learner._cooling_rates)} cooling rates, "
-                f"{len(learner._heating_rates)} heating rates"
-            )
-            return learner
-
-        except Exception as e:
-            _LOGGER.error(f"Failed to restore ThermalRateLearner: {e}")
-            return None
-
-    def restore_adaptive_learner(self, data: dict[str, Any]) -> Any | None:
-        """
-        Restore AdaptiveLearner from saved data.
-
-        Args:
-            data: Loaded data dictionary from load()
-
-        Returns:
-            Restored AdaptiveLearner instance, or None if data missing
-        """
-        if "adaptive_learner" not in data:
-            return None
-
-        try:
-            # Import here to avoid circular import
-            from .learning import AdaptiveLearner
-            from .cycle_analysis import CycleMetrics
-
-            adaptive_data = data["adaptive_learner"]
-            max_history = adaptive_data.get("max_history", MAX_CYCLE_HISTORY)
-            heating_type = adaptive_data.get("heating_type")
-            learner = AdaptiveLearner(max_history=max_history, heating_type=heating_type)
-
-            # Validate cycle history is a list
-            cycle_history = adaptive_data.get("cycle_history", [])
-            if not isinstance(cycle_history, list):
-                raise TypeError("cycle_history must be a list")
-
-            # Restore cycle history
-            for cycle_data in cycle_history:
-                if not isinstance(cycle_data, dict):
-                    raise TypeError("cycle_data must be a dictionary")
-
-                metrics = CycleMetrics(
-                    overshoot=cycle_data.get("overshoot"),
-                    undershoot=cycle_data.get("undershoot"),
-                    settling_time=cycle_data.get("settling_time"),
-                    oscillations=cycle_data.get("oscillations", 0),
-                    rise_time=cycle_data.get("rise_time"),
-                )
-                learner.add_cycle_metrics(metrics)
-
-            # Restore last adjustment time
-            last_adj_time_str = adaptive_data.get("last_adjustment_time")
-            if last_adj_time_str is not None:
-                learner._last_adjustment_time = datetime.fromisoformat(last_adj_time_str)
-
-            # Restore convergence tracking state (version 2+)
-            learner._consecutive_converged_cycles = adaptive_data.get("consecutive_converged_cycles", 0)
-            learner._pid_converged_for_ke = adaptive_data.get("pid_converged_for_ke", False)
-
-            _LOGGER.info(
-                f"Restored AdaptiveLearner: {learner.get_cycle_count()} cycles, "
-                f"last adjustment: {learner._last_adjustment_time}, "
-                f"converged_for_ke: {learner._pid_converged_for_ke}"
-            )
-            return learner
-
-        except Exception as e:
-            _LOGGER.error(f"Failed to restore AdaptiveLearner: {e}")
-            return None
-
-    def restore_valve_tracker(self, data: dict[str, Any]) -> Any | None:
-        """
-        Restore ValveCycleTracker from saved data.
-
-        Args:
-            data: Loaded data dictionary from load()
-
-        Returns:
-            Restored ValveCycleTracker instance, or None if data missing
-        """
-        if "valve_tracker" not in data:
-            return None
-
-        try:
-            # Import here to avoid circular import
-            from .learning import ValveCycleTracker
-
-            valve_data = data["valve_tracker"]
-            tracker = ValveCycleTracker()
-            tracker._cycle_count = valve_data.get("cycle_count", 0)
-            tracker._last_state = valve_data.get("last_state")
-
-            _LOGGER.info(f"Restored ValveCycleTracker: {tracker._cycle_count} cycles")
-            return tracker
-
-        except Exception as e:
-            _LOGGER.error(f"Failed to restore ValveCycleTracker: {e}")
-            return None
-
-    def restore_ke_learner(self, data: dict[str, Any]) -> Any | None:
-        """
-        Restore KeLearner from saved data.
-
-        Args:
-            data: Loaded data dictionary from load()
-
-        Returns:
-            Restored KeLearner instance, or None if data missing
-        """
-        if "ke_learner" not in data:
-            return None
-
-        try:
-            # Import KeLearner here to avoid circular import
-            from .ke_learning import KeLearner
-
-            ke_data = data["ke_learner"]
-            learner = KeLearner.from_dict(ke_data)
-
-            _LOGGER.info(
-                f"Restored KeLearner: ke={learner.current_ke:.2f}, "
-                f"enabled={learner.enabled}, observations={learner.observation_count}"
-            )
-            return learner
-
-        except Exception as e:
-            _LOGGER.error(f"Failed to restore KeLearner: {e}")
-            return None
-
-    def restore_preheat_learner(self, data: dict[str, Any]) -> Any | None:
-        """
-        Restore PreheatLearner from saved data.
-
-        Args:
-            data: Loaded data dictionary from get_zone_data()
-
-        Returns:
-            Restored PreheatLearner instance, or None if data missing
-        """
-        if "preheat_learner" not in data:
-            return None
-
-        try:
-            # Import PreheatLearner here to avoid circular import
-            from .preheat import PreheatLearner
-
-            preheat_data = data["preheat_learner"]
-            learner = PreheatLearner.from_dict(preheat_data)
-
-            _LOGGER.info(
-                f"Restored PreheatLearner: heating_type={learner.heating_type}, "
-                f"max_hours={learner.max_hours}, observations={learner.get_observation_count()}"
-            )
-            return learner
-
-        except Exception as e:
-            _LOGGER.error(f"Failed to restore PreheatLearner: {e}")
-            return None
 
     async def async_load_manifold_state(self) -> dict[str, str] | None:
         """

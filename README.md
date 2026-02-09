@@ -62,10 +62,6 @@ An advanced climate integration featuring PID control with automatic tuning, ada
 1. Copy the `custom_components/adaptive_climate` folder to your `<config>/custom_components/` directory
 2. Restart Home Assistant
 
-## Migration from adaptive_thermostat
-
-If you're upgrading from the `adaptive_thermostat` integration, see the [CHANGELOG](CHANGELOG.md) for migration instructions. The integration has been renamed to `adaptive_climate` to better reflect support for both heating and cooling.
-
 ## Companion Lovelace Card
 
 For the best experience, use the [Adaptive Climate Card](https://github.com/afewyards/ha-adaptive-climate-card) — a custom Lovelace card designed specifically for this integration.

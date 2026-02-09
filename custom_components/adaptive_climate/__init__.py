@@ -424,13 +424,6 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         }
     )
 
-    # Migrate from old domain if exists
-    old_domain_data = hass.data.get("adaptive_thermostat")
-    if old_domain_data:
-        hass.data[DOMAIN] = old_domain_data
-        del hass.data["adaptive_thermostat"]
-        _LOGGER.info("Migrated data from adaptive_thermostat to adaptive_climate")
-
     # Initialize domain data storage
     hass.data.setdefault(DOMAIN, {})
 
