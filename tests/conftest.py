@@ -88,6 +88,11 @@ mock_helpers.config_validation = MagicMock()
 mock_helpers.entity_platform = MagicMock()
 mock_helpers.discovery = MagicMock()
 
+# Mock storage — Store subclass needed for HistoryStore migration
+mock_storage = MagicMock()
+mock_storage.Store = type("Store", (), {"__init__": lambda self, *a, **kw: None})
+mock_helpers.storage = mock_storage
+
 # Mock typing
 mock_typing = MagicMock()
 mock_typing.ConfigType = MagicMock()
@@ -235,6 +240,7 @@ sys.modules["homeassistant.helpers.config_validation"] = mock_helpers.config_val
 sys.modules["homeassistant.helpers.entity_platform"] = mock_helpers.entity_platform
 sys.modules["homeassistant.helpers.discovery"] = mock_helpers.discovery
 sys.modules["homeassistant.helpers.typing"] = mock_typing
+sys.modules["homeassistant.helpers.storage"] = mock_storage
 sys.modules["homeassistant.helpers.restore_state"] = mock_restore_state
 sys.modules["homeassistant.components"] = mock_components
 sys.modules["homeassistant.components.input_number"] = mock_input_number

@@ -10,6 +10,7 @@ from dataclasses import dataclass, asdict
 from typing import Any, TYPE_CHECKING
 import logging
 
+from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 if TYPE_CHECKING:
@@ -20,6 +21,31 @@ _LOGGER = logging.getLogger(__name__)
 STORAGE_KEY = "adaptive_climate_history"
 STORAGE_VERSION = 2
 MAX_WEEKS_TO_KEEP = 12
+
+
+class _HistoryStoreBackend(Store):
+    """Store subclass with v1→v2 migration support.
+
+    v2 added optional per-zone fields (confidence, learning_status,
+    recovery_cycles, humidity_pauses, contact_pauses). The data format
+    is backward-compatible so migration is a no-op.
+    """
+
+    async def _async_migrate_func(
+        self,
+        old_major_version: int,
+        old_minor_version: int,
+        old_data: dict,
+    ) -> dict:
+        """Migrate from older storage versions."""
+        if old_major_version < 2:
+            _LOGGER.info(
+                "Migrating history store from v%d.%d to v%d",
+                old_major_version,
+                old_minor_version,
+                STORAGE_VERSION,
+            )
+        return old_data
 
 
 @dataclass
@@ -119,10 +145,8 @@ class HistoryStore:
         Returns:
             List of weekly snapshots, newest first
         """
-        from homeassistant.helpers.storage import Store
-
         if self._store is None:
-            self._store = Store(self.hass, STORAGE_VERSION, STORAGE_KEY)
+            self._store = _HistoryStoreBackend(self.hass, STORAGE_VERSION, STORAGE_KEY)
 
         data = await self._store.async_load()
         if data is None:
@@ -149,10 +173,8 @@ class HistoryStore:
         Args:
             snapshot: The weekly snapshot to save
         """
-        from homeassistant.helpers.storage import Store
-
         if self._store is None:
-            self._store = Store(self.hass, STORAGE_VERSION, STORAGE_KEY)
+            self._store = _HistoryStoreBackend(self.hass, STORAGE_VERSION, STORAGE_KEY)
 
         # Load existing if not already loaded
         if not self._data:

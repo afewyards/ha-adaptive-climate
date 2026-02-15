@@ -130,20 +130,17 @@ def test_weekly_snapshot_from_dict():
 @pytest.mark.asyncio
 async def test_history_store_save_and_load():
     """Test saving and loading snapshots."""
-    import sys
-
-    # Mock homeassistant module
-    mock_ha_storage = MagicMock()
     mock_store_instance = AsyncMock()
     mock_store_instance.async_load = AsyncMock(return_value=None)
     mock_store_instance.async_save = AsyncMock()
-    mock_ha_storage.Store = MagicMock(return_value=mock_store_instance)
-
-    sys.modules["homeassistant.helpers.storage"] = mock_ha_storage
+    MockBackend = MagicMock(return_value=mock_store_instance)
 
     mock_hass = MagicMock()
 
-    try:
+    with patch(
+        "custom_components.adaptive_climate.analytics.history_store._HistoryStoreBackend",
+        MockBackend,
+    ):
         store = HistoryStore(mock_hass)
 
         # Load empty history
@@ -176,17 +173,11 @@ async def test_history_store_save_and_load():
         saved_data = mock_store_instance.async_save.call_args[0][0]
         assert "snapshots" in saved_data
         assert len(saved_data["snapshots"]) == 1
-    finally:
-        # Cleanup mocked module
-        if "homeassistant.helpers.storage" in sys.modules:
-            del sys.modules["homeassistant.helpers.storage"]
 
 
 @pytest.mark.asyncio
 async def test_history_store_prunes_old_data():
     """Test that history store prunes data beyond MAX_WEEKS_TO_KEEP."""
-    import sys
-
     # Create existing data with MAX_WEEKS_TO_KEEP + 1 snapshots
     existing_snapshots = []
     for week in range(1, MAX_WEEKS_TO_KEEP + 2):
@@ -201,18 +192,17 @@ async def test_history_store_prunes_old_data():
             }
         )
 
-    # Mock homeassistant module
-    mock_ha_storage = MagicMock()
     mock_store_instance = AsyncMock()
     mock_store_instance.async_load = AsyncMock(return_value={"snapshots": existing_snapshots})
     mock_store_instance.async_save = AsyncMock()
-    mock_ha_storage.Store = MagicMock(return_value=mock_store_instance)
-
-    sys.modules["homeassistant.helpers.storage"] = mock_ha_storage
+    MockBackend = MagicMock(return_value=mock_store_instance)
 
     mock_hass = MagicMock()
 
-    try:
+    with patch(
+        "custom_components.adaptive_climate.analytics.history_store._HistoryStoreBackend",
+        MockBackend,
+    ):
         store = HistoryStore(mock_hass)
 
         # Load and add new snapshot
@@ -232,10 +222,6 @@ async def test_history_store_prunes_old_data():
         # Verify only MAX_WEEKS_TO_KEEP are saved
         saved_data = mock_store_instance.async_save.call_args[0][0]
         assert len(saved_data["snapshots"]) == MAX_WEEKS_TO_KEEP
-    finally:
-        # Cleanup mocked module
-        if "homeassistant.helpers.storage" in sys.modules:
-            del sys.modules["homeassistant.helpers.storage"]
 
 
 def test_calculate_week_over_week():
