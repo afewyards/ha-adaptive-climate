@@ -1,6 +1,102 @@
 # CHANGELOG
 
 
+## v0.63.2 (2026-02-15)
+
+### Bug Fixes
+
+- Resolve HistoryStore migration handler NotImplementedError
+  ([`807ca0b`](https://github.com/afewyards/ha-adaptive-climate/commit/807ca0b321b98aa7278a390e67f5320db8a7c3ea))
+
+HistoryStore's Store had STORAGE_VERSION=2 but on-disk v1 data was backward-compatible. HA's
+  Store.async_load() required a migration handler for version mismatches, raising
+  NotImplementedError when missing.
+
+Solution: Subclass Store as _HistoryStoreBackend with a no-op migration handler that returns v1 data
+  unchanged (since format is compatible). Updated tests to patch the new backend class instead of
+  sys.modules.
+
+### Chores
+
+- Add pre-commit config for ruff and pyright
+  ([`0f24b3c`](https://github.com/afewyards/ha-adaptive-climate/commit/0f24b3cb42a6e84dc03a258b4a5753ae36aaf9fe))
+
+- Add ruff and pyright configuration
+  ([`0c41e59`](https://github.com/afewyards/ha-adaptive-climate/commit/0c41e5904b8fb1482a11fb1bf9d5c8b299def25d))
+
+- Update ruff pre-commit hook to v0.15.0
+  ([`93912e0`](https://github.com/afewyards/ha-adaptive-climate/commit/93912e0b0db0636713c1468bd534245d8277f306))
+
+The pre-commit ruff hook was pinned to v0.9.6 which doesn't support the RUF059 rule used in
+  pyproject.toml per-file-ignores. Updated to v0.15.0 to match the local ruff version.
+
+### Code Style
+
+- Apply ruff formatting to entire codebase
+  ([`1709f44`](https://github.com/afewyards/ha-adaptive-climate/commit/1709f449c19fd3dab5d98307d5ade7ae06c2d976))
+
+- Auto-fix ruff lint violations
+  ([`dcea671`](https://github.com/afewyards/ha-adaptive-climate/commit/dcea671f8b388bb0ca77a5393d335c7d9a362b02))
+
+- Fix remaining ruff lint violations
+  ([`c88ef46`](https://github.com/afewyards/ha-adaptive-climate/commit/c88ef465563f2991b2383a1e40e610bd26001eaf))
+
+- Modernize remaining typing annotation in health.py
+  ([`20b7d75`](https://github.com/afewyards/ha-adaptive-climate/commit/20b7d751ab3ea2587149a2706cf914a6c4476e6e))
+
+- Remove orphaned typing imports
+  ([`68e4806`](https://github.com/afewyards/ha-adaptive-climate/commit/68e480680d209465f2c134cb8ca20ec384a25a53))
+
+### Documentation
+
+- Add ruff + pyright setup plan
+  ([`e1efd7d`](https://github.com/afewyards/ha-adaptive-climate/commit/e1efd7df57e39f969609c6d5cee44942732b4b9c))
+
+- Add ruff and pyright to CLAUDE.md
+  ([`c956d1e`](https://github.com/afewyards/ha-adaptive-climate/commit/c956d1e1cdce546190389967bc2e8265de7f7f30))
+
+- Mark ruff+pyright plan as done
+  ([`9b29925`](https://github.com/afewyards/ha-adaptive-climate/commit/9b29925a9ec5df3663d4a1366e15abf0d1dee185))
+
+### Refactoring
+
+- Fix additional pyright type errors in core modules
+  ([`bf36b58`](https://github.com/afewyards/ha-adaptive-climate/commit/bf36b58b9b879261c1539b9af2bab87b7c22030c))
+
+Fix type mismatches in central_controller, climate, climate_init, cycle_tracker, ke_manager, and
+  pid_tuning to improve type safety even with config-level suppressions.
+
+- Fix pyright strict type errors
+  ([`e57e913`](https://github.com/afewyards/ha-adaptive-climate/commit/e57e913c1b6c9e02f62273bf13d37773dba908a7))
+
+- Remove migration code from source modules
+  ([`006b66b`](https://github.com/afewyards/ha-adaptive-climate/commit/006b66b15305f9641d26d09edfc0a59dfdd3d024))
+
+- Remove adaptive_thermostat→adaptive_climate domain migration from __init__.py - Remove
+  OLD_STORAGE_KEY and old storage migration from persistence.py - Remove legacy file-based API from
+  LearningDataStore (HA Store only) - Remove all legacy restore_* methods from persistence.py -
+  Simplify learner_serialization to v10-only format - Remove v4/v5/v6/v7/v8/v9 backward
+  compatibility code - Remove chronic_approach_detector parameter from learner_to_dict - Remove
+  flat-list PID history migration from pid_gains_manager - Remove datetime→isostring conversion from
+  history migration
+
+### Testing
+
+- Remove migration tests and update test data to v10 format
+  ([`fc1cddf`](https://github.com/afewyards/ha-adaptive-climate/commit/fc1cddfc203202ef90a5fc5f24c737ce05128593))
+
+Remove test_migration.py entirely. Update test data in remaining test files from v4 flat format to
+  v10 mode-keyed format. Remove legacy file-based LearningDataStore tests and v7/v8/v9 migration
+  tests.
+
+- Update pid_history tests to mode-keyed format, remove legacy restore tests
+  ([`a7a232f`](https://github.com/afewyards/ha-adaptive-climate/commit/a7a232f88e143b825aef81969fa96d8821218110))
+
+Update pid_history test data from flat list to mode-keyed dict format in test_pid_gains_manager.py
+  and test_state_restorer.py. Remove legacy restore_preheat_learner tests and datetime migration
+  test. Update integration roundtrip test for v10 serialization format.
+
+
 ## v0.63.1 (2026-02-07)
 
 ### Bug Fixes
