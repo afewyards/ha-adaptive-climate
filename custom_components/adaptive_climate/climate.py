@@ -74,10 +74,9 @@ from .climate_handlers import ClimateHandlersMixin
 _LOGGER = logging.getLogger(__name__)
 
 # Re-export setup functions and schema from climate_setup module
-# This maintains backward compatibility for any imports expecting these in climate.py
-
-# Note: The actual implementations are in climate_setup.py
-# These re-exports ensure existing imports continue to work
+# HA loads platform setup from this module — these re-exports are required
+from .climate_setup import async_setup_platform as async_setup_platform
+from .climate_setup import PLATFORM_SCHEMA as PLATFORM_SCHEMA
 
 
 class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntity, RestoreEntity):
