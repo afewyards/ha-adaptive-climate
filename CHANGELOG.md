@@ -1,6 +1,24 @@
 # CHANGELOG
 
 
+## v0.63.3 (2026-02-16)
+
+### Bug Fixes
+
+- Restore critical re-exports of async_setup_platform and PLATFORM_SCHEMA
+  ([`8561d6a`](https://github.com/afewyards/ha-adaptive-climate/commit/8561d6a1cf81c4da528f2d5f0f9d4154a7bd664f))
+
+HA requires async_setup_platform and PLATFORM_SCHEMA to be importable from the climate module for
+  YAML platform setup to work. These symbols were accidentally removed by ruff in commit 68e4806
+  ("style: remove orphaned typing imports") because they appeared unused. However, without them, HA
+  2026.2 blocks entity creation entirely, leaving all climate entities unavailable.
+
+Used import-as pattern (import X as X) to signal intentional re-exports so ruff and pyright won't
+  flag them again.
+
+Fixes: Entity unavailability in HA 2026.2 due to missing platform setup symbols
+
+
 ## v0.63.2 (2026-02-15)
 
 ### Bug Fixes
