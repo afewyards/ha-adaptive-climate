@@ -968,13 +968,13 @@ class TestHeaterControllerEventEmission:
         assert len(ended_events) == 1
 
     @pytest.mark.asyncio
-    async def test_hc_pwm_heater_off_emits_settling_started(self, heater_controller_with_dispatcher):
-        """Test that async_turn_off in PWM mode emits SETTLING_STARTED when cycle is active.
+    async def test_pwm_turn_off_no_settling_started(self, heater_controller_with_dispatcher):
+        """Test that async_turn_off in PWM mode does NOT emit SETTLING_STARTED.
 
-        Context: In PWM mode, demand stays at 5-10% during maintenance cycles, so
-        SETTLING_STARTED won't be emitted from demand dropping to 0. Instead, it
-        must be emitted when the heater is explicitly turned off while _cycle_active
-        is True, to ensure proper learning cycle completion.
+        Context: In v0.28+, SETTLING_STARTED is no longer emitted from async_turn_off()
+        in PWM mode. It is only emitted when the PWM cycle demand drops to 0 via
+        async_set_valve_value. This prevents duplicate SETTLING_STARTED events during
+        multi-PWM cycle aggregation.
         """
         controller, dispatcher = heater_controller_with_dispatcher
 
@@ -1006,7 +1006,7 @@ class TestHeaterControllerEventEmission:
         # Verify we're in PWM mode
         assert controller._pwm > 0
 
-        # Turn off heater (should emit both HEATING_ENDED and SETTLING_STARTED)
+        # Turn off heater - should emit HEATING_ENDED but NOT SETTLING_STARTED
         await controller.async_turn_off(
             hvac_mode=MockHVACMode.HEAT,
             get_cycle_start_time=get_cycle_start_time,
@@ -1020,11 +1020,9 @@ class TestHeaterControllerEventEmission:
         assert isinstance(event, HeatingEndedEvent)
         assert event.hvac_mode == MockHVACMode.HEAT
 
-        # Verify SETTLING_STARTED event was emitted
-        assert len(settling_started_events) == 1
-        settling_event = settling_started_events[0]
-        assert isinstance(settling_event, SettlingStartedEvent)
-        assert settling_event.hvac_mode == MockHVACMode.HEAT
+        # Verify SETTLING_STARTED was NOT emitted from async_turn_off
+        # In v0.28+, SETTLING_STARTED is only emitted when PWM demand drops to 0
+        assert len(settling_started_events) == 0
 
     @pytest.mark.asyncio
     async def test_non_pwm_turn_off_no_settling_started(self, heater_controller_valve, mock_thermostat):
@@ -1788,7 +1786,11 @@ class TestWasClampedCallback:
 
     @pytest.mark.asyncio
     async def test_settling_started_includes_was_clamped_true(self, heater_controller_with_dispatcher_and_pid):
-        """Test SETTLING_STARTED event includes was_clamped=True when PID was clamped."""
+        """Test async_turn_off does NOT emit SETTLING_STARTED in v0.28+, even when PID was clamped.
+
+        In v0.28+, async_turn_off no longer emits SETTLING_STARTED. was_clamped propagation
+        is still tested via the valve mode path (test_valve_mode_settling_includes_was_clamped).
+        """
         controller, dispatcher, mock_pid = heater_controller_with_dispatcher_and_pid
 
         # Setup event listener
@@ -1817,7 +1819,7 @@ class TestWasClampedCallback:
         controller._last_heater_state = True
         controller._cycle_active = True
 
-        # Turn off heater (should emit SETTLING_STARTED in PWM mode)
+        # Turn off heater
         await controller.async_turn_off(
             hvac_mode=MockHVACMode.HEAT,
             get_cycle_start_time=get_cycle_start_time,
@@ -1825,15 +1827,16 @@ class TestWasClampedCallback:
             set_last_heat_cycle_time=set_last_heat_cycle_time,
         )
 
-        # Verify SETTLING_STARTED event was emitted with was_clamped=True
-        assert len(settling_events) == 1
-        settling_event = settling_events[0]
-        assert isinstance(settling_event, SettlingStartedEvent)
-        assert settling_event.was_clamped is True
+        # Verify SETTLING_STARTED was NOT emitted from async_turn_off in v0.28+
+        assert len(settling_events) == 0
 
     @pytest.mark.asyncio
     async def test_settling_started_includes_was_clamped_false(self, heater_controller_with_dispatcher_and_pid):
-        """Test SETTLING_STARTED event includes was_clamped=False when PID was not clamped."""
+        """Test async_turn_off does NOT emit SETTLING_STARTED in v0.28+, even when PID not clamped.
+
+        In v0.28+, async_turn_off no longer emits SETTLING_STARTED. was_clamped propagation
+        is still tested via the valve mode path (test_valve_mode_settling_includes_was_clamped).
+        """
         controller, dispatcher, mock_pid = heater_controller_with_dispatcher_and_pid
 
         # Setup event listener
@@ -1870,11 +1873,8 @@ class TestWasClampedCallback:
             set_last_heat_cycle_time=set_last_heat_cycle_time,
         )
 
-        # Verify SETTLING_STARTED event was emitted with was_clamped=False
-        assert len(settling_events) == 1
-        settling_event = settling_events[0]
-        assert isinstance(settling_event, SettlingStartedEvent)
-        assert settling_event.was_clamped is False
+        # Verify SETTLING_STARTED was NOT emitted from async_turn_off in v0.28+
+        assert len(settling_events) == 0
 
     @pytest.mark.asyncio
     async def test_cycle_started_resets_clamp_state(self, heater_controller_with_dispatcher_and_pid):
