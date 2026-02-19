@@ -242,20 +242,29 @@ class PIDGainsManager:
             )
 
     def _restore_history(self, old_history: Any) -> None:
-        """Restore history from mode-keyed dict format.
+        """Restore history from state attributes.
+
+        Handles two formats:
+        - Mode-keyed dict: {"heating": [...], "cooling": [...]}
+        - Flat list: [{entry}, ...] (from build_state_attributes round-trip)
 
         Called BEFORE set_gains() during restore, so history is populated
         before deduplication check runs.
         """
-        if not isinstance(old_history, dict):
+        if isinstance(old_history, dict):
+            for mode_key in ["heating", "cooling"]:
+                if mode_key in old_history:
+                    entries = old_history[mode_key]
+                    if isinstance(entries, list):
+                        migrated = [self._migrate_history_entry(e) for e in entries]
+                        self._pid_history[mode_key] = migrated
+        elif isinstance(old_history, list):
+            # Flat list from state attributes — treat as heating mode
+            migrated = [self._migrate_history_entry(e) for e in old_history if isinstance(e, dict)]
+            if migrated:
+                self._pid_history["heating"] = migrated
+        else:
             return
-
-        for mode_key in ["heating", "cooling"]:
-            if mode_key in old_history:
-                entries = old_history[mode_key]
-                if isinstance(entries, list):
-                    migrated = [self._migrate_history_entry(e) for e in entries]
-                    self._pid_history[mode_key] = migrated
 
         # Enforce size limits
         for mode_key in ["heating", "cooling"]:
