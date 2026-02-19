@@ -630,6 +630,10 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
         if hasattr(self, "_setpoint_boost_manager") and self._setpoint_boost_manager:
             self._setpoint_boost_manager.cancel()
 
+        # Cancel any pending heater controller timers (demand-zero debounce, low-output, valve timers)
+        if self._heater_controller is not None:
+            self._heater_controller.cancel_pending_timers()
+
         # Save learning data before removal
         if self._zone_id:
             learning_store = self.hass.data.get(DOMAIN, {}).get("learning_store")

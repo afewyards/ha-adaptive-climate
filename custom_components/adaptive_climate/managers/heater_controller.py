@@ -762,6 +762,10 @@ class HeaterController:
             set_last_heat_cycle_time: Callback to set last heat cycle time
             force: Force turn off regardless of cycle duration (for emergency shutdowns)
         """
+        # Cancel pending timers on forced turn-off (mode switch, not normal PWM cycles)
+        if force:
+            self.cancel_pending_timers()
+
         entities = self.get_entities(hvac_mode)
         thermostat_entity_id = self._thermostat.entity_id
         is_device_active = self.is_active(hvac_mode)
@@ -978,6 +982,10 @@ class HeaterController:
         # Handle demand dropping to 0: debounce SETTLING_STARTED for PWM mode
         if old_has_demand and not new_has_demand and self._cycle_active:
             if self._pwm and self._dispatcher:
+                # Cancel any pending low-output timer before starting demand-zero debounce
+                if self._low_output_timer is not None:
+                    self._low_output_timer()
+                    self._low_output_timer = None
                 # PWM mode: start debounce timer (2×PWM period) to allow brief demand=0 dips
                 # during multi-cycle aggregation without prematurely ending the heating session.
                 # _cycle_active stays True until timer fires or demand returns.
