@@ -147,6 +147,7 @@ class HeaterController:
         # Timer handles for delayed demand signaling
         self._valve_open_timer: Callable[[], None] | None = None
         self._valve_close_timer: Callable[[], None] | None = None
+        self._demand_zero_timer: Callable[[], None] | None = None
 
         # Cycle counting for actuator wear tracking
         self._heater_cycle_count: int = 0
@@ -200,6 +201,36 @@ class HeaterController:
         """
         if self._reset_clamp_state is not None:
             self._reset_clamp_state()
+
+    @callback
+    def _emit_settling_started_debounced(self, hvac_mode: HVACMode, was_clamped: bool) -> None:
+        """Emit SETTLING_STARTED after demand=0 debounce timer fires.
+
+        Called by async_call_later when demand has stayed at 0 for 2×PWM period,
+        indicating the heating session has truly ended (not just a brief dip).
+        """
+        self._demand_zero_timer = None
+        if self._dispatcher and self._cycle_active:
+            self._dispatcher.emit(
+                SettlingStartedEvent(
+                    hvac_mode=hvac_mode,
+                    timestamp=dt_util.utcnow(),
+                    was_clamped=was_clamped,
+                )
+            )
+        self._cycle_active = False
+
+    def cancel_pending_timers(self) -> None:
+        """Cancel all pending timers (call on entity removal/shutdown)."""
+        if self._demand_zero_timer is not None:
+            self._demand_zero_timer()
+            self._demand_zero_timer = None
+        if self._valve_open_timer is not None:
+            self._valve_open_timer()
+            self._valve_open_timer = None
+        if self._valve_close_timer is not None:
+            self._valve_close_timer()
+            self._valve_close_timer = None
 
     def _emit_cycle_started(self, hvac_mode: HVACMode) -> None:
         """Emit CycleStartedEvent with current temperature state.
@@ -911,17 +942,34 @@ class HeaterController:
         new_has_demand = abs(control_output) > 0
         self._has_demand = new_has_demand
 
-        # Emit SETTLING_STARTED when demand drops to 0 AND we had an active cycle
+        # Handle demand dropping to 0: debounce SETTLING_STARTED for PWM mode
         if old_has_demand and not new_has_demand and self._cycle_active:
-            if self._dispatcher:
-                self._dispatcher.emit(
-                    SettlingStartedEvent(
-                        hvac_mode=hvac_mode,
-                        timestamp=dt_util.utcnow(),
-                        was_clamped=self._get_pid_was_clamped(),
-                    )
+            if self._pwm and self._dispatcher:
+                # PWM mode: start debounce timer (2×PWM period) to allow brief demand=0 dips
+                # during multi-cycle aggregation without prematurely ending the heating session.
+                # _cycle_active stays True until timer fires or demand returns.
+                was_clamped = self._get_pid_was_clamped()
+                self._demand_zero_timer = async_call_later(
+                    self._hass,
+                    float(2 * self._pwm),
+                    lambda _: self._emit_settling_started_debounced(hvac_mode, was_clamped),
                 )
-            self._cycle_active = False  # Reset for next cycle
+            else:
+                # Non-PWM (valve mode) or no dispatcher: emit immediately and reset cycle
+                if self._dispatcher:
+                    self._dispatcher.emit(
+                        SettlingStartedEvent(
+                            hvac_mode=hvac_mode,
+                            timestamp=dt_util.utcnow(),
+                            was_clamped=self._get_pid_was_clamped(),
+                        )
+                    )
+                self._cycle_active = False  # Reset for next cycle
+
+        # Cancel demand=0 debounce timer if demand has returned
+        elif new_has_demand and self._demand_zero_timer is not None:
+            self._demand_zero_timer()
+            self._demand_zero_timer = None
 
         if self._pwm:
             if abs(control_output) == self._difference:
