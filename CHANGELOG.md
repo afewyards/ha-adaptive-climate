@@ -1,6 +1,24 @@
 # CHANGELOG
 
 
+## v0.64.1 (2026-02-19)
+
+### Bug Fixes
+
+- **setback**: Stop learning grace from circularly suppressing night setback delta
+  ([`ba9ca26`](https://github.com/afewyards/ha-adaptive-climate/commit/ba9ca26c08496708ddfa88171372c824fce63275))
+
+Learning grace period is triggered BY the night setback transition, so using it to suppress the
+  setback delta to 0.0 was circular — for the first 60 min after setback start, no delta was
+  actually applied.
+
+Now get_allowed_delta() only suppresses for environmental disruptions (contact open, humidity
+  spike). Grace still pauses learning data collection via is_learning_suppressed().
+
+Also: show night_setback override in status even when fully suppressed, and preserve
+  night_setback_end in the suppressed info dict.
+
+
 ## v0.64.0 (2026-02-19)
 
 ### Bug Fixes
