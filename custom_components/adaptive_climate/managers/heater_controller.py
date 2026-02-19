@@ -62,7 +62,7 @@ except ImportError:
     HomeAssistantError = Exception
     ServiceNotFound = Exception
 
-from ..const import DOMAIN
+from ..const import DOMAIN, MIN_OUTPUT_THRESHOLD
 from .events import (
     CycleEventDispatcher,
     CycleStartedEvent,
@@ -147,6 +147,8 @@ class HeaterController:
         # Timer handles for delayed demand signaling
         self._valve_open_timer: Callable[[], None] | None = None
         self._valve_close_timer: Callable[[], None] | None = None
+        self._demand_zero_timer: Callable[[], None] | None = None
+        self._low_output_timer: Callable[[], None] | None = None
 
         # Cycle counting for actuator wear tracking
         self._heater_cycle_count: int = 0
@@ -200,6 +202,77 @@ class HeaterController:
         """
         if self._reset_clamp_state is not None:
             self._reset_clamp_state()
+
+    @callback
+    def _emit_settling_started_debounced(self, hvac_mode: HVACMode, was_clamped: bool) -> None:
+        """Emit SETTLING_STARTED after demand=0 debounce timer fires.
+
+        Called by async_call_later when demand has stayed at 0 for 2×PWM period,
+        indicating the heating session has truly ended (not just a brief dip).
+        Also cancels any pending low-output timer (mutual exclusion).
+        """
+        self._demand_zero_timer = None
+        # Cancel low-output timer if both fired simultaneously
+        if self._low_output_timer is not None:
+            self._low_output_timer()
+            self._low_output_timer = None
+        if self._dispatcher and self._cycle_active:
+            self._dispatcher.emit(
+                SettlingStartedEvent(
+                    hvac_mode=hvac_mode,
+                    timestamp=dt_util.utcnow(),
+                    was_clamped=was_clamped,
+                )
+            )
+        self._cycle_active = False
+
+    @callback
+    def _emit_settling_started_low_output(self, hvac_mode: HVACMode, was_clamped: bool) -> None:
+        """Emit SETTLING_STARTED after low-output maintenance timeout fires.
+
+        Called by async_call_later when control_output has stayed below
+        MIN_OUTPUT_THRESHOLD for 2×PWM period, indicating a maintenance cycle
+        has stalled. Replaces the v0.28 async_turn_off() SETTLING_STARTED emission.
+        Also cancels any pending demand-zero timer (mutual exclusion).
+        """
+        self._low_output_timer = None
+        # Cancel demand-zero timer if both fired simultaneously
+        if self._demand_zero_timer is not None:
+            self._demand_zero_timer()
+            self._demand_zero_timer = None
+        if self._dispatcher and self._cycle_active:
+            self._dispatcher.emit(
+                SettlingStartedEvent(
+                    hvac_mode=hvac_mode,
+                    timestamp=dt_util.utcnow(),
+                    was_clamped=was_clamped,
+                )
+            )
+        self._cycle_active = False
+
+    def cancel_pending_timers(self) -> None:
+        """Cancel all pending timers (call on entity removal/shutdown)."""
+        if self._demand_zero_timer is not None:
+            self._demand_zero_timer()
+            self._demand_zero_timer = None
+        if self._low_output_timer is not None:
+            self._low_output_timer()
+            self._low_output_timer = None
+        if self._valve_open_timer is not None:
+            self._valve_open_timer()
+            self._valve_open_timer = None
+        if self._valve_close_timer is not None:
+            self._valve_close_timer()
+            self._valve_close_timer = None
+
+    def abort_active_cycle(self) -> None:
+        """Abort the current cycle without emitting SETTLING_STARTED.
+
+        Used when operating conditions change fundamentally (e.g., night setback)
+        making the current cycle invalid for learning.
+        """
+        self.cancel_pending_timers()
+        self._cycle_active = False
 
     def _emit_cycle_started(self, hvac_mode: HVACMode) -> None:
         """Emit CycleStartedEvent with current temperature state.
@@ -698,6 +771,10 @@ class HeaterController:
             set_last_heat_cycle_time: Callback to set last heat cycle time
             force: Force turn off regardless of cycle duration (for emergency shutdowns)
         """
+        # Cancel pending timers on forced turn-off (mode switch, not normal PWM cycles)
+        if force:
+            self.cancel_pending_timers()
+
         entities = self.get_entities(hvac_mode)
         thermostat_entity_id = self._thermostat.entity_id
         is_device_active = self.is_active(hvac_mode)
@@ -741,17 +818,6 @@ class HeaterController:
                             timestamp=dt_util.utcnow(),
                         )
                     )
-
-            # Emit SETTLING_STARTED for PWM mode to complete cycle tracking
-            if self._pwm and self._cycle_active and self._dispatcher:
-                self._dispatcher.emit(
-                    SettlingStartedEvent(
-                        hvac_mode=hvac_mode,
-                        timestamp=dt_util.utcnow(),
-                        was_clamped=self._get_pid_was_clamped(),
-                    )
-                )
-                self._cycle_active = False
 
             # Reset heating state for zone linking
             set_is_heating(False)
@@ -922,17 +988,58 @@ class HeaterController:
         new_has_demand = abs(control_output) > 0
         self._has_demand = new_has_demand
 
-        # Emit SETTLING_STARTED when demand drops to 0 AND we had an active cycle
+        # Handle demand dropping to 0: debounce SETTLING_STARTED for PWM mode
         if old_has_demand and not new_has_demand and self._cycle_active:
-            if self._dispatcher:
-                self._dispatcher.emit(
-                    SettlingStartedEvent(
-                        hvac_mode=hvac_mode,
-                        timestamp=dt_util.utcnow(),
-                        was_clamped=self._get_pid_was_clamped(),
-                    )
+            if self._pwm and self._dispatcher:
+                # Cancel any pending low-output timer before starting demand-zero debounce
+                if self._low_output_timer is not None:
+                    self._low_output_timer()
+                    self._low_output_timer = None
+                # PWM mode: start debounce timer (2×PWM period) to allow brief demand=0 dips
+                # during multi-cycle aggregation without prematurely ending the heating session.
+                # _cycle_active stays True until timer fires or demand returns.
+                was_clamped = self._get_pid_was_clamped()
+                self._demand_zero_timer = async_call_later(
+                    self._hass,
+                    float(2 * self._pwm),
+                    lambda _: self._emit_settling_started_debounced(hvac_mode, was_clamped),
                 )
-            self._cycle_active = False  # Reset for next cycle
+            else:
+                # Non-PWM (valve mode) or no dispatcher: emit immediately and reset cycle
+                if self._dispatcher:
+                    self._dispatcher.emit(
+                        SettlingStartedEvent(
+                            hvac_mode=hvac_mode,
+                            timestamp=dt_util.utcnow(),
+                            was_clamped=self._get_pid_was_clamped(),
+                        )
+                    )
+                self._cycle_active = False  # Reset for next cycle
+
+        # Cancel demand=0 debounce timer if demand has returned
+        elif new_has_demand and self._demand_zero_timer is not None:
+            self._demand_zero_timer()
+            self._demand_zero_timer = None
+
+        # Low-output maintenance timeout: handles maintenance cycles where output
+        # hovers below MIN_OUTPUT_THRESHOLD without ever reaching 0.
+        # Timer fires after 2×PWM period to emit SETTLING_STARTED and close the session.
+        if self._pwm and self._cycle_active and self._dispatcher:
+            low_output = 0 < abs(control_output) < MIN_OUTPUT_THRESHOLD
+            if low_output:
+                # Start timer if not already running (demand-zero timer takes precedence)
+                if self._low_output_timer is None and self._demand_zero_timer is None:
+                    was_clamped = self._get_pid_was_clamped()
+                    self._low_output_timer = async_call_later(
+                        self._hass,
+                        float(2 * self._pwm),
+                        lambda _: self._emit_settling_started_low_output(hvac_mode, was_clamped),
+                    )
+            elif abs(control_output) >= MIN_OUTPUT_THRESHOLD:
+                # Output rose above threshold — cancel the low-output timer
+                if self._low_output_timer is not None:
+                    self._low_output_timer()
+                    self._low_output_timer = None
 
         if self._pwm:
             if abs(control_output) == self._difference:

@@ -100,6 +100,7 @@ class NightSetbackManager:
         self._learning_grace_until: datetime | None = None
         self._night_setback_was_active: bool | None = None
         self._learning_suppressed: bool = False
+        self._pending_transition: str | None = None
 
         # Auto-learning setback tracking
         self._days_at_maintenance_cap: int = 0
@@ -270,6 +271,16 @@ class NightSetbackManager:
         # First calculate what the full setback would be
         effective_target, in_night_period, info = self._calculator.calculate_night_setback_adjustment(current_time)
 
+        # Handle transition detection before any early returns so both "started"
+        # and "ended" transitions are always captured.
+        if self._calculator.is_configured:
+            if self._night_setback_was_active is not None and in_night_period != self._night_setback_was_active:
+                transition = "started" if in_night_period else "ended"
+                _LOGGER.info("%s: Night setback %s - setting learning grace period", self._entity_id, transition)
+                self.set_learning_grace_period(minutes=60)
+                self._pending_transition = transition
+            self._night_setback_was_active = in_night_period
+
         # If not in night period, return as-is with zero effective delta
         if not in_night_period:
             # Clear suppression flag if we were suppressed
@@ -361,15 +372,19 @@ class NightSetbackManager:
             configured_delta = target_temp - effective_target
             info["effective_delta"] = configured_delta
 
-        # Handle transition detection for learning grace period (state management)
-        if self._calculator.is_configured:
-            if self._night_setback_was_active is not None and in_night_period != self._night_setback_was_active:
-                transition = "started" if in_night_period else "ended"
-                _LOGGER.info("%s: Night setback %s - setting learning grace period", self._entity_id, transition)
-                self.set_learning_grace_period(minutes=60)
-            self._night_setback_was_active = in_night_period
-
         return effective_target, in_night_period, info
+
+    def consume_transition(self) -> str | None:
+        """Return and clear pending transition.
+
+        Returns:
+            'started' if night setback just started,
+            'ended' if night setback just ended,
+            None if no transition occurred since last call.
+        """
+        transition = self._pending_transition
+        self._pending_transition = None
+        return transition
 
     def calculate_effective_setpoint(self, current_time: datetime | None = None) -> float:
         """Calculate the effective setpoint with night setback applied.

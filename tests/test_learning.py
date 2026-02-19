@@ -4437,3 +4437,114 @@ class TestHeatingRateLearnerIntegration:
         rate, source = learner.get_heating_rate(delta=3.0, outdoor_temp=8.0)
         assert rate == pytest.approx(0.5)
         assert source == "learned_session"
+
+
+class TestRecoveryCycleRiseTimeRelaxation:
+    """Tests for relaxed rise_time check on recovery cycles.
+
+    After the impl change, recovery cycles only require rise_time is not None
+    (system reached target), but no longer require rise_time <= rise_time_max.
+    Maintenance cycles keep existing behavior (rise_time=None is acceptable).
+    """
+
+    def test_recovery_cycle_accepted_with_slow_rise_time(self):
+        """Recovery cycle with slow rise_time (exceeding rise_time_max) should count as good.
+
+        After the impl change: rise_time is not None → good cycle for recovery.
+        Before the change: rise_time is not None and rise_time <= rise_time_max → poor cycle.
+
+        This test FAILS until the impl change is made.
+        """
+        from homeassistant.components.climate import HVACMode
+
+        # floor_hydronic has rise_time_max=60 and recovery threshold=0.5°C
+        learner = AdaptiveLearner(heating_type="floor_hydronic")
+        initial_confidence = learner.get_convergence_confidence(HVACMode.HEAT)
+
+        # Recovery cycle (starting_delta=2.0 >> 0.5 threshold) with slow rise_time
+        # rise_time=100 exceeds rise_time_max=60 for floor_hydronic
+        # All other metrics are within thresholds
+        cycle = CycleMetrics(
+            overshoot=0.15,  # < 0.3°C threshold for floor_hydronic
+            undershoot=0.0,
+            oscillations=0,
+            settling_time=30,  # < 90 min threshold for floor_hydronic
+            rise_time=100,  # Exceeds rise_time_max=60 for floor_hydronic
+            settling_mae=0.2,  # < 0.3°C threshold
+            inter_cycle_drift=0.1,  # < 0.3°C threshold
+            starting_delta=2.0,  # Recovery cycle (>> 0.5°C threshold)
+        )
+
+        learner.update_convergence_confidence(cycle, HVACMode.HEAT)
+
+        new_confidence = learner.get_convergence_confidence(HVACMode.HEAT)
+        # After impl change: recovery cycle reaching target should be good regardless of speed
+        assert new_confidence > initial_confidence, (
+            "Recovery cycle that reached target (rise_time is not None) should increase confidence, "
+            "even if rise_time exceeds rise_time_max"
+        )
+
+    def test_recovery_cycle_rejected_without_rise_time(self):
+        """Recovery cycle with rise_time=None is still rejected (system never reached target).
+
+        rise_time=None means the system never reached the setpoint during the cycle.
+        Both before and after the impl change, this is a poor cycle for recovery.
+        """
+        from homeassistant.components.climate import HVACMode
+
+        learner = AdaptiveLearner(heating_type="floor_hydronic")
+        learner._convergence_confidence = 0.5  # Start with non-zero confidence
+
+        # Recovery cycle that never reached target (rise_time=None)
+        cycle = CycleMetrics(
+            overshoot=None,
+            undershoot=0.3,  # Failed to reach target
+            oscillations=0,
+            settling_time=None,
+            rise_time=None,  # Never reached setpoint
+            settling_mae=None,
+            inter_cycle_drift=None,
+            starting_delta=2.0,  # Recovery cycle (>> 0.5°C threshold)
+        )
+
+        learner.update_convergence_confidence(cycle, HVACMode.HEAT)
+
+        new_confidence = learner.get_convergence_confidence(HVACMode.HEAT)
+        # rise_time=None means target was never reached: must remain a poor cycle
+        assert new_confidence < 0.5, (
+            "Recovery cycle with rise_time=None (target never reached) should decrease confidence"
+        )
+
+    def test_maintenance_cycle_still_uses_strict_rise_time(self):
+        """Maintenance cycle with rise_time=None is acceptable (already at target).
+
+        Maintenance cycles (starting_delta < threshold) behave as before:
+        rise_time=None is OK because the system was already at setpoint.
+        This behavior should not change after the impl change.
+        """
+        from homeassistant.components.climate import HVACMode
+
+        # floor_hydronic has maintenance threshold 0.5°C; starting_delta=0.3 is maintenance
+        learner = AdaptiveLearner(heating_type="floor_hydronic")
+        initial_confidence = learner.get_convergence_confidence(HVACMode.HEAT)
+
+        # Maintenance cycle with rise_time=None (already at setpoint, no heating needed)
+        cycle = CycleMetrics(
+            overshoot=0.1,  # Within threshold
+            undershoot=0.0,
+            oscillations=0,
+            settling_time=20,  # Within threshold
+            rise_time=None,  # No rise needed - already at target (maintenance)
+            settling_mae=0.15,  # Within threshold
+            inter_cycle_drift=0.05,  # Within threshold
+            starting_delta=0.3,  # Maintenance cycle (< 0.5°C threshold)
+        )
+
+        learner.update_convergence_confidence(cycle, HVACMode.HEAT)
+
+        new_confidence = learner.get_convergence_confidence(HVACMode.HEAT)
+        # Maintenance cycle with rise_time=None should still be a good cycle
+        assert new_confidence > initial_confidence, (
+            "Maintenance cycle with rise_time=None should increase confidence "
+            "(system was already at setpoint, no rise needed)"
+        )

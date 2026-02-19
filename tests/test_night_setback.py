@@ -1217,3 +1217,88 @@ class TestPreheatTimingWithGraduatedDelta:
         # - What is actually applied (1.0°C)
 
         pytest.skip("Implementation not yet available - state attributes for effective delta")
+
+
+class TestNightSetbackManagerTransitions:
+    """Test NightSetbackManager transition tracking via consume_transition()."""
+
+    def _make_manager(self, night_setback=None):
+        """Helper: create a NightSetbackManager with a configured night setback."""
+        from unittest.mock import Mock
+        from custom_components.adaptive_climate.managers.night_setback_manager import NightSetbackManager
+        from custom_components.adaptive_climate.adaptive.night_setback import NightSetback
+
+        hass = Mock()
+        hass.states.get.return_value = None
+        hass.data = {}
+
+        if night_setback is None:
+            night_setback = NightSetback(start_time="22:00", end_time="06:00", setback_delta=2.0)
+
+        return NightSetbackManager(
+            hass=hass,
+            entity_id="climate.test",
+            night_setback=night_setback,
+            night_setback_config=None,
+            solar_recovery=None,
+            window_orientation=None,
+            get_target_temp=lambda: 20.0,
+            get_current_temp=lambda: 18.0,
+        )
+
+    def test_consume_transition_returns_started_on_entry(self):
+        """consume_transition() returns 'started' when night setback first activates."""
+        manager = self._make_manager()
+
+        # Seed the previous state as NOT in night period (daytime)
+        manager._night_setback_was_active = False
+
+        # Call during night period → triggers "started" transition
+        night_time = datetime(2024, 1, 15, 23, 0)
+        manager.calculate_night_setback_adjustment(night_time)
+
+        assert manager.consume_transition() == "started"
+
+    def test_consume_transition_returns_ended_on_exit(self):
+        """consume_transition() returns 'ended' when night setback deactivates."""
+        manager = self._make_manager()
+
+        # Seed the previous state as in night period
+        manager._night_setback_was_active = True
+
+        # Call during day period → triggers "ended" transition
+        day_time = datetime(2024, 1, 15, 10, 0)
+        manager.calculate_night_setback_adjustment(day_time)
+
+        assert manager.consume_transition() == "ended"
+
+    def test_consume_transition_returns_none_when_no_transition(self):
+        """consume_transition() returns None when no state change occurred."""
+        manager = self._make_manager()
+
+        # Seed the previous state matching current (night→night = no transition)
+        manager._night_setback_was_active = True
+
+        night_time = datetime(2024, 1, 15, 23, 0)
+        manager.calculate_night_setback_adjustment(night_time)
+
+        assert manager.consume_transition() is None
+
+    def test_consume_transition_clears_after_read(self):
+        """consume_transition() clears the pending transition after returning it."""
+        manager = self._make_manager()
+
+        # Seed as daytime, trigger night entry
+        manager._night_setback_was_active = False
+        night_time = datetime(2024, 1, 15, 23, 0)
+        manager.calculate_night_setback_adjustment(night_time)
+
+        # First call returns the transition
+        assert manager.consume_transition() == "started"
+        # Second call returns None (cleared)
+        assert manager.consume_transition() is None
+
+    def test_consume_transition_none_on_fresh_manager(self):
+        """consume_transition() returns None on a freshly created manager."""
+        manager = self._make_manager()
+        assert manager.consume_transition() is None

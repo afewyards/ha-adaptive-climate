@@ -1081,7 +1081,7 @@ class AdaptiveLearner:
         # For recovery cycles: require rise_time to be measured (cycle must reach target)
         # For maintenance cycles: rise_time=None is acceptable (already at target)
         rise_time_ok = (
-            (metrics.rise_time is not None and metrics.rise_time <= self._convergence_thresholds["rise_time_max"])
+            metrics.rise_time is not None  # Recovery: just require system reached setpoint, no max check
             if is_recovery
             else (metrics.rise_time is None or metrics.rise_time <= self._convergence_thresholds["rise_time_max"])
         )

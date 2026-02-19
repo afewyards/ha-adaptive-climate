@@ -968,13 +968,13 @@ class TestHeaterControllerEventEmission:
         assert len(ended_events) == 1
 
     @pytest.mark.asyncio
-    async def test_hc_pwm_heater_off_emits_settling_started(self, heater_controller_with_dispatcher):
-        """Test that async_turn_off in PWM mode emits SETTLING_STARTED when cycle is active.
+    async def test_pwm_turn_off_no_settling_started(self, heater_controller_with_dispatcher):
+        """Test that async_turn_off in PWM mode does NOT emit SETTLING_STARTED.
 
-        Context: In PWM mode, demand stays at 5-10% during maintenance cycles, so
-        SETTLING_STARTED won't be emitted from demand dropping to 0. Instead, it
-        must be emitted when the heater is explicitly turned off while _cycle_active
-        is True, to ensure proper learning cycle completion.
+        Context: In v0.28+, SETTLING_STARTED is no longer emitted from async_turn_off()
+        in PWM mode. It is only emitted when the PWM cycle demand drops to 0 via
+        async_set_valve_value. This prevents duplicate SETTLING_STARTED events during
+        multi-PWM cycle aggregation.
         """
         controller, dispatcher = heater_controller_with_dispatcher
 
@@ -1006,7 +1006,7 @@ class TestHeaterControllerEventEmission:
         # Verify we're in PWM mode
         assert controller._pwm > 0
 
-        # Turn off heater (should emit both HEATING_ENDED and SETTLING_STARTED)
+        # Turn off heater - should emit HEATING_ENDED but NOT SETTLING_STARTED
         await controller.async_turn_off(
             hvac_mode=MockHVACMode.HEAT,
             get_cycle_start_time=get_cycle_start_time,
@@ -1020,11 +1020,9 @@ class TestHeaterControllerEventEmission:
         assert isinstance(event, HeatingEndedEvent)
         assert event.hvac_mode == MockHVACMode.HEAT
 
-        # Verify SETTLING_STARTED event was emitted
-        assert len(settling_started_events) == 1
-        settling_event = settling_started_events[0]
-        assert isinstance(settling_event, SettlingStartedEvent)
-        assert settling_event.hvac_mode == MockHVACMode.HEAT
+        # Verify SETTLING_STARTED was NOT emitted from async_turn_off
+        # In v0.28+, SETTLING_STARTED is only emitted when PWM demand drops to 0
+        assert len(settling_started_events) == 0
 
     @pytest.mark.asyncio
     async def test_non_pwm_turn_off_no_settling_started(self, heater_controller_valve, mock_thermostat):
@@ -1788,7 +1786,11 @@ class TestWasClampedCallback:
 
     @pytest.mark.asyncio
     async def test_settling_started_includes_was_clamped_true(self, heater_controller_with_dispatcher_and_pid):
-        """Test SETTLING_STARTED event includes was_clamped=True when PID was clamped."""
+        """Test async_turn_off does NOT emit SETTLING_STARTED in v0.28+, even when PID was clamped.
+
+        In v0.28+, async_turn_off no longer emits SETTLING_STARTED. was_clamped propagation
+        is still tested via the valve mode path (test_valve_mode_settling_includes_was_clamped).
+        """
         controller, dispatcher, mock_pid = heater_controller_with_dispatcher_and_pid
 
         # Setup event listener
@@ -1817,7 +1819,7 @@ class TestWasClampedCallback:
         controller._last_heater_state = True
         controller._cycle_active = True
 
-        # Turn off heater (should emit SETTLING_STARTED in PWM mode)
+        # Turn off heater
         await controller.async_turn_off(
             hvac_mode=MockHVACMode.HEAT,
             get_cycle_start_time=get_cycle_start_time,
@@ -1825,15 +1827,16 @@ class TestWasClampedCallback:
             set_last_heat_cycle_time=set_last_heat_cycle_time,
         )
 
-        # Verify SETTLING_STARTED event was emitted with was_clamped=True
-        assert len(settling_events) == 1
-        settling_event = settling_events[0]
-        assert isinstance(settling_event, SettlingStartedEvent)
-        assert settling_event.was_clamped is True
+        # Verify SETTLING_STARTED was NOT emitted from async_turn_off in v0.28+
+        assert len(settling_events) == 0
 
     @pytest.mark.asyncio
     async def test_settling_started_includes_was_clamped_false(self, heater_controller_with_dispatcher_and_pid):
-        """Test SETTLING_STARTED event includes was_clamped=False when PID was not clamped."""
+        """Test async_turn_off does NOT emit SETTLING_STARTED in v0.28+, even when PID not clamped.
+
+        In v0.28+, async_turn_off no longer emits SETTLING_STARTED. was_clamped propagation
+        is still tested via the valve mode path (test_valve_mode_settling_includes_was_clamped).
+        """
         controller, dispatcher, mock_pid = heater_controller_with_dispatcher_and_pid
 
         # Setup event listener
@@ -1870,11 +1873,8 @@ class TestWasClampedCallback:
             set_last_heat_cycle_time=set_last_heat_cycle_time,
         )
 
-        # Verify SETTLING_STARTED event was emitted with was_clamped=False
-        assert len(settling_events) == 1
-        settling_event = settling_events[0]
-        assert isinstance(settling_event, SettlingStartedEvent)
-        assert settling_event.was_clamped is False
+        # Verify SETTLING_STARTED was NOT emitted from async_turn_off in v0.28+
+        assert len(settling_events) == 0
 
     @pytest.mark.asyncio
     async def test_cycle_started_resets_clamp_state(self, heater_controller_with_dispatcher_and_pid):
@@ -2417,3 +2417,571 @@ class TestValveActuationTimeDelays:
 
         # HEATING_STARTED should be emitted immediately (no delay in valve mode)
         assert len(heating_started_events) == 1
+
+
+class TestDemandZeroDebounce:
+    """Tests for demand→0 debounce timer in HeaterController (multi-PWM cycle aggregation)."""
+
+    @pytest.fixture
+    def hc_pwm_with_dispatcher(self, mock_hass, mock_thermostat):
+        """Create a PWM HeaterController (600s period) with event dispatcher."""
+        dispatcher = CycleEventDispatcher()
+        controller = HeaterController(
+            hass=mock_hass,
+            thermostat=mock_thermostat,
+            heater_entity_id=["switch.heater"],
+            cooler_entity_id=None,
+            demand_switch_entity_id=None,
+            heater_polarity_invert=False,
+            pwm=600,  # 10 minutes (radiator-like)
+            difference=100.0,
+            min_open_time=300.0,
+            min_closed_time=300.0,
+            dispatcher=dispatcher,
+        )
+        controller._hass.states.is_state = MagicMock(return_value=False)
+
+        async def mock_async_call(*args, **kwargs):
+            pass
+
+        controller._hass.services.async_call = mock_async_call
+        return controller, dispatcher
+
+    def _make_callbacks(self):
+        """Create standard callback mocks for async_set_control_value."""
+        import time
+
+        return {
+            "get_cycle_start_time": MagicMock(return_value=time.monotonic() - 600),
+            "set_is_heating": MagicMock(),
+            "set_last_heat_cycle_time": MagicMock(),
+            "time_changed": 0.0,
+            "set_time_changed": MagicMock(),
+            "force_on": False,
+            "force_off": False,
+            "set_force_on": MagicMock(),
+            "set_force_off": MagicMock(),
+        }
+
+    @pytest.mark.asyncio
+    @patch("custom_components.adaptive_climate.managers.heater_controller.async_call_later")
+    async def test_demand_zero_debounce_fires_settling(self, mock_call_later, hc_pwm_with_dispatcher):
+        """Test that demand→0 starts a debounce timer, and when it fires SETTLING_STARTED is emitted."""
+        controller, dispatcher = hc_pwm_with_dispatcher
+
+        settling_events = []
+        dispatcher.subscribe(CycleEventType.SETTLING_STARTED, lambda e: settling_events.append(e))
+
+        # Capture the timer callback so we can fire it manually
+        timer_callback = None
+        cancel_mock = MagicMock()
+
+        def capture_timer(hass, delay, cb):
+            nonlocal timer_callback
+            timer_callback = cb
+            return cancel_mock
+
+        mock_call_later.side_effect = capture_timer
+
+        # Setup: active cycle with demand
+        controller._has_demand = True
+        controller._cycle_active = True
+
+        # Drop demand to 0
+        await controller.async_set_control_value(
+            control_output=0.0,
+            hvac_mode=MockHVACMode.HEAT,
+            **self._make_callbacks(),
+        )
+
+        # Timer should have been started with 2×PWM = 1200s
+        mock_call_later.assert_called_once()
+        assert mock_call_later.call_args[0][1] == 1200.0  # 2 × 600s debounce
+
+        # SETTLING_STARTED not yet emitted (timer hasn't fired)
+        assert len(settling_events) == 0
+
+        # _cycle_active should still be True (timer hasn't fired)
+        assert controller._cycle_active is True
+
+        # Fire the timer
+        assert timer_callback is not None
+        timer_callback(None)
+
+        # Now SETTLING_STARTED should be emitted
+        assert len(settling_events) == 1
+        assert isinstance(settling_events[0], SettlingStartedEvent)
+        assert settling_events[0].hvac_mode == MockHVACMode.HEAT
+
+        # _cycle_active should now be False
+        assert controller._cycle_active is False
+
+    @pytest.mark.asyncio
+    @patch("custom_components.adaptive_climate.managers.heater_controller.async_call_later")
+    async def test_demand_zero_debounce_cancelled(self, mock_call_later, hc_pwm_with_dispatcher):
+        """Test that demand returning >0 before timer fires cancels the debounce timer."""
+        controller, dispatcher = hc_pwm_with_dispatcher
+
+        settling_events = []
+        dispatcher.subscribe(CycleEventType.SETTLING_STARTED, lambda e: settling_events.append(e))
+
+        cancel_mock = MagicMock()
+        mock_call_later.return_value = cancel_mock
+
+        # Setup: active cycle with demand
+        controller._has_demand = True
+        controller._cycle_active = True
+
+        callbacks = self._make_callbacks()
+
+        # Drop demand to 0 — timer starts
+        await controller.async_set_control_value(
+            control_output=0.0,
+            hvac_mode=MockHVACMode.HEAT,
+            **callbacks,
+        )
+
+        assert mock_call_later.called
+        assert len(settling_events) == 0
+        assert controller._demand_zero_timer is not None
+
+        # Demand returns >0 — timer should be cancelled
+        await controller.async_set_control_value(
+            control_output=100.0,
+            hvac_mode=MockHVACMode.HEAT,
+            **callbacks,
+        )
+
+        # Timer was cancelled and cleared
+        cancel_mock.assert_called_once()
+        assert controller._demand_zero_timer is None
+
+        # SETTLING_STARTED was never emitted
+        assert len(settling_events) == 0
+
+        # _cycle_active stays True (still in the same heating session)
+        assert controller._cycle_active is True
+
+    @pytest.mark.asyncio
+    @patch("custom_components.adaptive_climate.managers.heater_controller.async_call_later")
+    async def test_demand_zero_debounce_scales_with_pwm(self, mock_call_later, mock_hass, mock_thermostat):
+        """Test that debounce timer = 2×PWM period for different heating types."""
+        dispatcher = CycleEventDispatcher()
+
+        async def mock_async_call(*args, **kwargs):
+            pass
+
+        # PWM periods for each heating type, expected debounce = 2×PWM
+        test_cases = [
+            (900, 1800.0),  # floor_hydronic: 15 min → 30 min debounce
+            (600, 1200.0),  # radiator: 10 min → 20 min debounce
+            (300, 600.0),  # convector: 5 min → 10 min debounce
+            (180, 360.0),  # forced_air: 3 min → 6 min debounce
+        ]
+
+        import time
+
+        for pwm_seconds, expected_debounce in test_cases:
+            mock_call_later.reset_mock()
+            controller = HeaterController(
+                hass=mock_hass,
+                thermostat=mock_thermostat,
+                heater_entity_id=["switch.heater"],
+                cooler_entity_id=None,
+                demand_switch_entity_id=None,
+                heater_polarity_invert=False,
+                pwm=pwm_seconds,
+                difference=100.0,
+                min_open_time=60.0,
+                min_closed_time=60.0,
+                dispatcher=dispatcher,
+            )
+            controller._hass.states.is_state = MagicMock(return_value=False)
+            controller._hass.services.async_call = mock_async_call
+            controller._has_demand = True
+            controller._cycle_active = True
+
+            await controller.async_set_control_value(
+                control_output=0.0,
+                hvac_mode=MockHVACMode.HEAT,
+                get_cycle_start_time=MagicMock(return_value=time.monotonic() - pwm_seconds * 2),
+                set_is_heating=MagicMock(),
+                set_last_heat_cycle_time=MagicMock(),
+                time_changed=0.0,
+                set_time_changed=MagicMock(),
+                force_on=False,
+                force_off=False,
+                set_force_on=MagicMock(),
+                set_force_off=MagicMock(),
+            )
+
+            mock_call_later.assert_called_once()
+            actual_delay = mock_call_later.call_args[0][1]
+            assert actual_delay == expected_debounce, (
+                f"pwm={pwm_seconds}s: expected {expected_debounce}s debounce, got {actual_delay}s"
+            )
+
+    @pytest.mark.asyncio
+    @patch("custom_components.adaptive_climate.managers.heater_controller.async_call_later")
+    async def test_demand_zero_debounce_propagates_was_clamped_true(self, mock_call_later, mock_hass, mock_thermostat):
+        """Test that was_clamped=True is propagated through debounce into SettlingStartedEvent."""
+        import time
+
+        dispatcher = CycleEventDispatcher()
+        get_was_clamped = MagicMock(return_value=True)
+        controller = HeaterController(
+            hass=mock_hass,
+            thermostat=mock_thermostat,
+            heater_entity_id=["switch.heater"],
+            cooler_entity_id=None,
+            demand_switch_entity_id=None,
+            heater_polarity_invert=False,
+            pwm=600,
+            difference=100.0,
+            min_open_time=300.0,
+            min_closed_time=300.0,
+            dispatcher=dispatcher,
+            get_was_clamped=get_was_clamped,
+        )
+        controller._hass.states.is_state = MagicMock(return_value=False)
+
+        async def mock_async_call(*args, **kwargs):
+            pass
+
+        controller._hass.services.async_call = mock_async_call
+
+        settling_events = []
+        dispatcher.subscribe(CycleEventType.SETTLING_STARTED, lambda e: settling_events.append(e))
+
+        timer_callback = None
+        cancel_mock = MagicMock()
+
+        def capture_timer(hass, delay, cb):
+            nonlocal timer_callback
+            timer_callback = cb
+            return cancel_mock
+
+        mock_call_later.side_effect = capture_timer
+
+        # Setup: active cycle with demand
+        controller._has_demand = True
+        controller._cycle_active = True
+
+        # Drop demand to 0
+        await controller.async_set_control_value(
+            control_output=0.0,
+            hvac_mode=MockHVACMode.HEAT,
+            get_cycle_start_time=MagicMock(return_value=time.monotonic() - 600),
+            set_is_heating=MagicMock(),
+            set_last_heat_cycle_time=MagicMock(),
+            time_changed=0.0,
+            set_time_changed=MagicMock(),
+            force_on=False,
+            force_off=False,
+            set_force_on=MagicMock(),
+            set_force_off=MagicMock(),
+        )
+
+        # Fire the debounce timer
+        assert timer_callback is not None
+        timer_callback(None)
+
+        # SettlingStartedEvent should carry was_clamped=True
+        assert len(settling_events) == 1
+        assert settling_events[0].was_clamped is True
+
+    @pytest.mark.asyncio
+    @patch("custom_components.adaptive_climate.managers.heater_controller.async_call_later")
+    async def test_demand_zero_debounce_propagates_was_clamped_false(self, mock_call_later, mock_hass, mock_thermostat):
+        """Test that was_clamped=False is propagated through debounce into SettlingStartedEvent."""
+        import time
+
+        dispatcher = CycleEventDispatcher()
+        get_was_clamped = MagicMock(return_value=False)
+        controller = HeaterController(
+            hass=mock_hass,
+            thermostat=mock_thermostat,
+            heater_entity_id=["switch.heater"],
+            cooler_entity_id=None,
+            demand_switch_entity_id=None,
+            heater_polarity_invert=False,
+            pwm=600,
+            difference=100.0,
+            min_open_time=300.0,
+            min_closed_time=300.0,
+            dispatcher=dispatcher,
+            get_was_clamped=get_was_clamped,
+        )
+        controller._hass.states.is_state = MagicMock(return_value=False)
+
+        async def mock_async_call(*args, **kwargs):
+            pass
+
+        controller._hass.services.async_call = mock_async_call
+
+        settling_events = []
+        dispatcher.subscribe(CycleEventType.SETTLING_STARTED, lambda e: settling_events.append(e))
+
+        timer_callback = None
+        cancel_mock = MagicMock()
+
+        def capture_timer(hass, delay, cb):
+            nonlocal timer_callback
+            timer_callback = cb
+            return cancel_mock
+
+        mock_call_later.side_effect = capture_timer
+
+        # Setup: active cycle with demand
+        controller._has_demand = True
+        controller._cycle_active = True
+
+        # Drop demand to 0
+        await controller.async_set_control_value(
+            control_output=0.0,
+            hvac_mode=MockHVACMode.HEAT,
+            get_cycle_start_time=MagicMock(return_value=time.monotonic() - 600),
+            set_is_heating=MagicMock(),
+            set_last_heat_cycle_time=MagicMock(),
+            time_changed=0.0,
+            set_time_changed=MagicMock(),
+            force_on=False,
+            force_off=False,
+            set_force_on=MagicMock(),
+            set_force_off=MagicMock(),
+        )
+
+        # Fire the debounce timer
+        assert timer_callback is not None
+        timer_callback(None)
+
+        # SettlingStartedEvent should carry was_clamped=False
+        assert len(settling_events) == 1
+        assert settling_events[0].was_clamped is False
+
+    def test_demand_zero_debounce_cleanup_on_shutdown(self, mock_hass, mock_thermostat):
+        """Test that cancel_pending_timers() cancels the demand=0 debounce timer."""
+        dispatcher = CycleEventDispatcher()
+        controller = HeaterController(
+            hass=mock_hass,
+            thermostat=mock_thermostat,
+            heater_entity_id=["switch.heater"],
+            cooler_entity_id=None,
+            demand_switch_entity_id=None,
+            heater_polarity_invert=False,
+            pwm=600,
+            difference=100.0,
+            min_open_time=300.0,
+            min_closed_time=300.0,
+            dispatcher=dispatcher,
+        )
+
+        # Simulate a pending demand=0 debounce timer
+        cancel_mock = MagicMock()
+        controller._demand_zero_timer = cancel_mock
+
+        # Call cancel_pending_timers (entity removal path)
+        controller.cancel_pending_timers()
+
+        # Timer was cancelled and cleared
+        cancel_mock.assert_called_once()
+        assert controller._demand_zero_timer is None
+
+
+class TestLowOutputMaintenanceTimeout:
+    """Tests for low-output maintenance timeout (multi-PWM cycle aggregation).
+
+    Handles maintenance cycles where control_output hovers below MIN_OUTPUT_THRESHOLD
+    (2%) without ever dropping to 0. Replaces v0.28 async_turn_off() SETTLING_STARTED.
+    """
+
+    @pytest.fixture
+    def hc_pwm_with_dispatcher(self, mock_hass, mock_thermostat):
+        """Create a PWM HeaterController (600s period) with event dispatcher."""
+        dispatcher = CycleEventDispatcher()
+        controller = HeaterController(
+            hass=mock_hass,
+            thermostat=mock_thermostat,
+            heater_entity_id=["switch.heater"],
+            cooler_entity_id=None,
+            demand_switch_entity_id=None,
+            heater_polarity_invert=False,
+            pwm=600,  # 10 minutes
+            difference=100.0,
+            min_open_time=300.0,
+            min_closed_time=300.0,
+            dispatcher=dispatcher,
+        )
+        controller._hass.states.is_state = MagicMock(return_value=False)
+
+        async def mock_async_call(*args, **kwargs):
+            pass
+
+        controller._hass.services.async_call = mock_async_call
+        return controller, dispatcher
+
+    def _make_callbacks(self):
+        import time
+
+        return {
+            "get_cycle_start_time": MagicMock(return_value=time.monotonic() - 600),
+            "set_is_heating": MagicMock(),
+            "set_last_heat_cycle_time": MagicMock(),
+            "time_changed": 0.0,
+            "set_time_changed": MagicMock(),
+            "force_on": False,
+            "force_off": False,
+            "set_force_on": MagicMock(),
+            "set_force_off": MagicMock(),
+        }
+
+    @pytest.mark.asyncio
+    @patch("custom_components.adaptive_climate.managers.heater_controller.async_call_later")
+    async def test_low_output_timeout_fires_settling(self, mock_call_later, hc_pwm_with_dispatcher):
+        """Test that low output (< 2%) starts a timer and SETTLING_STARTED fires when it expires."""
+        controller, dispatcher = hc_pwm_with_dispatcher
+
+        settling_events = []
+        dispatcher.subscribe(CycleEventType.SETTLING_STARTED, lambda e: settling_events.append(e))
+
+        timer_callback = None
+        cancel_mock = MagicMock()
+
+        def capture_timer(hass, delay, cb):
+            nonlocal timer_callback
+            timer_callback = cb
+            return cancel_mock
+
+        mock_call_later.side_effect = capture_timer
+
+        # Setup: active cycle with demand
+        controller._has_demand = True
+        controller._cycle_active = True
+
+        # Output drops below MIN_OUTPUT_THRESHOLD (< 2%) but stays > 0 (maintenance cycle)
+        await controller.async_set_control_value(
+            control_output=1.5,  # 1.5% < MIN_OUTPUT_THRESHOLD (2%)
+            hvac_mode=MockHVACMode.HEAT,
+            **self._make_callbacks(),
+        )
+
+        # Low-output timer should have been started with 2×PWM = 1200s
+        mock_call_later.assert_called_once()
+        assert mock_call_later.call_args[0][1] == 1200.0  # 2 × 600s
+
+        # SETTLING_STARTED not yet emitted
+        assert len(settling_events) == 0
+        assert controller._cycle_active is True
+
+        # Fire the timer
+        assert timer_callback is not None
+        timer_callback(None)
+
+        # Now SETTLING_STARTED should be emitted
+        assert len(settling_events) == 1
+        assert isinstance(settling_events[0], SettlingStartedEvent)
+        assert settling_events[0].hvac_mode == MockHVACMode.HEAT
+        assert controller._cycle_active is False
+
+    @pytest.mark.asyncio
+    @patch("custom_components.adaptive_climate.managers.heater_controller.async_call_later")
+    async def test_low_output_timeout_cancelled_on_demand_increase(self, mock_call_later, hc_pwm_with_dispatcher):
+        """Test that output rising above MIN_OUTPUT_THRESHOLD cancels the low-output timer."""
+        controller, dispatcher = hc_pwm_with_dispatcher
+
+        settling_events = []
+        dispatcher.subscribe(CycleEventType.SETTLING_STARTED, lambda e: settling_events.append(e))
+
+        cancel_mock = MagicMock()
+        mock_call_later.return_value = cancel_mock
+
+        # Setup: active cycle with demand
+        controller._has_demand = True
+        controller._cycle_active = True
+
+        callbacks = self._make_callbacks()
+
+        # Output drops below threshold — low-output timer starts
+        await controller.async_set_control_value(
+            control_output=1.5,
+            hvac_mode=MockHVACMode.HEAT,
+            **callbacks,
+        )
+
+        assert mock_call_later.called
+        assert controller._low_output_timer is not None
+
+        # Output rises above threshold — timer should be cancelled
+        await controller.async_set_control_value(
+            control_output=50.0,
+            hvac_mode=MockHVACMode.HEAT,
+            **callbacks,
+        )
+
+        cancel_mock.assert_called_once()
+        assert controller._low_output_timer is None
+        assert len(settling_events) == 0
+
+    @pytest.mark.asyncio
+    @patch("custom_components.adaptive_climate.managers.heater_controller.async_call_later")
+    async def test_low_output_timeout_not_started_above_threshold(self, mock_call_later, hc_pwm_with_dispatcher):
+        """Test that output at or above MIN_OUTPUT_THRESHOLD (2%) does NOT start the low-output timer."""
+        controller, _dispatcher = hc_pwm_with_dispatcher
+
+        # Setup: active cycle with demand
+        controller._has_demand = True
+        controller._cycle_active = True
+
+        callbacks = self._make_callbacks()
+
+        # Output exactly at threshold — no low-output timer
+        await controller.async_set_control_value(
+            control_output=2.0,  # = MIN_OUTPUT_THRESHOLD, not below it
+            hvac_mode=MockHVACMode.HEAT,
+            **callbacks,
+        )
+        assert controller._low_output_timer is None
+
+        # Output well above threshold — no low-output timer
+        await controller.async_set_control_value(
+            control_output=50.0,
+            hvac_mode=MockHVACMode.HEAT,
+            **callbacks,
+        )
+        assert controller._low_output_timer is None
+
+    def test_low_output_and_demand_zero_mutual_exclusion(self, mock_hass, mock_thermostat):
+        """Test that when demand-zero debounce fires, the low-output timer is also cancelled."""
+        dispatcher = CycleEventDispatcher()
+        controller = HeaterController(
+            hass=mock_hass,
+            thermostat=mock_thermostat,
+            heater_entity_id=["switch.heater"],
+            cooler_entity_id=None,
+            demand_switch_entity_id=None,
+            heater_polarity_invert=False,
+            pwm=600,
+            difference=100.0,
+            min_open_time=300.0,
+            min_closed_time=300.0,
+            dispatcher=dispatcher,
+        )
+
+        settling_events = []
+        dispatcher.subscribe(CycleEventType.SETTLING_STARTED, lambda e: settling_events.append(e))
+
+        # Simulate: demand-zero timer pending AND low-output timer also pending (edge case)
+        low_output_cancel = MagicMock()
+        controller._low_output_timer = low_output_cancel
+        controller._cycle_active = True
+
+        # Fire the demand-zero debounce callback directly (simulates its timer firing)
+        controller._emit_settling_started_debounced(MockHVACMode.HEAT, False)
+
+        # demand-zero callback should have cancelled the low-output timer
+        low_output_cancel.assert_called_once()
+        assert controller._low_output_timer is None
+
+        # SETTLING_STARTED should have been emitted exactly once
+        assert len(settling_events) == 1
+        assert controller._cycle_active is False
