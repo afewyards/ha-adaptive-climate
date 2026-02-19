@@ -537,6 +537,23 @@ class CycleTrackerManager:
         self._metrics_recorder.track_integral_at_tolerance(event.pid_error, event.pid_integral)
         self._metrics_recorder.track_integral_at_setpoint(event.pid_error, event.pid_integral)
 
+    def abort_cycle(self, reason: str = "") -> None:
+        """Abort the current cycle if one is active.
+
+        Used when operating conditions change fundamentally, making
+        the current cycle invalid for learning evaluation.
+
+        Args:
+            reason: Optional human-readable reason for logging.
+        """
+        if self._state != CycleState.IDLE:
+            _LOGGER.info(
+                "%s: Cycle aborted%s",
+                self._zone_id,
+                f": {reason}" if reason else "",
+            )
+            self._reset_cycle_state()
+
     def cleanup(self) -> None:
         """Clean up event subscriptions and timers.
 

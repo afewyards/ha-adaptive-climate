@@ -265,6 +265,15 @@ class HeaterController:
             self._valve_close_timer()
             self._valve_close_timer = None
 
+    def abort_active_cycle(self) -> None:
+        """Abort the current cycle without emitting SETTLING_STARTED.
+
+        Used when operating conditions change fundamentally (e.g., night setback)
+        making the current cycle invalid for learning.
+        """
+        self.cancel_pending_timers()
+        self._cycle_active = False
+
     def _emit_cycle_started(self, hvac_mode: HVACMode) -> None:
         """Emit CycleStartedEvent with current temperature state.
 

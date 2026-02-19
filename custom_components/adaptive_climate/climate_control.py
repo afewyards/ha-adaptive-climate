@@ -253,6 +253,17 @@ class ClimateControlMixin:
                 # Record temperature for cycle tracking
                 if self._cycle_tracker and self._current_temp is not None:
                     await self._cycle_tracker.update_temperature(dt_util.utcnow(), self._current_temp)
+
+                # Abort active cycle when night setback starts — conditions changed
+                # fundamentally, so the in-progress cycle is not valid learning data.
+                if self._night_setback_controller:
+                    ns_transition = self._night_setback_controller.consume_transition()
+                    if ns_transition == "started":
+                        _LOGGER.info("%s: Night setback started - aborting active cycle", self.entity_id)
+                        if self._heater_controller:
+                            self._heater_controller.abort_active_cycle()
+                        if self._cycle_tracker:
+                            self._cycle_tracker.abort_cycle("night_setback_started")
             await self.set_control_value()
 
             # Update zone demand for CentralController (based on actual device state, not PID output)
