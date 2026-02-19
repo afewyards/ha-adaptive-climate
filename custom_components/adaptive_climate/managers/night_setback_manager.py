@@ -307,7 +307,12 @@ class NightSetbackManager:
                 return (
                     target_temp,
                     True,
-                    {"night_setback_delta": 0.0, "effective_delta": 0.0, "suppressed_reason": "learning"},
+                    {
+                        "night_setback_delta": 0.0,
+                        "effective_delta": 0.0,
+                        "suppressed_reason": "learning",
+                        "night_setback_end": info.get("night_setback_end"),
+                    },
                 )
 
             elif allowed_delta is not None and allowed_delta > 0.0:

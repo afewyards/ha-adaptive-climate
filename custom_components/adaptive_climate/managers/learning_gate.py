@@ -76,17 +76,24 @@ class LearningGateManager:
         Returns:
             float | None: Maximum allowed delta in °C, or None for unlimited:
                 - None: Night setback not enabled
-                - 0.0: Fully suppressed (contact open, humidity spike, grace period, or idle)
+                - 0.0: Fully suppressed (contact open, humidity spike, or idle)
                 - 0.5: Early learning (collecting with ≥ 3 cycles)
                 - 1.0: Moderate learning (stable status)
                 - None: Unlimited (tuned or optimized status)
+
+        Note: Learning grace period does NOT suppress the delta — it only
+        pauses learning data collection (via is_learning_suppressed).
+        Grace is triggered BY the setback transition, so suppressing the
+        delta would be circular.
         """
         # If night setback not enabled, return None (unlimited)
         if self._night_setback_controller is None:
             return None
 
-        # Check suppression conditions (return 0.0 if any are true)
-        if self.is_learning_suppressed():
+        # Check environmental disruptions (contact open, humidity spike)
+        # Learning grace is intentionally excluded — it pauses learning,
+        # not the setback itself.
+        if self._is_environmentally_disrupted():
             return 0.0
 
         # Get adaptive learner
@@ -109,6 +116,28 @@ class LearningGateManager:
             return 0.5  # Collecting with data - 0.5°C allowed
         else:
             return 0.0  # Collecting without data - suppressed
+
+    def _is_environmentally_disrupted(self) -> bool:
+        """Return True if an environmental disruption should suppress setback delta.
+
+        Only contact sensors and humidity spikes count — these represent real
+        physical conditions where applying a setback makes no sense.
+        """
+        if self._contact_sensor_handler:
+            try:
+                if self._contact_sensor_handler.is_any_contact_open():
+                    return True
+            except (TypeError, AttributeError):
+                pass
+
+        if self._humidity_detector:
+            try:
+                if self._humidity_detector.should_pause():
+                    return True
+            except (TypeError, AttributeError):
+                pass
+
+        return False
 
     def is_learning_suppressed(self) -> bool:
         """Return True if learning should be suppressed.
