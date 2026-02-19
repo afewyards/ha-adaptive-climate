@@ -1,6 +1,101 @@
 # CHANGELOG
 
 
+## v0.64.0 (2026-02-19)
+
+### Bug Fixes
+
+- Add debounce timer for demand→0 transition and tests
+  ([`c5ddbc9`](https://github.com/afewyards/ha-adaptive-climate/commit/c5ddbc9c24e015f7ba064a4fa2355852cb95b7c7))
+
+- Restore pid_history from flat list format in state attributes
+  ([`156673b`](https://github.com/afewyards/ha-adaptive-climate/commit/156673b5e6d62e025b5e21fa27217e610d893c23))
+
+When pid_history was saved to state attributes, it was stored as a flat list. On restore, the code
+  expected a mode-keyed dict (heating/cooling separate). This mismatch caused history to be wiped on
+  every restart.
+
+Now handles both formats during restore: converts flat list to mode-keyed dict if needed, preserving
+  history across restarts.
+
+- Restore pid_history from flat list format in state attributes
+  ([`5cb4d51`](https://github.com/afewyards/ha-adaptive-climate/commit/5cb4d513a38735854c9b9f91ddf2f28988e60328))
+
+When pid_history was saved to state attributes, it was stored as a flat list. On restore, the code
+  expected a mode-keyed dict (heating/cooling separate). This mismatch caused history to be wiped on
+  every restart.
+
+Now handles both formats during restore: converts flat list to mode-keyed dict if needed, preserving
+  history across restarts.
+
+- **cycle**: Abort active cycle when night setback starts
+  ([`c075fa5`](https://github.com/afewyards/ha-adaptive-climate/commit/c075fa5835009f1403084293596ac368e6038f62))
+
+Night setback changes the effective PID target without updating _cycle_target_temp, causing settling
+  to evaluate against the wrong setpoint. Now aborts the in-progress cycle on night setback entry
+  since it's not valid learning data.
+
+Also fixes unreachable "ended" transition detection that was after early return in
+  calculate_night_setback_adjustment().
+
+- **heater**: Wire timer cleanup into lifecycle and fix mutual exclusion
+  ([`8e295dc`](https://github.com/afewyards/ha-adaptive-climate/commit/8e295dc191403af0a51db2683b445ae0735da975))
+
+- Call cancel_pending_timers() in async_will_remove_from_hass - Cancel pending timers on forced
+  turn-off (mode switch) - Cancel low-output timer immediately when demand drops to 0 - Add
+  was_clamped propagation tests for debounce path
+
+- **learning**: Relax rise_time max check for recovery cycles
+  ([`1a82ebd`](https://github.com/afewyards/ha-adaptive-climate/commit/1a82ebd620cfe8e4b0b9be53bd6eb6f419ac1df0))
+
+Recovery cycles now only require rise_time is not None (system reached setpoint), removing the
+  rise_time_max upper bound check. Maintenance cycles retain existing behavior (rise_time=None
+  acceptable).
+
+### Documentation
+
+- Add multi-PWM cycle aggregation design document
+  ([`a81e29d`](https://github.com/afewyards/ha-adaptive-climate/commit/a81e29dbdc791bbde2454358567b7309d7897836))
+
+Describes the design for aggregating cycle metrics across multiple PWM heaters in the same zone,
+  including state machine design, metrics propagation, and integration with existing learning
+  pipeline.
+
+- Add multi-PWM cycle aggregation design document
+  ([`04c83d8`](https://github.com/afewyards/ha-adaptive-climate/commit/04c83d8e401ee8c2bf61d42c3d4cb09c31992e2c))
+
+Describes the design for aggregating cycle metrics across multiple PWM heaters in the same zone,
+  including state machine design, metrics propagation, and integration with existing learning
+  pipeline.
+
+### Features
+
+- **heater**: Add low-output maintenance timeout and MIN_OUTPUT_THRESHOLD
+  ([`bf1c483`](https://github.com/afewyards/ha-adaptive-climate/commit/bf1c4835a93a359ec2a60e60f08aa2d0996e3067))
+
+Adds MIN_OUTPUT_THRESHOLD = 2% constant to const.py and a new low-output maintenance timeout in
+  async_set_control_value(). When control_output hovers below 2% without reaching 0, the timer fires
+  SETTLING_STARTED after 2×PWM period — replacing the v0.28 behavior that emitted from
+  async_turn_off(). Mutual exclusion with demand-zero debounce timer is handled in both callback
+  paths.
+
+### Refactoring
+
+- **heater**: Remove SETTLING_STARTED emission from async_turn_off
+  ([`3365863`](https://github.com/afewyards/ha-adaptive-climate/commit/3365863979396e547cb06191a1d9ab71f9a949d2))
+
+In v0.28 this emission was added to handle PWM maintenance cycles that never see demand=0, but it
+  destroys multi-PWM cycle grouping. The low-output maintenance timeout will replace this use case.
+
+### Testing
+
+- Run heater controller tests - all 58 tests passed
+  ([`c01acea`](https://github.com/afewyards/ha-adaptive-climate/commit/c01aceaf802d43d64c644dca7819a0831afaa6eb))
+
+- Update heater controller tests for v0.28 SETTLING_STARTED removal from async_turn_off
+  ([`087828c`](https://github.com/afewyards/ha-adaptive-climate/commit/087828c3a5585113d0dfdc26af5186c5af2057d5))
+
+
 ## v0.63.3 (2026-02-16)
 
 ### Bug Fixes
