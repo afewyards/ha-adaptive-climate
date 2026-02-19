@@ -1099,3 +1099,9 @@ DEFAULT_MIN_SWITCH_INTERVAL = 3600  # seconds (1 hour)
 DEFAULT_FORECAST_HOURS = 6
 DEFAULT_WINTER_BELOW = 12.0  # °C
 DEFAULT_SUMMER_ABOVE = 18.0  # °C
+
+# PWM cycle tracking
+# Output below this threshold (%) is treated as a maintenance/low-output cycle.
+# When control_output stays below this for 2×PWM period, SETTLING_STARTED is emitted
+# to close the heating session (replaces v0.28 async_turn_off emission).
+MIN_OUTPUT_THRESHOLD = 2  # percent
