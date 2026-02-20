@@ -137,12 +137,15 @@ class PIDTuningManager:
             kd=kd,
         )
 
-        # Record physics baseline for auto-apply tracking
+        # Record physics baseline and reset undershoot detector
         coordinator = self._state._coordinator
         if coordinator:
             adaptive_learner = coordinator.get_adaptive_learner(self._state.entity_id)
             if adaptive_learner:
                 adaptive_learner.set_physics_baseline(kp, ki, kd)
+                if adaptive_learner.undershoot_detector:
+                    adaptive_learner.undershoot_detector.reset_all()
+                    _LOGGER.info("%s: Undershoot detector reset (Ki multiplier cleared)", self._state.entity_id)
 
         power_info = f", power={max_power_w}W" if max_power_w else ""
         supply_info = f", supply={supply_temperature}°C" if supply_temperature else ""
