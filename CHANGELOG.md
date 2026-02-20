@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v0.64.3 (2026-02-20)
+
+### Bug Fixes
+
+- **physics**: Reset undershoot detector on physics reset
+  ([`1e9dc04`](https://github.com/afewyards/ha-adaptive-climate/commit/1e9dc04eca6938b3c25cc198041061d5aaf1663a))
+
+reset_all() clears cumulative_ki_multiplier so the detector starts fresh after a physics reset
+  instead of immediately re-boosting Ki.
+
+
 ## v0.64.2 (2026-02-20)
 
 ### Bug Fixes
