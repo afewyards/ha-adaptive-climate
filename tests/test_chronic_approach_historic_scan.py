@@ -159,7 +159,7 @@ class TestChronicApproachHistoricScan:
         learner = AdaptiveLearner(heating_type="radiator", chronic_approach_historic_scan=True)
 
         # Set cumulative multiplier near cap
-        learner._undershoot_detector.cumulative_ki_multiplier = 1.95  # Near 2.0 cap
+        learner._undershoot_detector.cumulative_ki_multiplier = 2.95  # Near 3.0 cap
 
         # Add 3 consecutive failures
         for _ in range(3):
@@ -175,7 +175,7 @@ class TestChronicApproachHistoricScan:
         # Restore from dict (should trigger scan)
         state = learner.to_dict()
         learner2 = AdaptiveLearner(heating_type="radiator", chronic_approach_historic_scan=True)
-        learner2._undershoot_detector.cumulative_ki_multiplier = 1.95
+        learner2._undershoot_detector.cumulative_ki_multiplier = 2.95
         learner2.restore_from_dict(state)
 
         # Should not recommend adjustment due to cap

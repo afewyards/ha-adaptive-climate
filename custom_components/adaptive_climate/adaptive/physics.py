@@ -360,10 +360,12 @@ def calculate_initial_pid(
     reference_profiles = {
         HeatingType.FLOOR_HYDRONIC: [
             # (tau_hours, kp, ki, kd) - calibrated reference points
-            (2.0, 0.45, 2.0, 1.4),  # Well-insulated floor heating, fast response
-            (4.0, 0.30, 1.2, 2.5),  # Standard floor heating, moderate mass
-            (6.0, 0.22, 0.8, 3.3),  # High thermal mass floor, slow response (reduced from 3.5 to fit kd_max=3.3)
-            (8.0, 0.18, 0.6, 3.2),  # Very slow floor heating, high mass (reduced from 4.2 to fit kd_max=3.3)
+            # Ki raised +60% vs v0.7.1: P-on-M means integral carries entire steady-state
+            # load; floor systems need faster accumulation because night setback resets integral
+            (2.0, 0.45, 3.2, 1.4),  # Well-insulated floor heating, fast response
+            (4.0, 0.30, 1.9, 2.5),  # Standard floor heating, moderate mass
+            (6.0, 0.22, 1.3, 3.3),  # High thermal mass floor, slow response
+            (8.0, 0.18, 1.0, 3.2),  # Very slow floor heating, high mass
         ],
         HeatingType.RADIATOR: [
             (1.5, 0.70, 3.0, 1.2),  # Fast radiator system
@@ -482,6 +484,7 @@ def calculate_initial_ke(
     floor_area_m2: float | None = None,
     window_rating: str = "hr++",
     heating_type: str = "floor_hydronic",
+    supply_temperature: float | None = None,
 ) -> float:
     """Calculate initial Ke (outdoor temperature compensation) parameter.
 
@@ -493,6 +496,7 @@ def calculate_initial_ke(
     - Building energy rating (insulation quality)
     - Window area and rating (heat loss through glazing)
     - Heating system type (response characteristics)
+    - Supply water temperature (lower temp = less capacity = needs higher Ke)
 
     Args:
         energy_rating: Building energy efficiency rating (A+++, A++, A+, A, B, C, D, E, F, G).
@@ -503,6 +507,8 @@ def calculate_initial_ke(
                        Poorer glazing increases outdoor temperature impact.
         heating_type: Type of heating system. Slower systems (floor_hydronic)
                       benefit more from outdoor compensation.
+        supply_temperature: Supply water temperature in °C. Lower temps than
+                           reference need higher Ke to compensate proactively.
 
     Returns:
         Initial Ke value (typically 0.1 - 0.8 for well-insulated buildings,
@@ -535,13 +541,30 @@ def calculate_initial_ke(
     # These are multiplicative factors (not absolute values), applied to base_ke
     # No scaling needed for v0.7.1 - these remain as dimensionless multipliers
     heating_type_factors = {
-        HeatingType.FLOOR_HYDRONIC: 1.2,  # Slow response - more benefit from Ke
+        HeatingType.FLOOR_HYDRONIC: 2.0,  # Slow response + P-on-M: E-term must carry more steady-state load
         HeatingType.RADIATOR: 1.0,  # Baseline
         HeatingType.CONVECTOR: 0.8,  # Faster response - less Ke needed
         HeatingType.FORCED_AIR: 0.6,  # Fast response - minimal Ke needed
     }
     type_factor = heating_type_factors.get(heating_type, 1.0)
     base_ke *= type_factor
+
+    # Adjust for supply temperature
+    # Lower supply temp = less thermal capacity per cycle = needs higher Ke
+    # Uses same reference temps as PID power scaling
+    if supply_temperature is not None:
+        from ..const import HEATING_TYPE_CHARACTERISTICS
+
+        heating_chars = HEATING_TYPE_CHARACTERISTICS.get(
+            heating_type, HEATING_TYPE_CHARACTERISTICS.get("convector", {})
+        )
+        ref_supply = heating_chars.get("reference_supply_temp", 55.0)
+        ref_delta_t = ref_supply - 20.0
+        actual_delta_t = max(5.0, min(60.0, supply_temperature - 20.0))
+        temp_factor = ref_delta_t / actual_delta_t
+        # Clamp to 0.5 - 2.0 range for safety
+        temp_factor = max(0.5, min(2.0, temp_factor))
+        base_ke *= temp_factor
 
     # Round to 4 decimal places (was 2, now more precision needed)
     return round(base_ke, 4)

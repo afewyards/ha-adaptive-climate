@@ -134,10 +134,10 @@ class TestPhysicsCalculations:
         tau = 8.0  # High thermal mass
         kp, ki, kd = calculate_initial_pid(tau, "floor_hydronic")
 
-        # v0.7.1: Multi-point model uses reference profile at tau=8.0
-        # Reference: (8.0, 0.18, 0.6, 3.2) (reduced from 4.2 to fit kd_max=3.3)
+        # Reference profile at tau=8.0: (8.0, 0.18, 1.0, 3.2)
+        # Ki raised +60% for P-on-M steady-state in floor systems
         assert kp == pytest.approx(0.18, abs=0.01)
-        assert ki == pytest.approx(0.6, abs=0.05)
+        assert ki == pytest.approx(1.0, abs=0.05)
         assert kd == pytest.approx(3.2, abs=0.3)
 
     def test_calculate_initial_pid_radiator(self):
@@ -232,8 +232,8 @@ class TestKiWindupTime:
         v0.7.1: Multi-point model uses reference profile at tau=8.0.
         """
         # Floor hydronic heating at tau=8.0
-        # v0.7.1: Reference profile (8.0, 0.18, 0.6, 3.2)
-        # Ki = 0.6 %/(°C·hour)
+        # Reference profile (8.0, 0.18, 1.0, 3.2) — Ki raised +60% for P-on-M
+        # Ki = 1.0 %/(°C·hour)
         tau = 8.0
         kp, ki, kd = calculate_initial_pid(tau, "floor_hydronic")
 
@@ -242,13 +242,13 @@ class TestKiWindupTime:
         time_hours = 1.0  # hour
         expected_integral_contribution = ki * error * time_hours
 
-        # v0.7.1: Ki=0.6, so at 1°C for 1 hour: integral += 0.6%
-        assert expected_integral_contribution == pytest.approx(0.6, abs=0.05)
+        # Ki=1.0, so at 1°C for 1 hour: integral += 1.0%
+        assert expected_integral_contribution == pytest.approx(1.0, abs=0.05)
 
-        # At 2 hours with 1°C error: integral += 1.2%
+        # At 2 hours with 1°C error: integral += 2.0%
         time_hours = 2.0
         expected_integral_contribution = ki * error * time_hours
-        assert expected_integral_contribution == pytest.approx(1.2, abs=0.1)
+        assert expected_integral_contribution == pytest.approx(2.0, abs=0.1)
 
         # Verify Ki is in reasonable range (0.1-10.0 for hourly units)
         assert 0.1 <= ki <= 10.0
@@ -378,7 +378,7 @@ class TestKeCalculation:
         assert ke_floor > ke_rad > ke_air
 
         # Check approximate values (A rating base is 0.45)
-        assert ke_floor == pytest.approx(0.54, abs=0.05)  # 0.45 * 1.2
+        assert ke_floor == pytest.approx(0.90, abs=0.05)  # 0.45 * 2.0
         assert ke_rad == pytest.approx(0.45, abs=0.05)  # 0.45 * 1.0
         assert ke_air == pytest.approx(0.27, abs=0.05)  # 0.45 * 0.6
 
@@ -592,13 +592,13 @@ class TestTauAdjustmentExtreme:
         assert ki_very_fast == pytest.approx(12.0, abs=2.0)
         assert kd_very_fast == pytest.approx(0.4, abs=0.05)
 
-        # v0.7.1: Extrapolates from tau=8.0 reference (0.18, 0.6, 3.2)
+        # Extrapolates from tau=8.0 reference (0.18, 1.0, 3.2)
         # tau_ratio = 8.0/15.0 = 0.533
         # Kp = 0.18 * 0.533 * sqrt(0.533) = 0.07
-        # Ki = 0.6 * 0.533 = 0.32
+        # Ki = 1.0 * 0.533 = 0.53
         # Kd = 3.2 / 0.533 = 6.0
         assert kp_very_slow == pytest.approx(0.07, abs=0.02)
-        assert ki_very_slow == pytest.approx(0.32, abs=0.05)
+        assert ki_very_slow == pytest.approx(0.53, abs=0.05)
         assert kd_very_slow == pytest.approx(6.0, abs=0.5)
 
     def test_tau_factor_gentler_scaling(self):
@@ -802,25 +802,25 @@ class TestPhysicsInitDiverseBuildings:
         # Fast floor heating (tau=2h) - well-insulated
         kp_2h, ki_2h, kd_2h = calculate_initial_pid(2.0, heating_type)
         assert kp_2h == pytest.approx(0.45, abs=0.05)
-        assert ki_2h == pytest.approx(2.0, abs=0.2)
+        assert ki_2h == pytest.approx(3.2, abs=0.2)
         assert kd_2h == pytest.approx(1.4, abs=0.2)
 
         # Standard floor heating (tau=4h)
         kp_4h, ki_4h, kd_4h = calculate_initial_pid(4.0, heating_type)
         assert kp_4h == pytest.approx(0.30, abs=0.05)
-        assert ki_4h == pytest.approx(1.2, abs=0.2)
+        assert ki_4h == pytest.approx(1.9, abs=0.2)
         assert kd_4h == pytest.approx(2.5, abs=0.3)
 
         # High thermal mass (tau=6h)
         kp_6h, ki_6h, kd_6h = calculate_initial_pid(6.0, heating_type)
         assert kp_6h == pytest.approx(0.22, abs=0.05)
-        assert ki_6h == pytest.approx(0.8, abs=0.2)
+        assert ki_6h == pytest.approx(1.3, abs=0.2)
         assert kd_6h == pytest.approx(3.3, abs=0.3)
 
         # Very slow floor heating (tau=8h)
         kp_8h, ki_8h, kd_8h = calculate_initial_pid(8.0, heating_type)
         assert kp_8h == pytest.approx(0.18, abs=0.05)
-        assert ki_8h == pytest.approx(0.6, abs=0.2)
+        assert ki_8h == pytest.approx(1.0, abs=0.2)
         assert kd_8h == pytest.approx(3.2, abs=0.3)
 
         # Verify trends: higher tau → lower Kp, lower Ki, higher Kd
@@ -868,18 +868,18 @@ class TestPhysicsInitDiverseBuildings:
         # Test floor_hydronic at tau=10.0 (above highest reference tau=8.0)
         kp, ki, kd = calculate_initial_pid(10.0, "floor_hydronic")
 
-        # Reference: (8.0, 0.18, 0.6, 3.2) (reduced from 4.2 to fit kd_max=3.3)
+        # Reference: (8.0, 0.18, 1.0, 3.2)
         # tau_ratio = 8.0 / 10.0 = 0.8
         # Kp = 0.18 * 0.8 * sqrt(0.8) = 0.18 * 0.8 * 0.894 = 0.129
-        # Ki = 0.6 * 0.8 = 0.48
+        # Ki = 1.0 * 0.8 = 0.80
         # Kd = 3.2 / 0.8 = 4.0
         assert kp == pytest.approx(0.129, abs=0.02)
-        assert ki == pytest.approx(0.48, abs=0.05)
+        assert ki == pytest.approx(0.80, abs=0.05)
         assert kd == pytest.approx(4.0, abs=0.3)
 
         # Verify very slow system gets conservative gains
         assert kp < 0.2  # Low proportional gain for slow, stable response
-        assert ki < 0.6  # Low integral gain to prevent windup
+        assert ki < 1.0  # Moderate integral gain
         # Note: Kd=4.0 exceeds kd_max=3.3, will be clamped at runtime in PID controller
 
     def test_tau_scaling_formulas_applied(self):

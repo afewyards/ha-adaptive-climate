@@ -576,8 +576,8 @@ class TestCalculateInitialKe:
         """Test calculation with default values (v0.7.1: restored scaling)."""
         ke = calculate_initial_ke()
 
-        # Default should be moderate (A-rated building baseline, v0.7.1 scale)
-        assert 0.3 <= ke <= 0.7
+        # Default: base 0.45 × floor_hydronic factor 2.0 = 0.9
+        assert 0.7 <= ke <= 1.1
 
     def test_energy_rating_effect(self):
         """Test that better energy rating results in lower Ke."""
@@ -591,7 +591,7 @@ class TestCalculateInitialKe:
         """Test all energy ratings produce valid values."""
         for rating in ENERGY_RATING_TO_INSULATION:
             ke = calculate_initial_ke(energy_rating=rating)
-            assert 0.0 <= ke <= 2.0
+            assert 0.0 <= ke <= 3.0
 
     def test_window_area_effect(self):
         """Test that larger window area increases Ke."""

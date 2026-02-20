@@ -938,7 +938,7 @@ UNDERSHOOT_THRESHOLDS: dict[HeatingType, dict[str, float]] = {
 }
 
 # Maximum cumulative Ki multiplier from undershoot detection (safety cap)
-MAX_UNDERSHOOT_KI_MULTIPLIER = 2.0
+MAX_UNDERSHOOT_KI_MULTIPLIER = 3.0
 
 # Severe undershoot multiplier - thermal debt must exceed this multiple of threshold
 # for persistent undershoot detection to stay active beyond bootstrap phase

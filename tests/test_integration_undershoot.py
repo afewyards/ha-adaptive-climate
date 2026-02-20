@@ -182,8 +182,8 @@ class TestUndershootDetectionIntegration:
         """Test that cumulative Ki multiplier respects safety cap."""
         detector = adaptive_learner.undershoot_detector
 
-        # Set cumulative multiplier near cap (2.0)
-        detector.cumulative_ki_multiplier = 1.9
+        # Set cumulative multiplier near cap (3.0)
+        detector.cumulative_ki_multiplier = 2.9
 
         # Accumulate debt
         detector.time_below_target = 4.0 * 3600.0
@@ -198,7 +198,7 @@ class TestUndershootDetectionIntegration:
             multiplier = new_ki / current_ki
             # Cumulative multiplier after this adjustment
             new_cumulative = detector.cumulative_ki_multiplier
-            assert new_cumulative <= 2.0  # MAX_UNDERSHOOT_KI_MULTIPLIER
+            assert new_cumulative <= 3.0  # MAX_UNDERSHOOT_KI_MULTIPLIER
 
     def test_resets_on_temperature_recovery(self, mock_thermostat, adaptive_learner):
         """Test that detector resets when temperature rises above setpoint."""
@@ -417,7 +417,7 @@ class TestPersistentUndershootCatch22:
         detector = learner.undershoot_detector
 
         # Set cumulative multiplier at cap
-        detector.cumulative_ki_multiplier = 2.0  # At cap
+        detector.cumulative_ki_multiplier = 3.0  # At cap
 
         # Severe undershoot
         detector.thermal_debt = 5.0

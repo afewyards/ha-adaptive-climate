@@ -260,6 +260,7 @@ async def async_setup_managers(thermostat: AdaptiveThermostat) -> None:
                 floor_area_m2=thermostat._area_m2,
                 window_rating=thermostat._window_rating,
                 heating_type=thermostat._heating_type,
+                supply_temperature=thermostat._supply_temperature,
             )
             # Apply physics-based Ke from startup for accurate PID learning
             thermostat._ke_learner = KeLearner(initial_ke=initial_ke)

@@ -228,15 +228,13 @@ class TestCumulativeKiCap:
 
     def test_respects_cumulative_cap(self, detector):
         """Test that cumulative multiplier cannot exceed MAX_UNDERSHOOT_KI_MULTIPLIER."""
-        detector.cumulative_ki_multiplier = 1.8
+        detector.cumulative_ki_multiplier = 2.8
 
         # Trigger adjustment conditions
         # Use small error (0.6) to accumulate time but not debt
-        # 0.6 °C * 4 hours = 2.4 °C·h (exceeds debt threshold of 2.0)
-        # So use 1 hour instead: 0.6 * 1 = 0.6 (below debt threshold)
         detector.update(temp=18.9, setpoint=20.0, dt_seconds=3600.0, cold_tolerance=0.5)
 
-        # Should not adjust - cumulative multiplier approaching cap (1.8 * 1.15 = 2.07 > 2.0)
+        # Should not adjust - cumulative multiplier approaching cap (2.8 * 1.15 = 3.22 > 3.0)
         assert detector.should_adjust_ki(cycles_completed=0) is False
 
     def test_blocks_adjustment_at_cap(self, detector):
@@ -382,14 +380,14 @@ class TestGetAdjustmentRespectsCap:
 
     def test_clamps_multiplier_near_cap(self, detector):
         """Test that multiplier is clamped when approaching cap."""
-        # Set cumulative to 1.8 (close to cap of 2.0)
-        detector.cumulative_ki_multiplier = 1.8
+        # Set cumulative to 2.7 (close to cap of 3.0)
+        detector.cumulative_ki_multiplier = 2.7
 
-        # Max allowed = 2.0 / 1.8 = 1.111
+        # Max allowed = 3.0 / 2.7 = 1.111
         # Configured = 1.15
         # Should return min(1.15, 1.111) = 1.111
         multiplier = detector.get_adjustment()
-        expected = MAX_UNDERSHOOT_KI_MULTIPLIER / 1.8
+        expected = MAX_UNDERSHOOT_KI_MULTIPLIER / 2.7
 
         assert multiplier == pytest.approx(expected, abs=0.001)
 
@@ -397,7 +395,7 @@ class TestGetAdjustmentRespectsCap:
         """Test that multiplier is 1.0 when at cap."""
         detector.cumulative_ki_multiplier = MAX_UNDERSHOOT_KI_MULTIPLIER
 
-        # Max allowed = 2.0 / 2.0 = 1.0
+        # Max allowed = 3.0 / 3.0 = 1.0
         assert detector.get_adjustment() == pytest.approx(1.0, abs=0.001)
 
 
@@ -1134,7 +1132,7 @@ class TestRateModeDetection:
             heating_rate_learner.end_session(19.0, "stalled", timestamp=end_time)
 
         # Set cumulative multiplier near cap
-        detector_with_rate_learner.cumulative_ki_multiplier = 1.9
+        detector_with_rate_learner.cumulative_ki_multiplier = 2.9
 
         # Current rate is poor but near cap
         result = detector_with_rate_learner.check_rate_based_undershoot(
@@ -1144,7 +1142,7 @@ class TestRateModeDetection:
         )
 
         # Should return clamped multiplier
-        expected = MAX_UNDERSHOOT_KI_MULTIPLIER / 1.9  # 2.0 / 1.9 = 1.053
+        expected = MAX_UNDERSHOOT_KI_MULTIPLIER / 2.9  # 3.0 / 2.9 = 1.034
         assert result == pytest.approx(expected, abs=0.001)
 
     def test_rate_mode_applies_adjustment_and_resets_stall_counter(
