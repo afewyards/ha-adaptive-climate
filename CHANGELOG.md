@@ -1,6 +1,18 @@
 # CHANGELOG
 
 
+## v0.64.2 (2026-02-20)
+
+### Bug Fixes
+
+- **physics**: Increase floor_hydronic Ki/Ke init and undershoot cap
+  ([`0427937`](https://github.com/afewyards/ha-adaptive-climate/commit/04279372435db4eed627fb525db6e1f75271b286))
+
+- Ki reference profiles +60% for P-on-M steady-state compensation - Ke heating_type_factor 1.2→2.0
+  so E-term carries more outdoor load - Add supply_temperature scaling to calculate_initial_ke() -
+  MAX_UNDERSHOOT_KI_MULTIPLIER 2.0→3.0 for more headroom - Update all affected test expectations
+
+
 ## v0.64.1 (2026-02-19)
 
 ### Bug Fixes
