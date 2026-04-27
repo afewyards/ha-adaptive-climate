@@ -1,6 +1,33 @@
 # CHANGELOG
 
 
+## v0.64.4 (2026-04-27)
+
+### Bug Fixes
+
+- **undershoot**: Cap Ki boost against physics baseline instead of cumulative tracker
+  ([`b9f4bb1`](https://github.com/afewyards/ha-adaptive-climate/commit/b9f4bb197a3bf75ecba84b0ea2ddab662eaf3c04))
+
+The cumulative_ki_multiplier was resetting to 1.0 on HA restarts, allowing Ki to grow unboundedly
+  past the 3.0x cap. Now checks actual Ki ratio against physics baseline from pid_history, which is
+  always accurate and survives restarts.
+
+### Documentation
+
+- **learning**: Add learning simplification implementation plan
+  ([`73d1f0d`](https://github.com/afewyards/ha-adaptive-climate/commit/73d1f0d8a4f7710566c2428601c5b21bdc532c25))
+
+16 tasks across 9 phases: HeatingTypeProfile, dead code removal, shared utilities,
+  ConfidenceManager, PIDTuningManager, ValidationSafetyManager, slim orchestrator, serialization
+  v11.
+
+- **learning**: Add learning subsystem simplification design
+  ([`9b7bb4e`](https://github.com/afewyards/ha-adaptive-climate/commit/9b7bb4edc230c7bc1de679a2a8abfd3838591555))
+
+Covers HeatingTypeProfile consolidation, dead code removal, AdaptiveLearner decomposition into 3
+  managers + orchestrator.
+
+
 ## v0.64.3 (2026-02-20)
 
 ### Bug Fixes
