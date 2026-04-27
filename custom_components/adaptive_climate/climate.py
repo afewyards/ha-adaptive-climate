@@ -1472,20 +1472,41 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
         if not result.get("is_underperforming", False):
             return  # Performing adequately
 
-        # Check if we've already boosted Ki recently (cooldown)
-        # Use undershoot detector's cumulative multiplier to track total boosts
-        cumulative = adaptive_learner.undershoot_detector.cumulative_ki_multiplier
-        if cumulative >= 2.0:
-            _LOGGER.debug(
-                "%s: Physics rate check: underperforming but Ki already boosted %.1fx (max 2.0x)",
-                self.entity_id,
-                cumulative,
-            )
-            return
+        # Check if we've already boosted Ki to the cap relative to physics baseline
+        # Use physics-based cap: compare current Ki against physics baseline from history
+        from .adaptive.learning import _get_physics_baseline_ki_from_history
+        from .const import MAX_UNDERSHOOT_KI_MULTIPLIER
+
+        old_ki = self._pid_controller.ki
+        pid_history = self._gains_manager.get_history()
+        physics_baseline_ki = _get_physics_baseline_ki_from_history(pid_history)
+
+        if physics_baseline_ki is not None and physics_baseline_ki > 0:
+            actual_ratio = old_ki / physics_baseline_ki
+            if actual_ratio >= MAX_UNDERSHOOT_KI_MULTIPLIER:
+                _LOGGER.debug(
+                    "%s: Physics rate check: underperforming but Ki already at cap (%.4f / %.4f = %.2fx >= max %.1fx)",
+                    self.entity_id,
+                    old_ki,
+                    physics_baseline_ki,
+                    actual_ratio,
+                    MAX_UNDERSHOOT_KI_MULTIPLIER,
+                )
+                return
+        else:
+            # Fallback to cumulative multiplier cap if no physics baseline available
+            cumulative = adaptive_learner.undershoot_detector.cumulative_ki_multiplier
+            if cumulative >= MAX_UNDERSHOOT_KI_MULTIPLIER:
+                _LOGGER.debug(
+                    "%s: Physics rate check: underperforming but Ki already boosted %.1fx (max %.1fx)",
+                    self.entity_id,
+                    cumulative,
+                    MAX_UNDERSHOOT_KI_MULTIPLIER,
+                )
+                return
 
         # Apply the suggested Ki boost
         suggested_boost = result.get("suggested_ki_boost", 1.2)
-        old_ki = self._pid_controller.ki
         new_ki = old_ki * suggested_boost
 
         # Scale integral to prevent output spike
@@ -1506,7 +1527,7 @@ class AdaptiveThermostat(ClimateControlMixin, ClimateHandlersMixin, ClimateEntit
             },
         )
 
-        # Update cumulative multiplier in undershoot detector
+        # Update cumulative multiplier in undershoot detector (kept for logging/debug only)
         adaptive_learner.undershoot_detector.cumulative_ki_multiplier *= suggested_boost
 
         _LOGGER.warning(

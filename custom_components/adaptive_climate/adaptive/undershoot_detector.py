@@ -233,12 +233,14 @@ class UndershootDetector:
         self,
         cycles_completed: int,
         last_history_adjustment_utc: datetime | None = None,
+        current_ki: float | None = None,
+        physics_baseline_ki: float | None = None,
     ) -> bool:
         """Check if Ki adjustment should be triggered by either mode.
 
         Shared gates (checked first):
         1. Not in cooldown period
-        2. Cumulative multiplier below safety cap
+        2. Actual Ki ratio below safety cap (physics-based)
 
         Real-time mode triggers when:
         1. Either no complete cycles yet (bootstrap), OR severe undershoot detected
@@ -252,6 +254,8 @@ class UndershootDetector:
         Args:
             cycles_completed: Number of complete heating cycles observed.
             last_history_adjustment_utc: Timestamp of last Ki adjustment from PID history.
+            current_ki: Current Ki gain value (for physics-based cap check).
+            physics_baseline_ki: Physics-baseline Ki value (for physics-based cap check).
 
         Returns:
             True if Ki adjustment should be applied.
@@ -261,7 +265,12 @@ class UndershootDetector:
             return False
 
         # Shared gate: Respect cumulative safety cap
-        if self.cumulative_ki_multiplier >= MAX_UNDERSHOOT_KI_MULTIPLIER:
+        # Use physics-based cap if both values are provided, else fall back to cumulative tracking
+        if current_ki is not None and physics_baseline_ki is not None and physics_baseline_ki > 0:
+            actual_ratio = current_ki / physics_baseline_ki
+            if actual_ratio >= MAX_UNDERSHOOT_KI_MULTIPLIER:
+                return False
+        elif self.cumulative_ki_multiplier >= MAX_UNDERSHOOT_KI_MULTIPLIER:
             return False
 
         # Check real-time mode
@@ -313,31 +322,54 @@ class UndershootDetector:
         min_consecutive = self._thresholds["min_consecutive_cycles"]
         return self._consecutive_failures >= min_consecutive
 
-    def get_adjustment(self) -> float:
+    def get_adjustment(
+        self,
+        current_ki: float | None = None,
+        physics_baseline_ki: float | None = None,
+    ) -> float:
         """Get the Ki multiplier for this heating type.
 
-        Returns the configured ki_multiplier, clamped to respect the cumulative
-        safety cap (MAX_UNDERSHOOT_KI_MULTIPLIER).
+        Returns the configured ki_multiplier, clamped to respect the safety cap.
+        When current_ki and physics_baseline_ki are provided, uses physics-based
+        cap (actual Ki ratio vs baseline). Falls back to cumulative tracking otherwise.
+
+        Args:
+            current_ki: Current Ki gain value (for physics-based cap calculation).
+            physics_baseline_ki: Physics-baseline Ki value (for physics-based cap calculation).
 
         Returns:
             Ki multiplier to apply (e.g., 1.20 for 20% increase).
         """
         multiplier = self._thresholds["ki_multiplier"]
 
-        # Clamp to respect cumulative cap
-        max_allowed = MAX_UNDERSHOOT_KI_MULTIPLIER / self.cumulative_ki_multiplier
+        # Clamp to respect cap
+        if current_ki is not None and physics_baseline_ki is not None and physics_baseline_ki > 0:
+            # Physics-based cap: limit ratio of current_ki to physics baseline
+            actual_ratio = current_ki / physics_baseline_ki
+            max_allowed = MAX_UNDERSHOOT_KI_MULTIPLIER / actual_ratio
+        else:
+            # Fallback: cumulative tracking cap
+            max_allowed = MAX_UNDERSHOOT_KI_MULTIPLIER / self.cumulative_ki_multiplier
         return min(multiplier, max_allowed)
 
-    def apply_adjustment(self) -> float:
+    def apply_adjustment(
+        self,
+        current_ki: float | None = None,
+        physics_baseline_ki: float | None = None,
+    ) -> float:
         """Apply the adjustment and update internal state for both modes.
 
         Updates cumulative multiplier, records adjustment time, and resets
         both real-time state (with partial debt reset) and cycle state.
 
+        Args:
+            current_ki: Current Ki gain value (for physics-based cap calculation).
+            physics_baseline_ki: Physics-baseline Ki value (for physics-based cap calculation).
+
         Returns:
             The multiplier that was applied.
         """
-        multiplier = self.get_adjustment()
+        multiplier = self.get_adjustment(current_ki, physics_baseline_ki)
 
         # Update shared cumulative multiplier
         self.cumulative_ki_multiplier *= multiplier
@@ -446,6 +478,8 @@ class UndershootDetector:
         current_rate: float,
         delta: float,
         outdoor_temp: float,
+        current_ki: float | None = None,
+        physics_baseline_ki: float | None = None,
     ) -> float | None:
         """Check for rate-based undershoot using HeatingRateLearner.
 
@@ -459,6 +493,8 @@ class UndershootDetector:
             current_rate: Current observed heating rate in °C/h.
             delta: Temperature delta (setpoint - current_temp) in °C.
             outdoor_temp: Current outdoor temperature in °C.
+            current_ki: Current Ki gain value (for physics-based cap calculation).
+            physics_baseline_ki: Physics-baseline Ki value (for physics-based cap calculation).
 
         Returns:
             Ki multiplier if conditions met, None otherwise.
@@ -478,23 +514,39 @@ class UndershootDetector:
         # All conditions met - return Ki multiplier
         multiplier = self._thresholds["ki_multiplier"]
 
-        # Clamp to respect cumulative cap
-        max_allowed = MAX_UNDERSHOOT_KI_MULTIPLIER / self.cumulative_ki_multiplier
+        # Clamp to respect cap (physics-based if available, else cumulative tracking)
+        if current_ki is not None and physics_baseline_ki is not None and physics_baseline_ki > 0:
+            actual_ratio = current_ki / physics_baseline_ki
+            max_allowed = MAX_UNDERSHOOT_KI_MULTIPLIER / actual_ratio
+        else:
+            max_allowed = MAX_UNDERSHOOT_KI_MULTIPLIER / self.cumulative_ki_multiplier
         return min(multiplier, max_allowed)
 
-    def apply_rate_adjustment(self) -> float:
+    def apply_rate_adjustment(
+        self,
+        current_ki: float | None = None,
+        physics_baseline_ki: float | None = None,
+    ) -> float:
         """Apply rate-based Ki adjustment and update state.
 
         Updates cumulative multiplier, records adjustment time, and
         acknowledges the boost in the heating rate learner (resets stall counter).
+
+        Args:
+            current_ki: Current Ki gain value (for physics-based cap calculation).
+            physics_baseline_ki: Physics-baseline Ki value (for physics-based cap calculation).
 
         Returns:
             The multiplier that was applied.
         """
         multiplier = self._thresholds["ki_multiplier"]
 
-        # Clamp to respect cumulative cap
-        max_allowed = MAX_UNDERSHOOT_KI_MULTIPLIER / self.cumulative_ki_multiplier
+        # Clamp to respect cap (physics-based if available, else cumulative tracking)
+        if current_ki is not None and physics_baseline_ki is not None and physics_baseline_ki > 0:
+            actual_ratio = current_ki / physics_baseline_ki
+            max_allowed = MAX_UNDERSHOOT_KI_MULTIPLIER / actual_ratio
+        else:
+            max_allowed = MAX_UNDERSHOOT_KI_MULTIPLIER / self.cumulative_ki_multiplier
         multiplier = min(multiplier, max_allowed)
 
         # Update shared cumulative multiplier

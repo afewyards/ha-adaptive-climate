@@ -224,7 +224,7 @@ class TestCooldownEnforcement:
 
 
 class TestCumulativeKiCap:
-    """Test cumulative Ki multiplier cap."""
+    """Test cumulative Ki multiplier cap (fallback path without physics baseline)."""
 
     def test_respects_cumulative_cap(self, detector):
         """Test that cumulative multiplier cannot exceed MAX_UNDERSHOOT_KI_MULTIPLIER."""
@@ -246,6 +246,104 @@ class TestCumulativeKiCap:
 
         # Should not adjust - at cap
         assert detector.should_adjust_ki(cycles_completed=0) is False
+
+
+class TestPhysicsBasedKiCap:
+    """Test physics-based Ki cap (actual Ki ratio vs physics baseline)."""
+
+    def test_physics_cap_blocks_when_ratio_at_max(self, detector):
+        """Test that physics-based cap blocks adjustment when Ki is 3x physics baseline."""
+        # Accumulate undershoot conditions
+        detector.update(temp=18.0, setpoint=20.0, dt_seconds=14400.0, cold_tolerance=0.5)
+
+        # physics_baseline_ki=0.01, current_ki=0.03 -> ratio=3.0 >= MAX (3.0)
+        assert (
+            detector.should_adjust_ki(
+                cycles_completed=0,
+                current_ki=0.03,
+                physics_baseline_ki=0.01,
+            )
+            is False
+        )
+
+    def test_physics_cap_allows_when_ratio_below_max(self, detector):
+        """Test that physics-based cap allows adjustment when Ki is below 3x physics baseline."""
+        # Accumulate undershoot conditions
+        detector.update(temp=18.0, setpoint=20.0, dt_seconds=14400.0, cold_tolerance=0.5)
+
+        # physics_baseline_ki=0.01, current_ki=0.02 -> ratio=2.0 < MAX (3.0)
+        assert (
+            detector.should_adjust_ki(
+                cycles_completed=0,
+                current_ki=0.02,
+                physics_baseline_ki=0.01,
+            )
+            is True
+        )
+
+    def test_physics_cap_ignores_stale_cumulative_multiplier(self, detector):
+        """Test that physics cap works correctly even with wrong cumulative_ki_multiplier."""
+        # Accumulate undershoot conditions
+        detector.update(temp=18.0, setpoint=20.0, dt_seconds=14400.0, cold_tolerance=0.5)
+
+        # Simulate the bug: cumulative_ki_multiplier reset to 1.0 on restart,
+        # but actual Ki is 4.5x the physics baseline (should be blocked)
+        detector.cumulative_ki_multiplier = 1.0  # Wrong value (e.g. after restart)
+
+        # Without physics params: would wrongly allow boost (cumulative=1.0 < 3.0)
+        assert detector.should_adjust_ki(cycles_completed=0) is True  # Fallback path allows it
+
+        # With physics params: correctly blocks the boost (4.5x >= 3.0 cap)
+        assert (
+            detector.should_adjust_ki(
+                cycles_completed=0,
+                current_ki=0.045,  # 4.5x actual
+                physics_baseline_ki=0.01,
+            )
+            is False
+        )
+
+    def test_get_adjustment_uses_physics_cap(self, detector):
+        """Test that get_adjustment uses physics-based cap when params are provided."""
+        # current_ki=0.028, baseline=0.01 -> actual_ratio=2.8
+        # max_allowed = 3.0 / 2.8 = 1.071
+        # configured multiplier = 1.20 (floor_hydronic)
+        # result = min(1.20, 1.071) = 1.071
+        result = detector.get_adjustment(current_ki=0.028, physics_baseline_ki=0.01)
+        expected = MAX_UNDERSHOOT_KI_MULTIPLIER / 2.8
+        assert result == pytest.approx(expected, abs=0.001)
+
+    def test_get_adjustment_full_multiplier_when_below_cap(self, detector):
+        """Test that full multiplier is returned when ratio is well below cap."""
+        # current_ki=0.01, baseline=0.01 -> ratio=1.0 (at baseline, cap not reached)
+        # max_allowed = 3.0 / 1.0 = 3.0
+        # result = min(1.20, 3.0) = 1.20
+        thresholds = UNDERSHOOT_THRESHOLDS[HeatingType.FLOOR_HYDRONIC]
+        result = detector.get_adjustment(current_ki=0.01, physics_baseline_ki=0.01)
+        assert result == pytest.approx(thresholds["ki_multiplier"], abs=0.001)
+
+    def test_apply_adjustment_uses_physics_cap(self, detector):
+        """Test that apply_adjustment uses physics-based cap and returns clamped multiplier."""
+        # current_ki=0.028, baseline=0.01 -> ratio=2.8
+        # clamped multiplier = min(1.20, 3.0/2.8) = 1.071
+        expected_multiplier = MAX_UNDERSHOOT_KI_MULTIPLIER / 2.8
+        result = detector.apply_adjustment(current_ki=0.028, physics_baseline_ki=0.01)
+        assert result == pytest.approx(expected_multiplier, abs=0.001)
+
+    def test_physics_cap_with_zero_baseline_falls_back_to_cumulative(self, detector):
+        """Test that zero physics_baseline_ki falls back to cumulative tracking."""
+        # Accumulate undershoot conditions
+        detector.update(temp=18.0, setpoint=20.0, dt_seconds=14400.0, cold_tolerance=0.5)
+
+        # Zero baseline should use cumulative fallback (cumulative=1.0 < 3.0 -> allows)
+        assert (
+            detector.should_adjust_ki(
+                cycles_completed=0,
+                current_ki=0.05,
+                physics_baseline_ki=0.0,  # Zero baseline -> fallback
+            )
+            is True
+        )
 
 
 class TestShouldAdjustWithCompletedCycles:
@@ -278,7 +376,6 @@ class TestShouldAdjustTimeThreshold:
         # Floor hydronic threshold: 4.0 hours = 14400 seconds
         thresholds = UNDERSHOOT_THRESHOLDS[HeatingType.FLOOR_HYDRONIC]
         time_threshold = thresholds["time_threshold_hours"] * 3600.0
-        debt_threshold = thresholds["debt_threshold"]
 
         # Use small error to avoid triggering debt threshold
         # Need: error * (time_hours) < debt_threshold
@@ -315,9 +412,6 @@ class TestShouldAdjustDebtThreshold:
     def test_triggers_when_debt_threshold_exceeded(self, detector):
         """Test that adjustment triggers when debt threshold is exceeded."""
         # Floor hydronic debt threshold: 2.0 °C·h
-        thresholds = UNDERSHOOT_THRESHOLDS[HeatingType.FLOOR_HYDRONIC]
-        debt_threshold = thresholds["debt_threshold"]
-
         # Just below threshold: error=1.9°C for 1h -> 1.9 °C·h
         detector.update(temp=18.1, setpoint=20.0, dt_seconds=3600.0, cold_tolerance=0.5)
         assert detector.should_adjust_ki(cycles_completed=0) is False
@@ -436,7 +530,7 @@ class TestDifferentHeatingTypes:
 
     def test_floor_hydronic_thresholds(self):
         """Test floor_hydronic has longest thresholds (slow system)."""
-        detector = UndershootDetector(HeatingType.FLOOR_HYDRONIC)
+        _detector = UndershootDetector(HeatingType.FLOOR_HYDRONIC)  # Verify instantiation
         thresholds = UNDERSHOOT_THRESHOLDS[HeatingType.FLOOR_HYDRONIC]
 
         assert thresholds["time_threshold_hours"] == 4.0
@@ -446,7 +540,7 @@ class TestDifferentHeatingTypes:
 
     def test_radiator_thresholds(self):
         """Test radiator has moderate thresholds."""
-        detector = UndershootDetector(HeatingType.RADIATOR)
+        _detector = UndershootDetector(HeatingType.RADIATOR)  # Verify instantiation
         thresholds = UNDERSHOOT_THRESHOLDS[HeatingType.RADIATOR]
 
         assert thresholds["time_threshold_hours"] == 2.0
@@ -456,7 +550,7 @@ class TestDifferentHeatingTypes:
 
     def test_convector_thresholds(self):
         """Test convector has shorter thresholds (faster system)."""
-        detector = UndershootDetector(HeatingType.CONVECTOR)
+        _detector = UndershootDetector(HeatingType.CONVECTOR)  # Verify instantiation
         thresholds = UNDERSHOOT_THRESHOLDS[HeatingType.CONVECTOR]
 
         assert thresholds["time_threshold_hours"] == 1.5
@@ -466,7 +560,7 @@ class TestDifferentHeatingTypes:
 
     def test_forced_air_thresholds(self):
         """Test forced_air has shortest thresholds (fastest system)."""
-        detector = UndershootDetector(HeatingType.FORCED_AIR)
+        _detector = UndershootDetector(HeatingType.FORCED_AIR)  # Verify instantiation
         thresholds = UNDERSHOOT_THRESHOLDS[HeatingType.FORCED_AIR]
 
         assert thresholds["time_threshold_hours"] == 0.75

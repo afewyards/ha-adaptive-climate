@@ -113,6 +113,39 @@ def _get_last_adjustment_time_from_history(
     return None
 
 
+def _get_physics_baseline_ki_from_history(pid_history: list[dict]) -> float | None:
+    """Get the physics baseline Ki from PID history.
+
+    Looks for the most recent entry with reason "physics_init" or "physics_reset".
+    Falls back to the first entry's Ki value if no physics entry exists.
+
+    Args:
+        pid_history: List of PID history entries from PIDGainsManager.
+                     Each entry has format: {"timestamp": "...", "kp": ..., "ki": ..., "reason": "..."}
+
+    Returns:
+        Ki value from the most recent physics entry, or from first entry as fallback.
+        None if pid_history is empty.
+    """
+    if not pid_history:
+        return None
+
+    # Look for most recent physics entry (reversed = newest first)
+    for entry in reversed(pid_history):
+        reason = entry.get("reason", "")
+        if reason in ("physics_init", "physics_reset"):
+            ki = entry.get("ki")
+            if ki is not None:
+                return float(ki)
+
+    # Fallback: use first entry's Ki (oldest known baseline)
+    first_ki = pid_history[0].get("ki")
+    if first_ki is not None:
+        return float(first_ki)
+
+    return None
+
+
 # Adaptive learning (CycleMetrics imported from cycle_analysis)
 
 
@@ -166,10 +199,8 @@ class AdaptiveLearner:
 
         if heating_type is None:
             undershoot_heating_type = HeatingTypeEnum.RADIATOR
-        elif isinstance(heating_type, str):
-            undershoot_heating_type = HeatingTypeEnum(heating_type)
         else:
-            undershoot_heating_type = heating_type
+            undershoot_heating_type = HeatingTypeEnum(heating_type)
         self._undershoot_detector = UndershootDetector(undershoot_heating_type)
 
         # Store historic scan flag (used by unified detector)
@@ -1388,6 +1419,7 @@ class AdaptiveLearner:
         """
         # Extract last boost time from PID history (checks both reason strings)
         last_boost_utc = None
+        physics_baseline_ki: float | None = None
         if pid_history:
             # Check both old reason names for backward compatibility
             undershoot_utc = _get_last_adjustment_time_from_history(pid_history, "undershoot_ki_boost")
@@ -1398,11 +1430,16 @@ class AdaptiveLearner:
             else:
                 last_boost_utc = undershoot_utc or chronic_utc
 
-        if not self._undershoot_detector.should_adjust_ki(cycles_completed, last_boost_utc):
+            # Extract physics baseline Ki for physics-based cap check
+            physics_baseline_ki = _get_physics_baseline_ki_from_history(pid_history)
+
+        if not self._undershoot_detector.should_adjust_ki(
+            cycles_completed, last_boost_utc, current_ki, physics_baseline_ki
+        ):
             return None
 
-        # Get and apply the adjustment
-        multiplier = self._undershoot_detector.apply_adjustment()
+        # Get and apply the adjustment (physics-based cap when baseline is available)
+        multiplier = self._undershoot_detector.apply_adjustment(current_ki, physics_baseline_ki)
         new_ki = current_ki * multiplier
 
         # Log with context about which mode triggered
