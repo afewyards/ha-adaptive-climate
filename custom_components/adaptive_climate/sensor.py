@@ -39,6 +39,7 @@ from .sensors.comfort import (
 from .sensors.actuator_wear import ActuatorWearSensor
 from .sensors.health import SystemHealthSensor
 from .sensors.water_temp import WaterTempSupplySensor
+from .sensors.pump_flow import PumpFlowTargetSensor
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -158,6 +159,11 @@ async def async_setup_platform(
         if coordinator is not None and getattr(coordinator, "water_temp_controller", None) is not None:
             sensors.append(WaterTempSupplySensor(hass))
             _LOGGER.info("WaterTempSupplySensor created")
+
+        # Create the pump flow diagnostic sensor when pump flow control is configured
+        if coordinator is not None and getattr(coordinator, "pump_flow_controller", None) is not None:
+            sensors.append(PumpFlowTargetSensor(hass))
+            _LOGGER.info("PumpFlowTargetSensor created")
 
         # Mark as created
         hass.data[DOMAIN]["system_sensors_created"] = True
