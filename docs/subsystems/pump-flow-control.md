@@ -27,11 +27,22 @@ Requires `manifolds`. A zone belongs to one manifold only. Zones not on a manifo
 - Valve closes → flow leaves the sum immediately.
 - Changes coalesce in a 30 s window (starts at the first change, never extended).
 
-**Target:** no counted zones → 0; else `max(sum, min_flow)`. Rounded up to the entity `step`, clamped to its min/max (clamp → rate-limited warning, `binding_constraint: entity_limit`). An entity min above 0 means idle writes that minimum.
+**Target:** no counted zones → 0; else `max(sum, min_flow)`. Rounded up to the entity `step`, clamped to its min/max (`binding_constraint: entity_limit`, with a rate-limited warning — except an idle target clamped up to the entity minimum, which is silent). An entity min above 0 means idle writes that minimum.
 
-**Write policy** (against the entity's current value): increase → write; drop to idle → write; equal → nothing; other decreases → written once they persist `min_write_interval`, dropped if the target recovers. Non-numeric entity state (`unknown`, `unavailable`) → write. No state → skip, retried every 5 min. Write errors log at most once per hour.
+**Write policy** (against the entity's current value): increase → write; drop to idle → write; equal (within half an entity step) → nothing; other decreases → written once they persist `min_write_interval`, dropped if the target recovers. Non-numeric entity state (`unknown`, `unavailable`, non-finite) is compared with the last value this controller wrote, not overwritten unconditionally; with no prior write it writes at once. No state → skip, retried every 5 min. Write errors log at most once per hour.
+
+**Warnings** (each at most once per hour, except the config checks below which log once at startup):
+- Write failure.
+- Target entity clamps a requested value (`binding_constraint: entity_limit`) — except an idle target clamped up to the entity minimum, which is expected and silent.
+- Target entity not found.
+- At startup: a manifold zone with no entity (its flow is never requested).
+- At startup: target entity's `unit_of_measurement` is set and isn't `L/min`.
 
 **Lifecycle:** writes start 30 s after HA start; valves open at that moment count immediately. Re-evaluates every 5 min, re-asserting after a pump reset or manual change (a manual raise counts as a decrease and is reverted after `min_write_interval`).
+
+**Notes:**
+- Each valve opening or closing can trigger a write — increases aren't delayed. If the pump stores its setpoint in EEPROM, prefer longer PWM cycles to limit write wear.
+- Requested flow stays 0 until the first valve finishes opening. If the heat source must never run without flow, set the domain `source_startup_delay` to at least the longest `valve_actuation_time`.
 
 **Sensor:** `sensor.pump_flow_target` (diagnostic, L/min, refreshed every 5 min). Attributes: `open_zones`, `pending_zones` (seconds until counted), `raw_sum`, `min_flow_applied`, `decrease_pending_since`, `binding_constraint`, `last_write`.
 
