@@ -199,7 +199,7 @@ class PumpFlowController:
                 domain,
                 "set_value",
                 {"entity_id": self._target_entity, "value": value},
-                blocking=False,
+                blocking=True,
             )
         except ServiceNotFound as err:
             self._log_write_error(now, "service '%s.set_value' not found: %s", domain, err)

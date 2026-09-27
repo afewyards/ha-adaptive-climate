@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+import logging
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -354,6 +355,36 @@ class TestRobustness:
         await start(controller)
 
         assert controller.diagnostics()["last_write"] is None
+
+    @pytest.mark.asyncio
+    async def test_writes_number_set_value_and_waits_for_the_result(self, monkeypatch):
+        controller, hass, _states, _sched = build(monkeypatch)
+        controller.on_zone_demand(LIVING, True, 0.0)
+
+        await start(controller)
+
+        assert hass.services.async_call.await_args.args[:2] == ("number", "set_value")
+        assert hass.services.async_call.await_args.kwargs["blocking"] is True
+
+    @pytest.mark.asyncio
+    async def test_write_errors_are_logged_at_most_once_an_hour(self, monkeypatch, caplog):
+        controller, hass, _states, sched = build(monkeypatch)
+        hass.services.async_call = AsyncMock(side_effect=RuntimeError("boom"))
+        controller.on_zone_demand(LIVING, True, 0.0)
+
+        with caplog.at_level(logging.ERROR):
+            await start(controller)
+            await controller._async_timer_tick(None)
+
+        errors = [r for r in caplog.records if r.levelname == "ERROR" and "failed to write" in r.getMessage()]
+        assert len(errors) == 1
+
+        sched.now += 3600
+        with caplog.at_level(logging.ERROR):
+            await controller._async_timer_tick(None)
+
+        errors = [r for r in caplog.records if r.levelname == "ERROR" and "failed to write" in r.getMessage()]
+        assert len(errors) == 2
 
 
 class TestConstruction:
