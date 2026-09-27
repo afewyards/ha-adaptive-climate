@@ -67,6 +67,11 @@ class TestFlowLimits:
     def test_non_positive_step_falls_back(self):
         assert flow_limits(state(step=0))[2] == 0.1
 
+    def test_missing_state_falls_back(self):
+        minimum, maximum, step = flow_limits(None)
+        assert (minimum, step) == (0.0, 0.1)
+        assert math.isinf(maximum)
+
 
 class TestParseCurrent:
     def test_numeric_state(self):

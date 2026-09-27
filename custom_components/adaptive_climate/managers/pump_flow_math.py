@@ -8,7 +8,7 @@ import math
 from typing import Any
 
 from ..const import PUMP_FLOW_DEFAULT_STEP
-from .water_temp_writer import coerce_float
+from .water_temp_writer import entity_limits
 
 FLOW_EPSILON = 1e-6
 
@@ -32,15 +32,7 @@ def round_up(value: float, step: float) -> float:
 
 def flow_limits(state: Any) -> tuple[float, float, float]:
     """Return the target entity's (min, max, step); missing attributes fall back to (0, inf, default step)."""
-    attributes = getattr(state, "attributes", None) or {}
-    step = coerce_float(attributes.get("step"), PUMP_FLOW_DEFAULT_STEP)
-    if step <= 0:
-        step = PUMP_FLOW_DEFAULT_STEP
-    minimum = coerce_float(attributes.get("min"), 0.0)
-    maximum = coerce_float(attributes.get("max"), math.inf)
-    if minimum > maximum:
-        minimum, maximum = maximum, minimum
-    return minimum, maximum, step
+    return entity_limits(state, min_default=0.0, max_default=math.inf, step_default=PUMP_FLOW_DEFAULT_STEP)
 
 
 def parse_current(state: Any) -> float | None:

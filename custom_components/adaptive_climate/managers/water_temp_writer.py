@@ -65,26 +65,35 @@ def coerce_float(value: Any, default: float) -> float:
         return default
 
 
-def entity_limits(state: Any) -> tuple[float, float, float]:
+def entity_limits(
+    state: Any,
+    *,
+    min_default: float = SUPPLY_TEMP_MIN,
+    max_default: float = SUPPLY_TEMP_MAX,
+    step_default: float = DEFAULT_WATER_TEMP_STEP,
+) -> tuple[float, float, float]:
     """Return a target entity's (min, max, step), with safe fallbacks.
 
     Args:
         state: The entity's ``hass.states`` state object, or None if unavailable.
+        min_default: Fallback minimum when missing or non-numeric.
+        max_default: Fallback maximum when missing or non-numeric.
+        step_default: Fallback step when missing, non-numeric, or non-positive.
 
     Returns:
-        A ``(minimum, maximum, step)`` tuple, falling back to the domain-wide
-        supply temperature bounds and the default write step when attributes
-        are missing, non-numeric, or the entity itself is unavailable.
+        A ``(minimum, maximum, step)`` tuple, falling back to the provided
+        defaults when attributes are missing, non-numeric, or the entity
+        itself is unavailable.
     """
     if state is None:
-        return SUPPLY_TEMP_MIN, SUPPLY_TEMP_MAX, DEFAULT_WATER_TEMP_STEP
+        return min_default, max_default, step_default
 
     attributes = state.attributes or {}
-    step = coerce_float(attributes.get("step"), DEFAULT_WATER_TEMP_STEP)
+    step = coerce_float(attributes.get("step"), step_default)
     if step <= 0:
-        step = DEFAULT_WATER_TEMP_STEP
-    minimum = coerce_float(attributes.get("min"), SUPPLY_TEMP_MIN)
-    maximum = coerce_float(attributes.get("max"), SUPPLY_TEMP_MAX)
+        step = step_default
+    minimum = coerce_float(attributes.get("min"), min_default)
+    maximum = coerce_float(attributes.get("max"), max_default)
     if minimum > maximum:
         minimum, maximum = maximum, minimum
     return minimum, maximum, step
