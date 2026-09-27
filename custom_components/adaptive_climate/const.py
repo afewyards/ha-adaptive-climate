@@ -1088,6 +1088,22 @@ MANIFOLD_COOLDOWN_MINUTES = 5
 DEFAULT_LOOPS = 1
 DEFAULT_FLOW_PER_LOOP = 2.0
 
+CONF_MANIFOLD_ZONE_ENTITY = "entity"
+CONF_MANIFOLD_ZONE_FLOW = "flow"
+
+# Pump flow control
+CONF_PUMP_FLOW_CONTROL = "pump_flow_control"
+CONF_PUMP_FLOW_TARGET_ENTITY = "target_entity"
+CONF_PUMP_FLOW_MIN_FLOW = "min_flow"
+CONF_PUMP_FLOW_MIN_WRITE_INTERVAL = "min_write_interval"
+DEFAULT_PUMP_FLOW_MIN_WRITE_INTERVAL = 300  # seconds a decrease must persist before it is written
+PUMP_FLOW_DEBOUNCE_SECONDS = 30
+PUMP_FLOW_STARTUP_DELAY_SECONDS = 30
+PUMP_FLOW_UPDATE_INTERVAL_SECONDS = 300
+PUMP_FLOW_WARN_INTERVAL_SECONDS = 3600
+PUMP_FLOW_DEFAULT_STEP = 0.1  # L/min, when the target entity exposes no step
+PUMP_FLOW_BINDING_ENTITY_LIMIT = "entity_limit"
+
 # Preheat learning constants
 PREHEAT_OBSERVATION_WINDOW_DAYS = 90  # Rolling window for observations
 PREHEAT_MAX_OBSERVATIONS_PER_BIN = 100  # Limit observations per bin to prevent unbounded growth
