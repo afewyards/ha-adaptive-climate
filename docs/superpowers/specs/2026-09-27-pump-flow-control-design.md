@@ -56,14 +56,19 @@ Delete `CONF_LOOPS`, `DEFAULT_LOOPS`, `CONF_FLOW_PER_LOOP`, `DEFAULT_FLOW_PER_LO
 ## 2. PumpFlowController
 
 Files:
+- `manifold_config.py` — plain-voluptuous validators (manifold zones, pump block,
+  removed-key migration errors, cross checks), shared by domain + entity schemas.
 - `managers/pump_flow_controller.py` — timers, demand intake, writes.
 - `managers/pump_flow_math.py` — pure: target, round-up, write decision.
 - `sensors/pump_flow.py` — diagnostic sensor.
 
 Inputs:
 - `coordinator.update_zone_demand()` already detects changes; on change it also
-  calls `pump.on_zone_demand(climate_entity_id, open)` (heat or cool; OFF mode
-  reports demand False).
+  calls `pump.on_zone_demand(climate_entity_id, open, valve_actuation_time)`
+  (heat or cool; OFF mode reports demand False). Zone unregister reports closed.
+- Zone flows come from the validated `manifolds` config
+  (`PumpFlowController.from_config`); the registry is attached to the
+  coordinator lazily by the first zone entity, too late for construction.
 - `zone_data` gains `valve_actuation_time` (the value `climate_setup` already
   resolves: per-zone config or heating-type default).
 
@@ -106,7 +111,7 @@ diagnostic): state = requested flow. Attributes: `open_zones`, `pending_zones`
 
 `adaptive/manifold_registry.py`:
 - `Manifold(name, pipe_volume, zones: dict[str, float])`; `flow_per_loop` removed.
-- New `get_zone_flow(zone_id) -> float | None`.
+- New `manifolds_from_config(config) -> list[Manifold]` builder.
 - `get_transport_delay(zone_id, active_zones: set[str])` =
   `pipe_volume / Σ flow of active zones on that manifold`.
 - `get_worst_case_transport_delay(zone_id)` = `pipe_volume / zone flow`
