@@ -275,6 +275,30 @@ class TestTarget:
         assert written(hass) == [5.0]
         assert controller.diagnostics()["binding_constraint"] == "entity_limit"
 
+    @pytest.mark.asyncio
+    async def test_idle_clamp_to_entity_minimum_logs_no_warning(self, monkeypatch, caplog):
+        controller, _hass, _states, _sched = build(monkeypatch, initial=8.0, limits={"minimum": 5.0})
+
+        with caplog.at_level(logging.WARNING):
+            await start(controller)
+
+        warnings = [r for r in caplog.records if r.levelname == "WARNING" and "cannot take" in r.getMessage()]
+        assert warnings == []
+
+    @pytest.mark.asyncio
+    async def test_maximum_clamp_still_warns(self, monkeypatch, caplog):
+        controller, hass, _states, sched = build(monkeypatch, limits={"maximum": 5.0})
+        await start(controller)
+
+        controller.on_zone_demand(LIVING, True, 0.0)
+        controller.on_zone_demand(KITCHEN, True, 0.0)
+        with caplog.at_level(logging.WARNING):
+            await sched.advance(30)
+
+        warnings = [r for r in caplog.records if r.levelname == "WARNING" and "cannot take" in r.getMessage()]
+        assert len(warnings) == 1
+        assert written(hass) == [5.0]
+
 
 class TestTargetEntityState:
     @pytest.mark.asyncio
@@ -291,12 +315,64 @@ class TestTargetEntityState:
         assert written(hass) == [4.0]
 
     @pytest.mark.asyncio
+    async def test_missing_target_entity_warns_at_most_once_an_hour(self, monkeypatch, caplog):
+        controller, _hass, _states, sched = build(monkeypatch, target_state=False)
+
+        with caplog.at_level(logging.WARNING):
+            await start(controller)
+            await controller._async_timer_tick(None)
+
+        warnings = [r for r in caplog.records if r.levelname == "WARNING" and "not found" in r.getMessage()]
+        assert len(warnings) == 1
+
+        sched.now += 3600
+        with caplog.at_level(logging.WARNING):
+            await controller._async_timer_tick(None)
+
+        warnings = [r for r in caplog.records if r.levelname == "WARNING" and "not found" in r.getMessage()]
+        assert len(warnings) == 2
+
+    @pytest.mark.asyncio
     async def test_non_numeric_target_state_is_overwritten(self, monkeypatch):
         controller, hass, _states, _sched = build(monkeypatch, initial="unavailable")
         controller.on_zone_demand(LIVING, True, 0.0)
 
         await start(controller)
 
+        assert written(hass) == [4.0]
+
+    @pytest.mark.asyncio
+    async def test_unknown_read_back_after_a_write_is_not_rewritten(self, monkeypatch):
+        controller, hass, states, sched = build(monkeypatch)
+        controller.on_zone_demand(LIVING, True, 0.0)
+        await start(controller)
+        assert written(hass) == [4.0]
+
+        states[TARGET] = number_state("unknown")
+        await controller._async_timer_tick(None)
+        await controller._async_timer_tick(None)
+        assert written(hass) == [4.0]
+
+        controller.on_zone_demand(KITCHEN, True, 0.0)
+        await sched.advance(30)
+        assert written(hass) == [4.0, 7.5]
+
+    @pytest.mark.asyncio
+    async def test_rounded_read_back_is_not_rewritten(self, monkeypatch):
+        controller, hass, states, sched = build(monkeypatch, limits={"step": 1.0})
+
+        async def set_value(_domain, _service, data, blocking=False):
+            states[data["entity_id"]] = number_state(data["value"] + 0.3, step=1.0)
+
+        hass.services.async_call = AsyncMock(side_effect=set_value)
+        await start(controller)
+
+        controller.on_zone_demand(KITCHEN, True, 0.0)
+        await sched.advance(30)
+        assert written(hass) == [4.0]
+
+        await controller._async_timer_tick(None)
+        await controller._async_timer_tick(None)
         assert written(hass) == [4.0]
 
     @pytest.mark.asyncio
@@ -385,6 +461,70 @@ class TestRobustness:
 
         errors = [r for r in caplog.records if r.levelname == "ERROR" and "failed to write" in r.getMessage()]
         assert len(errors) == 2
+
+
+class TestConfigWarnings:
+    @pytest.mark.asyncio
+    async def test_missing_zone_entity_warns_naming_the_zone(self, monkeypatch, caplog):
+        controller, _hass, states, _sched = build(monkeypatch)
+        states[LIVING] = MagicMock()
+
+        with caplog.at_level(logging.WARNING):
+            await start(controller)
+
+        warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+        assert any(KITCHEN in w and "has no entity" in w for w in warnings)
+        assert not any(LIVING in w and "has no entity" in w for w in warnings)
+
+    @pytest.mark.asyncio
+    async def test_zone_with_entity_does_not_warn(self, monkeypatch, caplog):
+        controller, _hass, states, _sched = build(monkeypatch)
+        states[LIVING] = MagicMock()
+        states[KITCHEN] = MagicMock()
+
+        with caplog.at_level(logging.WARNING):
+            await start(controller)
+
+        warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+        assert not any("has no entity" in w for w in warnings)
+
+    @pytest.mark.asyncio
+    async def test_target_unit_other_than_lpm_warns(self, monkeypatch, caplog):
+        controller, _hass, states, _sched = build(monkeypatch)
+        states[LIVING] = MagicMock()
+        states[KITCHEN] = MagicMock()
+        states[TARGET].attributes["unit_of_measurement"] = "l/h"
+
+        with caplog.at_level(logging.WARNING):
+            await start(controller)
+
+        warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+        assert any("l/h" in w for w in warnings)
+
+    @pytest.mark.asyncio
+    async def test_target_unit_lmin_does_not_warn(self, monkeypatch, caplog):
+        controller, _hass, states, _sched = build(monkeypatch)
+        states[LIVING] = MagicMock()
+        states[KITCHEN] = MagicMock()
+        states[TARGET].attributes["unit_of_measurement"] = "L/min"
+
+        with caplog.at_level(logging.WARNING):
+            await start(controller)
+
+        warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+        assert not any("unit" in w.lower() for w in warnings)
+
+    @pytest.mark.asyncio
+    async def test_target_unit_absent_does_not_warn(self, monkeypatch, caplog):
+        controller, _hass, states, _sched = build(monkeypatch)
+        states[LIVING] = MagicMock()
+        states[KITCHEN] = MagicMock()
+
+        with caplog.at_level(logging.WARNING):
+            await start(controller)
+
+        warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+        assert not any("unit" in w.lower() for w in warnings)
 
 
 class TestConstruction:

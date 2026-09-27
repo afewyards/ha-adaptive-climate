@@ -74,8 +74,10 @@ class PumpFlowController:
         self._raw_sum = 0.0
         self._binding: str | None = None
         self._last_write_at: datetime | None = None
+        self._last_written: float | None = None
         self._last_error_at: float | None = None
         self._last_limit_warn_at: float | None = None
+        self._last_missing_warn_at: float | None = None
 
         self._started_unsub: CALLBACK_TYPE | None = None
         self._startup_unsub: CALLBACK_TYPE | None = None
@@ -164,7 +166,7 @@ class PumpFlowController:
 
         state = self.hass.states.get(self._target_entity)
         if state is None:
-            _LOGGER.debug("Pump flow control: %s has no state yet, skipping write", self._target_entity)
+            self._warn_missing_target(now)
             return
 
         minimum, maximum, step = flow_limits(state)
@@ -174,11 +176,18 @@ class PumpFlowController:
         self._binding = None
         if abs(final - rounded) >= FLOW_EPSILON:
             self._binding = PUMP_FLOW_BINDING_ENTITY_LIMIT
-            self._warn_entity_limited(rounded, final, now)
+            idle_clamped_to_minimum = rounded <= FLOW_EPSILON and abs(final - minimum) < FLOW_EPSILON
+            if not idle_clamped_to_minimum:
+                self._warn_entity_limited(rounded, final, now)
+
+        current = parse_current(state)
+        if current is None:
+            current = self._last_written
 
         decision = decide_write(
             final,
-            parse_current(state),
+            current,
+            step=step,
             idle=not counted,
             pending_since=self._decrease_pending_since,
             now=now,
@@ -212,6 +221,7 @@ class PumpFlowController:
             return
         self._last_error_at = None
         self._last_write_at = dt_util.utcnow()
+        self._last_written = value
         _LOGGER.debug("Pump flow control: wrote %.2f L/min to %s", value, self._target_entity)
 
     def _log_write_error(self, now: float, message: str, *args: Any) -> None:
@@ -231,6 +241,26 @@ class PumpFlowController:
             desired,
             actual,
         )
+
+    def _warn_missing_target(self, now: float) -> None:
+        last = self._last_missing_warn_at
+        if last is not None and now - last < PUMP_FLOW_WARN_INTERVAL_SECONDS:
+            return
+        self._last_missing_warn_at = now
+        _LOGGER.warning("Pump flow control: target entity %s not found", self._target_entity)
+
+    def _warn_on_config_problems(self) -> None:
+        for zone in sorted(self._zone_flows):
+            if self.hass.states.get(zone) is None:
+                _LOGGER.warning("Pump flow control: manifold zone %s has no entity; its flow is never requested", zone)
+        state = self.hass.states.get(self._target_entity)
+        if state is None:
+            return
+        unit = state.attributes.get("unit_of_measurement")
+        if unit is not None and unit != "L/min":
+            _LOGGER.warning(
+                "Pump flow control: target entity %s reports unit %s, expected L/min", self._target_entity, unit
+            )
 
     # ── diagnostics ──────────────────────────────────────────────────────────
 
@@ -295,6 +325,7 @@ class PumpFlowController:
         now = self._monotonic()
         self._counts_from = {zone: min(counts_from, now) for zone, counts_from in self._counts_from.items()}
         self._schedule_maturity()
+        self._warn_on_config_problems()
         self._started = True
         await self._async_run()
 

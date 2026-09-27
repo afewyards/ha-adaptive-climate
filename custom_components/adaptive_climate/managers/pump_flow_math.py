@@ -36,11 +36,12 @@ def flow_limits(state: Any) -> tuple[float, float, float]:
 
 
 def parse_current(state: Any) -> float | None:
-    """Return the entity's numeric value, or None when unknown, unavailable or non-numeric."""
+    """Return the entity's numeric value, or None when unknown, unavailable, non-numeric or non-finite."""
     try:
-        return float(state.state)
+        value = float(state.state)
     except (AttributeError, TypeError, ValueError):
         return None
+    return value if math.isfinite(value) else None
 
 
 @dataclass(frozen=True)
@@ -56,15 +57,20 @@ def decide_write(
     final: float,
     current: float | None,
     *,
+    step: float,
     idle: bool,
     pending_since: float | None,
     now: float,
     min_write_interval: float,
 ) -> WriteDecision:
-    """Increases and the drop to idle write now; other decreases must persist ``min_write_interval``."""
+    """Increases and the drop to idle write now; other decreases must persist ``min_write_interval``.
+
+    ``current`` is considered equal to ``final`` within half an entity step, so a device
+    that reads back a rounded or noisy value does not trigger a rewrite every cycle.
+    """
     if current is None:
         return WriteDecision(True, None, None)
-    if abs(final - current) < FLOW_EPSILON:
+    if abs(final - current) < max(step / 2, FLOW_EPSILON):
         return WriteDecision(False, None, None)
     if idle or final > current:
         return WriteDecision(True, None, None)

@@ -81,12 +81,22 @@ class TestParseCurrent:
     def test_non_numeric_state_is_none(self, raw):
         assert parse_current(state(raw)) is None
 
+    @pytest.mark.parametrize("raw", ["nan", "inf", "-inf"])
+    def test_non_finite_state_is_none(self, raw):
+        assert parse_current(state(raw)) is None
+
 
 class TestDecideWrite:
     @staticmethod
-    def decide(final, current, *, idle=False, pending_since=None, now=1000.0, interval=300.0):
+    def decide(final, current, *, step=0.5, idle=False, pending_since=None, now=1000.0, interval=300.0):
         return decide_write(
-            final, current, idle=idle, pending_since=pending_since, now=now, min_write_interval=interval
+            final,
+            current,
+            step=step,
+            idle=idle,
+            pending_since=pending_since,
+            now=now,
+            min_write_interval=interval,
         )
 
     def test_unknown_current_value_writes(self):
@@ -99,6 +109,13 @@ class TestDecideWrite:
     def test_equal_is_a_no_op_and_clears_pending(self):
         d = self.decide(4.0, 4.0, pending_since=900.0)
         assert (d.write, d.decrease_pending_since, d.recheck_in) == (False, None, None)
+
+    def test_read_back_within_half_a_step_is_equal(self):
+        assert not self.decide(4.0, 4.2, step=0.5).write
+
+    def test_read_back_beyond_half_a_step_is_a_change(self):
+        d = self.decide(4.0, 4.3, step=0.5)
+        assert (d.write, d.decrease_pending_since) == (False, 1000.0)
 
     def test_first_decrease_starts_pending(self):
         d = self.decide(4.0, 7.5)
