@@ -66,7 +66,6 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
         self._sun_position_calculator = SunPositionCalculator.from_hass(hass)
         self._thermal_group_manager: Any = None  # ThermalGroupManager or None
         self._manifold_registry: ManifoldRegistry | None = None
-        self._zone_loops: dict[str, int] = {}
         self._update_pending: bool = False
         self._rerun_pending: bool = False  # C04: re-run guard for demand changes during in-flight update
         self._config = config or {}
@@ -172,20 +171,11 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
         """
         self._manifold_registry = registry
 
-    def update_zone_loops(self, zone_id: str, loops: int) -> None:
-        """Update the number of heating loops for a zone.
-
-        Args:
-            zone_id: Unique identifier for the zone
-            loops: Number of heating loops in this zone
-        """
-        self._zone_loops[zone_id] = loops
-
     def get_transport_delay_for_zone(self, zone_id: str) -> float:
         """Get the transport delay for a zone in minutes.
 
         Calculates the time for hot water to reach the zone based on active
-        zones and their loop counts. Only considers zones with heating demand.
+        zones. Only considers zones with heating demand.
 
         Args:
             zone_id: Unique identifier for the zone
@@ -196,33 +186,26 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
         if self._manifold_registry is None:
             return 0.0
 
-        # Build active_zones dict: {zone_id: loops} for zones with heating demand
-        active_zones: dict[str, int] = {}
-        for zone_slug, demand_state in self._demand_states.items():
-            # Only include zones with heating demand
-            if demand_state.get("demand") and demand_state.get("mode") == "heat":
-                # Convert slug to entity_id (demand_states uses slugs, but zone_loops and registry use entity_ids)
-                zone_entity_id = f"climate.{zone_slug}"
-                # Get loop count from _zone_loops, default to 1 if not set
-                loop_count = self._zone_loops.get(zone_entity_id, 1)
-                active_zones[zone_entity_id] = loop_count
-
-        # Call registry to calculate transport delay
+        # demand_states is keyed by zone slug; the registry is keyed by climate entity_id
+        active_zones = {
+            f"climate.{zone_slug}"
+            for zone_slug, demand_state in self._demand_states.items()
+            if demand_state.get("demand") and demand_state.get("mode") == "heat"
+        }
         return self._manifold_registry.get_transport_delay(zone_id, active_zones)
 
-    def get_worst_case_transport_delay_for_zone(self, zone_id: str, zone_loops: int = 1) -> float:
+    def get_worst_case_transport_delay_for_zone(self, zone_id: str) -> float:
         """Get worst-case transport delay for preheat scheduling.
 
         Args:
             zone_id: The zone entity_id
-            zone_loops: Number of loops for this zone
 
         Returns:
             Transport delay in minutes, or 0.0 if no manifold.
         """
         if not self._manifold_registry:
             return 0.0
-        return self._manifold_registry.get_worst_case_transport_delay(zone_id, zone_loops)
+        return self._manifold_registry.get_worst_case_transport_delay(zone_id)
 
     @property
     def weather_entity(self) -> str | None:
@@ -446,7 +429,7 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
     def unregister_zone(self, zone_id: str) -> None:
         """Unregister a zone from the coordinator.
 
-        Removes the zone from all tracking dicts (zones, demand states, zone loops).
+        Removes the zone from all tracking dicts (zones, demand states).
         Notifies subscribers (ModeSync, CentralController, ThermalGroupManager) via
         ZoneUnregisteredEvent instead of ad-hoc direct calls.
         This should be called when a climate entity is being removed.
@@ -467,10 +450,6 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
         # Remove from demand states dict
         if zone_id in self._demand_states:
             del self._demand_states[zone_id]
-
-        # Remove from zone loops dict
-        if zone_id in self._zone_loops:
-            del self._zone_loops[zone_id]
 
         # A02: Notify all subscribers (ModeSync, CentralController, ThermalGroupManager)
         # via pub/sub instead of ad-hoc direct calls

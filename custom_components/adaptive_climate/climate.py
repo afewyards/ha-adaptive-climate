@@ -200,7 +200,6 @@ class AdaptiveThermostat(
         self._window_orientation = config.window_orientation
         self._floor_construction = config.floor_construction
         self._ha_area = config.ha_area  # Home Assistant area to assign entity to
-        self._loops = config.loops
 
         # Setpoint boost configuration
         self._setpoint_boost = config.setpoint_boost
@@ -555,9 +554,7 @@ class AdaptiveThermostat(
                 # Set manifold registry in coordinator if not already set
                 if not coordinator.has_manifold_registry():
                     coordinator.set_manifold_registry(manifold_registry)
-                # Update zone's loop count in coordinator
-                coordinator.update_zone_loops(self.entity_id, self._loops)
-                _LOGGER.info("%s: Registered with manifold registry (loops=%d)", self.entity_id, self._loops)
+                _LOGGER.info("%s: Registered with manifold registry", self.entity_id)
 
         # Set default state to off
         if not self._hvac_mode:
@@ -1097,11 +1094,6 @@ class AdaptiveThermostat(
     def pid_control_e(self):
         """Return the external output of external temperature compensation."""
         return self._e
-
-    @property
-    def loops(self) -> int:
-        """Return the number of heating loops for this zone."""
-        return self._loops
 
     @property
     def heating_type(self) -> const.HeatingType:

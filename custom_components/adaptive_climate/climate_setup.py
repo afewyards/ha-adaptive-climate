@@ -26,6 +26,7 @@ from . import DOMAIN
 from . import const
 from .adaptive.learning import AdaptiveLearner
 from .adaptive.persistence import LearningDataStore
+from .manifold_config import LOOPS_REMOVED_MESSAGE, REMOVED_LOOPS_KEY, removed_key
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -138,7 +139,7 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
             }
         ),
         # Manifold integration
-        vol.Optional(const.CONF_LOOPS, default=const.DEFAULT_LOOPS): vol.All(vol.Coerce(int), vol.Range(min=1, max=10)),
+        vol.Optional(REMOVED_LOOPS_KEY): removed_key(LOOPS_REMOVED_MESSAGE),
         # Setpoint boost
         vol.Optional(const.CONF_SETPOINT_BOOST, default=True): cv.boolean,
         vol.Optional(const.CONF_SETPOINT_BOOST_FACTOR): vol.Coerce(float),
@@ -398,7 +399,6 @@ async def async_setup_platform(hass: HomeAssistant, config: ConfigType, async_ad
         floor_construction=config.get(const.CONF_FLOOR_CONSTRUCTION),
         max_power_w=config.get(const.CONF_MAX_POWER_W),
         supply_temperature=domain_data.get("supply_temperature"),
-        loops=config.get(const.CONF_LOOPS, const.DEFAULT_LOOPS),
         # PID / adaptive
         derivative_filter_alpha=config.get(const.CONF_DERIVATIVE_FILTER),
         auto_apply_pid=config.get(const.CONF_AUTO_APPLY_PID, True),

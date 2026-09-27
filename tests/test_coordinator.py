@@ -535,30 +535,6 @@ def test_set_manifold_registry(coord):
     assert coord._manifold_registry is mock_registry
 
 
-def test_update_zone_loops(coord):
-    """Test that coordinator tracks loops per zone."""
-    # Register zones first
-    coord.register_zone("zone1", {"name": "Zone 1"})
-    coord.register_zone("zone2", {"name": "Zone 2"})
-
-    # Update loops for zones
-    coord.update_zone_loops("zone1", 2)
-    coord.update_zone_loops("zone2", 3)
-
-    # Verify loops are tracked
-    assert coord._zone_loops["zone1"] == 2
-    assert coord._zone_loops["zone2"] == 3
-
-
-def test_update_zone_loops_unregistered_zone(coord):
-    """Test that updating loops for unregistered zone is handled gracefully."""
-    # Should not raise an error
-    coord.update_zone_loops("nonexistent_zone", 2)
-
-    # Verify it's still tracked (zones can be registered after loops are set)
-    assert coord._zone_loops["nonexistent_zone"] == 2
-
-
 def test_get_transport_delay_for_zone_with_registry(coord):
     """Test that get_transport_delay_for_zone queries registry with active zones."""
     # Create a mock registry
@@ -630,7 +606,7 @@ def test_get_transport_delay_for_zone_no_active_zones(coord):
     mock_registry.get_transport_delay.assert_called_once()
     call_args = mock_registry.get_transport_delay.call_args
     assert call_args[0][0] == "zone1"
-    assert call_args[0][1] == {}  # No active zones
+    assert call_args[0][1] == set()  # No active zones
 
 
 def test_get_transport_delay_for_zone_mode_filter(coord):
@@ -665,7 +641,7 @@ def test_get_transport_delay_converts_slug_to_entity_id(coord):
     """Test that transport delay converts slug keys to entity_ids for manifold registry.
 
     This tests the fix for the bug where _demand_states is keyed by slug
-    (e.g. 'bathroom_2nd') but _zone_loops and manifold registry expect
+    (e.g. 'bathroom_2nd') but the manifold registry expects
     entity_ids (e.g. 'climate.bathroom_2nd').
     """
     # Create a mock registry
@@ -677,10 +653,6 @@ def test_get_transport_delay_converts_slug_to_entity_id(coord):
     # Register zones using slugs (as climate_setup.py does)
     coord.register_zone("bathroom_2nd", {"name": "Bathroom 2nd"})
     coord.register_zone("living_room", {"name": "Living Room"})
-
-    # Update zone loops using entity_ids (as climate.py does)
-    coord.update_zone_loops("climate.bathroom_2nd", 2)
-    coord.update_zone_loops("climate.living_room", 3)
 
     # Set demand for zones using slugs (as they're registered)
     coord.update_zone_demand("bathroom_2nd", True, "heat")
@@ -699,7 +671,7 @@ def test_get_transport_delay_converts_slug_to_entity_id(coord):
     # First arg should be the entity_id
     assert call_args[0][0] == "climate.bathroom_2nd"
 
-    # Second arg should be dict of active zones with entity_id keys, not slugs
+    # Second arg should be set of active zones with entity_id keys, not slugs
     active_zones = call_args[0][1]
 
     # These should be entity_ids with "climate." prefix
@@ -709,10 +681,6 @@ def test_get_transport_delay_converts_slug_to_entity_id(coord):
     # These slug keys should NOT be present
     assert "bathroom_2nd" not in active_zones
     assert "living_room" not in active_zones
-
-    # Loop counts should be preserved
-    assert active_zones["climate.bathroom_2nd"] == 2
-    assert active_zones["climate.living_room"] == 3
 
 
 class TestCoordinatorAutoModeSwitching:
@@ -829,11 +797,11 @@ def test_get_worst_case_transport_delay_for_zone_with_registry(hass):
     coord.set_manifold_registry(mock_registry)
 
     # Test wrapper method
-    delay = coord.get_worst_case_transport_delay_for_zone("climate.bathroom_2nd", zone_loops=2)
+    delay = coord.get_worst_case_transport_delay_for_zone("climate.bathroom_2nd")
 
-    # Expected: 20L / (2 loops × 2 L/min) = 5 min
+    # 20L / 4 L/min = 5 min
     assert delay == 5.0
-    mock_registry.get_worst_case_transport_delay.assert_called_once_with("climate.bathroom_2nd", 2)
+    mock_registry.get_worst_case_transport_delay.assert_called_once_with("climate.bathroom_2nd")
 
 
 def test_get_worst_case_transport_delay_for_zone_no_registry(hass):
@@ -841,27 +809,10 @@ def test_get_worst_case_transport_delay_for_zone_no_registry(hass):
     coord = coordinator.AdaptiveThermostatCoordinator(hass)
 
     # No manifold registry set
-    delay = coord.get_worst_case_transport_delay_for_zone("climate.test", zone_loops=1)
+    delay = coord.get_worst_case_transport_delay_for_zone("climate.test")
 
     # Should return 0.0
     assert delay == 0.0
-
-
-def test_get_worst_case_transport_delay_for_zone_default_loops(hass):
-    """Test get_worst_case_transport_delay_for_zone uses default zone_loops=1."""
-    coord = coordinator.AdaptiveThermostatCoordinator(hass)
-
-    # Create mock manifold registry
-    mock_registry = MagicMock()
-    mock_registry.get_worst_case_transport_delay.return_value = 15.0
-    coord.set_manifold_registry(mock_registry)
-
-    # Test without specifying zone_loops (should default to 1)
-    delay = coord.get_worst_case_transport_delay_for_zone("climate.living_room")
-
-    # Expected: 30L / (1 loop × 2 L/min) = 15 min
-    assert delay == 15.0
-    mock_registry.get_worst_case_transport_delay.assert_called_once_with("climate.living_room", 1)
 
 
 def test_get_worst_case_transport_delay_for_zone_unknown_zone(hass):
@@ -874,11 +825,11 @@ def test_get_worst_case_transport_delay_for_zone_unknown_zone(hass):
     coord.set_manifold_registry(mock_registry)
 
     # Test with zone not in any manifold
-    delay = coord.get_worst_case_transport_delay_for_zone("climate.unknown_zone", zone_loops=1)
+    delay = coord.get_worst_case_transport_delay_for_zone("climate.unknown_zone")
 
     # Should return 0.0
     assert delay == 0.0
-    mock_registry.get_worst_case_transport_delay.assert_called_once_with("climate.unknown_zone", 1)
+    mock_registry.get_worst_case_transport_delay.assert_called_once_with("climate.unknown_zone")
 
 
 # --- Shared outdoor temp EMA tests ---

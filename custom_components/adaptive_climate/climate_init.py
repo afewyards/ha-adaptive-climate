@@ -153,10 +153,7 @@ async def async_setup_managers(thermostat: AdaptiveThermostat) -> None:
         # Get manifold transport delay for this zone
         manifold_transport_delay = 0.0
         if coordinator and thermostat._zone_id:
-            manifold_transport_delay = coordinator.get_worst_case_transport_delay_for_zone(
-                thermostat.entity_id,
-                zone_loops=1,  # Conservative estimate: assume 1 loop active
-            )
+            manifold_transport_delay = coordinator.get_worst_case_transport_delay_for_zone(thermostat.entity_id)
             if manifold_transport_delay > 0:
                 _LOGGER.info(
                     "%s: Using manifold transport delay of %.1f minutes for preheat scheduling",

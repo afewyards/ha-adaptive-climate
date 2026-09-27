@@ -29,6 +29,8 @@ except ImportError:
     ConfigType = Any
     cv = None
 
+from .manifold_config import MANIFOLD_SCHEMA, validate_manifolds_and_pump_flow
+
 from .const import (
     DOMAIN,
     CONF_DEBUG,
@@ -65,8 +67,6 @@ from .const import (
     CONF_BOOST_PID_OFF,
     CONF_THERMAL_GROUPS,
     CONF_MANIFOLDS,
-    CONF_PIPE_VOLUME,
-    CONF_FLOW_PER_LOOP,
     # Auto mode switching
     CONF_AUTO_MODE_SWITCHING,
     CONF_AUTO_MODE_THRESHOLD,
@@ -128,7 +128,6 @@ from .const import (
     DEFAULT_SYNC_MODES,
     DEFAULT_LEARNING_WINDOW_DAYS,
     DEFAULT_FALLBACK_FLOW_RATE,
-    DEFAULT_FLOW_PER_LOOP,
     DEFAULT_WINDOW_RATING,
     DEFAULT_PERSISTENT_NOTIFICATION,
     DEFAULT_VACATION_TARGET_TEMP,
@@ -293,18 +292,6 @@ if HAS_HOMEASSISTANT:
             vol.Optional("receives_from"): cv.string,
             vol.Optional("transfer_factor", default=0.0): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=1.0)),
             vol.Optional("delay_minutes", default=0): vol.All(vol.Coerce(int), vol.Range(min=0)),
-        }
-    )
-
-    # Manifold schema
-    MANIFOLD_SCHEMA = vol.Schema(
-        {
-            vol.Required("name"): cv.string,
-            vol.Required("zones"): vol.All(cv.ensure_list, [cv.entity_id], vol.Length(min=1)),
-            vol.Required(CONF_PIPE_VOLUME): vol.All(vol.Coerce(float), vol.Range(min=0.1)),
-            vol.Optional(CONF_FLOW_PER_LOOP, default=DEFAULT_FLOW_PER_LOOP): vol.All(
-                vol.Coerce(float), vol.Range(min=0.1)
-            ),
         }
     )
 
@@ -538,6 +525,7 @@ if HAS_HOMEASSISTANT:
                     }
                 ),
                 validate_water_temp_control,
+                validate_manifolds_and_pump_flow,
             )
         },
         extra=vol.ALLOW_EXTRA,  # Allow other domains in config
@@ -546,7 +534,6 @@ else:
     # Provide stub for testing without Home Assistant
     CONFIG_SCHEMA = None
     THERMAL_GROUP_SCHEMA = None
-    MANIFOLD_SCHEMA = None
     WATER_TEMP_EXTRA_SENSOR_SCHEMA = None
     WATER_TEMP_COOLING_SCHEMA = None
     WATER_TEMP_HEATING_SCHEMA = None
@@ -875,18 +862,10 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     manifold_registry = None
     if manifolds_config:
         try:
-            from .adaptive.manifold_registry import ManifoldRegistry, Manifold
+            from .adaptive.manifold_registry import ManifoldRegistry, manifolds_from_config
 
             # Create Manifold objects from config
-            manifolds = [
-                Manifold(
-                    name=m["name"],
-                    zones=m["zones"],
-                    pipe_volume=m[CONF_PIPE_VOLUME],
-                    flow_per_loop=m[CONF_FLOW_PER_LOOP],
-                )
-                for m in manifolds_config
-            ]
+            manifolds = manifolds_from_config(manifolds_config)
             # Create registry
             manifold_registry = ManifoldRegistry(manifolds)
             hass.data[DOMAIN]["manifold_registry"] = manifold_registry

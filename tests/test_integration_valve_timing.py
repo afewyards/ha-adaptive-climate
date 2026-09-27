@@ -67,7 +67,6 @@ class MockThermostat:
         self._supply_temperature = None
         self._max_power_w = None
         self._thermal_time_constant = 3600
-        self._loops = 1
 
         # PID parameters
         self._pid_controller = Mock()

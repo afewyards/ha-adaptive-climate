@@ -1,5 +1,7 @@
 """Tests for manifold and pump flow config validators."""
 
+from pathlib import Path
+
 import pytest
 import voluptuous as vol
 
@@ -116,3 +118,17 @@ def test_removed_key_always_fails_with_its_message():
     with pytest.raises(vol.Invalid, match="'loops' was removed"):
         schema({"loops": 2})
     assert schema({}) == {}
+
+
+PACKAGE = Path(__file__).parent.parent / "custom_components" / "adaptive_climate"
+
+
+def test_domain_schema_uses_the_shared_manifold_validators():
+    source = (PACKAGE / "__init__.py").read_text()
+    assert "from .manifold_config import" in source
+    assert "validate_manifolds_and_pump_flow" in source
+
+
+def test_entity_schema_rejects_loops_with_migration_message():
+    source = (PACKAGE / "climate_setup.py").read_text()
+    assert "vol.Optional(REMOVED_LOOPS_KEY): removed_key(LOOPS_REMOVED_MESSAGE)" in source

@@ -25,7 +25,6 @@ from .const import (
     DEFAULT_HUMIDITY_MAX_PAUSE,
     DEFAULT_HUMIDITY_SPIKE_THRESHOLD,
     DEFAULT_HUMIDITY_STABILIZATION_DELAY,
-    DEFAULT_LOOPS,
     DEFAULT_MAX_TEMP,
     DEFAULT_MIN_TEMP,
     DEFAULT_OUT_CLAMP_HIGH,
@@ -126,7 +125,6 @@ class AdaptiveThermostatConfig:
     floor_construction: dict | None = None
     max_power_w: float | None = None
     supply_temperature: float | None = None
-    loops: int = DEFAULT_LOOPS
 
     # ── PID / adaptive ────────────────────────────────────────────────────────
     derivative_filter_alpha: float | None = None

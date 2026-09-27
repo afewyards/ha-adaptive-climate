@@ -5,61 +5,51 @@ from datetime import datetime, timedelta
 from custom_components.adaptive_climate.adaptive.manifold_registry import (
     Manifold,
     ManifoldRegistry,
+    manifolds_from_config,
 )
 
 
+def ground_floor() -> ManifoldRegistry:
+    return ManifoldRegistry(
+        [
+            Manifold(
+                name="Ground",
+                pipe_volume=20.0,
+                zones={"climate.living": 4.0, "climate.kitchen": 3.5, "climate.hall": 2.5},
+            ),
+            Manifold(name="First", pipe_volume=10.0, zones={"climate.bed": 2.0}),
+        ]
+    )
+
+
 class TestManifoldDataclass:
-    """Test Manifold dataclass creation and validation."""
-
-    def test_manifold_creation_basic(self):
-        """Test basic manifold creation with required fields."""
+    def test_manifold_holds_per_zone_flow(self):
         manifold = Manifold(
-            name="2nd Floor", zones=["climate.bathroom_2nd", "climate.bedroom_2nd"], pipe_volume=20.0, flow_per_loop=2.0
+            name="2nd Floor", pipe_volume=20.0, zones={"climate.bathroom_2nd": 2.0, "climate.bedroom_2nd": 3.0}
         )
-
         assert manifold.name == "2nd Floor"
-        assert manifold.zones == ["climate.bathroom_2nd", "climate.bedroom_2nd"]
         assert manifold.pipe_volume == 20.0
-        assert manifold.flow_per_loop == 2.0
+        assert manifold.zones == {"climate.bathroom_2nd": 2.0, "climate.bedroom_2nd": 3.0}
 
-    def test_manifold_creation_single_zone(self):
-        """Test manifold with single zone."""
-        manifold = Manifold(name="Garage", zones=["climate.garage"], pipe_volume=15.0, flow_per_loop=2.0)
 
-        assert manifold.name == "Garage"
-        assert manifold.zones == ["climate.garage"]
-        assert len(manifold.zones) == 1
+class TestManifoldsFromConfig:
+    def test_builds_manifolds_from_validated_config(self):
+        config = [
+            {
+                "name": "Ground",
+                "pipe_volume": 12,
+                "zones": [{"entity": "climate.living", "flow": 4}, {"entity": "climate.kitchen", "flow": 3.5}],
+            },
+            {"name": "First", "pipe_volume": 8.0, "zones": [{"entity": "climate.bed", "flow": 2.0}]},
+        ]
+        manifolds = manifolds_from_config(config)
+        assert [m.name for m in manifolds] == ["Ground", "First"]
+        assert manifolds[0].pipe_volume == 12.0
+        assert manifolds[0].zones == {"climate.living": 4.0, "climate.kitchen": 3.5}
+        assert manifolds[1].zones == {"climate.bed": 2.0}
 
-    def test_manifold_creation_many_zones(self):
-        """Test manifold with multiple zones."""
-        zones = ["climate.bedroom_1", "climate.bedroom_2", "climate.bathroom", "climate.hallway"]
-        manifold = Manifold(name="Upstairs", zones=zones, pipe_volume=25.0, flow_per_loop=2.5)
-
-        assert manifold.name == "Upstairs"
-        assert manifold.zones == zones
-        assert len(manifold.zones) == 4
-
-    def test_manifold_creation_custom_flow_rate(self):
-        """Test manifold with custom flow per loop."""
-        manifold = Manifold(
-            name="Ground Floor",
-            zones=["climate.living_room", "climate.kitchen"],
-            pipe_volume=30.0,
-            flow_per_loop=3.0,  # Custom flow rate
-        )
-
-        assert manifold.flow_per_loop == 3.0
-
-    def test_manifold_creation_large_pipe_volume(self):
-        """Test manifold with large pipe volume (long distance)."""
-        manifold = Manifold(
-            name="Basement",
-            zones=["climate.basement_rec"],
-            pipe_volume=50.0,  # Long run from boiler
-            flow_per_loop=2.0,
-        )
-
-        assert manifold.pipe_volume == 50.0
+    def test_empty_config_builds_nothing(self):
+        assert manifolds_from_config([]) == []
 
 
 class TestManifoldRegistryLookup:
@@ -76,9 +66,8 @@ class TestManifoldRegistryLookup:
         manifolds = [
             Manifold(
                 name="2nd Floor",
-                zones=["climate.bathroom_2nd", "climate.bedroom_2nd"],
                 pipe_volume=20.0,
-                flow_per_loop=2.0,
+                zones={"climate.bathroom_2nd": 2.0, "climate.bedroom_2nd": 2.0},
             )
         ]
         registry = ManifoldRegistry(manifolds)
@@ -96,15 +85,13 @@ class TestManifoldRegistryLookup:
         manifolds = [
             Manifold(
                 name="2nd Floor",
-                zones=["climate.bathroom_2nd", "climate.bedroom_2nd"],
                 pipe_volume=20.0,
-                flow_per_loop=2.0,
+                zones={"climate.bathroom_2nd": 2.0, "climate.bedroom_2nd": 2.0},
             ),
             Manifold(
                 name="Ground Floor",
-                zones=["climate.living_room", "climate.kitchen"],
                 pipe_volume=15.0,
-                flow_per_loop=2.0,
+                zones={"climate.living_room": 2.0, "climate.kitchen": 2.0},
             ),
         ]
         registry = ManifoldRegistry(manifolds)
@@ -119,7 +106,7 @@ class TestManifoldRegistryLookup:
 
     def test_registry_unknown_zone(self):
         """Test lookup for zone not in any manifold."""
-        manifolds = [Manifold(name="2nd Floor", zones=["climate.bathroom_2nd"], pipe_volume=20.0, flow_per_loop=2.0)]
+        manifolds = [Manifold(name="2nd Floor", pipe_volume=20.0, zones={"climate.bathroom_2nd": 2.0})]
         registry = ManifoldRegistry(manifolds)
 
         manifold = registry.get_manifold_for_zone("climate.unknown_zone")
@@ -127,105 +114,28 @@ class TestManifoldRegistryLookup:
 
 
 class TestTransportDelayColdManifold:
-    """Test get_transport_delay for cold manifolds (>5 min since last active)."""
+    def test_single_active_zone_uses_its_flow(self):
+        assert ground_floor().get_transport_delay("climate.living", {"climate.living"}) == pytest.approx(5.0)
 
-    def test_delay_single_loop_active(self):
-        """Test delay calculation with single loop active."""
-        manifolds = [Manifold(name="2nd Floor", zones=["climate.bathroom_2nd"], pipe_volume=20.0, flow_per_loop=2.0)]
-        registry = ManifoldRegistry(manifolds)
+    def test_active_zones_on_the_manifold_add_their_flows(self):
+        delay = ground_floor().get_transport_delay(
+            "climate.living", {"climate.living", "climate.kitchen", "climate.hall"}
+        )
+        assert delay == pytest.approx(2.0)  # 20 / (4 + 3.5 + 2.5)
 
-        # 1 loop × 2 L/min = 2 L/min total flow
-        # 20L / 2 L/min = 10 min delay
-        active_zones = {"climate.bathroom_2nd": 1}  # 1 loop
-        delay = registry.get_transport_delay("climate.bathroom_2nd", active_zones)
+    def test_only_active_zones_count(self):
+        delay = ground_floor().get_transport_delay("climate.living", {"climate.living", "climate.kitchen"})
+        assert delay == pytest.approx(20.0 / 7.5)
 
-        assert delay == 10.0
+    def test_active_zone_on_another_manifold_is_not_counted(self):
+        delay = ground_floor().get_transport_delay("climate.living", {"climate.living", "climate.bed"})
+        assert delay == pytest.approx(5.0)
 
-    def test_delay_two_loops_one_zone(self):
-        """Test delay calculation with 2 loops in same zone."""
-        manifolds = [Manifold(name="2nd Floor", zones=["climate.bathroom_2nd"], pipe_volume=20.0, flow_per_loop=2.0)]
-        registry = ManifoldRegistry(manifolds)
+    def test_no_active_zone_on_the_manifold_means_no_delay(self):
+        assert ground_floor().get_transport_delay("climate.living", {"climate.bed"}) == 0.0
 
-        # 2 loops × 2 L/min = 4 L/min total flow
-        # 20L / 4 L/min = 5 min delay
-        active_zones = {"climate.bathroom_2nd": 2}  # 2 loops
-        delay = registry.get_transport_delay("climate.bathroom_2nd", active_zones)
-
-        assert delay == 5.0
-
-    def test_delay_multiple_zones_same_manifold(self):
-        """Test delay calculation with multiple zones active on same manifold."""
-        manifolds = [
-            Manifold(
-                name="2nd Floor",
-                zones=["climate.bathroom_2nd", "climate.bedroom_2nd"],
-                pipe_volume=20.0,
-                flow_per_loop=2.0,
-            )
-        ]
-        registry = ManifoldRegistry(manifolds)
-
-        # bathroom: 2 loops, bedroom: 3 loops
-        # (2 + 3) loops × 2 L/min = 10 L/min total flow
-        # 20L / 10 L/min = 2 min delay
-        active_zones = {"climate.bathroom_2nd": 2, "climate.bedroom_2nd": 3}
-        delay = registry.get_transport_delay("climate.bathroom_2nd", active_zones)
-
-        assert delay == 2.0
-
-        # Same delay for bedroom (same manifold)
-        delay = registry.get_transport_delay("climate.bedroom_2nd", active_zones)
-        assert delay == 2.0
-
-    def test_delay_example_from_spec(self):
-        """Test exact example from spec: 2 loops, 20L, 2 L/min → 5 min."""
-        manifolds = [Manifold(name="Test", zones=["climate.test"], pipe_volume=20.0, flow_per_loop=2.0)]
-        registry = ManifoldRegistry(manifolds)
-
-        # Example: 2 loops active, pipe_volume=20L, flow_per_loop=2 L/min
-        # Expected: 20/(2×2) = 5 min
-        active_zones = {"climate.test": 2}
-        delay = registry.get_transport_delay("climate.test", active_zones)
-
-        assert delay == 5.0
-
-    def test_delay_large_pipe_volume(self):
-        """Test delay with large pipe volume (long distance)."""
-        manifolds = [
-            Manifold(
-                name="Basement",
-                zones=["climate.basement"],
-                pipe_volume=50.0,  # Long run
-                flow_per_loop=2.0,
-            )
-        ]
-        registry = ManifoldRegistry(manifolds)
-
-        # 1 loop × 2 L/min = 2 L/min
-        # 50L / 2 L/min = 25 min delay
-        active_zones = {"climate.basement": 1}
-        delay = registry.get_transport_delay("climate.basement", active_zones)
-
-        assert delay == 25.0
-
-    def test_delay_high_flow_rate(self):
-        """Test delay with higher flow per loop."""
-        manifolds = [
-            Manifold(
-                name="Ground Floor",
-                zones=["climate.living_room"],
-                pipe_volume=20.0,
-                flow_per_loop=4.0,  # Higher flow
-            )
-        ]
-        registry = ManifoldRegistry(manifolds)
-
-        # 1 loop × 4 L/min = 4 L/min
-        # 20L / 4 L/min = 5 min delay
-        active_zones = {"climate.living_room": 1}
-        delay = registry.get_transport_delay("climate.living_room", active_zones)
-
-        assert delay == 5.0
+    def test_empty_active_set_means_no_delay(self):
+        assert ground_floor().get_transport_delay("climate.living", set()) == 0.0
 
 
 class TestTransportDelayWarmManifold:
@@ -235,14 +145,14 @@ class TestTransportDelayWarmManifold:
         """Test that recently active manifold returns 0 delay."""
         from unittest.mock import patch
 
-        manifolds = [Manifold(name="2nd Floor", zones=["climate.bathroom_2nd"], pipe_volume=20.0, flow_per_loop=2.0)]
+        manifolds = [Manifold(name="2nd Floor", pipe_volume=20.0, zones={"climate.bathroom_2nd": 2.0})]
         registry = ManifoldRegistry(manifolds)
 
-        active_zones = {"climate.bathroom_2nd": 1}
+        active_zones = {"climate.bathroom_2nd"}
 
         # First call - manifold is cold
         delay = registry.get_transport_delay("climate.bathroom_2nd", active_zones)
-        assert delay == 10.0  # 20L / (1 × 2) = 10 min
+        assert delay == 10.0  # 20L / 2 L/min = 10 min
 
         # Mark as recently active (simulate time passing < 5 min)
         current_time = datetime(2024, 1, 15, 10, 0)
@@ -258,10 +168,10 @@ class TestTransportDelayWarmManifold:
         """Test manifold stays warm within 5 minute cooldown period."""
         from unittest.mock import patch
 
-        manifolds = [Manifold(name="2nd Floor", zones=["climate.bathroom_2nd"], pipe_volume=20.0, flow_per_loop=2.0)]
+        manifolds = [Manifold(name="2nd Floor", pipe_volume=20.0, zones={"climate.bathroom_2nd": 2.0})]
         registry = ManifoldRegistry(manifolds)
 
-        active_zones = {"climate.bathroom_2nd": 1}
+        active_zones = {"climate.bathroom_2nd"}
 
         current_time = datetime(2024, 1, 15, 10, 0)
 
@@ -292,10 +202,10 @@ class TestTransportDelayWarmManifold:
         """Test manifold becomes cold after 5 minute cooldown expires."""
         from unittest.mock import patch
 
-        manifolds = [Manifold(name="2nd Floor", zones=["climate.bathroom_2nd"], pipe_volume=20.0, flow_per_loop=2.0)]
+        manifolds = [Manifold(name="2nd Floor", pipe_volume=20.0, zones={"climate.bathroom_2nd": 2.0})]
         registry = ManifoldRegistry(manifolds)
 
-        active_zones = {"climate.bathroom_2nd": 1}
+        active_zones = {"climate.bathroom_2nd"}
 
         current_time = datetime(2024, 1, 15, 10, 0)
 
@@ -320,8 +230,8 @@ class TestTransportDelayWarmManifold:
         from unittest.mock import patch
 
         manifolds = [
-            Manifold(name="2nd Floor", zones=["climate.bathroom_2nd"], pipe_volume=20.0, flow_per_loop=2.0),
-            Manifold(name="Ground Floor", zones=["climate.living_room"], pipe_volume=15.0, flow_per_loop=2.0),
+            Manifold(name="2nd Floor", pipe_volume=20.0, zones={"climate.bathroom_2nd": 2.0}),
+            Manifold(name="Ground Floor", pipe_volume=15.0, zones={"climate.living_room": 2.0}),
         ]
         registry = ManifoldRegistry(manifolds)
 
@@ -332,14 +242,14 @@ class TestTransportDelayWarmManifold:
             registry.mark_manifold_active("climate.bathroom_2nd")
 
             # 2nd floor should be warm
-            active_zones_2nd = {"climate.bathroom_2nd": 1}
+            active_zones_2nd = {"climate.bathroom_2nd"}
             delay = registry.get_transport_delay("climate.bathroom_2nd", active_zones_2nd)
             assert delay == 0.0
 
         # Ground floor should still be cold
-        active_zones_ground = {"climate.living_room": 1}
+        active_zones_ground = {"climate.living_room"}
         delay = registry.get_transport_delay("climate.living_room", active_zones_ground)
-        assert delay == 7.5  # 15L / (1 × 2) = 7.5 min
+        assert delay == 7.5  # 15L / 2 L/min = 7.5 min
 
 
 class TestTransportDelayUnknownZone:
@@ -347,10 +257,10 @@ class TestTransportDelayUnknownZone:
 
     def test_delay_unknown_zone_returns_zero(self):
         """Test that unknown zone returns 0 delay without error."""
-        manifolds = [Manifold(name="2nd Floor", zones=["climate.bathroom_2nd"], pipe_volume=20.0, flow_per_loop=2.0)]
+        manifolds = [Manifold(name="2nd Floor", pipe_volume=20.0, zones={"climate.bathroom_2nd": 2.0})]
         registry = ManifoldRegistry(manifolds)
 
-        active_zones = {"climate.unknown": 1}
+        active_zones = {"climate.unknown"}
 
         # Should return 0 for unknown zone (silently)
         delay = registry.get_transport_delay("climate.unknown", active_zones)
@@ -360,18 +270,18 @@ class TestTransportDelayUnknownZone:
         """Test unknown zone with empty registry."""
         registry = ManifoldRegistry([])
 
-        active_zones = {"climate.test": 1}
+        active_zones = {"climate.test"}
         delay = registry.get_transport_delay("climate.test", active_zones)
 
         assert delay == 0.0
 
     def test_delay_zone_not_in_active_zones(self):
-        """Test delay calculation when requesting zone not in active_zones dict."""
-        manifolds = [Manifold(name="2nd Floor", zones=["climate.bathroom_2nd"], pipe_volume=20.0, flow_per_loop=2.0)]
+        """Test delay calculation when requesting zone not in active_zones."""
+        manifolds = [Manifold(name="2nd Floor", pipe_volume=20.0, zones={"climate.bathroom_2nd": 2.0})]
         registry = ManifoldRegistry(manifolds)
 
         # Request zone exists but no active zones reported
-        active_zones = {}
+        active_zones = set()
         delay = registry.get_transport_delay("climate.bathroom_2nd", active_zones)
 
         # No active zones means no flow, should handle gracefully
@@ -389,19 +299,18 @@ class TestMarkManifoldActiveProductionScenario:
         manifolds = [
             Manifold(
                 name="2nd Floor",
-                zones=["climate.bathroom_2nd", "climate.bedroom_2nd"],
                 pipe_volume=20.0,
-                flow_per_loop=2.0,
+                zones={"climate.bathroom_2nd": 2.0, "climate.bedroom_2nd": 2.0},
             )
         ]
         registry = ManifoldRegistry(manifolds)
 
         # Scenario: Bathroom zone turns on heater first
-        active_zones_bathroom = {"climate.bathroom_2nd": 2}
+        active_zones_bathroom = {"climate.bathroom_2nd"}
 
         # First heating cycle - manifold is cold, should have delay
         delay = registry.get_transport_delay("climate.bathroom_2nd", active_zones_bathroom)
-        assert delay == 5.0  # 20L / (2 × 2) = 5 min
+        assert delay == 10.0  # 20L / 2 L/min = 10 min
 
         # Simulate production code: heater turns on → mark manifold active
         current_time = datetime(2024, 1, 15, 10, 0)
@@ -410,7 +319,7 @@ class TestMarkManifoldActiveProductionScenario:
             registry.mark_manifold_active("climate.bathroom_2nd")
 
             # Bedroom zone turns on shortly after (within 5 min)
-            active_zones_both = {"climate.bathroom_2nd": 2, "climate.bedroom_2nd": 1}
+            active_zones_both = {"climate.bathroom_2nd", "climate.bedroom_2nd"}
 
             # Bedroom should get 0 delay because manifold is now warm
             delay = registry.get_transport_delay("climate.bedroom_2nd", active_zones_both)
@@ -427,17 +336,16 @@ class TestMarkManifoldActiveProductionScenario:
         manifolds = [
             Manifold(
                 name="Ground Floor",
-                zones=["climate.living_room", "climate.kitchen", "climate.dining"],
                 pipe_volume=30.0,
-                flow_per_loop=2.0,
+                zones={"climate.living_room": 2.0, "climate.kitchen": 2.0, "climate.dining": 2.0},
             )
         ]
         registry = ManifoldRegistry(manifolds)
 
         # First zone activates - manifold cold
-        active_zones = {"climate.living_room": 2}
+        active_zones = {"climate.living_room"}
         delay = registry.get_transport_delay("climate.living_room", active_zones)
-        assert delay == 7.5  # 30L / (2 × 2) = 7.5 min
+        assert delay == 15.0  # 30L / 2 L/min = 15 min
 
         # Mark as active (simulating production heater turn-on)
         current_time = datetime(2024, 1, 15, 10, 0)
@@ -446,12 +354,12 @@ class TestMarkManifoldActiveProductionScenario:
             registry.mark_manifold_active("climate.living_room")
 
             # Second zone activates shortly after
-            active_zones = {"climate.living_room": 2, "climate.kitchen": 1}
+            active_zones = {"climate.living_room", "climate.kitchen"}
             delay = registry.get_transport_delay("climate.kitchen", active_zones)
             assert delay == 0.0  # Manifold warm
 
             # Third zone activates
-            active_zones = {"climate.living_room": 2, "climate.kitchen": 1, "climate.dining": 1}
+            active_zones = {"climate.living_room", "climate.kitchen", "climate.dining"}
             delay = registry.get_transport_delay("climate.dining", active_zones)
             assert delay == 0.0  # Still warm
 
@@ -460,13 +368,13 @@ class TestMarkManifoldActiveProductionScenario:
         from unittest.mock import patch
 
         manifolds = [
-            Manifold(name="2nd Floor", zones=["climate.bathroom_2nd"], pipe_volume=20.0, flow_per_loop=2.0),
-            Manifold(name="Ground Floor", zones=["climate.living_room"], pipe_volume=15.0, flow_per_loop=2.0),
+            Manifold(name="2nd Floor", pipe_volume=20.0, zones={"climate.bathroom_2nd": 2.0}),
+            Manifold(name="Ground Floor", pipe_volume=15.0, zones={"climate.living_room": 2.0}),
         ]
         registry = ManifoldRegistry(manifolds)
 
         # Activate 2nd floor zone and mark manifold active
-        active_zones_2nd = {"climate.bathroom_2nd": 1}
+        active_zones_2nd = {"climate.bathroom_2nd"}
         delay = registry.get_transport_delay("climate.bathroom_2nd", active_zones_2nd)
         assert delay == 10.0  # Cold initially
 
@@ -480,123 +388,9 @@ class TestMarkManifoldActiveProductionScenario:
             assert delay == 0.0
 
         # Ground floor should still be cold
-        active_zones_ground = {"climate.living_room": 1}
+        active_zones_ground = {"climate.living_room"}
         delay = registry.get_transport_delay("climate.living_room", active_zones_ground)
-        assert delay == 7.5  # 15L / (1 × 2) = 7.5 min (still cold)
-
-
-class TestMultipleZonesActiveSameManifold:
-    """Test correct total flow calculation with multiple active zones."""
-
-    def test_two_zones_different_loop_counts(self):
-        """Test flow calculation with zones having different loop counts."""
-        manifolds = [
-            Manifold(
-                name="2nd Floor",
-                zones=["climate.bathroom_2nd", "climate.bedroom_2nd"],
-                pipe_volume=20.0,
-                flow_per_loop=2.0,
-            )
-        ]
-        registry = ManifoldRegistry(manifolds)
-
-        # Bathroom: 2 loops, Bedroom: 3 loops
-        # Total: 5 loops × 2 L/min = 10 L/min
-        # Delay: 20L / 10 L/min = 2 min
-        active_zones = {"climate.bathroom_2nd": 2, "climate.bedroom_2nd": 3}
-
-        delay = registry.get_transport_delay("climate.bathroom_2nd", active_zones)
-        assert delay == 2.0
-
-    def test_three_zones_active(self):
-        """Test flow calculation with three zones active."""
-        manifolds = [
-            Manifold(
-                name="Ground Floor",
-                zones=["climate.living_room", "climate.kitchen", "climate.dining"],
-                pipe_volume=30.0,
-                flow_per_loop=2.0,
-            )
-        ]
-        registry = ManifoldRegistry(manifolds)
-
-        # Living: 3 loops, Kitchen: 2 loops, Dining: 1 loop
-        # Total: 6 loops × 2 L/min = 12 L/min
-        # Delay: 30L / 12 L/min = 2.5 min
-        active_zones = {"climate.living_room": 3, "climate.kitchen": 2, "climate.dining": 1}
-
-        delay = registry.get_transport_delay("climate.living_room", active_zones)
-        assert delay == 2.5
-
-    def test_only_some_zones_active(self):
-        """Test that only active zones on manifold contribute to flow."""
-        manifolds = [
-            Manifold(
-                name="2nd Floor",
-                zones=["climate.bathroom_2nd", "climate.bedroom_2nd", "climate.hallway"],
-                pipe_volume=25.0,
-                flow_per_loop=2.0,
-            )
-        ]
-        registry = ManifoldRegistry(manifolds)
-
-        # Only bathroom and bedroom active, hallway off
-        # Total: 5 loops × 2 L/min = 10 L/min
-        # Delay: 25L / 10 L/min = 2.5 min
-        active_zones = {
-            "climate.bathroom_2nd": 2,
-            "climate.bedroom_2nd": 3,
-            # hallway not included
-        }
-
-        delay = registry.get_transport_delay("climate.bathroom_2nd", active_zones)
-        assert delay == 2.5
-
-    def test_active_zone_from_different_manifold_not_counted(self):
-        """Test that zones from other manifolds don't affect delay."""
-        manifolds = [
-            Manifold(name="2nd Floor", zones=["climate.bathroom_2nd"], pipe_volume=20.0, flow_per_loop=2.0),
-            Manifold(name="Ground Floor", zones=["climate.living_room"], pipe_volume=15.0, flow_per_loop=2.0),
-        ]
-        registry = ManifoldRegistry(manifolds)
-
-        # Both zones active but on different manifolds
-        active_zones = {
-            "climate.bathroom_2nd": 1,
-            "climate.living_room": 3,  # Different manifold
-        }
-
-        # 2nd floor delay should only count its own zone
-        # 1 loop × 2 L/min = 2 L/min
-        # 20L / 2 L/min = 10 min
-        delay = registry.get_transport_delay("climate.bathroom_2nd", active_zones)
-        assert delay == 10.0
-
-        # Ground floor delay should only count its own zone
-        # 3 loops × 2 L/min = 6 L/min
-        # 15L / 6 L/min = 2.5 min
-        delay = registry.get_transport_delay("climate.living_room", active_zones)
-        assert delay == 2.5
-
-    def test_all_zones_on_manifold_active(self):
-        """Test delay when all zones on a manifold are active."""
-        manifolds = [
-            Manifold(
-                name="Ground Floor",
-                zones=["climate.living_room", "climate.kitchen", "climate.dining", "climate.hallway"],
-                pipe_volume=40.0,
-                flow_per_loop=2.0,
-            )
-        ]
-        registry = ManifoldRegistry(manifolds)
-
-        # All 4 zones active with varying loop counts
-        # Total: (2+3+1+2) = 8 loops × 2 L/min = 16 L/min
-        # Delay: 40L / 16 L/min = 2.5 min
-        active_zones = {"climate.living_room": 2, "climate.kitchen": 3, "climate.dining": 1, "climate.hallway": 2}
-
-        delay = registry.get_transport_delay("climate.living_room", active_zones)
-        assert delay == 2.5
+        assert delay == 7.5  # 15L / 2 L/min = 7.5 min (still cold)
 
 
 class TestManifoldPersistence:
@@ -604,7 +398,7 @@ class TestManifoldPersistence:
 
     def test_get_state_for_persistence_empty(self):
         """Test get_state_for_persistence with no active manifolds."""
-        manifolds = [Manifold(name="2nd Floor", zones=["climate.bathroom_2nd"], pipe_volume=20.0, flow_per_loop=2.0)]
+        manifolds = [Manifold(name="2nd Floor", pipe_volume=20.0, zones={"climate.bathroom_2nd": 2.0})]
         registry = ManifoldRegistry(manifolds)
 
         state = registry.get_state_for_persistence()
@@ -614,7 +408,7 @@ class TestManifoldPersistence:
         """Test get_state_for_persistence with one active manifold."""
         from unittest.mock import patch
 
-        manifolds = [Manifold(name="2nd Floor", zones=["climate.bathroom_2nd"], pipe_volume=20.0, flow_per_loop=2.0)]
+        manifolds = [Manifold(name="2nd Floor", pipe_volume=20.0, zones={"climate.bathroom_2nd": 2.0})]
         registry = ManifoldRegistry(manifolds)
 
         # Mark manifold as active
@@ -635,8 +429,8 @@ class TestManifoldPersistence:
         from unittest.mock import patch
 
         manifolds = [
-            Manifold(name="2nd Floor", zones=["climate.bathroom_2nd"], pipe_volume=20.0, flow_per_loop=2.0),
-            Manifold(name="Ground Floor", zones=["climate.living_room"], pipe_volume=15.0, flow_per_loop=2.0),
+            Manifold(name="2nd Floor", pipe_volume=20.0, zones={"climate.bathroom_2nd": 2.0}),
+            Manifold(name="Ground Floor", pipe_volume=15.0, zones={"climate.living_room": 2.0}),
         ]
         registry = ManifoldRegistry(manifolds)
 
@@ -660,7 +454,7 @@ class TestManifoldPersistence:
 
     def test_restore_state_empty(self):
         """Test restore_state with empty state dict."""
-        manifolds = [Manifold(name="2nd Floor", zones=["climate.bathroom_2nd"], pipe_volume=20.0, flow_per_loop=2.0)]
+        manifolds = [Manifold(name="2nd Floor", pipe_volume=20.0, zones={"climate.bathroom_2nd": 2.0})]
         registry = ManifoldRegistry(manifolds)
 
         # Restore empty state
@@ -671,7 +465,7 @@ class TestManifoldPersistence:
 
     def test_restore_state_single_manifold(self):
         """Test restore_state with one manifold."""
-        manifolds = [Manifold(name="2nd Floor", zones=["climate.bathroom_2nd"], pipe_volume=20.0, flow_per_loop=2.0)]
+        manifolds = [Manifold(name="2nd Floor", pipe_volume=20.0, zones={"climate.bathroom_2nd": 2.0})]
         registry = ManifoldRegistry(manifolds)
 
         # Restore state (use UTC timezone-aware datetime)
@@ -690,8 +484,8 @@ class TestManifoldPersistence:
     def test_restore_state_multiple_manifolds(self):
         """Test restore_state with multiple manifolds."""
         manifolds = [
-            Manifold(name="2nd Floor", zones=["climate.bathroom_2nd"], pipe_volume=20.0, flow_per_loop=2.0),
-            Manifold(name="Ground Floor", zones=["climate.living_room"], pipe_volume=15.0, flow_per_loop=2.0),
+            Manifold(name="2nd Floor", pipe_volume=20.0, zones={"climate.bathroom_2nd": 2.0}),
+            Manifold(name="Ground Floor", pipe_volume=15.0, zones={"climate.living_room": 2.0}),
         ]
         registry = ManifoldRegistry(manifolds)
 
@@ -712,7 +506,7 @@ class TestManifoldPersistence:
 
     def test_restore_state_invalid_timestamp(self):
         """Test restore_state handles invalid timestamp gracefully."""
-        manifolds = [Manifold(name="2nd Floor", zones=["climate.bathroom_2nd"], pipe_volume=20.0, flow_per_loop=2.0)]
+        manifolds = [Manifold(name="2nd Floor", pipe_volume=20.0, zones={"climate.bathroom_2nd": 2.0})]
         registry = ManifoldRegistry(manifolds)
 
         # Restore with invalid timestamp - should skip silently
@@ -725,8 +519,8 @@ class TestManifoldPersistence:
     def test_restore_state_mixed_valid_invalid(self):
         """Test restore_state with mix of valid and invalid timestamps."""
         manifolds = [
-            Manifold(name="2nd Floor", zones=["climate.bathroom_2nd"], pipe_volume=20.0, flow_per_loop=2.0),
-            Manifold(name="Ground Floor", zones=["climate.living_room"], pipe_volume=15.0, flow_per_loop=2.0),
+            Manifold(name="2nd Floor", pipe_volume=20.0, zones={"climate.bathroom_2nd": 2.0}),
+            Manifold(name="Ground Floor", pipe_volume=15.0, zones={"climate.living_room": 2.0}),
         ]
         registry = ManifoldRegistry(manifolds)
 
@@ -744,8 +538,8 @@ class TestManifoldPersistence:
         from unittest.mock import patch
 
         manifolds = [
-            Manifold(name="2nd Floor", zones=["climate.bathroom_2nd"], pipe_volume=20.0, flow_per_loop=2.0),
-            Manifold(name="Ground Floor", zones=["climate.living_room"], pipe_volume=15.0, flow_per_loop=2.0),
+            Manifold(name="2nd Floor", pipe_volume=20.0, zones={"climate.bathroom_2nd": 2.0}),
+            Manifold(name="Ground Floor", pipe_volume=15.0, zones={"climate.living_room": 2.0}),
         ]
 
         # First registry - mark manifolds active
@@ -779,115 +573,20 @@ class TestManifoldPersistence:
 class TestWorstCaseTransportDelay:
     """Test get_worst_case_transport_delay for preheat scheduling."""
 
-    def test_worst_case_single_loop(self):
-        """Test worst-case delay calculation with single loop (worst case)."""
-        manifolds = [Manifold(name="2nd Floor", zones=["climate.bathroom_2nd"], pipe_volume=20.0, flow_per_loop=2.0)]
-        registry = ManifoldRegistry(manifolds)
+    def test_worst_case_is_the_zone_alone(self):
+        assert ground_floor().get_worst_case_transport_delay("climate.hall") == pytest.approx(8.0)  # 20 / 2.5
 
-        # Worst case: 1 loop × 2 L/min = 2 L/min total flow
-        # 20L / 2 L/min = 10 min delay
-        delay = registry.get_worst_case_transport_delay("climate.bathroom_2nd", zone_loops=1)
-        assert delay == 10.0
+    def test_worst_case_unknown_zone_is_zero(self):
+        assert ground_floor().get_worst_case_transport_delay("climate.garage") == 0.0
 
-    def test_worst_case_multiple_loops_in_zone(self):
-        """Test worst-case delay with multiple loops in same zone."""
-        manifolds = [Manifold(name="2nd Floor", zones=["climate.bathroom_2nd"], pipe_volume=20.0, flow_per_loop=2.0)]
-        registry = ManifoldRegistry(manifolds)
+    def test_worst_case_empty_registry_is_zero(self):
+        assert ManifoldRegistry([]).get_worst_case_transport_delay("climate.living") == 0.0
 
-        # 2 loops × 2 L/min = 4 L/min total flow
-        # 20L / 4 L/min = 5 min delay
-        delay = registry.get_worst_case_transport_delay("climate.bathroom_2nd", zone_loops=2)
-        assert delay == 5.0
+    def test_worst_case_is_never_shorter_than_the_live_delay(self):
+        registry = ground_floor()
+        live = registry.get_transport_delay("climate.living", {"climate.living", "climate.kitchen"})
+        assert registry.get_worst_case_transport_delay("climate.living") >= live
 
-    def test_worst_case_large_zone(self):
-        """Test worst-case delay with large zone (many loops)."""
-        manifolds = [Manifold(name="Living Room", zones=["climate.living_room"], pipe_volume=30.0, flow_per_loop=2.0)]
-        registry = ManifoldRegistry(manifolds)
 
-        # 6 loops × 2 L/min = 12 L/min total flow
-        # 30L / 12 L/min = 2.5 min delay
-        delay = registry.get_worst_case_transport_delay("climate.living_room", zone_loops=6)
-        assert delay == 2.5
-
-    def test_worst_case_zone_not_in_manifold(self):
-        """Test worst-case delay returns 0.0 for zone not in manifold."""
-        manifolds = [Manifold(name="2nd Floor", zones=["climate.bathroom_2nd"], pipe_volume=20.0, flow_per_loop=2.0)]
-        registry = ManifoldRegistry(manifolds)
-
-        # Unknown zone should return 0.0
-        delay = registry.get_worst_case_transport_delay("climate.unknown_zone", zone_loops=1)
-        assert delay == 0.0
-
-    def test_worst_case_empty_registry(self):
-        """Test worst-case delay with empty registry."""
-        registry = ManifoldRegistry([])
-
-        # Empty registry should return 0.0
-        delay = registry.get_worst_case_transport_delay("climate.test", zone_loops=1)
-        assert delay == 0.0
-
-    def test_worst_case_default_zone_loops(self):
-        """Test worst-case delay uses default zone_loops=1 when not specified."""
-        manifolds = [Manifold(name="2nd Floor", zones=["climate.bathroom_2nd"], pipe_volume=20.0, flow_per_loop=2.0)]
-        registry = ManifoldRegistry(manifolds)
-
-        # Default zone_loops=1: 1 loop × 2 L/min = 2 L/min
-        # 20L / 2 L/min = 10 min delay
-        delay = registry.get_worst_case_transport_delay("climate.bathroom_2nd")
-        assert delay == 10.0
-
-    def test_worst_case_comparison_with_dynamic_delay(self):
-        """Test that worst-case delay is always >= dynamic delay (more conservative)."""
-        from unittest.mock import patch
-
-        manifolds = [
-            Manifold(
-                name="2nd Floor",
-                zones=["climate.bathroom_2nd", "climate.bedroom_2nd"],
-                pipe_volume=20.0,
-                flow_per_loop=2.0,
-            )
-        ]
-        registry = ManifoldRegistry(manifolds)
-
-        # Worst-case delay for bathroom (alone, 2 loops)
-        worst_case = registry.get_worst_case_transport_delay("climate.bathroom_2nd", zone_loops=2)
-        assert worst_case == 5.0  # 20L / (2 × 2) = 5 min
-
-        # Dynamic delay when both zones active (bathroom: 2 loops, bedroom: 3 loops)
-        # Total: 5 loops × 2 L/min = 10 L/min
-        # Delay: 20L / 10 L/min = 2 min
-        active_zones = {"climate.bathroom_2nd": 2, "climate.bedroom_2nd": 3}
-        dynamic_delay = registry.get_transport_delay("climate.bathroom_2nd", active_zones)
-        assert dynamic_delay == 2.0
-
-        # Worst-case should be >= dynamic delay (more conservative for preheat)
-        assert worst_case >= dynamic_delay
-
-    def test_worst_case_different_flow_rates(self):
-        """Test worst-case delay with different flow_per_loop values."""
-        manifolds = [
-            Manifold(
-                name="High Flow",
-                zones=["climate.zone1"],
-                pipe_volume=20.0,
-                flow_per_loop=4.0,  # High flow
-            ),
-            Manifold(
-                name="Low Flow",
-                zones=["climate.zone2"],
-                pipe_volume=20.0,
-                flow_per_loop=1.0,  # Low flow
-            ),
-        ]
-        registry = ManifoldRegistry(manifolds)
-
-        # High flow zone: 1 loop × 4 L/min = 4 L/min
-        # 20L / 4 L/min = 5 min
-        delay_high = registry.get_worst_case_transport_delay("climate.zone1", zone_loops=1)
-        assert delay_high == 5.0
-
-        # Low flow zone: 1 loop × 1 L/min = 1 L/min
-        # 20L / 1 L/min = 20 min
-        delay_low = registry.get_worst_case_transport_delay("climate.zone2", zone_loops=1)
-        assert delay_low == 20.0
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])
