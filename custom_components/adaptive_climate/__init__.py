@@ -29,7 +29,7 @@ except ImportError:
     ConfigType = Any
     cv = None
 
-from .manifold_config import MANIFOLD_SCHEMA, validate_manifolds_and_pump_flow
+from .manifold_config import MANIFOLD_SCHEMA, PUMP_FLOW_CONTROL_SCHEMA, validate_manifolds_and_pump_flow
 
 from .const import (
     DOMAIN,
@@ -67,6 +67,7 @@ from .const import (
     CONF_BOOST_PID_OFF,
     CONF_THERMAL_GROUPS,
     CONF_MANIFOLDS,
+    CONF_PUMP_FLOW_CONTROL,
     # Auto mode switching
     CONF_AUTO_MODE_SWITCHING,
     CONF_AUTO_MODE_THRESHOLD,
@@ -522,6 +523,8 @@ if HAS_HOMEASSISTANT:
                         ),
                         # Water temperature control (dew-point cooling + startup ramps)
                         vol.Optional(CONF_WATER_TEMP_CONTROL): WATER_TEMP_CONTROL_SCHEMA,
+                        # System pump flow setpoint from open zones' manifold flows
+                        vol.Optional(CONF_PUMP_FLOW_CONTROL): PUMP_FLOW_CONTROL_SCHEMA,
                     }
                 ),
                 validate_water_temp_control,

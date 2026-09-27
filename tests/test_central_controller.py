@@ -81,6 +81,7 @@ sys.modules["managers"] = mock_managers
 sys.modules["managers.events"] = mock_events
 sys.modules["managers.auto_mode_switching"] = Mock()
 sys.modules["managers.water_temp_controller"] = Mock()
+sys.modules["managers.pump_flow_controller"] = Mock()
 
 # Import coordinator module
 import coordinator

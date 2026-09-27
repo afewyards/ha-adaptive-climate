@@ -458,6 +458,7 @@ async def async_setup_platform(hass: HomeAssistant, config: ConfigType, async_ad
             "learning_enabled": True,  # Always enabled, vacation mode can toggle
             "adaptive_learner": adaptive_learner,
             "pwm_seconds": config.get(const.CONF_PWM).seconds if config.get(const.CONF_PWM) else 0,
+            "valve_actuation_time": valve_actuation_seconds,
             "window_orientation": config.get(const.CONF_WINDOW_ORIENTATION),
             **build_dew_point_zone_data(config),
         }

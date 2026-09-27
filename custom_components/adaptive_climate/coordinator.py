@@ -19,6 +19,8 @@ from homeassistant.helpers.event import async_call_later, async_track_state_chan
 try:
     from .const import (
         DOMAIN,
+        CONF_MANIFOLDS,
+        CONF_PUMP_FLOW_CONTROL,
         CONF_SUPPLY_TEMPERATURE,
         CONF_WATER_TEMP_CONTROL,
         CONF_WATER_TEMP_COOLING,
@@ -27,10 +29,13 @@ try:
     from .adaptive.sun_position import SunPositionCalculator, ORIENTATION_AZIMUTH
     from .managers.auto_mode_switching import AutoModeSwitchingManager
     from .managers.events import CycleEventDispatcher, CycleEventType, ZoneRegisteredEvent, ZoneUnregisteredEvent
+    from .managers.pump_flow_controller import PumpFlowController
     from .managers.water_temp_controller import WaterTempController
 except ImportError:
     from const import (  # type: ignore[no-redef]
         DOMAIN,
+        CONF_MANIFOLDS,
+        CONF_PUMP_FLOW_CONTROL,
         CONF_SUPPLY_TEMPERATURE,
         CONF_WATER_TEMP_CONTROL,
         CONF_WATER_TEMP_COOLING,
@@ -39,6 +44,7 @@ except ImportError:
     from adaptive.sun_position import SunPositionCalculator, ORIENTATION_AZIMUTH  # type: ignore[no-redef]
     from managers.auto_mode_switching import AutoModeSwitchingManager  # type: ignore[no-redef]
     from managers.events import CycleEventDispatcher, CycleEventType, ZoneRegisteredEvent, ZoneUnregisteredEvent  # type: ignore[no-redef]
+    from managers.pump_flow_controller import PumpFlowController  # type: ignore[no-redef]
     from managers.water_temp_controller import WaterTempController  # type: ignore[no-redef]
 
 if TYPE_CHECKING:
@@ -89,6 +95,10 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
         # Water temperature control (if configured)
         self._water_temp_controller: WaterTempController | None = None
         self._setup_water_temp_control()
+
+        # Pump flow control (if configured)
+        self._pump_flow_controller: PumpFlowController | None = None
+        self._setup_pump_flow_control()
 
         # Always set up outdoor temp listener when weather entity exists
         # (used for shared EMA filter; also triggers auto mode switching if enabled)
@@ -388,6 +398,22 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
         """Return the water temperature controller, or None if not configured."""
         return self._water_temp_controller
 
+    def _setup_pump_flow_control(self) -> None:
+        """Construct the pump flow controller when configured."""
+        pump_config = self._config.get(CONF_PUMP_FLOW_CONTROL)
+        if not pump_config:
+            return
+        self._pump_flow_controller = PumpFlowController.from_config(
+            self.hass, pump_config, self._config.get(CONF_MANIFOLDS) or []
+        )
+        self._pump_flow_controller.async_start()
+        _LOGGER.info("Pump flow control enabled")
+
+    @property
+    def pump_flow_controller(self) -> PumpFlowController | None:
+        """Return the pump flow controller, or None if not configured."""
+        return self._pump_flow_controller
+
     def water_temp_learning_gate(self, mode: str | None) -> bool:
         """Return True while water-temp changes should suppress zone learning.
 
@@ -444,12 +470,17 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
             )
             return
 
+        zone_entity_id = self._zones[zone_id].get("climate_entity_id", f"climate.{zone_id}")
+
         # Remove from zones dict
         del self._zones[zone_id]
 
         # Remove from demand states dict
         if zone_id in self._demand_states:
             del self._demand_states[zone_id]
+
+        if self._pump_flow_controller is not None:
+            self._pump_flow_controller.on_zone_demand(zone_entity_id, False, 0.0)
 
         # A02: Notify all subscribers (ModeSync, CentralController, ThermalGroupManager)
         # via pub/sub instead of ad-hoc direct calls
@@ -480,6 +511,14 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
                     has_demand,
                     hvac_mode,
                 )
+
+                if self._pump_flow_controller is not None:
+                    zone_data = self._zones.get(zone_id, {})
+                    self._pump_flow_controller.on_zone_demand(
+                        zone_data.get("climate_entity_id", f"climate.{zone_id}"),
+                        has_demand,
+                        float(zone_data.get("valve_actuation_time", 0.0)),
+                    )
 
                 # Trigger central controller with single-flight guard (C04, H01).
                 if self._central_controller:
@@ -929,6 +968,11 @@ class AdaptiveThermostatCoordinator(DataUpdateCoordinator):
             self._water_temp_controller.async_cleanup()
             self._water_temp_controller = None
             _LOGGER.debug("Cleaned up water temperature controller")
+
+        if self._pump_flow_controller is not None:
+            self._pump_flow_controller.async_cleanup()
+            self._pump_flow_controller = None
+            _LOGGER.debug("Cleaned up pump flow controller")
 
 
 class ModeSync:

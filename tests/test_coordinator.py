@@ -63,6 +63,7 @@ mock_managers.events = _events_mod
 sys.modules["managers"] = mock_managers
 sys.modules["managers.auto_mode_switching"] = Mock()
 sys.modules["managers.water_temp_controller"] = Mock()
+sys.modules["managers.pump_flow_controller"] = Mock()
 
 # Evict coordinator (and central_controller) from sys.modules so that the
 # subsequent `import coordinator` performs a FRESH import.  If
@@ -1529,6 +1530,76 @@ class TestZoneModeHelpers:
             }.get
 
             assert coordinator.get_zone_current_temp("living") is None
+
+
+class TestPumpFlowWiring:
+    @staticmethod
+    def coord_with_pump(hass):
+        coord = coordinator.AdaptiveThermostatCoordinator(hass)
+        coord._pump_flow_controller = MagicMock()
+        return coord
+
+    def test_demand_change_notifies_pump_with_entity_and_actuation_time(self, hass):
+        coord = self.coord_with_pump(hass)
+        coord.register_zone("living", {"climate_entity_id": "climate.living", "valve_actuation_time": 120.0})
+
+        coord.update_zone_demand("living", True, "heat")
+
+        coord._pump_flow_controller.on_zone_demand.assert_called_once_with("climate.living", True, 120.0)
+
+    def test_unchanged_demand_does_not_notify_again(self, hass):
+        coord = self.coord_with_pump(hass)
+        coord.register_zone("living", {"climate_entity_id": "climate.living", "valve_actuation_time": 120.0})
+
+        coord.update_zone_demand("living", True, "heat")
+        coord.update_zone_demand("living", True, "heat")
+
+        assert coord._pump_flow_controller.on_zone_demand.call_count == 1
+
+    def test_missing_zone_data_falls_back_to_slug_entity_and_zero_actuation(self, hass):
+        coord = self.coord_with_pump(hass)
+        coord.register_zone("garage", {"name": "Garage"})
+
+        coord.update_zone_demand("garage", True, "heat")
+
+        coord._pump_flow_controller.on_zone_demand.assert_called_once_with("climate.garage", True, 0.0)
+
+    def test_unregister_reports_the_zone_closed(self, hass):
+        coord = self.coord_with_pump(hass)
+        coord.register_zone("living", {"climate_entity_id": "climate.living", "valve_actuation_time": 120.0})
+        coord.update_zone_demand("living", True, "heat")
+        coord._pump_flow_controller.reset_mock()
+
+        coord.unregister_zone("living")
+
+        coord._pump_flow_controller.on_zone_demand.assert_called_once_with("climate.living", False, 0.0)
+
+    @pytest.mark.asyncio
+    async def test_cleanup_releases_the_pump_controller(self, hass):
+        coord = self.coord_with_pump(hass)
+        pump = coord._pump_flow_controller
+
+        await coord.async_cleanup()
+
+        pump.async_cleanup.assert_called_once()
+        assert coord.pump_flow_controller is None
+
+    def test_setup_builds_the_controller_from_config(self, hass, monkeypatch):
+        fake = MagicMock()
+        monkeypatch.setattr(coordinator, "PumpFlowController", fake)
+        manifolds = [{"name": "Ground", "pipe_volume": 12.0, "zones": [{"entity": "climate.living", "flow": 4.0}]}]
+        pump_config = {"target_entity": "number.pump_flow", "min_write_interval": 300}
+
+        coord = coordinator.AdaptiveThermostatCoordinator(
+            hass, {"manifolds": manifolds, "pump_flow_control": pump_config}
+        )
+
+        fake.from_config.assert_called_once_with(hass, pump_config, manifolds)
+        fake.from_config.return_value.async_start.assert_called_once()
+        assert coord.pump_flow_controller is fake.from_config.return_value
+
+    def test_no_controller_without_config(self, hass):
+        assert coordinator.AdaptiveThermostatCoordinator(hass).pump_flow_controller is None
 
 
 if __name__ == "__main__":

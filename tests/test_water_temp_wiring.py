@@ -46,6 +46,7 @@ def make_coordinator(config):
     coordinator._startup_eval_unsub = None
     coordinator._outdoor_temp_unsub = None
     coordinator._water_temp_controller = None
+    coordinator._pump_flow_controller = None
     return coordinator
 
 
