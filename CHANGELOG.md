@@ -1,6 +1,84 @@
 # CHANGELOG
 
 
+## v0.67.0 (2026-10-26)
+
+### Bug Fixes
+
+- **pump**: Harden pump flow writes and config warnings
+  ([`ea5cf75`](https://github.com/afewyards/ha-adaptive-climate/commit/ea5cf751727b472b74306326a817c5d4b83ac8d3))
+
+Silence the entity-limit warning when an idle target is only clamped up to the entity minimum;
+  compare read-back values within half an entity step so a device that echoes a rounded or noisy
+  value is not rewritten every cycle; fall back to the last successful write when the read-back is
+  non-numeric or non-finite instead of always overwriting; and warn (rate-limited) when the target
+  entity is missing, a manifold zone has no entity, or the target reports a unit other than L/min.
+
+- **pump**: Wait for pump flow writes so failures are rate-limited
+  ([`882b582`](https://github.com/afewyards/ha-adaptive-climate/commit/882b582dc49aa9da929ca167d4dda07eb60df5f6))
+
+- **services**: Return data from learning and health services
+  ([`3907477`](https://github.com/afewyards/ha-adaptive-climate/commit/3907477b0bb44d5f9049cb45bf6cc7e574415523))
+
+Register run_learning, pid_recommendations and health_check with SupportsResponse.OPTIONAL so
+  response_variable works in scripts. health_check was never registered; it now is, and its result
+  is converted to JSON-safe types. Drop the stale "requires debug: true" wording for run_learning
+  and pid_recommendations.
+
+Closes #5
+
+### Documentation
+
+- **pump**: Add pump flow control design spec
+  ([`5ff93c9`](https://github.com/afewyards/ha-adaptive-climate/commit/5ff93c986b8a1118af8b094fe07e9fca10f130c2))
+
+- **pump**: Add pump flow control implementation plan
+  ([`e316847`](https://github.com/afewyards/ha-adaptive-climate/commit/e3168475db2db657fed9aea75afffe5977c5b7cd))
+
+Spec: pump reads zone flows from config via from_config, on_zone_demand carries
+  valve_actuation_time, validators live in manifold_config.py.
+
+- **pump**: Document pump flow control
+  ([`914a444`](https://github.com/afewyards/ha-adaptive-climate/commit/914a444831f9cc924d2c036344a7a7610c1dd073))
+
+- **pump**: Document write policy, warnings and deployment notes
+  ([`40ad45b`](https://github.com/afewyards/ha-adaptive-climate/commit/40ad45b6b220a230eca8fda2f56fd0680a393a0c))
+
+Cover the half-step equality rule, the non-numeric read-back fallback to the last written value, the
+  full warnings list, and notes on write wear and heat-source startup delay.
+
+### Features
+
+- **manifold**: Add per-zone flow and pump flow config validators
+  ([`16195cd`](https://github.com/afewyards/ha-adaptive-climate/commit/16195cdfc543ebd1a582f77f1d00d0171249d3a0))
+
+- **manifold**: Replace loops model with per-zone flow
+  ([`07aca16`](https://github.com/afewyards/ha-adaptive-climate/commit/07aca1645d85f799ce89a2b908f71dfb8cf36b2d))
+
+Manifold zones are now {entity, flow} entries and transport delay divides pipe volume by the summed
+  flow of active zones.
+
+BREAKING CHANGE: entity-level 'loops', manifold 'flow_per_loop' and plain entity-id zone entries are
+  rejected; list zones as {entity, flow}.
+
+- **pump**: Add pump flow controller
+  ([`928abeb`](https://github.com/afewyards/ha-adaptive-climate/commit/928abebe5215d21629ddd16b9364f360a6a802bd))
+
+- **pump**: Add pump flow target diagnostic sensor
+  ([`cbd8c1e`](https://github.com/afewyards/ha-adaptive-climate/commit/cbd8c1e6e3c73231dde766793cbc5a717729b0f8))
+
+- **pump**: Add pure pump flow helpers
+  ([`180ea35`](https://github.com/afewyards/ha-adaptive-climate/commit/180ea35d3a7bad2773f73175626b8e0c1d423966))
+
+- **pump**: Wire pump flow control into coordinator and config
+  ([`eb72a59`](https://github.com/afewyards/ha-adaptive-climate/commit/eb72a59ce0cc3438bfd91432f154b362ee9d1344))
+
+### Refactoring
+
+- **pump**: Share entity limit parsing with water temp writer
+  ([`9883b43`](https://github.com/afewyards/ha-adaptive-climate/commit/9883b43c9e9ac2e75ab8716e8ffee87f9c4dae5d))
+
+
 ## v0.66.1 (2026-08-02)
 
 ### Bug Fixes

@@ -116,7 +116,7 @@ TYPE_CHECKING = true
 
 [project]
 name = "adaptive-climate"
-version = "0.66.1"
+version = "0.67.0"
 description = "Home Assistant custom component for PID-based thermostat control with adaptive learning"
 readme = "README.md"
 license = {text = "MIT"}
