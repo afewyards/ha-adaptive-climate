@@ -90,12 +90,13 @@ class TestServiceRegistration:
     def test_public_services_registered_without_debug(
         self, mock_hass, mock_coordinator, mock_vacation_mode, mock_notification_funcs
     ):
-        """Verify all 4 services are always registered, regardless of debug flag."""
+        """Verify all 5 services are always registered, regardless of debug flag."""
         from custom_components.adaptive_climate.services import (
             async_register_services,
             SERVICE_WEEKLY_REPORT,
             SERVICE_SET_VACATION_MODE,
             SERVICE_RUN_LEARNING,
+            SERVICE_HEALTH_CHECK,
             SERVICE_PID_RECOMMENDATIONS,
         )
 
@@ -113,14 +114,15 @@ class TestServiceRegistration:
             debug=False,
         )
 
-        # All 4 services are always registered (H05 fix: removed debug gate)
-        assert mock_hass.services.async_register.call_count == 4
+        # All 5 services are always registered (H05 fix: removed debug gate)
+        assert mock_hass.services.async_register.call_count == 5
 
         registered_services = [call[0][1] for call in mock_hass.services.async_register.call_args_list]
         for service in [
             SERVICE_SET_VACATION_MODE,
             SERVICE_WEEKLY_REPORT,
             SERVICE_RUN_LEARNING,
+            SERVICE_HEALTH_CHECK,
             SERVICE_PID_RECOMMENDATIONS,
         ]:
             assert service in registered_services, f"Service {service} not registered"
@@ -151,8 +153,8 @@ class TestServiceRegistration:
             debug=True,
         )
 
-        # Verify all 4 services were registered (2 public + 2 debug)
-        assert mock_hass.services.async_register.call_count == 4
+        # Verify all 5 services were registered (2 public + 2 debug)
+        assert mock_hass.services.async_register.call_count == 5
 
         # Get all registered service names
         registered_services = [call[0][1] for call in mock_hass.services.async_register.call_args_list]
@@ -174,6 +176,7 @@ class TestServiceRegistration:
         from custom_components.adaptive_climate.services import (
             async_register_services,
             SERVICE_RUN_LEARNING,
+            SERVICE_HEALTH_CHECK,
             SERVICE_PID_RECOMMENDATIONS,
         )
 
@@ -196,6 +199,62 @@ class TestServiceRegistration:
         # H05: both services are always registered, regardless of debug flag
         assert SERVICE_RUN_LEARNING in registered_services, "run_learning must always be registered"
         assert SERVICE_PID_RECOMMENDATIONS in registered_services, "pid_recommendations must always be registered"
+
+    def test_response_services_support_response(
+        self, mock_hass, mock_coordinator, mock_vacation_mode, mock_notification_funcs
+    ):
+        from custom_components.adaptive_climate import services as services_module
+        from custom_components.adaptive_climate.services import (
+            async_register_services,
+            SERVICE_HEALTH_CHECK,
+            SERVICE_PID_RECOMMENDATIONS,
+            SERVICE_RUN_LEARNING,
+        )
+
+        async_register_services(
+            hass=mock_hass,
+            coordinator=mock_coordinator,
+            vacation_mode=mock_vacation_mode,
+            notify_service=None,
+            persistent_notification=False,
+            async_send_notification_func=mock_notification_funcs["send_notification"],
+            async_send_persistent_notification_func=mock_notification_funcs["send_persistent"],
+            vacation_schema=Mock(),
+            default_vacation_target_temp=15.0,
+        )
+
+        kwargs = {c[0][1]: c[1] for c in mock_hass.services.async_register.call_args_list}
+        for service in (SERVICE_RUN_LEARNING, SERVICE_HEALTH_CHECK, SERVICE_PID_RECOMMENDATIONS):
+            assert kwargs[service]["supports_response"] == services_module.SupportsResponse.OPTIONAL
+
+    def test_health_check_response_is_json_serializable(self, mock_hass, mock_coordinator):
+        import json
+        from custom_components.adaptive_climate.analytics.health import HealthIssue, HealthStatus
+        from custom_components.adaptive_climate.services import async_handle_health_check
+
+        core_result = {
+            "status": HealthStatus.WARNING,
+            "zone_issues": {
+                "living": [HealthIssue("living", HealthStatus.WARNING, "short_cycle", "msg")],
+                "bed": [],
+            },
+            "summary": "1 warning(s) detected",
+            "total_issues": 1,
+            "critical_count": 0,
+            "warning_count": 1,
+        }
+        with patch(
+            "custom_components.adaptive_climate.services._run_health_check_core",
+            AsyncMock(return_value=core_result),
+        ):
+            result = _run_async(async_handle_health_check(mock_hass, mock_coordinator, Mock(), None, False, None, None))
+
+        json.dumps(result)
+        assert result["status"] == HealthStatus.WARNING.value
+        assert result["zone_issues"]["living"] == [
+            {"severity": HealthStatus.WARNING.value, "issue_type": "short_cycle", "message": "msg"}
+        ]
+        assert result["zone_issues"]["bed"] == []
 
     def test_services_registered_with_correct_domain(
         self, mock_hass, mock_coordinator, mock_vacation_mode, mock_notification_funcs

@@ -121,7 +121,12 @@ run_learning:
     and calculates recommended PID adjustments based on observed performance
     metrics (overshoot, undershoot, settling time, oscillations). Results are
     returned and also logged for review.
-    Requires debug: true in domain configuration.
+
+health_check:
+  name: Health Check
+  description: >-
+    Run a health check on all zones and send a notification if issues are
+    found. The result is returned and can be captured with response_variable.
 
 pid_recommendations:
   name: PID Recommendations
@@ -129,7 +134,6 @@ pid_recommendations:
     Returns current and recommended PID values for all zones based on physics
     and adaptive learning. This is a read-only service - it does not apply
     any changes. Use this to preview what apply_adaptive_pid would do.
-    Requires debug: true in domain configuration.
 
 weekly_report:
   name: Weekly Report

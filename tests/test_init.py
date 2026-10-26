@@ -752,6 +752,7 @@ class TestAsyncUnregisterServices:
             SERVICE_WEEKLY_REPORT,
             SERVICE_SET_VACATION_MODE,
             SERVICE_PID_RECOMMENDATIONS,
+            SERVICE_HEALTH_CHECK,
         )
         from custom_components.adaptive_climate.const import DOMAIN
 
@@ -769,6 +770,7 @@ class TestAsyncUnregisterServices:
             SERVICE_WEEKLY_REPORT,
             SERVICE_SET_VACATION_MODE,
             SERVICE_PID_RECOMMENDATIONS,
+            SERVICE_HEALTH_CHECK,
         ]
 
         assert hass.services.async_remove.call_count == len(expected_services)
@@ -931,7 +933,7 @@ class TestReloadWithoutLeftoverState:
         # Track service registrations
         registered_services = {}
 
-        def mock_async_register(domain, service, handler, schema=None):
+        def mock_async_register(domain, service, handler, schema=None, supports_response=None):
             key = f"{domain}.{service}"
             registered_services[key] = registered_services.get(key, 0) + 1
 

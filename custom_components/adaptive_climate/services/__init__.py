@@ -7,13 +7,14 @@ from typing import Any, TYPE_CHECKING
 
 # These imports are only needed when running in Home Assistant
 try:
-    from homeassistant.core import HomeAssistant, ServiceCall
+    from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 
     HAS_HOMEASSISTANT = True
 except ImportError:
     HAS_HOMEASSISTANT = False
     HomeAssistant = Any
     ServiceCall = Any
+    SupportsResponse = Any
 
 from ..const import DOMAIN
 
@@ -182,7 +183,7 @@ async def async_handle_health_check(
         Health check result dictionary
     """
     _LOGGER.info("Running health check for all zones")
-    return await _run_health_check_core(
+    result = await _run_health_check_core(
         hass=hass,
         coordinator=coordinator,
         notify_service=notify_service,
@@ -191,6 +192,15 @@ async def async_handle_health_check(
         async_send_persistent_notification_func=async_send_persistent_notification_func,
         is_scheduled=False,
     )
+    # Service responses must be JSON-serializable; the core result holds an Enum and HealthIssue objects.
+    return {
+        **result,
+        "status": result["status"].value,
+        "zone_issues": {
+            zone: [{"severity": i.severity.value, "issue_type": i.issue_type, "message": i.message} for i in issues]
+            for zone, issues in result.get("zone_issues", {}).items()
+        },
+    }
 
 
 async def async_handle_weekly_report(
@@ -412,10 +422,14 @@ def async_register_services(
 
     # Always register learning/recommendation services — they are advertised in services.yaml
     # and users get "service not found" errors when debug=False gates them (H05 fix).
-    hass.services.async_register(DOMAIN, SERVICE_RUN_LEARNING, _run_learning_handler)
-    hass.services.async_register(DOMAIN, SERVICE_PID_RECOMMENDATIONS, _pid_recommendations_handler)
+    for name, handler in (
+        (SERVICE_RUN_LEARNING, _run_learning_handler),
+        (SERVICE_HEALTH_CHECK, _health_check_handler),
+        (SERVICE_PID_RECOMMENDATIONS, _pid_recommendations_handler),
+    ):
+        hass.services.async_register(DOMAIN, name, handler, supports_response=SupportsResponse.OPTIONAL)
 
-    _LOGGER.debug("Registered 4 services for %s domain (debug=%s)", DOMAIN, debug)
+    _LOGGER.debug("Registered 5 services for %s domain (debug=%s)", DOMAIN, debug)
 
 
 def async_unregister_services(hass: HomeAssistant) -> None:
@@ -428,6 +442,7 @@ def async_unregister_services(hass: HomeAssistant) -> None:
         SERVICE_SET_VACATION_MODE,
         SERVICE_WEEKLY_REPORT,
         SERVICE_RUN_LEARNING,
+        SERVICE_HEALTH_CHECK,
         SERVICE_PID_RECOMMENDATIONS,
     ]
 

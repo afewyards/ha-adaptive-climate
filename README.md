@@ -290,8 +290,11 @@ Tracks on→off cycles and fires maintenance alerts at 80% and 90% wear. [Learn 
 ### Domain Services
 - `adaptive_climate.weekly_report` - Generate performance report
 - `adaptive_climate.set_vacation_mode` - Enable frost protection mode
-- `adaptive_climate.run_learning` - Trigger learning analysis (debug only)
-- `adaptive_climate.pid_recommendations` - Preview recommended PID values (debug only)
+- `adaptive_climate.run_learning` - Trigger learning analysis
+- `adaptive_climate.pid_recommendations` - Preview recommended PID values
+- `adaptive_climate.health_check` - Run a zone health check
+
+`run_learning`, `pid_recommendations` and `health_check` return data; capture it with `response_variable`.
 
 [Full service documentation →](https://github.com/afewyards/ha-adaptive-climate/wiki/Services)
 
