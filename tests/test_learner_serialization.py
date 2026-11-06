@@ -31,7 +31,7 @@ class TestV9FormatSerialization:
         data = learner.to_dict()
 
         # Should be v10 format
-        assert data["format_version"] == 11
+        assert data["format_version"] == 12
 
         # Should include contribution_tracker at top level
         assert "contribution_tracker" in data
@@ -102,7 +102,7 @@ class TestV9FormatSerialization:
         restored = restore_learner_from_dict(v10_data)
 
         # Should detect v10 format
-        assert restored["format_version"] == 11
+        assert restored["format_version"] == 12
 
         # Should have contribution_tracker_state
         assert "contribution_tracker_state" in restored
@@ -312,7 +312,7 @@ class TestV9ToV10Migration:
 
         # Serialize
         data = learner.to_dict()
-        assert data["format_version"] == 11
+        assert data["format_version"] == 12
         assert "heating_rate_learner" in data
 
         # Restore
@@ -334,9 +334,9 @@ class TestV9ToV10Migration:
 class TestBackwardCompatibility:
     """Test backward compatibility with existing serialization."""
 
-    def test_current_version_is_11(self):
-        """Test that CURRENT_VERSION constant is set to 11."""
-        assert CURRENT_VERSION == 11
+    def test_current_version_is_12(self):
+        """Test that CURRENT_VERSION includes the persisted v12 cycle gate."""
+        assert CURRENT_VERSION == 12
 
     def test_v11_includes_all_prior_fields(self):
         """Test that v11 format includes all prior-version fields."""
@@ -412,7 +412,7 @@ class TestLastSeasonalShiftPersistence:
         learner1._validation._last_seasonal_shift = ts
 
         data = learner1.to_dict()
-        assert data["format_version"] == 11
+        assert data["format_version"] == 12
 
         learner2 = AdaptiveLearner(heating_type=HeatingType.FLOOR_HYDRONIC)
         learner2.restore_from_dict(data)
@@ -474,7 +474,7 @@ class TestLastSeasonalShiftPersistence:
 
         result = restore_learner_from_dict(v10_data)
 
-        assert result["format_version"] == 11
+        assert result["format_version"] == 12
         assert result["last_seasonal_shift"] is None
 
 

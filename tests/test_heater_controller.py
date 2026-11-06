@@ -2909,7 +2909,7 @@ class TestLowOutputMaintenanceTimeout:
         )
 
         assert mock_call_later.called
-        assert controller._low_output_timer is not None
+        assert controller._demand_zero_timer is not None
 
         # Output rises above threshold — timer should be cancelled
         await controller.async_set_control_value(
@@ -2919,7 +2919,7 @@ class TestLowOutputMaintenanceTimeout:
         )
 
         cancel_mock.assert_called_once()
-        assert controller._low_output_timer is None
+        assert controller._demand_zero_timer is None
         assert len(settling_events) == 0
 
     @pytest.mark.asyncio

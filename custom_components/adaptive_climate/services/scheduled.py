@@ -452,9 +452,13 @@ async def async_daily_learning(
             _LOGGER.debug("Cannot get state for zone %s (%s)", zone_id, climate_entity_id)
             continue
 
-        current_kp = state.attributes.get("kp", 100.0)
-        current_ki = state.attributes.get("ki", 0.01)
-        current_kd = state.attributes.get("kd", 0.0)
+        from .learning_diagnostics import current_pid_gains, pid_analysis_details
+
+        current_pid = current_pid_gains(adaptive_learner)
+        if current_pid is None:
+            _LOGGER.warning("Zone %s: daily analysis skipped: pid_gains_unavailable", zone_id)
+            continue
+        current_kp, current_ki, current_kd = current_pid["kp"], current_pid["ki"], current_pid["kd"]
         pwm_seconds = zone_data.get("pwm_seconds", 0)
 
         try:
@@ -469,8 +473,9 @@ async def async_daily_learning(
 
             if recommendation is None:
                 _LOGGER.debug(
-                    "Zone %s: insufficient data for recommendations",
+                    "Zone %s: learning analysis outcome %s",
                     zone_id,
+                    pid_analysis_details(adaptive_learner),
                 )
                 continue
 

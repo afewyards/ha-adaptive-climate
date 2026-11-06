@@ -51,6 +51,8 @@ class TestHybridRateLimiting:
                 min_adjustment_cycles=3,
             )
             assert adjustment is not None, "First adjustment should succeed"
+            # Simulate committing the recommended gain change.
+            learner.record_pid_adjustment()
             assert learner._cycles_since_last_adjustment == 0, "Cycle counter should be reset"
 
             # Add 2 more cycles (total 2 since last adjustment)
@@ -95,6 +97,8 @@ class TestHybridRateLimiting:
                 min_adjustment_cycles=3,
             )
             assert adjustment is not None, "Should succeed with both gates satisfied"
+            # Simulate committing the recommended gain change.
+            learner.record_pid_adjustment()
             assert learner._cycles_since_last_adjustment == 0, "Cycle counter should be reset again"
 
     def test_rate_limiting_faster_convergence(self, learner, problem_cycle):
@@ -106,6 +110,8 @@ class TestHybridRateLimiting:
         # First adjustment
         adjustment = learner.calculate_pid_adjustment(current_kp=100.0, current_ki=2.0, current_kd=1.2)
         assert adjustment is not None
+        # Simulate committing the recommended gain change.
+        learner.record_pid_adjustment()
 
         # Add 3 more cycles
         for _ in range(3):
@@ -120,6 +126,8 @@ class TestHybridRateLimiting:
             # Should succeed with 8h hybrid gate
             adjustment = learner.calculate_pid_adjustment(current_kp=100.0, current_ki=2.0, current_kd=1.2)
             assert adjustment is not None, "8h hybrid should allow adjustment"
+            # Simulate committing the recommended gain change.
+            learner.record_pid_adjustment()
 
         # Reset for 24h test
         learner.clear_history()
@@ -128,6 +136,8 @@ class TestHybridRateLimiting:
 
         adjustment = learner.calculate_pid_adjustment(current_kp=100.0, current_ki=2.0, current_kd=1.2)
         assert adjustment is not None
+        # Simulate committing the recommended gain change.
+        learner.record_pid_adjustment()
 
         # Add 3 more cycles
         for _ in range(3):
@@ -172,6 +182,8 @@ class TestHybridRateLimiting:
         # Make adjustment
         adjustment = learner.calculate_pid_adjustment(current_kp=100.0, current_ki=2.0, current_kd=1.2)
         assert adjustment is not None
+        # Simulate committing the recommended gain change.
+        learner.record_pid_adjustment()
         assert learner._cycles_since_last_adjustment == 0
 
     def test_cycle_counter_resets_on_clear_history(self, learner, problem_cycle):
@@ -195,6 +207,8 @@ class TestHybridRateLimiting:
 
         adjustment = learner.calculate_pid_adjustment(current_kp=100.0, current_ki=2.0, current_kd=1.2)
         assert adjustment is not None
+        # Simulate committing the recommended gain change.
+        learner.record_pid_adjustment()
 
         # Add 3 cycles (satisfies cycle gate)
         for _ in range(3):
@@ -224,6 +238,8 @@ class TestHybridRateLimiting:
 
         adjustment = learner.calculate_pid_adjustment(current_kp=100.0, current_ki=2.0, current_kd=1.2)
         assert adjustment is not None
+        # Simulate committing the recommended gain change.
+        learner.record_pid_adjustment()
 
         # Add only 2 cycles (less than 3 minimum)
         learner.add_cycle_metrics(problem_cycle)
@@ -260,6 +276,8 @@ class TestHybridRateLimiting:
             min_adjustment_cycles=3,
         )
         assert adjustment is not None
+        # Simulate committing the recommended gain change.
+        learner.record_pid_adjustment()
         assert learner._last_adjustment_time is not None
 
     def test_custom_gates_configuration(self, learner, problem_cycle):
@@ -270,6 +288,8 @@ class TestHybridRateLimiting:
 
         adjustment = learner.calculate_pid_adjustment(current_kp=100.0, current_ki=2.0, current_kd=1.2)
         assert adjustment is not None
+        # Simulate committing the recommended gain change.
+        learner.record_pid_adjustment()
 
         # Add 4 cycles
         for _ in range(4):
@@ -316,6 +336,8 @@ class TestHybridRateLimiting:
                 min_adjustment_cycles=5,
             )
             assert adjustment is not None
+            # Simulate committing the recommended gain change.
+            learner.record_pid_adjustment()
 
 
 def test_rate_limiting_module_exists():

@@ -1829,6 +1829,9 @@ class TestRateLimiting:
 
         # Make adjustment
         result = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
+        # Only an applied gain change commits the cooldown.
+        assert learner.get_last_adjustment_time() is None
+        learner.record_pid_adjustment()
         assert result is not None
         assert learner._last_adjustment_time is not None
 
@@ -1840,9 +1843,11 @@ class TestRateLimiting:
         with (
             patch("custom_components.adaptive_climate.adaptive.learning_adjustments.dt_util") as mock_dt_util,
             patch("custom_components.adaptive_climate.adaptive.learning_coordinator.dt_util") as mock_coord_dt,
+            patch("custom_components.adaptive_climate.adaptive.learning.dt_util") as mock_learning_dt,
         ):
             mock_dt_util.utcnow.return_value = fake_now
             mock_coord_dt.utcnow.return_value = fake_now
+            mock_learning_dt.utcnow.return_value = fake_now
 
             # Add enough cycles
             for _ in range(6):
@@ -1857,6 +1862,9 @@ class TestRateLimiting:
 
             # First adjustment should work
             result1 = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
+            # Only an applied gain change commits the cooldown.
+            assert learner.get_last_adjustment_time() is None
+            learner.record_pid_adjustment()
             assert result1 is not None
 
             # Add more cycles for a potential second adjustment
@@ -1898,9 +1906,11 @@ class TestRateLimiting:
         with (
             patch("custom_components.adaptive_climate.adaptive.learning_adjustments.dt_util") as mock_dt_util,
             patch("custom_components.adaptive_climate.adaptive.learning_coordinator.dt_util") as mock_coord_dt,
+            patch("custom_components.adaptive_climate.adaptive.learning.dt_util") as mock_learning_dt,
         ):
             mock_dt_util.utcnow.return_value = fake_now
             mock_coord_dt.utcnow.return_value = fake_now
+            mock_learning_dt.utcnow.return_value = fake_now
             learner._last_adjustment_time = fake_now - timedelta(hours=25)
 
             # Add more cycles
@@ -1942,9 +1952,11 @@ class TestRateLimiting:
         with (
             patch("custom_components.adaptive_climate.adaptive.learning_adjustments.dt_util") as mock_dt_util,
             patch("custom_components.adaptive_climate.adaptive.learning_coordinator.dt_util") as mock_coord_dt,
+            patch("custom_components.adaptive_climate.adaptive.learning.dt_util") as mock_learning_dt,
         ):
             mock_dt_util.utcnow.return_value = fake_now
             mock_coord_dt.utcnow.return_value = fake_now
+            mock_learning_dt.utcnow.return_value = fake_now
             learner._last_adjustment_time = fake_now - timedelta(hours=2)
 
             # Add more cycles
@@ -1970,9 +1982,11 @@ class TestRateLimiting:
         with (
             patch("custom_components.adaptive_climate.adaptive.learning_adjustments.dt_util") as mock_dt_util,
             patch("custom_components.adaptive_climate.adaptive.learning_coordinator.dt_util") as mock_coord_dt,
+            patch("custom_components.adaptive_climate.adaptive.learning.dt_util") as mock_learning_dt,
         ):
             mock_dt_util.utcnow.return_value = fake_now
             mock_coord_dt.utcnow.return_value = fake_now
+            mock_learning_dt.utcnow.return_value = fake_now
 
             # Set last adjustment to exactly 8 hours ago (time gate at boundary)
             learner._last_adjustment_time = fake_now - timedelta(hours=8)
@@ -2007,6 +2021,9 @@ class TestRateLimiting:
             )
 
         result = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
+        # Only an applied gain change commits the cooldown.
+        assert learner.get_last_adjustment_time() is None
+        learner.record_pid_adjustment()
         assert result is not None
         assert learner._last_adjustment_time is not None
 
@@ -2036,10 +2053,15 @@ class TestRateLimiting:
         with (
             patch("custom_components.adaptive_climate.adaptive.learning_adjustments.dt_util") as mock_dt_util,
             patch("custom_components.adaptive_climate.adaptive.learning_coordinator.dt_util") as mock_coord_dt,
+            patch("custom_components.adaptive_climate.adaptive.learning.dt_util") as mock_learning_dt,
         ):
             mock_dt_util.utcnow.return_value = fake_now
             mock_coord_dt.utcnow.return_value = fake_now
+            mock_learning_dt.utcnow.return_value = fake_now
             result = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
+            # Only an applied gain change commits the cooldown.
+            assert learner.get_last_adjustment_time() is None
+            learner.record_pid_adjustment()
 
             assert result is not None
             last_time = learner.get_last_adjustment_time()
@@ -2485,10 +2507,15 @@ class TestAdaptiveLearnerSerialization:
         with (
             patch("custom_components.adaptive_climate.adaptive.learning_adjustments.dt_util") as mock_dt_util,
             patch("custom_components.adaptive_climate.adaptive.learning_coordinator.dt_util") as mock_coord_dt,
+            patch("custom_components.adaptive_climate.adaptive.learning.dt_util") as mock_learning_dt,
         ):
             mock_dt_util.utcnow.return_value = fake_now
             mock_coord_dt.utcnow.return_value = fake_now
+            mock_learning_dt.utcnow.return_value = fake_now
             learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
+            # Only an applied gain change commits the cooldown.
+            assert learner.get_last_adjustment_time() is None
+            learner.record_pid_adjustment()
 
         result2 = learner.to_dict()
 
@@ -4390,7 +4417,7 @@ class TestUndershootDetectorSerialization:
         detector_state = result["undershoot_detector"]
         assert detector_state["consecutive_failures"] == 3
         assert detector_state["cumulative_ki_multiplier"] == 1.5
-        assert result["format_version"] == 11
+        assert result["format_version"] == 12
 
     def test_serialize_undershoot_detector_empty_state(self):
         """Test to_dict serializes empty unified detector state (v10 format)."""
@@ -4403,7 +4430,7 @@ class TestUndershootDetectorSerialization:
         detector_state = result["undershoot_detector"]
         assert detector_state["consecutive_failures"] == 0
         assert detector_state["cumulative_ki_multiplier"] == 1.0
-        assert result["format_version"] == 11
+        assert result["format_version"] == 12
 
     def test_serialization_round_trip_with_undershoot_detector(self):
         """Test full serialization and restoration round-trip with unified detector state (v10)."""

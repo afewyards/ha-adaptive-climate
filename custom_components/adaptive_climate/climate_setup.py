@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import timedelta
 from typing import Any
@@ -273,35 +274,43 @@ async def async_setup_platform(hass: HomeAssistant, config: ConfigType, async_ad
     if DOMAIN not in hass.data:
         hass.data[DOMAIN] = {}
 
-    if "learning_store" not in hass.data[DOMAIN]:
-        learning_store = LearningDataStore(hass)
-        await learning_store.async_load()
-        hass.data[DOMAIN]["learning_store"] = learning_store
-        _LOGGER.info("Created LearningDataStore singleton")
+    # Zone platform setups may overlap at every await. Share the lock before
+    # yielding, then recheck under it so no zone sees a partially restored store
+    # or triggers duplicate system-wide number discovery. Failure/cancellation
+    # releases the lock and leaves a later zone able to retry initialization.
+    setup_lock = hass.data[DOMAIN].setdefault("learning_store_setup_lock", asyncio.Lock())
+    async with setup_lock:
+        if "learning_store" not in hass.data[DOMAIN]:
+            learning_store = LearningDataStore(hass)
+            await learning_store.async_load()
 
-        # M01: Restore manifold state now that the store exists.
-        # The manifold_registry is created in async_setup() (__init__.py) before
-        # climate_setup runs, so the store wasn't available yet during domain setup.
-        manifold_registry = hass.data[DOMAIN].get("manifold_registry")
-        if manifold_registry:
-            manifold_state = await learning_store.async_load_manifold_state()
-            if manifold_state:
-                manifold_registry.restore_state(manifold_state)
-                _LOGGER.info("Restored manifold state for %d manifolds", len(manifold_state))
+            # M01: Restore manifold state now that the store exists.
+            # The manifold_registry is created in async_setup() (__init__.py) before
+            # climate_setup runs, so the store wasn't available yet during domain setup.
+            manifold_registry = hass.data[DOMAIN].get("manifold_registry")
+            if manifold_registry:
+                manifold_state = await learning_store.async_load_manifold_state()
+                if manifold_state:
+                    manifold_registry.restore_state(manifold_state)
+                    _LOGGER.info("Restored manifold state for %d manifolds", len(manifold_state))
 
-        # Restore water temperature control state (same reason as manifold above)
-        coordinator = hass.data[DOMAIN].get("coordinator")
-        if coordinator is not None:
-            await async_restore_water_temp_state(learning_store, coordinator.water_temp_controller)
+            # Restore water temperature control state (same reason as manifold above)
+            coordinator = hass.data[DOMAIN].get("coordinator")
+            if coordinator is not None:
+                await async_restore_water_temp_state(learning_store, coordinator.water_temp_controller)
 
-        # M02: Trigger number platform discovery once so LearningWindowNumber exists.
-        # Done here (first zone only) because number entities are system-wide, not
-        # per-zone, and must be created before any zone reads learning_window_days.
-        hass.data[DOMAIN]["number_platform_loaded"] = True
-        hass.async_create_task(discovery.async_load_platform(hass, "number", DOMAIN, {}, config))
-        _LOGGER.info("Triggered number platform discovery for LearningWindowNumber")
-    else:
-        learning_store = hass.data[DOMAIN]["learning_store"]
+            # Publish only after all shared restoration has completed successfully.
+            hass.data[DOMAIN]["learning_store"] = learning_store
+            _LOGGER.info("Created LearningDataStore singleton")
+
+            # M02: Trigger number platform discovery once so LearningWindowNumber exists.
+            # Done here (first zone only) because number entities are system-wide, not
+            # per-zone, and must be created before any zone reads learning_window_days.
+            hass.data[DOMAIN]["number_platform_loaded"] = True
+            hass.async_create_task(discovery.async_load_platform(hass, "number", DOMAIN, {}, config))
+            _LOGGER.info("Triggered number platform discovery for LearningWindowNumber")
+        else:
+            learning_store = hass.data[DOMAIN]["learning_store"]
 
     # Validate that at least one output entity is configured
     heater = config.get(const.CONF_HEATER)

@@ -30,6 +30,7 @@ An advanced climate integration featuring PID control with automatic tuning, ada
 
 - **5-Term PID Control** - Advanced PID controller (P+I+D+E+F) with proportional-on-measurement, outdoor compensation, and thermal coupling feedforward
 - **Adaptive Learning** - Automatically learns thermal characteristics, optimizes PID parameters, weighted cycle learning to prevent premature convergence, and chronic approach detection
+- **Learning Reliability** - [Session restoration, PID diagnostics and cooldown persistence](docs/learning-reliability.md)
 - **Physics-Based Initialization** - Initial PID values calculated from zone properties, floor construction, and empirical HVAC data
 - **Multi-Zone Coordination** - Central heat source control, mode synchronization, thermal groups, and automatic HVAC mode switching
 - **Disturbance Handling** - Contact sensors, algorithmic open window detection, humidity-based steam detection (bathrooms)

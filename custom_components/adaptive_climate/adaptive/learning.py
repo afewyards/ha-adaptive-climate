@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, TYPE_CHECKING
 import logging
+from homeassistant.util import dt as dt_util
 
 if TYPE_CHECKING:
     from homeassistant.components.climate import HVACMode
@@ -124,6 +125,7 @@ class AdaptiveLearner:
         self._convergence_thresholds = get_convergence_thresholds(heating_type)
         self._rule_thresholds = get_rule_thresholds(heating_type)
         self._last_adjustment_time: datetime | None = None
+        self._last_pid_analysis: dict[str, Any] = {}
         # Convergence tracking for Ke learning activation
         self._consecutive_converged_cycles: int = 0
         self._pid_converged_for_ke: bool = False
@@ -407,6 +409,11 @@ class AdaptiveLearner:
             mode,
         )
 
+    def record_pid_adjustment(self) -> None:
+        """Commit the cooldown after gains were actually applied, not during preview."""
+        self._last_adjustment_time = dt_util.utcnow()
+        self._cycles_since_last_adjustment = 0
+
     def get_last_adjustment_time(self) -> datetime | None:
         """Get the timestamp of the last PID adjustment."""
         return self._last_adjustment_time
@@ -629,6 +636,7 @@ class AdaptiveLearner:
             heating_convergence_confidence=self._heating_convergence_confidence,
             cooling_convergence_confidence=self._cooling_convergence_confidence,
             last_adjustment_time=self._last_adjustment_time,
+            cycles_since_last_adjustment=self._cycles_since_last_adjustment,
             consecutive_converged_cycles=self._consecutive_converged_cycles,
             pid_converged_for_ke=self._pid_converged_for_ke,
             undershoot_detector=self._undershoot_detector,

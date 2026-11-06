@@ -24,6 +24,7 @@ except ImportError:
 
 
 from .heater_cycle_bookkeeper import HeaterCycleBookkeeper
+from ..const import MIN_OUTPUT_THRESHOLD
 
 
 class HeaterTimerManager:
@@ -79,6 +80,27 @@ class HeaterTimerManager:
     def low_output_active(self) -> bool:
         """Return True if the low-output maintenance timeout is currently running."""
         return self._low_output_timer is not None
+
+    def update_learning_demand(self, control_output: float, hvac_mode: HVACMode) -> None:
+        """Keep one continuous low-demand window, independently of relay PWM.
+
+        Zero and tiny positive demand belong to the same learning interval.
+        Switching between them must not restart the two-period settling timer.
+        """
+        bookkeeper = self._bookkeeper
+        old_has_demand = bookkeeper.has_demand
+        new_has_demand = abs(control_output) > 0
+        bookkeeper.has_demand = new_has_demand
+        if self._pwm and bookkeeper._dispatcher:
+            if bookkeeper.cycle_active and abs(control_output) < MIN_OUTPUT_THRESHOLD:
+                if not self.demand_zero_active:
+                    self.schedule_demand_zero_debounce(hvac_mode, bookkeeper.get_pid_was_clamped())
+            else:
+                self.cancel_demand_zero()
+            self.cancel_low_output()
+        elif old_has_demand and not new_has_demand and bookkeeper.cycle_active:
+            bookkeeper.emit_settling_started(hvac_mode, bookkeeper.get_pid_was_clamped())
+            bookkeeper.cycle_active = False
 
     # ── Bulk cancellation ──────────────────────────────────────────────────────
 

@@ -27,7 +27,7 @@ AdaptiveLearner (learning.py):
   _last_adjustment_time         | datetime UTC | YES       | ISO-8601 string
   _consecutive_converged_cycles | int          | YES       |
   _pid_converged_for_ke         | bool         | YES       |
-  _cycles_since_last_adjustment | int          | NO        | Reset 0; safe (time gate persists)
+  _cycles_since_last_adjustment | int          | YES v12+  | Count since committed PID change
   _rule_state_tracker           | RuleState    | NO        | Transient; fresh is correct
 
 ConfidenceTracker (confidence.py):
@@ -80,7 +80,7 @@ from .heating_rate_learner import HeatingRateLearner
 _LOGGER = logging.getLogger(__name__)
 
 # Current serialization format version
-CURRENT_VERSION = 11
+CURRENT_VERSION = 12
 
 
 def serialize_cycle(cycle: CycleMetrics) -> dict[str, Any]:
@@ -120,8 +120,9 @@ def learner_to_dict(
     contribution_tracker: Any | None = None,
     heating_rate_learner: HeatingRateLearner | None = None,
     last_seasonal_shift: datetime | None = None,
+    cycles_since_last_adjustment: int = 0,
 ) -> dict[str, Any]:
-    """Serialize AdaptiveLearner state to a dictionary in v11 format.
+    """Serialize AdaptiveLearner state to a dictionary in v12 format.
 
     Args:
         heating_cycle_history: List of heating cycle metrics
@@ -199,6 +200,7 @@ def learner_to_dict(
         },
         # Shared fields
         "last_adjustment_time": (last_adjustment_time.isoformat() if last_adjustment_time is not None else None),
+        "cycles_since_last_adjustment": max(0, int(cycles_since_last_adjustment)),
         "consecutive_converged_cycles": consecutive_converged_cycles,
         "pid_converged_for_ke": pid_converged_for_ke,
     }
@@ -320,6 +322,13 @@ def _migrate_v10_to_v11(data: dict[str, Any]) -> dict[str, Any]:
     return data
 
 
+def _migrate_v11_to_v12(data: dict[str, Any]) -> dict[str, Any]:
+    """Persist adjustment-cycle gate; cannot reconstruct older counts safely."""
+    data.setdefault("cycles_since_last_adjustment", 0)
+    data["format_version"] = 12
+    return data
+
+
 def _migrate(data: dict[str, Any]) -> dict[str, Any]:
     """Chain migrate data from stored version up to CURRENT_VERSION.
 
@@ -355,6 +364,7 @@ def _migrate(data: dict[str, Any]) -> dict[str, Any]:
         (8, _migrate_v8_to_v9),
         (9, _migrate_v9_to_v10),
         (10, _migrate_v10_to_v11),
+        (11, _migrate_v11_to_v12),
     ]
 
     for from_version, migrator in _steps:
@@ -379,6 +389,7 @@ def default_learner_state() -> dict[str, Any]:
         "cooling_convergence_confidence": 0.0,
         "pid_history": [],
         "last_adjustment_time": None,
+        "cycles_since_last_adjustment": 0,
         "last_seasonal_shift": None,
         "consecutive_converged_cycles": 0,
         "pid_converged_for_ke": False,
@@ -400,10 +411,10 @@ def default_learner_state() -> dict[str, Any]:
 
 
 def restore_learner_from_dict(data: dict[str, Any]) -> dict[str, Any]:
-    """Restore AdaptiveLearner state from v11 format dictionary.
+    """Restore AdaptiveLearner state from v12 format dictionary.
 
     Args:
-        data: Dictionary containing v11 (or earlier, auto-migrated) format data
+        data: Dictionary containing v12 (or earlier, auto-migrated) format data
 
     Returns:
         Dictionary with restored state containing:
@@ -483,6 +494,11 @@ def restore_learner_from_dict(data: dict[str, Any]) -> dict[str, Any]:
     else:
         last_adjustment_time = None
 
+    # v12 cycle gate, default to conservative zero on legacy state.
+    try:
+        cycles_since_last_adjustment = max(0, int(data.get("cycles_since_last_adjustment", 0)))
+    except (TypeError, ValueError, OverflowError):
+        cycles_since_last_adjustment = 0
     # Restore seasonal shift timestamp (v11) — governs auto-apply cooldown
     last_seasonal_shift_raw = data.get("last_seasonal_shift")
     if last_seasonal_shift_raw is not None and isinstance(last_seasonal_shift_raw, str):
@@ -516,6 +532,7 @@ def restore_learner_from_dict(data: dict[str, Any]) -> dict[str, Any]:
         "cooling_convergence_confidence": cooling_convergence_confidence,
         "pid_history": pid_history,
         "last_adjustment_time": last_adjustment_time,
+        "cycles_since_last_adjustment": cycles_since_last_adjustment,
         "last_seasonal_shift": last_seasonal_shift,
         "consecutive_converged_cycles": consecutive_converged_cycles,
         "pid_converged_for_ke": pid_converged_for_ke,

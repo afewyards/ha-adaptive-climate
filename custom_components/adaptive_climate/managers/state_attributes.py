@@ -54,8 +54,8 @@ def build_state_attributes(thermostat: SmartThermostat) -> dict[str, Any]:
         ),
         "cycle_count": build_cycle_count(heater_count, cooler_count, is_demand_switch),
         "integral": thermostat.pid_control_i,
-        # Cycle tracking state — persisted so that a mid-cycle restart doesn't emit
-        # a spurious CYCLE_STARTED and wipe CycleTrackerManager's in-progress timestamps.
+        # Transient session diagnostics. StateRestorer clears these flags because
+        # a new CycleTrackerManager has no matching in-flight session history.
         "_cycle_active": thermostat._heater_controller.cycle_active if thermostat._heater_controller else False,
         "_has_demand": thermostat._heater_controller.has_demand if thermostat._heater_controller else False,
     }

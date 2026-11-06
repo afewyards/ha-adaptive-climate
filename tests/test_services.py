@@ -461,6 +461,7 @@ class TestPIDRecommendationsHandler:
         # Set up a zone with adaptive learner
         mock_learner = Mock()
         mock_learner.get_cycle_count = Mock(return_value=10)
+        mock_learner._pid_gains_manager.get_gains.return_value = Mock(kp=100.0, ki=0.01, kd=0.0)
         mock_learner.calculate_pid_adjustment = Mock(
             return_value={
                 "kp": 110.0,
@@ -597,6 +598,8 @@ class TestDailyLearningCallback:
         # Set up a zone with adaptive learner
         mock_learner = Mock()
         mock_learner.calculate_pid_adjustment = Mock(return_value=None)
+        mock_learner._pid_gains_manager.get_gains.return_value = Mock(kp=100.0, ki=0.01, kd=0.0)
+        mock_learner._last_pid_analysis = {"status": "converged", "reason": "pid_converged"}
 
         mock_coordinator.get_all_zones = Mock(
             return_value={

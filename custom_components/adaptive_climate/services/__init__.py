@@ -17,6 +17,7 @@ except ImportError:
     SupportsResponse = Any
 
 from ..const import DOMAIN
+from .learning_diagnostics import current_pid_gains, pid_analysis_details
 
 # Import scheduled task functions from scheduled module
 from .scheduled import (
@@ -33,6 +34,7 @@ if TYPE_CHECKING:
     from ..adaptive.vacation import VacationMode
 
 _LOGGER = logging.getLogger(__name__)
+
 
 # Service names
 SERVICE_RUN_LEARNING = "run_learning"
@@ -91,9 +93,15 @@ async def async_handle_run_learning(
             }
             continue
 
-        current_kp = state.attributes.get("kp", 100.0)
-        current_ki = state.attributes.get("ki", 0.01)
-        current_kd = state.attributes.get("kd", 0.0)
+        current_pid = current_pid_gains(adaptive_learner)
+        if current_pid is None:
+            results["zones_skipped"] += 1
+            results["zone_results"][zone_id] = {
+                "status": "skipped",
+                "reason": "pid_gains_unavailable",
+            }
+            continue
+        current_kp, current_ki, current_kd = (current_pid["kp"], current_pid["ki"], current_pid["kd"])
         pwm_seconds = zone_data.get("pwm_seconds", 0)
 
         try:
@@ -111,15 +119,18 @@ async def async_handle_run_learning(
             results["zones_analyzed"] += 1
 
             if recommendation is None:
+                diagnosis = pid_analysis_details(adaptive_learner)
                 _LOGGER.info(
-                    "Zone %s: insufficient data for recommendations (cycles: %d)",
+                    "Zone %s: learning result %s (%s, cycles: %d)",
                     zone_id,
+                    diagnosis["status"],
+                    diagnosis.get("reason", ""),
                     cycle_count,
                 )
                 results["zone_results"][zone_id] = {
-                    "status": "insufficient_data",
+                    **diagnosis,
                     "cycle_count": cycle_count,
-                    "current_pid": {"kp": current_kp, "ki": current_ki, "kd": current_kd},
+                    "current_pid": current_pid,
                 }
             else:
                 # Calculate percentage changes for logging; use absolute delta label for tiny baselines
@@ -284,10 +295,17 @@ async def async_handle_pid_recommendations(
             result["zones_error"] += 1
             continue
 
-        current_kp = state.attributes.get("kp", 100.0)
-        current_ki = state.attributes.get("ki", 0.01)
-        current_kd = state.attributes.get("kd", 0.0)
-        current_pid = {"kp": current_kp, "ki": current_ki, "kd": current_kd}
+        current_pid = current_pid_gains(adaptive_learner)
+        if current_pid is None:
+            result["zones"][zone_id] = {
+                "status": "error",
+                "reason": "pid_gains_unavailable",
+                "current_pid": None,
+                "recommended_pid": None,
+            }
+            result["zones_error"] += 1
+            continue
+        current_kp, current_ki, current_kd = (current_pid["kp"], current_pid["ki"], current_pid["kd"])
         pwm_seconds = zone_data.get("pwm_seconds", 0)
 
         try:
@@ -302,13 +320,15 @@ async def async_handle_pid_recommendations(
             )
 
             if recommendation is None:
+                diagnosis = pid_analysis_details(adaptive_learner)
                 result["zones"][zone_id] = {
-                    "status": "insufficient_data",
+                    **diagnosis,
                     "cycle_count": cycle_count,
                     "current_pid": current_pid,
                     "recommended_pid": None,
                 }
-                result["zones_insufficient_data"] += 1
+                if diagnosis["status"] == "insufficient_data":
+                    result["zones_insufficient_data"] += 1
             else:
                 # Calculate percentage changes
                 kp_change = ((recommendation["kp"] - current_kp) / current_kp * 100) if current_kp != 0 else 0

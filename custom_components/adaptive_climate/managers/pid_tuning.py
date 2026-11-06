@@ -244,6 +244,7 @@ class PIDTuningManager:
             learner = coordinator.get_adaptive_learner(self._state.entity_id)
             if learner:
                 learner.clear_history()
+                learner.record_pid_adjustment()
 
         _LOGGER.info(
             "%s: Applied adaptive PID: Kp=%.4f (was %.4f), Ki=%.5f (was %.5f), Kd=%.3f (was %.3f)",
@@ -347,6 +348,7 @@ class PIDTuningManager:
 
         # Clear learning history
         adaptive_learner.clear_history()
+        adaptive_learner.record_pid_adjustment()
 
         # Increment per-mode auto-apply count via public method
         new_count = adaptive_learner.increment_auto_apply_count(mode)
