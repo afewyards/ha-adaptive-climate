@@ -70,6 +70,7 @@ from .heater_service_caller import HeaterServiceCaller
 from .heater_timers import HeaterTimerManager
 from .pwm_controller import PWMController
 from .heat_pipeline import HeatPipeline
+from .heater_actuation import ActuationResult, HeaterActuationController
 
 if TYPE_CHECKING:
     from ..climate import AdaptiveThermostat
@@ -152,6 +153,9 @@ class HeaterController:
             valve_actuation_time=valve_actuation_time,
             bookkeeper=self._bookkeeper,
         )
+
+        self._actuation = HeaterActuationController(self)
+        self._safe_actuation_enabled = False
 
         # Heat pipeline for committed heat tracking.
         # Created for all PWM systems — transport_delay starts at 0 and is updated
@@ -453,7 +457,45 @@ class HeaterController:
 
     # ── Core control methods ───────────────────────────────────────────────────
 
+    def enable_safe_actuation(self) -> None:
+        """Enable transactional commands for an explicitly coordinated PWM zone."""
+        self._safe_actuation_enabled = True
+        self._service_caller.blocking = True
+
     async def async_turn_on(
+        self,
+        hvac_mode: HVACMode,
+        get_cycle_start_time: Callable[[], float],
+        set_is_heating: Callable[[bool], None],
+        set_last_heat_cycle_time: Callable[[float], None],
+    ) -> ActuationResult | None:
+        """Turn on through the serialized, result-bearing binary command path."""
+        if not self._safe_actuation_enabled:
+            return await self._async_legacy_turn_on(
+                hvac_mode, get_cycle_start_time, set_is_heating, set_last_heat_cycle_time
+            )
+        return await self._actuation.async_switch(
+            True, hvac_mode, get_cycle_start_time, set_is_heating, set_last_heat_cycle_time
+        )
+
+    async def async_turn_off(
+        self,
+        hvac_mode: HVACMode,
+        get_cycle_start_time: Callable[[], float],
+        set_is_heating: Callable[[bool], None],
+        set_last_heat_cycle_time: Callable[[float], None],
+        force: bool = False,
+    ) -> ActuationResult | None:
+        """Invalidate pending ON, then serialize OFF and its bookkeeping."""
+        if not self._safe_actuation_enabled:
+            return await self._async_legacy_turn_off(
+                hvac_mode, get_cycle_start_time, set_is_heating, set_last_heat_cycle_time, force
+            )
+        return await self._actuation.async_switch(
+            False, hvac_mode, get_cycle_start_time, set_is_heating, set_last_heat_cycle_time, force
+        )
+
+    async def _async_legacy_turn_on(
         self,
         hvac_mode: HVACMode,
         get_cycle_start_time: Callable[[], float],
@@ -514,7 +556,7 @@ class HeaterController:
         if self._heat_pipeline is not None:
             self._heat_pipeline.valve_opened(time.monotonic())
 
-    async def async_turn_off(
+    async def _async_legacy_turn_off(
         self,
         hvac_mode: HVACMode,
         get_cycle_start_time: Callable[[], float],
@@ -663,6 +705,15 @@ class HeaterController:
                     self._timers.schedule_low_output_timeout(hvac_mode, self._bookkeeper.get_pid_was_clamped())
             elif abs(control_output) >= MIN_OUTPUT_THRESHOLD:
                 self._timers.cancel_low_output()
+
+        from .pwm_coordination import PWMCoordinationRegistry
+
+        registry = getattr(self._thermostat, "_pwm_coordination", None)
+        if isinstance(registry, PWMCoordinationRegistry) and await registry.apply(thermostat_entity_id):
+            if registry.owns(thermostat_entity_id):
+                set_force_on(False)
+                set_force_off(False)
+            return
 
         if self._pwm:
             if abs(control_output) == self._difference:

@@ -30,6 +30,7 @@ except ImportError:
     cv = None
 
 from .manifold_config import MANIFOLD_SCHEMA, PUMP_FLOW_CONTROL_SCHEMA, validate_manifolds_and_pump_flow
+from .pwm_coordination_config import CONF_PWM_COORDINATION, PWM_COORDINATION_SCHEMA
 
 from .const import (
     DOMAIN,
@@ -445,6 +446,7 @@ if HAS_HOMEASSISTANT:
                         vol.Optional(CONF_PERSISTENT_NOTIFICATION, default=DEFAULT_PERSISTENT_NOTIFICATION): cv.boolean,
                         # Debug mode
                         vol.Optional(CONF_DEBUG, default=DEFAULT_DEBUG): cv.boolean,
+                        vol.Optional(CONF_PWM_COORDINATION): PWM_COORDINATION_SCHEMA,
                         # Energy tracking
                         vol.Optional(CONF_ENERGY_METER_ENTITY): cv.entity_id,
                         vol.Optional(CONF_ENERGY_COST_ENTITY): cv.entity_id,
@@ -760,6 +762,11 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
     # Create coordinator with domain config for auto mode switching
     coordinator = AdaptiveThermostatCoordinator(hass, domain_config)
+    pwm_config = domain_config.get(CONF_PWM_COORDINATION)
+    if pwm_config and pwm_config.get("enabled", False):
+        from .managers.pwm_coordination import PWMCoordinationRegistry
+
+        hass.data[DOMAIN][CONF_PWM_COORDINATION] = PWMCoordinationRegistry(hass, pwm_config)
     hass.data[DOMAIN]["coordinator"] = coordinator
 
     conflict = check_cooling_supply_conflict(domain_config)
@@ -1040,6 +1047,12 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
                 _LOGGER.error("Failed to save manifold state on shutdown: %s", e)
 
         await async_save_water_temp_state_now(hass)
+        registry = hass.data[DOMAIN].get(CONF_PWM_COORDINATION)
+        if registry is not None:
+            try:
+                await registry.async_save()
+            except Exception:
+                _LOGGER.exception("Failed to save PWM restart state at shutdown")
 
     # Listen for HA stop event
     shutdown_unsub = hass.bus.async_listen_once("homeassistant_stop", _async_save_state_on_shutdown)
@@ -1069,6 +1082,13 @@ async def async_unload(hass: HomeAssistant) -> bool:
         return True
 
     _LOGGER.info("Unloading Adaptive Climate integration")
+    pwm_registry = hass.data[DOMAIN].get(CONF_PWM_COORDINATION)
+    if pwm_registry is not None:
+        try:
+            await pwm_registry.async_save()
+        except Exception:
+            _LOGGER.exception("Failed to save PWM restart state on unload")
+        pwm_registry.close()
 
     # Cancel all scheduled tasks
     unsub_callbacks = hass.data[DOMAIN].get("unsub_callbacks", [])

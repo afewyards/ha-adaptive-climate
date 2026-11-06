@@ -19,6 +19,7 @@ except ImportError:
     HVACMode = Any
 
 from .heat_pipeline import HeatPipeline
+from .heater_actuation import ActuationResult
 
 if TYPE_CHECKING:
     from ..climate import AdaptiveThermostat
@@ -366,12 +367,17 @@ class PWMController:
                 heater_controller._has_demand = True
 
                 # Fire minimum pulse
-                await heater_controller.async_turn_on(
+                result = await heater_controller.async_turn_on(
                     hvac_mode=hvac_mode,
                     get_cycle_start_time=get_cycle_start_time,
                     set_is_heating=set_is_heating,
                     set_last_heat_cycle_time=set_last_heat_cycle_time,
                 )
+
+                if isinstance(result, ActuationResult) and result != ActuationResult.CHANGED:
+                    set_force_on(False)
+                    set_force_off(False)
+                    return
 
                 # Update time tracking
                 set_time_changed(time.monotonic())

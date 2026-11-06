@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+import time
 
 try:
     from homeassistant.core import HomeAssistant, callback
@@ -67,6 +68,18 @@ class HeaterTimerManager:
         self._valve_close_timer: Any | None = None
         self._demand_zero_timer: Any | None = None
         self._low_output_timer: Any | None = None
+        self._versions: dict[str, int] = {}
+
+    def _guard(self, name: str, action):
+        """A cancelled callback that has already been queued must be harmless."""
+        version = self._versions.get(name, 0) + 1
+        self._versions[name] = version
+
+        def guarded(value):
+            if self._versions.get(name) == version:
+                action(value)
+
+        return guarded
 
     # ── State queries ──────────────────────────────────────────────────────────
 
@@ -84,6 +97,8 @@ class HeaterTimerManager:
 
     def cancel_all(self) -> None:
         """Cancel every pending timer. Call on entity removal or forced shutdown."""
+        for name in self._versions:
+            self._versions[name] += 1
         if self._demand_zero_timer is not None:
             self._demand_zero_timer()
             self._demand_zero_timer = None
@@ -101,11 +116,12 @@ class HeaterTimerManager:
 
     def cancel_valve_open(self) -> None:
         """Cancel the pending valve-open delay timer, if any."""
+        self._versions["open"] = self._versions.get("open", 0) + 1
         if self._valve_open_timer is not None:
             self._valve_open_timer()
             self._valve_open_timer = None
 
-    def schedule_heating_started(self, hvac_mode: HVACMode) -> None:
+    def schedule_heating_started(self, hvac_mode: HVACMode, opened_at: float | None = None) -> None:
         """Schedule delayed HEATING_STARTED after valve fully opens.
 
         Args:
@@ -113,19 +129,26 @@ class HeaterTimerManager:
         """
         self._valve_open_timer = async_call_later(
             self._hass,
-            self._valve_actuation_time,
-            lambda _: self._on_heating_started(hvac_mode),
+            max(0.0, self._valve_actuation_time - (time.monotonic() - opened_at))
+            if opened_at is not None
+            else self._valve_actuation_time,
+            self._guard("open", lambda _: self._on_heating_started(hvac_mode, opened_at)),
         )
 
     @callback
-    def _on_heating_started(self, hvac_mode: HVACMode) -> None:
+    def _on_heating_started(self, hvac_mode: HVACMode, opened_at: float | None = None) -> None:
         """Fire when the valve-open delay elapses → emit HEATING_STARTED."""
-        self._bookkeeper.emit_heating_started(hvac_mode)
+        if opened_at is None:
+            self._bookkeeper.emit_heating_started(hvac_mode)
+        else:
+            self._bookkeeper.emit_heating_started(hvac_mode, at=opened_at + self._valve_actuation_time)
         self._valve_open_timer = None
 
     # ── Valve-close delay (HEATING_ENDED) ─────────────────────────────────────
 
-    def schedule_heating_ended(self, hvac_mode: HVACMode, committed_heat_seconds: float) -> None:
+    def schedule_heating_ended(
+        self, hvac_mode: HVACMode, committed_heat_seconds: float, closed_at: float | None = None
+    ) -> None:
         """Schedule delayed HEATING_ENDED at half the valve-close time.
 
         Args:
@@ -135,14 +158,21 @@ class HeaterTimerManager:
         half_valve_time = self._valve_actuation_time / 2.0
         self._valve_close_timer = async_call_later(
             self._hass,
-            half_valve_time,
-            lambda _, c=committed_heat_seconds: self._on_heating_ended(hvac_mode, c),
+            max(0.0, half_valve_time - (time.monotonic() - closed_at)) if closed_at is not None else half_valve_time,
+            self._guard("close", lambda _, c=committed_heat_seconds: self._on_heating_ended(hvac_mode, c, closed_at)),
         )
 
     @callback
-    def _on_heating_ended(self, hvac_mode: HVACMode, committed_heat_seconds: float) -> None:
+    def _on_heating_ended(
+        self, hvac_mode: HVACMode, committed_heat_seconds: float, closed_at: float | None = None
+    ) -> None:
         """Fire when the half-valve-close delay elapses → emit HEATING_ENDED."""
-        self._bookkeeper.emit_heating_ended(hvac_mode, committed_heat_seconds)
+        if closed_at is None:
+            self._bookkeeper.emit_heating_ended(hvac_mode, committed_heat_seconds)
+        else:
+            self._bookkeeper.emit_heating_ended(
+                hvac_mode, committed_heat_seconds, at=closed_at + self._valve_actuation_time / 2
+            )
         self._valve_close_timer = None
 
     # ── Demand→0 debounce (SETTLING_STARTED) ──────────────────────────────────
@@ -164,11 +194,12 @@ class HeaterTimerManager:
         self._demand_zero_timer = async_call_later(
             self._hass,
             float(2 * self._pwm),
-            lambda _: self._on_demand_zero(hvac_mode, was_clamped),
+            self._guard("demand", lambda _: self._on_demand_zero(hvac_mode, was_clamped)),
         )
 
     def cancel_demand_zero(self) -> None:
         """Cancel the demand→0 debounce timer (demand returned before it fired)."""
+        self._versions["demand"] = self._versions.get("demand", 0) + 1
         if self._demand_zero_timer is not None:
             self._demand_zero_timer()
             self._demand_zero_timer = None
@@ -203,11 +234,12 @@ class HeaterTimerManager:
         self._low_output_timer = async_call_later(
             self._hass,
             float(2 * self._pwm),
-            lambda _: self._on_low_output(hvac_mode, was_clamped),
+            self._guard("low", lambda _: self._on_low_output(hvac_mode, was_clamped)),
         )
 
     def cancel_low_output(self) -> None:
         """Cancel the low-output maintenance timer (output rose above threshold)."""
+        self._versions["low"] = self._versions.get("low", 0) + 1
         if self._low_output_timer is not None:
             self._low_output_timer()
             self._low_output_timer = None
