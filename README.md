@@ -296,6 +296,18 @@ Tracks on→off cycles and fires maintenance alerts at 80% and 90% wear. [Learn 
 
 `run_learning`, `pid_recommendations` and `health_check` return data; capture it with `response_variable`.
 
+Zones without a recommendation report one of these `status` values:
+
+| status | meaning |
+|---|---|
+| `insufficient_data` | fewer cycles than the minimum |
+| `insufficient_usable_data` | enough cycles, too few undisturbed ones |
+| `rate_limited` | `reason` is `time_gate` or `cycle_gate`; see `cycles_until_next_adjustment` |
+| `converged` | tuning is good, no change needed |
+| `no_rules_triggered` | metrics within range, nothing to adjust |
+| `gates_not_passed` | auto-apply safety gates blocked it |
+| `pid_unavailable` | live PID gains could not be read |
+
 [Full service documentation →](https://github.com/afewyards/ha-adaptive-climate/wiki/Services)
 
 ## Automatic PID Tuning

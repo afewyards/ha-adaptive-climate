@@ -27,7 +27,7 @@ AdaptiveLearner (learning.py):
   _last_adjustment_time         | datetime UTC | YES       | ISO-8601 string
   _consecutive_converged_cycles | int          | YES       |
   _pid_converged_for_ke         | bool         | YES       |
-  _cycles_since_last_adjustment | int          | NO        | Reset 0; safe (time gate persists)
+  _cycles_since_last_adjustment | int          | YES       | Missing = 0
   _rule_state_tracker           | RuleState    | NO        | Transient; fresh is correct
 
 ConfidenceTracker (confidence.py):
@@ -116,6 +116,7 @@ def learner_to_dict(
     last_adjustment_time: datetime | None,
     consecutive_converged_cycles: int,
     pid_converged_for_ke: bool,
+    cycles_since_last_adjustment: int = 0,
     undershoot_detector: Any | None = None,
     contribution_tracker: Any | None = None,
     heating_rate_learner: HeatingRateLearner | None = None,
@@ -200,6 +201,7 @@ def learner_to_dict(
         # Shared fields
         "last_adjustment_time": (last_adjustment_time.isoformat() if last_adjustment_time is not None else None),
         "consecutive_converged_cycles": consecutive_converged_cycles,
+        "cycles_since_last_adjustment": cycles_since_last_adjustment,
         "pid_converged_for_ke": pid_converged_for_ke,
     }
 
@@ -518,6 +520,7 @@ def restore_learner_from_dict(data: dict[str, Any]) -> dict[str, Any]:
         "last_adjustment_time": last_adjustment_time,
         "last_seasonal_shift": last_seasonal_shift,
         "consecutive_converged_cycles": consecutive_converged_cycles,
+        "cycles_since_last_adjustment": data.get("cycles_since_last_adjustment", 0),
         "pid_converged_for_ke": pid_converged_for_ke,
         "undershoot_detector_state": undershoot_detector_state,
         "contribution_tracker_state": contribution_tracker_state,

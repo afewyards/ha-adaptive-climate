@@ -1829,6 +1829,7 @@ class TestRateLimiting:
 
         # Make adjustment
         result = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
+        learner.mark_adjustment_applied()
         assert result is not None
         assert learner._last_adjustment_time is not None
 
@@ -1839,7 +1840,7 @@ class TestRateLimiting:
         fake_now = datetime.now()
         with (
             patch("custom_components.adaptive_climate.adaptive.learning_adjustments.dt_util") as mock_dt_util,
-            patch("custom_components.adaptive_climate.adaptive.learning_coordinator.dt_util") as mock_coord_dt,
+            patch("custom_components.adaptive_climate.adaptive.learning.dt_util") as mock_coord_dt,
         ):
             mock_dt_util.utcnow.return_value = fake_now
             mock_coord_dt.utcnow.return_value = fake_now
@@ -1857,6 +1858,7 @@ class TestRateLimiting:
 
             # First adjustment should work
             result1 = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
+            learner.mark_adjustment_applied()
             assert result1 is not None
 
             # Add more cycles for a potential second adjustment
@@ -1897,7 +1899,7 @@ class TestRateLimiting:
         fake_now = datetime.now()
         with (
             patch("custom_components.adaptive_climate.adaptive.learning_adjustments.dt_util") as mock_dt_util,
-            patch("custom_components.adaptive_climate.adaptive.learning_coordinator.dt_util") as mock_coord_dt,
+            patch("custom_components.adaptive_climate.adaptive.learning.dt_util") as mock_coord_dt,
         ):
             mock_dt_util.utcnow.return_value = fake_now
             mock_coord_dt.utcnow.return_value = fake_now
@@ -1941,7 +1943,7 @@ class TestRateLimiting:
         fake_now = datetime.now()
         with (
             patch("custom_components.adaptive_climate.adaptive.learning_adjustments.dt_util") as mock_dt_util,
-            patch("custom_components.adaptive_climate.adaptive.learning_coordinator.dt_util") as mock_coord_dt,
+            patch("custom_components.adaptive_climate.adaptive.learning.dt_util") as mock_coord_dt,
         ):
             mock_dt_util.utcnow.return_value = fake_now
             mock_coord_dt.utcnow.return_value = fake_now
@@ -1969,7 +1971,7 @@ class TestRateLimiting:
         fake_now = datetime.now()
         with (
             patch("custom_components.adaptive_climate.adaptive.learning_adjustments.dt_util") as mock_dt_util,
-            patch("custom_components.adaptive_climate.adaptive.learning_coordinator.dt_util") as mock_coord_dt,
+            patch("custom_components.adaptive_climate.adaptive.learning.dt_util") as mock_coord_dt,
         ):
             mock_dt_util.utcnow.return_value = fake_now
             mock_coord_dt.utcnow.return_value = fake_now
@@ -2007,6 +2009,7 @@ class TestRateLimiting:
             )
 
         result = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
+        learner.mark_adjustment_applied()
         assert result is not None
         assert learner._last_adjustment_time is not None
 
@@ -2035,11 +2038,12 @@ class TestRateLimiting:
         fake_now = datetime.now()
         with (
             patch("custom_components.adaptive_climate.adaptive.learning_adjustments.dt_util") as mock_dt_util,
-            patch("custom_components.adaptive_climate.adaptive.learning_coordinator.dt_util") as mock_coord_dt,
+            patch("custom_components.adaptive_climate.adaptive.learning.dt_util") as mock_coord_dt,
         ):
             mock_dt_util.utcnow.return_value = fake_now
             mock_coord_dt.utcnow.return_value = fake_now
             result = learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
+            learner.mark_adjustment_applied()
 
             assert result is not None
             last_time = learner.get_last_adjustment_time()
@@ -2484,11 +2488,12 @@ class TestAdaptiveLearnerSerialization:
         fake_now = datetime.now()
         with (
             patch("custom_components.adaptive_climate.adaptive.learning_adjustments.dt_util") as mock_dt_util,
-            patch("custom_components.adaptive_climate.adaptive.learning_coordinator.dt_util") as mock_coord_dt,
+            patch("custom_components.adaptive_climate.adaptive.learning.dt_util") as mock_coord_dt,
         ):
             mock_dt_util.utcnow.return_value = fake_now
             mock_coord_dt.utcnow.return_value = fake_now
             learner.calculate_pid_adjustment(100.0, 1.0, 10.0)
+            learner.mark_adjustment_applied()
 
         result2 = learner.to_dict()
 

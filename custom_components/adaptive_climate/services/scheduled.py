@@ -21,6 +21,35 @@ except ImportError:
 if TYPE_CHECKING:
     from ..coordinator import AdaptiveThermostatCoordinator
 
+
+def get_zone_gains(zone_data: dict[str, Any]) -> tuple[float, float, float] | None:
+    """Live (kp, ki, kd) of a zone, or None if unavailable."""
+    entity = zone_data.get("climate_entity")
+    if entity is not None:
+        return entity._kp, entity._ki, entity._kd
+    gains_manager = getattr(zone_data.get("adaptive_learner"), "_pid_gains_manager", None)
+    history = gains_manager.get_history() if gains_manager is not None else []
+    if history and all(k in history[-1] for k in ("kp", "ki", "kd")):
+        return history[-1]["kp"], history[-1]["ki"], history[-1]["kd"]
+    return None
+
+
+def describe_skip(learner: Any) -> dict[str, Any]:
+    """Explain why the learner returned no recommendation."""
+    status = learner._last_skip_reason or "insufficient_data"
+    info: dict[str, Any] = {"status": status}
+    if status == "rate_limited":
+        from ..const import MIN_ADJUSTMENT_CYCLES, MIN_ADJUSTMENT_INTERVAL
+
+        last = learner._last_adjustment_time
+        time_gate = last is not None and dt_util.utcnow() - last < timedelta(hours=MIN_ADJUSTMENT_INTERVAL)
+        since = learner._cycles_since_last_adjustment
+        info["reason"] = "time_gate" if time_gate else "cycle_gate"
+        info["cycles_since_last_adjustment"] = since
+        info["cycles_until_next_adjustment"] = max(0, MIN_ADJUSTMENT_CYCLES - since)
+    return info
+
+
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -446,15 +475,12 @@ async def async_daily_learning(
             _LOGGER.debug("No adaptive learner for zone %s", zone_id)
             continue
 
-        # Get current PID values from climate entity
-        state = hass.states.get(climate_entity_id) if climate_entity_id else None
-        if not state:
-            _LOGGER.debug("Cannot get state for zone %s (%s)", zone_id, climate_entity_id)
+        gains = get_zone_gains(zone_data)
+        if gains is None:
+            _LOGGER.debug("Cannot get PID gains for zone %s (%s)", zone_id, climate_entity_id)
             continue
 
-        current_kp = state.attributes.get("kp", 100.0)
-        current_ki = state.attributes.get("ki", 0.01)
-        current_kd = state.attributes.get("kd", 0.0)
+        current_kp, current_ki, current_kd = gains
         pwm_seconds = zone_data.get("pwm_seconds", 0)
 
         try:
