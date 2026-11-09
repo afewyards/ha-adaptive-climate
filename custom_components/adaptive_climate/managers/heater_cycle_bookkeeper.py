@@ -138,16 +138,6 @@ class HeaterCycleBookkeeper:
 
     # ── State management ───────────────────────────────────────────────────────
 
-    def restore(self, cycle_active: bool, has_demand: bool) -> None:
-        """Restore cycle tracking state after HA restart.
-
-        Args:
-            cycle_active: Whether a cycle was active before restart.
-            has_demand: Whether demand was present before restart.
-        """
-        self._cycle_active = cycle_active
-        self._has_demand = has_demand
-
     def set_heater_cycle_count(self, count: int) -> None:
         """Set heater cycle count during state restoration.
 

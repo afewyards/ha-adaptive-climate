@@ -290,6 +290,40 @@ class TestCycleCountRestoration:
         mock_thermostat._heater_controller.set_cooler_cycle_count.assert_called_once_with(0)
 
 
+class TestCycleSessionNotRestored:
+    """An active cycle session must not survive a restart: the new CycleTrackerManager starts idle."""
+
+    def test_stale_active_session_discarded(self, state_restorer, mock_thermostat):
+        from custom_components.adaptive_climate.managers.heater_controller import HeaterController
+
+        mock_thermostat._heater_controller = HeaterController(
+            hass=MagicMock(),
+            thermostat=mock_thermostat,
+            heater_entity_id=["switch.heater"],
+            cooler_entity_id=None,
+            demand_switch_entity_id=None,
+            heater_polarity_invert=False,
+            pwm=3600,
+            difference=100.0,
+            min_open_time=600.0,
+            min_closed_time=600.0,
+        )
+        old_state = MagicMock()
+        old_state.state = "heat"
+        old_state.attributes = {
+            "_cycle_active": True,
+            "_has_demand": True,
+            "cycle_count": {"heater": 139, "cooler": 0},
+            "integral": 5.0,
+            "pid_integral_migrated": True,
+        }
+
+        state_restorer.restore(old_state)
+
+        assert mock_thermostat._heater_controller.cycle_active is False
+        assert mock_thermostat._heater_controller.heater_cycle_count == 139
+
+
 class TestInitialPhysicsGainsRecording:
     """Tests for initial physics gains recording to pid_history."""
 

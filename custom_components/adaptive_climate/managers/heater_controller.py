@@ -63,7 +63,7 @@ except ImportError:
         return (parts[0], parts[1]) if len(parts) == 2 else (entity_id, "")
 
 
-from ..const import COOLING_TYPE_CHARACTERISTICS, MIN_OUTPUT_THRESHOLD
+from ..const import COOLING_TYPE_CHARACTERISTICS, MIN_OUTPUT_THRESHOLD, get_convergence_thresholds
 from .events import CycleEventDispatcher
 from .heater_cycle_bookkeeper import HeaterCycleBookkeeper
 from .heater_service_caller import HeaterServiceCaller
@@ -75,6 +75,9 @@ if TYPE_CHECKING:
     from ..climate import AdaptiveThermostat
 
 _LOGGER = logging.getLogger(__name__)
+
+COMMAND_VERIFY_DELAY = 20.0
+COMMAND_MAX_RETRIES = 2
 
 
 class HeaterController:
@@ -282,10 +285,6 @@ class HeaterController:
     def has_demand(self) -> bool:
         """Whether there is current demand (control_output > 0)."""
         return self._bookkeeper.has_demand
-
-    def restore_cycle_state(self, cycle_active: bool, has_demand: bool) -> None:
-        """Restore cycle tracking state after HA restart."""
-        self._bookkeeper.restore(cycle_active, has_demand)
 
     def set_heater_cycle_count(self, count: int) -> None:
         """Set heater cycle count (used during state restoration)."""
@@ -505,10 +504,7 @@ class HeaterController:
             )
             return
 
-        for entity in entities:
-            data = {ATTR_ENTITY_ID: entity}
-            service = SERVICE_TURN_OFF if self._heater_polarity_invert else SERVICE_TURN_ON
-            await self._async_call_heater_service(entity, HA_DOMAIN, service, data)
+        await self._async_send_and_verify(hvac_mode, entities, SERVICE_TURN_ON)
 
         # Pipeline: record valve-open timestamp so committed heat starts rising
         if self._heat_pipeline is not None:
@@ -564,10 +560,48 @@ class HeaterController:
             )
             return
 
+        await self._async_send_and_verify(hvac_mode, entities, SERVICE_TURN_OFF)
+
+    async def _async_send_and_verify(
+        self, hvac_mode: HVACMode, entities: list[str], service: str, attempt: int = 1
+    ) -> None:
+        """Send turn_on/turn_off (``service`` = desired device state) and re-check the switch later."""
+        self._timers.cancel_command_verify()
+        sent = service
+        if self._heater_polarity_invert:
+            sent = SERVICE_TURN_OFF if service == SERVICE_TURN_ON else SERVICE_TURN_ON
         for entity in entities:
-            data = {ATTR_ENTITY_ID: entity}
-            service = SERVICE_TURN_ON if self._heater_polarity_invert else SERVICE_TURN_OFF
-            await self._async_call_heater_service(entity, HA_DOMAIN, service, data)
+            await self._async_call_heater_service(entity, HA_DOMAIN, sent, {ATTR_ENTITY_ID: entity})
+
+        async def verify() -> None:
+            wanted_active = service == SERVICE_TURN_ON
+            if self.is_active(hvac_mode) == wanted_active:
+                _LOGGER.debug("%s: %s confirmed", self._thermostat.entity_id, service)
+                return
+            actual = "on" if self.is_active(hvac_mode) else "off"
+            if attempt <= COMMAND_MAX_RETRIES:
+                _LOGGER.warning(
+                    "%s: %s still %s %.0fs after %s, retrying (%d/%d)",
+                    self._thermostat.entity_id,
+                    ", ".join(entities),
+                    actual,
+                    COMMAND_VERIFY_DELAY,
+                    service,
+                    attempt,
+                    COMMAND_MAX_RETRIES,
+                )
+                await self._async_send_and_verify(hvac_mode, entities, service, attempt + 1)
+            else:
+                _LOGGER.error(
+                    "%s: %s still %s after %d retries of %s, giving up",
+                    self._thermostat.entity_id,
+                    ", ".join(entities),
+                    actual,
+                    COMMAND_MAX_RETRIES,
+                    service,
+                )
+
+        self._timers.schedule_command_verify(verify, COMMAND_VERIFY_DELAY)
 
     async def async_set_valve_value(self, value: float, hvac_mode: HVACMode) -> None:
         """Set valve value for non-PWM devices (0-100)."""
@@ -644,24 +678,27 @@ class HeaterController:
         new_has_demand = abs(control_output) > 0
         self._bookkeeper.has_demand = new_has_demand
 
+        # Session end (PWM): one 2×PWM countdown from the first output at 0 or below MIN_OUTPUT_THRESHOLD.
+        # Flips between 0 and low output don't restart it; only real demand away from target cancels it.
+        countdown_active = self._timers.demand_zero_active or self._timers.low_output_active
+
         # Demand dropped to 0 → debounce SETTLING_STARTED
         if old_has_demand and not new_has_demand and self._bookkeeper.cycle_active:
             if self._pwm and self._dispatcher:
-                self._timers.schedule_demand_zero_debounce(hvac_mode, self._bookkeeper.get_pid_was_clamped())
+                if not countdown_active:
+                    self._timers.schedule_demand_zero_debounce(hvac_mode, self._bookkeeper.get_pid_was_clamped())
             else:
                 if self._dispatcher:
                     self._bookkeeper.emit_settling_started(hvac_mode, self._bookkeeper.get_pid_was_clamped())
                 self._bookkeeper.cycle_active = False
-        elif new_has_demand and self._timers.demand_zero_active:
-            self._timers.cancel_demand_zero()
 
         # Low-output maintenance timeout (maintenance cycles that never reach 0)
         if self._pwm and self._bookkeeper.cycle_active and self._dispatcher:
-            low_output = 0 < abs(control_output) < MIN_OUTPUT_THRESHOLD
-            if low_output:
-                if not self._timers.low_output_active and not self._timers.demand_zero_active:
+            if 0 < abs(control_output) < MIN_OUTPUT_THRESHOLD:
+                if not countdown_active:
                     self._timers.schedule_low_output_timeout(hvac_mode, self._bookkeeper.get_pid_was_clamped())
-            elif abs(control_output) >= MIN_OUTPUT_THRESHOLD:
+            elif abs(control_output) >= MIN_OUTPUT_THRESHOLD and countdown_active and not self._near_target():
+                self._timers.cancel_demand_zero()
                 self._timers.cancel_low_output()
 
         if self._pwm:
@@ -706,6 +743,14 @@ class HeaterController:
                 )
         else:
             await self.async_set_valve_value(abs(control_output), hvac_mode)
+
+    def _near_target(self) -> bool:
+        """Room within the learner's acceptable deviation: PWM pulses here are maintenance, not new demand."""
+        target = getattr(self._thermostat, "target_temperature", None)
+        current = getattr(self._thermostat, "_current_temp", None)
+        if target is None or current is None:
+            return False
+        return abs(current - target) <= get_convergence_thresholds(self._heating_type)["undershoot_max"]
 
     async def async_pwm_switch(
         self,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 try:
@@ -67,6 +68,7 @@ class HeaterTimerManager:
         self._valve_close_timer: Any | None = None
         self._demand_zero_timer: Any | None = None
         self._low_output_timer: Any | None = None
+        self._command_verify_timer: Any | None = None
 
     # ── State queries ──────────────────────────────────────────────────────────
 
@@ -96,6 +98,7 @@ class HeaterTimerManager:
         if self._valve_close_timer is not None:
             self._valve_close_timer()
             self._valve_close_timer = None
+        self.cancel_command_verify()
 
     # ── Valve-open delay (HEATING_STARTED) ────────────────────────────────────
 
@@ -225,3 +228,25 @@ class HeaterTimerManager:
         if self._bookkeeper.cycle_active:
             self._bookkeeper.emit_settling_started(hvac_mode, was_clamped)
         self._bookkeeper.cycle_active = False
+
+    # ── Switch command verification ───────────────────────────────────────────
+
+    def schedule_command_verify(self, verify_cb: Callable[[], Awaitable[None]], delay: float) -> None:
+        """Run ``verify_cb`` after ``delay`` seconds, replacing any pending verify."""
+        self.cancel_command_verify()
+        self._command_verify_timer = async_call_later(
+            self._hass,
+            delay,
+            lambda _: self._on_command_verify(verify_cb),
+        )
+
+    def cancel_command_verify(self) -> None:
+        """Cancel the pending command verify timer, if any."""
+        if self._command_verify_timer is not None:
+            self._command_verify_timer()
+            self._command_verify_timer = None
+
+    @callback
+    def _on_command_verify(self, verify_cb: Callable[[], Awaitable[None]]) -> None:
+        self._command_verify_timer = None
+        self._hass.async_create_task(verify_cb())

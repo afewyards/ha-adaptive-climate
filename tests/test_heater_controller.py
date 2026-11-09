@@ -2216,9 +2216,9 @@ class TestValveActuationTimeDelays:
         assert len(heating_started_events) == 0
 
         # Verify timer was scheduled for 120s (valve_actuation_time)
-        mock_call_later.assert_called_once()
-        args = mock_call_later.call_args
-        assert args[0][1] == 120.0  # delay in seconds
+        calls = [c for c in mock_call_later.call_args_list if c[0][1] != 20.0]
+        assert len(calls) == 1
+        assert calls[0][0][1] == 120.0  # delay in seconds
 
     @pytest.mark.asyncio
     @patch("custom_components.adaptive_climate.managers.heater_timers.async_call_later")
@@ -2275,8 +2275,8 @@ class TestValveActuationTimeDelays:
         # HEATING_STARTED should be emitted immediately
         assert len(heating_started_events) == 1
 
-        # No timer should be scheduled
-        mock_call_later.assert_not_called()
+        # No valve-actuation timer should be scheduled
+        assert [c for c in mock_call_later.call_args_list if c[0][1] != 20.0] == []
 
     @pytest.mark.asyncio
     @patch("custom_components.adaptive_climate.managers.heater_timers.async_call_later")
@@ -2324,9 +2324,9 @@ class TestValveActuationTimeDelays:
         assert len(heating_ended_events) == 0
 
         # Verify timer was scheduled for 60s (half of 120s valve_actuation_time)
-        mock_call_later.assert_called_once()
-        args = mock_call_later.call_args
-        assert args[0][1] == 60.0  # half valve_actuation_time
+        calls = [c for c in mock_call_later.call_args_list if c[0][1] != 20.0]
+        assert len(calls) == 1
+        assert calls[0][0][1] == 60.0  # half valve_actuation_time
 
     @pytest.mark.asyncio
     @patch("custom_components.adaptive_climate.managers.heater_timers.async_call_later")
@@ -2345,7 +2345,7 @@ class TestValveActuationTimeDelays:
 
         # Mock timer handle
         mock_timer = MagicMock()
-        mock_call_later.return_value = mock_timer
+        mock_call_later.side_effect = lambda _h, delay, _a: mock_timer if delay == 120.0 else MagicMock()
 
         # Turn on heater (schedules open timer)
         controller._hass.states.is_state = MagicMock(return_value=False)
@@ -2363,7 +2363,7 @@ class TestValveActuationTimeDelays:
         )
 
         # Verify open timer was scheduled
-        assert mock_call_later.call_count == 1
+        assert [c for c in mock_call_later.call_args_list if c[0][1] != 20.0] != []
         mock_call_later.reset_mock()
 
         # Now turn off before timer fires
@@ -2950,6 +2950,70 @@ class TestLowOutputMaintenanceTimeout:
         )
         assert controller._low_output_timer is None
 
+    @staticmethod
+    def _capture_session_timers(mock_call_later) -> list:
+        """Record (cancel_handle, callback) for each 2×PWM session timer; other timers get plain mocks."""
+        session_timers = []
+
+        def fake_call_later(hass, delay, cb):
+            handle = MagicMock()
+            if delay == 1200.0:
+                session_timers.append((handle, cb))
+            return handle
+
+        mock_call_later.side_effect = fake_call_later
+        return session_timers
+
+    @pytest.mark.asyncio
+    @patch("custom_components.adaptive_climate.managers.heater_timers.async_call_later")
+    async def test_zero_low_output_flips_keep_one_countdown(self, mock_call_later, hc_pwm_with_dispatcher):
+        """Flipping between 0% and a sub-threshold output must not restart the 2×PWM countdown."""
+        controller, _dispatcher = hc_pwm_with_dispatcher
+        session_timers = self._capture_session_timers(mock_call_later)
+        controller._has_demand = True
+        controller._cycle_active = True
+        callbacks = self._make_callbacks()
+
+        for output in (0.0, 1.0, 0.0, 1.5, 0.0):
+            await controller.async_set_control_value(control_output=output, hvac_mode=MockHVACMode.HEAT, **callbacks)
+
+        assert len(session_timers) == 1
+        session_timers[0][0].assert_not_called()
+
+    @pytest.mark.asyncio
+    @patch("custom_components.adaptive_climate.managers.heater_timers.async_call_later")
+    async def test_maintenance_pulses_near_target_complete_session(
+        self, mock_call_later, hc_pwm_with_dispatcher, mock_thermostat
+    ):
+        """Pulses above threshold while the room holds target don't cancel the countdown; real demand does."""
+        controller, dispatcher = hc_pwm_with_dispatcher
+        session_timers = self._capture_session_timers(mock_call_later)
+        settling_events = []
+        dispatcher.subscribe(CycleEventType.SETTLING_STARTED, lambda e: settling_events.append(e))
+        controller._has_demand = True
+        controller._cycle_active = True
+        callbacks = self._make_callbacks()
+
+        # Steady PWM maintenance: room within 0.03°C of target, output 0% ↔ ~11%
+        mock_thermostat._current_temp = 19.98
+        for output in (0.0, 11.4, 0.0, 11.6):
+            await controller.async_set_control_value(control_output=output, hvac_mode=MockHVACMode.HEAT, **callbacks)
+        assert len(session_timers) == 1
+        session_timers[0][0].assert_not_called()
+
+        session_timers[0][1](None)
+        assert len(settling_events) == 1
+        assert controller._cycle_active is False
+
+        # New session: room sagging well below target is real demand and cancels the countdown
+        controller._cycle_active = True
+        await controller.async_set_control_value(control_output=0.0, hvac_mode=MockHVACMode.HEAT, **callbacks)
+        mock_thermostat._current_temp = 19.5
+        await controller.async_set_control_value(control_output=50.0, hvac_mode=MockHVACMode.HEAT, **callbacks)
+        session_timers[1][0].assert_called_once()
+        assert controller._demand_zero_timer is None
+        assert controller._low_output_timer is None
+
     def test_low_output_and_demand_zero_mutual_exclusion(self, mock_hass, mock_thermostat):
         """Test that when demand-zero debounce fires, the low-output timer is also cancelled."""
         dispatcher = CycleEventDispatcher()
@@ -2985,3 +3049,64 @@ class TestLowOutputMaintenanceTimeout:
         # SETTLING_STARTED should have been emitted exactly once
         assert len(settling_events) == 1
         assert controller._cycle_active is False
+
+
+class TestCommandVerify:
+    """Verify-and-retry of switch commands."""
+
+    @pytest.fixture
+    def verify_env(self, heater_controller, mock_hass, monkeypatch):
+        import asyncio
+
+        import custom_components.adaptive_climate.managers.heater_timers as timers_module
+
+        scheduled = []
+        monkeypatch.setattr(
+            timers_module,
+            "async_call_later",
+            lambda _h, delay, action: scheduled.append((delay, action)) or MagicMock(),
+        )
+        mock_hass.async_create_task = asyncio.ensure_future
+        calls = []
+
+        async def async_call(domain, service, data, **kwargs):
+            calls.append(service)
+
+        mock_hass.services.async_call = async_call
+        mock_hass.states.is_state = lambda entity, state: self_state["v"] == state
+        self_state = {"v": "off"}
+
+        async def fire():
+            _, action = scheduled.pop()
+            action(None)
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
+
+        return heater_controller, calls, self_state, scheduled, fire
+
+    @pytest.mark.asyncio
+    async def test_state_matches_no_resend(self, verify_env):
+        controller, calls, state, scheduled, fire = verify_env
+        await controller._async_send_and_verify(MockHVACMode.HEAT, ["switch.heater"], "turn_on")
+        assert calls == ["turn_on"] and scheduled[0][0] == 20.0
+        state["v"] = "on"
+        await fire()
+        assert calls == ["turn_on"] and not scheduled
+
+    @pytest.mark.asyncio
+    async def test_state_mismatch_resends(self, verify_env):
+        controller, calls, state, scheduled, fire = verify_env
+        await controller._async_send_and_verify(MockHVACMode.HEAT, ["switch.heater"], "turn_on")
+        await fire()
+        assert calls == ["turn_on", "turn_on"]
+        assert len(scheduled) == 1
+
+    @pytest.mark.asyncio
+    async def test_gives_up_after_max_retries(self, verify_env, caplog):
+        controller, calls, state, scheduled, fire = verify_env
+        await controller._async_send_and_verify(MockHVACMode.HEAT, ["switch.heater"], "turn_on")
+        for _ in range(3):
+            await fire()
+        assert calls == ["turn_on"] * 3
+        assert not scheduled
+        assert len([r for r in caplog.records if r.levelname == "ERROR"]) == 1
