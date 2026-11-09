@@ -1,6 +1,52 @@
 # CHANGELOG
 
 
+## v0.67.1 (2026-11-09)
+
+### Bug Fixes
+
+- **heater**: Let learning sessions start after restart and finish during PWM maintenance
+  ([`f65588c`](https://github.com/afewyards/ha-adaptive-climate/commit/f65588cc0e10d0eb3ce27fe3f05c1a6dc480ec2a))
+
+A restart restored cycle_active=True into the bookkeeper while the new cycle tracker started idle,
+  so the zone never emitted CYCLE_STARTED again. The live session flag is no longer restored; cycle
+  counts still are.
+
+Flipping between 0% and a small positive output cancelled one settling timer and started the other,
+  restarting the 2xPWM countdown each time. Only one timer runs now and a 0 <-> 1% flip leaves it
+  alone.
+
+With hydronic floors the room sits on target while the PID pulses 10-15% every minute, so the
+  countdown never finished and zones logged hundreds of heater cycles with zero learning cycles.
+  Once the countdown is running, output above the threshold only cancels it when the room is outside
+  the heating type's undershoot band of target.
+
+Also sends heater turn_on/turn_off with a delayed state check and up to two retries when the switch
+  did not follow.
+
+Closes #6
+
+- **learning**: Report real gains and skip reasons, start cooldown only on apply
+  ([`c319b6c`](https://github.com/afewyards/ha-adaptive-climate/commit/c319b6c91f66267fa7401d67efb1eafe141a0852))
+
+run_learning and pid_recommendations read kp/ki/kd from state attributes that do not exist, so every
+  zone reported 100/0.01/0 and recommendations were computed from those defaults. Both services and
+  the daily analysis now read the live gains from the climate entity, falling back to the last
+  pid_history entry.
+
+Every None recommendation was reported as insufficient_data. The learner now records why it skipped
+  (insufficient_data, insufficient_usable_data, rate_limited with cycle counts, converged,
+  no_rules_triggered, gates_not_passed) and the services report that.
+
+Calculating a recommendation reset the adjustment cooldown even when nothing was applied. The reset
+  moved to the two apply paths.
+
+cycles_since_last_adjustment is now persisted so a restart no longer costs three cycles before the
+  next adjustment.
+
+Closes #7
+
+
 ## v0.67.0 (2026-10-26)
 
 ### Bug Fixes
