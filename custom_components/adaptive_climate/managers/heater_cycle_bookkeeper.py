@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import time
+from datetime import timedelta
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
@@ -192,7 +194,7 @@ class HeaterCycleBookkeeper:
 
     # ── Event emission ─────────────────────────────────────────────────────────
 
-    def emit_cycle_started(self, hvac_mode: HVACMode) -> None:
+    def emit_cycle_started(self, hvac_mode: HVACMode, at: float | None = None) -> None:
         """Emit CycleStartedEvent with current temperature state.
 
         Args:
@@ -204,7 +206,9 @@ class HeaterCycleBookkeeper:
             self._dispatcher.emit(
                 CycleStartedEvent(
                     hvac_mode=hvac_mode,
-                    timestamp=dt_util.utcnow(),
+                    timestamp=dt_util.utcnow() - timedelta(seconds=max(0.0, time.monotonic() - at))
+                    if at is not None
+                    else dt_util.utcnow(),
                     target_temp=target_temp,
                     current_temp=current_temp,
                 )
@@ -226,7 +230,7 @@ class HeaterCycleBookkeeper:
                 )
             )
 
-    def emit_heating_started(self, hvac_mode: HVACMode) -> None:
+    def emit_heating_started(self, hvac_mode: HVACMode, at: float | None = None) -> None:
         """Emit HeatingStartedEvent.
 
         Args:
@@ -236,11 +240,15 @@ class HeaterCycleBookkeeper:
             self._dispatcher.emit(
                 HeatingStartedEvent(
                     hvac_mode=hvac_mode,
-                    timestamp=dt_util.utcnow(),
+                    timestamp=dt_util.utcnow() - timedelta(seconds=max(0.0, time.monotonic() - at))
+                    if at is not None
+                    else dt_util.utcnow(),
                 )
             )
 
-    def emit_heating_ended(self, hvac_mode: HVACMode, committed_heat_seconds: float = 0.0) -> None:
+    def emit_heating_ended(
+        self, hvac_mode: HVACMode, committed_heat_seconds: float = 0.0, at: float | None = None
+    ) -> None:
         """Emit HeatingEndedEvent.
 
         Args:
@@ -251,7 +259,9 @@ class HeaterCycleBookkeeper:
             self._dispatcher.emit(
                 HeatingEndedEvent(
                     hvac_mode=hvac_mode,
-                    timestamp=dt_util.utcnow(),
+                    timestamp=dt_util.utcnow() - timedelta(seconds=max(0.0, time.monotonic() - at))
+                    if at is not None
+                    else dt_util.utcnow(),
                     committed_heat_seconds=committed_heat_seconds,
                 )
             )

@@ -79,6 +79,7 @@ class ControlOutputManager:
 
         # Store last calculated output for access
         self._last_control_output: float = 0
+        self._last_effective_target: float | None = None
 
         # Track when calc_output() was last called for accurate dt calculation
         # This fixes the stale dt bug where external sensor triggers used sensor-based timing
@@ -188,6 +189,7 @@ class ControlOutputManager:
 
         # Apply night setback adjustment if configured
         effective_target, _, _ = self._thermostat_state._calculate_night_setback_adjustment()
+        self._last_effective_target = effective_target
 
         # Get current values
         current_temp = self._thermostat_state._current_temp

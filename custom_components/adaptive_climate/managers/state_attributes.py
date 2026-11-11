@@ -61,6 +61,14 @@ def build_state_attributes(thermostat: SmartThermostat) -> dict[str, Any]:
     }
 
     # PID history — serialise as mode-keyed dict so cooling history survives (M10).
+    from .pwm_coordination import PWMCoordinationRegistry
+
+    registry = getattr(thermostat, "_pwm_coordination", None)
+    if isinstance(registry, PWMCoordinationRegistry):
+        diagnostics = registry.diagnostics(thermostat.entity_id)
+        if diagnostics is not None:
+            attrs["pwm_coordination"] = diagnostics
+
     # Previously this wrote only the heating history as a flat list, which caused
     # restore_from_state() to treat everything as heating and discard cooling history.
     if thermostat._gains_manager:

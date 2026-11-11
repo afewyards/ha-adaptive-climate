@@ -14,6 +14,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import PIDChangeReason
 from .managers.events import SetpointChangedEvent
+from .managers.pwm_coordination import PWMCoordinationRegistry
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -156,6 +157,8 @@ class ClimateStateSettersMixin:
 
         # Emit setpoint changed event
         if old_temp is not None and old_temp != value:
+            if isinstance(getattr(self, "_pwm_coordination", None), PWMCoordinationRegistry):
+                self._pwm_coordination.invalidate(self.entity_id, urgent=True)
             # Reset duty accumulator if setpoint changes by more than 0.5°C
             if abs(value - old_temp) > 0.5 and self._heater_controller is not None:
                 self._heater_controller.reset_duty_accumulator()
@@ -273,6 +276,8 @@ class ClimateStateSettersMixin:
                 *pre-change* mode when calling during a mode transition so the correct
                 heater/cooler entity is targeted (C01 fix).
         """
+        if isinstance(getattr(self, "_pwm_coordination", None), PWMCoordinationRegistry):
+            self._pwm_coordination.invalidate(self.entity_id)
         # Reset transport delay when heating stops
         if self._transport_delay_minutes is not None:
             self._pid_controller.reset_dead_time()
@@ -291,6 +296,8 @@ class ClimateStateSettersMixin:
             set_last_heat_cycle_time=self._set_last_heat_cycle_time,
             force=force,
         )
+        if isinstance(getattr(self, "_pwm_coordination", None), PWMCoordinationRegistry):
+            await self._pwm_coordination.refresh(self.entity_id)
 
     async def _async_set_valve_value(self, value: float):
         """Set valve value for non-PWM devices.

@@ -7,6 +7,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from typing import Any
+from .managers.pwm_coordination import PWMCoordinationRegistry
 
 # ABC removed - no abstract methods in this class
 from datetime import datetime, timedelta
@@ -308,6 +310,7 @@ class AdaptiveThermostat(
 
         # Heater controller (initialized in async_added_to_hass when hass is available)
         self._heater_controller: HeaterController | None = None
+        self._pwm_coordination: Any = None
 
         # Night setback controller (initialized in async_added_to_hass when hass is available)
         self._night_setback_controller: NightSetbackManager | None = None
@@ -495,6 +498,12 @@ class AdaptiveThermostat(
         old_state = await self.async_get_last_state()
         state_restorer = StateRestorer(self)
         state_restorer.restore(old_state)
+        from .managers.pwm_coordination import PWMCoordinationRegistry
+
+        pwm_registry = self.hass.data.get(DOMAIN, {}).get("pwm_coordination")
+        if isinstance(pwm_registry, PWMCoordinationRegistry):
+            self._pwm_coordination = pwm_registry
+            pwm_registry.bind(self)
 
         # Mark cycle tracker restoration complete so it can process temperature updates
         if self._cycle_tracker:
@@ -622,6 +631,8 @@ class AdaptiveThermostat(
         This method saves learning data and unregisters the zone from the
         coordinator to ensure clean removal and prevent stale zone data.
         """
+        if isinstance(getattr(self, "_pwm_coordination", None), PWMCoordinationRegistry):
+            self._pwm_coordination.remove(self.entity_id)
         await super().async_will_remove_from_hass()
 
         # Clean up preheat cycle dispatcher subscription (H7 fix)
@@ -1145,6 +1156,8 @@ class AdaptiveThermostat(
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Set new target hvac mode."""
         old_mode = self._hvac_mode
+        if isinstance(getattr(self, "_pwm_coordination", None), PWMCoordinationRegistry):
+            self._pwm_coordination.invalidate(self.entity_id, urgent=old_mode != hvac_mode)
 
         # C01: Commit ALL mode mutations under lock BEFORE any I/O awaits to prevent the
         # control-loop re-entry race. Without the lock, a control-loop tick can fire during

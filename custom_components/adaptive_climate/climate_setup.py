@@ -318,6 +318,12 @@ async def async_setup_platform(hass: HomeAssistant, config: ConfigType, async_ad
         _LOGGER.error("%s: Configuration error - %s", name, ex)
         raise
 
+    from .managers.pwm_coordination import PWMCoordinationRegistry
+
+    registry = hass.data[DOMAIN].get("pwm_coordination")
+    if isinstance(registry, PWMCoordinationRegistry):
+        await registry.async_initialize(learning_store)
+
     # ── Resolve valve actuation time ──────────────────────────────────────────
     heating_type = config.get(const.CONF_HEATING_TYPE)
     valve_actuation_config = config.get(const.CONF_VALVE_ACTUATION_TIME)

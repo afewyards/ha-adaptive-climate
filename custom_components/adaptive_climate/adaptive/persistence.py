@@ -219,6 +219,21 @@ class LearningDataStore:
                 f"preheat={preheat_data is not None}"
             )
 
+    def load_pwm_coordination(self) -> Any:
+        """Read additive restart journals from the already loaded HA Store."""
+        return copy.deepcopy(self._data.get("pwm_coordination", {}))
+
+    async def async_save_pwm_coordination(self, name: str, state: dict[str, Any]) -> None:
+        """Durably journal one group without replacing learner/other group data."""
+        if self._store is None or self._save_lock is None:
+            raise RuntimeError("Store not initialized - call async_load() first")
+        async with self._save_lock:
+            journals = self._data.setdefault("pwm_coordination", {})
+            if not isinstance(journals, dict):
+                raise ValueError("Invalid PWM restart storage")
+            journals[name] = copy.deepcopy(state)
+            await self._store.async_save(self._data)
+
     def schedule_zone_save(self) -> None:
         """
         Schedule a delayed save operation.

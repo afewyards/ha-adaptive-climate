@@ -46,6 +46,7 @@ An advanced climate integration featuring PID control with automatic tuning, ada
 - [PID Control](https://github.com/afewyards/ha-adaptive-climate/wiki/PID-Control) - 5-term PID (P/I/D/E/F), PWM vs valve control
 - [Adaptive Learning](https://github.com/afewyards/ha-adaptive-climate/wiki/Adaptive-Learning) - Cycle tracking, learning rules, chronic approach detection
 - [Multi-Zone Coordination](https://github.com/afewyards/ha-adaptive-climate/wiki/Multi-Zone-Coordination) - Central controller, thermal groups, auto mode switching
+- [Pump-aware PWM](docs/pump-aware-pwm.md) - Optional shared-pump timing, configuration and safety
 - [Energy Optimization](https://github.com/afewyards/ha-adaptive-climate/wiki/Energy-Optimization) - Night setback, predictive preheat, outdoor compensation
 - [Humidity Detection](https://github.com/afewyards/ha-adaptive-climate/wiki/Humidity-Detection) - Bathroom steam detection
 - [Troubleshooting](https://github.com/afewyards/ha-adaptive-climate/wiki/Troubleshooting) - Diagnostic checklist and common issues

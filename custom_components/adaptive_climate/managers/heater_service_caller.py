@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import asyncio
 from typing import TYPE_CHECKING, Any
 
 try:
@@ -51,6 +52,7 @@ class HeaterServiceCaller:
         self._thermostat = thermostat
         self._heater_control_failed: bool = False
         self._last_heater_error: str | None = None
+        self.blocking = False
 
     # ── Properties ────────────────────────────────────────────────────────────
 
@@ -99,7 +101,11 @@ class HeaterServiceCaller:
         thermostat_entity_id = self._thermostat.entity_id
 
         try:
-            await self._hass.services.async_call(domain, service, data)
+            if self.blocking:
+                async with asyncio.timeout(30):
+                    await self._hass.services.async_call(domain, service, data, blocking=True)
+            else:
+                await self._hass.services.async_call(domain, service, data)
             self._heater_control_failed = False
             self._last_heater_error = None
             return True
