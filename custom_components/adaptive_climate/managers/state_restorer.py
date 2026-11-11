@@ -237,19 +237,10 @@ class StateRestorer:
             # restoring it can cause spurious heating when combined with a restored
             # PID integral that keeps control_output positive even when temp > setpoint.
 
-            # Restore cycle active/has_demand state to prevent spurious CYCLE_STARTED on restart.
-            # If the heater was mid-cycle when HA restarted, restoring these flags ensures the
-            # first SETTLING_STARTED won't be silently ignored (requires _cycle_active=True).
-            cycle_active = bool(old_state.attributes.get("_cycle_active", False))
-            has_demand = bool(old_state.attributes.get("_has_demand", False))
-            if cycle_active or has_demand:
-                thermostat._heater_controller.restore_cycle_state(cycle_active, has_demand)
-                _LOGGER.info(
-                    "%s: Restored cycle state: active=%s, demand=%s",
-                    thermostat.entity_id,
-                    cycle_active,
-                    has_demand,
-                )
+            # The cycle session is not restored: the fresh CycleTrackerManager starts idle, and a restored
+            # active flag would block every future CYCLE_STARTED. The next heater turn-on starts a new session.
+            if old_state.attributes.get("_cycle_active"):
+                _LOGGER.debug("%s: Discarded stale cycle session from before restart", thermostat.entity_id)
 
         # Note: PID history restoration is now handled by gains_manager.restore_from_state()
         # called earlier in this method (line 150)

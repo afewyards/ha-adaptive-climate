@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from datetime import datetime
+
+from homeassistant.util import dt as dt_util
 from typing import Any, TYPE_CHECKING
 import logging
 
@@ -129,6 +131,7 @@ class AdaptiveLearner:
         self._pid_converged_for_ke: bool = False
         # Hybrid rate limiting: track cycles since last adjustment
         self._cycles_since_last_adjustment: int = 0
+        self._last_skip_reason: str | None = None
         # Rule state tracker with hysteresis to prevent oscillation
         self._rule_state_tracker = RuleStateTracker()
 
@@ -411,6 +414,11 @@ class AdaptiveLearner:
         """Get the timestamp of the last PID adjustment."""
         return self._last_adjustment_time
 
+    def mark_adjustment_applied(self) -> None:
+        """Start the rate-limit cooldown after new gains were committed."""
+        self._last_adjustment_time = dt_util.utcnow()
+        self._cycles_since_last_adjustment = 0
+
     def clear_history(self) -> None:
         """Clear cycle history, reset tracking, and exit validation mode."""
         self._heating_cycle_history.clear()
@@ -629,6 +637,7 @@ class AdaptiveLearner:
             heating_convergence_confidence=self._heating_convergence_confidence,
             cooling_convergence_confidence=self._cooling_convergence_confidence,
             last_adjustment_time=self._last_adjustment_time,
+            cycles_since_last_adjustment=self._cycles_since_last_adjustment,
             consecutive_converged_cycles=self._consecutive_converged_cycles,
             pid_converged_for_ke=self._pid_converged_for_ke,
             undershoot_detector=self._undershoot_detector,

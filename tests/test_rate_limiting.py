@@ -51,6 +51,7 @@ class TestHybridRateLimiting:
                 min_adjustment_cycles=3,
             )
             assert adjustment is not None, "First adjustment should succeed"
+            learner.mark_adjustment_applied()
             assert learner._cycles_since_last_adjustment == 0, "Cycle counter should be reset"
 
             # Add 2 more cycles (total 2 since last adjustment)
@@ -95,6 +96,7 @@ class TestHybridRateLimiting:
                 min_adjustment_cycles=3,
             )
             assert adjustment is not None, "Should succeed with both gates satisfied"
+            learner.mark_adjustment_applied()
             assert learner._cycles_since_last_adjustment == 0, "Cycle counter should be reset again"
 
     def test_rate_limiting_faster_convergence(self, learner, problem_cycle):
@@ -172,6 +174,7 @@ class TestHybridRateLimiting:
         # Make adjustment
         adjustment = learner.calculate_pid_adjustment(current_kp=100.0, current_ki=2.0, current_kd=1.2)
         assert adjustment is not None
+        learner.mark_adjustment_applied()
         assert learner._cycles_since_last_adjustment == 0
 
     def test_cycle_counter_resets_on_clear_history(self, learner, problem_cycle):
@@ -224,6 +227,7 @@ class TestHybridRateLimiting:
 
         adjustment = learner.calculate_pid_adjustment(current_kp=100.0, current_ki=2.0, current_kd=1.2)
         assert adjustment is not None
+        learner.mark_adjustment_applied()
 
         # Add only 2 cycles (less than 3 minimum)
         learner.add_cycle_metrics(problem_cycle)
@@ -260,6 +264,7 @@ class TestHybridRateLimiting:
             min_adjustment_cycles=3,
         )
         assert adjustment is not None
+        learner.mark_adjustment_applied()
         assert learner._last_adjustment_time is not None
 
     def test_custom_gates_configuration(self, learner, problem_cycle):

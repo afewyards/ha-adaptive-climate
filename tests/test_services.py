@@ -474,6 +474,7 @@ class TestPIDRecommendationsHandler:
                 "living_room": {
                     "climate_entity_id": "climate.living_room",
                     "adaptive_learner": mock_learner,
+                    "climate_entity": Mock(_kp=100.0, _ki=0.01, _kd=0.0),
                 },
             }
         )
@@ -603,6 +604,7 @@ class TestDailyLearningCallback:
                 "living_room": {
                     "climate_entity_id": "climate.living_room",
                     "adaptive_learner": mock_learner,
+                    "climate_entity": Mock(_kp=100.0, _ki=0.01, _kd=0.0),
                 },
             }
         )

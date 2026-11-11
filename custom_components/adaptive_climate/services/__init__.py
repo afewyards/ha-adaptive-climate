@@ -26,6 +26,8 @@ from .scheduled import (
     _run_health_check_core,
     _run_weekly_report_core,
     _collect_zones_health_data,
+    describe_skip,
+    get_zone_gains,
 )
 
 if TYPE_CHECKING:
@@ -91,9 +93,12 @@ async def async_handle_run_learning(
             }
             continue
 
-        current_kp = state.attributes.get("kp", 100.0)
-        current_ki = state.attributes.get("ki", 0.01)
-        current_kd = state.attributes.get("kd", 0.0)
+        gains = get_zone_gains(zone_data)
+        if gains is None:
+            results["zones_skipped"] += 1
+            results["zone_results"][zone_id] = {"status": "skipped", "reason": "pid_unavailable"}
+            continue
+        current_kp, current_ki, current_kd = gains
         pwm_seconds = zone_data.get("pwm_seconds", 0)
 
         try:
@@ -111,13 +116,15 @@ async def async_handle_run_learning(
             results["zones_analyzed"] += 1
 
             if recommendation is None:
+                skip = describe_skip(adaptive_learner)
                 _LOGGER.info(
-                    "Zone %s: insufficient data for recommendations (cycles: %d)",
+                    "Zone %s: no recommendation (%s, cycles: %d)",
                     zone_id,
+                    skip["status"],
                     cycle_count,
                 )
                 results["zone_results"][zone_id] = {
-                    "status": "insufficient_data",
+                    **skip,
                     "cycle_count": cycle_count,
                     "current_pid": {"kp": current_kp, "ki": current_ki, "kd": current_kd},
                 }
@@ -284,9 +291,16 @@ async def async_handle_pid_recommendations(
             result["zones_error"] += 1
             continue
 
-        current_kp = state.attributes.get("kp", 100.0)
-        current_ki = state.attributes.get("ki", 0.01)
-        current_kd = state.attributes.get("kd", 0.0)
+        gains = get_zone_gains(zone_data)
+        if gains is None:
+            result["zones"][zone_id] = {
+                "status": "pid_unavailable",
+                "current_pid": None,
+                "recommended_pid": None,
+            }
+            result["zones_error"] += 1
+            continue
+        current_kp, current_ki, current_kd = gains
         current_pid = {"kp": current_kp, "ki": current_ki, "kd": current_kd}
         pwm_seconds = zone_data.get("pwm_seconds", 0)
 
@@ -303,7 +317,7 @@ async def async_handle_pid_recommendations(
 
             if recommendation is None:
                 result["zones"][zone_id] = {
-                    "status": "insufficient_data",
+                    **describe_skip(adaptive_learner),
                     "cycle_count": cycle_count,
                     "current_pid": current_pid,
                     "recommended_pid": None,

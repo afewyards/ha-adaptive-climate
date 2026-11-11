@@ -78,6 +78,8 @@ def calculate_pid_adjustment(
         else learner._heating_convergence_confidence
     )
 
+    learner._last_skip_reason = None
+
     # Auto-apply safety gates
     if check_auto_apply:
         _pid_history = learner._pid_gains_manager.get_history(mode) if learner._pid_gains_manager is not None else []
@@ -95,6 +97,7 @@ def calculate_pid_adjustment(
             )
         )
         if not gates_passed:
+            learner._last_skip_reason = "gates_not_passed"
             return None
 
     # Hybrid rate limiting
@@ -104,6 +107,7 @@ def calculate_pid_adjustment(
         min_interval_hours,
         min_adjustment_cycles,
     ):
+        learner._last_skip_reason = "rate_limited"
         return None
 
     if len(cycle_history) < min_cycles:
@@ -113,11 +117,13 @@ def calculate_pid_adjustment(
             len(cycle_history),
             min_cycles,
         )
+        learner._last_skip_reason = "insufficient_data"
         return None
 
     # Compute averaged metrics (with outlier rejection and disturbed-cycle filtering)
     averages = compute_cycle_averages(cycle_history, min_cycles, learner._heating_type)
     if averages is None:
+        learner._last_skip_reason = "insufficient_usable_data"
         return None
 
     # Check convergence — skip adjustments if system is well-tuned
@@ -132,6 +138,7 @@ def calculate_pid_adjustment(
         avg_undershoot=averages["avg_undershoot"],
     ):
         _LOGGER.info("Skipping PID adjustment - system has converged")
+        learner._last_skip_reason = "converged"
         return None
 
     # Evaluate applicable rules with hysteresis tracking
@@ -152,6 +159,7 @@ def calculate_pid_adjustment(
 
     if not rule_results:
         _LOGGER.debug("No PID rules triggered - metrics within acceptable ranges")
+        learner._last_skip_reason = "no_rules_triggered"
         return None
 
     # Filter oscillation rules in PWM mode (PWM cycles are expected behaviour)
@@ -168,6 +176,7 @@ def calculate_pid_adjustment(
             )
         if not rule_results:
             _LOGGER.debug("All rules filtered in PWM mode - no adjustments needed")
+            learner._last_skip_reason = "no_rules_triggered"
             return None
 
     # Detect and resolve conflicts
@@ -192,10 +201,6 @@ def calculate_pid_adjustment(
     new_kp = max(PID_LIMITS["kp_min"], min(PID_LIMITS["kp_max"], new_kp))
     new_ki = max(PID_LIMITS["ki_min"], min(PID_LIMITS["ki_max"], new_ki))
     new_kd = max(PID_LIMITS["kd_min"], min(PID_LIMITS["kd_max"], new_kd))
-
-    # Record adjustment time and reset cycle counter
-    learner._last_adjustment_time = dt_util.utcnow()
-    learner._cycles_since_last_adjustment = 0
 
     return {"kp": new_kp, "ki": new_ki, "kd": new_kd}
 
@@ -426,6 +431,7 @@ def apply_restored_state(learner: AdaptiveLearner, data: dict[str, Any]) -> None
     learner._cooling_convergence_confidence = restored["cooling_convergence_confidence"]
     learner._last_adjustment_time = restored["last_adjustment_time"]
     learner._consecutive_converged_cycles = restored["consecutive_converged_cycles"]
+    learner._cycles_since_last_adjustment = restored.get("cycles_since_last_adjustment", 0)
     learner._pid_converged_for_ke = restored["pid_converged_for_ke"]
 
     # C04: Restore cycle counts from history length

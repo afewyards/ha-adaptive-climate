@@ -549,3 +549,25 @@ class TestVersionMigrations:
             data = self._load_fixture(fname)
             result = restore_learner_from_dict(data)
             assert result["format_version"] == CURRENT_VERSION, f"Failed for {fname}"
+
+
+class TestCooldownState:
+    def test_cycles_since_last_adjustment_round_trips(self):
+        learner = AdaptiveLearner(heating_type=HeatingType.RADIATOR)
+        learner._cycles_since_last_adjustment = 2
+        restored = AdaptiveLearner(heating_type=HeatingType.RADIATOR)
+        restored.restore_from_dict(learner.to_dict())
+        assert restored._cycles_since_last_adjustment == 2
+
+    def test_missing_key_defaults_to_zero(self):
+        data = AdaptiveLearner(heating_type=HeatingType.RADIATOR).to_dict()
+        del data["cycles_since_last_adjustment"]
+        restored = AdaptiveLearner(heating_type=HeatingType.RADIATOR)
+        restored.restore_from_dict(data)
+        assert restored._cycles_since_last_adjustment == 0
+
+    def test_read_only_calculation_keeps_cooldown(self):
+        learner = AdaptiveLearner(heating_type=HeatingType.RADIATOR)
+        learner.calculate_pid_adjustment(100.0, 0.01, 0.0)
+        assert learner._last_adjustment_time is None
+        assert learner._last_skip_reason == "insufficient_data"
