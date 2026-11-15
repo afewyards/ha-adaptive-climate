@@ -58,6 +58,7 @@
       box.append(card);
       row.append(box);
       if (w === 400) cards[k] = card;
+      if (w === 760 && k === 'a') cards.wide = card;
     }
     out.append(row);
   }
@@ -86,5 +87,7 @@
   cards.a.hass = { states: { ...cases.a.st } };
   check(cards.a.shadowRoot.querySelector('.room') === first, 'same state objects: no re-render');
   check(cards.a.getCardSize() === 6, 'card size');
+  const sRight = (name) => [...cards.wide.shadowRoot.querySelectorAll('.room')].find((r) => r.querySelector('.n').firstChild.textContent === name).querySelector('.s').getBoundingClientRect().right;
+  check(Math.abs(sRight('Living room') - sRight('Office')) <= 1, 'wide: confidence right edges align ' + sRight('Living room') + ' vs ' + sRight('Office'));
   document.getElementById('selfcheck').textContent = fails ? `FAIL ${fails}` : 'PASS';
 </script>

@@ -98,10 +98,12 @@ const STYLE = `
   .room { display: grid; grid-template-columns: 150px 1fr 150px; gap: 4px 16px; align-items: center; }
   .hd { display: contents; }
   .n small { display: block; margin: 0; }
-  .s { order: 3; }
+  .n { grid-column: 1; grid-row: 1; }
+  .s { grid-column: 3; grid-row: 1; }
   .s b { display: block; font-size: 15px; }
-  .bars { margin: 0; order: 2; }
-  .note { grid-column: 2 / -1; margin-top: 0; order: 4; }
+  .bars { margin: 0; grid-column: 2; grid-row: 1; }
+  .note { grid-column: 2 / -1; margin-top: 0; }
+  .hd + .note { grid-column: 2; grid-row: 1; }
 }`;
 
 function el(tag, cls, text) {
