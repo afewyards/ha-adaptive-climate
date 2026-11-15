@@ -1,6 +1,26 @@
 # CHANGELOG
 
 
+## v0.69.1 (2026-11-15)
+
+### Bug Fixes
+
+- **learning**: Let zones leave the collecting state
+  ([`f2c1c85`](https://github.com/afewyards/ha-adaptive-climate/commit/f2c1c852693c75ec329bc27fd80e20935978735d))
+
+Confidence could not rise and Kp/Kd were never auto-tuned:
+
+- give the maintenance allowance back when confidence drops - measure undershoot from the cycle's
+  peak, not from where it started, and stop failing recovery cycles that have no rise time - round
+  cycle metrics where they are produced so a value on the limit passes - drop the learning-status
+  requirement from the auto-apply gate
+
+To keep auto-apply safe without that gate: cap the step, clip gains to the drift limit, require a
+  physics baseline, hold Ki boosts during validation and after a boost, keep the integral on apply
+  and rollback, and keep the integral safety net on until the zone is tuned. Stored cycles are
+  migrated once (learner format 12) to drop undershoot values that only reflected the starting gap.
+
+
 ## v0.69.0 (2026-11-15)
 
 ### Bug Fixes
