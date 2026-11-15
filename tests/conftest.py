@@ -220,6 +220,7 @@ mock_climate.PRESET_BOOST = "boost"
 mock_climate.PRESET_COMFORT = "comfort"
 mock_climate.PRESET_HOME = "home"
 mock_climate.PRESET_SLEEP = "sleep"
+mock_climate.PRESET_ACTIVITY = "activity"
 mock_components.climate = mock_climate
 
 # ============================================================================

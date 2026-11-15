@@ -222,3 +222,174 @@ async def test_vacation_on_clearing_active_preset_keeps_target():
     assert t.target_temperature == 18.0
     assert "eco" not in t.preset_modes
     assert store.get_zone(KEY) == {"presets": {"eco": None}}
+
+
+NIGHT = {"start": "22:00", "delta": 1.0, "recovery_deadline": "07:00"}
+
+
+def _calculator(t):
+    from custom_components.adaptive_climate.managers.night_setback_calculator import NightSetbackCalculator
+
+    return NightSetbackCalculator(
+        hass=SimpleNamespace(states=SimpleNamespace(get=lambda entity_id: None), data={}),
+        entity_id=t.entity_id,
+        night_setback=t._night_setback,
+        night_setback_config=t._night_setback_config,
+        window_orientation=None,
+        get_target_temp=lambda: t._target_temp,
+        get_current_temp=lambda: t._current_temp,
+    )
+
+
+@pytest.mark.asyncio
+async def test_set_night_setback_changes_config_in_place():
+    t, store, backing = await _zone(night_setback_config=dict(NIGHT))
+    calculator = _calculator(t)
+
+    await t.async_set_night_setback(delta=2.0)
+
+    assert calculator._night_setback_config is t._night_setback_config
+    assert t._night_setback_config["delta"] == 2.0
+    assert store.get_zone(KEY) == {"night_setback": {"delta": 2.0}}
+    assert backing["data"] == {"zones": {KEY: {"night_setback": {"delta": 2.0}}}}
+    t._async_control_heating.assert_awaited()
+    t.async_write_ha_state.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_new_depth_used_at_next_evaluation_while_active():
+    from datetime import datetime, timezone
+
+    t, _, _ = await _zone(night_setback_config=dict(NIGHT))
+    calculator = _calculator(t)
+    night = datetime(2026, 1, 1, 23, 0, tzinfo=timezone.utc)
+    assert calculator.calculate_night_setback_adjustment(night)[:2] == (19.0, True)
+
+    await t.async_set_night_setback(delta=2.0)
+
+    assert calculator.calculate_night_setback_adjustment(night)[:2] == (18.0, True)
+
+
+@pytest.mark.asyncio
+async def test_partial_update_keeps_other_fields():
+    t, store, _ = await _zone(night_setback_config=dict(NIGHT))
+
+    await t.async_set_night_setback(start="23:30")
+
+    assert t._night_setback_config["start"] == "23:30"
+    assert t._night_setback_config["delta"] == 1.0
+    assert t._night_setback_config["recovery_deadline"] == "07:00"
+    assert store.get_zone(KEY) == {"night_setback": {"start": "23:30"}}
+
+
+@pytest.mark.asyncio
+async def test_rejected_without_night_setback():
+    from homeassistant.exceptions import ServiceValidationError
+
+    t, store, backing = await _zone()
+    assert not t.night_setback_editable
+
+    with pytest.raises(ServiceValidationError, match="Night setback is not set up for this zone"):
+        await t.async_set_night_setback(delta=2.0)
+
+    assert store.get_zone(KEY) == {}
+    assert "data" not in backing
+    t._async_control_heating.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_rejected_with_fixed_end():
+    from homeassistant.exceptions import ServiceValidationError
+
+    t, store, backing = await _zone(night_setback_config={**NIGHT, "end": "06:30"})
+    assert not t.night_setback_editable
+
+    with pytest.raises(
+        ServiceValidationError,
+        match="This zone uses a fixed night setback end time; change it in the configuration",
+    ):
+        await t.async_set_night_setback(delta=2.0)
+
+    assert t._night_setback_config["delta"] == 1.0
+    assert store.get_zone(KEY) == {}
+    assert "data" not in backing
+
+
+@pytest.mark.asyncio
+async def test_invalid_values_rejected_and_nothing_saved():
+    from homeassistant.exceptions import ServiceValidationError
+
+    t, store, backing = await _zone(night_setback_config=dict(NIGHT))
+    assert t.night_setback_editable
+
+    with pytest.raises(ServiceValidationError, match="delta must be between"):
+        await t.async_set_night_setback(start="23:00", delta=6.0)
+    with pytest.raises(ServiceValidationError, match="start must be HH:MM"):
+        await t.async_set_night_setback(start="25:00")
+
+    assert t._night_setback_config["start"] == "22:00"
+    assert t._night_setback_config["delta"] == 1.0
+    assert store.get_zone(KEY) == {}
+    assert "data" not in backing
+    t._async_control_heating.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_stored_setback_wins_over_yaml_on_startup():
+    t, _, _ = await _zone(stored={"night_setback": {"start": "23:00", "delta": 3.0}}, night_setback_config=dict(NIGHT))
+    config = t._night_setback_config
+
+    await t.async_apply_stored_zone_settings()
+
+    assert t._night_setback_config is config
+    assert config["start"] == "23:00"
+    assert config["delta"] == 3.0
+    assert config["recovery_deadline"] == "07:00"
+    assert t._yaml_night_setback == NIGHT
+
+
+@pytest.mark.asyncio
+async def test_stored_setback_ignored_with_fixed_end():
+    t, _, _ = await _zone(stored={"night_setback": {"delta": 3.0}}, night_setback_config={**NIGHT, "end": "06:30"})
+
+    await t.async_apply_stored_zone_settings()
+
+    assert t._night_setback_config["delta"] == 1.0
+
+
+@pytest.mark.asyncio
+async def test_reset_restores_yaml_presets_and_setback_and_empties_store():
+    t, store, backing = await _zone(
+        stored={
+            "presets": {"eco": 18.5, "comfort": 21.0},
+            "night_setback": {"delta": 3.0, "recovery_deadline": "06:00"},
+        },
+        eco_temp=17.0,
+        night_setback_config=dict(NIGHT),
+    )
+    await t.async_apply_stored_zone_settings()
+    assert t.presets["comfort"] == 21.0
+
+    await t.async_reset_zone_settings()
+
+    assert t._eco_temp == 17.0
+    assert t.presets["eco"] == 17.0
+    assert "comfort" not in t.preset_modes
+    assert {k: t._night_setback_config[k] for k in NIGHT} == NIGHT
+    assert store.get_zone(KEY) == {}
+    assert backing["data"] == {"zones": {}}
+    t._async_control_heating.assert_awaited()
+    t.async_write_ha_state.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_reset_during_vacation_keeps_target():
+    t, _, _ = await _zone(stored={"presets": {"comfort": 21.0}}, vacation=True, comfort_temp=20.5)
+    await t.async_apply_stored_zone_settings()
+    await t.async_set_preset_mode("comfort")
+    assert t.target_temperature == 21.0
+
+    await t.async_reset_zone_settings()
+
+    assert t.presets["comfort"] == 20.5
+    assert t.target_temperature == 21.0

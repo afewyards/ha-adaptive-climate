@@ -6,6 +6,7 @@ import re
 from typing import Any
 
 PRESET_NAMES: tuple[str, ...] = ("away", "eco", "boost", "comfort", "home", "sleep", "activity")
+NIGHT_SETBACK_FIELDS: tuple[str, ...] = ("start", "delta", "recovery_deadline")
 
 DELTA_MIN = 0.5
 DELTA_MAX = 5.0

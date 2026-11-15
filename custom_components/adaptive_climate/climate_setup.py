@@ -559,6 +559,16 @@ async def async_setup_platform(hass: HomeAssistant, config: ConfigType, async_ad
         },
         "async_set_preset_temperature",
     )
+    platform.async_register_entity_service(
+        "set_night_setback",
+        {
+            vol.Optional("start"): cv.string,
+            vol.Optional("delta"): vol.Coerce(float),
+            vol.Optional("recovery_deadline"): cv.string,
+        },
+        "async_set_night_setback",
+    )
+    platform.async_register_entity_service("reset_zone_settings", {}, "async_reset_zone_settings")
     platform.async_register_entity_service(  # type: ignore
         "restore_pid_history",
         {
