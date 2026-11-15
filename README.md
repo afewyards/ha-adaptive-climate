@@ -80,7 +80,7 @@ entities:                      # optional, defaults to every Adaptive Climate zo
   - climate.office
 ```
 
-It is registered automatically when the integration loads; hard-refresh the browser the first time. When `entities` is set, the cards keep that order.
+It is registered automatically when the integration loads; hard-refresh the browser the first time. When `entities` is set, the zones keep that order.
 
 ## Quick Start
 

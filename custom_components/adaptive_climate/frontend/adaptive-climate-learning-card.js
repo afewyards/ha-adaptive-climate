@@ -4,9 +4,11 @@ const DASH = '–';
 const NARROW_UNDER = 560;
 const RATE_FLOOR = 0.75;
 const SCALE = { rate: 2, overshoot: 0.5, settling: 120 };
+const RATE_HEADROOM = 1.25;
 
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 const clamp01 = (v) => Math.min(Math.max(v, 0), 1);
+const cycles = (n) => `${n} ${n === 1 ? 'cycle' : 'cycles'}`;
 const trim = (v, d) => String(Math.round(v * 10 ** d) / 10 ** d);
 
 function bar(label, value, ref, scale, unit, d, isOff) {
@@ -21,7 +23,12 @@ function bar(label, value, ref, scale, unit, d, isOff) {
   };
 }
 
-function zoneProfile(id, stateObj) {
+function rateScale(objs) {
+  const expected = objs.map((o) => num(o && o.attributes && o.attributes.learning && o.attributes.learning.heating_rate_expected) || 0);
+  return Math.max(SCALE.rate, RATE_HEADROOM * Math.max(0, ...expected));
+}
+
+function zoneProfile(id, stateObj, rate = SCALE.rate) {
   const learning = stateObj && stateObj.attributes && stateObj.attributes.learning;
   if (!stateObj || stateObj.state === 'unavailable' || !learning || typeof learning !== 'object') {
     return { id, name: id, meta: '', confidence: null, status: '', cycles: null, available: false, bars: [], reasons: ['Not available'] };
@@ -33,7 +40,7 @@ function zoneProfile(id, stateObj) {
     num(a.area_m2) !== null ? `${trim(a.area_m2, 1)} m²` : null,
   ].filter(Boolean).join(', ');
   const bars = [
-    bar('heats at', a.heating_rate, a.heating_rate_expected, SCALE.rate, '°/h', 1, (v, r) => v < RATE_FLOOR * r),
+    bar('heats at', a.heating_rate, a.heating_rate_expected, rate, '°/h', 1, (v, r) => Math.round((v / r) * 100) < RATE_FLOOR * 100),
     bar('overshoot', a.overshoot, a.overshoot_limit, SCALE.overshoot, '°', 2, (v, r) => v > r),
     bar('settles in', a.settling_time, a.settling_time_limit, SCALE.settling, ' min', 0, (v, r) => v > r),
   ];
@@ -87,10 +94,10 @@ const STYLE = `
 .tr { right: 0; background: var(--divider-color); }
 .fill { background: var(--secondary-text-color); }
 .ex { position: absolute; bottom: -4px; width: 2px; height: 13px; background: var(--primary-color); }
-.off .v { color: var(--warning-color); }
+.off .v { font-weight: 600; }
 .off .fill { background: var(--warning-color); }
-.note { font-size: 12.5px; color: var(--warning-color); margin-top: 7px; }
-.note.plain { color: var(--secondary-text-color); }
+.note { font-size: 12.5px; color: var(--primary-text-color); border-left: 3px solid var(--warning-color); padding-left: 6px; margin-top: 7px; }
+.note.plain { color: var(--secondary-text-color); border-left: 0; padding-left: 0; }
 .empty { padding: 10px 0; color: var(--secondary-text-color); }
 .ft { border-top: 1px solid var(--divider-color); padding-top: 9px; font-size: 11.5px; color: var(--secondary-text-color); display: flex; gap: 14px; flex-wrap: wrap; }
 .ft i { display: inline-block; vertical-align: middle; margin-right: 5px; }
@@ -126,7 +133,10 @@ class AdaptiveClimateLearningCard extends HTMLElement {
   }
 
   setConfig(config) {
-    this._config = { ...(config || {}) };
+    const cfg = { ...(config || {}) };
+    if (cfg.entities !== undefined && !Array.isArray(cfg.entities)) throw new Error('entities must be a list of climate entity ids');
+    if (cfg.entities) cfg.entities = cfg.entities.map((e) => (e && e.entity) ?? e);
+    this._config = cfg;
     this._seen = null;
     if (this._hass) this._render();
   }
@@ -157,15 +167,16 @@ class AdaptiveClimateLearningCard extends HTMLElement {
     if (seen && seen.ids.length === ids.length && ids.every((id, i) => id === seen.ids[i] && objs[i] === seen.objs[i])) return;
     this._seen = { ids, objs };
 
-    let zones = ids.map((id, i) => zoneProfile(id, objs[i]));
+    const rate = rateScale(objs);
+    let zones = ids.map((id, i) => zoneProfile(id, objs[i], rate));
     if (!Array.isArray(this._config.entities)) zones = sortZones(zones);
     this._count = zones.length;
 
     const card = el('ha-card');
     const wrap = el('div', 'wrap');
-    const cycles = zones.reduce((n, z) => n + (z.cycles || 0), 0);
+    const total = zones.reduce((n, z) => n + (z.cycles || 0), 0);
     const top = el('div', 'top');
-    top.append(el('b', '', this._config.title || 'What the system knows'), el('span', '', `${cycles} cycles`));
+    top.append(el('b', '', this._config.title || 'What the system knows'), zones.length ? el('span', '', cycles(total)) : '');
     wrap.append(top);
 
     if (!zones.length) wrap.append(el('div', 'empty', 'No Adaptive Climate zones found.'));
@@ -195,7 +206,7 @@ class AdaptiveClimateLearningCard extends HTMLElement {
     hd.append(n);
     if (z.available) {
       const s = el('span', 's');
-      const status = [z.status, z.cycles !== null ? `${z.cycles} cycles` : null].filter(Boolean).join(', ');
+      const status = [z.status, z.cycles !== null ? cycles(z.cycles) : null].filter(Boolean).join(', ');
       s.append(el('b', '', z.confidence === null ? DASH : `${z.confidence}%`), status ? ` ${status}` : '');
       hd.append(s);
     }
@@ -224,7 +235,7 @@ class AdaptiveClimateLearningCard extends HTMLElement {
   }
 }
 
-window.AdaptiveClimateLearningCard = { zoneProfile, sortZones };
+window.AdaptiveClimateLearningCard = { zoneProfile, sortZones, rateScale };
 if (!customElements.get(TAG)) customElements.define(TAG, AdaptiveClimateLearningCard);
 window.customCards = window.customCards || [];
 if (!window.customCards.some((c) => c.type === TAG)) {

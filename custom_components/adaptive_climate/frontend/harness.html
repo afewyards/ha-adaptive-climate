@@ -6,7 +6,7 @@
 <style>
   body { margin: 0; padding: 8px; font-family: Roboto, system-ui, sans-serif; background: var(--primary-background-color); color: var(--primary-text-color); }
   body.dark { --primary-background-color: #111; --ha-card-background: #1c1c1c; --primary-text-color: #e1e1e1; --secondary-text-color: #9b9b9b; --divider-color: #2f2f2f; --primary-color: #03a9f4; --warning-color: #ffa600; }
-  body.light { --primary-background-color: #fafafa; --ha-card-background: #fff; --primary-text-color: #212121; --secondary-text-color: #727272; --divider-color: rgba(0,0,0,.12); --primary-color: #0b79c4; --warning-color: #c76a00; }
+  body.light { --primary-background-color: #fafafa; --ha-card-background: #fff; --primary-text-color: #212121; --secondary-text-color: #727272; --divider-color: rgba(0,0,0,.12); --primary-color: #0b79c4; --warning-color: #ffa600; }
   #selfcheck { font: 13px monospace; margin-bottom: 8px; }
   .row { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; margin-bottom: 16px; }
   .row > div > small { display: block; font: 11px monospace; opacity: .6; margin-bottom: 2px; }
@@ -33,6 +33,7 @@
     'climate.bedroom': z('Bedroom', { status: 'optimized', confidence: 96, cycles: 118, heating_type: 'radiator', area_m2: 14, heating_rate: 1.8, heating_rate_expected: 0, overshoot: 0.1, overshoot_limit: 0.3 }),
     'climate.dead': { state: 'unavailable', attributes: { friendly_name: 'Dead', learning: { status: 'idle', confidence: 1 } } },
     'climate.xss': z('<img src=x onerror=alert(1)> & "Kitchen"', { status: 'stable', confidence: 50, cycles: 3 }),
+    'climate.fast': z('Workshop', { status: 'tuned', confidence: 60, cycles: 1, heating_type: 'forced_air', area_m2: 30, heating_rate: 2.5, heating_rate_expected: 4, overshoot: 0.1, overshoot_limit: 0.3, settling_time: 40, settling_time_limit: 60 }),
     'sensor.other': L({ learning: { confidence: 1 } }),
   };
   const only = (...ids) => Object.fromEntries(ids.map((i) => [i, states[i]]));
@@ -41,6 +42,7 @@
     b: { cfg: { entities: ['climate.missing', 'climate.dead', 'climate.office'] }, st: only('climate.dead', 'climate.office') },
     c: { cfg: { title: 'Custom title' }, st: {} },
     d: { cfg: {}, st: only('climate.xss') },
+    e: { cfg: {}, st: only('climate.fast', 'climate.office') },
   };
   const cards = {};
   const out = document.getElementById('out');
@@ -89,5 +91,30 @@
   check(cards.a.getCardSize() === 6, 'card size');
   const sRight = (name) => [...cards.wide.shadowRoot.querySelectorAll('.room')].find((r) => r.querySelector('.n').firstChild.textContent === name).querySelector('.s').getBoundingClientRect().right;
   check(Math.abs(sRight('Living room') - sRight('Office')) <= 1, 'wide: confidence right edges align ' + sRight('Living room') + ' vs ' + sRight('Office'));
+  const Z = (o) => API.zoneProfile('x', z('X', { status: 'tuned', confidence: 1, ...o }), o.scale);
+  const at = (rate, expected) => Z({ heating_rate: rate, heating_rate_expected: expected });
+  check(at(0.3, 0.4).bars[0].off === false, '0.3 vs 0.4 is exactly 75%: not off');
+  check(at(0.746 * 2, 2).bars[0].off === false && at(0.746 * 2, 2).bars[0].sub === '75%', '74.6% shows 75%, not off');
+  const p74 = at(0.74 * 2, 2);
+  check(p74.bars[0].off === true && p74.reasons[0] === 'Heats at 74% of the expected rate.', '74% off with reason: ' + p74.reasons[0]);
+  check(API.rateScale([states['climate.kitchen'], states['climate.bathroom']]) === 2, 'slow zones keep scale 2');
+  const fast = z('Fast', { status: 'tuned', confidence: 1, heating_rate: 2.5, heating_rate_expected: 4 });
+  check(API.rateScale([fast, states['climate.kitchen']]) === 5, 'fast zone widens scale to 1.25 x 4');
+  const fz = API.zoneProfile('x', fast, API.rateScale([fast]));
+  const fb = fz.bars[0];
+  check(fb.frac < fb.tick && fb.tick < 1 && fb.frac < 1 && fb.off && fz.reasons[0] === 'Heats at 63% of the expected rate.', 'forced air: ' + JSON.stringify(fb) + fz.reasons[0]);
+  const entityCard = document.createElement('adaptive-climate-learning-card');
+  entityCard.setConfig({ entities: [{ entity: 'climate.office' }, 'climate.dead'] });
+  entityCard.hass = { states: only('climate.dead', 'climate.office') };
+  check(entityCard.shadowRoot.querySelector('.n').firstChild.textContent === 'Office' && !entityCard.shadowRoot.textContent.includes('[object'), 'entities accept {entity} objects and strings');
+  let threw = false;
+  try { entityCard.setConfig({ entities: 'climate.office' }); } catch (e) { threw = /list/.test(e.message); }
+  check(threw, 'entities string throws');
+  const one = document.createElement('adaptive-climate-learning-card');
+  one.setConfig({ entities: ['climate.o'] });
+  one.hass = { states: { 'climate.o': z('O', { status: 'tuned', confidence: 5, cycles: 1 }) } };
+  const oneText = one.shadowRoot.textContent;
+  check(oneText.includes('1 cycle') && !oneText.includes('1 cycles'), 'singular cycle: ' + oneText);
+  check(!cards.c.shadowRoot.textContent.includes('cycles'), 'no cycles total without zones');
   document.getElementById('selfcheck').textContent = fails ? `FAIL ${fails}` : 'PASS';
 </script>
