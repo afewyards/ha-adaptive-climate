@@ -340,6 +340,8 @@ class TemperatureManager:
             raise ValueError(f"Unknown preset '{preset}'")
         active = preset == self._attr_preset_mode
         if active and temperature is None:
+            if not move_target:
+                self._saved_target_temp = self._get_target_temp()
             await self.async_set_preset_mode(PRESET_NONE)
         setattr(self, f"_{preset}_temp", temperature)
         if active and temperature is not None and move_target:

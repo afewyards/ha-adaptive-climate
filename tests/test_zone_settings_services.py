@@ -208,3 +208,17 @@ async def test_vacation_on_does_not_move_target():
     assert t.target_temperature == 21.0
     assert t.presets["comfort"] == 19.0
     assert store.get_zone(KEY) == {"presets": {"comfort": 19.0}}
+
+
+@pytest.mark.asyncio
+async def test_vacation_on_clearing_active_preset_keeps_target():
+    t, store, _ = await _zone(vacation=True, eco_temp=18.0)
+    await t.async_set_preset_mode("eco")
+    assert t.target_temperature == 18.0
+
+    await t.async_set_preset_temperature("eco", None)
+
+    assert t.preset_mode == "none"
+    assert t.target_temperature == 18.0
+    assert "eco" not in t.preset_modes
+    assert store.get_zone(KEY) == {"presets": {"eco": None}}
