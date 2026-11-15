@@ -1,6 +1,58 @@
 # CHANGELOG
 
 
+## v0.69.0 (2026-11-15)
+
+### Bug Fixes
+
+- **frontend**: Close remaining click and dropdown gaps in the control card
+  ([`471b8b2`](https://github.com/afewyards/ha-adaptive-climate/commit/471b8b2e81df92319e6f6ab8f488ea79478362a3))
+
+Hold the vacation pill in its requested state and ignore taps while its call runs, pass
+  notifyOnError false so errors show once, keep a reopened select busy, ignore non-primary buttons,
+  defer a failed call's redraw until the press ends, and hold redraws between Space keydown and
+  keyup.
+
+- **frontend**: Keep clicks and refresh rows after dropdown and time edits
+  ([`818f8dc`](https://github.com/afewyards/ha-adaptive-climate/commit/818f8dc02afcf4a1bbd96423fb9d48a25da01086))
+
+- **settings**: Keep the vacation target when clearing an active preset
+  ([`f0920b3`](https://github.com/afewyards/ha-adaptive-climate/commit/f0920b337b296145b91342c84b5ceb69f4e2ead1))
+
+- **vacation**: Ignore a second enable while the first is running
+  ([`5c50633`](https://github.com/afewyards/ha-adaptive-climate/commit/5c506331f310672456bc0afe275c29e25fcbf66c))
+
+A second enable during the zone loop saved targets already at the vacation temperature as the
+  originals, so disabling left rooms cold with learning paused. Re-entrant enable/disable calls now
+  log and return. Also bound the sunset offset to three digits so a huge value cannot be stored and
+  overflow the night setback calculator.
+
+### Documentation
+
+- **frontend**: Add control card design and plan
+  ([`b2fcfc9`](https://github.com/afewyards/ha-adaptive-climate/commit/b2fcfc92beef03a9ed5b90898313715ea0fed783))
+
+### Features
+
+- **frontend**: Add control card
+  ([`421dc62`](https://github.com/afewyards/ha-adaptive-climate/commit/421dc622be4e3e7d8a606c2f8b6da77d9786aaca))
+
+- **frontend**: Serve the control card next to the learning card
+  ([`afc4830`](https://github.com/afewyards/ha-adaptive-climate/commit/afc4830a0d85c40077fafcca295bc6c9b760cc04))
+
+- **settings**: Add zone settings validation and store
+  ([`c4da5be`](https://github.com/afewyards/ha-adaptive-climate/commit/c4da5be58c2062a98f3e3c2f0c5369c2df726378))
+
+- **settings**: Edit night setback per zone and reset to config
+  ([`adacbcb`](https://github.com/afewyards/ha-adaptive-climate/commit/adacbcb245dfd09129c657656b98b2c2ee23d7e1))
+
+- **settings**: Publish zone settings and vacation state
+  ([`05fd595`](https://github.com/afewyards/ha-adaptive-climate/commit/05fd59507755f5f1381e8da073376ddecb0abf27))
+
+- **settings**: Set preset temperatures per zone at runtime
+  ([`39e5ea7`](https://github.com/afewyards/ha-adaptive-climate/commit/39e5ea731caefda306e9bd2998203686ba1f9b14))
+
+
 ## v0.68.0 (2026-11-15)
 
 ### Bug Fixes
