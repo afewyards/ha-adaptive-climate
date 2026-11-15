@@ -56,7 +56,7 @@ button, select, input { font: inherit; color: inherit; background: var(--divider
 button { cursor: pointer; }
 option { background: var(--card-background-color); }
 button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
-:disabled { opacity: .4; cursor: default; }
+:disabled, [aria-disabled=true] { opacity: .4; cursor: default; }
 .top { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
 .top b { font-size: 16px; font-weight: 500; }
 .house { display: flex; gap: 6px; margin-left: auto; }
@@ -124,22 +124,32 @@ class AdaptiveClimateControlCard extends HTMLElement {
     this.shadowRoot.addEventListener('focusin', (e) => {
       if (e.target !== this._committed) this._committed = null;
     });
-    // A redraw between press and release would replace the button and the browser would drop the click.
+    // Reopening a chosen select makes it busy again, so a push cannot close its dropdown.
     // Buttons only: a select's native popup can swallow the pointerup.
     this.shadowRoot.addEventListener('pointerdown', (e) => {
-      if (!e.target.closest('button')) return;
-      this._pressing = true;
-      const release = () => {
-        window.removeEventListener('pointerup', release, true);
-        window.removeEventListener('pointercancel', release, true);
-        setTimeout(() => {
-          this._pressing = false;
-          this._refresh();
-        });
-      };
-      window.addEventListener('pointerup', release, true);
-      window.addEventListener('pointercancel', release, true);
+      if (e.target === this._committed) this._committed = null;
+      if (e.button === 0 && e.target.closest('button')) this._hold(['pointerup', 'pointercancel']);
     });
+    // Space clicks a button on keyup.
+    this.shadowRoot.addEventListener('keydown', (e) => {
+      if (e.target === this._committed) this._committed = null;
+      if (e.key === ' ' && !e.repeat && e.target.closest('button')) this._hold(['keyup', 'blur']);
+    });
+  }
+
+  // A redraw between press and release would replace the button and the browser would drop the click.
+  _hold(ends) {
+    this._pressing = true;
+    const release = () => {
+      ends.forEach((type) => window.removeEventListener(type, release, true));
+      setTimeout(() => {
+        this._pressing = false;
+        const failed = this._failed;
+        if (failed) this._draw(failed.key);
+        else this._refresh();
+      });
+    };
+    ends.forEach((type) => window.addEventListener(type, release, true));
   }
 
   static getStubConfig() {
@@ -202,6 +212,7 @@ class AdaptiveClimateControlCard extends HTMLElement {
     const ids = this._ids();
     this._seen = ids.map((id) => ({ id, obj: this._hass.states[id] }));
     this._stale = false;
+    this._failed = null;
     const zones = ids.map((id) => zoneOf(id, this._hass.states[id]));
     if (!zones.some((z) => z.id === this._open && z.ok)) this._open = null;
     this._count = zones.length;
@@ -250,7 +261,7 @@ class AdaptiveClimateControlCard extends HTMLElement {
     delete this._errors[id];
     let failed = false;
     try {
-      await this._hass.callService(domain, name, data);
+      await this._hass.callService(domain, name, data, undefined, false);
     } catch (err) {
       failed = true;
       this._errors[id] = { msg: (err && err.message) || String(err), fresh: true };
@@ -264,11 +275,13 @@ class AdaptiveClimateControlCard extends HTMLElement {
       if (!p.calls && !p.timer && this._pend[key] === p) delete this._pend[key];
     }
     if (failed) {
-      this._draw(key);
+      if (this._pressing) this._failed = { key };
+      else this._draw(key);
       return;
     }
     // Without an error to clear, wait for the state push instead of redrawing the old value.
-    if (hadError) this._stale = true;
+    // The vacation pill redraws to leave its pending state.
+    if (hadError || key === 'vacation') this._stale = true;
     this._refresh();
   }
 
@@ -294,12 +307,18 @@ class AdaptiveClimateControlCard extends HTMLElement {
     }
     const lead = live.find((z) => z.settings);
     if (lead) {
-      const on = !!lead.settings.vacation;
+      const p = this._pend.vacation;
+      const on = p ? p.value : !!lead.settings.vacation;
       const v = ctl('button', 'vacation', null, null, 'pill', 'Vacation');
       v.setAttribute('role', 'switch');
       v.setAttribute('aria-checked', String(on));
+      // aria-disabled, not disabled: keeps focus on the pill while the backend sets every zone.
+      if (p) v.setAttribute('aria-disabled', 'true');
       v.addEventListener('click', () => {
+        if (this._pend.vacation) return;
+        this._pend.vacation = { calls: 0, timer: 0, value: !on };
         v.setAttribute('aria-checked', String(!on));
+        v.setAttribute('aria-disabled', 'true');
         this._call('', 'adaptive_climate.set_vacation_mode', { enabled: !on }, 'vacation');
       });
       house.append(v);

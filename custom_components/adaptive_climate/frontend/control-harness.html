@@ -55,6 +55,7 @@
     return { ...states, [id]: { ...s, attributes: { ...s.attributes, ...attrs, settings: { ...s.attributes.settings, ...settings } } } };
   };
 
+  const fakes = [];
   function mk(st, cfg = {}, width = 420, where = 'lab') {
     const box = document.createElement('div');
     if (width) box.style.width = width + 'px';
@@ -63,12 +64,14 @@
     card.setConfig(cfg);
     box.append(card);
     const hass = {
-      states: st, calls: [], fail: null,
-      callService(domain, service, data) {
-        this.calls.push({ domain, service, data });
+      states: st, calls: [], fail: null, gate: null,
+      callService(domain, service, data, target, notifyOnError) {
+        this.calls.push({ domain, service, data, target, notifyOnError });
+        if (this.gate) return this.gate;
         return this.fail ? Promise.reject({ code: 'service_validation_error', message: this.fail }) : Promise.resolve();
       },
     };
+    fakes.push(hass);
     card.hass = hass;
     const t = {
       card, hass, box,
@@ -88,6 +91,8 @@
   const change = (e, v) => { e.value = v; e.dispatchEvent(new Event('change')); };
   const enter = (e) => e.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, composed: true }));
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const EV = { bubbles: true, composed: true };
+  const space = (e, type) => e.dispatchEvent(new KeyboardEvent(type, { key: ' ', ...EV }));
 
   const log = document.getElementById('log');
   let fails = 0, passes = 0;
@@ -191,6 +196,30 @@
       check(v && v.getAttribute('role') === 'switch' && v.getAttribute('aria-checked') === 'true', 'vacation from first zone');
       v.click();
       check(same(t.svc('adaptive_climate.set_vacation_mode')[0]?.data, { enabled: false }), 'vacation switch calls set_vacation_mode');
+    });
+
+    await test('vacation in flight', async () => {
+      const t = mk(states);
+      let release;
+      t.hass.gate = new Promise((r) => { release = r; });
+      t.vacation().click();
+      t.push(withAttrs('climate.bathroom', { temperature: 12 }));
+      const v = t.vacation();
+      check(v.getAttribute('aria-checked') === 'true' && v.getAttribute('aria-disabled') === 'true', 'vacation pill shows the request and is disabled while its call runs');
+      v.click();
+      check(t.svc('adaptive_climate.set_vacation_mode').length === 1, 'second vacation tap while the call runs sends nothing: ' + JSON.stringify(t.hass.calls));
+      t.push(withAttrs('climate.bathroom', { temperature: 12 }, { vacation: true }));
+      t.hass.gate = null;
+      release();
+      await sleep(0);
+      const after = t.vacation();
+      check(after.getAttribute('aria-checked') === 'true' && after.getAttribute('aria-disabled') !== 'true', 'vacation pill usable again once the call settles');
+      t.hass.gate = new Promise((r) => { release = r; });
+      after.click();
+      t.hass.gate = null;
+      release();
+      await sleep(0);
+      check(t.vacation().getAttribute('aria-disabled') !== 'true', 'vacation pill usable again when no push came during the call');
     });
 
     await test('one room open', () => {
@@ -385,6 +414,66 @@
       check(t.row('Living room').querySelector('output').textContent === '19.0°', 'rebuild after the call');
     });
 
+    await test('reopening a chosen select', async () => {
+      for (const [how, press] of [['pointerdown', (e) => e.dispatchEvent(new PointerEvent('pointerdown', EV))], ['keydown', (e) => space(e, 'keydown')]]) {
+        const t = mk(states);
+        const sel = t.ctl('Living room preset');
+        sel.focus();
+        change(sel, 'eco');
+        press(sel);
+        t.push(withAttrs('climate.living', { temperature: 18.5, preset_mode: 'eco' }));
+        check(t.ctl('Living room preset') === sel, `${how} on a chosen select holds back pushes`);
+        sel.blur();
+        await sleep(10);
+        check(t.row('Living room').querySelector('output').textContent === '18.5°', `push lands after leaving the select (${how})`);
+      }
+    });
+
+    await test('right-click', () => {
+      const t = mk(states);
+      t.ctl('Raise Living room target').dispatchEvent(new PointerEvent('pointerdown', { button: 2, ...EV }));
+      t.push(withAttrs('climate.living', { temperature: 18.5 }));
+      check(t.row('Living room').querySelector('output').textContent === '18.5°', 'a right-click without pointerup does not hold back pushes');
+    });
+
+    await test('rejected time commit during a press', async () => {
+      const t = mk(states);
+      t.open('Living room');
+      const rd = t.ctl('Living room warm again by');
+      rd.focus();
+      change(rd, '07:15');
+      t.hass.fail = 'Deadline rejected';
+      const up = t.ctl('Raise Living room target');
+      up.dispatchEvent(new PointerEvent('pointerdown', EV));
+      up.dispatchEvent(new MouseEvent('mousedown', EV));
+      up.focus();
+      await sleep(50);
+      const kept = up.isConnected;
+      up.dispatchEvent(new PointerEvent('pointerup', EV));
+      up.dispatchEvent(new MouseEvent('mouseup', EV));
+      if (kept) up.click();
+      t.hass.fail = null;
+      await sleep(10);
+      const alert = t.row('Living room').querySelector('[role="alert"]');
+      check(alert && alert.textContent.includes('Deadline rejected') && t.ctl('Living room warm again by').value === '06:30', 'rejected time commit: alert and old value after the release');
+      await sleep(700);
+      check(same(t.svc('climate.set_temperature')[0]?.data, { entity_id: 'climate.living', temperature: 21.5 }), 'rejected time commit keeps the click that caused the blur: ' + JSON.stringify(t.hass.calls));
+    });
+
+    await test('space press', async () => {
+      const t = mk(states);
+      const up = t.ctl('Raise Living room target');
+      up.focus();
+      space(up, 'keydown');
+      t.push(withAttrs('climate.living', { temperature: 18.5 }));
+      const kept = up.isConnected;
+      space(up, 'keyup');
+      // A button clicks on Space keyup; a replaced one never does.
+      if (kept) up.click();
+      await sleep(700);
+      check(same(t.svc('climate.set_temperature')[0]?.data, { entity_id: 'climate.living', temperature: 19 }), 'space press with a push before keyup sends its call from the pushed value: ' + JSON.stringify(t.hass.calls));
+    });
+
     await test('known zone going unavailable', () => {
       const t = mk(states);
       t.push({ ...states, 'climate.bathroom': { state: 'unavailable', attributes: { friendly_name: 'Bathroom', min_temp: 7, max_temp: 25 } } });
@@ -423,6 +512,12 @@
         });
         check(!out.length, `nothing overflows at ${w}px` + out.map((e) => ' ' + e.tagName + '.' + e.className).join(''));
       }
+    });
+
+    await test('no HA toast', () => {
+      const calls = fakes.flatMap((h) => h.calls);
+      const bad = calls.filter((c) => c.target !== undefined || c.notifyOnError !== false);
+      check(calls.length > 20 && !bad.length, `every call passes notifyOnError false: ${bad.length} of ${calls.length} do not`);
     });
 
     scrollTo(0, 0);
