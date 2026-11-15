@@ -9,6 +9,8 @@ if TYPE_CHECKING:
 
 from homeassistant.util import dt as dt_util
 
+from .learning_profile import build_learning_profile
+
 
 # Learning/adaptation state attribute constants
 ATTR_LEARNING_STATUS = "learning_status"
@@ -264,6 +266,16 @@ def _add_learning_object(thermostat: SmartThermostat, attrs: dict[str, Any]) -> 
     # Build learning object
     confidence_pct = round(convergence_confidence * 100)
     attrs["learning"] = build_learning_object(status=learning_status, confidence=confidence_pct)
+    attrs["learning"].update(
+        build_learning_profile(
+            adaptive_learner,
+            heating_type,
+            getattr(thermostat, "_area_m2", None),
+            getattr(thermostat, "_thermal_time_constant", None),
+            getattr(thermostat, "_max_power_w", None),
+            getattr(thermostat, "_supply_temperature", None),
+        )
+    )
 
 
 def _add_debug_object(thermostat: SmartThermostat, attrs: dict[str, Any]) -> None:

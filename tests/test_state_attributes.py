@@ -2284,6 +2284,8 @@ def test_build_state_attributes_new_structure():
     adaptive_learner = MagicMock()
     adaptive_learner.get_cycle_count.return_value = 8
     adaptive_learner.get_convergence_confidence.return_value = 0.65
+    adaptive_learner.cycle_history = []
+    adaptive_learner.get_mean_heating_rate.return_value = None
     cycle_tracker = MagicMock()
     zone_data = {
         "adaptive_learner": adaptive_learner,
@@ -2293,6 +2295,10 @@ def test_build_state_attributes_new_structure():
     thermostat._coordinator = coordinator
     thermostat.entity_id = "climate.test_zone"
     thermostat._heating_type = "convector"
+    thermostat._area_m2 = None
+    thermostat._thermal_time_constant = None
+    thermostat._max_power_w = None
+    thermostat._supply_temperature = None
 
     # No optional features
     thermostat._night_setback_controller = None
@@ -2332,6 +2338,8 @@ def test_build_state_attributes_new_structure():
     assert "learning" in attrs
     assert "status" in attrs["learning"]
     assert "confidence" in attrs["learning"]
+    assert attrs["learning"]["cycles"] == 8
+    assert attrs["learning"]["heating_type"] == "convector"
 
     # Old flat fields should NOT be present
     assert "heater_cycle_count" not in attrs
@@ -2382,6 +2390,10 @@ class TestStateAttributesNoSideEffects:
         thermostat._contact_sensor_handler = None
         thermostat._humidity_detector = None
         thermostat._heating_type = "convector"
+        thermostat._area_m2 = None
+        thermostat._thermal_time_constant = None
+        thermostat._max_power_w = None
+        thermostat._supply_temperature = None
         thermostat.entity_id = "climate.test_zone"
         thermostat.hvac_mode = "heat"
         # Preset temps
@@ -2427,3 +2439,13 @@ class TestStateAttributesNoSideEffects:
 
         # The read path must NEVER spawn a background task
         hass.async_create_background_task.assert_not_called()
+
+
+def test_learning_attribute_without_coordinator_is_idle_only():
+    from custom_components.adaptive_climate.managers.state_attributes import _add_learning_object
+
+    thermostat = MagicMock()
+    thermostat._coordinator = None
+    attrs: dict = {}
+    _add_learning_object(thermostat, attrs)
+    assert attrs["learning"] == {"status": "idle", "confidence": 0}
