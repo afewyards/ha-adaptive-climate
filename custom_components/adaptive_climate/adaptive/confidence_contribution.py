@@ -142,6 +142,25 @@ class ConfidenceContributionTracker:
             self._heating_maintenance_contribution += actual_gain
         return actual_gain
 
+    def clamp_maintenance_contribution(self, limit: float, mode: HVACMode = None) -> None:
+        """Lower the mode's maintenance contribution to ``limit`` (its current confidence) if above it."""
+        if mode is None:
+            mode = get_hvac_heat_mode()
+        if mode == get_hvac_cool_mode():
+            self._cooling_maintenance_contribution = min(self._cooling_maintenance_contribution, limit)
+        else:
+            self._heating_maintenance_contribution = min(self._heating_maintenance_contribution, limit)
+
+    def reset(self, mode: HVACMode = None) -> None:
+        """Zero the mode's contributions; heating also resets the heating-rate contribution. None resets both."""
+        if mode is None or mode != get_hvac_cool_mode():
+            self._heating_maintenance_contribution = 0.0
+            self._heating_rate_contribution = 0.0
+            self._heating_recovery_cycle_count = 0
+        if mode is None or mode == get_hvac_cool_mode():
+            self._cooling_maintenance_contribution = 0.0
+            self._cooling_recovery_cycle_count = 0
+
     def apply_heating_rate_gain(self, gain: float) -> float:
         """Apply heating rate confidence gain with hard cap.
 

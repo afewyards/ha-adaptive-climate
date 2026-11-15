@@ -30,8 +30,13 @@ class ValidationManager:
     Safety checks enforce limits on auto-apply frequency and cumulative drift.
     """
 
-    def __init__(self):
-        """Initialize validation manager with clean state."""
+    def __init__(self, overshoot_max: float = 0.0):
+        """Initialize validation manager with clean state.
+
+        Args:
+            overshoot_max: Heating type's acceptable overshoot; validation never fails below it.
+        """
+        self._overshoot_max = overshoot_max
         # Validation mode state
         self._validation_mode: bool = False
         self._validation_baseline_overshoot: float | None = None
@@ -109,15 +114,17 @@ class ValidationManager:
         # Calculate degradation as percentage increase from baseline
         # Use max(baseline, 0.1) to handle very small baseline values
         degradation_pct = (avg_overshoot - baseline) / max(baseline, 0.1)
+        # Overshoot within the heating type's normal range is not a failure, even if the baseline had none
+        limit = max(baseline * (1 + VALIDATION_DEGRADATION_THRESHOLD), self._overshoot_max)
 
-        if degradation_pct > VALIDATION_DEGRADATION_THRESHOLD:
+        if avg_overshoot > limit:
             _LOGGER.warning(
                 "Validation FAILED: overshoot degraded %.1f%% "
-                "(baseline: %.2f°C, validation avg: %.2f°C, threshold: %.0f%%)",
+                "(baseline: %.2f°C, validation avg: %.2f°C, limit: %.2f°C)",
                 degradation_pct * 100,
                 baseline,
                 avg_overshoot,
-                VALIDATION_DEGRADATION_THRESHOLD * 100,
+                limit,
             )
             self._validation_mode = False
             return "rollback"
@@ -354,6 +361,21 @@ class ValidationManager:
             kd,
         )
 
+    def clip_to_drift_limit(self, kp: float, ki: float, kd: float) -> tuple[float, float, float]:
+        """Clip each gain to within MAX_CUMULATIVE_DRIFT_PCT of its physics baseline (unchanged without one)."""
+        limit = MAX_CUMULATIVE_DRIFT_PCT / 100.0
+
+        def clip(value: float, base: float | None) -> float:
+            if base is None or base <= 0:
+                return value
+            return min(max(value, base * (1 - limit)), base * (1 + limit))
+
+        return (
+            clip(kp, self._physics_baseline_kp),
+            clip(ki, self._physics_baseline_ki),
+            clip(kd, self._physics_baseline_kd),
+        )
+
     def calculate_drift_from_baseline(
         self,
         current_kp: float,
@@ -392,7 +414,8 @@ class ValidationManager:
             else 0.0
         )
 
-        max_drift = max(kp_drift, ki_drift, kd_drift)
+        # Rounded so gains clipped exactly to the limit are not pushed over it by float noise
+        max_drift = round(max(kp_drift, ki_drift, kd_drift), 6)
         _LOGGER.debug(
             "PID drift from baseline: Kp=%.1f%%, Ki=%.1f%%, Kd=%.1f%%, max=%.1f%%",
             kp_drift * 100,

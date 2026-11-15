@@ -25,12 +25,12 @@ The architecture follows a pipeline pattern: temperature readings flow through c
 
 **Dependencies:** `confidence.py`, `validation.py`, `auto_apply.py`, `undershoot_detector.py`, `cycle_weight.py`, `confidence_contribution.py`, `heating_rate_learner.py`, `pid_rules.py`, `robust_stats.py`, `learner_serialization.py`, `cycle_analysis.py`
 
-**Persistence:** Full state via `learner_serialization.py` (v10 format). Includes cycle histories, auto-apply counts, convergence confidence, undershoot detector state, contribution tracker state, heating rate learner state.
+**Persistence:** Full state via `learner_serialization.py` (format_version 12; v12 drops stored heating undershoot that reached or exceeded the cycle's starting gap and rounds stored overshoot/undershoot/starting_delta). Includes cycle histories, auto-apply counts, convergence confidence, undershoot detector state, contribution tracker state, heating rate learner state.
 
 **Issues:**
 - God class with 63 methods and 27+ attributes
 - Lines 195-315: ~30 backward-compatibility property aliases exist solely for tests accessing private internals
-- `update_convergence_confidence()` (144 lines) duplicates and bypasses `ConfidenceTracker.update_convergence_confidence()` with its own weighted learning implementation
+- `update_convergence_confidence()` (144 lines) writes `ConfidenceTracker` values directly with its own weighted learning implementation
 - `calculate_pid_adjustment()` is a 334-line monolith that could delegate more to `pid_rules.py`
 
 ---
@@ -82,8 +82,6 @@ The architecture follows a pipeline pattern: temperature readings flow through c
 **Persistence:** Confidence values serialized as part of learner state
 
 **Issues:**
-- Has its own `update_convergence_confidence()` method that does simple non-weighted confidence updates
-- This method is **effectively dead code** -- `AdaptiveLearner.update_convergence_confidence()` (144 lines in `learning.py:1052`) bypasses it entirely with a weighted implementation
 - The tracker is reduced to a data holder that the learner reads/writes directly
 
 ---
@@ -144,16 +142,12 @@ The architecture follows a pipeline pattern: temperature readings flow through c
 **Key class:** `AutoApplyManager` -- Orchestrates auto-apply safety gates for automatic PID gain updates.
 
 **Responsibilities:**
-- `_compute_learning_status()` -- Computes learning status (collecting/stable/tuned/optimized) from cycle count, confidence, and heating type thresholds
-- `check_auto_apply_safety_gates()` -- 5 checks: validation mode active, apply limits, seasonal shift, confidence threshold, recovery cycle requirements
+- `check_auto_apply_safety_gates()` -- 3 checks: validation mode active, apply limits, seasonal shift. Returns min_cycles (doubled after the first apply) and cooldown hours/cycles, which `calculate_pid_adjustment()` enforces. Learning status is not a gate.
 
-**Dependencies:** `validation.py`, `confidence_contribution.py`, `const.py`
+**Dependencies:** `validation.py`, `const.py`
 
 **Persistence:** None (delegates to ValidationManager)
 
-**Issues:**
-- `_compute_learning_status()` **duplicates** the learning status computation found in `managers/learning_gate.py` -- both compute the same idle/collecting/stable/tuned/optimized status with the same tier thresholds and scaling factors
-- The first auto-apply requires "tuned" status (tier 2), subsequent require "optimized" (tier 3)
 
 ---
 
@@ -568,7 +562,10 @@ evaluate_pid_rules() [pid_rules.py]
 resolve_rule_conflicts() (priority-based, highest wins)
        |
        v
-Apply learning_rate_multiplier (from ConfidenceTracker)
+Apply learning_rate_multiplier (from ConfidenceTracker; capped at 1.0 for auto-apply)
+       |
+       v
+[auto-apply only] clip each gain to the physics baseline ± 50%; skip if nothing changes
        |
        v
 Return PIDChangeSet {delta_kp, delta_ki, delta_kd}
@@ -586,27 +583,31 @@ CycleMetricsRecorder.record_cycle_metrics()
        v
 AutoApplyManager.check_auto_apply_safety_gates()
        |
-       +-- _compute_learning_status()
-       |     (cycle count + confidence -> status tier)
+       +-- ValidationManager.is_in_validation_mode()
        |
        +-- ValidationManager.check_auto_apply_limits()
        |     (lifetime cap, seasonal cap, drift from baseline)
        |
-       +-- ConfidenceContributionTracker.can_reach_tier()
-       |     (recovery cycle count gating)
+       +-- ValidationManager.check_seasonal_shift()
        |
-       v [gates pass]
+       v [gates pass -> min_cycles, cooldown hours/cycles]
 PIDTuningManager.async_auto_apply_adaptive_pid()
        |
        v
 AdaptiveLearner.calculate_pid_adjustment()
+       |     (physics baseline required, cooldown rate limit, min_cycles of history,
+       |      learning rate <= 1.0, gains clipped to drift limit)
        |
        v
-PIDGainsManager.set_gains(reason=AUTO_APPLY)
+PIDGainsManager.set_gains(reason=AUTO_APPLY)   [integral kept]
        |
+       v
+AdaptiveLearner.clear_history(mode) + mark_adjustment_applied()
+       |     (only the applied mode; the other mode keeps its learning)
        v
 ValidationManager.start_validation_mode()
-       | [monitor next N cycles for degradation]
+       | [monitor next N cycles; fail if avg overshoot > max(baseline × 1.3, overshoot_max)]
+       | [rollback: restore previous gains, integral kept, clear_history(mode), restart cooldown]
 ```
 
 ### Ke Learning Flow (Parallel Path)
@@ -690,8 +691,6 @@ NightSetbackManager applies graduated delta
 |------------|-----------|-----------|--------|
 | `calculate_pearson_correlation()` | `pid_rules.py:~450` | `ke_learning.py:~350` | Different implementations (manual vs statistics.stdev) |
 | `calculate_mad()` / `_calculate_mad()` | `robust_stats.py:~140` | `cycle_metrics.py:~600` | Identical logic, should import from robust_stats |
-| Learning status computation | `auto_apply.py:_compute_learning_status()` | `learning_gate.py:get_allowed_delta()` | Both compute collecting/stable/tuned/optimized from same inputs with same tier scaling |
-| `update_convergence_confidence()` | `confidence.py:~50` | `learning.py:1052-1196` | learning.py version is 144 lines and bypasses the confidence.py version entirely |
 | Heating rate learning | `thermal_rates.py:ThermalRateLearner` | `heating_rate_learner.py:HeatingRateLearner` | Different approaches to same problem; `preheat.py` adds a third binned approach |
 | Heating type rate dicts | `night_setback.py:126,152` | `const.py`, `physics.py`, `heating_rate_learner.py` | Hardcoded per-type values scattered across 16+ locations |
 
@@ -714,11 +713,11 @@ NightSetbackManager applies graduated delta
 ### 3. Unclear Responsibility Boundaries
 
 **Confidence management is split three ways:**
-- `ConfidenceTracker` (`confidence.py`) -- Holds per-mode values, has unused `update_convergence_confidence()`
+- `ConfidenceTracker` (`confidence.py`) -- Holds per-mode values
 - `AdaptiveLearner` (`learning.py:1052-1196`) -- Actually computes and updates confidence with weighted logic
 - `ConfidenceContributionTracker` (`confidence_contribution.py`) -- Applies caps to confidence gains
 
-The split creates a situation where `ConfidenceTracker` appears to be the authority on confidence, but `AdaptiveLearner` bypasses its update method and writes directly to the stored values.
+The split creates a situation where `ConfidenceTracker` appears to be the authority on confidence, but `AdaptiveLearner` writes directly to the stored values.
 
 **Heating rate learning exists in three forms:**
 - `ThermalRateLearner` (`thermal_rates.py`) -- Segment-based rate learning from temperature history
@@ -726,12 +725,6 @@ The split creates a situation where `ConfidenceTracker` appears to be the author
 - `PreheatLearner` (`preheat.py`) -- Has its own binned observations OR delegates to HeatingRateLearner
 
 Each serves a slightly different consumer, but the domain overlap is significant and confusing.
-
-**Learning status is computed in two places:**
-- `AutoApplyManager._compute_learning_status()` (`auto_apply.py`) -- For auto-apply gating
-- `LearningGateManager.get_allowed_delta()` (`learning_gate.py`) -- For night setback graduation
-
-Both use the same inputs (cycle count, convergence confidence) and same tier thresholds with the same heating-type scaling. They should share a single computation.
 
 **Night setback has naming confusion:**
 - `NightSetback` class in `adaptive/night_setback.py` -- Data model
@@ -761,11 +754,10 @@ Ki (integral gain) can be boosted through three independent mechanisms:
 2. **UndershootDetector cycle mode** -- Consecutive approach failures trigger Ki boost
 3. **HeatingRateLearner.should_boost_ki()** -- Consecutive stalls trigger Ki boost
 
-These three paths all modify Ki through `PIDGainsManager.set_gains()` but are not coordinated with each other. The cumulative cap in `UndershootDetector` (2.0x) does not account for boosts applied via `HeatingRateLearner`.
+These three paths all modify Ki through `PIDGainsManager.set_gains()` but are not coordinated with each other. The cumulative cap in `UndershootDetector` (2.0x) does not account for boosts applied via `HeatingRateLearner`. Each boost (undershoot/chronic and physics-rate) calls `mark_adjustment_applied()`, so the auto-apply cooldown restarts and an auto-apply cannot multiply Ki again on the same cycles.
 
 ### 6. Dead or Near-Dead Code
 
-- `ConfidenceTracker.update_convergence_confidence()` (`confidence.py`) -- Method exists but is never called; `AdaptiveLearner` has its own 144-line version
 - `DisturbanceDetector` (`disturbance_detector.py`) -- Referenced in CLAUDE.md but no evidence of actual integration into the cycle recording pipeline (no imports found in `cycle_metrics.py` or `cycle_tracker.py`)
 - `ThermalRateLearner` (`thermal_rates.py`) -- Unclear if actively used; `HeatingRateLearner` and `PreheatLearner` serve the same consumers with more sophisticated approaches
 
@@ -773,13 +765,11 @@ These three paths all modify Ki through `PIDGainsManager.set_gains()` but are no
 
 ### High Impact
 
-1. **Unify learning status computation** -- Extract shared function used by both `AutoApplyManager` and `LearningGateManager`. Single source of truth for tier thresholds and status determination.
+1. **Move `update_convergence_confidence()` to `ConfidenceTracker`** -- The 144-line method in `AdaptiveLearner` should be the implementation inside `ConfidenceTracker`, with the learner calling through rather than writing its values directly.
 
-2. **Move `update_convergence_confidence()` to `ConfidenceTracker`** -- The 144-line method in `AdaptiveLearner` should be the implementation inside `ConfidenceTracker`, with the learner calling through rather than bypassing.
+2. **Consolidate heating rate learning** -- Choose one binned approach (`HeatingRateLearner`) and have `PreheatLearner` always delegate to it. Evaluate whether `ThermalRateLearner` is still needed.
 
-3. **Consolidate heating rate learning** -- Choose one binned approach (`HeatingRateLearner`) and have `PreheatLearner` always delegate to it. Evaluate whether `ThermalRateLearner` is still needed.
-
-4. **Extract a shared `pearson_correlation()` utility** -- Used by both `pid_rules.py` and `ke_learning.py` with different implementations.
+3. **Extract a shared `pearson_correlation()` utility** -- Used by both `pid_rules.py` and `ke_learning.py` with different implementations.
 
 5. **Import `calculate_mad()` from `robust_stats.py`** -- Remove the duplicate in `cycle_metrics.py`.
 
@@ -840,7 +830,7 @@ These three paths all modify Ki through `PIDGainsManager.set_gains()` but are no
 
 | Method | Line | Notes |
 |---|---|---|
-| `update_convergence_confidence()` | 1052 | 144-line weighted update -- bypasses `ConfidenceTracker.update_convergence_confidence()` entirely |
+| `update_convergence_confidence()` | 1052 | 144-line weighted update -- writes `ConfidenceTracker` values directly |
 | `get_convergence_confidence()` | 1030 | Thin delegator |
 | `get_auto_apply_count()` | 1041 | Thin delegator |
 | `apply_confidence_decay()` | 1228 | Thin delegator |

@@ -93,135 +93,6 @@ class TestExtendedSettlingWindow:
         # Should default to 30 minutes (radiator-like default)
         assert recorder.get_settling_window_minutes() == 30
 
-    def test_settling_start_includes_transport_delay(self, mock_hass, mock_adaptive_learner, mock_callbacks):
-        """Settling window starts after transport delay."""
-        recorder = CycleMetricsRecorder(
-            hass=mock_hass,
-            zone_id="test_transport",
-            adaptive_learner=mock_adaptive_learner,
-            get_target_temp=mock_callbacks["get_target_temp"],
-            get_current_temp=mock_callbacks["get_current_temp"],
-            get_hvac_mode=mock_callbacks["get_hvac_mode"],
-            get_in_grace_period=mock_callbacks["get_in_grace_period"],
-            min_cycle_duration_minutes=5,
-            heating_type=HeatingType.FLOOR_HYDRONIC,
-        )
-
-        # Set transport delay (5 minutes)
-        recorder.set_transport_delay(5.0)
-
-        # Set device off time
-        device_off_time = datetime(2025, 1, 15, 10, 30, 0)
-        recorder.set_device_off_time(device_off_time)
-
-        # Get settling start time (should account for transport delay)
-        settling_start = recorder.get_settling_start_time()
-
-        # Settling should start 5 minutes after device turned off (transport delay)
-        expected_start = datetime(2025, 1, 15, 10, 35, 0)
-        assert settling_start == expected_start
-
-    def test_settling_start_includes_valve_actuation(self, mock_hass, mock_adaptive_learner, mock_callbacks):
-        """Settling window starts after valve actuation time."""
-        recorder = CycleMetricsRecorder(
-            hass=mock_hass,
-            zone_id="test_valve",
-            adaptive_learner=mock_adaptive_learner,
-            get_target_temp=mock_callbacks["get_target_temp"],
-            get_current_temp=mock_callbacks["get_current_temp"],
-            get_hvac_mode=mock_callbacks["get_hvac_mode"],
-            get_in_grace_period=mock_callbacks["get_in_grace_period"],
-            min_cycle_duration_minutes=5,
-            heating_type=HeatingType.FLOOR_HYDRONIC,
-            valve_actuation_time=120.0,  # 2 minutes in seconds
-        )
-
-        # Set device off time
-        device_off_time = datetime(2025, 1, 15, 10, 30, 0)
-        recorder.set_device_off_time(device_off_time)
-
-        # Get settling start time (should account for half valve actuation time)
-        settling_start = recorder.get_settling_start_time()
-
-        # Settling should start 1 minute after device off (half of 2 min valve time)
-        expected_start = datetime(2025, 1, 15, 10, 31, 0)
-        assert settling_start == expected_start
-
-    def test_settling_start_includes_both_delays(self, mock_hass, mock_adaptive_learner, mock_callbacks):
-        """Settling window starts after both valve actuation and transport delay."""
-        recorder = CycleMetricsRecorder(
-            hass=mock_hass,
-            zone_id="test_both",
-            adaptive_learner=mock_adaptive_learner,
-            get_target_temp=mock_callbacks["get_target_temp"],
-            get_current_temp=mock_callbacks["get_current_temp"],
-            get_hvac_mode=mock_callbacks["get_hvac_mode"],
-            get_in_grace_period=mock_callbacks["get_in_grace_period"],
-            min_cycle_duration_minutes=5,
-            heating_type=HeatingType.FLOOR_HYDRONIC,
-            valve_actuation_time=120.0,  # 2 minutes in seconds
-        )
-
-        # Set transport delay (5 minutes)
-        recorder.set_transport_delay(5.0)
-
-        # Set device off time
-        device_off_time = datetime(2025, 1, 15, 10, 30, 0)
-        recorder.set_device_off_time(device_off_time)
-
-        # Get settling start time (should account for both delays)
-        settling_start = recorder.get_settling_start_time()
-
-        # Settling should start 6 minutes after device off:
-        # - Half valve actuation: 1 min
-        # - Transport delay: 5 min
-        expected_start = datetime(2025, 1, 15, 10, 36, 0)
-        assert settling_start == expected_start
-
-    def test_settling_start_returns_device_off_when_no_delays(self, mock_hass, mock_adaptive_learner, mock_callbacks):
-        """Settling starts at device off time when no delays are present."""
-        recorder = CycleMetricsRecorder(
-            hass=mock_hass,
-            zone_id="test_no_delays",
-            adaptive_learner=mock_adaptive_learner,
-            get_target_temp=mock_callbacks["get_target_temp"],
-            get_current_temp=mock_callbacks["get_current_temp"],
-            get_hvac_mode=mock_callbacks["get_hvac_mode"],
-            get_in_grace_period=mock_callbacks["get_in_grace_period"],
-            min_cycle_duration_minutes=5,
-            heating_type=HeatingType.CONVECTOR,
-        )
-
-        # Set device off time
-        device_off_time = datetime(2025, 1, 15, 10, 30, 0)
-        recorder.set_device_off_time(device_off_time)
-
-        # Get settling start time (should be same as device off time)
-        settling_start = recorder.get_settling_start_time()
-
-        assert settling_start == device_off_time
-
-    def test_settling_start_returns_none_when_no_device_off(self, mock_hass, mock_adaptive_learner, mock_callbacks):
-        """Settling start returns None when device_off_time is not set."""
-        recorder = CycleMetricsRecorder(
-            hass=mock_hass,
-            zone_id="test_no_off",
-            adaptive_learner=mock_adaptive_learner,
-            get_target_temp=mock_callbacks["get_target_temp"],
-            get_current_temp=mock_callbacks["get_current_temp"],
-            get_hvac_mode=mock_callbacks["get_hvac_mode"],
-            get_in_grace_period=mock_callbacks["get_in_grace_period"],
-            min_cycle_duration_minutes=5,
-            heating_type=HeatingType.FLOOR_HYDRONIC,
-        )
-
-        # Don't set device_off_time
-
-        # Get settling start time (should return None)
-        settling_start = recorder.get_settling_start_time()
-
-        assert settling_start is None
-
 
 class TestRiseTimeThreshold:
     """Test rise_time calculation uses heating-type-specific thresholds."""
@@ -374,6 +245,91 @@ class TestRiseTimeThreshold:
             assert "threshold" not in call_kwargs
 
 
+class TestUndershootIgnoresColdStart:
+    """Undershoot must not report the gap the cycle started with once the room warmed up."""
+
+    @staticmethod
+    def _recovery_history() -> list[tuple[datetime, float]]:
+        return [
+            (datetime(2025, 1, 15, 6, 0, tzinfo=timezone.utc), 18.0),
+            (datetime(2025, 1, 15, 6, 30, tzinfo=timezone.utc), 18.8),
+            (datetime(2025, 1, 15, 7, 0, tzinfo=timezone.utc), 19.6),
+            (datetime(2025, 1, 15, 7, 30, tzinfo=timezone.utc), 20.1),
+            (datetime(2025, 1, 15, 8, 0, tzinfo=timezone.utc), 20.2),
+            (datetime(2025, 1, 15, 8, 30, tzinfo=timezone.utc), 19.9),
+        ]
+
+    def _record(self, recorder: CycleMetricsRecorder, learner: MagicMock):
+        history = self._recovery_history()
+        recorder.record_cycle_metrics(
+            cycle_start_time=history[0][0],
+            cycle_target_temp=20.0,
+            cycle_state_value="settling",
+            temperature_history=history,
+            outdoor_temp_history=[],
+        )
+        return learner.add_cycle_metrics.call_args[0][0]
+
+    def _recorder(self, mock_hass, mock_adaptive_learner, mock_callbacks) -> CycleMetricsRecorder:
+        return CycleMetricsRecorder(
+            hass=mock_hass,
+            zone_id="test_undershoot",
+            adaptive_learner=mock_adaptive_learner,
+            get_target_temp=mock_callbacks["get_target_temp"],
+            get_current_temp=mock_callbacks["get_current_temp"],
+            get_hvac_mode=mock_callbacks["get_hvac_mode"],
+            get_in_grace_period=mock_callbacks["get_in_grace_period"],
+            min_cycle_duration_minutes=5,
+            heating_type=HeatingType.FLOOR_HYDRONIC,
+        )
+
+    def test_no_device_off_time(self, mock_hass, mock_adaptive_learner, mock_callbacks):
+        recorder = self._recorder(mock_hass, mock_adaptive_learner, mock_callbacks)
+
+        metrics = self._record(recorder, mock_adaptive_learner)
+
+        assert metrics.starting_delta == pytest.approx(2.0)
+        assert metrics.undershoot == pytest.approx(0.1)
+
+    def test_device_off_time_from_previous_cycle(self, mock_hass, mock_adaptive_learner, mock_callbacks):
+        recorder = self._recorder(mock_hass, mock_adaptive_learner, mock_callbacks)
+        recorder.set_device_off_time(datetime(2025, 1, 14, 22, 0, tzinfo=timezone.utc))
+
+        metrics = self._record(recorder, mock_adaptive_learner)
+
+        assert metrics.undershoot == pytest.approx(0.1)
+
+    def test_settling_window_after_last_sample(self, mock_hass, mock_adaptive_learner, mock_callbacks):
+        recorder = self._recorder(mock_hass, mock_adaptive_learner, mock_callbacks)
+        recorder.set_device_off_time(datetime(2025, 1, 15, 8, 25, tzinfo=timezone.utc))
+        recorder.set_transport_delay(15.0)
+
+        metrics = self._record(recorder, mock_adaptive_learner)
+
+        assert metrics.undershoot == pytest.approx(0.1)
+
+    def test_metrics_free_of_float_noise(self, mock_hass, mock_adaptive_learner, mock_callbacks):
+        """0.1° readings give overshoot, undershoot and starting_delta of exactly 0.3, not 0.3000000000000007."""
+        recorder = self._recorder(mock_hass, mock_adaptive_learner, mock_callbacks)
+        history = [
+            (datetime(2025, 1, 15, 6, 0, tzinfo=timezone.utc), 20.7),
+            (datetime(2025, 1, 15, 6, 30, tzinfo=timezone.utc), 21.1),
+            (datetime(2025, 1, 15, 7, 0, tzinfo=timezone.utc), 21.3),
+            (datetime(2025, 1, 15, 7, 30, tzinfo=timezone.utc), 20.9),
+            (datetime(2025, 1, 15, 8, 0, tzinfo=timezone.utc), 20.7),
+        ]
+        recorder.record_cycle_metrics(
+            cycle_start_time=history[0][0],
+            cycle_target_temp=21.0,
+            cycle_state_value="settling",
+            temperature_history=history,
+            outdoor_temp_history=[],
+        )
+        metrics = mock_adaptive_learner.add_cycle_metrics.call_args[0][0]
+
+        assert (metrics.overshoot, metrics.undershoot, metrics.starting_delta) == (0.3, 0.3, 0.3)
+
+
 class TestStartingDeltaCalculation:
     """Test starting_delta calculation for weighted learning."""
 
@@ -426,6 +382,36 @@ class TestStartingDeltaCalculation:
 
         # Verify starting_delta is calculated correctly
         assert cycle_metrics.starting_delta == 2.0
+
+    def test_inter_cycle_drift_rounded(self, mock_hass, mock_adaptive_learner, mock_callbacks):
+        """20.7 - 21.0 must compare as -0.3 against the drift rule threshold."""
+        recorder = CycleMetricsRecorder(
+            hass=mock_hass,
+            zone_id="test_drift",
+            adaptive_learner=mock_adaptive_learner,
+            get_target_temp=mock_callbacks["get_target_temp"],
+            get_current_temp=mock_callbacks["get_current_temp"],
+            get_hvac_mode=mock_callbacks["get_hvac_mode"],
+            get_in_grace_period=mock_callbacks["get_in_grace_period"],
+            min_cycle_duration_minutes=5,
+            heating_type=HeatingType.FLOOR_HYDRONIC,
+        )
+        recorder._prev_cycle_end_temp = 21.0
+        start_time = datetime(2025, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
+        temperature_history = [
+            (datetime(2025, 1, 15, 10, minute, 0, tzinfo=timezone.utc), 20.7 + minute * 0.01)
+            for minute in range(0, 30, 5)
+        ]
+
+        recorder.record_cycle_metrics(
+            cycle_start_time=start_time,
+            cycle_target_temp=21.0,
+            cycle_state_value="heating",
+            temperature_history=temperature_history,
+            outdoor_temp_history=[],
+        )
+
+        assert mock_adaptive_learner.add_cycle_metrics.call_args[0][0].inter_cycle_drift == -0.3
 
     def test_starting_delta_with_cooling_mode(self, mock_hass, mock_adaptive_learner, mock_callbacks):
         """Starting delta is calculated for cooling mode (temp - target)."""

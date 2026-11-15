@@ -112,8 +112,8 @@ class LearningGateManager:
             return None  # Tuned - unlimited
         elif convergence_confidence >= self._scaled_tier_1:
             return 1.0  # Stable - 1°C allowed
-        elif cycle_count >= 3:
-            return 0.5  # Collecting with data - 0.5°C allowed
+        elif cycle_count >= 3 or adaptive_learner.get_auto_apply_count() > 0:
+            return 0.5  # Collecting with data (an auto-apply clears history but proves it) - 0.5°C allowed
         else:
             return 0.0  # Collecting without data - suppressed
 

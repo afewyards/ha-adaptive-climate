@@ -325,6 +325,71 @@ class TestAdaptiveLearnerIntegration:
         )
 
 
+class TestMaintenanceAllowanceTracksConfidence:
+    """Maintenance contribution never exceeds the mode's current confidence."""
+
+    @staticmethod
+    def _maintenance_cycle(**overrides):
+        from custom_components.adaptive_climate.adaptive.cycle_analysis import CycleMetrics
+
+        values = dict(
+            overshoot=0.05, undershoot=0.0, settling_time=10.0, oscillations=0, rise_time=None, starting_delta=0.2
+        )
+        values.update(overrides)
+        return CycleMetrics(**values)
+
+    def test_spent_allowance_heals_on_next_good_cycle(self):
+        """Stored state with a spent allowance but zero confidence gets the full maintenance gain."""
+        from custom_components.adaptive_climate.adaptive.learning import AdaptiveLearner
+        from custom_components.adaptive_climate.const import CONFIDENCE_INCREASE_PER_GOOD_CYCLE
+
+        learner = AdaptiveLearner(heating_type="floor_hydronic")
+        mode = get_hvac_heat_mode()
+        learner._contribution_tracker._heating_maintenance_contribution = 0.27
+        full_gain = CONFIDENCE_INCREASE_PER_GOOD_CYCLE * learner._weight_calculator.calculate_weight(
+            0.2, False, CycleOutcome.CLEAN
+        )
+
+        learner.update_convergence_confidence(self._maintenance_cycle(), mode)
+
+        assert learner.get_convergence_confidence(mode) == pytest.approx(full_gain)
+        assert learner._contribution_tracker.get_maintenance_contribution(mode) == pytest.approx(full_gain)
+
+    def test_poor_cycle_gives_allowance_back(self):
+        """A poor cycle lowers the maintenance contribution along with confidence."""
+        from custom_components.adaptive_climate.adaptive.learning import AdaptiveLearner
+
+        learner = AdaptiveLearner(heating_type="floor_hydronic")
+        mode = get_hvac_heat_mode()
+        for _ in range(9):
+            learner.update_convergence_confidence(self._maintenance_cycle(), mode)
+        assert learner._contribution_tracker.get_maintenance_contribution(mode) == pytest.approx(
+            learner.get_convergence_confidence(mode)
+        )
+
+        learner.update_convergence_confidence(self._maintenance_cycle(overshoot=1.0), mode)
+
+        confidence = learner.get_convergence_confidence(mode)
+        assert learner._contribution_tracker.get_maintenance_contribution(mode) == pytest.approx(confidence)
+
+    def test_ki_boost_penalty_gives_allowance_back(self):
+        """The undershoot Ki-boost confidence penalty also lowers the maintenance contribution."""
+        from custom_components.adaptive_climate.adaptive.learning import AdaptiveLearner
+
+        learner = AdaptiveLearner(heating_type="floor_hydronic")
+        mode = get_hvac_heat_mode()
+        learner._confidence._heating_convergence_confidence = 0.20
+        learner._contribution_tracker._heating_maintenance_contribution = 0.20
+        learner.undershoot_detector.time_below_target = 4.0 * 3600.0
+        learner.undershoot_detector.thermal_debt = 2.4
+
+        assert learner.check_undershoot_adjustment(cycles_completed=0, current_ki=10.0) is not None
+
+        confidence = learner.get_convergence_confidence(mode)
+        assert confidence < 0.20
+        assert learner._contribution_tracker.get_maintenance_contribution(mode) == pytest.approx(confidence)
+
+
 class TestLearningStatusTierGates:
     """Test tier gate blocking in learning status computation."""
 

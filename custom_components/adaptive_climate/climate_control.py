@@ -333,9 +333,15 @@ class ClimateControlMixin:
         if not zone_data:
             return
 
-        milestone_tracker = zone_data.get("milestone_tracker")
         adaptive_learner = zone_data.get("adaptive_learner")
-        if not milestone_tracker or not adaptive_learner:
+        if not adaptive_learner:
+            return
+
+        # Integral-decay safety net follows learning status, so it comes back when confidence drops
+        self._pid_controller.set_auto_apply_count(adaptive_learner.get_safety_net_auto_apply_count())
+
+        milestone_tracker = zone_data.get("milestone_tracker")
+        if not milestone_tracker:
             return
 
         # Compute current learning status (same logic as _add_learning_object)

@@ -2,7 +2,7 @@
 
 Tracks confidence in system convergence (tuning quality) on a per-mode basis
 (heating vs cooling). Confidence increases with good cycles and decreases with
-poor cycles. Used to scale learning rate adjustments and gate auto-apply operations.
+poor cycles. Used to scale learning rate adjustments and to grade learning status.
 """
 
 from __future__ import annotations
@@ -13,12 +13,8 @@ import logging
 if TYPE_CHECKING:
     from homeassistant.components.climate import HVACMode
 
-from ..const import (
-    CONVERGENCE_CONFIDENCE_HIGH,
-    CONFIDENCE_DECAY_RATE_DAILY,
-    CONFIDENCE_INCREASE_PER_GOOD_CYCLE,
-)
-from ..helpers.hvac_mode import mode_to_str, get_hvac_heat_mode, get_hvac_cool_mode
+from ..const import CONFIDENCE_DECAY_RATE_DAILY
+from ..helpers.hvac_mode import get_hvac_heat_mode, get_hvac_cool_mode
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -103,84 +99,6 @@ class ConfidenceTracker:
             return self._cooling_cycle_count
         else:
             return self._heating_cycle_count
-
-    def update_convergence_confidence(self, metrics, mode: HVACMode = None) -> None:
-        """Update convergence confidence based on cycle performance.
-
-        Confidence increases when cycles meet convergence criteria, and is used
-        to scale learning rate adjustments.
-
-        Args:
-            metrics: CycleMetrics from the latest completed cycle
-            mode: HVACMode (HEAT or COOL) to update (defaults to HEAT)
-        """
-        if mode is None:
-            mode = get_hvac_heat_mode()
-
-        # Increment cycle count for this mode
-        if mode == get_hvac_cool_mode():
-            self._cooling_cycle_count += 1
-        else:
-            self._heating_cycle_count += 1
-
-        # Select confidence value based on mode
-        if mode == get_hvac_cool_mode():
-            current_confidence = self._cooling_convergence_confidence
-        else:
-            current_confidence = self._heating_convergence_confidence
-
-        # Determine if this is a recovery cycle based on starting_delta
-        # Recovery cycles (large starting_delta) must have rise_time measured
-        # Maintenance cycles (small starting_delta or None) can have rise_time=None
-        recovery_threshold = 0.3  # Default threshold for most heating types
-        is_recovery = metrics.starting_delta is not None and metrics.starting_delta >= recovery_threshold
-
-        # Check rise_time requirement based on cycle type
-        rise_time_ok = (
-            (metrics.rise_time is not None and metrics.rise_time <= self._convergence_thresholds["rise_time_max"])
-            if is_recovery
-            else (metrics.rise_time is None or metrics.rise_time <= self._convergence_thresholds["rise_time_max"])
-        )
-
-        # Check if this cycle meets convergence criteria
-        is_good_cycle = (
-            (metrics.overshoot is None or metrics.overshoot <= self._convergence_thresholds["overshoot_max"])
-            and (
-                metrics.undershoot is None
-                or metrics.undershoot <= self._convergence_thresholds.get("undershoot_max", 0.2)
-            )
-            and metrics.oscillations <= self._convergence_thresholds["oscillations_max"]
-            and (
-                metrics.settling_time is None
-                or metrics.settling_time <= self._convergence_thresholds["settling_time_max"]
-            )
-            and rise_time_ok
-        )
-
-        if is_good_cycle:
-            # Increase confidence, capped at maximum
-            current_confidence = min(
-                CONVERGENCE_CONFIDENCE_HIGH, current_confidence + CONFIDENCE_INCREASE_PER_GOOD_CYCLE
-            )
-            _LOGGER.debug(
-                f"Convergence confidence ({mode_to_str(mode)} mode) increased to {current_confidence:.2f} "
-                f"(good cycle: overshoot={metrics.overshoot:.2f}°C, "
-                f"oscillations={metrics.oscillations}, "
-                f"settling={metrics.settling_time:.1f}min)"
-            )
-        else:
-            # Poor cycle - reduce confidence slightly
-            current_confidence = max(0.0, current_confidence - CONFIDENCE_INCREASE_PER_GOOD_CYCLE * 0.5)
-            _LOGGER.debug(
-                f"Convergence confidence ({mode_to_str(mode)} mode) decreased to {current_confidence:.2f} "
-                f"(poor cycle detected)"
-            )
-
-        # Store updated confidence back
-        if mode == get_hvac_cool_mode():
-            self._cooling_convergence_confidence = current_confidence
-        else:
-            self._heating_convergence_confidence = current_confidence
 
     def apply_confidence_decay(self) -> None:
         """Apply daily confidence decay to account for drift over time.

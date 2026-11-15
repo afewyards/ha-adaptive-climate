@@ -3,8 +3,8 @@
 Night setback delta is graduated based on learning progress, allowing partial setback early to accelerate learning while protecting convergence metrics.
 
 **Graduated Delta:**
-- `cycles < 3` or "idle": fully suppressed (0°C applied)
-- `cycles >= 3` + "collecting": 0.5°C allowed
+- `cycles < 3` and no auto-apply yet, or "idle": fully suppressed (0°C applied)
+- `cycles >= 3` (or at least one auto-apply) + "collecting": 0.5°C allowed. An auto-apply clears the cycle history, so the auto-apply count keeps setback on afterwards
 - "stable": 1.0°C allowed
 - "tuned"/"optimized": full configured delta
 

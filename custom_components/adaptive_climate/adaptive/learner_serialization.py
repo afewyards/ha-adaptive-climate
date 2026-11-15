@@ -80,7 +80,7 @@ from .heating_rate_learner import HeatingRateLearner
 _LOGGER = logging.getLogger(__name__)
 
 # Current serialization format version
-CURRENT_VERSION = 11
+CURRENT_VERSION = 12
 
 
 def serialize_cycle(cycle: CycleMetrics) -> dict[str, Any]:
@@ -122,7 +122,7 @@ def learner_to_dict(
     heating_rate_learner: HeatingRateLearner | None = None,
     last_seasonal_shift: datetime | None = None,
 ) -> dict[str, Any]:
-    """Serialize AdaptiveLearner state to a dictionary in v11 format.
+    """Serialize AdaptiveLearner state to a dictionary in v12 format.
 
     Args:
         heating_cycle_history: List of heating cycle metrics
@@ -140,7 +140,7 @@ def learner_to_dict(
         last_seasonal_shift: Timestamp of last detected seasonal shift for auto-apply cooldown
 
     Returns:
-        Dictionary containing v11 structure with last_seasonal_shift
+        Dictionary containing v12 structure with last_seasonal_shift
 
     Note:
         pid_history is no longer managed by AdaptiveLearner - it's now owned by PIDGainsManager.
@@ -322,6 +322,28 @@ def _migrate_v10_to_v11(data: dict[str, Any]) -> dict[str, Any]:
     return data
 
 
+def _migrate_v11_to_v12(data: dict[str, Any]) -> dict[str, Any]:
+    """Round stored overshoot/undershoot/starting_delta; drop heating undershoot that repeats the start gap.
+
+    Undershoot used to include the readings from before the room warmed up, so a stored
+    heating cycle whose undershoot reaches its starting_delta (or exceeds it, when dead time
+    took the room below the start reading) says nothing about how the cycle ended. Those
+    become None (unknown) instead of feeding Ki rules and the chronic-approach scan.
+    """
+    for mode in ("heating", "cooling"):
+        for cycle in (data.get(mode) or {}).get("cycle_history") or []:
+            undershoot = cycle.get("undershoot")
+            delta = cycle.get("starting_delta")
+            if mode == "heating" and undershoot is not None and delta is not None:
+                if delta > 0 and undershoot >= delta - 1e-6:
+                    cycle["undershoot"] = None
+            for key in ("overshoot", "undershoot", "starting_delta"):
+                if cycle.get(key) is not None:
+                    cycle[key] = round(cycle[key], 6)
+    data["format_version"] = 12
+    return data
+
+
 def _migrate(data: dict[str, Any]) -> dict[str, Any]:
     """Chain migrate data from stored version up to CURRENT_VERSION.
 
@@ -357,6 +379,7 @@ def _migrate(data: dict[str, Any]) -> dict[str, Any]:
         (8, _migrate_v8_to_v9),
         (9, _migrate_v9_to_v10),
         (10, _migrate_v10_to_v11),
+        (11, _migrate_v11_to_v12),
     ]
 
     for from_version, migrator in _steps:
@@ -402,10 +425,10 @@ def default_learner_state() -> dict[str, Any]:
 
 
 def restore_learner_from_dict(data: dict[str, Any]) -> dict[str, Any]:
-    """Restore AdaptiveLearner state from v11 format dictionary.
+    """Restore AdaptiveLearner state from v12 format dictionary.
 
     Args:
-        data: Dictionary containing v11 (or earlier, auto-migrated) format data
+        data: Dictionary containing v12 (or earlier, auto-migrated) format data
 
     Returns:
         Dictionary with restored state containing:
@@ -440,20 +463,18 @@ def restore_learner_from_dict(data: dict[str, Any]) -> dict[str, Any]:
         data = _migrate(data)
 
     # V10 format: mode-keyed structure
-    heating_cycle_history = [
-        _deserialize_cycle(cycle_dict) for cycle_dict in data.get("heating", {}).get("cycle_history", [])
-    ]
-    cooling_cycle_history = [
-        _deserialize_cycle(cycle_dict) for cycle_dict in data.get("cooling", {}).get("cycle_history", [])
-    ]
+    heating = data.get("heating") or {}
+    cooling = data.get("cooling") or {}
+    heating_cycle_history = [_deserialize_cycle(cycle_dict) for cycle_dict in heating.get("cycle_history") or []]
+    cooling_cycle_history = [_deserialize_cycle(cycle_dict) for cycle_dict in cooling.get("cycle_history") or []]
 
     # Restore mode-specific auto_apply_counts
-    heating_auto_apply_count = data.get("heating", {}).get("auto_apply_count", 0)
-    cooling_auto_apply_count = data.get("cooling", {}).get("auto_apply_count", 0)
+    heating_auto_apply_count = heating.get("auto_apply_count", 0)
+    cooling_auto_apply_count = cooling.get("auto_apply_count", 0)
 
     # Restore mode-specific convergence confidence
-    heating_convergence_confidence = data.get("heating", {}).get("convergence_confidence", 0.0)
-    cooling_convergence_confidence = data.get("cooling", {}).get("convergence_confidence", 0.0)
+    heating_convergence_confidence = heating.get("convergence_confidence", 0.0)
+    cooling_convergence_confidence = cooling.get("convergence_confidence", 0.0)
 
     # pid_history is no longer stored in learner data (now managed by PIDGainsManager)
     pid_history = []
@@ -504,7 +525,7 @@ def restore_learner_from_dict(data: dict[str, Any]) -> dict[str, Any]:
     pid_converged_for_ke = data.get("pid_converged_for_ke", False)
 
     _LOGGER.info(
-        "AdaptiveLearner state restored (v11): heating=%d cycles, cooling=%d cycles",
+        "AdaptiveLearner state restored (v12): heating=%d cycles, cooling=%d cycles",
         len(heating_cycle_history),
         len(cooling_cycle_history),
     )

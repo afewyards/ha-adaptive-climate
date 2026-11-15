@@ -10,6 +10,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, TYPE_CHECKING
 import logging
+import math
 
 from homeassistant.util import dt as dt_util
 
@@ -19,6 +20,7 @@ from ..const import (
     MIN_ADJUSTMENT_INTERVAL,
     MIN_ADJUSTMENT_CYCLES,
     MAX_UNDERSHOOT_KI_MULTIPLIER,
+    MAX_CUMULATIVE_DRIFT_PCT,
     CONFIDENCE_INCREASE_PER_GOOD_CYCLE,
     CONVERGENCE_CONFIDENCE_HIGH,
     PIDChangeReason,
@@ -93,10 +95,14 @@ def calculate_pid_adjustment(
                 outdoor_temp=outdoor_temp,
                 pid_history=_pid_history,
                 mode=mode,
-                contribution_tracker=learner._contribution_tracker,
             )
         )
         if not gates_passed:
+            learner._last_skip_reason = "gates_not_passed"
+            return None
+        if learner._physics_baseline_kp is None:
+            # Without a baseline the drift clip and drift gate bound nothing
+            _LOGGER.debug("Auto-apply skipped (%s mode): no physics baseline", mode_to_str(mode))
             learner._last_skip_reason = "gates_not_passed"
             return None
 
@@ -187,6 +193,9 @@ def calculate_pid_adjustment(
 
     # Apply rules with learning rate scaling
     learning_rate = learner.get_learning_rate_multiplier(convergence_confidence)
+    if check_auto_apply:
+        # Auto-apply runs at low confidence, where the multiplier would double every unattended step
+        learning_rate = min(learning_rate, 1.0)
     if learning_rate != 1.0:
         _LOGGER.info(
             "Applying learning rate multiplier: %.2fx (confidence: %.2f, mode: %s)",
@@ -201,6 +210,23 @@ def calculate_pid_adjustment(
     new_kp = max(PID_LIMITS["kp_min"], min(PID_LIMITS["kp_max"], new_kp))
     new_ki = max(PID_LIMITS["ki_min"], min(PID_LIMITS["ki_max"], new_ki))
     new_kd = max(PID_LIMITS["kd_min"], min(PID_LIMITS["kd_max"], new_kd))
+
+    if check_auto_apply:
+        clipped = learner._validation.clip_to_drift_limit(new_kp, new_ki, new_kd)
+        if clipped != (new_kp, new_ki, new_kd):
+            _LOGGER.info(
+                "Auto-apply (%s mode): gains clipped to %d%% drift from physics baseline",
+                mode_to_str(mode),
+                MAX_CUMULATIVE_DRIFT_PCT,
+            )
+        new_kp, new_ki, new_kd = clipped
+        if all(
+            math.isclose(new, cur, rel_tol=1e-6, abs_tol=1e-9)
+            for new, cur in ((new_kp, current_kp), (new_ki, current_ki), (new_kd, current_kd))
+        ):
+            _LOGGER.debug("Auto-apply skipped (%s mode): gains would not change", mode_to_str(mode))
+            learner._last_skip_reason = "no_change"
+            return None
 
     return {"kp": new_kp, "ki": new_ki, "kd": new_kd}
 
@@ -224,6 +250,9 @@ def update_convergence_confidence(learner: AdaptiveLearner, metrics: CycleMetric
     else:
         current_confidence = learner._confidence._heating_convergence_confidence
 
+    # Confidence lost to poor cycles or decay frees the matching maintenance allowance again
+    learner._contribution_tracker.clamp_maintenance_contribution(current_confidence, mode)
+
     thresholds = learner._convergence_thresholds
     tier1_base = 0.4
     is_stable = current_confidence >= (tier1_base * 0.8)
@@ -231,15 +260,15 @@ def update_convergence_confidence(learner: AdaptiveLearner, metrics: CycleMetric
         metrics.starting_delta, is_stable
     )
 
-    rise_time_ok = (
-        metrics.rise_time is not None
-        if is_recovery
-        else (metrics.rise_time is None or metrics.rise_time <= thresholds["rise_time_max"])
-    )
+    # Recovery cycles are judged by undershoot: floors often end the cycle before rise_time is measured
+    rise_time_ok = is_recovery or metrics.rise_time is None or metrics.rise_time <= thresholds["rise_time_max"]
+
+    overshoot_too_high = metrics.overshoot is not None and metrics.overshoot > thresholds["overshoot_max"]
+    undershoot_too_high = metrics.undershoot is not None and metrics.undershoot > thresholds.get("undershoot_max", 0.2)
 
     is_good_cycle = (
-        (metrics.overshoot is None or metrics.overshoot <= thresholds["overshoot_max"])
-        and (metrics.undershoot is None or metrics.undershoot <= thresholds.get("undershoot_max", 0.2))
+        not overshoot_too_high
+        and not undershoot_too_high
         and metrics.oscillations <= thresholds["oscillations_max"]
         and (metrics.settling_time is None or metrics.settling_time <= thresholds["settling_time_max"])
         and rise_time_ok
@@ -248,11 +277,9 @@ def update_convergence_confidence(learner: AdaptiveLearner, metrics: CycleMetric
     # Determine cycle outcome
     if is_good_cycle:
         outcome = CycleOutcome.CLEAN
-    elif metrics.overshoot is not None and metrics.overshoot > thresholds["overshoot_max"]:
+    elif overshoot_too_high:
         outcome = CycleOutcome.OVERSHOOT
-    elif (metrics.undershoot is not None and metrics.undershoot > thresholds.get("undershoot_max", 0.2)) or (
-        is_recovery and metrics.rise_time is None
-    ):
+    elif undershoot_too_high:
         outcome = CycleOutcome.UNDERSHOOT
     else:
         outcome = CycleOutcome.CLEAN
@@ -309,6 +336,7 @@ def update_convergence_confidence(learner: AdaptiveLearner, metrics: CycleMetric
         )
     else:
         current_confidence = max(0.0, current_confidence - CONFIDENCE_INCREASE_PER_GOOD_CYCLE * 0.5)
+        learner._contribution_tracker.clamp_maintenance_contribution(current_confidence, mode)
         _LOGGER.debug(
             "Convergence confidence (%s mode) decreased to %.2f (poor cycle, outcome=%s)",
             mode_to_str(mode),
@@ -340,7 +368,8 @@ def check_undershoot_adjustment(
 
     Returns the new Ki if an adjustment was applied, or None otherwise.
     """
-    if mode == get_hvac_cool_mode():
+    # A boost during validation would make rollback (history[-2]) restore the auto-applied gains
+    if mode == get_hvac_cool_mode() or learner.is_in_validation_mode():
         return None
 
     last_boost_utc = None
@@ -389,12 +418,16 @@ def check_undershoot_adjustment(
         learner._confidence._cooling_convergence_confidence = new_confidence
     else:
         learner._confidence._heating_convergence_confidence = new_confidence
+    learner._contribution_tracker.clamp_maintenance_contribution(new_confidence, mode)
 
     _LOGGER.debug(
         "Convergence confidence (%s mode) decreased to %.2f due to undershoot detection",
         mode_to_str(mode),
         new_confidence,
     )
+
+    # Restart the auto-apply cooldown so the next cycle end cannot multiply Ki again on the same cycles
+    learner.mark_adjustment_applied()
 
     return new_ki
 

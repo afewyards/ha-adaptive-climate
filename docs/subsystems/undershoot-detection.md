@@ -4,7 +4,7 @@ Unified detector with dual modes: real-time thermal debt tracking and cycle-base
 
 **Real-time mode:** Tracks accumulated time × temp deficit below setpoint (thermal debt). Triggers when debt exceeds threshold scaled by thermal mass.
 
-**Cycle mode:** Detects consecutive cycles that fail to reach setpoint (`rise_time = None`, `undershoot >= threshold`, `duration >= min_duration`). Resets counter on successful cycles.
+**Cycle mode:** Detects consecutive cycles that fail to reach setpoint (`rise_time = None`, `undershoot >= threshold`, `duration >= min_duration`). Resets counter on successful cycles. Cycle `undershoot` is measured from the cycle's highest reading onward (see convergence-metrics), so a cycle that rose but stopped short counts the gap left after its best point, not the gap it started with.
 
 **Thresholds by heating type:**
 | Type | min_cycles | undershoot | min_duration | ki_multiplier | thermal_debt_threshold |
@@ -19,9 +19,11 @@ Unified detector with dual modes: real-time thermal debt tracking and cycle-base
 - Cooldown scales with thermal mass (floor: 24h, radiator: 12h, convector: 6h, forced_air: 3h)
 - Cumulative multiplier capped at 3.0x to prevent runaway integral gain
 - Decreases convergence confidence on adjustment (similar to poor cycles)
+- Restarts the auto-apply cooldown (`mark_adjustment_applied`), so the next cycle end cannot auto-apply another Ki increase on the same cycles
+- No boost (undershoot or physics-rate) while an auto-apply is in validation, so a rollback restores the gains from before the apply
 
 **Integration:**
 - Detector initialized in `AdaptiveLearner.__init__`
 - Real-time updates via `update_real_time` (called from `_async_control_heating`)
 - Cycle updates via `add_cycle_metrics`
-- Serialized/restored via `learner_serialization.py` (v10 format)
+- Serialized/restored via `learner_serialization.py` (format_version 12). Cycles with `undershoot = None` never count as failures

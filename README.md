@@ -334,6 +334,7 @@ Zones without a recommendation report one of these `status` values:
 | `converged` | tuning is good, no change needed |
 | `no_rules_triggered` | metrics within range, nothing to adjust |
 | `gates_not_passed` | auto-apply safety gates blocked it |
+| `no_change` | auto-apply would leave the gains as they are (already at the drift limit) |
 | `pid_unavailable` | live PID gains could not be read |
 
 [Full service documentation →](https://github.com/afewyards/ha-adaptive-climate/wiki/Services)

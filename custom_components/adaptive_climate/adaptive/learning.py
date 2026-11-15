@@ -139,7 +139,7 @@ class AdaptiveLearner:
         self._confidence = ConfidenceTracker(self._convergence_thresholds)
 
         # Validation manager for safety checks and validation mode
-        self._validation = ValidationManager()
+        self._validation = ValidationManager(self._convergence_thresholds["overshoot_max"])
 
         # Auto-apply manager for safety gates and threshold-based decisions
         self._auto_apply = AutoApplyManager(heating_type)
@@ -419,24 +419,20 @@ class AdaptiveLearner:
         self._last_adjustment_time = dt_util.utcnow()
         self._cycles_since_last_adjustment = 0
 
-    def clear_history(self) -> None:
-        """Clear cycle history, reset tracking, and exit validation mode."""
-        self._heating_cycle_history.clear()
-        self._cooling_cycle_history.clear()
+    def clear_history(self, mode: HVACMode = None) -> None:
+        """Clear one mode's cycle history and confidence (both when mode is None), reset tracking, exit validation."""
         self._last_adjustment_time = None
         self._cycles_since_last_adjustment = 0
-        self._confidence.reset_confidence()
         self._validation.reset_validation_state()
-        self._undershoot_detector.reset_all()
-
-        if self._heating_type is None:
-            heating_type_enum = HeatingTypeEnum.RADIATOR
-        elif isinstance(self._heating_type, str):
-            heating_type_enum = HeatingTypeEnum(self._heating_type)
-        else:
-            heating_type_enum = self._heating_type
-        self._contribution_tracker = ConfidenceContributionTracker(heating_type_enum)
-        self._heating_rate_learner = HeatingRateLearner(self._heating_type or "radiator")
+        self._contribution_tracker.reset(mode)
+        if mode is None or mode != get_hvac_cool_mode():
+            self._heating_cycle_history.clear()
+            self._confidence.reset_confidence(get_hvac_heat_mode())
+            self._undershoot_detector.reset_all()
+            self._heating_rate_learner = HeatingRateLearner(self._heating_type or "radiator")
+        if mode is None or mode == get_hvac_cool_mode():
+            self._cooling_cycle_history.clear()
+            self._confidence.reset_confidence(get_hvac_cool_mode())
 
     def set_physics_baseline(self, kp: float, ki: float, kd: float) -> None:
         """Set the physics-based baseline PID values for drift calculation."""
@@ -474,6 +470,19 @@ class AdaptiveLearner:
     def get_auto_apply_count(self, mode: HVACMode = None) -> int:
         """Get number of auto-applied PID adjustments for specified mode."""
         return self._confidence.get_auto_apply_count(mode)
+
+    def get_safety_net_auto_apply_count(self, mode: HVACMode = None) -> int:
+        """Auto-apply count for the PID integral-decay safety net: 0 until learning is tuned or optimized."""
+        from ..managers.state_attributes import _compute_learning_status
+
+        status = _compute_learning_status(
+            self.get_cycle_count(mode),
+            self.get_convergence_confidence(mode),
+            self._heating_type or "",
+            contribution_tracker=self._contribution_tracker,
+            mode=mode,
+        )
+        return self.get_auto_apply_count(mode) if status in ("tuned", "optimized") else 0
 
     def update_convergence_confidence(self, metrics: CycleMetrics, mode: HVACMode = None) -> None:
         """Update convergence confidence based on cycle performance. Delegates to learning_coordinator."""

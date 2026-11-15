@@ -736,7 +736,7 @@ class TestPersistenceRoundtrip:
         serialized = original_learner.to_dict()
 
         # Verify serialization contains expected v11 data
-        assert serialized["format_version"] == 11
+        assert serialized["format_version"] == 12
         assert "heating" in serialized
         assert len(serialized["heating"]["cycle_history"]) == 5
         assert serialized["consecutive_converged_cycles"] == 3
