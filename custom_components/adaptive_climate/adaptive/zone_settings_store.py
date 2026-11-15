@@ -35,7 +35,11 @@ class ZoneSettingsStore:
                 _LOGGER.warning("Zone settings file malformed, starting empty")
             self._zones = {}
             return
-        self._zones = {k: v for k, v in zones.items() if isinstance(v, dict)}
+        self._zones = {
+            k: {section: v[section] for section in ("presets", "night_setback") if isinstance(v.get(section), dict)}
+            for k, v in zones.items()
+            if isinstance(v, dict)
+        }
 
     def get_zone(self, key: str) -> dict[str, Any]:
         return copy.deepcopy(self._zones.get(key, {}))

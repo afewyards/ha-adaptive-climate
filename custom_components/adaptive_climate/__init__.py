@@ -777,6 +777,15 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     vacation_mode = VacationMode(hass, coordinator)
     hass.data[DOMAIN]["vacation_mode"] = vacation_mode
 
+    from .adaptive.zone_settings_store import ZoneSettingsStore
+
+    zone_settings_store = ZoneSettingsStore(hass)
+    try:
+        await zone_settings_store.async_load()
+    except Exception:  # unreadable settings fall back to YAML; never block heating setup
+        _LOGGER.warning("Zone settings not loaded, using YAML values", exc_info=True)
+    hass.data[DOMAIN]["zone_settings_store"] = zone_settings_store
+
     # Notification and energy tracking
     notify_service = domain_config.get(CONF_NOTIFY_SERVICE)
     persistent_notification = domain_config.get(CONF_PERSISTENT_NOTIFICATION, DEFAULT_PERSISTENT_NOTIFICATION)

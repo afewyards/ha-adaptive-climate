@@ -77,6 +77,7 @@ mock_core.HomeAssistant = MagicMock
 mock_exceptions = MagicMock()
 mock_exceptions.HomeAssistantError = Exception
 mock_exceptions.ServiceNotFound = Exception
+mock_exceptions.ServiceValidationError = type("ServiceValidationError", (Exception,), {})
 
 # ---- Mock homeassistant.helpers modules ----
 mock_helpers = MagicMock()
@@ -263,11 +264,12 @@ _ORIGINAL_MOCK_CLIMATE = mock_climate
 def pytest_runtest_setup(item):
     """Pytest hook that runs before each test item.
 
-    Restores the original climate mock before each test to prevent pollution
-    from tests that replace sys.modules['homeassistant.components.climate'].
+    Restores the original climate and exceptions mocks before each test to prevent
+    pollution from tests that replace them in sys.modules.
     """
     # Restore the original mock before each test
     sys.modules["homeassistant.components.climate"] = _ORIGINAL_MOCK_CLIMATE
+    sys.modules["homeassistant.exceptions"] = mock_exceptions
 
 
 @pytest.fixture

@@ -67,6 +67,7 @@ from .climate_control import ClimateControlMixin
 from .climate_cycle_handlers import ClimateCycleHandlersMixin
 from .climate_handlers import ClimateHandlersMixin
 from .climate_pid_services import ClimatePIDServicesMixin
+from .climate_settings_services import ClimateSettingsServicesMixin
 from .climate_state_setters import ClimateStateSettersMixin
 from .thermostat_config import AdaptiveThermostatConfig
 
@@ -81,6 +82,7 @@ from .climate_setup import PLATFORM_SCHEMA as PLATFORM_SCHEMA
 class AdaptiveThermostat(
     ClimateCycleHandlersMixin,
     ClimatePIDServicesMixin,
+    ClimateSettingsServicesMixin,
     ClimateStateSettersMixin,
     ClimateControlMixin,
     ClimateHandlersMixin,
@@ -483,6 +485,7 @@ class AdaptiveThermostat(
 
         # Initialize all manager instances (HeaterController, CycleTrackerManager, etc.)
         await async_setup_managers(self)
+        await self.async_apply_stored_zone_settings()
 
         # Set night setback controller in status manager after managers are initialized
         if self._night_setback_controller:

@@ -10,8 +10,8 @@ PRESET_NAMES: tuple[str, ...] = ("away", "eco", "boost", "comfort", "home", "sle
 DELTA_MIN = 0.5
 DELTA_MAX = 5.0
 
-_TIME_RE = re.compile(r"^(\d{1,2}):(\d{2})$")
-_SUNSET_RE = re.compile(r"^sunset([+-]\d+)?$")
+_TIME_RE = re.compile(r"([0-9]{1,2}):([0-9]{2})")
+_SUNSET_RE = re.compile(r"sunset([+-][0-9]+)?")
 
 
 def _is_number(value: Any) -> bool:
@@ -30,7 +30,7 @@ def validate_preset_temperature(preset: str, temperature: float | None, min_temp
 
 
 def _normalize_time(value: Any, field: str) -> str:
-    match = _TIME_RE.match(value) if isinstance(value, str) else None
+    match = _TIME_RE.fullmatch(value) if isinstance(value, str) else None
     if not match or int(match.group(1)) > 23 or int(match.group(2)) > 59:
         raise ValueError(f"{field} must be HH:MM")
     return f"{int(match.group(1)):02d}:{match.group(2)}"
@@ -42,7 +42,7 @@ def _normalize_field(key: str, value: Any) -> Any:
             raise ValueError(f"delta must be between {DELTA_MIN} and {DELTA_MAX}")
         return float(value)
     if key == "start":
-        if isinstance(value, str) and _SUNSET_RE.match(value):
+        if isinstance(value, str) and _SUNSET_RE.fullmatch(value):
             return value
         return _normalize_time(value, "start")
     if key == "recovery_deadline":

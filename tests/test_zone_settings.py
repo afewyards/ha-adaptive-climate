@@ -35,6 +35,10 @@ def test_night_setback_validation():
         {"start": "25:00"},
         {"recovery_deadline": "sunset"},
         {"start": "noon"},
+        {"start": "sunset+30\n"},
+        {"start": "21:00\n"},
+        {"start": "sunset+٣"},
+        {"recovery_deadline": "٠٧:00"},
     ):
         with pytest.raises(ValueError):
             validate_night_setback(bad)
@@ -92,3 +96,25 @@ async def test_store_missing_or_malformed_file_loads_empty(stored):
     store = _store({"data": stored})
     await store.async_load()
     assert store.get_zone("z1") == {}
+
+
+@pytest.mark.asyncio
+async def test_store_load_drops_sections_that_are_not_dicts():
+    store = _store(
+        {
+            "data": {
+                "zones": {
+                    "z1": {"presets": [18], "night_setback": {"delta": 2.0}},
+                    "z2": {"presets": {"eco": 18.0}, "night_setback": "21:00"},
+                }
+            }
+        }
+    )
+    await store.async_load()
+    assert store.get_zone("z1") == {"night_setback": {"delta": 2.0}}
+    assert store.get_zone("z2") == {"presets": {"eco": 18.0}}
+
+    await store.async_set_preset("z1", "eco", 18.0)
+    await store.async_set_night_setback("z2", {"delta": 1.0})
+    assert store.get_zone("z1")["presets"] == {"eco": 18.0}
+    assert store.get_zone("z2")["night_setback"] == {"delta": 1.0}

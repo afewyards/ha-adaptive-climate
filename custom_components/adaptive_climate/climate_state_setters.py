@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 
-from homeassistant.components.climate import HVACMode
+from homeassistant.components.climate import ClimateEntityFeature, HVACMode
 from homeassistant.util import dt as dt_util
 
 from .const import PIDChangeReason
@@ -193,7 +193,11 @@ class ClimateStateSettersMixin:
     @property
     def supported_features(self):
         """Return the list of supported features."""
-        return self._support_flags
+        if self._temperature_manager is None:
+            return self._support_flags
+        if self._temperature_manager.has_preset_support():
+            return self._support_flags | ClimateEntityFeature.PRESET_MODE
+        return self._support_flags & ~ClimateEntityFeature.PRESET_MODE
 
     @property
     def heater_or_cooler_entity(self):

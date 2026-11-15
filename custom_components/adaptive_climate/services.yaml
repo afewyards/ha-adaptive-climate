@@ -72,6 +72,39 @@ delete_pid_history:
             - heat
             - cool
 
+set_preset_temperature:
+  name: Set Preset Temperature
+  description: Change one preset's temperature for this zone. Saved across restarts.
+  target:
+    entity:
+      integration: adaptive_climate
+      domain: climate
+  fields:
+    preset:
+      name: Preset
+      description: Preset to change
+      required: true
+      selector:
+        select:
+          options:
+            - away
+            - eco
+            - boost
+            - comfort
+            - home
+            - sleep
+            - activity
+    temperature:
+      name: Temperature
+      description: New preset temperature; leave empty to remove the preset
+      required: false
+      selector:
+        number:
+          min: 5
+          max: 35
+          step: 0.5
+          unit_of_measurement: °C
+
 restore_pid_history:
   name: Restore PID History
   description: Restore PID gains from a specific history entry.

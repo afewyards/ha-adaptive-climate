@@ -332,6 +332,19 @@ class TemperatureManager:
 
         await self._async_control_heating(True)
 
+    async def async_set_preset_temperature(
+        self, preset: str, temperature: float | None, move_target: bool = True
+    ) -> None:
+        """Change one preset's temperature; ``None`` removes the preset."""
+        if preset not in self._preset_modes_temp:
+            raise ValueError(f"Unknown preset '{preset}'")
+        active = preset == self._attr_preset_mode
+        if active and temperature is None:
+            await self.async_set_preset_mode(PRESET_NONE)
+        setattr(self, f"_{preset}_temp", temperature)
+        if active and temperature is not None and move_target:
+            self._set_target_temp(temperature)
+
     def update_min_max_temp(self, min_temp: float, max_temp: float) -> None:
         """Update the min and max temperature limits.
 
