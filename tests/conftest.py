@@ -247,6 +247,8 @@ sys.modules["homeassistant.components.input_number"] = mock_input_number
 sys.modules["homeassistant.components.light"] = mock_light
 sys.modules["homeassistant.components.valve"] = mock_valve
 sys.modules["homeassistant.components.climate"] = mock_climate
+sys.modules["homeassistant.components.frontend"] = mock_components.frontend
+sys.modules["homeassistant.components.http"] = mock_components.http
 
 # ============================================================================
 # Pytest Fixtures

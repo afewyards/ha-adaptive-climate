@@ -717,6 +717,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     )
     from .central_controller import CentralController
     from .adaptive.vacation import VacationMode
+    from .frontend_card import async_register_card
 
     # Service schemas
     VACATION_MODE_SCHEMA = vol.Schema(
@@ -728,6 +729,8 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
     # Initialize domain data storage
     hass.data.setdefault(DOMAIN, {})
+
+    await async_register_card(hass)
 
     # Create www directory for chart images
     from pathlib import Path

@@ -1,6 +1,7 @@
 {
   "domain": "adaptive_climate",
   "name": "Adaptive Climate",
+  "after_dependencies": ["frontend", "http"],
   "codeowners": ["@afewyards"],
   "dependencies": ["history"],
   "documentation": "https://github.com/afewyards/ha-adaptive-climate",
