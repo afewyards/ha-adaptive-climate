@@ -12,7 +12,7 @@ DELTA_MIN = 0.5
 DELTA_MAX = 5.0
 
 _TIME_RE = re.compile(r"([0-9]{1,2}):([0-9]{2})")
-_SUNSET_RE = re.compile(r"sunset([+-][0-9]+)?")
+_SUNSET_RE = re.compile(r"sunset([+-][0-9]{1,3})?")
 
 
 def _is_number(value: Any) -> bool:

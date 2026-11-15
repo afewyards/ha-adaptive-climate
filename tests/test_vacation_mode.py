@@ -408,6 +408,52 @@ class TestVacationModeEdgeCases:
         assert mock_hass.services.async_call.call_count == call_count_after_first
 
     @pytest.mark.asyncio
+    async def test_second_enable_while_first_runs_is_ignored(self, mock_hass, coord, vacation_mode):
+        coord.register_zone("living_room", {"climate_entity_id": "climate.living_room", "learning_enabled": True})
+        coord.register_zone("bedroom", {"climate_entity_id": "climate.bedroom", "learning_enabled": True})
+        targets = {"climate.living_room": 21.0, "climate.bedroom": 19.0}
+        mock_hass.states.get = lambda entity_id: Mock(attributes={"temperature": targets[entity_id]})
+        gate = asyncio.get_running_loop().create_future()
+
+        async def set_temperature(domain, service, data, blocking):
+            targets[data["entity_id"]] = data["temperature"]
+            await gate
+
+        mock_hass.services.async_call = AsyncMock(side_effect=set_temperature)
+        first = asyncio.create_task(vacation_mode.async_enable(target_temp=12.0))
+        await asyncio.sleep(0)
+        second = asyncio.create_task(vacation_mode.async_enable(target_temp=12.0))
+        await asyncio.sleep(0)
+        gate.set_result(None)
+        await asyncio.gather(first, second)
+
+        assert vacation_mode.get_status()["original_setpoints"] == {"living_room": 21.0, "bedroom": 19.0}
+        assert mock_hass.services.async_call.call_count == 2
+        assert vacation_mode.enabled is True
+
+    @pytest.mark.asyncio
+    async def test_second_disable_while_first_runs_is_ignored(self, mock_hass, coord, vacation_mode):
+        coord.register_zone("living_room", {"climate_entity_id": "climate.living_room", "learning_enabled": True})
+        mock_hass.states.get = lambda entity_id: Mock(attributes={"temperature": 21.0})
+        await vacation_mode.async_enable(target_temp=12.0)
+        gate = asyncio.get_running_loop().create_future()
+
+        async def set_temperature(domain, service, data, blocking):
+            await gate
+
+        mock_hass.services.async_call = AsyncMock(side_effect=set_temperature)
+        first = asyncio.create_task(vacation_mode.async_disable())
+        await asyncio.sleep(0)
+        second = asyncio.create_task(vacation_mode.async_disable())
+        await asyncio.sleep(0)
+        gate.set_result(None)
+        await asyncio.gather(first, second)
+
+        assert mock_hass.services.async_call.call_count == 1
+        assert vacation_mode.enabled is False
+        assert coord.get_all_zones()["living_room"]["learning_enabled"] is True
+
+    @pytest.mark.asyncio
     async def test_disable_when_not_enabled(self, mock_hass, coord, vacation_mode):
         """Test that disabling when not enabled logs warning and returns."""
         # Register a zone

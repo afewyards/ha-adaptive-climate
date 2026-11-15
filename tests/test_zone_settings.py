@@ -28,6 +28,7 @@ def test_night_setback_validation():
     }
     assert validate_night_setback({"start": "sunset+30"}) == {"start": "sunset+30"}
     assert validate_night_setback({"start": "sunset-15"}) == {"start": "sunset-15"}
+    assert validate_night_setback({"start": "sunset+120"}) == {"start": "sunset+120"}
     for bad in (
         {},
         {"delta": 0.4},
@@ -38,6 +39,7 @@ def test_night_setback_validation():
         {"start": "sunset+30\n"},
         {"start": "21:00\n"},
         {"start": "sunset+٣"},
+        {"start": "sunset+9999"},
         {"recovery_deadline": "٠٧:00"},
     ):
         with pytest.raises(ValueError):
@@ -50,6 +52,12 @@ def test_sanitize_drops_invalid_and_reports():
     )
     assert ok == {"presets": {"sleep": 18, "away": None}, "night_setback": {"start": "21:00"}}
     assert len(dropped) == 2
+
+
+def test_sanitize_drops_huge_sunset_offset():
+    ok, dropped = sanitize_stored({"night_setback": {"start": "sunset+9999999999", "delta": 2}}, 16, 25)
+    assert ok == {"night_setback": {"delta": 2.0}}
+    assert len(dropped) == 1
 
 
 class FakeStore:
