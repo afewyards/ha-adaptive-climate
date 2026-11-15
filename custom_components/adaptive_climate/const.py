@@ -1226,3 +1226,5 @@ WATER_TEMP_BINDING_TARGET = "target"
 WATER_TEMP_BINDING_INTERLOCK = "interlock"
 WATER_TEMP_BINDING_BLIND = "blind"
 WATER_TEMP_BINDING_ENTITY_LIMIT = "entity_limit"
+
+SIGNAL_VACATION_CHANGED = "adaptive_climate_vacation_changed"

@@ -26,6 +26,7 @@ from homeassistant.helpers.event import (
     async_track_state_change_event,
     async_track_time_interval,
 )
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from .adaptive.physics import calculate_thermal_time_constant, calculate_initial_pid
@@ -44,7 +45,7 @@ from homeassistant.components.climate import (
 from . import DOMAIN
 from . import const
 from . import pid_controller
-from .const import PIDGains, PIDChangeReason
+from .const import SIGNAL_VACATION_CHANGED, PIDGains, PIDChangeReason
 from .managers import (
     ControlOutputManager,
     HeaterController,
@@ -67,6 +68,7 @@ from .climate_control import ClimateControlMixin
 from .climate_cycle_handlers import ClimateCycleHandlersMixin
 from .climate_handlers import ClimateHandlersMixin
 from .climate_pid_services import ClimatePIDServicesMixin
+from .climate_settings_services import ClimateSettingsServicesMixin
 from .climate_state_setters import ClimateStateSettersMixin
 from .thermostat_config import AdaptiveThermostatConfig
 
@@ -81,6 +83,7 @@ from .climate_setup import PLATFORM_SCHEMA as PLATFORM_SCHEMA
 class AdaptiveThermostat(
     ClimateCycleHandlersMixin,
     ClimatePIDServicesMixin,
+    ClimateSettingsServicesMixin,
     ClimateStateSettersMixin,
     ClimateControlMixin,
     ClimateHandlersMixin,
@@ -483,6 +486,7 @@ class AdaptiveThermostat(
 
         # Initialize all manager instances (HeaterController, CycleTrackerManager, etc.)
         await async_setup_managers(self)
+        await self.async_apply_stored_zone_settings()
 
         # Set night setback controller in status manager after managers are initialized
         if self._night_setback_controller:
@@ -701,6 +705,8 @@ class AdaptiveThermostat(
         - Keep-alive interval timer (if configured)
         - Startup callback to initialize sensor values
         """
+        self.async_on_remove(async_dispatcher_connect(self.hass, SIGNAL_VACATION_CHANGED, self.async_write_ha_state))
+
         # Temperature sensor listener
         self.async_on_remove(
             async_track_state_change_event(self.hass, self._sensor_entity_id, self._async_sensor_changed)

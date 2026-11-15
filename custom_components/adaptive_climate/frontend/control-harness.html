@@ -1,0 +1,526 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width">
+<title>adaptive-climate-control-card harness</title>
+<!-- Fixture page, not served by Home Assistant. ?theme=dark|light&w=<card width, default 420>. The checks wait on the card's 600 ms pause, so headless runs need a virtual time budget of about 30 s. -->
+<style>
+  body { margin: 0; padding: 8px; font-family: Roboto, system-ui, sans-serif; background: var(--primary-background-color); color: var(--primary-text-color); }
+  body.dark { --primary-background-color: #111; --ha-card-background: #1c1c1c; --card-background-color: #1c1c1c; --primary-text-color: #e1e1e1; --secondary-text-color: #9b9b9b; --divider-color: #2f2f2f; --primary-color: #03a9f4; --warning-color: #ffa600; --error-color: #ef5350; color-scheme: dark; }
+  body.light { --primary-background-color: #fafafa; --ha-card-background: #fff; --card-background-color: #fff; --primary-text-color: #212121; --secondary-text-color: #727272; --divider-color: rgba(0,0,0,.12); --primary-color: #0b79c4; --warning-color: #ffa600; --error-color: #db4437; }
+  #selfcheck { font: 13px monospace; margin-bottom: 4px; }
+  #log { font: 11px monospace; margin: 0 0 8px; white-space: pre-wrap; }
+  #show > * { margin-bottom: 12px; }
+  #lab { position: absolute; left: -10000px; top: 0; }
+</style>
+<body>
+<div id="selfcheck">running</div>
+<div id="show"></div>
+<pre id="log"></pre>
+<div id="lab"></div>
+<script>
+  customElements.define('ha-card', class extends HTMLElement {
+    connectedCallback() { this.style.cssText = 'display:block;background:var(--ha-card-background);border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,.2)'; }
+  });
+</script>
+<script src="adaptive-climate-control-card.js"></script>
+<script>
+  const q = new URLSearchParams(location.search);
+  document.body.className = q.get('theme') === 'light' ? 'light' : 'dark';
+
+  const PRESETS = ['none', 'away', 'eco', 'comfort', 'sleep'];
+  const zone = (name, attrs = {}, settings = {}, state = 'heat') => ({
+    state,
+    attributes: {
+      friendly_name: name, current_temperature: 20.4, temperature: 21, min_temp: 7, max_temp: 25, target_temp_step: 0.5,
+      hvac_action: 'idle', preset_mode: 'none', preset_modes: PRESETS,
+      settings: { changed: false, vacation: false, ...settings }, ...attrs,
+    },
+  });
+  const NS = { start: '22:30', delta: 2, recovery_deadline: '6:30', editable: true };
+  const states = {
+    'climate.living': zone('Living room', { current_temperature: 20.9, eco_temp: 18.5, comfort_temp: 21 }, { changed: true, night_setback: NS }),
+    'climate.kitchen': zone('Kitchen', { hvac_action: 'heating', current_temperature: 19.6, temperature: 20, preset_mode: 'comfort', preset_modes: ['none', 'comfort', 'boost'], comfort_temp: 20, boost_temp: 23 },
+      { night_setback: { start: 'sunset+30', delta: 1, recovery_deadline: null, editable: true } }),
+    'climate.study': zone('Study', { current_temperature: 17.8, temperature: 19 }, { night_setback: NS }, 'off'),
+    'climate.garage': { state: 'unavailable', attributes: { friendly_name: 'Garage', min_temp: 7, max_temp: 25, preset_modes: ['none', 'eco'], settings: { changed: false, vacation: false } } },
+    'climate.bathroom': zone('Bathroom', { current_temperature: 21.7, temperature: 22, preset_modes: ['none'] }),
+    'climate.bedroom': zone('Bedroom', { current_temperature: 18.2, temperature: 18, preset_mode: 'sleep', sleep_temp: 18 },
+      { night_setback: { start: '22:00', delta: 1.5, recovery_deadline: null, editable: false } }),
+    'climate.other': { state: 'heat', attributes: { friendly_name: 'Other thermostat', temperature: 20 } },
+    'sensor.other': { state: '1', attributes: { settings: {} } },
+  };
+  const ZONES = ['Bathroom', 'Bedroom', 'Garage', 'Kitchen', 'Living room', 'Study'];
+  const withAttrs = (id, attrs, settings) => {
+    const s = states[id];
+    return { ...states, [id]: { ...s, attributes: { ...s.attributes, ...attrs, settings: { ...s.attributes.settings, ...settings } } } };
+  };
+
+  const fakes = [];
+  function mk(st, cfg = {}, width = 420, where = 'lab') {
+    const box = document.createElement('div');
+    if (width) box.style.width = width + 'px';
+    document.getElementById(where).append(box);
+    const card = document.createElement('adaptive-climate-control-card');
+    card.setConfig(cfg);
+    box.append(card);
+    const hass = {
+      states: st, calls: [], fail: null, gate: null,
+      callService(domain, service, data, target, notifyOnError) {
+        this.calls.push({ domain, service, data, target, notifyOnError });
+        if (this.gate) return this.gate;
+        return this.fail ? Promise.reject({ code: 'service_validation_error', message: this.fail }) : Promise.resolve();
+      },
+    };
+    fakes.push(hass);
+    card.hass = hass;
+    const t = {
+      card, hass, box,
+      get root() { return card.shadowRoot; },
+      push(next) { hass.states = next; card.hass = hass; },
+      ctl: (label) => card.shadowRoot.querySelector(`[aria-label="${label}"]`),
+      rows: () => [...card.shadowRoot.querySelectorAll('.room')],
+      row: (name) => t.rows().find((r) => r.querySelector('.n').firstChild.textContent === name),
+      open: (name) => t.row(name).querySelector('.n').click(),
+      text: () => card.shadowRoot.textContent,
+      vacation: () => [...card.shadowRoot.querySelectorAll('[role="switch"]')].find((b) => b.textContent === 'Vacation'),
+      svc: (s) => hass.calls.filter((c) => `${c.domain}.${c.service}` === s),
+    };
+    return t;
+  }
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const change = (e, v) => { e.value = v; e.dispatchEvent(new Event('change')); };
+  const enter = (e) => e.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, composed: true }));
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const EV = { bubbles: true, composed: true };
+  const space = (e, type) => e.dispatchEvent(new KeyboardEvent(type, { key: ' ', ...EV }));
+
+  const log = document.getElementById('log');
+  let fails = 0, passes = 0;
+  const check = (ok, msg) => {
+    if (ok) passes++; else { fails++; console.error('FAIL ' + msg); }
+    log.textContent += `${ok ? 'PASS' : 'FAIL'} ${msg}\n`;
+  };
+  const test = async (name, fn) => {
+    try { await fn(); } catch (e) { check(false, `${name}: threw ${e && e.message}`); }
+  };
+
+  (async () => {
+    await test('display', () => {
+      for (const id of ['climate.living', 'climate.kitchen']) mk(states, {}, Number(q.get('w')) || 420, 'show').open(states[id].attributes.friendly_name);
+    });
+
+    await test('discovery', () => {
+      const t = mk(states);
+      const names = t.rows().map((r) => r.querySelector('.n').firstChild.textContent);
+      check(same(names, ZONES), 'rows = zones, sorted by name: ' + names);
+      check(t.text().includes('Heating'), 'default title');
+      check(t.card.getCardSize() === 7, 'card size ' + t.card.getCardSize());
+      const card = (window.customCards || []).find((c) => c.type === 'adaptive-climate-control-card');
+      check(card && card.name === 'Adaptive Climate control' && card.description, 'customCards entry');
+      check(customElements.get('adaptive-climate-control-card').getStubConfig !== undefined, 'getStubConfig');
+    });
+
+    await test('row text', () => {
+      const t = mk(states);
+      check(t.row('Kitchen').textContent.includes('19.6° now, heating'), 'heating status');
+      check(t.row('Study').textContent.includes('17.8° now, off'), 'off status');
+      check(t.row('Living room').textContent.includes('20.9° now') && !t.row('Living room').textContent.includes(', heating'), 'idle status');
+      check(!t.ctl('Bathroom preset'), 'no preset select when only none');
+      check(t.ctl('Living room preset') && t.ctl('Living room preset').value === 'none', 'preset select shown');
+      const sw = t.ctl('Living room heating');
+      check(sw && sw.getAttribute('role') === 'switch' && sw.getAttribute('aria-checked') === 'true', 'switch on');
+      check(t.ctl('Study heating').getAttribute('aria-checked') === 'false', 'switch off');
+    });
+
+    await test('unavailable', () => {
+      const t = mk(states);
+      const g = t.row('Garage');
+      const ctls = [...g.querySelectorAll('button, select, input')];
+      check(g.textContent.includes('unavailable'), 'unavailable text');
+      check(ctls.length >= 3 && ctls.every((c) => c.disabled), 'unavailable controls disabled: ' + ctls.length);
+    });
+
+    await test('accessible names', () => {
+      const t = mk(states);
+      for (const name of ZONES) {
+        if (name !== 'Garage') t.open(name);
+        const bad = [...t.row(name).querySelectorAll('button, select, input')]
+          .filter((c) => !((c.getAttribute('aria-label') || c.textContent).includes(name)));
+        check(!bad.length, `every ${name} control names the room` + bad.map((b) => ' [' + (b.getAttribute('aria-label') || b.textContent) + ']').join(''));
+      }
+      check(t.root.querySelector('style').textContent.includes(':focus-visible'), 'focus-visible style');
+    });
+
+    await test('stepper debounce', async () => {
+      const t = mk(states);
+      const up = t.ctl('Raise Living room target');
+      up.click(); up.click(); up.click();
+      check(t.row('Living room').querySelector('output').textContent === '22.5°', 'number updates at once');
+      check(!t.hass.calls.length, 'no call before the pause');
+      await sleep(700);
+      const c = t.svc('climate.set_temperature');
+      check(t.hass.calls.length === 1 && c.length === 1 && same(c[0].data, { entity_id: 'climate.living', temperature: 22.5 }), 'one set_temperature +1.5: ' + JSON.stringify(t.hass.calls));
+      check(t.row('Living room').querySelector('output').textContent === '22.5°', 'call done, no push yet: keeps the new value');
+    });
+
+    await test('stepper clamps', async () => {
+      const t = mk(withAttrs('climate.living', { temperature: 25 }));
+      t.ctl('Raise Living room target').click();
+      await sleep(700);
+      check(!t.hass.calls.length, 'no call above max');
+    });
+
+    await test('preset and switch', async () => {
+      const t = mk(states);
+      change(t.ctl('Living room preset'), 'eco');
+      check(same(t.svc('climate.set_preset_mode')[0]?.data, { entity_id: 'climate.living', preset_mode: 'eco' }), 'preset select calls set_preset_mode');
+      t.ctl('Living room heating').click();
+      check(same(t.svc('climate.turn_off')[0]?.data, { entity_id: 'climate.living' }), 'switch on -> turn_off');
+      t.ctl('Study heating').click();
+      check(same(t.svc('climate.turn_on')[0]?.data, { entity_id: 'climate.study' }), 'switch off -> turn_on');
+    });
+
+    await test('all rooms', async () => {
+      const t = mk(states);
+      const all = t.ctl('Preset for all rooms');
+      check(all && [...all.options].map((o) => o.value).includes('boost'), 'all rooms lists every preset');
+      change(all, 'eco');
+      const ids = t.svc('climate.set_preset_mode').map((c) => c.data.preset_mode === 'eco' && c.data.entity_id).sort();
+      check(same(ids, ['climate.bedroom', 'climate.living', 'climate.study']), 'all rooms: eco only where eco exists: ' + ids);
+      check(all.value === '', 'all rooms select resets');
+    });
+
+    await test('vacation', async () => {
+      const t = mk(withAttrs('climate.bathroom', {}, { vacation: true }));
+      const v = t.vacation();
+      check(v && v.getAttribute('role') === 'switch' && v.getAttribute('aria-checked') === 'true', 'vacation from first zone');
+      v.click();
+      check(same(t.svc('adaptive_climate.set_vacation_mode')[0]?.data, { enabled: false }), 'vacation switch calls set_vacation_mode');
+    });
+
+    await test('vacation in flight', async () => {
+      const t = mk(states);
+      let release;
+      t.hass.gate = new Promise((r) => { release = r; });
+      t.vacation().click();
+      t.push(withAttrs('climate.bathroom', { temperature: 12 }));
+      const v = t.vacation();
+      check(v.getAttribute('aria-checked') === 'true' && v.getAttribute('aria-disabled') === 'true', 'vacation pill shows the request and is disabled while its call runs');
+      v.click();
+      check(t.svc('adaptive_climate.set_vacation_mode').length === 1, 'second vacation tap while the call runs sends nothing: ' + JSON.stringify(t.hass.calls));
+      t.push(withAttrs('climate.bathroom', { temperature: 12 }, { vacation: true }));
+      t.hass.gate = null;
+      release();
+      await sleep(0);
+      const after = t.vacation();
+      check(after.getAttribute('aria-checked') === 'true' && after.getAttribute('aria-disabled') !== 'true', 'vacation pill usable again once the call settles');
+      t.hass.gate = new Promise((r) => { release = r; });
+      after.click();
+      t.hass.gate = null;
+      release();
+      await sleep(0);
+      check(t.vacation().getAttribute('aria-disabled') !== 'true', 'vacation pill usable again when no push came during the call');
+    });
+
+    await test('one room open', () => {
+      const t = mk(states);
+      const n = () => t.row('Living room').querySelector('.n');
+      check(n().getAttribute('aria-expanded') === 'false', 'closed by default');
+      t.open('Living room');
+      check(n().getAttribute('aria-expanded') === 'true' && t.root.querySelectorAll('.more').length === 1, 'opens');
+      t.open('Kitchen');
+      check(n().getAttribute('aria-expanded') === 'false' && t.row('Kitchen').querySelector('.more') && t.root.querySelectorAll('.more').length === 1, 'one at a time');
+      const k = t.row('Kitchen').querySelector('.n');
+      k.focus();
+      k.click();
+      check(!t.root.querySelector('.more'), 'toggles closed');
+      check(t.root.activeElement === t.row('Kitchen').querySelector('.n'), 'focus stays on the toggle');
+    });
+
+    await test('preset slots', async () => {
+      const t = mk(states);
+      t.open('Living room');
+      const more = t.row('Living room').querySelector('.more');
+      check(more.textContent.includes('not set'), 'empty slot reads not set');
+      check(!t.ctl('Clear Living room sleep temperature') && t.ctl('Clear Living room eco temperature'), 'clear only on filled slots');
+      t.ctl('Raise Living room sleep temperature').click();
+      await sleep(700);
+      check(same(t.svc('adaptive_climate.set_preset_temperature')[0]?.data, { entity_id: 'climate.living', preset: 'sleep', temperature: 21.5 }), 'filling an empty slot: ' + JSON.stringify(t.hass.calls));
+      t.ctl('Clear Living room eco temperature').click();
+      check(same(t.svc('adaptive_climate.set_preset_temperature')[1]?.data, { entity_id: 'climate.living', preset: 'eco', temperature: null }), 'clear sends null');
+      t.open('Kitchen');
+      check(t.ctl('Raise Kitchen boost temperature') && t.ctl('Raise Kitchen away temperature'), 'fixed slots plus other presets with a value');
+    });
+
+    await test('night setback edit', async () => {
+      const t = mk(states);
+      t.open('Living room');
+      const start = t.ctl('Living room night setback starts at');
+      const rd = t.ctl('Living room warm again by');
+      check(start && start.type === 'time' && start.value === '22:30', 'start time input');
+      check(rd && rd.value === '06:30', 'unpadded deadline normalised: ' + (rd && rd.value));
+      rd.focus();
+      change(rd, '07:15');
+      rd.blur();
+      check(same(t.svc('adaptive_climate.set_night_setback')[0]?.data, { entity_id: 'climate.living', recovery_deadline: '07:15' }), 'time change sends only that field');
+      t.ctl('Raise Living room night setback depth').click();
+      await sleep(700);
+      check(same(t.svc('adaptive_climate.set_night_setback')[1]?.data, { entity_id: 'climate.living', delta: 2.5 }), 'depth stepper sends only delta');
+    });
+
+    await test('sunset start', () => {
+      const t = mk(states);
+      t.open('Kitchen');
+      const more = t.row('Kitchen').querySelector('.more');
+      check(more.textContent.includes('sunset+30') && !t.ctl('Kitchen night setback starts at'), 'sunset start shown as text');
+      check(t.ctl('Kitchen warm again by').value === '', 'null deadline -> empty input');
+      [...more.querySelectorAll('button')].find((b) => b.textContent === 'set a time').click();
+      const start = t.ctl('Kitchen night setback starts at');
+      check(start && start.value === '' && t.root.activeElement === start, 'set a time -> focused time input');
+      start.blur();
+      t.push(withAttrs('climate.kitchen', {}, { night_setback: { ...NS, start: '23:00' } }));
+      t.push(states);
+      check(t.row('Kitchen').querySelector('.more').textContent.includes('sunset+30') && !t.ctl('Kitchen night setback starts at'), 'back to sunset after a reset shows the text again');
+    });
+
+    await test('read-only setback', () => {
+      const t = mk(states);
+      t.open('Bedroom');
+      let more = t.row('Bedroom').querySelector('.more');
+      check(more.textContent.includes('22:00') && more.textContent.includes('1.5°') && more.textContent.includes('set in the config') && !more.querySelector('input'), 'fixed-end room: text, no inputs');
+      t.open('Bathroom');
+      more = t.row('Bathroom').querySelector('.more');
+      check(more.textContent.includes('Night setback is not set up for this room in the config.') && !more.querySelector('input'), 'no-setback room: text, no inputs');
+    });
+
+    await test('back to config', async () => {
+      const t = mk(states);
+      t.open('Kitchen');
+      check(!t.ctl('Back to config for Kitchen'), 'absent unless changed');
+      t.open('Living room');
+      const reset = t.ctl('Back to config for Living room');
+      check(reset, 'present when changed');
+      const asked = [];
+      window.confirm = (m) => { asked.push(m); return false; };
+      reset.click();
+      check(asked.length === 1 && !t.hass.calls.length, 'cancelled confirm: no call');
+      window.confirm = () => true;
+      reset.click();
+      check(same(t.svc('adaptive_climate.reset_zone_settings')[0]?.data, { entity_id: 'climate.living' }), 'reset_zone_settings after confirm');
+    });
+
+    await test('rejected call', async () => {
+      const t = mk(states);
+      t.hass.fail = 'Temperature 21.5 outside 7-21';
+      t.ctl('Raise Living room target').click();
+      await sleep(700);
+      const row = t.row('Living room');
+      check(row.querySelector('output').textContent === '21.0°', 'stepper value restored: ' + row.querySelector('output').textContent);
+      const alert = row.querySelector('[role="alert"]');
+      check(alert && alert.textContent.includes('outside 7-21'), 'alert in the row');
+      t.open('Living room');
+      const rd = t.ctl('Living room warm again by');
+      rd.focus();
+      change(rd, '07:15');
+      enter(rd);
+      await sleep(0);
+      const rd2 = t.ctl('Living room warm again by');
+      check(rd2.value === '06:30' && t.root.activeElement === rd2, 'time input restored, focus kept: ' + rd2.value);
+      t.hass.fail = null;
+      rd2.blur();
+      t.ctl('Raise Living room target').click();
+      await sleep(700);
+      check(!t.row('Living room').querySelector('.err'), 'next good call clears the error');
+    });
+
+    await test('focus keeps input', async () => {
+      const t = mk(states);
+      t.open('Living room');
+      const rd = t.ctl('Living room warm again by');
+      rd.focus();
+      rd.value = '07:45';
+      t.push(withAttrs('climate.living', { current_temperature: 20.5 }, { night_setback: { ...NS, recovery_deadline: '8:00' } }));
+      check(t.ctl('Living room warm again by') === rd && rd.value === '07:45', 'state push during focus keeps the input');
+      rd.blur();
+      await sleep(10);
+      const after = t.ctl('Living room warm again by');
+      check(after !== rd && after.value === '08:00' && t.row('Living room').textContent.includes('20.5°'), 'deferred push lands on blur');
+    });
+
+    await test('time commits when the edit is done', async () => {
+      const t = mk(states);
+      t.open('Living room');
+      const rd = t.ctl('Living room warm again by');
+      rd.focus();
+      rd.blur();
+      rd.focus();
+      change(rd, '02:30');
+      change(rd, '23:00');
+      await sleep(10);
+      check(!t.hass.calls.length, 'typing a time sends nothing before blur: ' + JSON.stringify(t.hass.calls));
+      rd.blur();
+      const sent = t.svc('adaptive_climate.set_night_setback');
+      check(t.hass.calls.length === 1 && same(sent[0]?.data, { entity_id: 'climate.living', recovery_deadline: '23:00' }), 'blur sends exactly one set_night_setback: ' + JSON.stringify(t.hass.calls));
+      rd.focus();
+      change(rd, '23:15');
+      enter(rd);
+      rd.blur();
+      check(t.hass.calls.length === 2 && t.svc('adaptive_climate.set_night_setback')[1]?.data.recovery_deadline === '23:15', 'Enter sends, the blur after it does not repeat: ' + JSON.stringify(t.hass.calls));
+    });
+
+    await test('select choice then push', () => {
+      const t = mk(states);
+      const sel = t.ctl('Living room preset');
+      sel.focus();
+      change(sel, 'eco');
+      t.push(withAttrs('climate.living', { temperature: 18.5, preset_mode: 'eco' }));
+      const out = () => t.row('Living room').querySelector('output').textContent;
+      check(out() === '18.5°', 'after a preset choice a push refreshes the row: ' + out());
+      check(t.root.activeElement === t.ctl('Living room preset'), 'focus stays on the preset select');
+      t.push(withAttrs('climate.living', { temperature: 18, preset_mode: 'comfort' }));
+      check(out() === '18.0°' && t.ctl('Living room preset').value === 'comfort', 'later pushes land too: ' + out());
+    });
+
+    await test('press after leaving a field', async () => {
+      for (const [what, field] of [['time input', 'Living room warm again by'], ['select', 'Living room preset']]) {
+        const t = mk(states);
+        t.open('Living room');
+        t.ctl(field).focus();
+        t.push(withAttrs('climate.living', { temperature: 18.5 }));
+        const up = t.ctl('Raise Living room target');
+        const ev = { bubbles: true, composed: true };
+        up.dispatchEvent(new PointerEvent('pointerdown', ev));
+        up.dispatchEvent(new MouseEvent('mousedown', ev));
+        up.focus();
+        await sleep(50);
+        const kept = up.isConnected;
+        up.dispatchEvent(new PointerEvent('pointerup', ev));
+        up.dispatchEvent(new MouseEvent('mouseup', ev));
+        // A browser drops the click when the pressed element was replaced before the release.
+        if (kept) up.click();
+        await sleep(700);
+        check(same(t.svc('climate.set_temperature')[0]?.data, { entity_id: 'climate.living', temperature: 19 }),
+          `press after leaving a ${what} with a held-back push sends its call from the pushed value: ` + JSON.stringify(t.hass.calls));
+      }
+    });
+
+    await test('pending stepper blocks rebuild', async () => {
+      const t = mk(states);
+      t.ctl('Raise Living room target').click();
+      const out = t.row('Living room').querySelector('output');
+      t.push(withAttrs('climate.living', { temperature: 19 }));
+      check(t.row('Living room').querySelector('output') === out && out.textContent === '21.5°', 'push while pending: no rebuild');
+      await sleep(700);
+      check(t.row('Living room').querySelector('output').textContent === '19.0°', 'rebuild after the call');
+    });
+
+    await test('reopening a chosen select', async () => {
+      for (const [how, press] of [['pointerdown', (e) => e.dispatchEvent(new PointerEvent('pointerdown', EV))], ['keydown', (e) => space(e, 'keydown')]]) {
+        const t = mk(states);
+        const sel = t.ctl('Living room preset');
+        sel.focus();
+        change(sel, 'eco');
+        press(sel);
+        t.push(withAttrs('climate.living', { temperature: 18.5, preset_mode: 'eco' }));
+        check(t.ctl('Living room preset') === sel, `${how} on a chosen select holds back pushes`);
+        sel.blur();
+        await sleep(10);
+        check(t.row('Living room').querySelector('output').textContent === '18.5°', `push lands after leaving the select (${how})`);
+      }
+    });
+
+    await test('right-click', () => {
+      const t = mk(states);
+      t.ctl('Raise Living room target').dispatchEvent(new PointerEvent('pointerdown', { button: 2, ...EV }));
+      t.push(withAttrs('climate.living', { temperature: 18.5 }));
+      check(t.row('Living room').querySelector('output').textContent === '18.5°', 'a right-click without pointerup does not hold back pushes');
+    });
+
+    await test('rejected time commit during a press', async () => {
+      const t = mk(states);
+      t.open('Living room');
+      const rd = t.ctl('Living room warm again by');
+      rd.focus();
+      change(rd, '07:15');
+      t.hass.fail = 'Deadline rejected';
+      const up = t.ctl('Raise Living room target');
+      up.dispatchEvent(new PointerEvent('pointerdown', EV));
+      up.dispatchEvent(new MouseEvent('mousedown', EV));
+      up.focus();
+      await sleep(50);
+      const kept = up.isConnected;
+      up.dispatchEvent(new PointerEvent('pointerup', EV));
+      up.dispatchEvent(new MouseEvent('mouseup', EV));
+      if (kept) up.click();
+      t.hass.fail = null;
+      await sleep(10);
+      const alert = t.row('Living room').querySelector('[role="alert"]');
+      check(alert && alert.textContent.includes('Deadline rejected') && t.ctl('Living room warm again by').value === '06:30', 'rejected time commit: alert and old value after the release');
+      await sleep(700);
+      check(same(t.svc('climate.set_temperature')[0]?.data, { entity_id: 'climate.living', temperature: 21.5 }), 'rejected time commit keeps the click that caused the blur: ' + JSON.stringify(t.hass.calls));
+    });
+
+    await test('space press', async () => {
+      const t = mk(states);
+      const up = t.ctl('Raise Living room target');
+      up.focus();
+      space(up, 'keydown');
+      t.push(withAttrs('climate.living', { temperature: 18.5 }));
+      const kept = up.isConnected;
+      space(up, 'keyup');
+      // A button clicks on Space keyup; a replaced one never does.
+      if (kept) up.click();
+      await sleep(700);
+      check(same(t.svc('climate.set_temperature')[0]?.data, { entity_id: 'climate.living', temperature: 19 }), 'space press with a push before keyup sends its call from the pushed value: ' + JSON.stringify(t.hass.calls));
+    });
+
+    await test('known zone going unavailable', () => {
+      const t = mk(states);
+      t.push({ ...states, 'climate.bathroom': { state: 'unavailable', attributes: { friendly_name: 'Bathroom', min_temp: 7, max_temp: 25 } } });
+      check(t.rows().length === 6 && t.row('Bathroom').textContent.includes('unavailable'), 'zone that drops its settings stays as unavailable');
+    });
+
+    await test('config', () => {
+      const t = mk(states, { title: 'Upstairs', entities: [{ entity: 'climate.study' }, 'climate.missing', 'climate.living'] });
+      const names = t.rows().map((r) => r.querySelector('.n').firstChild.textContent);
+      check(same(names, ['Study', 'climate.missing', 'Living room']), 'entities order kept, {entity} accepted: ' + names);
+      check(t.row('climate.missing').textContent.includes('unavailable'), 'missing entity unavailable');
+      check(t.text().includes('Upstairs'), 'title');
+      let threw = false;
+      try { t.card.setConfig({ entities: 'climate.study' }); } catch (e) { threw = /list/.test(e.message); }
+      check(threw, 'entities string throws');
+    });
+
+    await test('xss', () => {
+      const t = mk({ 'climate.x': zone('<img src=x onerror=alert(1)> & "K"') });
+      check(!t.root.querySelector('img') && t.text().includes('<img src=x'), 'name shown as text');
+    });
+
+    await test('empty', () => {
+      const t = mk({ 'climate.other': states['climate.other'] });
+      check(t.text().includes('No Adaptive Climate zones found.') && !t.vacation() && !t.ctl('Preset for all rooms'), 'zero zones -> empty-state text');
+    });
+
+    await test('layout', () => {
+      for (const w of [330, 420]) {
+        const t = mk(states, {}, w);
+        t.open('Living room');
+        const box = t.root.querySelector('ha-card').getBoundingClientRect();
+        const out = [...t.root.querySelectorAll('ha-card *')].filter((e) => {
+          const r = e.getBoundingClientRect();
+          return r.width && (r.right > box.right + 0.5 || r.left < box.left - 0.5);
+        });
+        check(!out.length, `nothing overflows at ${w}px` + out.map((e) => ' ' + e.tagName + '.' + e.className).join(''));
+      }
+    });
+
+    await test('no HA toast', () => {
+      const calls = fakes.flatMap((h) => h.calls);
+      const bad = calls.filter((c) => c.target !== undefined || c.notifyOnError !== false);
+      check(calls.length > 20 && !bad.length, `every call passes notifyOnError false: ${bad.length} of ${calls.length} do not`);
+    });
+
+    scrollTo(0, 0);
+    document.getElementById('selfcheck').textContent = fails ? `FAIL ${fails} of ${fails + passes}` : `PASS ${passes}`;
+  })();
+</script>

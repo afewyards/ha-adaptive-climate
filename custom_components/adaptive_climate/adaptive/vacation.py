@@ -6,6 +6,9 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.dispatcher import async_dispatcher_send
+
+from ..const import SIGNAL_VACATION_CHANGED
 
 SERVICE_SET_TEMPERATURE = "set_temperature"
 
@@ -47,6 +50,7 @@ class VacationMode:
         self._target_temp = DEFAULT_VACATION_TEMP
         self._original_setpoints: dict[str, float] = {}
         self._learning_was_enabled: dict[str, bool] = {}
+        self._changing = False
 
     @property
     def enabled(self) -> bool:
@@ -64,6 +68,9 @@ class VacationMode:
         Args:
             target_temp: The frost protection temperature to set (default 12°C)
         """
+        if self._changing:
+            _LOGGER.warning("Vacation mode change already in progress")
+            return
         if self._enabled:
             _LOGGER.warning("Vacation mode is already enabled")
             return
@@ -72,53 +79,58 @@ class VacationMode:
         self._original_setpoints = {}
         self._learning_was_enabled = {}
 
-        # Get all zones from coordinator
-        all_zones = self.coordinator.get_all_zones()
+        self._changing = True
+        try:
+            # Get all zones from coordinator
+            all_zones = self.coordinator.get_all_zones()
 
-        for zone_id, zone_data in all_zones.items():
-            climate_entity_id = zone_data.get("climate_entity_id")
-            if not climate_entity_id:
-                continue
+            for zone_id, zone_data in all_zones.items():
+                climate_entity_id = zone_data.get("climate_entity_id")
+                if not climate_entity_id:
+                    continue
 
-            # Get current state
-            state = self.hass.states.get(climate_entity_id)
-            if state:
-                # Store original setpoint
-                current_temp = state.attributes.get("temperature")
-                if current_temp is not None:
-                    self._original_setpoints[zone_id] = float(current_temp)
+                # Get current state
+                state = self.hass.states.get(climate_entity_id)
+                if state:
+                    # Store original setpoint
+                    current_temp = state.attributes.get("temperature")
+                    if current_temp is not None:
+                        self._original_setpoints[zone_id] = float(current_temp)
 
-                # Store learning state if available
-                learning_enabled = zone_data.get("learning_enabled", True)
-                self._learning_was_enabled[zone_id] = learning_enabled
+                    # Store learning state if available
+                    learning_enabled = zone_data.get("learning_enabled", True)
+                    self._learning_was_enabled[zone_id] = learning_enabled
 
-            # Set to vacation temperature
-            try:
-                await self.hass.services.async_call(
-                    "climate",
-                    SERVICE_SET_TEMPERATURE,
-                    {
-                        "entity_id": climate_entity_id,
-                        "temperature": target_temp,
-                    },
-                    blocking=True,
-                )
-                _LOGGER.info(
-                    "Set zone %s to vacation temperature %.1f°C",
-                    zone_id,
-                    target_temp,
-                )
-            except Exception as e:
-                _LOGGER.error(
-                    "Failed to set vacation temperature for zone %s: %s",
-                    zone_id,
-                    e,
-                )
+                # Set to vacation temperature
+                try:
+                    await self.hass.services.async_call(
+                        "climate",
+                        SERVICE_SET_TEMPERATURE,
+                        {
+                            "entity_id": climate_entity_id,
+                            "temperature": target_temp,
+                        },
+                        blocking=True,
+                    )
+                    _LOGGER.info(
+                        "Set zone %s to vacation temperature %.1f°C",
+                        zone_id,
+                        target_temp,
+                    )
+                except Exception as e:
+                    _LOGGER.error(
+                        "Failed to set vacation temperature for zone %s: %s",
+                        zone_id,
+                        e,
+                    )
 
-            # Pause learning for this zone
-            zone_data["learning_enabled"] = False
+                # Pause learning for this zone
+                zone_data["learning_enabled"] = False
+        finally:
+            self._changing = False
 
         self._enabled = True
+        async_dispatcher_send(self.hass, SIGNAL_VACATION_CHANGED)
         _LOGGER.info(
             "Vacation mode enabled with target temperature %.1f°C for %d zones",
             target_temp,
@@ -127,50 +139,58 @@ class VacationMode:
 
     async def async_disable(self) -> None:
         """Disable vacation mode and restore original setpoints."""
+        if self._changing:
+            _LOGGER.warning("Vacation mode change already in progress")
+            return
         if not self._enabled:
             _LOGGER.warning("Vacation mode is not enabled")
             return
 
-        # Get all zones from coordinator
-        all_zones = self.coordinator.get_all_zones()
+        self._changing = True
+        try:
+            # Get all zones from coordinator
+            all_zones = self.coordinator.get_all_zones()
 
-        for zone_id, zone_data in all_zones.items():
-            climate_entity_id = zone_data.get("climate_entity_id")
-            if not climate_entity_id:
-                continue
+            for zone_id, zone_data in all_zones.items():
+                climate_entity_id = zone_data.get("climate_entity_id")
+                if not climate_entity_id:
+                    continue
 
-            # Restore original setpoint if we have it
-            original_temp = self._original_setpoints.get(zone_id)
-            if original_temp is not None:
-                try:
-                    await self.hass.services.async_call(
-                        "climate",
-                        SERVICE_SET_TEMPERATURE,
-                        {
-                            "entity_id": climate_entity_id,
-                            "temperature": original_temp,
-                        },
-                        blocking=True,
-                    )
-                    _LOGGER.info(
-                        "Restored zone %s to original temperature %.1f°C",
-                        zone_id,
-                        original_temp,
-                    )
-                except Exception as e:
-                    _LOGGER.error(
-                        "Failed to restore temperature for zone %s: %s",
-                        zone_id,
-                        e,
-                    )
+                # Restore original setpoint if we have it
+                original_temp = self._original_setpoints.get(zone_id)
+                if original_temp is not None:
+                    try:
+                        await self.hass.services.async_call(
+                            "climate",
+                            SERVICE_SET_TEMPERATURE,
+                            {
+                                "entity_id": climate_entity_id,
+                                "temperature": original_temp,
+                            },
+                            blocking=True,
+                        )
+                        _LOGGER.info(
+                            "Restored zone %s to original temperature %.1f°C",
+                            zone_id,
+                            original_temp,
+                        )
+                    except Exception as e:
+                        _LOGGER.error(
+                            "Failed to restore temperature for zone %s: %s",
+                            zone_id,
+                            e,
+                        )
 
-            # Restore learning state
-            was_enabled = self._learning_was_enabled.get(zone_id, True)
-            zone_data["learning_enabled"] = was_enabled
+                # Restore learning state
+                was_enabled = self._learning_was_enabled.get(zone_id, True)
+                zone_data["learning_enabled"] = was_enabled
+        finally:
+            self._changing = False
 
         self._enabled = False
         self._original_setpoints = {}
         self._learning_was_enabled = {}
+        async_dispatcher_send(self.hass, SIGNAL_VACATION_CHANGED)
         _LOGGER.info("Vacation mode disabled, original setpoints restored")
 
     def get_status(self) -> dict[str, Any]:

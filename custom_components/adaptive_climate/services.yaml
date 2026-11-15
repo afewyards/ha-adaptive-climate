@@ -72,6 +72,80 @@ delete_pid_history:
             - heat
             - cool
 
+set_preset_temperature:
+  name: Set Preset Temperature
+  description: Change one preset's temperature for this zone. Saved across restarts.
+  target:
+    entity:
+      integration: adaptive_climate
+      domain: climate
+  fields:
+    preset:
+      name: Preset
+      description: Preset to change
+      required: true
+      selector:
+        select:
+          options:
+            - away
+            - eco
+            - boost
+            - comfort
+            - home
+            - sleep
+            - activity
+    temperature:
+      name: Temperature
+      description: New preset temperature; leave empty to remove the preset
+      required: false
+      selector:
+        number:
+          min: 5
+          max: 35
+          step: 0.5
+          unit_of_measurement: °C
+
+set_night_setback:
+  name: Set Night Setback
+  description: Change this zone's night setback. Saved across restarts. Not available when the zone has a fixed end time.
+  target:
+    entity:
+      integration: adaptive_climate
+      domain: climate
+  fields:
+    start:
+      name: Start
+      description: Start time as HH:MM, or sunset with an optional offset, like sunset+30
+      required: false
+      example: "22:00"
+      selector:
+        text:
+    delta:
+      name: Delta
+      description: How far to lower the target at night
+      required: false
+      selector:
+        number:
+          min: 0.5
+          max: 5
+          step: 0.5
+          unit_of_measurement: °C
+    recovery_deadline:
+      name: Recovery deadline
+      description: Time (HH:MM) by which the zone should be back at its target
+      required: false
+      example: "07:00"
+      selector:
+        text:
+
+reset_zone_settings:
+  name: Reset Zone Settings
+  description: Drop every change made from the card for this zone and go back to the configured presets and night setback.
+  target:
+    entity:
+      integration: adaptive_climate
+      domain: climate
+
 restore_pid_history:
   name: Restore PID History
   description: Restore PID gains from a specific history entry.

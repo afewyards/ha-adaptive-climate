@@ -27,6 +27,7 @@ from . import const
 from .adaptive.learning import AdaptiveLearner
 from .adaptive.persistence import LearningDataStore
 from .manifold_config import LOOPS_REMOVED_MESSAGE, REMOVED_LOOPS_KEY, removed_key
+from .managers.zone_settings import PRESET_NAMES
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -550,6 +551,24 @@ async def async_setup_platform(hass: HomeAssistant, config: ConfigType, async_ad
         },
         "async_delete_pid_history",
     )
+    platform.async_register_entity_service(
+        "set_preset_temperature",
+        {
+            vol.Required("preset"): vol.In(PRESET_NAMES),
+            vol.Optional("temperature"): vol.Any(None, vol.Coerce(float)),
+        },
+        "async_set_preset_temperature",
+    )
+    platform.async_register_entity_service(
+        "set_night_setback",
+        {
+            vol.Optional("start"): cv.string,
+            vol.Optional("delta"): vol.Coerce(float),
+            vol.Optional("recovery_deadline"): cv.string,
+        },
+        "async_set_night_setback",
+    )
+    platform.async_register_entity_service("reset_zone_settings", {}, "async_reset_zone_settings")
     platform.async_register_entity_service(  # type: ignore
         "restore_pid_history",
         {

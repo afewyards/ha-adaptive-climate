@@ -1,4 +1,4 @@
-"""Serve the learning card and add it to the Home Assistant frontend."""
+"""Serve the cards and add them to the Home Assistant frontend."""
 
 from __future__ import annotations
 
@@ -14,23 +14,29 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-CARD_URL = f"/{DOMAIN}/adaptive-climate-learning-card.js"
-_CARD_PATH = Path(__file__).parent / "frontend" / "adaptive-climate-learning-card.js"
+CARD_FILES = ("adaptive-climate-learning-card.js", "adaptive-climate-control-card.js")
+_FRONTEND_DIR = Path(__file__).parent / "frontend"
 
 
-def card_module_url(content: bytes) -> str:
+def card_url(filename: str) -> str:
+    return f"/{DOMAIN}/{filename}"
+
+
+def card_module_url(filename: str, content: bytes) -> str:
     # Boxes updated by copying files keep the manifest version, so the file hash busts the browser cache.
-    return f"{CARD_URL}?v={hashlib.sha1(content).hexdigest()[:8]}"
+    return f"{card_url(filename)}?v={hashlib.sha1(content).hexdigest()[:8]}"
 
 
 async def async_register_card(hass: HomeAssistant) -> None:
     if getattr(hass, "http", None) is None:
         return
-    try:
-        content = await hass.async_add_executor_job(_CARD_PATH.read_bytes)
-    except OSError as err:
-        _LOGGER.warning("learning card not registered, %s unreadable: %s", _CARD_PATH.name, err)
-        return
-    await hass.http.async_register_static_paths([StaticPathConfig(CARD_URL, str(_CARD_PATH))])
-    if "frontend" in hass.config.components:
-        add_extra_js_url(hass, card_module_url(content))
+    for filename in CARD_FILES:
+        path = _FRONTEND_DIR / filename
+        try:
+            content = await hass.async_add_executor_job(path.read_bytes)
+        except OSError as err:
+            _LOGGER.warning("%s not registered, unreadable: %s", filename, err)
+            continue
+        await hass.http.async_register_static_paths([StaticPathConfig(card_url(filename), str(path))])
+        if "frontend" in hass.config.components:
+            add_extra_js_url(hass, card_module_url(filename, content))

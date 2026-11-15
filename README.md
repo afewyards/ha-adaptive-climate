@@ -82,6 +82,20 @@ entities:                      # optional, defaults to every Adaptive Climate zo
 
 It is registered automatically when the integration loads; hard-refresh the browser the first time. When `entities` is set, the zones keep that order.
 
+## Control card
+
+A second card changes the heating of every room from one place: per room the target, the preset and on/off, plus a preset for all rooms at once and a vacation switch. Open a room to change its night setback (starts at, lowers by, warm again by) and its own preset temperatures. A change applies at once and survives a restart; "Back to config" drops a room's changes and goes back to the YAML values.
+
+```yaml
+type: custom:adaptive-climate-control-card
+title: Heating                 # optional
+entities:                      # optional, defaults to every Adaptive Climate zone, sorted by name
+  - climate.kitchen
+  - climate.office
+```
+
+Rooms with a fixed night setback `end`, or no night setback in YAML, show it read-only. The services behind the card are described in [zone settings](docs/subsystems/zone-settings.md).
+
 ## Quick Start
 
 ### Basic Configuration

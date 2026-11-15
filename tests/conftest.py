@@ -77,6 +77,7 @@ mock_core.HomeAssistant = MagicMock
 mock_exceptions = MagicMock()
 mock_exceptions.HomeAssistantError = Exception
 mock_exceptions.ServiceNotFound = Exception
+mock_exceptions.ServiceValidationError = type("ServiceValidationError", (Exception,), {})
 
 # ---- Mock homeassistant.helpers modules ----
 mock_helpers = MagicMock()
@@ -87,6 +88,7 @@ mock_helpers.event.async_track_time_interval = MagicMock(return_value=MagicMock(
 mock_helpers.config_validation = MagicMock()
 mock_helpers.entity_platform = MagicMock()
 mock_helpers.discovery = MagicMock()
+mock_helpers.dispatcher = MagicMock()
 
 # Mock storage — Store subclass needed for HistoryStore migration
 mock_storage = MagicMock()
@@ -219,6 +221,7 @@ mock_climate.PRESET_BOOST = "boost"
 mock_climate.PRESET_COMFORT = "comfort"
 mock_climate.PRESET_HOME = "home"
 mock_climate.PRESET_SLEEP = "sleep"
+mock_climate.PRESET_ACTIVITY = "activity"
 mock_components.climate = mock_climate
 
 # ============================================================================
@@ -239,6 +242,7 @@ sys.modules["homeassistant.helpers.event"] = mock_helpers.event
 sys.modules["homeassistant.helpers.config_validation"] = mock_helpers.config_validation
 sys.modules["homeassistant.helpers.entity_platform"] = mock_helpers.entity_platform
 sys.modules["homeassistant.helpers.discovery"] = mock_helpers.discovery
+sys.modules["homeassistant.helpers.dispatcher"] = mock_helpers.dispatcher
 sys.modules["homeassistant.helpers.typing"] = mock_typing
 sys.modules["homeassistant.helpers.storage"] = mock_storage
 sys.modules["homeassistant.helpers.restore_state"] = mock_restore_state
@@ -263,11 +267,12 @@ _ORIGINAL_MOCK_CLIMATE = mock_climate
 def pytest_runtest_setup(item):
     """Pytest hook that runs before each test item.
 
-    Restores the original climate mock before each test to prevent pollution
-    from tests that replace sys.modules['homeassistant.components.climate'].
+    Restores the original climate and exceptions mocks before each test to prevent
+    pollution from tests that replace them in sys.modules.
     """
     # Restore the original mock before each test
     sys.modules["homeassistant.components.climate"] = _ORIGINAL_MOCK_CLIMATE
+    sys.modules["homeassistant.exceptions"] = mock_exceptions
 
 
 @pytest.fixture

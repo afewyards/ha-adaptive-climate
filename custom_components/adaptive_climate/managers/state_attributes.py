@@ -10,6 +10,7 @@ if TYPE_CHECKING:
 from homeassistant.util import dt as dt_util
 
 from .learning_profile import build_learning_profile
+from .settings_attributes import build_settings_attributes
 
 
 # Learning/adaptation state attribute constants
@@ -99,6 +100,7 @@ def build_state_attributes(thermostat: SmartThermostat) -> dict[str, Any]:
 
     # Learning object (grouped: status, confidence, pid_history)
     _add_learning_object(thermostat, attrs)
+    attrs.update(build_settings_attributes(thermostat))
 
     # Debug object (grouped by feature)
     debug_mode = thermostat.hass.data.get(DOMAIN, {}).get("debug", False)
