@@ -83,6 +83,15 @@ class AdaptiveThermostatSensor(SensorEntity):
         self.__coordinator = self.hass.data.get(DOMAIN, {}).get("coordinator")
         return self.__coordinator
 
+    def _zone_heater_entity_id(self) -> str | None:
+        """Return the zone's first configured heater entity, if any."""
+        coordinator = self._coordinator
+        zone_data = coordinator.get_zone_data(self._zone_id) if coordinator else None
+        heaters = zone_data.get("heater_entity_id") if zone_data else None
+        if isinstance(heaters, str):
+            return heaters
+        return heaters[0] if heaters else None
+
 
 class DutyCycleSensor(AdaptiveThermostatSensor):
     """Sensor for heating duty cycle percentage.
@@ -152,23 +161,7 @@ class DutyCycleSensor(AdaptiveThermostatSensor):
         """Set up state change tracking when added to hass."""
         await super().async_added_to_hass()
 
-        # Get heater entity ID from climate entity
-        climate_state = self.hass.states.get(self._climate_entity_id)
-        if climate_state:
-            # Try to get heater entity from attributes
-            heater_ids = climate_state.attributes.get("heater_entity_id")
-            if heater_ids:
-                # heater_entity_id can be a list or single entity
-                if isinstance(heater_ids, list) and heater_ids:
-                    if len(heater_ids) > 1:
-                        _LOGGER.warning(
-                            "heater_entity_id has %d entries; tracking only the first: %s",
-                            len(heater_ids),
-                            heater_ids[0],
-                        )
-                    self._heater_entity_id = heater_ids[0]
-                elif isinstance(heater_ids, str):
-                    self._heater_entity_id = heater_ids
+        self._heater_entity_id = self._zone_heater_entity_id()
 
         # If we found a heater entity, track its state changes
         if self._heater_entity_id:
@@ -422,17 +415,7 @@ class CycleTimeSensor(AdaptiveThermostatSensor):
         """Set up state change tracking when added to hass."""
         await super().async_added_to_hass()
 
-        # Get heater entity ID from climate entity
-        climate_state = self.hass.states.get(self._climate_entity_id)
-        if climate_state:
-            # Try to get heater entity from attributes
-            heater_ids = climate_state.attributes.get("heater_entity_id")
-            if heater_ids:
-                # heater_entity_id can be a list or single entity
-                if isinstance(heater_ids, list) and heater_ids:
-                    self._heater_entity_id = heater_ids[0]
-                elif isinstance(heater_ids, str):
-                    self._heater_entity_id = heater_ids
+        self._heater_entity_id = self._zone_heater_entity_id()
 
         # If we found a heater entity, track its state changes
         if self._heater_entity_id:

@@ -218,6 +218,16 @@ def _resolve_pwm(
     return timedelta(minutes=15)  # const.DEFAULT_PWM = "00:15:00"
 
 
+def build_zone_power_data(config: ConfigType) -> dict[str, Any]:
+    """Return the zone_data keys the per-zone sensors read: heater entities and rated W/m²."""
+    data: dict[str, Any] = {"heater_entity_id": config.get(const.CONF_HEATER)}
+    max_power_w = config.get(const.CONF_MAX_POWER_W)
+    area_m2 = config.get(const.CONF_AREA_M2)
+    if max_power_w and area_m2:
+        data["max_power_w_m2"] = max_power_w / area_m2
+    return data
+
+
 def build_dew_point_zone_data(config: ConfigType) -> dict[str, Any]:
     """Return the zone_data keys the water-temperature dew point scanner reads.
 
@@ -460,6 +470,7 @@ async def async_setup_platform(hass: HomeAssistant, config: ConfigType, async_ad
             "pwm_seconds": config.get(const.CONF_PWM).seconds if config.get(const.CONF_PWM) else 0,
             "valve_actuation_time": valve_actuation_seconds,
             "window_orientation": config.get(const.CONF_WINDOW_ORIENTATION),
+            **build_zone_power_data(config),
             **build_dew_point_zone_data(config),
         }
 

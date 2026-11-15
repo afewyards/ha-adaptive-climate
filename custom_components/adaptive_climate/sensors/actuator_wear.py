@@ -155,8 +155,12 @@ class ActuatorWearSensor(SensorEntity):
         self._attr_available = True
 
         # Get cycle count from climate attributes
-        attr_name = f"{self._actuator_type}_cycle_count"
-        self._current_cycles = climate_state.attributes.get(attr_name, 0)
+        # int when a demand switch is the single actuator (heater only), else {"heater": n, "cooler": n}
+        cycle_count = climate_state.attributes.get("cycle_count", 0)
+        if isinstance(cycle_count, dict):
+            self._current_cycles = cycle_count.get(self._actuator_type, 0)
+        else:
+            self._current_cycles = cycle_count if self._actuator_type == "heater" else 0
 
         # Calculate wear percentage
         if self._rated_cycles and self._rated_cycles > 0:
