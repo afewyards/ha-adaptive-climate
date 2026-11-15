@@ -42,6 +42,14 @@ Exposed via `extra_state_attributes`. Structure: flat restoration fields + group
         "settling_time": 30.0,
         "settling_time_limit": 45.0
     },
+    "settings": {
+        "changed": false,           # true when the zone has saved runtime edits
+        "vacation": false,          # vacation mode active
+        "night_setback": {          # omitted when the zone has no night setback
+            "start": "21:00", "delta": 1.0, "recovery_deadline": "9:00",
+            "editable": true        # false with a fixed end time
+        }
+    },
     "debug": {...}                  # only when debug: true
 }
 ```

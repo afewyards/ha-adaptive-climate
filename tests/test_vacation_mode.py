@@ -60,7 +60,7 @@ try:
     import coordinator
 
     # Import vacation module
-    from adaptive.vacation import VacationMode, DEFAULT_VACATION_TEMP
+    from custom_components.adaptive_climate.adaptive.vacation import VacationMode, DEFAULT_VACATION_TEMP
 finally:
     for _key, _original in _original_ha_modules.items():
         if _original is None:

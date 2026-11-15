@@ -123,6 +123,7 @@ class TestPreheatStateAttributes:
 
         # Set night setback config with recovery deadline
         thermostat._night_setback_config = {
+            "start": "21:00",
             "recovery_deadline": "07:00",
             "delta": 3.0,
         }
@@ -168,6 +169,7 @@ class TestPreheatStateAttributes:
 
         # Set night setback config with recovery deadline
         thermostat._night_setback_config = {
+            "start": "21:00",
             "recovery_deadline": "07:00",
             "delta": 3.0,
         }
@@ -291,6 +293,7 @@ class TestPreheatStateAttributes:
 
         # Set night setback config with recovery deadline
         thermostat._night_setback_config = {
+            "start": "21:00",
             "recovery_deadline": "07:00",
             "delta": 3.0,
         }

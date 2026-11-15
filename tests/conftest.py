@@ -88,6 +88,7 @@ mock_helpers.event.async_track_time_interval = MagicMock(return_value=MagicMock(
 mock_helpers.config_validation = MagicMock()
 mock_helpers.entity_platform = MagicMock()
 mock_helpers.discovery = MagicMock()
+mock_helpers.dispatcher = MagicMock()
 
 # Mock storage — Store subclass needed for HistoryStore migration
 mock_storage = MagicMock()
@@ -241,6 +242,7 @@ sys.modules["homeassistant.helpers.event"] = mock_helpers.event
 sys.modules["homeassistant.helpers.config_validation"] = mock_helpers.config_validation
 sys.modules["homeassistant.helpers.entity_platform"] = mock_helpers.entity_platform
 sys.modules["homeassistant.helpers.discovery"] = mock_helpers.discovery
+sys.modules["homeassistant.helpers.dispatcher"] = mock_helpers.dispatcher
 sys.modules["homeassistant.helpers.typing"] = mock_typing
 sys.modules["homeassistant.helpers.storage"] = mock_storage
 sys.modules["homeassistant.helpers.restore_state"] = mock_restore_state

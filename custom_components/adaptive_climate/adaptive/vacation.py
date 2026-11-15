@@ -6,6 +6,9 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.dispatcher import async_dispatcher_send
+
+from ..const import SIGNAL_VACATION_CHANGED
 
 SERVICE_SET_TEMPERATURE = "set_temperature"
 
@@ -119,6 +122,7 @@ class VacationMode:
             zone_data["learning_enabled"] = False
 
         self._enabled = True
+        async_dispatcher_send(self.hass, SIGNAL_VACATION_CHANGED)
         _LOGGER.info(
             "Vacation mode enabled with target temperature %.1f°C for %d zones",
             target_temp,
@@ -171,6 +175,7 @@ class VacationMode:
         self._enabled = False
         self._original_setpoints = {}
         self._learning_was_enabled = {}
+        async_dispatcher_send(self.hass, SIGNAL_VACATION_CHANGED)
         _LOGGER.info("Vacation mode disabled, original setpoints restored")
 
     def get_status(self) -> dict[str, Any]:
