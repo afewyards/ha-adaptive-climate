@@ -1,0 +1,90 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width">
+<title>adaptive-climate-learning-card harness</title>
+<!-- Fixture page, not served by Home Assistant. ?theme=dark|light -->
+<style>
+  body { margin: 0; padding: 8px; font-family: Roboto, system-ui, sans-serif; background: var(--primary-background-color); color: var(--primary-text-color); }
+  body.dark { --primary-background-color: #111; --ha-card-background: #1c1c1c; --primary-text-color: #e1e1e1; --secondary-text-color: #9b9b9b; --divider-color: #2f2f2f; --primary-color: #03a9f4; --warning-color: #ffa600; }
+  body.light { --primary-background-color: #fafafa; --ha-card-background: #fff; --primary-text-color: #212121; --secondary-text-color: #727272; --divider-color: rgba(0,0,0,.12); --primary-color: #0b79c4; --warning-color: #c76a00; }
+  #selfcheck { font: 13px monospace; margin-bottom: 8px; }
+  .row { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; margin-bottom: 16px; }
+  .row > div > small { display: block; font: 11px monospace; opacity: .6; margin-bottom: 2px; }
+</style>
+<body>
+<div id="selfcheck">running</div>
+<div id="out"></div>
+<script>
+  customElements.define('ha-card', class extends HTMLElement {
+    connectedCallback() { this.style.cssText = 'display:block;background:var(--ha-card-background);border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,.2)'; }
+  });
+</script>
+<script src="adaptive-climate-learning-card.js"></script>
+<script>
+  const q = new URLSearchParams(location.search);
+  document.body.className = q.get('theme') === 'light' ? 'light' : 'dark';
+  const L = (o) => ({ state: 'heat', attributes: o });
+  const z = (name, learning) => L({ friendly_name: name, learning });
+  const states = {
+    'climate.kitchen': z('Kitchen', { status: 'stable', confidence: 44, cycles: 81, heating_type: 'radiator', area_m2: 18, heating_rate: 0.9, heating_rate_expected: 1.5, overshoot: 0.1, overshoot_limit: 0.3, settling_time: 40, settling_time_limit: 60 }),
+    'climate.bathroom': z('Bathroom', { status: 'collecting', confidence: 38, cycles: 18, heating_type: 'floor_hydronic', area_m2: 7, heating_rate: 0.9, heating_rate_expected: 1.1, overshoot: 0.7, overshoot_limit: 0.3, settling_time: 150, settling_time_limit: 90 }),
+    'climate.office': z('Office', { status: 'tuned', confidence: 66, cycles: 74, heating_type: 'radiator', area_m2: 11, heating_rate: 1.6, heating_rate_expected: 1.7, overshoot: 0.2, overshoot_limit: 0.3, settling_time: 45, settling_time_limit: 60 }),
+    'climate.living': z('Living room', { status: 'idle', confidence: 20 }),
+    'climate.bedroom': z('Bedroom', { status: 'optimized', confidence: 96, cycles: 118, heating_type: 'radiator', area_m2: 14, heating_rate: 1.8, heating_rate_expected: 0, overshoot: 0.1, overshoot_limit: 0.3 }),
+    'climate.dead': { state: 'unavailable', attributes: { friendly_name: 'Dead', learning: { status: 'idle', confidence: 1 } } },
+    'climate.xss': z('<img src=x onerror=alert(1)> & "Kitchen"', { status: 'stable', confidence: 50, cycles: 3 }),
+    'sensor.other': L({ learning: { confidence: 1 } }),
+  };
+  const only = (...ids) => Object.fromEntries(ids.map((i) => [i, states[i]]));
+  const cases = {
+    a: { cfg: {}, st: only('climate.kitchen', 'climate.bathroom', 'climate.office', 'climate.living', 'climate.bedroom', 'sensor.other') },
+    b: { cfg: { entities: ['climate.missing', 'climate.dead', 'climate.office'] }, st: only('climate.dead', 'climate.office') },
+    c: { cfg: { title: 'Custom title' }, st: {} },
+    d: { cfg: {}, st: only('climate.xss') },
+  };
+  const cards = {};
+  const out = document.getElementById('out');
+  for (const w of [400, 760, 330]) {
+    const row = document.createElement('div');
+    row.className = 'row';
+    for (const k of Object.keys(cases)) {
+      if (w === 330 && k !== 'a') continue;
+      const box = document.createElement('div');
+      box.style.width = w + 'px';
+      box.innerHTML = `<small>${k} @ ${w}</small>`;
+      const card = document.createElement('adaptive-climate-learning-card');
+      card.setConfig(cases[k].cfg);
+      card.hass = { states: cases[k].st };
+      box.append(card);
+      row.append(box);
+      if (w === 400) cards[k] = card;
+    }
+    out.append(row);
+  }
+
+  let fails = 0;
+  const check = (ok, msg) => { console.assert(ok, msg); if (!ok) { fails++; console.error('FAIL ' + msg); } };
+  const API = window.AdaptiveClimateLearningCard;
+  const sortZones = API.sortZones;
+  const P = (id) => API.zoneProfile(id, states[id]);
+  const kitchen = P('climate.kitchen');
+  check(kitchen.bars[0].off === true && kitchen.reasons[0] === 'Heats at 60% of the expected rate.', 'rate-off zone');
+  const bed = P('climate.bedroom');
+  check(bed.bars[0].tick === null && bed.bars[0].off === false, 'expected 0: no tick, not off');
+  check(API.zoneProfile('x', z('X', { status: 'tuned', confidence: 1, heating_rate: 5, heating_rate_expected: 1 })).bars[0].frac === 1, 'value above scale clamps');
+  const sorted = sortZones(['climate.office', 'climate.bedroom', 'climate.kitchen', 'climate.bathroom', 'climate.living'].map(P)).map((p) => p.name);
+  check(sorted.indexOf('Bathroom') < sorted.indexOf('Office') && sorted.indexOf('Kitchen') < sorted.indexOf('Office'), 'off before good: ' + sorted);
+  check(sorted.indexOf('Office') < sorted.indexOf('Bedroom'), 'good: lower confidence first: ' + sorted);
+  check(!cards.d.shadowRoot.querySelector('img'), 'no injected img');
+  check(cards.d.shadowRoot.textContent.includes('<img src=x'), 'name shown as text');
+  check(cards.b.shadowRoot.textContent.includes('Not available'), 'Not available rendered');
+  check(cards.b.shadowRoot.querySelector('.n').textContent === 'climate.missing', 'explicit order kept');
+  check(P('climate.living').reasons[0] === 'Still collecting' && P('climate.living').bars.length === 0, 'collecting');
+  check(cards.c.shadowRoot.textContent.includes('No Adaptive Climate zones found.') && cards.c.shadowRoot.textContent.includes('Custom title'), 'empty + title');
+  check(!cards.a.shadowRoot.textContent.includes('Dead') && cards.a.shadowRoot.querySelectorAll('.room').length === 5, 'discovery');
+  const first = cards.a.shadowRoot.querySelector('.room');
+  cards.a.hass = { states: { ...cases.a.st } };
+  check(cards.a.shadowRoot.querySelector('.room') === first, 'same state objects: no re-render');
+  check(cards.a.getCardSize() === 6, 'card size');
+  document.getElementById('selfcheck').textContent = fails ? `FAIL ${fails}` : 'PASS';
+</script>
