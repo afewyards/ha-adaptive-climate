@@ -1,6 +1,51 @@
 # CHANGELOG
 
 
+## v0.68.0 (2026-11-15)
+
+### Bug Fixes
+
+- **frontend**: Align confidence in wide rows without bars
+  ([`7f2d2ef`](https://github.com/afewyards/ha-adaptive-climate/commit/7f2d2ef91f93ccdc4adb49a28aae3e12bfe72e0d))
+
+- **frontend**: Never fail setup when the learning card cannot register
+  ([`7607b77`](https://github.com/afewyards/ha-adaptive-climate/commit/7607b778c47ad3a753b28b86612e0f541779ad42))
+
+- **frontend**: Scale, threshold and contrast fixes for the learning card
+  ([`fcda071`](https://github.com/afewyards/ha-adaptive-climate/commit/fcda07106f3d092691c96fecc11b62964f4f17c9))
+
+- **sensors**: Feed heater entity, cycle count and power density to zone sensors
+  ([`584e7c1`](https://github.com/afewyards/ha-adaptive-climate/commit/584e7c1f3ec5bc6b70be1ffaf3fdf8e0139e0bfa))
+
+Duty cycle and cycle time looked up a heater_entity_id attribute the climate entity never exposed,
+  so duty fell back to the control output, cycle time stayed empty and the short-cycle warning could
+  not fire. Actuator wear read heater_cycle_count instead of cycle_count and always showed 0%. Power
+  per m2 never received the configured max_power_w.
+
+### Documentation
+
+- Move module map and subsystem details out of CLAUDE.md
+  ([`d6a6dd1`](https://github.com/afewyards/ha-adaptive-climate/commit/d6a6dd12d475219a0f8f90d6294db665e6fae13a))
+
+The module tables go to docs/architecture/modules.md and each subsystem gets its own file under
+  docs/subsystems/. state-attributes.md also documents the learned profile keys in the learning
+  attribute.
+
+- **frontend**: Add learning card design and plan
+  ([`35d4bc9`](https://github.com/afewyards/ha-adaptive-climate/commit/35d4bc92af2d1fc53e07955a4ad28b5e24663104))
+
+### Features
+
+- **frontend**: Add learning card
+  ([`7b03226`](https://github.com/afewyards/ha-adaptive-climate/commit/7b03226baa978eebde90cafb0bf1c53f76a35ae5))
+
+- **frontend**: Serve and register the learning card
+  ([`130bfe5`](https://github.com/afewyards/ha-adaptive-climate/commit/130bfe52c4450fa2ed0bcacb2c8ece4074c45258))
+
+- **learning**: Publish learned heat-up, overshoot and settling in learning attribute
+  ([`23b0782`](https://github.com/afewyards/ha-adaptive-climate/commit/23b0782866efbc383541931a37c9606835a40240))
+
+
 ## v0.67.1 (2026-11-09)
 
 ### Bug Fixes
