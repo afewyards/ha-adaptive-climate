@@ -6,7 +6,7 @@
 <style>
   body { margin: 0; padding: 8px; font-family: Roboto, system-ui, sans-serif; background: var(--primary-background-color); color: var(--primary-text-color); }
   body.dark { --primary-background-color: #111; --ha-card-background: #1c1c1c; --card-background-color: #1c1c1c; --primary-text-color: #e1e1e1; --secondary-text-color: #9b9b9b; --divider-color: #2f2f2f; --primary-color: #03a9f4; --warning-color: #ffa600; --error-color: #ef5350; color-scheme: dark; }
-  body.light { --primary-background-color: #fafafa; --ha-card-background: #fff; --card-background-color: #fff; --primary-text-color: #212121; --secondary-text-color: #727272; --divider-color: rgba(0,0,0,.12); --primary-color: #0b79c4; --warning-color: #d97a00; --error-color: #db4437; }
+  body.light { --primary-background-color: #fafafa; --ha-card-background: #fff; --card-background-color: #fff; --primary-text-color: #212121; --secondary-text-color: #727272; --divider-color: rgba(0,0,0,.12); --primary-color: #0b79c4; --warning-color: #ffa600; --error-color: #db4437; }
   #selfcheck { font: 13px monospace; margin-bottom: 4px; }
   #log { font: 11px monospace; margin: 0 0 8px; white-space: pre-wrap; }
   #show > * { margin-bottom: 12px; }
@@ -86,6 +86,7 @@
   }
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const change = (e, v) => { e.value = v; e.dispatchEvent(new Event('change')); };
+  const enter = (e) => e.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, composed: true }));
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
   const log = document.getElementById('log');
@@ -229,7 +230,9 @@
       const rd = t.ctl('Living room warm again by');
       check(start && start.type === 'time' && start.value === '22:30', 'start time input');
       check(rd && rd.value === '06:30', 'unpadded deadline normalised: ' + (rd && rd.value));
+      rd.focus();
       change(rd, '07:15');
+      rd.blur();
       check(same(t.svc('adaptive_climate.set_night_setback')[0]?.data, { entity_id: 'climate.living', recovery_deadline: '07:15' }), 'time change sends only that field');
       t.ctl('Raise Living room night setback depth').click();
       await sleep(700);
@@ -290,6 +293,7 @@
       const rd = t.ctl('Living room warm again by');
       rd.focus();
       change(rd, '07:15');
+      enter(rd);
       await sleep(0);
       const rd2 = t.ctl('Living room warm again by');
       check(rd2.value === '06:30' && t.root.activeElement === rd2, 'time input restored, focus kept: ' + rd2.value);
@@ -312,6 +316,63 @@
       await sleep(10);
       const after = t.ctl('Living room warm again by');
       check(after !== rd && after.value === '08:00' && t.row('Living room').textContent.includes('20.5°'), 'deferred push lands on blur');
+    });
+
+    await test('time commits when the edit is done', async () => {
+      const t = mk(states);
+      t.open('Living room');
+      const rd = t.ctl('Living room warm again by');
+      rd.focus();
+      rd.blur();
+      rd.focus();
+      change(rd, '02:30');
+      change(rd, '23:00');
+      await sleep(10);
+      check(!t.hass.calls.length, 'typing a time sends nothing before blur: ' + JSON.stringify(t.hass.calls));
+      rd.blur();
+      const sent = t.svc('adaptive_climate.set_night_setback');
+      check(t.hass.calls.length === 1 && same(sent[0]?.data, { entity_id: 'climate.living', recovery_deadline: '23:00' }), 'blur sends exactly one set_night_setback: ' + JSON.stringify(t.hass.calls));
+      rd.focus();
+      change(rd, '23:15');
+      enter(rd);
+      rd.blur();
+      check(t.hass.calls.length === 2 && t.svc('adaptive_climate.set_night_setback')[1]?.data.recovery_deadline === '23:15', 'Enter sends, the blur after it does not repeat: ' + JSON.stringify(t.hass.calls));
+    });
+
+    await test('select choice then push', () => {
+      const t = mk(states);
+      const sel = t.ctl('Living room preset');
+      sel.focus();
+      change(sel, 'eco');
+      t.push(withAttrs('climate.living', { temperature: 18.5, preset_mode: 'eco' }));
+      const out = () => t.row('Living room').querySelector('output').textContent;
+      check(out() === '18.5°', 'after a preset choice a push refreshes the row: ' + out());
+      check(t.root.activeElement === t.ctl('Living room preset'), 'focus stays on the preset select');
+      t.push(withAttrs('climate.living', { temperature: 18, preset_mode: 'comfort' }));
+      check(out() === '18.0°' && t.ctl('Living room preset').value === 'comfort', 'later pushes land too: ' + out());
+    });
+
+    await test('press after leaving a field', async () => {
+      for (const [what, field] of [['time input', 'Living room warm again by'], ['select', 'Living room preset']]) {
+        const t = mk(states);
+        t.open('Living room');
+        t.ctl(field).focus();
+        t.push(withAttrs('climate.living', { temperature: 18.5 }));
+        const up = t.ctl('Raise Living room target');
+        const ev = { bubbles: true, composed: true };
+        up.dispatchEvent(new PointerEvent('pointerdown', ev));
+        up.dispatchEvent(new MouseEvent('mousedown', ev));
+        up.focus();
+        await sleep(50);
+        const kept = up.isConnected;
+        up.dispatchEvent(new PointerEvent('pointerup', ev));
+        up.dispatchEvent(new MouseEvent('mouseup', ev));
+        // A browser drops the click when the pressed element was replaced before the release.
+        if (kept) up.click();
+        await sleep(700);
+        check(same(t.svc('climate.set_temperature')[0]?.data, { entity_id: 'climate.living', temperature: 19 }),
+          `press after leaving a ${what} with a held-back push sends its call from the pushed value: ` + JSON.stringify(t.hass.calls));
+      }
     });
 
     await test('pending stepper blocks rebuild', async () => {

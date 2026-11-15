@@ -23,6 +23,10 @@ function hhmm(v) {
   return m ? `${m[1].padStart(2, '0')}:${m[2]}` : null;
 }
 
+function nightOf(z) {
+  return z.settings && isObj(z.settings.night_setback) ? z.settings.night_setback : null;
+}
+
 function zoneOf(id, s) {
   const a = (s && s.attributes) || {};
   const temps = {};
@@ -65,7 +69,8 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 .n i { display: inline-block; font-style: normal; color: var(--secondary-text-color); margin-left: 4px; transition: transform .12s; }
 .n[aria-expanded=true] i { transform: rotate(180deg); }
 .n small { display: block; font-weight: 400; font-size: 12px; color: var(--secondary-text-color); }
-.n small.heat { color: var(--warning-color); }
+.n small.heat { color: var(--primary-text-color); }
+.n small.heat::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--warning-color); margin-right: 5px; vertical-align: 1px; }
 .ctl { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 .step { display: flex; align-items: center; gap: 2px; }
 .step button { width: 30px; height: 30px; padding: 0; font-size: 17px; line-height: 1; }
@@ -116,6 +121,25 @@ class AdaptiveClimateControlCard extends HTMLElement {
     this._open = null;
     this.attachShadow({ mode: 'open' });
     this.shadowRoot.addEventListener('focusout', () => setTimeout(() => this._refresh()));
+    this.shadowRoot.addEventListener('focusin', (e) => {
+      if (e.target !== this._committed) this._committed = null;
+    });
+    // A redraw between press and release would replace the button and the browser would drop the click.
+    // Buttons only: a select's native popup can swallow the pointerup.
+    this.shadowRoot.addEventListener('pointerdown', (e) => {
+      if (!e.target.closest('button')) return;
+      this._pressing = true;
+      const release = () => {
+        window.removeEventListener('pointerup', release, true);
+        window.removeEventListener('pointercancel', release, true);
+        setTimeout(() => {
+          this._pressing = false;
+          this._refresh();
+        });
+      };
+      window.addEventListener('pointerup', release, true);
+      window.addEventListener('pointercancel', release, true);
+    });
   }
 
   static getStubConfig() {
@@ -151,7 +175,8 @@ class AdaptiveClimateControlCard extends HTMLElement {
 
   _busy() {
     const a = this.shadowRoot.activeElement;
-    return Object.keys(this._pend).length > 0 || (!!a && a.matches('input, select'));
+    const editing = !!a && a !== this._committed && a.matches('input, select');
+    return this._pressing || Object.keys(this._pend).length > 0 || editing;
   }
 
   _refresh() {
@@ -171,7 +196,8 @@ class AdaptiveClimateControlCard extends HTMLElement {
     const root = this.shadowRoot;
     const active = root.activeElement;
     const k = focusKey || (active && active.dataset.k);
-    const typed = active && active.matches('input, select') && active.dataset.k !== failedKey ? active.value : null;
+    const committed = !!active && active === this._committed;
+    const typed = active && !committed && active.matches('input, select') && active.dataset.k !== failedKey ? active.value : null;
 
     const ids = this._ids();
     this._seen = ids.map((id) => ({ id, obj: this._hass.states[id] }));
@@ -190,12 +216,15 @@ class AdaptiveClimateControlCard extends HTMLElement {
     if (!zones.length) wrap.append(el('div', 'empty', 'No Adaptive Climate zones found.'));
     zones.forEach((z, i) => wrap.append(this._room(z, i)));
     card.append(wrap);
+    this._drawing = true;
     root.replaceChildren(el('style', '', STYLE), card);
+    this._drawing = false;
 
     const again = k && [...root.querySelectorAll('[data-k]')].find((e) => e.dataset.k === k);
     if (again) {
       if (typed !== null && !focusKey) again.value = typed;
       again.focus();
+      if (committed) this._committed = again;
     }
   }
 
@@ -207,6 +236,10 @@ class AdaptiveClimateControlCard extends HTMLElement {
     if (e.fresh) div.setAttribute('role', 'alert');
     e.fresh = false;
     return div;
+  }
+
+  _zone(id) {
+    return zoneOf(id, this._hass.states[id]);
   }
 
   async _call(id, service, data, key) {
@@ -253,6 +286,7 @@ class AdaptiveClimateControlCard extends HTMLElement {
       all.addEventListener('change', () => {
         const preset = all.value;
         all.value = '';
+        this._committed = all;
         live.filter((z) => z.presets.includes(preset))
           .forEach((z) => this._call(z.id, 'climate.set_preset_mode', { entity_id: z.id, preset_mode: preset }));
       });
@@ -291,13 +325,16 @@ class AdaptiveClimateControlCard extends HTMLElement {
     });
 
     const c = el('span', 'ctl');
-    c.append(this._stepper(z, `${z.id}|target`, `${z.name} target`, z.target, { min: z.min, max: z.max, step: z.step },
+    c.append(this._stepper(z, `${z.id}|target`, `${z.name} target`, (q) => q.target, { min: z.min, max: z.max, step: z.step },
       (v) => ['climate.set_temperature', { entity_id: z.id, temperature: v }]));
     if (z.ok && z.presets.some((p) => p !== 'none')) {
       const sel = ctl('select', `${z.id}|preset`, `${z.name} preset`, z);
       sel.append(...z.presets.map((p) => el('option', '', p)));
       sel.value = z.preset;
-      sel.addEventListener('change', () => this._call(z.id, 'climate.set_preset_mode', { entity_id: z.id, preset_mode: sel.value }, sel.dataset.k));
+      sel.addEventListener('change', () => {
+        this._committed = sel;
+        this._call(z.id, 'climate.set_preset_mode', { entity_id: z.id, preset_mode: sel.value }, sel.dataset.k);
+      });
       c.append(sel);
     }
     const sw = ctl('button', `${z.id}|power`, `${z.name} heating`, z, 'sw');
@@ -317,23 +354,26 @@ class AdaptiveClimateControlCard extends HTMLElement {
     return room;
   }
 
-  _stepper(z, key, label, value, o, send) {
+  _stepper(z, key, label, pick, o, send) {
     const step = el('span', 'step');
     const p = this._pend[key];
+    const value = pick(z);
     const out = el('output', '', z.ok ? (p ? deg(p.value) : value === null ? 'not set' : deg(value)) : DASH);
     out.setAttribute('aria-label', label);
     const btn = (dir) => {
       const b = ctl('button', `${key}${dir > 0 ? '+' : '-'}`, `${dir > 0 ? 'Raise' : 'Lower'} ${label}`, z, '', dir > 0 ? '+' : '−');
-      b.addEventListener('click', () => this._press(z, key, value, dir, o, out, send));
+      b.addEventListener('click', () => this._press(z, key, pick, dir, o, out, send));
       return b;
     };
     step.append(btn(-1), out, btn(1));
     return step;
   }
 
-  _press(z, key, value, dir, o, out, send) {
+  _press(z, key, pick, dir, o, out, send) {
     const p = this._pend[key] || { calls: 0, timer: 0, value: null };
-    const from = p.value ?? value ?? o.base ?? o.min;
+    // Step from the latest state: a push may have been held back while this row was drawn.
+    const fresh = this._zone(z.id);
+    const from = p.value ?? pick(fresh) ?? (o.base ? o.base(fresh) : null) ?? o.min;
     const next = Math.min(o.max, Math.max(o.min, Math.round((from + dir * o.step) / o.step) * o.step));
     const v = Math.round(next * 100) / 100;
     if (v === from) return;
@@ -357,7 +397,7 @@ class AdaptiveClimateControlCard extends HTMLElement {
       const label = `${z.name} ${preset} temperature`;
       const send = (v) => ['adaptive_climate.set_preset_temperature', { entity_id: z.id, preset, temperature: v }];
       const ln = el('div', 'ln');
-      ln.append(el('span', '', preset), this._stepper(z, `${z.id}|${preset}`, label, z.temps[preset], { min: z.min, max: z.max, step: z.step, base: z.target }, send));
+      ln.append(el('span', '', preset), this._stepper(z, `${z.id}|${preset}`, label, (q) => q.temps[preset], { min: z.min, max: z.max, step: z.step, base: (q) => q.target }, send));
       if (z.temps[preset] !== null) {
         const x = ctl('button', `${z.id}|${preset}x`, `Clear ${label}`, z, 'x', '×');
         x.addEventListener('click', () => this._call(z.id, ...send(null), x.dataset.k));
@@ -379,7 +419,7 @@ class AdaptiveClimateControlCard extends HTMLElement {
   }
 
   _setback(z) {
-    const ns = z.settings && isObj(z.settings.night_setback) ? z.settings.night_setback : null;
+    const ns = nightOf(z);
     if (!ns) return [el('div', 'dim', 'Night setback is not set up for this room in the config.')];
     const line = (label, ...value) => {
       const ln = el('div', 'ln');
@@ -400,9 +440,19 @@ class AdaptiveClimateControlCard extends HTMLElement {
       const t = ctl('input', `${z.id}|${field}`, `${z.name} ${label}`, z);
       t.type = 'time';
       t.value = value || '';
-      t.addEventListener('change', () => {
-        if (!t.value) t.value = value || '';
-        else this._call(z.id, ...send(field, t.value), t.dataset.k);
+      let sent = null;
+      // Sent once the edit is done: change fires per segment, so a half-typed time would be saved.
+      const commit = () => {
+        if (this._drawing) return;
+        const current = hhmm((nightOf(this._zone(z.id)) || {})[field]);
+        if (!t.value) t.value = current || '';
+        if (!t.value || t.value === current || t.value === sent) return;
+        sent = t.value;
+        this._call(z.id, ...send(field, t.value), t.dataset.k);
+      };
+      t.addEventListener('blur', commit);
+      t.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') commit();
       });
       return t;
     };
@@ -422,7 +472,7 @@ class AdaptiveClimateControlCard extends HTMLElement {
     }
     return [
       line('starts at', startCtl),
-      line('lowers by', this._stepper(z, `${z.id}|delta`, `${z.name} night setback depth`, depth, DEPTH, (v) => send('delta', v))),
+      line('lowers by', this._stepper(z, `${z.id}|delta`, `${z.name} night setback depth`, (q) => num((nightOf(q) || {}).delta), DEPTH, (v) => send('delta', v))),
       line('warm again by', time('recovery_deadline', 'warm again by', hhmm(ns.recovery_deadline))),
     ];
   }
