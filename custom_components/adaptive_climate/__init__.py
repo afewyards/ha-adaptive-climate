@@ -729,6 +729,13 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     # Initialize domain data storage
     hass.data.setdefault(DOMAIN, {})
 
+    try:
+        from .frontend_card import async_register_card
+
+        await async_register_card(hass)
+    except Exception:  # the card is optional; never fail heating setup over it
+        _LOGGER.warning("Learning card not registered", exc_info=True)
+
     # Create www directory for chart images
     from pathlib import Path
 

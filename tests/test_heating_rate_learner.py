@@ -743,3 +743,37 @@ class TestPhysicsComparison:
         assert result_high_tau is not None
         # Higher tau should lower expected rate
         assert result_high_tau["expected_rate"] < result_default["expected_rate"]
+
+
+class TestMeanSessionRate:
+    def _add_session(self, learner, day, end_temp=20.5):
+        start = datetime(2026, 1, day, 10, 0, tzinfo=timezone.utc)
+        learner.start_session(temp=18.0, setpoint=21.0, outdoor_temp=3.0, timestamp=start)
+        learner.end_session(end_temp=end_temp, reason="reached_target", timestamp=start.replace(hour=12))
+
+    def test_none_below_minimum(self):
+        learner = HeatingRateLearner(HeatingType.FLOOR_HYDRONIC)
+        for d in (1, 2):
+            self._add_session(learner, d)
+        assert learner.get_mean_session_rate() is None
+
+    def test_mean_with_three_sessions(self):
+        learner = HeatingRateLearner(HeatingType.FLOOR_HYDRONIC)
+        for d in (1, 2, 3):
+            self._add_session(learner, d)
+        assert learner.get_mean_session_rate() == pytest.approx(1.25)
+        assert learner.check_physics_underperformance()["learned_rate"] == pytest.approx(1.25)
+
+    def test_ignores_stalled_and_cycle_observations(self):
+        learner = HeatingRateLearner(HeatingType.FLOOR_HYDRONIC)
+        for d in (1, 2, 3):
+            self._add_session(learner, d)
+        obs = [o for bin_ in learner._bins.values() for o in bin_]
+        extra = obs[0]
+        learner._bins[next(iter(learner._bins))].extend(
+            [
+                HeatingRateObservation(**{**extra.__dict__, "rate": 9.0, "stalled": True}),
+                HeatingRateObservation(**{**extra.__dict__, "rate": 9.0, "source": "cycle"}),
+            ]
+        )
+        assert learner.get_mean_session_rate() == pytest.approx(1.25)

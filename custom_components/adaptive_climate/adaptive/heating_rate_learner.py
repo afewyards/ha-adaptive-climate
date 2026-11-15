@@ -405,6 +405,17 @@ class HeatingRateLearner:
             return False
         return ratio < self.UNDERPERFORMING_THRESHOLD
 
+    def _session_observations(self) -> list[HeatingRateObservation]:
+        return [o for obs in self._bins.values() for o in obs if o.source == "session" and not o.stalled]
+
+    def get_mean_session_rate(self) -> float | None:
+        """Mean rate of non-stalled session observations, or None if too few or not positive."""
+        observations = self._session_observations()
+        if len(observations) < self.MIN_OBSERVATIONS_FOR_RATE:
+            return None
+        mean = sum(o.rate for o in observations) / len(observations)
+        return mean if mean > 0 else None
+
     def check_physics_underperformance(
         self,
         tau: float | None = None,
@@ -438,20 +449,8 @@ class HeatingRateLearner:
         """
         from .physics import calculate_expected_heating_rate
 
-        # Get all non-stalled session observations
-        all_observations = []
-        for observations in self._bins.values():
-            for obs in observations:
-                if obs.source == "session" and not obs.stalled:
-                    all_observations.append(obs)
-
-        # Need minimum observations for reliable comparison
-        if len(all_observations) < self.MIN_OBSERVATIONS_FOR_RATE:
-            return None
-
-        # Calculate average learned rate
-        learned_rate = sum(o.rate for o in all_observations) / len(all_observations)
-        if learned_rate <= 0:
+        learned_rate = self.get_mean_session_rate()
+        if learned_rate is None:
             return None
 
         # Get physics-based expected rate
@@ -486,7 +485,7 @@ class HeatingRateLearner:
             "ratio": round(ratio, 2),
             "is_underperforming": is_underperforming,
             "suggested_ki_boost": suggested_ki_boost,
-            "observation_count": len(all_observations),
+            "observation_count": len(self._session_observations()),
         }
 
     def to_dict(self) -> dict:

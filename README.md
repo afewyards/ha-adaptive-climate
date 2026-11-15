@@ -68,6 +68,20 @@ For the best experience, use the [Adaptive Climate Card](https://github.com/afew
 
 [![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/afewyards/ha-adaptive-climate-card)
 
+## Learning card
+
+The integration ships a small Lovelace card that shows what the system has learned about each zone: how fast it heats, how much it overshoots and how long it takes to settle, each against what was expected, plus how confident the system is. Zones that miss their targets are listed first, with the reason in words.
+
+```yaml
+type: custom:adaptive-climate-learning-card
+title: What the system knows   # optional
+entities:                      # optional, defaults to every Adaptive Climate zone
+  - climate.kitchen
+  - climate.office
+```
+
+It is registered automatically when the integration loads; hard-refresh the browser the first time. When `entities` is set, the zones keep that order.
+
 ## Quick Start
 
 ### Basic Configuration

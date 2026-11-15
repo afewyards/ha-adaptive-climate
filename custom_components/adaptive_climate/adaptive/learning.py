@@ -554,6 +554,10 @@ class AdaptiveLearner:
         """Check if Ki needs boosting for persistent undershoot. Delegates to learning_coordinator."""
         return _check_undershoot_adjustment(self, cycles_completed, current_ki, pid_history, mode)
 
+    def get_mean_heating_rate(self) -> float | None:
+        """Mean learned session heating rate in °C/h, or None when not enough data."""
+        return self._heating_rate_learner.get_mean_session_rate()
+
     def check_physics_rate_underperformance(
         self,
         tau: float | None = None,
