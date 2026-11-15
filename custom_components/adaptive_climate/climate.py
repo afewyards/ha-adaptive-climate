@@ -540,13 +540,13 @@ class AdaptiveThermostat(
                         self._ki,
                         self._kd,
                     )
-                    # Sync auto_apply_count from AdaptiveLearner to PID controller
-                    # This ensures PID controller knows if system has been auto-tuned (for safety net control)
-                    self._pid_controller.set_auto_apply_count(adaptive_learner._auto_apply_count)
+                    # The integral-decay safety net stays on until learning reaches tuned/optimized
+                    safety_net_count = adaptive_learner.get_safety_net_auto_apply_count()
+                    self._pid_controller.set_auto_apply_count(safety_net_count)
                     _LOGGER.debug(
                         "%s: Synced auto_apply_count=%d to PID controller",
                         self.entity_id,
-                        adaptive_learner._auto_apply_count,
+                        safety_net_count,
                     )
                     # Wire PIDGainsManager so seasonal-limit gate uses real pid_history (C02)
                     adaptive_learner.set_pid_gains_manager(self._gains_manager)

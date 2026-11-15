@@ -5,6 +5,12 @@ Cycles are weighted by difficulty to prevent premature "tuned" status from maint
 **Cycle classification:**
 - Recovery: starting delta ≥ threshold (0.5-0.8°C depending on type/status)
 - Maintenance: starting delta < threshold
+- Starting delta is rounded to 6 decimals when the cycle is recorded, so float noise from 0.1° sensor readings (0.4999999) does not flip the class
+
+**Good cycle:** overshoot, undershoot, oscillations and settling time all within the heating type's convergence limits. Overshoot and undershoot are rounded to 6 decimals where they are measured (`calculate_overshoot`, `calculate_undershoot`), so a value at the limit (0.3000000000000007 vs 0.3) passes here and in the undershoot detector, PID rules and Ke convergence tracking.
+- Maintenance cycles also need `rise_time` within `rise_time_max` (or no rise time).
+- Recovery cycles are judged by undershoot alone; a missing `rise_time` is not a failure (floors often end the cycle before the room reaches target − cold_tolerance). Only a measured `rise_time` earns heating-rate credit.
+- Outcome: OVERSHOOT or UNDERSHOOT only when that metric is over its limit; otherwise CLEAN.
 
 **Weight formula:**
 ```
@@ -23,6 +29,8 @@ weight = (base × delta_multiplier × outcome_factor) + bonuses
 | radiator | 30% | 20% |
 | convector | 35% | 10% |
 | forced_air | 35% | 5% |
+
+The maintenance contribution never exceeds the mode's current confidence. It is clamped at the start of every confidence update and after every decrease (poor cycle, undershoot Ki-boost penalty), so confidence lost to poor cycles or decay frees the matching maintenance allowance again instead of leaving good maintenance cycles stuck at the diminished rate.
 
 **Recovery cycle requirements:**
 - Tier progression requires recovery cycles, not just confidence %

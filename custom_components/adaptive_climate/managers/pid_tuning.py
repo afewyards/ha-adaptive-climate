@@ -269,7 +269,8 @@ class PIDTuningManager:
 
         Unlike async_apply_adaptive_pid(), this method:
         - Checks all safety limits (lifetime, seasonal, drift, cooldown)
-        - Uses heating-type-specific confidence thresholds
+        - Uses heating-type-specific cycle and cooldown thresholds, not learning status
+        - Keeps the PID integral and clears only this mode's learning history
         - Enters validation mode after applying
         - Records PID snapshots for rollback capability
 
@@ -331,8 +332,7 @@ class PIDTuningManager:
         old_ki = self._state._ki
         old_kd = self._state._kd
 
-        # Clear integral to avoid wind-up from old tuning
-        self._gains_manager.set_integral(0.0, PIDChangeReason.AUTO_APPLY)
+        # Integral stays: it is held in output units, so new Ki only changes how it grows from here
 
         # Apply the recommended values via PIDGainsManager (auto-records history)
         self._gains_manager.set_gains(
@@ -346,16 +346,15 @@ class PIDTuningManager:
             },
         )
 
-        # Clear learning history
-        adaptive_learner.clear_history()
+        # Cycles under the old gains say nothing about the new ones; the other mode keeps its learning
+        adaptive_learner.clear_history(mode)
         adaptive_learner.mark_adjustment_applied()
 
         # Increment per-mode auto-apply count via public method
         new_count = adaptive_learner.increment_auto_apply_count(mode)
 
-        # Sync auto-apply count to PID controller for safety net control
-        # The PID controller uses this to disable integral decay safety net after first auto-apply
-        self._pid_controller.set_auto_apply_count(new_count)
+        # The integral-decay safety net stays on until the new gains reach tuned/optimized
+        self._pid_controller.set_auto_apply_count(adaptive_learner.get_safety_net_auto_apply_count(mode))
 
         # Start validation mode
         adaptive_learner.start_validation_mode(baseline_overshoot)
@@ -422,9 +421,7 @@ class PIDTuningManager:
             previous["kd"],
         )
 
-        # Clear integral to avoid wind-up from old tuning
-        self._gains_manager.set_integral(0.0, PIDChangeReason.ROLLBACK)
-
+        # Integral stays: it is held in output units, so zeroing it would drop the whole heat demand
         self._gains_manager.set_gains(
             PIDChangeReason.ROLLBACK,
             kp=previous["kp"],
@@ -432,6 +429,13 @@ class PIDTuningManager:
             kd=previous["kd"],
             ke=previous.get("ke", 0.0),
         )
+
+        # Cycles run under the rolled-back gains must not feed the next recommendation
+        coordinator = self._state._coordinator
+        adaptive_learner = coordinator.get_adaptive_learner(self._state.entity_id) if coordinator else None
+        if adaptive_learner:
+            adaptive_learner.clear_history(self._state._hvac_mode)
+            adaptive_learner.mark_adjustment_applied()
 
         await self._async_control_heating(calc_pid=True)
         await self._async_write_ha_state()

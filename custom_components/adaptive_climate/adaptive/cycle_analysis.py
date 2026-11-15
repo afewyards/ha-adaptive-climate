@@ -401,7 +401,7 @@ def calculate_overshoot(
         transport_delay_seconds: Transport delay to skip at start (dead time)
 
     Returns:
-        Overshoot in °C (positive values only), or None if:
+        Overshoot in °C (positive values only, rounded to 6 decimals), or None if:
         - No data provided
         - phase_aware=True and setpoint was never reached
     """
@@ -412,7 +412,7 @@ def calculate_overshoot(
         # Legacy behavior: max temp minus setpoint
         max_temp = max(temp for _, temp in temperature_history)
         overshoot = max_temp - target_temp
-        return max(0.0, overshoot)
+        return round(max(0.0, overshoot), 6)
 
     # Phase-aware calculation: only consider temps after setpoint crossing
     tracker = PhaseAwareOvershootTracker(target_temp, transport_delay_seconds=transport_delay_seconds)
@@ -420,27 +420,33 @@ def calculate_overshoot(
     for timestamp, temp in temperature_history:
         tracker.update(timestamp, temp)
 
-    return tracker.get_overshoot()
+    overshoot = tracker.get_overshoot()
+    return None if overshoot is None else round(overshoot, 6)
 
 
 def calculate_undershoot(temperature_history: list[tuple[datetime, float]], target_temp: float) -> float | None:
     """
-    Calculate maximum undershoot below target temperature.
+    Calculate how far below target the temperature was at or after its highest reading.
+
+    Readings before the cycle's first peak are ignored, so a cold start does not count
+    as undershoot once the room has warmed up. A cycle that never rises keeps the gap
+    it started with.
 
     Args:
         temperature_history: List of (timestamp, temperature) tuples
         target_temp: Target temperature in °C
 
     Returns:
-        Undershoot in °C (positive values only), or None if no data
+        Undershoot in °C (positive values only, rounded to 6 decimals), or None if no data
     """
     if not temperature_history:
         return None
 
-    min_temp = min(temp for _, temp in temperature_history)
-    undershoot = target_temp - min_temp
+    temps = [temp for _, temp in temperature_history]
+    peak_index = temps.index(max(temps))
+    undershoot = target_temp - min(temps[peak_index:])
 
-    return max(0.0, undershoot)
+    return round(max(0.0, undershoot), 6)
 
 
 def count_oscillations(
@@ -702,6 +708,6 @@ def calculate_overshoot_components(
     )
 
     # Remaining overshoot is controllable (could have been prevented)
-    controllable_overshoot = total_overshoot - committed_overshoot
+    controllable_overshoot = round(total_overshoot - committed_overshoot, 6)
 
     return controllable_overshoot, committed_overshoot

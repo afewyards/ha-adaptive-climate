@@ -158,11 +158,10 @@ class TestValidationMode:
     def test_add_validation_cycle_degradation_triggers_rollback(self):
         """Test add_validation_cycle returns 'rollback' on >30% degradation."""
         learner = AdaptiveLearner(heating_type="convector")
-        baseline_overshoot = 0.10  # 0.1°C baseline
+        baseline_overshoot = 0.20  # convector overshoot_max
         learner.start_validation_mode(baseline_overshoot=baseline_overshoot)
 
-        # Add 5 cycles with 40% worse overshoot (degradation > 30% threshold)
-        # 0.10 baseline + 40% = 0.14°C validation overshoot
+        # 40% worse than baseline is above both baseline × 1.3 and overshoot_max
         degraded_overshoot = baseline_overshoot * 1.4
 
         for i in range(VALIDATION_CYCLE_COUNT):
@@ -177,6 +176,25 @@ class TestValidationMode:
 
         assert result == "rollback"
         assert learner.is_in_validation_mode() is False
+
+    def test_overshoot_within_heating_type_limit_passes(self):
+        """No pre-apply overshoot: normal floor overshoot (under overshoot_max 0.3) is not a failure."""
+        learner = AdaptiveLearner(heating_type=HEATING_TYPE_FLOOR_HYDRONIC)
+        learner.start_validation_mode(baseline_overshoot=0.0)
+
+        for _ in range(VALIDATION_CYCLE_COUNT):
+            result = learner.add_validation_cycle(CycleMetrics(overshoot=0.2, oscillations=0, settling_time=30.0))
+
+        assert result == "success"
+
+    def test_overshoot_above_heating_type_limit_rolls_back(self):
+        learner = AdaptiveLearner(heating_type=HEATING_TYPE_FLOOR_HYDRONIC)
+        learner.start_validation_mode(baseline_overshoot=0.0)
+
+        for _ in range(VALIDATION_CYCLE_COUNT):
+            result = learner.add_validation_cycle(CycleMetrics(overshoot=0.35, oscillations=0, settling_time=30.0))
+
+        assert result == "rollback"
 
     def test_validation_mode_reset_on_clear_history(self):
         """Test that clear_history resets validation mode."""
@@ -425,40 +443,72 @@ class TestHeatingTypeThresholds:
 
 
 class TestTierBasedAutoApplyGating:
-    """Tests for tier-based auto-apply gating using learning status."""
+    """Auto-apply no longer waits for a learning-status tier; the other gates still apply."""
 
-    def test_first_auto_apply_requires_tuned_status_floor_hydronic(self):
-        """Test first auto-apply requires tuned status (tier 2: 56%) for floor_hydronic."""
+    @staticmethod
+    def _gates(learner=None, outdoor_temp=5.0):
+        learner = learner or AdaptiveLearner(heating_type=HEATING_TYPE_FLOOR_HYDRONIC)
+        return learner._auto_apply.check_auto_apply_safety_gates(
+            validation_manager=learner._validation,
+            confidence_tracker=learner._confidence,
+            current_kp=100.0,
+            current_ki=0.01,
+            current_kd=1000.0,
+            outdoor_temp=outdoor_temp,
+            pid_history=[],
+        )
+
+    def test_first_auto_apply_allowed_while_collecting(self):
+        """Zero confidence (status collecting) passes the gate with the floor thresholds."""
+        thresholds = AUTO_APPLY_THRESHOLDS[HEATING_TYPE_FLOOR_HYDRONIC]
+        assert self._gates() == (
+            True,
+            thresholds["cooldown_hours"],
+            thresholds["cooldown_cycles"],
+            thresholds["min_cycles"],
+        )
+
+    def test_subsequent_auto_apply_doubles_min_cycles(self):
+        """After the first apply the gate still passes below 'optimized' but asks for twice the cycles."""
         learner = AdaptiveLearner(heating_type=HEATING_TYPE_FLOOR_HYDRONIC)
+        learner._heating_auto_apply_count = 1
+        passed, _, _, min_cycles = self._gates(learner)
+        assert passed is True
+        assert min_cycles == AUTO_APPLY_THRESHOLDS[HEATING_TYPE_FLOOR_HYDRONIC]["min_cycles"] * 2
 
-        # Tier 2 for floor_hydronic: 70% * 0.8 = 56%
-        # Should be blocked at 55% confidence (below tier 2)
-        # Note: This test verifies the concept - actual gating happens in ValidationManager
-        # which integrates with ConfidenceTracker. Full integration tested elsewhere.
+    def test_validation_mode_blocks(self):
+        learner = AdaptiveLearner(heating_type=HEATING_TYPE_FLOOR_HYDRONIC)
+        learner.start_validation_mode(0.2)
+        assert self._gates(learner) == (False, None, None, None)
 
-        # Verify learner has correct heating type for tier scaling
-        assert learner._heating_type == HEATING_TYPE_FLOOR_HYDRONIC
+    def test_lifetime_limit_blocks(self):
+        learner = AdaptiveLearner(heating_type=HEATING_TYPE_FLOOR_HYDRONIC)
+        learner._heating_auto_apply_count = MAX_AUTO_APPLIES_LIFETIME
+        assert self._gates(learner) == (False, None, None, None)
 
-    def test_first_auto_apply_requires_tuned_status_forced_air(self):
-        """Test first auto-apply requires tuned status (tier 2: 77%) for forced_air."""
-        learner = AdaptiveLearner(heating_type=HEATING_TYPE_FORCED_AIR)
+    def test_seasonal_shift_blocks(self):
+        """A 10°C outdoor regime change detected at the gate blocks and starts the shift cooldown."""
+        learner = AdaptiveLearner(heating_type=HEATING_TYPE_FLOOR_HYDRONIC)
+        learner._outdoor_temp_history.extend([-5.0] * 10 + [10.0] * 9)
 
-        # Tier 2 for forced_air: 70% * 1.1 = 77%
-        # Should be blocked at 76% confidence (below tier 2)
+        assert self._gates(learner, outdoor_temp=10.0) == (False, None, None, None)
+        assert learner._last_seasonal_shift is not None
+        assert self._gates(learner, outdoor_temp=10.0) == (False, None, None, None)
 
-        assert learner._heating_type == HEATING_TYPE_FORCED_AIR
+    def test_min_cycles_enforced_without_learning_status(self):
+        """With confidence at zero, the recommendation still waits for min_cycles of history."""
+        learner = AdaptiveLearner(heating_type=HEATING_TYPE_FLOOR_HYDRONIC)
+        learner.set_physics_baseline(100.0, 0.01, 1000.0)
+        min_cycles = AUTO_APPLY_THRESHOLDS[HEATING_TYPE_FLOOR_HYDRONIC]["min_cycles"]
+        poor_cycle = CycleMetrics(overshoot=1.5, undershoot=0.0, oscillations=0, settling_time=60, rise_time=60)
 
-    def test_subsequent_auto_apply_requires_optimized_status(self):
-        """Test subsequent auto-apply requires optimized status (tier 3: 95%)."""
-        learner = AdaptiveLearner(heating_type=HEATING_TYPE_CONVECTOR)
+        for _ in range(min_cycles - 1):
+            learner.add_cycle_metrics(poor_cycle)
+        assert learner.calculate_pid_adjustment(100.0, 0.01, 1000.0, check_auto_apply=True) is None
+        assert learner._last_skip_reason == "insufficient_data"
 
-        # Tier 3 is always 95% regardless of heating type
-        # After first auto-apply, subsequent ones require 95% confidence
-
-        # Set auto-apply count to 1 to simulate first auto-apply already done
-        learner._auto_apply_count = 1
-
-        assert learner.get_auto_apply_count() == 1
+        learner.add_cycle_metrics(poor_cycle)
+        assert learner.calculate_pid_adjustment(100.0, 0.01, 1000.0, check_auto_apply=True) is not None
 
     def test_tier_thresholds_scale_by_heating_type(self):
         """Test that tier thresholds scale correctly by heating type."""
@@ -478,3 +528,256 @@ class TestTierBasedAutoApplyGating:
         assert learner_radiator._heating_type == HEATING_TYPE_RADIATOR
         assert learner_convector._heating_type == HEATING_TYPE_CONVECTOR
         assert learner_forced._heating_type == HEATING_TYPE_FORCED_AIR
+
+
+def _undershoot_cycle(undershoot=0.5):
+    return CycleMetrics(
+        overshoot=0.0, undershoot=undershoot, oscillations=0, settling_time=30, rise_time=30, starting_delta=0.2
+    )
+
+
+class TestAutoApplyStepSize:
+    """Auto-apply runs at low confidence, so a single apply must not amplify the rule step."""
+
+    KP, KI, KD = 100.0, 10.0, 2.0
+
+    def _learner(self, cycles=8):
+        learner = AdaptiveLearner(heating_type=HEATING_TYPE_FLOOR_HYDRONIC)
+        for _ in range(cycles):
+            learner.add_cycle_metrics(_undershoot_cycle())
+        assert learner.get_convergence_confidence() == 0.0
+        return learner
+
+    def test_auto_apply_takes_the_plain_rule_step(self):
+        """Undershoot 0.5 asks Ki ×2; at zero confidence auto-apply does ×2, not ×3."""
+        learner = self._learner()
+        learner.set_physics_baseline(self.KP, self.KI * 1.5, self.KD)
+
+        result = learner.calculate_pid_adjustment(self.KP, self.KI, self.KD, check_auto_apply=True)
+
+        assert result["ki"] == pytest.approx(self.KI * 2.0)
+        assert result["kp"] == pytest.approx(self.KP)
+
+    def test_manual_recommendation_keeps_confidence_multiplier(self):
+        result = self._learner().calculate_pid_adjustment(self.KP, self.KI, self.KD)
+
+        assert result["ki"] == pytest.approx(self.KI * 3.0)
+
+    def test_auto_apply_refused_without_physics_baseline(self):
+        """Without a baseline neither the drift clip nor the drift gate bounds the apply."""
+        learner = self._learner()
+
+        assert learner.calculate_pid_adjustment(self.KP, self.KI, self.KD, check_auto_apply=True) is None
+        assert learner._last_skip_reason == "gates_not_passed"
+        assert learner.calculate_pid_adjustment(self.KP, self.KI, self.KD) is not None
+
+    def test_auto_apply_clipped_to_drift_limit(self):
+        """Ki ×2 from the physics baseline is 100% drift (max 50%): auto-apply does Ki ×1.5."""
+        learner = self._learner()
+        learner.set_physics_baseline(self.KP, self.KI, self.KD)
+
+        result = learner.calculate_pid_adjustment(self.KP, self.KI, self.KD, check_auto_apply=True)
+
+        assert result == {"kp": self.KP, "ki": pytest.approx(self.KI * 1.5), "kd": self.KD}
+
+    def test_auto_apply_skipped_when_already_at_drift_limit(self):
+        learner = self._learner()
+        learner.set_physics_baseline(self.KP, self.KI, self.KD)
+
+        assert learner.calculate_pid_adjustment(self.KP, self.KI * 1.5, self.KD, check_auto_apply=True) is None
+        assert learner._last_skip_reason == "no_change"
+
+    def test_manual_recommendation_not_clipped(self):
+        learner = self._learner()
+        learner.set_physics_baseline(self.KP, self.KI, self.KD)
+
+        assert learner.calculate_pid_adjustment(self.KP, self.KI, self.KD)["ki"] == pytest.approx(self.KI * 3.0)
+
+    def test_gains_clipped_to_limit_still_pass_drift_gate(self):
+        """0.0123 × 1.5 is 0.5000000000000001 drift in floats; it must count as on the limit, not over it."""
+        learner = self._learner()
+        learner.set_physics_baseline(self.KP, 0.0123, self.KD)
+
+        assert learner.calculate_drift_from_baseline(self.KP, 0.0123 * 1.5, self.KD) == 0.5
+        assert learner.check_auto_apply_limits(self.KP, 0.0123 * 1.5, self.KD) is None
+
+    def test_auto_apply_allowed_when_result_within_drift_limit(self):
+        """Ki 25% below baseline stepping ×2 lands at +50%, exactly on the limit."""
+        learner = self._learner()
+        learner.set_physics_baseline(self.KP, self.KI, self.KD)
+        current_ki = self.KI * 0.75
+
+        result = learner.calculate_pid_adjustment(self.KP, current_ki, self.KD, check_auto_apply=True)
+
+        assert result["ki"] == pytest.approx(current_ki * 2.0)
+        assert learner.calculate_drift_from_baseline(result["kp"], result["ki"], result["kd"]) <= (
+            MAX_CUMULATIVE_DRIFT_PCT / 100.0
+        )
+
+
+class TestAutoApplyCooldown:
+    """After an apply, cooldown hours and cooldown cycles both hold off the next one."""
+
+    def _learner_after_first_apply(self):
+        learner = AdaptiveLearner(heating_type=HEATING_TYPE_FLOOR_HYDRONIC)
+        learner.set_physics_baseline(100.0, 10.0, 2.0)
+        learner._heating_auto_apply_count = 1
+        learner.mark_adjustment_applied()
+        for _ in range(AUTO_APPLY_THRESHOLDS[HEATING_TYPE_FLOOR_HYDRONIC]["min_cycles"] * 2):
+            learner.add_cycle_metrics(_undershoot_cycle())
+        return learner
+
+    def _apply(self, learner):
+        return learner.calculate_pid_adjustment(100.0, 10.0, 2.0, check_auto_apply=True)
+
+    def test_cooldown_hours_block_second_apply(self):
+        learner = self._learner_after_first_apply()
+        thresholds = AUTO_APPLY_THRESHOLDS[HEATING_TYPE_FLOOR_HYDRONIC]
+        assert learner._cycles_since_last_adjustment >= thresholds["cooldown_cycles"]
+        learner._last_adjustment_time -= timedelta(hours=thresholds["cooldown_hours"] - 1)
+
+        assert self._apply(learner) is None
+        assert learner._last_skip_reason == "rate_limited"
+
+    def test_cooldown_cycles_block_second_apply(self):
+        learner = self._learner_after_first_apply()
+        thresholds = AUTO_APPLY_THRESHOLDS[HEATING_TYPE_FLOOR_HYDRONIC]
+        learner._last_adjustment_time -= timedelta(hours=thresholds["cooldown_hours"] + 1)
+        learner._cycles_since_last_adjustment = thresholds["cooldown_cycles"] - 1
+
+        assert self._apply(learner) is None
+        assert learner._last_skip_reason == "rate_limited"
+
+        learner._cycles_since_last_adjustment = thresholds["cooldown_cycles"]
+        assert self._apply(learner) is not None
+
+
+class TestKiBoostCountsAsAdjustment:
+    """An undershoot Ki boost restarts the auto-apply cooldown so the two cannot stack."""
+
+    @staticmethod
+    def _boosting_learner():
+        learner = AdaptiveLearner(heating_type=HEATING_TYPE_FLOOR_HYDRONIC)
+        for _ in range(16):
+            learner.add_cycle_metrics(_undershoot_cycle())
+        learner.undershoot_detector.time_below_target = 4.0 * 3600.0
+        learner.undershoot_detector.thermal_debt = 2.4
+        return learner
+
+    def test_boost_marks_adjustment_without_clearing_history(self):
+        learner = self._boosting_learner()
+
+        assert learner.check_undershoot_adjustment(cycles_completed=0, current_ki=10.0) is not None
+
+        assert learner._last_adjustment_time is not None
+        assert learner._cycles_since_last_adjustment == 0
+        assert learner.get_cycle_count() == 16
+
+    def test_auto_apply_waits_after_boost(self):
+        learner = self._boosting_learner()
+        learner.set_physics_baseline(100.0, 10.0, 2.0)
+        new_ki = learner.check_undershoot_adjustment(cycles_completed=0, current_ki=10.0)
+
+        assert learner.calculate_pid_adjustment(100.0, new_ki, 2.0, check_auto_apply=True) is None
+        assert learner._last_skip_reason == "rate_limited"
+
+    def test_physics_rate_boost_marks_adjustment(self):
+        from unittest.mock import MagicMock
+
+        from custom_components.adaptive_climate.climate_cycle_handlers import ClimateCycleHandlersMixin
+
+        learner = AdaptiveLearner(heating_type=HEATING_TYPE_FLOOR_HYDRONIC)
+        thermostat = MagicMock()
+        thermostat.entity_id = "climate.test"
+        thermostat._pid_controller.ki = 10.0
+        thermostat._gains_manager.get_history.return_value = []
+        underperforming = {
+            "is_underperforming": True,
+            "suggested_ki_boost": 1.2,
+            "learned_rate": 0.1,
+            "expected_rate": 0.2,
+            "ratio": 0.5,
+            "observation_count": 5,
+        }
+
+        with patch.object(learner, "check_physics_rate_underperformance", return_value=underperforming):
+            ClimateCycleHandlersMixin._check_physics_rate_and_boost_ki(thermostat, learner)
+
+        thermostat._gains_manager.set_gains.assert_called_once()
+        assert learner._last_adjustment_time is not None
+        assert learner._cycles_since_last_adjustment == 0
+
+
+def _physics_boost(learner):
+    """Run the physics-rate Ki boost against an underperforming result; returns the mock thermostat."""
+    from unittest.mock import MagicMock
+
+    from custom_components.adaptive_climate.climate_cycle_handlers import ClimateCycleHandlersMixin
+
+    thermostat = MagicMock()
+    thermostat.entity_id = "climate.test"
+    thermostat._pid_controller.ki = 10.0
+    thermostat._gains_manager.get_history.return_value = []
+    underperforming = {
+        "is_underperforming": True,
+        "suggested_ki_boost": 1.2,
+        "learned_rate": 0.1,
+        "expected_rate": 0.2,
+        "ratio": 0.5,
+        "observation_count": 5,
+    }
+    with patch.object(learner, "check_physics_rate_underperformance", return_value=underperforming):
+        ClimateCycleHandlersMixin._check_physics_rate_and_boost_ki(thermostat, learner)
+    return thermostat
+
+
+class TestNoKiBoostDuringValidation:
+    """A boost inside the validation window makes rollback (history[-2]) restore the auto-applied gains."""
+
+    def test_undershoot_boost_waits_for_validation(self):
+        learner = TestKiBoostCountsAsAdjustment._boosting_learner()
+        learner.start_validation_mode(baseline_overshoot=0.1)
+
+        assert learner.check_undershoot_adjustment(cycles_completed=0, current_ki=10.0) is None
+
+    def test_physics_rate_boost_waits_for_validation(self):
+        learner = AdaptiveLearner(heating_type=HEATING_TYPE_FLOOR_HYDRONIC)
+        learner.start_validation_mode(baseline_overshoot=0.1)
+
+        _physics_boost(learner)._gains_manager.set_gains.assert_not_called()
+
+
+class TestSafetyNetFollowsLearningStatus:
+    """The PID integral-decay safety net stays on until learning reaches tuned or optimized."""
+
+    @staticmethod
+    def _learner(confidence):
+        learner = AdaptiveLearner(heating_type=HEATING_TYPE_RADIATOR)
+        for _ in range(8):
+            learner.add_cycle_metrics(_undershoot_cycle())
+        learner._heating_auto_apply_count = 2
+        learner._contribution_tracker._heating_recovery_cycle_count = 20
+        learner._heating_convergence_confidence = confidence
+        return learner
+
+    def test_count_hidden_until_tuned(self):
+        assert self._learner(0.1).get_safety_net_auto_apply_count() == 0
+
+    def test_count_passed_once_tuned(self):
+        assert self._learner(0.96).get_safety_net_auto_apply_count() == 2
+
+    def test_control_loop_resyncs_controller(self):
+        from unittest.mock import MagicMock
+
+        from custom_components.adaptive_climate.climate_control import ClimateControlMixin
+        from custom_components.adaptive_climate.const import DOMAIN
+
+        coordinator = MagicMock()
+        coordinator.get_zone_data.return_value = {"adaptive_learner": self._learner(0.1)}
+        thermostat = MagicMock()
+        thermostat._zone_id = "zone"
+        thermostat.hass.data = {DOMAIN: {"coordinator": coordinator}}
+
+        ClimateControlMixin._async_schedule_milestone_check(thermostat)
+
+        thermostat._pid_controller.set_auto_apply_count.assert_called_once_with(0)

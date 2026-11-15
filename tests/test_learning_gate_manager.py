@@ -39,6 +39,7 @@ class TestLearningGateManager:
         mock = Mock()
         mock.get_cycle_count.return_value = 0
         mock.get_convergence_confidence.return_value = 0.0
+        mock.get_auto_apply_count.return_value = 0
         return mock
 
     @pytest.fixture
@@ -550,3 +551,41 @@ class TestLearningGateManager:
 
         result = manager.get_allowed_delta()
         assert result is None
+
+
+class TestSetbackSurvivesAutoApply:
+    """An auto-apply clears cycle history but must not switch night setback off."""
+
+    @staticmethod
+    def _manager(learner):
+        night_setback = Mock()
+        night_setback.in_learning_grace_period = False
+        return LearningGateManager(
+            night_setback_controller=night_setback,
+            contact_sensor_handler=None,
+            humidity_detector=None,
+            get_adaptive_learner=lambda: learner,
+            heating_type=HeatingType.FLOOR_HYDRONIC,
+        )
+
+    def test_delta_kept_after_auto_apply_clears_history(self):
+        from homeassistant.components.climate import HVACMode
+
+        from custom_components.adaptive_climate.adaptive.cycle_analysis import CycleMetrics
+        from custom_components.adaptive_climate.adaptive.learning import AdaptiveLearner
+
+        learner = AdaptiveLearner(heating_type=HeatingType.FLOOR_HYDRONIC)
+        for _ in range(5):
+            learner.add_cycle_metrics(CycleMetrics(overshoot=1.0, oscillations=0, settling_time=30.0))
+        manager = self._manager(learner)
+        assert manager.get_allowed_delta() == 0.5
+
+        learner.clear_history(HVACMode.HEAT)
+        learner.increment_auto_apply_count(HVACMode.HEAT)
+
+        assert manager.get_allowed_delta() == 0.5
+
+    def test_fresh_zone_still_suppressed(self):
+        from custom_components.adaptive_climate.adaptive.learning import AdaptiveLearner
+
+        assert self._manager(AdaptiveLearner(heating_type=HeatingType.FLOOR_HYDRONIC)).get_allowed_delta() == 0.0

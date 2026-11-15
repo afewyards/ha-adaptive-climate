@@ -456,8 +456,8 @@ class CycleMetricsRecorder:
 
         start_temp = cycle_start_temp if cycle_start_temp is not None else temperature_history[0][1]
 
-        # Calculate starting delta for weighted learning (target - actual)
-        starting_delta = target_temp - start_temp
+        # Calculate starting delta for weighted learning (target - actual); rounded so 0.1° readings give exact gaps
+        starting_delta = round(target_temp - start_temp, 6)
 
         # Calculate transport delay in seconds for metric calculations
         transport_delay_seconds = (self._transport_delay_minutes or 0) * 60
@@ -470,13 +470,9 @@ class CycleMetricsRecorder:
             target_temp,
             transport_delay_seconds=transport_delay_seconds,
         )
-        # C04: Undershoot must only consider the settling window (after heat delivery ends),
-        # not the raw cold pre-cycle temperature.  Using the full history causes every
-        # morning recovery cycle to report undershoot ≈ setback delta even when the
-        # target was fully reached, triggering false Ki boosts via UndershootDetector.
-        settling_start = self.get_settling_start_time()
-        settling_history = [(t, v) for t, v in temperature_history if settling_start is None or t >= settling_start]
-        undershoot = calculate_undershoot(settling_history or temperature_history, target_temp)
+        # Measured from the cycle's peak, not a settling window: the last valve close can be
+        # missing, stale or later than the last sample, which put the cold start back in.
+        undershoot = calculate_undershoot(temperature_history, target_temp)
         settling_time = calculate_settling_time(temperature_history, target_temp, reference_time=self._device_off_time)
         oscillations = count_oscillations(temperature_history, target_temp)
         # Use cold_tolerance if available, else default (0.2) from calculate_rise_time
@@ -521,7 +517,7 @@ class CycleMetricsRecorder:
         # Calculate inter_cycle_drift if we have previous cycle end temp
         inter_cycle_drift = None
         if self._prev_cycle_end_temp is not None and start_temp is not None:
-            inter_cycle_drift = start_temp - self._prev_cycle_end_temp
+            inter_cycle_drift = round(start_temp - self._prev_cycle_end_temp, 6)
 
         # Calculate settling_mae
         settling_mae = calculate_settling_mae(
@@ -727,39 +723,3 @@ class CycleMetricsRecorder:
 
         # Default to 30 minutes (radiator-like default)
         return 30
-
-    def get_settling_start_time(self) -> datetime | None:
-        """Calculate when the settling window actually starts.
-
-        The settling window starts after:
-        1. Valve actuation time (half, as valve closes midway)
-        2. Transport delay (heat in transit after valve closes)
-
-        This ensures we're measuring settling behavior after all heat delivery
-        has completed, not while residual heat is still arriving.
-
-        Returns:
-            Datetime when settling starts, or None if device_off_time not set
-        """
-        if self._device_off_time is None:
-            return None
-
-        # Start with device off time
-        settling_start = self._device_off_time
-        total_delay_seconds = 0.0
-
-        # Add half valve actuation time (valve closes midway)
-        if self._valve_actuation_time > 0:
-            total_delay_seconds += self._valve_actuation_time / 2.0
-
-        # Add transport delay (heat in transit)
-        if self._transport_delay_minutes and self._transport_delay_minutes > 0:
-            total_delay_seconds += self._transport_delay_minutes * 60.0
-
-        # Apply delay if any
-        if total_delay_seconds > 0:
-            from datetime import timedelta
-
-            settling_start = settling_start + timedelta(seconds=total_delay_seconds)
-
-        return settling_start

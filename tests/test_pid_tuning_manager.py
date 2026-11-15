@@ -410,8 +410,9 @@ async def test_auto_apply_adaptive_pid():
     assert result["applied"] is True
     assert result["recommendation"] is not None
 
-    # Verify integral was cleared via gains_manager (D4: centralized mutation)
-    gains_manager.set_integral.assert_called_once_with(0.0, PIDChangeReason.AUTO_APPLY)
+    # Integral is in output units, so a Ki change needs no integral change
+    gains_manager.set_integral.assert_not_called()
+    gains_manager.scale_integral.assert_not_called()
 
     # Verify gains were set with AUTO_APPLY reason
     assert gains_manager.set_gains.called
@@ -459,6 +460,9 @@ async def test_rollback_pid():
 
     # get_history called with current hvac_mode (no coordinator access needed)
     gains_manager.get_history.assert_called_once_with(mock_state._hvac_mode)
+
+    # Integral is in output units; zeroing it would drop the output by the whole heat demand
+    gains_manager.set_integral.assert_not_called()
 
     # Gains applied with ROLLBACK reason using history[-2] values
     gains_manager.set_gains.assert_called_once()
@@ -814,3 +818,95 @@ class TestRollbackUsesGainsHistory:
 
         with pytest.raises(Exception, match="No previous gains"):
             await manager.async_rollback_pid()
+
+
+def _undershoot_learner_with_cooling_history():
+    from homeassistant.components.climate import HVACMode
+
+    from custom_components.adaptive_climate.adaptive.cycle_analysis import CycleMetrics
+    from custom_components.adaptive_climate.adaptive.learning import AdaptiveLearner
+
+    learner = AdaptiveLearner(heating_type=HeatingType.FLOOR_HYDRONIC)
+    for _ in range(8):
+        learner.add_cycle_metrics(
+            CycleMetrics(
+                overshoot=0.0, undershoot=0.5, oscillations=0, settling_time=30, rise_time=30, starting_delta=0.2
+            ),
+            HVACMode.HEAT,
+        )
+    for _ in range(3):
+        learner.add_cycle_metrics(CycleMetrics(overshoot=0.1, oscillations=0, settling_time=20.0), HVACMode.COOL)
+    learner._cooling_convergence_confidence = 0.3
+    learner.set_physics_baseline(100.0, 10.0, 2.0)
+    return learner
+
+
+def _manager_with_learner(learner, gains_manager):
+    mock_state = MockPIDTuningManagerState()
+    mock_state._kp, mock_state._ki, mock_state._kd = 100.0, 10.0, 2.0
+    mock_state._coordinator = MagicMock()
+    mock_state._coordinator.get_adaptive_learner.return_value = learner
+    pid_controller = MagicMock(spec=PID)
+    manager = PIDTuningManager(
+        thermostat_state=mock_state,
+        pid_controller=pid_controller,
+        gains_manager=gains_manager,
+        async_control_heating=AsyncMock(),
+        async_write_ha_state=AsyncMock(),
+    )
+    return manager
+
+
+@pytest.mark.asyncio
+async def test_auto_apply_clears_only_applied_mode_and_keeps_integral():
+    from homeassistant.components.climate import HVACMode
+
+    learner = _undershoot_learner_with_cooling_history()
+    gains_manager = MagicMock()
+    manager = _manager_with_learner(learner, gains_manager)
+
+    result = await manager.async_auto_apply_adaptive_pid(outdoor_temp=None, mode=HVACMode.HEAT)
+
+    assert result["applied"] is True
+    gains_manager.set_integral.assert_not_called()
+    gains_manager.scale_integral.assert_not_called()
+    assert learner.get_cycle_count(HVACMode.HEAT) == 0
+    assert learner.get_cycle_count(HVACMode.COOL) == 3
+    assert learner.get_convergence_confidence(HVACMode.COOL) == 0.3
+    assert learner.is_in_validation_mode()
+
+
+@pytest.mark.asyncio
+async def test_auto_apply_keeps_safety_net_on_until_tuned():
+    """The applied mode restarts at 'collecting', so the controller sees count 0 and keeps integral decay."""
+    from homeassistant.components.climate import HVACMode
+
+    learner = _undershoot_learner_with_cooling_history()
+    manager = _manager_with_learner(learner, MagicMock())
+
+    result = await manager.async_auto_apply_adaptive_pid(outdoor_temp=None, mode=HVACMode.HEAT)
+
+    assert result["applied"] is True
+    assert learner.get_auto_apply_count(HVACMode.HEAT) == 1
+    manager._pid_controller.set_auto_apply_count.assert_called_once_with(0)
+
+
+@pytest.mark.asyncio
+async def test_rollback_clears_mode_history_and_restarts_cooldown():
+    """Cycles run under the rolled-back gains must not feed the next recommendation."""
+    from homeassistant.components.climate import HVACMode
+
+    learner = _undershoot_learner_with_cooling_history()
+    gains_manager = MagicMock()
+    gains_manager.get_history.return_value = [
+        {"kp": 100.0, "ki": 8.0, "kd": 2.0},
+        {"kp": 100.0, "ki": 10.0, "kd": 2.0},
+    ]
+    manager = _manager_with_learner(learner, gains_manager)
+
+    await manager.async_rollback_pid()
+
+    assert learner.get_cycle_count(HVACMode.HEAT) == 0
+    assert learner.get_cycle_count(HVACMode.COOL) == 3
+    assert learner._last_adjustment_time is not None
+    assert learner._cycles_since_last_adjustment == 0

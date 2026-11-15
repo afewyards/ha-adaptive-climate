@@ -4358,6 +4358,65 @@ class TestModeSpecificCycleHistories:
         assert learner._heating_convergence_confidence == 0.0
         assert learner._cooling_convergence_confidence == 0.0
 
+    @staticmethod
+    def _learner_with_both_modes():
+        from homeassistant.components.climate import HVACMode
+
+        learner = AdaptiveLearner(heating_type="floor_hydronic")
+        for _ in range(3):
+            learner.add_cycle_metrics(CycleMetrics(overshoot=0.5, oscillations=0, settling_time=30.0), HVACMode.HEAT)
+            learner.add_cycle_metrics(CycleMetrics(overshoot=0.3, oscillations=0, settling_time=20.0), HVACMode.COOL)
+        learner._heating_convergence_confidence = 0.4
+        learner._cooling_convergence_confidence = 0.3
+        tracker = learner._contribution_tracker
+        tracker._heating_maintenance_contribution = 0.2
+        tracker._cooling_maintenance_contribution = 0.1
+        tracker._heating_recovery_cycle_count = 2
+        tracker._cooling_recovery_cycle_count = 1
+        tracker._heating_rate_contribution = 0.05
+        learner.undershoot_detector._consecutive_failures = 2
+        return learner
+
+    def test_clear_history_for_heat_keeps_cooling(self):
+        from homeassistant.components.climate import HVACMode
+
+        learner = self._learner_with_both_modes()
+
+        learner.clear_history(HVACMode.HEAT)
+
+        tracker = learner._contribution_tracker
+        assert learner.get_cycle_count(HVACMode.HEAT) == 0
+        assert learner.get_convergence_confidence(HVACMode.HEAT) == 0.0
+        assert tracker.get_maintenance_contribution(HVACMode.HEAT) == 0.0
+        assert tracker.get_recovery_cycle_count(HVACMode.HEAT) == 0
+        assert tracker.get_heating_rate_contribution() == 0.0
+        assert learner.undershoot_detector._consecutive_failures == 0
+        assert learner.get_cycle_count(HVACMode.COOL) == 3
+        assert learner.get_convergence_confidence(HVACMode.COOL) == 0.3
+        assert tracker.get_maintenance_contribution(HVACMode.COOL) == 0.1
+        assert tracker.get_recovery_cycle_count(HVACMode.COOL) == 1
+
+    def test_clear_history_for_cool_keeps_heating(self):
+        from homeassistant.components.climate import HVACMode
+
+        learner = self._learner_with_both_modes()
+        heating_rate_learner = learner._heating_rate_learner
+
+        learner.clear_history(HVACMode.COOL)
+
+        tracker = learner._contribution_tracker
+        assert learner.get_cycle_count(HVACMode.COOL) == 0
+        assert learner.get_convergence_confidence(HVACMode.COOL) == 0.0
+        assert tracker.get_maintenance_contribution(HVACMode.COOL) == 0.0
+        assert tracker.get_recovery_cycle_count(HVACMode.COOL) == 0
+        assert learner.get_cycle_count(HVACMode.HEAT) == 3
+        assert learner.get_convergence_confidence(HVACMode.HEAT) == 0.4
+        assert tracker.get_maintenance_contribution(HVACMode.HEAT) == 0.2
+        assert tracker.get_recovery_cycle_count(HVACMode.HEAT) == 2
+        assert tracker.get_heating_rate_contribution() == 0.05
+        assert learner.undershoot_detector._consecutive_failures == 2
+        assert learner._heating_rate_learner is heating_rate_learner
+
     def test_backward_compatibility_mode_defaults_to_heat(self):
         """Test that existing calls without mode parameter default to heating mode."""
         learner = AdaptiveLearner()
@@ -4395,7 +4454,7 @@ class TestUndershootDetectorSerialization:
         detector_state = result["undershoot_detector"]
         assert detector_state["consecutive_failures"] == 3
         assert detector_state["cumulative_ki_multiplier"] == 1.5
-        assert result["format_version"] == 11
+        assert result["format_version"] == 12
 
     def test_serialize_undershoot_detector_empty_state(self):
         """Test to_dict serializes empty unified detector state (v10 format)."""
@@ -4408,7 +4467,7 @@ class TestUndershootDetectorSerialization:
         detector_state = result["undershoot_detector"]
         assert detector_state["consecutive_failures"] == 0
         assert detector_state["cumulative_ki_multiplier"] == 1.0
-        assert result["format_version"] == 11
+        assert result["format_version"] == 12
 
     def test_serialization_round_trip_with_undershoot_detector(self):
         """Test full serialization and restoration round-trip with unified detector state (v10)."""
@@ -4519,24 +4578,19 @@ class TestRecoveryCycleRiseTimeRelaxation:
             "even if rise_time exceeds rise_time_max"
         )
 
-    def test_recovery_cycle_rejected_without_rise_time(self):
-        """Recovery cycle with rise_time=None is still rejected (system never reached target).
-
-        rise_time=None means the system never reached the setpoint during the cycle.
-        Both before and after the impl change, this is a poor cycle for recovery.
-        """
+    def test_recovery_cycle_without_rise_time_rejected_when_still_far_below(self):
+        """Recovery cycle with rise_time=None and undershoot above the limit is a poor cycle."""
         from homeassistant.components.climate import HVACMode
 
         learner = AdaptiveLearner(heating_type="floor_hydronic")
         learner._convergence_confidence = 0.5  # Start with non-zero confidence
 
-        # Recovery cycle that never reached target (rise_time=None)
         cycle = CycleMetrics(
             overshoot=None,
-            undershoot=0.3,  # Failed to reach target
+            undershoot=0.6,  # Still well below target at the end
             oscillations=0,
             settling_time=None,
-            rise_time=None,  # Never reached setpoint
+            rise_time=None,
             settling_mae=None,
             inter_cycle_drift=None,
             starting_delta=2.0,  # Recovery cycle (>> 0.5°C threshold)
@@ -4544,11 +4598,29 @@ class TestRecoveryCycleRiseTimeRelaxation:
 
         learner.update_convergence_confidence(cycle, HVACMode.HEAT)
 
-        new_confidence = learner.get_convergence_confidence(HVACMode.HEAT)
-        # rise_time=None means target was never reached: must remain a poor cycle
-        assert new_confidence < 0.5, (
-            "Recovery cycle with rise_time=None (target never reached) should decrease confidence"
+        assert learner.get_convergence_confidence(HVACMode.HEAT) < 0.5
+
+    def test_recovery_cycle_without_rise_time_accepted_when_close_enough(self):
+        """Recovery cycle with rise_time=None is judged by undershoot and earns no heating-rate credit."""
+        from homeassistant.components.climate import HVACMode
+
+        learner = AdaptiveLearner(heating_type="floor_hydronic")
+
+        # Starts exactly 0.5 below (recovery) but within cold_tolerance, so rise_time is None
+        cycle = CycleMetrics(
+            overshoot=0.1,
+            undershoot=0.2,
+            oscillations=0,
+            settling_time=30,
+            rise_time=None,
+            starting_delta=0.5,
         )
+
+        learner.update_convergence_confidence(cycle, HVACMode.HEAT)
+
+        assert learner.get_convergence_confidence(HVACMode.HEAT) > 0.0
+        assert learner._contribution_tracker.get_recovery_cycle_count(HVACMode.HEAT) == 1
+        assert learner._contribution_tracker.get_heating_rate_contribution() == 0.0
 
     def test_maintenance_cycle_still_uses_strict_rise_time(self):
         """Maintenance cycle with rise_time=None is acceptable (already at target).
@@ -4583,3 +4655,96 @@ class TestRecoveryCycleRiseTimeRelaxation:
             "Maintenance cycle with rise_time=None should increase confidence "
             "(system was already at setpoint, no rise needed)"
         )
+
+
+class TestCycleLimitFloatNoise:
+    """Metrics from 0.1° readings arrive rounded, so a value on the limit passes it."""
+
+    @staticmethod
+    def _history(*temps):
+        from datetime import datetime, timedelta
+
+        base = datetime(2024, 1, 1, 6, 0)
+        return [(base + timedelta(minutes=10 * i), t) for i, t in enumerate(temps)]
+
+    def test_undershoot_at_limit_is_good(self):
+        from homeassistant.components.climate import HVACMode
+
+        from custom_components.adaptive_climate.adaptive.cycle_analysis import calculate_undershoot
+
+        learner = AdaptiveLearner(heating_type="floor_hydronic")
+        gap = calculate_undershoot(self._history(20.7, 20.7), 21.0)
+        cycle = CycleMetrics(
+            overshoot=None,
+            undershoot=gap,
+            oscillations=0,
+            settling_time=None,
+            rise_time=None,
+            starting_delta=round(21.0 - 20.7, 6),
+        )
+
+        learner.update_convergence_confidence(cycle, HVACMode.HEAT)
+
+        assert learner.get_convergence_confidence(HVACMode.HEAT) > 0.0
+
+    def test_overshoot_at_limit_is_good(self):
+        from homeassistant.components.climate import HVACMode
+
+        from custom_components.adaptive_climate.adaptive.cycle_analysis import calculate_overshoot
+
+        learner = AdaptiveLearner(heating_type="floor_hydronic")
+        cycle = CycleMetrics(
+            overshoot=calculate_overshoot(self._history(20.8, 21.3, 21.0), 21.0),
+            undershoot=0.0,
+            oscillations=0,
+            settling_time=20,
+            rise_time=None,
+            starting_delta=0.2,
+        )
+
+        learner.update_convergence_confidence(cycle, HVACMode.HEAT)
+
+        assert learner.get_convergence_confidence(HVACMode.HEAT) > 0.0
+
+    def test_undershoot_clearly_above_limit_is_poor(self):
+        from homeassistant.components.climate import HVACMode
+
+        learner = AdaptiveLearner(heating_type="floor_hydronic")
+        learner._convergence_confidence = 0.5
+        cycle = CycleMetrics(
+            overshoot=None,
+            undershoot=0.31,
+            oscillations=0,
+            settling_time=None,
+            rise_time=None,
+            starting_delta=0.31,
+        )
+
+        learner.update_convergence_confidence(cycle, HVACMode.HEAT)
+
+        assert learner.get_convergence_confidence(HVACMode.HEAT) < 0.5
+
+    def test_recovery_without_rise_time_not_classed_undershoot_when_within_limit(self):
+        """A poor recovery cycle (too many oscillations) without rise_time is CLEAN, not UNDERSHOOT."""
+        from unittest.mock import patch as _patch
+
+        from homeassistant.components.climate import HVACMode
+
+        from custom_components.adaptive_climate.adaptive.cycle_weight import CycleOutcome
+
+        learner = AdaptiveLearner(heating_type="floor_hydronic")
+        cycle = CycleMetrics(
+            overshoot=None,
+            undershoot=0.3,
+            oscillations=5,
+            settling_time=None,
+            rise_time=None,
+            starting_delta=1.0,
+        )
+
+        with _patch.object(
+            learner._weight_calculator, "calculate_weight", wraps=learner._weight_calculator.calculate_weight
+        ) as spy:
+            learner.update_convergence_confidence(cycle, HVACMode.HEAT)
+
+        assert spy.call_args.kwargs["outcome"] == CycleOutcome.CLEAN

@@ -49,6 +49,24 @@ class TestMaintenanceCap:
         # Floor is over cap, forced is under
         assert floor_gain < forced_gain
 
+    def test_clamp_maintenance_contribution_lowers_to_limit(self):
+        """Clamping lowers the mode's contribution to the limit, never raises it."""
+        from homeassistant.components.climate import HVACMode
+
+        tracker = ConfidenceContributionTracker(HeatingType.FLOOR_HYDRONIC)
+        tracker._heating_maintenance_contribution = 0.25
+        tracker._cooling_maintenance_contribution = 0.20
+
+        tracker.clamp_maintenance_contribution(0.05, HVACMode.HEAT)
+        assert tracker.get_maintenance_contribution(HVACMode.HEAT) == pytest.approx(0.05)
+        assert tracker.get_maintenance_contribution(HVACMode.COOL) == pytest.approx(0.20)
+
+        tracker.clamp_maintenance_contribution(0.50, HVACMode.HEAT)
+        assert tracker.get_maintenance_contribution(HVACMode.HEAT) == pytest.approx(0.05)
+
+        tracker.clamp_maintenance_contribution(0.0, HVACMode.COOL)
+        assert tracker.get_maintenance_contribution(HVACMode.COOL) == 0.0
+
 
 class TestHeatingRateCap:
     """Test heating rate confidence capping."""

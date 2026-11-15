@@ -1,0 +1,37 @@
+{
+  "format_version": 11,
+  "heating": {
+    "cycle_history": [
+      {"overshoot": null, "undershoot": 0.3000000000000007, "settling_time": null, "oscillations": 0, "rise_time": null, "starting_delta": 0.3000000000000007},
+      {"overshoot": 0.10000000000000142, "undershoot": 0.1999999999999993, "settling_time": 4.4, "oscillations": 0, "rise_time": null, "starting_delta": 0.3000000000000007},
+      {"overshoot": 0.0, "undershoot": 0.0, "settling_time": 10.0, "oscillations": 0, "rise_time": 5.0, "starting_delta": 0.0},
+      {"overshoot": 0.06, "undershoot": 0.03, "settling_time": 12.0, "oscillations": 0, "rise_time": 8.0}
+    ],
+    "auto_apply_count": 0,
+    "convergence_confidence": 0.12
+  },
+  "cooling": {
+    "cycle_history": [
+      {"overshoot": null, "undershoot": 0.5000000000000004, "settling_time": null, "oscillations": 0, "rise_time": null, "starting_delta": 0.5000000000000004}
+    ],
+    "auto_apply_count": 0,
+    "convergence_confidence": 0.0
+  },
+  "undershoot_detector": {
+    "cumulative_ki_multiplier": 1.0,
+    "last_adjustment_time": null,
+    "time_below_target": 0.0,
+    "thermal_debt": 0.0,
+    "consecutive_failures": 3
+  },
+  "contribution_tracker": {
+    "maintenance_contribution": 0.0,
+    "heating_rate_contribution": 0.0,
+    "recovery_cycle_count": 0
+  },
+  "heating_rate_learner": {},
+  "last_seasonal_shift": null,
+  "last_adjustment_time": null,
+  "consecutive_converged_cycles": 0,
+  "pid_converged_for_ke": false
+}

@@ -5,9 +5,48 @@ from datetime import datetime, timedelta
 import pytest
 
 from custom_components.adaptive_climate.adaptive.cycle_analysis import (
+    calculate_overshoot,
     calculate_settling_time,
+    calculate_undershoot,
     CycleMetrics,
 )
+
+
+def _history(*temps: float) -> list[tuple[datetime, float]]:
+    base = datetime(2024, 1, 1, 6, 0)
+    return [(base + timedelta(minutes=10 * i), t) for i, t in enumerate(temps)]
+
+
+class TestCalculateUndershoot:
+    """Undershoot is the deepest point below target at or after the cycle's highest reading."""
+
+    def test_cold_start_ignored_once_temperature_rises(self):
+        assert calculate_undershoot(_history(18.0, 19.5, 20.3, 20.1, 19.9), 20.0) == pytest.approx(0.1)
+
+    def test_recovery_reaching_target_has_no_undershoot(self):
+        assert calculate_undershoot(_history(18.0, 19.0, 20.0, 20.2, 20.1), 20.0) == 0.0
+
+    def test_dip_after_peak_counts(self):
+        assert calculate_undershoot(_history(19.8, 20.2, 19.5, 19.9), 20.0) == pytest.approx(0.5)
+
+    def test_partial_rise_measures_gap_left_after_best_point(self):
+        assert calculate_undershoot(_history(20.0, 20.4, 20.6, 20.5), 21.0) == pytest.approx(0.5)
+
+    def test_flat_or_falling_cycle_keeps_gap_from_start(self):
+        assert calculate_undershoot(_history(20.7, 20.7, 20.7), 21.0) == pytest.approx(0.3)
+        assert calculate_undershoot(_history(20.8, 20.7, 20.6), 21.0) == pytest.approx(0.4)
+
+    def test_empty_history(self):
+        assert calculate_undershoot([], 20.0) is None
+
+    def test_rounded_to_sensor_precision(self):
+        assert calculate_undershoot(_history(20.7, 20.7), 21.0) == 0.3
+
+
+def test_calculate_overshoot_rounded_to_sensor_precision():
+    history = _history(20.8, 21.1, 21.3, 21.0)
+    assert calculate_overshoot(history, 21.0) == 0.3
+    assert calculate_overshoot(history, 21.0, phase_aware=False) == 0.3
 
 
 class TestCalculateSettlingTime:
@@ -545,9 +584,9 @@ def test_calculate_overshoot_components_no_committed_heat():
         heating_rate=0.1 / 60,
     )
 
-    # All overshoot is controllable
+    # All overshoot is controllable; rounded so 21.3 - 21.0 compares as 0.3
     assert committed == 0.0
-    assert controllable == pytest.approx(0.3, abs=0.01)
+    assert controllable == 0.3
 
 
 def test_cycle_metrics_overshoot_split_fields():

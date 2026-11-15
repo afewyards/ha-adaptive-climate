@@ -499,11 +499,11 @@ class TestValidationFailureAndRollback:
         tracker.set_restoration_complete()
 
         # Enter validation mode with baseline
-        baseline_overshoot = 0.10
+        baseline_overshoot = 0.20  # convector overshoot_max
         adaptive_learner.start_validation_mode(baseline_overshoot)
 
         # Simulate 5 validation cycles with 40% worse overshoot (triggers rollback)
-        degraded_overshoot = baseline_overshoot * 1.4  # 0.14°C
+        degraded_overshoot = baseline_overshoot * 1.4  # 0.28°C
         for i in range(VALIDATION_CYCLE_COUNT):
             # Complete a cycle that produces the degraded metrics
             start_time = datetime(2024, 1, 1, 10 + i, 0, 0)

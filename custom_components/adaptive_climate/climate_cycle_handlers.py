@@ -155,6 +155,10 @@ class ClimateCycleHandlersMixin:
         Args:
             adaptive_learner: The AdaptiveLearner instance for this zone.
         """
+        # A boost during validation would make rollback (history[-2]) restore the auto-applied gains
+        if adaptive_learner.is_in_validation_mode():
+            return
+
         result = adaptive_learner.check_physics_rate_underperformance(
             tau=getattr(self, "_thermal_time_constant", None),
             area_m2=self._area_m2,
@@ -226,6 +230,8 @@ class ClimateCycleHandlersMixin:
 
         # Update cumulative multiplier in undershoot detector (kept for logging/debug only)
         adaptive_learner.undershoot_detector.cumulative_ki_multiplier *= suggested_boost
+        # Restart the auto-apply cooldown so an auto-apply cannot stack on this boost
+        adaptive_learner.mark_adjustment_applied()
 
         _LOGGER.warning(
             "%s: Physics rate check triggered Ki boost: learned=%.3f°C/h vs expected=%.3f°C/h "

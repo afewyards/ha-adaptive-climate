@@ -31,7 +31,7 @@ class TestV9FormatSerialization:
         data = learner.to_dict()
 
         # Should be v10 format
-        assert data["format_version"] == 11
+        assert data["format_version"] == CURRENT_VERSION
 
         # Should include contribution_tracker at top level
         assert "contribution_tracker" in data
@@ -102,7 +102,7 @@ class TestV9FormatSerialization:
         restored = restore_learner_from_dict(v10_data)
 
         # Should detect v10 format
-        assert restored["format_version"] == 11
+        assert restored["format_version"] == CURRENT_VERSION
 
         # Should have contribution_tracker_state
         assert "contribution_tracker_state" in restored
@@ -312,7 +312,7 @@ class TestV9ToV10Migration:
 
         # Serialize
         data = learner.to_dict()
-        assert data["format_version"] == 11
+        assert data["format_version"] == CURRENT_VERSION
         assert "heating_rate_learner" in data
 
         # Restore
@@ -334,9 +334,9 @@ class TestV9ToV10Migration:
 class TestBackwardCompatibility:
     """Test backward compatibility with existing serialization."""
 
-    def test_current_version_is_11(self):
-        """Test that CURRENT_VERSION constant is set to 11."""
-        assert CURRENT_VERSION == 11
+    def test_current_version_is_12(self):
+        """Test that CURRENT_VERSION constant is set to 12."""
+        assert CURRENT_VERSION == 12
 
     def test_v11_includes_all_prior_fields(self):
         """Test that v11 format includes all prior-version fields."""
@@ -412,7 +412,7 @@ class TestLastSeasonalShiftPersistence:
         learner1._validation._last_seasonal_shift = ts
 
         data = learner1.to_dict()
-        assert data["format_version"] == 11
+        assert data["format_version"] == CURRENT_VERSION
 
         learner2 = AdaptiveLearner(heating_type=HeatingType.FLOOR_HYDRONIC)
         learner2.restore_from_dict(data)
@@ -474,7 +474,7 @@ class TestLastSeasonalShiftPersistence:
 
         result = restore_learner_from_dict(v10_data)
 
-        assert result["format_version"] == 11
+        assert result["format_version"] == CURRENT_VERSION
         assert result["last_seasonal_shift"] is None
 
 
@@ -535,6 +535,56 @@ class TestVersionMigrations:
         # v10 → v11 migration adds null last_seasonal_shift
         assert result["last_seasonal_shift"] is None
 
+    def test_v11_drops_undershoot_that_repeats_the_start_gap(self):
+        """Undershoot measured from the cold start equals starting_delta; it becomes unknown."""
+        result = restore_learner_from_dict(self._load_fixture("learner_v11.json"))
+        stale, genuine, at_target, no_delta = result["heating_cycle_history"]
+
+        assert stale.undershoot is None
+        assert stale.starting_delta == 0.3
+        assert (genuine.overshoot, genuine.undershoot, genuine.starting_delta) == (0.1, 0.2, 0.3)
+        assert at_target.undershoot == 0.0
+        assert no_delta.undershoot == 0.03
+
+    def test_v11_drops_undershoot_above_the_start_gap(self):
+        """Dead time took the room below the start reading; the stale value is still the cold start."""
+        data = self._load_fixture("learner_v11.json")
+        data["heating"]["cycle_history"] = [
+            {"overshoot": 1.9, "undershoot": 1.9, "oscillations": 0, "rise_time": 30.0, "starting_delta": 0.9},
+            {"overshoot": 0.1, "undershoot": 0.2, "oscillations": 0, "rise_time": 30.0, "starting_delta": 0.9},
+        ]
+
+        inflated, settled = restore_learner_from_dict(data)["heating_cycle_history"]
+
+        assert inflated.undershoot is None
+        assert settled.undershoot == 0.2
+
+    @pytest.mark.parametrize("heating", [None, {"cycle_history": None}])
+    def test_v11_null_containers_migrate(self, heating):
+        data = self._load_fixture("learner_v11.json")
+        data["heating"] = heating
+
+        assert restore_learner_from_dict(data)["format_version"] == CURRENT_VERSION
+
+    def test_v11_cooling_undershoot_only_rounded(self):
+        result = restore_learner_from_dict(self._load_fixture("learner_v11.json"))
+        (cooling,) = result["cooling_cycle_history"]
+
+        assert (cooling.undershoot, cooling.starting_delta) == (0.5, 0.5)
+
+    def test_v11_restore_scan_ignores_dropped_undershoot(self):
+        """The chronic-approach restore scan does not count a cold start as a failure."""
+        stale = {"overshoot": None, "undershoot": 0.6, "oscillations": 0, "rise_time": None, "starting_delta": 0.6}
+        data = self._load_fixture("learner_v11.json")
+        data["heating"]["cycle_history"] = [dict(stale) for _ in range(6)]
+        data["undershoot_detector"]["consecutive_failures"] = 0
+        learner = AdaptiveLearner(heating_type=HeatingType.FLOOR_HYDRONIC, chronic_approach_historic_scan=True)
+
+        learner.restore_from_dict(data)
+
+        assert learner.undershoot_detector._consecutive_failures == 0
+        assert learner.to_dict()["format_version"] == CURRENT_VERSION
+
     def test_all_versions_produce_current_format(self):
         """After migration, format_version == CURRENT_VERSION for all fixtures."""
         for fname in [
@@ -545,6 +595,7 @@ class TestVersionMigrations:
             "learner_v8.json",
             "learner_v9.json",
             "learner_v10.json",
+            "learner_v11.json",
         ]:
             data = self._load_fixture(fname)
             result = restore_learner_from_dict(data)

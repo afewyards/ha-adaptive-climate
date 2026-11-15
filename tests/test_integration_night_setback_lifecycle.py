@@ -214,6 +214,7 @@ class TestLearningGateGraduation:
         mock_learner = MagicMock()
         mock_learner.get_cycle_count = MagicMock(return_value=0)
         mock_learner.get_convergence_confidence = MagicMock(return_value=0.0)
+        mock_learner.get_auto_apply_count = MagicMock(return_value=0)
 
         # Create learning gate manager
         learning_gate = LearningGateManager(
