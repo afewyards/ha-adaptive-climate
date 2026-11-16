@@ -4,7 +4,7 @@ Rules adjust Kp/Ki/Kd based on overshoot, undershoot, drift, oscillations. `auto
 - Not in validation mode, safety limits (lifetime, seasonal, drift), no seasonal shift block
 - A physics baseline is set (zones without `area_m2` get none, so they never auto-apply; manual apply still works)
 - `min_cycles` of history per heating type (doubled after the first apply; history is cleared on every apply)
-- Cooldown hours and cooldown cycles since the last adjustment. Undershoot, chronic-approach and physics-rate Ki boosts count as adjustments, so an auto-apply cannot stack on a boost. No Ki boost runs during validation, so one cannot stack on an apply either
+- Cooldown hours and cooldown cycles since the last adjustment. Undershoot and chronic-approach Ki boosts count as adjustments, so an auto-apply cannot stack on a boost. No Ki boost runs during validation, so one cannot stack on an apply either
 - Auto-rollback on degradation during validation: after 5 cycles, it fails when the average overshoot is above both baseline × 1.3 (`VALIDATION_DEGRADATION_THRESHOLD`) and the heating type's `overshoot_max`, so normal overshoot after a baseline with none does not roll back
 
 **Step size:** the confidence learning-rate multiplier (up to 2.0x at low confidence) is capped at 1.0 for auto-apply, so one apply moves the gains by the plain rule factor (undershoot 0.5°C: Ki ×2). Manual recommendations keep the multiplier. Each auto-applied gain is clipped to within 50% (`MAX_CUMULATIVE_DRIFT_PCT`) of its physics baseline (floor at baseline, undershoot 0.5°C: Ki ×1.5, not ×2). If the clipped gains equal the current ones, the apply is skipped (`no_change`). Manual recommendations are not clipped.

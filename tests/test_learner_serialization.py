@@ -314,6 +314,23 @@ class TestStartingDeltaSerialization:
         round_trip.restore_from_dict(learner.to_dict())
         assert [cycle.heat_below for cycle in round_trip.cycle_history] == [0.42, None, 0.0]
 
+    def test_output_saturated_round_trip_and_store_without_the_key(self):
+        learner = AdaptiveLearner(heating_type=HeatingType.FLOOR_HYDRONIC)
+        for share in (0.75, None):
+            learner.add_cycle_metrics(CycleMetrics(overshoot=0.1, rise_time=30.0, output_saturated=share))
+        data = learner.to_dict()
+        assert data["format_version"] == CURRENT_VERSION
+        assert [cycle["output_saturated"] for cycle in data["heating"]["cycle_history"]] == [0.75, None]
+
+        for cycle in data["heating"]["cycle_history"]:
+            del cycle["output_saturated"]
+        round_trip = AdaptiveLearner(heating_type=HeatingType.FLOOR_HYDRONIC)
+        round_trip.restore_from_dict(data)
+        assert [cycle.output_saturated for cycle in round_trip.cycle_history] == [None, None]
+
+        round_trip.restore_from_dict(learner.to_dict())
+        assert [cycle.output_saturated for cycle in round_trip.cycle_history] == [0.75, None]
+
 
 class TestV9ToV10Migration:
     """Test migration from v9 to v10 format."""

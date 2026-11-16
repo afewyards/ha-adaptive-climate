@@ -370,8 +370,12 @@ def check_undershoot_adjustment(
     current_ki: float,
     pid_history: list[dict] | None = None,
     mode: HVACMode = None,
+    physics_ki: float | None = None,
 ) -> float | None:
     """Check if Ki needs boosting for persistent undershoot (real-time + cycle modes).
+
+    The 3x cap is measured against ``physics_ki`` (physics computed now) and, when the
+    gain history still holds one, the last physics init/reset Ki; the lower wins.
 
     Returns the new Ki if an adjustment was applied, or None otherwise.
     """
@@ -380,7 +384,7 @@ def check_undershoot_adjustment(
         return None
 
     last_boost_utc = None
-    physics_baseline_ki: float | None = None
+    history_ki: float | None = None
     if pid_history:
         undershoot_utc = get_last_adjustment_time_from_history(pid_history, PIDChangeReason.UNDERSHOOT_BOOST.value)
         chronic_utc = get_last_adjustment_time_from_history(pid_history, "chronic_approach_ki_boost")
@@ -388,7 +392,9 @@ def check_undershoot_adjustment(
             last_boost_utc = max(undershoot_utc, chronic_utc)
         else:
             last_boost_utc = undershoot_utc or chronic_utc
-        physics_baseline_ki = get_physics_baseline_ki_from_history(pid_history)
+        history_ki = get_physics_baseline_ki_from_history(pid_history)
+    baselines = [ki for ki in (physics_ki, history_ki) if ki is not None and ki > 0]
+    physics_baseline_ki = min(baselines) if baselines else None
 
     if not learner._undershoot_detector.should_adjust_ki(
         cycles_completed, last_boost_utc, current_ki, physics_baseline_ki
@@ -554,10 +560,15 @@ class LearningCoordinator:
         update_convergence_confidence(self._learner, metrics, mode)
 
     def check_undershoot_adjustment(
-        self, cycles_completed: int, current_ki: float, pid_history: list[dict] | None = None, mode: HVACMode = None
+        self,
+        cycles_completed: int,
+        current_ki: float,
+        pid_history: list[dict] | None = None,
+        mode: HVACMode = None,
+        physics_ki: float | None = None,
     ) -> float | None:
         """Delegate to the free-function implementation."""
-        return check_undershoot_adjustment(self._learner, cycles_completed, current_ki, pid_history, mode)
+        return check_undershoot_adjustment(self._learner, cycles_completed, current_ki, pid_history, mode, physics_ki)
 
     def get_state(self, mode: HVACMode = None) -> LearningState:
         """Build and return a LearningState snapshot for the current learner state."""

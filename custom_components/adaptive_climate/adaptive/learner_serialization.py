@@ -104,6 +104,7 @@ def serialize_cycle(cycle: CycleMetrics) -> dict[str, Any]:
         "mode": cycle.mode,
         "starting_delta": cycle.starting_delta,
         "heat_below": cycle.heat_below,
+        "output_saturated": cycle.output_saturated,
     }
 
 
@@ -228,6 +229,7 @@ def _deserialize_cycle(cycle_dict: dict[str, Any]) -> CycleMetrics:
         mode=cycle_dict.get("mode"),
         starting_delta=cycle_dict.get("starting_delta"),
         heat_below=cycle_dict.get("heat_below"),
+        output_saturated=cycle_dict.get("output_saturated"),
     )
 
 

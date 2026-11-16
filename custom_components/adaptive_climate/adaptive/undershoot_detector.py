@@ -1,6 +1,6 @@
 """Unified undershoot detector for persistent temperature deficit conditions.
 
-Detects when the heating system is too weak to reach the setpoint using three modes:
+Detects when the heating system is too weak to reach the setpoint using two modes:
 
 1. Real-time mode: Tracks time below target and thermal debt accumulation during
    normal operation. Triggers Ki boost when system is persistently below setpoint.
@@ -9,12 +9,9 @@ Detects when the heating system is too weak to reach the setpoint using three mo
    system never reaches setpoint during rise phase. Indicates insufficient
    integral gain.
 
-3. Rate mode: Compares actual heating rate to expected rate from HeatingRateLearner.
-   Triggers Ki boost when rate is <60% of expected, with 2 consecutive stalls,
-   and duty <85% (system has headroom).
-
-All modes share cumulative multiplier tracking and cooldown enforcement to
-prevent runaway integral gain.
+Both modes share cumulative multiplier tracking and cooldown enforcement to
+prevent runaway integral gain. Neither counts time or cycles with the output
+saturated: more Ki cannot help when the output is already at its maximum.
 """
 
 from __future__ import annotations
@@ -22,12 +19,8 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 from math import exp
-from typing import TYPE_CHECKING
 
 from homeassistant.util import dt as dt_util
-
-if TYPE_CHECKING:
-    from .heating_rate_learner import HeatingRateLearner
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -36,6 +29,7 @@ from ..const import (
     MAX_UNDERSHOOT_KI_MULTIPLIER,
     MIN_CYCLES_FOR_LEARNING,
     SEVERE_UNDERSHOOT_MULTIPLIER,
+    UNDERSHOOT_SATURATED_CYCLE_SHARE,
     UNDERSHOOT_THRESHOLDS,
     UNDERSHOOT_TBT_DECAY_TAU,
 )
@@ -83,9 +77,6 @@ class UndershootDetector:
         # Cycle mode state
         self._consecutive_failures: int = 0
 
-        # Rate mode state
-        self._heating_rate_learner: HeatingRateLearner | None = None
-
     @property
     def time_below_target(self) -> float:
         """Get time below target (for backward compatibility)."""
@@ -117,18 +108,21 @@ class UndershootDetector:
         setpoint: float,
         dt_seconds: float,
         cold_tolerance: float,
+        saturated: bool = False,
     ) -> None:
         """Update real-time detector state with current temperature reading.
 
         Accumulates time and thermal debt when temperature is below the acceptable
-        range (setpoint - cold_tolerance). Resets counters when temperature rises
-        above setpoint. Holds state when within tolerance band.
+        range (setpoint - cold_tolerance) and the output is not saturated. Resets
+        counters when temperature rises above setpoint. Holds state when within
+        tolerance band.
 
         Args:
             temp: Current temperature in °C.
-            setpoint: Target temperature in °C.
+            setpoint: Target temperature in °C (the effective target the PID controls to).
             dt_seconds: Time elapsed since last update in seconds.
             cold_tolerance: Acceptable temperature deficit in °C.
+            saturated: Output is at or near its maximum; decay and reset still run.
         """
         error = setpoint - temp
 
@@ -140,7 +134,7 @@ class UndershootDetector:
         self._time_below_target *= decay
         self._thermal_debt *= decay
 
-        if error > cold_tolerance:
+        if error > cold_tolerance and not saturated:
             # Below acceptable range - accumulate time and debt
             self._time_below_target += dt_seconds
             # Convert to °C·hours for debt accumulation
@@ -179,8 +173,9 @@ class UndershootDetector:
         """Add a cycle for chronic approach failure detection.
 
         A cycle "fails" when:
-        - rise_time is None (never reached setpoint during rise)
+        - rise_time is None and overshoot is None (never reached setpoint)
         - undershoot >= threshold (significant gap remains)
+        - output saturated for less than half the samples (more Ki could help)
         - duration >= min_duration (avoid short transient cycles)
 
         Consecutive failures trigger Ki boost. Counter resets on any successful cycle.
@@ -239,8 +234,12 @@ class UndershootDetector:
         if cycle.undershoot is None or cycle.undershoot < undershoot_threshold:
             return False
 
-        # Must not have overshoot (can't be stuck below if you went above)
-        if cycle.overshoot is not None and cycle.overshoot > 0.0:
+        # Crossed target at all (can't be stuck below if you reached it)
+        if cycle.overshoot is not None:
+            return False
+
+        # More Ki cannot help an output that was already at its maximum
+        if (cycle.output_saturated or 0.0) >= UNDERSHOOT_SATURATED_CYCLE_SHARE:
             return False
 
         # Must be a substantial cycle (not a short transient)
@@ -362,9 +361,9 @@ class UndershootDetector:
     ) -> float:
         """Get the Ki multiplier for this heating type.
 
-        Returns the configured ki_multiplier, clamped to respect the safety cap.
-        When current_ki and physics_baseline_ki are provided, uses physics-based
-        cap (actual Ki ratio vs baseline). Falls back to cumulative tracking otherwise.
+        Returns the configured ki_multiplier, clamped so neither the cumulative
+        multiplier nor, when current_ki and physics_baseline_ki are provided, the
+        actual Ki ratio vs the physics baseline passes the safety cap.
 
         Args:
             current_ki: Current Ki gain value (for physics-based cap calculation).
@@ -375,14 +374,10 @@ class UndershootDetector:
         """
         multiplier = self._thresholds["ki_multiplier"]
 
-        # Clamp to respect cap
+        max_allowed = MAX_UNDERSHOOT_KI_MULTIPLIER / self.cumulative_ki_multiplier
         if current_ki is not None and physics_baseline_ki is not None and physics_baseline_ki > 0:
-            # Physics-based cap: limit ratio of current_ki to physics baseline
             actual_ratio = current_ki / physics_baseline_ki
-            max_allowed = MAX_UNDERSHOOT_KI_MULTIPLIER / actual_ratio
-        else:
-            # Fallback: cumulative tracking cap
-            max_allowed = MAX_UNDERSHOOT_KI_MULTIPLIER / self.cumulative_ki_multiplier
+            max_allowed = min(max_allowed, MAX_UNDERSHOOT_KI_MULTIPLIER / actual_ratio)
         return min(multiplier, max_allowed)
 
     def apply_adjustment(
@@ -505,109 +500,3 @@ class UndershootDetector:
         # Shared state
         self.cumulative_ki_multiplier = 1.0
         self.last_adjustment_time = None
-
-    def set_heating_rate_learner(self, learner: HeatingRateLearner) -> None:
-        """Set the HeatingRateLearner for rate-based undershoot detection.
-
-        Args:
-            learner: HeatingRateLearner instance to use for rate comparisons.
-        """
-        self._heating_rate_learner = learner
-
-    def check_rate_based_undershoot(
-        self,
-        current_rate: float,
-        delta: float,
-        outdoor_temp: float,
-        current_ki: float | None = None,
-        physics_baseline_ki: float | None = None,
-    ) -> float | None:
-        """Check for rate-based undershoot using HeatingRateLearner.
-
-        Triggers when ALL conditions are met:
-        1. Current rate < 60% of expected rate (is_underperforming)
-        2. 2 consecutive stalled sessions (should_boost_ki)
-        3. Average duty < 85% (system has headroom, not capacity limited)
-        4. Sufficient observations (≥5) for reliable comparison
-
-        Args:
-            current_rate: Current observed heating rate in °C/h.
-            delta: Temperature delta (setpoint - current_temp) in °C.
-            outdoor_temp: Current outdoor temperature in °C.
-            current_ki: Current Ki gain value (for physics-based cap calculation).
-            physics_baseline_ki: Physics-baseline Ki value (for physics-based cap calculation).
-
-        Returns:
-            Ki multiplier if conditions met, None otherwise.
-        """
-        # Must have heating rate learner
-        if self._heating_rate_learner is None:
-            return None
-
-        # Check if rate is underperforming (< 60% of expected)
-        if not self._heating_rate_learner.is_underperforming(current_rate, delta, outdoor_temp):
-            return None
-
-        # Check if learner recommends Ki boost (2 stalls + duty < 85%)
-        if not self._heating_rate_learner.should_boost_ki():
-            return None
-
-        # All conditions met - return Ki multiplier
-        multiplier = self._thresholds["ki_multiplier"]
-
-        # Clamp to respect cap (physics-based if available, else cumulative tracking)
-        if current_ki is not None and physics_baseline_ki is not None and physics_baseline_ki > 0:
-            actual_ratio = current_ki / physics_baseline_ki
-            max_allowed = MAX_UNDERSHOOT_KI_MULTIPLIER / actual_ratio
-        else:
-            max_allowed = MAX_UNDERSHOOT_KI_MULTIPLIER / self.cumulative_ki_multiplier
-        return min(multiplier, max_allowed)
-
-    def apply_rate_adjustment(
-        self,
-        current_ki: float | None = None,
-        physics_baseline_ki: float | None = None,
-    ) -> float:
-        """Apply rate-based Ki adjustment and update state.
-
-        Updates cumulative multiplier, records adjustment time, and
-        acknowledges the boost in the heating rate learner (resets stall counter).
-
-        Args:
-            current_ki: Current Ki gain value (for physics-based cap calculation).
-            physics_baseline_ki: Physics-baseline Ki value (for physics-based cap calculation).
-
-        Returns:
-            The multiplier that was applied.
-        """
-        multiplier = self._thresholds["ki_multiplier"]
-
-        # Clamp to respect cap (physics-based if available, else cumulative tracking)
-        if current_ki is not None and physics_baseline_ki is not None and physics_baseline_ki > 0:
-            actual_ratio = current_ki / physics_baseline_ki
-            max_allowed = MAX_UNDERSHOOT_KI_MULTIPLIER / actual_ratio
-        else:
-            max_allowed = MAX_UNDERSHOOT_KI_MULTIPLIER / self.cumulative_ki_multiplier
-        # C08: clamp ≥ 1.0 to prevent negative-multiplier corruption of cumulative tracker
-        multiplier = max(1.0, min(multiplier, max_allowed))
-
-        # Update shared cumulative multiplier, clamped to [1.0, cap] for safety
-        self.cumulative_ki_multiplier = min(
-            MAX_UNDERSHOOT_KI_MULTIPLIER,
-            max(1.0, self.cumulative_ki_multiplier * multiplier),
-        )
-
-        # Record adjustment time for cooldown enforcement (wall-clock, survives restarts)
-        self.last_adjustment_time = dt_util.utcnow()
-
-        # Acknowledge boost in heating rate learner (resets stall counter)
-        if self._heating_rate_learner is not None:
-            self._heating_rate_learner.acknowledge_ki_boost()
-
-        _LOGGER.info(
-            "Applied rate-based undershoot Ki adjustment: %.3fx (cumulative: %.3fx)",
-            multiplier,
-            self.cumulative_ki_multiplier,
-        )
-
-        return multiplier

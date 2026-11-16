@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 from homeassistant.util import dt as dt_util
 
+from .cycle_samples import CycleSamples
+
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
     from ..adaptive.learning import AdaptiveLearner
@@ -75,6 +77,7 @@ class CycleTrackerManager:
         valve_actuation_time: float = 0.0,
         ke_manager: KeManager | None = None,
         get_heat_below: Callable[[], bool | None] | None = None,
+        get_output_saturated: Callable[[], bool] | None = None,
     ) -> None:
         """Initialize the cycle tracker manager.
 
@@ -97,6 +100,7 @@ class CycleTrackerManager:
             valve_actuation_time: Valve actuation time in seconds (default: 0.0)
             ke_manager: KeManager instance for persisting Ke observations (M07).
             get_heat_below: Callback: is a zone on the floor below heating (None when unknown)
+            get_output_saturated: Callback: is the output at or near its maximum
         """
         from ..const import (
             SETTLING_TIMEOUT_MULTIPLIER,
@@ -114,8 +118,7 @@ class CycleTrackerManager:
         self._get_hvac_mode = get_hvac_mode
         self._get_in_grace_period = get_in_grace_period
         self._get_is_device_active = get_is_device_active
-        self._get_outdoor_temp = get_outdoor_temp
-        self._get_heat_below = get_heat_below
+        self._samples = CycleSamples(get_outdoor_temp, get_heat_below, get_output_saturated)
         self._on_validation_failed = on_validation_failed
         self._on_auto_apply_check = on_auto_apply_check
         self._dispatcher = dispatcher
@@ -130,10 +133,6 @@ class CycleTrackerManager:
         # on temperature_history[0] (which may be evicted from the deque).
         self._temperature_history: deque[tuple[datetime, float]] = deque(maxlen=5000)
         self._cycle_start_temp: float | None = None
-        # H08: bounded deque instead of unbounded list; outdoor temp updates are
-        # infrequent so 500 samples is ample for a single cycle.
-        self._outdoor_temp_history: deque[tuple[datetime, float]] = deque(maxlen=500)
-        self._heat_below_history: deque[tuple[datetime, bool | None]] = deque(maxlen=5000)
         self._settling_timeout_handle = None
         self._last_interruption_reason: str | None = None  # Persists across cycle resets
         self._restoration_complete: bool = False  # Gate temperature updates until restoration done
@@ -401,9 +400,10 @@ class CycleTrackerManager:
                 cycle_target_temp=self._cycle_target_temp,
                 cycle_state_value=self._state.value,
                 temperature_history=list(self._temperature_history),
-                outdoor_temp_history=list(self._outdoor_temp_history),
+                outdoor_temp_history=list(self._samples.outdoor),
                 cycle_start_temp=self._cycle_start_temp,
-                heat_below_history=list(self._heat_below_history),
+                heat_below_history=list(self._samples.heat_below),
+                output_saturated=self._samples.saturated_share(),
             )
 
         # Transition to new state
@@ -411,8 +411,7 @@ class CycleTrackerManager:
         self._cycle_start_time = event.timestamp
         self._cycle_target_temp = self._get_target_temp()
         self._temperature_history.clear()
-        self._outdoor_temp_history.clear()
-        self._heat_below_history.clear()
+        self._samples.clear()
         # Clear last interruption reason when starting a new cycle
         self._last_interruption_reason = None
         # Note: clamping state is cleared by reset_cycle_metrics() call above
@@ -653,16 +652,8 @@ class CycleTrackerManager:
         if self._state not in (CycleState.HEATING, CycleState.COOLING, CycleState.SETTLING):
             return
 
-        # Append temperature sample
         self._temperature_history.append((timestamp, temperature))
-
-        # Also track outdoor temperature if available
-        if self._get_outdoor_temp is not None:
-            outdoor_temp = self._get_outdoor_temp()
-            if outdoor_temp is not None:
-                self._outdoor_temp_history.append((timestamp, outdoor_temp))
-        if self._get_heat_below is not None:
-            self._heat_below_history.append((timestamp, self._get_heat_below()))
+        self._samples.take(timestamp)
 
         # Check for settling completion during SETTLING state
         if self._state == CycleState.SETTLING and not self._finalizing:
@@ -718,8 +709,7 @@ class CycleTrackerManager:
         """
         # Clear temperature history
         self._temperature_history.clear()
-        self._outdoor_temp_history.clear()
-        self._heat_below_history.clear()
+        self._samples.clear()
 
         # Reset cycle tracking variables
         self._cycle_start_time = None
@@ -836,9 +826,10 @@ class CycleTrackerManager:
             cycle_target_temp=self._cycle_target_temp,
             cycle_state_value=self._state.value,
             temperature_history=list(self._temperature_history),
-            outdoor_temp_history=list(self._outdoor_temp_history),
+            outdoor_temp_history=list(self._samples.outdoor),
             cycle_start_temp=self._cycle_start_temp,
-            heat_below_history=list(self._heat_below_history),
+            heat_below_history=list(self._samples.heat_below),
+            output_saturated=self._samples.saturated_share(),
         )
 
         # Reset cycle state (clears interruption flags and transitions to IDLE)

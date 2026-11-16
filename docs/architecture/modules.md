@@ -31,6 +31,7 @@
 | `HeaterController` | PWM/valve actuation |
 | `PWMController` | Duty accumulation, PWM switching |
 | `CycleTrackerManager` | IDLE→HEATING→SETTLING state machine |
+| `cycle_samples.py` | Per-cycle outdoor, heat-below and output-saturation samples |
 | `CycleMetricsRecorder` | Cycle validation, metrics |
 | `TemperatureManager` | Temperature tracking |
 | `KeManager` | Outdoor compensation |

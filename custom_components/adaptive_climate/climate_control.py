@@ -11,8 +11,9 @@ import time
 from homeassistant.components.climate import HVACMode
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, PIDChangeReason
+from .const import DOMAIN, UNDERSHOOT_SATURATION_FRACTION, PIDChangeReason
 from .managers.events import TemperatureUpdateEvent
+from .managers.pid_tuning import calculate_physics_gains
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -23,6 +24,14 @@ class ClimateControlMixin:
     This mixin encapsulates the core heating/cooling control logic including
     PID calculation, pause management, and zone demand coordination.
     """
+
+    @property
+    def _output_saturated(self) -> bool:
+        """Heating output at or above 95% of its maximum: more Ki cannot raise it."""
+        return (
+            self._hvac_mode == HVACMode.HEAT
+            and self._control_output >= UNDERSHOOT_SATURATION_FRACTION * self._pid_controller.out_max
+        )
 
     async def _async_control_heating(
         self, time_func: object = None, calc_pid: object = False, is_temp_sensor_update: bool = False
@@ -174,20 +183,31 @@ class ClimateControlMixin:
                             current_time = time.monotonic()
                             dt_seconds = current_time - self._last_control_time if self._last_control_time > 0 else 0.0
 
-                            # Update undershoot detector
+                            # Judge against the target the PID controls to (setback, contact and cooling clamps)
+                            effective_target, _, _ = self._calculate_night_setback_adjustment()
                             adaptive_learner.update_undershoot_detector(
                                 self._current_temp,
-                                self._target_temp,
+                                effective_target,
                                 dt_seconds,
                                 self._cold_tolerance,
+                                saturated=self._output_saturated,
                             )
 
                             # Check if Ki adjustment is needed (unified detector handles both real-time and cycle modes)
                             cycles_completed = adaptive_learner.get_cycle_count()
                             current_ki = self._pid_controller.ki
                             pid_history = self._gains_manager.get_history()
+                            try:
+                                physics = calculate_physics_gains(self)
+                            except ValueError:
+                                _LOGGER.debug("%s: no physics Ki, cumulative Ki cap only", self.entity_id)
+                                physics = None
                             new_ki = adaptive_learner.check_undershoot_adjustment(
-                                cycles_completed, current_ki, pid_history, mode=self._hvac_mode
+                                cycles_completed,
+                                current_ki,
+                                pid_history,
+                                mode=self._hvac_mode,
+                                physics_ki=physics[2] if physics else None,
                             )
 
                             if new_ki is not None:
@@ -210,11 +230,7 @@ class ClimateControlMixin:
                                     )
 
                                 # Update Ki via PIDGainsManager with comprehensive metrics
-                                undershoot_amount = (
-                                    self._target_temp - self._current_temp
-                                    if self._target_temp and self._current_temp
-                                    else 0.0
-                                )
+                                undershoot_amount = effective_target - self._current_temp
                                 self._gains_manager.set_gains(
                                     PIDChangeReason.UNDERSHOOT_BOOST,
                                     ki=new_ki,

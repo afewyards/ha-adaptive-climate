@@ -663,8 +663,8 @@ SETTLING_TIMEOUT_MULTIPLIER = 30  # Multiplier for tau to calculate settling tim
 SETTLING_TIMEOUT_MIN = 60  # Minimum settling timeout in minutes
 SETTLING_TIMEOUT_MAX = 240  # Maximum settling timeout in minutes (4 hours)
 
-# Overshoot peak tracking window (v0.7.0) - time window after heater stops to track peaks
-OVERSHOOT_PEAK_WINDOW_MINUTES = 45  # Default 45 minutes - prevents late peaks from external factors
+# After the last valve close, a fall this far (°C) below the peak ends the controller's own peak
+OVERSHOOT_PEAK_END_FALL = 0.2
 
 # Segment detection noise tolerance
 # Temperature fluctuations below this threshold are ignored as sensor noise
@@ -957,6 +957,11 @@ UNDERSHOOT_THRESHOLDS: dict[HeatingType, dict[str, float]] = {
 
 # Maximum cumulative Ki multiplier from undershoot detection (safety cap)
 MAX_UNDERSHOOT_KI_MULTIPLIER = 3.0
+
+# Output at or above this fraction of its maximum is saturated: more Ki cannot help
+UNDERSHOOT_SATURATION_FRACTION = 0.95
+# A cycle saturated for at least this share of its samples is not judged for approach failure
+UNDERSHOOT_SATURATED_CYCLE_SHARE = 0.5
 
 # Severe undershoot multiplier - thermal debt must exceed this multiple of threshold
 # for persistent undershoot detection to stay active beyond bootstrap phase

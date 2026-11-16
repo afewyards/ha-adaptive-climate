@@ -12,6 +12,8 @@ from datetime import datetime
 from enum import Enum
 import logging
 
+from ..const import OVERSHOOT_PEAK_END_FALL
+
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -109,10 +111,9 @@ class PhaseAwareOvershootTracker:
     the temperature first crosses the setpoint. This prevents false overshoot
     readings during the rise phase.
 
-    Time-window-based peak tracking: Only temperature readings within a specified
-    time window after heater stops are considered for peak detection. This prevents
-    late peaks caused by external factors (solar gain, occupancy) from being
-    incorrectly attributed to overshoot.
+    When the last valve close is known, the peak is the controller's own: once the
+    temperature has fallen OVERSHOOT_PEAK_END_FALL below the highest reading since the
+    close, later readings (sun, occupancy, a neighbour heating) no longer raise it.
     """
 
     # Phase constants
@@ -123,8 +124,8 @@ class PhaseAwareOvershootTracker:
         self,
         setpoint: float,
         tolerance: float = 0.05,
-        peak_tracking_window_minutes: int = 45,
         transport_delay_seconds: float = 0.0,
+        valve_close_time: datetime | None = None,
     ):
         """
         Initialize the phase-aware overshoot tracker.
@@ -132,21 +133,22 @@ class PhaseAwareOvershootTracker:
         Args:
             setpoint: Target temperature in degrees C
             tolerance: Small tolerance band for detecting setpoint crossing (default 0.05C)
-            peak_tracking_window_minutes: Time window after heater stops to track peaks (default 45 min)
             transport_delay_seconds: Transport delay to skip at start (dead time)
+            valve_close_time: Last valve close of the cycle, None when unknown
         """
         self._setpoint = setpoint
         self._tolerance = tolerance
-        self._peak_tracking_window_minutes = peak_tracking_window_minutes
         self._transport_delay_seconds = transport_delay_seconds
+        self._valve_close_time = valve_close_time
         self._phase = self.PHASE_RISE
         self._setpoint_crossed = False
         self._crossing_timestamp: datetime | None = None
         self._max_settling_temp: float | None = None
         self._settling_temps: deque[tuple[datetime, float]] = deque(maxlen=1500)
-        self._heater_stop_time: datetime | None = None
-        self._peak_window_closed = False
         self._tracking_start_time: datetime | None = None
+        self._peak_since_close: float | None = None
+        self._peak_ended = False
+        self._ignored_peak: float | None = None
 
     @property
     def setpoint(self) -> float:
@@ -168,6 +170,13 @@ class PhaseAwareOvershootTracker:
         """Get the timestamp when setpoint was first crossed."""
         return self._crossing_timestamp
 
+    @property
+    def ignored_excess(self) -> float | None:
+        """How far a reading after the end of the controller's peak rose above it, None if none did."""
+        if self._ignored_peak is None or self._max_settling_temp is None:
+            return None
+        return round(self._ignored_peak - self._max_settling_temp, 6)
+
     def reset(self, new_setpoint: float | None = None) -> None:
         """
         Reset tracking state. Call when setpoint changes.
@@ -182,23 +191,11 @@ class PhaseAwareOvershootTracker:
         self._crossing_timestamp = None
         self._max_settling_temp = None
         self._settling_temps.clear()
-        self._heater_stop_time = None
-        self._peak_window_closed = False
         self._tracking_start_time = None
+        self._peak_since_close = None
+        self._peak_ended = False
+        self._ignored_peak = None
         _LOGGER.debug(f"Overshoot tracker reset, setpoint: {self._setpoint}°C")
-
-    def on_heater_stopped(self, timestamp: datetime) -> None:
-        """
-        Mark when the heater stopped to begin peak tracking window.
-
-        Args:
-            timestamp: Time when heater was turned off
-        """
-        self._heater_stop_time = timestamp
-        self._peak_window_closed = False
-        _LOGGER.debug(
-            f"Heater stopped at {timestamp}, starting {self._peak_tracking_window_minutes}-minute peak tracking window"
-        )
 
     def update(self, timestamp: datetime, temperature: float) -> None:
         """
@@ -229,36 +226,24 @@ class PhaseAwareOvershootTracker:
                     f"setpoint={self._setpoint:.2f}°C - entering settling phase"
                 )
 
-        # Track maximum temperature in settling phase
-        if self._phase == self.PHASE_SETTLING:
-            self._settling_temps.append((timestamp, temperature))
+        if self._phase != self.PHASE_SETTLING:
+            return
+        self._settling_temps.append((timestamp, temperature))
 
-            # Only track peak if within time window after heater stopped
-            if self._heater_stop_time is not None and not self._peak_window_closed:
-                # Check if we're within the tracking window
-                elapsed_minutes = (timestamp - self._heater_stop_time).total_seconds() / 60
+        if self._peak_ended:
+            if self._max_settling_temp is not None and temperature > self._max_settling_temp:
+                if self._ignored_peak is None or temperature > self._ignored_peak:
+                    self._ignored_peak = temperature
+            return
 
-                if elapsed_minutes <= self._peak_tracking_window_minutes:
-                    # Within window - update peak
-                    if self._max_settling_temp is None or temperature > self._max_settling_temp:
-                        self._max_settling_temp = temperature
-                        _LOGGER.debug(
-                            f"Peak updated to {temperature:.2f}°C at {timestamp} "
-                            f"({elapsed_minutes:.1f} min after heater stopped)"
-                        )
-                else:
-                    # Window expired - close it
-                    if not self._peak_window_closed:
-                        self._peak_window_closed = True
-                        _LOGGER.debug(
-                            f"Peak tracking window closed at {timestamp} "
-                            f"({elapsed_minutes:.1f} min after heater stopped), "
-                            f"final peak: {self._max_settling_temp:.2f}°C"
-                        )
-            elif self._heater_stop_time is None:
-                # Heater never stopped (still heating) - track peak normally
-                if self._max_settling_temp is None or temperature > self._max_settling_temp:
-                    self._max_settling_temp = temperature
+        if self._max_settling_temp is None or temperature > self._max_settling_temp:
+            self._max_settling_temp = temperature
+
+        if self._valve_close_time is not None and timestamp >= self._valve_close_time:
+            if self._peak_since_close is None or temperature > self._peak_since_close:
+                self._peak_since_close = temperature
+            if round(self._peak_since_close - temperature, 6) >= OVERSHOOT_PEAK_END_FALL:
+                self._peak_ended = True
 
     def get_overshoot(self) -> float | None:
         """
@@ -317,6 +302,7 @@ class CycleMetrics:
         committed_overshoot: float | None = None,
         starting_delta: float | None = None,
         heat_below: float | None = None,
+        output_saturated: float | None = None,
     ):
         """
         Initialize cycle metrics.
@@ -344,6 +330,7 @@ class CycleMetrics:
             committed_overshoot: Overshoot from in-flight heat (unavoidable) in °C
             starting_delta: Temperature delta at cycle start (target - actual) in °C
             heat_below: Fraction of the cycle (0-1) a zone on the floor below was heating, None when unknown
+            output_saturated: Share of the cycle's samples (0-1) with the output saturated, None when unknown
         """
         self.overshoot = overshoot
         self.undershoot = undershoot
@@ -367,6 +354,7 @@ class CycleMetrics:
         self.committed_overshoot = committed_overshoot
         self.starting_delta = starting_delta
         self.heat_below = heat_below
+        self.output_saturated = output_saturated
 
     @property
     def is_disturbed(self) -> bool:
@@ -392,9 +380,12 @@ def calculate_overshoot(
     target_temp: float,
     phase_aware: bool = True,
     transport_delay_seconds: float = 0.0,
+    start_temp: float | None = None,
+    valve_close_time: datetime | None = None,
+    logger: logging.Logger = _LOGGER,
 ) -> float | None:
     """
-    Calculate maximum overshoot beyond target temperature.
+    Calculate maximum overshoot beyond max(target, start temperature).
 
     Args:
         temperature_history: List of (timestamp, temperature) tuples
@@ -402,6 +393,9 @@ def calculate_overshoot(
         phase_aware: If True, only calculate overshoot from settling phase
                     (after setpoint is first crossed). Default True.
         transport_delay_seconds: Transport delay to skip at start (dead time)
+        start_temp: Cycle start temperature; an excess the cycle started with is not overshoot
+        valve_close_time: Last valve close of the cycle, None when unknown (see PhaseAwareOvershootTracker)
+        logger: Logger for the line reporting an ignored later peak
 
     Returns:
         Overshoot in °C (positive values only, rounded to 6 decimals), or None if:
@@ -411,20 +405,28 @@ def calculate_overshoot(
     if not temperature_history:
         return None
 
+    start_excess = 0.0 if start_temp is None else max(0.0, start_temp - target_temp)
+
     if not phase_aware:
         # Legacy behavior: max temp minus setpoint
         max_temp = max(temp for _, temp in temperature_history)
-        overshoot = max_temp - target_temp
+        overshoot = max_temp - target_temp - start_excess
         return round(max(0.0, overshoot), 6)
 
     # Phase-aware calculation: only consider temps after setpoint crossing
-    tracker = PhaseAwareOvershootTracker(target_temp, transport_delay_seconds=transport_delay_seconds)
+    tracker = PhaseAwareOvershootTracker(
+        target_temp, transport_delay_seconds=transport_delay_seconds, valve_close_time=valve_close_time
+    )
 
     for timestamp, temp in temperature_history:
         tracker.update(timestamp, temp)
 
+    ignored = tracker.ignored_excess
+    if ignored is not None:
+        logger.info("Overshoot: ignored a later peak %.2f°C above the controller's own after the valve closed", ignored)
+
     overshoot = tracker.get_overshoot()
-    return None if overshoot is None else round(overshoot, 6)
+    return None if overshoot is None else round(max(0.0, overshoot - start_excess), 6)
 
 
 def calculate_undershoot(temperature_history: list[tuple[datetime, float]], target_temp: float) -> float | None:

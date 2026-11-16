@@ -681,55 +681,6 @@ class TestKiBoostCountsAsAdjustment:
         assert learner.calculate_pid_adjustment(100.0, new_ki, 2.0, check_auto_apply=True) is None
         assert learner._last_skip_reason == "rate_limited"
 
-    def test_physics_rate_boost_marks_adjustment(self):
-        from unittest.mock import MagicMock
-
-        from custom_components.adaptive_climate.climate_cycle_handlers import ClimateCycleHandlersMixin
-
-        learner = AdaptiveLearner(heating_type=HEATING_TYPE_FLOOR_HYDRONIC)
-        thermostat = MagicMock()
-        thermostat.entity_id = "climate.test"
-        thermostat._pid_controller.ki = 10.0
-        thermostat._gains_manager.get_history.return_value = []
-        underperforming = {
-            "is_underperforming": True,
-            "suggested_ki_boost": 1.2,
-            "learned_rate": 0.1,
-            "expected_rate": 0.2,
-            "ratio": 0.5,
-            "observation_count": 5,
-        }
-
-        with patch.object(learner, "check_physics_rate_underperformance", return_value=underperforming):
-            ClimateCycleHandlersMixin._check_physics_rate_and_boost_ki(thermostat, learner)
-
-        thermostat._gains_manager.set_gains.assert_called_once()
-        assert learner._last_adjustment_time is not None
-        assert learner._cycles_since_last_adjustment == 0
-
-
-def _physics_boost(learner):
-    """Run the physics-rate Ki boost against an underperforming result; returns the mock thermostat."""
-    from unittest.mock import MagicMock
-
-    from custom_components.adaptive_climate.climate_cycle_handlers import ClimateCycleHandlersMixin
-
-    thermostat = MagicMock()
-    thermostat.entity_id = "climate.test"
-    thermostat._pid_controller.ki = 10.0
-    thermostat._gains_manager.get_history.return_value = []
-    underperforming = {
-        "is_underperforming": True,
-        "suggested_ki_boost": 1.2,
-        "learned_rate": 0.1,
-        "expected_rate": 0.2,
-        "ratio": 0.5,
-        "observation_count": 5,
-    }
-    with patch.object(learner, "check_physics_rate_underperformance", return_value=underperforming):
-        ClimateCycleHandlersMixin._check_physics_rate_and_boost_ki(thermostat, learner)
-    return thermostat
-
 
 class TestNoKiBoostDuringValidation:
     """A boost inside the validation window makes rollback (history[-2]) restore the auto-applied gains."""
@@ -739,12 +690,6 @@ class TestNoKiBoostDuringValidation:
         learner.start_validation_mode(baseline_overshoot=0.1)
 
         assert learner.check_undershoot_adjustment(cycles_completed=0, current_ki=10.0) is None
-
-    def test_physics_rate_boost_waits_for_validation(self):
-        learner = AdaptiveLearner(heating_type=HEATING_TYPE_FLOOR_HYDRONIC)
-        learner.start_validation_mode(baseline_overshoot=0.1)
-
-        _physics_boost(learner)._gains_manager.set_gains.assert_not_called()
 
 
 class TestSafetyNetFollowsLearningStatus:
