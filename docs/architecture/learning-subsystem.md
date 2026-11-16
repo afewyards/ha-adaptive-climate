@@ -153,16 +153,15 @@ The architecture follows a pipeline pattern: temperature readings flow through c
 
 #### `adaptive/undershoot_detector.py` -- UndershootDetector (516 lines)
 
-**Key class:** `UndershootDetector` -- Unified detector with three detection modes.
+**Key class:** `UndershootDetector` -- Unified detector with two detection modes.
 
 **Modes:**
 1. **Real-time thermal debt:** Accumulates `time x temp_deficit` below setpoint. Triggers when debt exceeds threshold scaled by thermal mass (floor: 150 C-min, convector: 60 C-min)
 2. **Cycle-based consecutive failures:** Tracks consecutive cycles failing to reach setpoint (rise_time=None + undershoot >= threshold). Resets on success.
-3. **Rate-based comparison:** Compares current heating rate to HeatingRateLearner expected rate
 
 **Behavior:** When triggered, applies Ki boost (1.20-1.35x depending on type). Cumulative multiplier capped at 2.0x. Cooldown scales with thermal mass (floor: 24h, forced_air: 3h).
 
-**Dependencies:** `heating_rate_learner.py`, `const.py`
+**Dependencies:** `const.py`
 
 **Persistence:** Serialized via `to_dict()` / `from_dict()`, embedded in learner state (v10 format)
 
@@ -176,14 +175,12 @@ The architecture follows a pipeline pattern: temperature readings flow through c
 
 **Responsibilities:**
 - `get_heating_rate()` -- Returns learned or fallback rate with source attribution
-- `check_physics_underperformance()` -- Compares learned vs expected rate (from physics)
-- `should_boost_ki()` -- Triggers on 2 consecutive stalls with duty < 85%
 
 **Dependencies:** `const.py` (heating type rates, bin thresholds)
 
 **Persistence:** Serialized via `to_dict()` / `from_dict()`, embedded in learner state
 
-**Issues:** Has its own Ki boost logic (`should_boost_ki()`) that operates independently from `UndershootDetector`'s Ki boost -- creating two separate paths for the same gain adjustment
+Measurement only: heating-rate sessions do not boost Ki.
 
 ---
 
@@ -748,13 +745,12 @@ This pattern makes the internal structure of these classes effectively frozen, s
 
 ### 5. Ki Boost: Multiple Independent Paths
 
-Ki (integral gain) can be boosted through three independent mechanisms:
+Ki (integral gain) can be boosted through two mechanisms, both in `UndershootDetector` and sharing its cooldown and caps:
 
 1. **UndershootDetector real-time mode** -- Thermal debt accumulation triggers Ki boost
 2. **UndershootDetector cycle mode** -- Consecutive approach failures trigger Ki boost
-3. **HeatingRateLearner.should_boost_ki()** -- Consecutive stalls trigger Ki boost
 
-These three paths all modify Ki through `PIDGainsManager.set_gains()` but are not coordinated with each other. The cumulative cap in `UndershootDetector` (2.0x) does not account for boosts applied via `HeatingRateLearner`. Each boost (undershoot/chronic and physics-rate) calls `mark_adjustment_applied()`, so the auto-apply cooldown restarts and an auto-apply cannot multiply Ki again on the same cycles.
+Each boost calls `mark_adjustment_applied()`, so the auto-apply cooldown restarts and an auto-apply cannot multiply Ki again on the same cycles.
 
 ### 6. Dead or Near-Dead Code
 
@@ -871,7 +867,6 @@ These three paths all modify Ki through `PIDGainsManager.set_gains()` but are no
 |---|---|---|
 | `update_undershoot_detector()` | 1343 | Thin delegator, called per PID tick |
 | `check_undershoot_adjustment()` | 1363 | Reads PID history, calls `should_adjust_ki()`, applies multiplier, decreases confidence (writes Group 3 state directly) |
-| `check_physics_rate_underperformance()` | 1447 | Delegator to `_heating_rate_learner`, logs warning |
 | `undershoot_detector` property | 1501 | Exposes detector for serialization |
 | `update_convergence_tracking()` | 944 | Tracks consecutive converged cycles for Ke-readiness |
 | `is_pid_converged_for_ke()` | 997 | Trivial boolean getter |
@@ -990,11 +985,11 @@ Merges `ValidationManager` and `AutoApplyManager` into one. Both exist to answer
 
 ### Manager 5 -- `UndershootKiManager`
 
-Unifies the three independent Ki-boost paths under one shared cumulative cap.
+Owns the Ki-boost path (real-time and cycle modes) under one shared cumulative cap.
 
-**State:** `UndershootDetector` (all three modes), `HeatingRateLearner` (owns `should_boost_ki()` logic).
+**State:** `UndershootDetector` (both modes).
 
-**Methods absorbed:** `update_undershoot_detector()`, `check_undershoot_adjustment()`, `check_physics_rate_underperformance()`, `undershoot_detector` property (for serialization).
+**Methods absorbed:** `update_undershoot_detector()`, `check_undershoot_adjustment()`, `undershoot_detector` property (for serialization).
 
 **Key fix:** `check_undershoot_adjustment()` currently writes directly to `_confidence` (confidence bypass). In this decomposition, it returns a `KiBoostResult` and the caller decrements confidence via `ConvergenceConfidenceManager`. No cross-manager state writes.
 

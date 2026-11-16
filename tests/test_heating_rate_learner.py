@@ -402,97 +402,6 @@ class TestStallCounter:
 
         assert learner._stall_counter == 1  # Reset then incremented
 
-    def test_should_boost_ki_after_2_stalls_with_low_duty(self):
-        """Test Ki boost triggered after 2 consecutive stalls with headroom."""
-        learner = HeatingRateLearner(HeatingType.RADIATOR)
-
-        for i in range(2):
-            start = datetime(2026, 1, 15, 10 + i * 2, 0, tzinfo=timezone.utc)
-            end = datetime(2026, 1, 15, 11 + i * 2, 0, tzinfo=timezone.utc)
-            learner.start_session(temp=18.0, setpoint=21.0, outdoor_temp=5.0, timestamp=start)
-            learner.update_session(temp=18.5, duty=0.60)  # Low duty
-            learner.end_session(end_temp=19.0, reason="stalled", timestamp=end)
-
-        assert learner.should_boost_ki() is True
-
-    def test_no_boost_when_high_duty(self):
-        """Test no Ki boost when duty is high (capacity limited)."""
-        learner = HeatingRateLearner(HeatingType.RADIATOR)
-
-        for i in range(2):
-            start = datetime(2026, 1, 15, 10 + i * 2, 0, tzinfo=timezone.utc)
-            end = datetime(2026, 1, 15, 11 + i * 2, 0, tzinfo=timezone.utc)
-            learner.start_session(temp=18.0, setpoint=21.0, outdoor_temp=5.0, timestamp=start)
-            learner.update_session(temp=18.5, duty=0.90)  # High duty
-            learner.end_session(end_temp=19.0, reason="stalled", timestamp=end)
-
-        assert learner.should_boost_ki() is False  # Capacity limited
-
-    def test_acknowledge_boost_resets_counter(self):
-        """Test acknowledging Ki boost resets the stall counter."""
-        learner = HeatingRateLearner(HeatingType.RADIATOR)
-
-        for i in range(2):
-            start = datetime(2026, 1, 15, 10 + i * 2, 0, tzinfo=timezone.utc)
-            end = datetime(2026, 1, 15, 11 + i * 2, 0, tzinfo=timezone.utc)
-            learner.start_session(temp=18.0, setpoint=21.0, outdoor_temp=5.0, timestamp=start)
-            learner.update_session(temp=18.5, duty=0.60)
-            learner.end_session(end_temp=19.0, reason="stalled", timestamp=end)
-
-        assert learner.should_boost_ki() is True
-        learner.acknowledge_ki_boost()
-        assert learner._stall_counter == 0
-        assert learner.should_boost_ki() is False
-
-
-class TestRateComparison:
-    """Tests for comparing current rate against learned rate."""
-
-    def test_get_rate_ratio_with_sufficient_data(self):
-        """Test rate ratio calculation with enough observations."""
-        learner = HeatingRateLearner(HeatingType.RADIATOR)
-
-        # Add 5 session observations (enough for comparison)
-        for _ in range(5):
-            learner.add_observation(
-                rate=1.0, duration_min=60, source="session", stalled=False, delta=3.0, outdoor_temp=8.0
-            )
-
-        # Current rate is 0.4, expected is 1.0 -> ratio = 0.4
-        ratio = learner.get_rate_ratio(current_rate=0.4, delta=3.0, outdoor_temp=8.0)
-        assert ratio == pytest.approx(0.4)
-
-    def test_get_rate_ratio_insufficient_data(self):
-        """Test rate ratio returns None with insufficient observations."""
-        learner = HeatingRateLearner(HeatingType.RADIATOR)
-
-        # Only 3 observations (need 5 for comparison)
-        for _ in range(3):
-            learner.add_observation(
-                rate=1.0, duration_min=60, source="session", stalled=False, delta=3.0, outdoor_temp=8.0
-            )
-
-        ratio = learner.get_rate_ratio(current_rate=0.4, delta=3.0, outdoor_temp=8.0)
-        assert ratio is None
-
-    def test_is_underperforming_at_60_percent(self):
-        """Test underperforming detection at 60% threshold."""
-        learner = HeatingRateLearner(HeatingType.RADIATOR)
-
-        for _ in range(5):
-            learner.add_observation(
-                rate=1.0, duration_min=60, source="session", stalled=False, delta=3.0, outdoor_temp=8.0
-            )
-
-        # 0.5 is 50% of expected 1.0 -> underperforming
-        assert learner.is_underperforming(0.5, delta=3.0, outdoor_temp=8.0) is True
-
-        # 0.7 is 70% of expected 1.0 -> not underperforming
-        assert learner.is_underperforming(0.7, delta=3.0, outdoor_temp=8.0) is False
-
-        # 0.6 is exactly 60% -> not underperforming (threshold is <60%)
-        assert learner.is_underperforming(0.6, delta=3.0, outdoor_temp=8.0) is False
-
 
 class TestSerialization:
     """Tests for HeatingRateLearner serialization."""
@@ -654,97 +563,6 @@ class TestMinimumRateFilter:
         assert learner.get_observation_count() == 1
 
 
-class TestPhysicsComparison:
-    """Tests for physics-based rate comparison."""
-
-    def test_insufficient_observations_returns_none(self):
-        """Test returns None when not enough observations."""
-        learner = HeatingRateLearner(HeatingType.FLOOR_HYDRONIC)
-        # No observations
-        result = learner.check_physics_underperformance()
-        assert result is None
-
-    def test_sufficient_observations_returns_comparison(self):
-        """Test returns comparison dict with enough observations."""
-        learner = HeatingRateLearner(HeatingType.FLOOR_HYDRONIC)
-        base_time = datetime(2026, 1, 15, 10, 0, tzinfo=timezone.utc)
-
-        # Add 3 session observations (minimum required)
-        for i in range(3):
-            start = base_time.replace(hour=10 + i * 3)
-            end = start.replace(hour=start.hour + 2)
-            learner.start_session(temp=18.0, setpoint=21.0, outdoor_temp=3.0, timestamp=start)
-            learner.end_session(end_temp=20.5, reason="reached_target", timestamp=end)
-
-        result = learner.check_physics_underperformance()
-        assert result is not None
-        assert "learned_rate" in result
-        assert "expected_rate" in result
-        assert "ratio" in result
-        assert "is_underperforming" in result
-        assert "observation_count" in result
-        assert result["observation_count"] == 3
-
-    def test_underperforming_detection(self):
-        """Test detects underperforming when rate is below 50% of expected."""
-        learner = HeatingRateLearner(HeatingType.FLOOR_HYDRONIC)
-        base_time = datetime(2026, 1, 15, 10, 0, tzinfo=timezone.utc)
-
-        # Add sessions with very low rate (~0.1°C/h, well below expected 0.3°C/h baseline)
-        for i in range(3):
-            start = base_time.replace(day=15 + i, hour=6)
-            end = start.replace(hour=16)  # 10 hours for 1°C rise = 0.1°C/h
-            learner.start_session(temp=18.0, setpoint=21.0, outdoor_temp=3.0, timestamp=start)
-            learner.end_session(end_temp=19.0, reason="reached_target", timestamp=end)
-
-        result = learner.check_physics_underperformance()
-        assert result is not None
-        assert result["is_underperforming"] is True
-        assert result["ratio"] < 0.5
-        assert result["suggested_ki_boost"] is not None
-        assert result["suggested_ki_boost"] > 1.0
-
-    def test_performing_well_no_boost_suggested(self):
-        """Test no boost suggested when rate is adequate."""
-        learner = HeatingRateLearner(HeatingType.FLOOR_HYDRONIC)
-        base_time = datetime(2026, 1, 15, 10, 0, tzinfo=timezone.utc)
-
-        # Add sessions with good rate (~0.5°C/h, above expected 0.3°C/h baseline)
-        for i in range(3):
-            start = base_time.replace(day=15 + i, hour=6)
-            end = start.replace(hour=12)  # 6 hours for 3°C rise = 0.5°C/h
-            learner.start_session(temp=18.0, setpoint=21.0, outdoor_temp=3.0, timestamp=start)
-            learner.end_session(end_temp=21.0, reason="reached_target", timestamp=end)
-
-        result = learner.check_physics_underperformance()
-        assert result is not None
-        assert result["is_underperforming"] is False
-        assert result["suggested_ki_boost"] is None
-
-    def test_tau_scaling_affects_expected_rate(self):
-        """Test that higher tau lowers expected rate."""
-        learner = HeatingRateLearner(HeatingType.FLOOR_HYDRONIC)
-        base_time = datetime(2026, 1, 15, 10, 0, tzinfo=timezone.utc)
-
-        # Add sessions
-        for i in range(3):
-            start = base_time.replace(day=15 + i, hour=6)
-            end = start.replace(hour=11)  # 5 hours for 1°C rise = 0.2°C/h
-            learner.start_session(temp=18.0, setpoint=21.0, outdoor_temp=3.0, timestamp=start)
-            learner.end_session(end_temp=19.0, reason="reached_target", timestamp=end)
-
-        # With default tau (4h), expected is ~0.3°C/h, learned 0.2°C/h = 67% (not underperforming)
-        result_default = learner.check_physics_underperformance()
-
-        # With higher tau (8h), expected is lower, learned 0.2°C/h might be adequate
-        result_high_tau = learner.check_physics_underperformance(tau=8.0)
-
-        assert result_default is not None
-        assert result_high_tau is not None
-        # Higher tau should lower expected rate
-        assert result_high_tau["expected_rate"] < result_default["expected_rate"]
-
-
 class TestMeanSessionRate:
     def _add_session(self, learner, day, end_temp=20.5):
         start = datetime(2026, 1, day, 10, 0, tzinfo=timezone.utc)
@@ -762,7 +580,6 @@ class TestMeanSessionRate:
         for d in (1, 2, 3):
             self._add_session(learner, d)
         assert learner.get_mean_session_rate() == pytest.approx(1.25)
-        assert learner.check_physics_underperformance()["learned_rate"] == pytest.approx(1.25)
 
     def test_ignores_stalled_and_cycle_observations(self):
         learner = HeatingRateLearner(HeatingType.FLOOR_HYDRONIC)

@@ -1,7 +1,7 @@
 """Cycle event handlers for adaptive thermostat.
 
-This module contains handlers for heating cycle lifecycle events, physics-based
-Ki boost logic, Ke/steady-state helpers, and manifold transport delay management.
+This module contains handlers for heating cycle lifecycle events, Ke/steady-state
+helpers, and manifold transport delay management.
 """
 
 from __future__ import annotations
@@ -11,7 +11,6 @@ import logging
 from homeassistant.core import callback
 
 from . import DOMAIN
-from .const import MAX_UNDERSHOOT_KI_MULTIPLIER, PIDChangeReason
 from .managers.events import CycleEndedEvent, HeatingEndedEvent, HeatingStartedEvent
 
 _LOGGER = logging.getLogger(__name__)
@@ -20,8 +19,8 @@ _LOGGER = logging.getLogger(__name__)
 class ClimateCycleHandlersMixin:
     """Mixin providing cycle event handlers for AdaptiveThermostat.
 
-    Encapsulates all heating-cycle lifecycle callbacks, physics-based Ki boost
-    logic, Ke observation helpers, and manifold transport delay wiring.
+    Encapsulates all heating-cycle lifecycle callbacks, Ke observation helpers,
+    and manifold transport delay wiring.
     """
 
     def _handle_cycle_ended_for_preheat(self, event: CycleEndedEvent) -> None:
@@ -130,7 +129,6 @@ class ClimateCycleHandlersMixin:
                         obs.rate,
                         obs.duration_min,
                     )
-                    self._check_physics_rate_and_boost_ki(adaptive_learner)
             # Check if stalled
             elif heating_rate_learner.is_stalled():
                 obs = heating_rate_learner.end_session(
@@ -144,108 +142,6 @@ class ClimateCycleHandlersMixin:
                         obs.rate,
                         obs.duration_min,
                     )
-                    self._check_physics_rate_and_boost_ki(adaptive_learner)
-
-    def _check_physics_rate_and_boost_ki(self, adaptive_learner) -> None:
-        """Check if learned heating rate is below physics expectations and boost Ki if needed.
-
-        Called after heating rate sessions end. Compares learned rate against
-        physics-predicted rate and applies Ki boost if significantly underperforming.
-
-        Args:
-            adaptive_learner: The AdaptiveLearner instance for this zone.
-        """
-        # A boost during validation would make rollback (history[-2]) restore the auto-applied gains
-        if adaptive_learner.is_in_validation_mode():
-            return
-
-        result = adaptive_learner.check_physics_rate_underperformance(
-            tau=getattr(self, "_thermal_time_constant", None),
-            area_m2=self._area_m2,
-            max_power_w=self._max_power_w,
-            supply_temperature=self._supply_temperature,
-        )
-
-        if result is None:
-            return  # Not enough data yet
-
-        if not result.get("is_underperforming", False):
-            return  # Performing adequately
-
-        # Check if we've already boosted Ki to the cap relative to physics baseline
-        from .adaptive.learning_adjustments import get_physics_baseline_ki_from_history
-
-        old_ki = self._pid_controller.ki
-        pid_history = self._gains_manager.get_history()
-        physics_baseline_ki = get_physics_baseline_ki_from_history(pid_history)
-
-        if physics_baseline_ki is not None and physics_baseline_ki > 0:
-            actual_ratio = old_ki / physics_baseline_ki
-            if actual_ratio >= MAX_UNDERSHOOT_KI_MULTIPLIER:
-                _LOGGER.debug(
-                    "%s: Physics rate check: underperforming but Ki already at cap (%.4f / %.4f = %.2fx >= max %.1fx)",
-                    self.entity_id,
-                    old_ki,
-                    physics_baseline_ki,
-                    actual_ratio,
-                    MAX_UNDERSHOOT_KI_MULTIPLIER,
-                )
-                return
-        else:
-            # Fallback to cumulative multiplier cap if no physics baseline available
-            cumulative = adaptive_learner.undershoot_detector.cumulative_ki_multiplier
-            if cumulative >= MAX_UNDERSHOOT_KI_MULTIPLIER:
-                _LOGGER.debug(
-                    "%s: Physics rate check: underperforming but Ki already boosted %.1fx (max %.1fx)",
-                    self.entity_id,
-                    cumulative,
-                    MAX_UNDERSHOOT_KI_MULTIPLIER,
-                )
-                return
-
-        # Apply the suggested Ki boost
-        suggested_boost = result.get("suggested_ki_boost", 1.2)
-        new_ki = old_ki * suggested_boost
-
-        # Scale integral to prevent output spike
-        if old_ki > 0:
-            scale_factor = old_ki / new_ki
-            if self._gains_manager is not None:
-                self._gains_manager.scale_integral(scale_factor, PIDChangeReason.UNDERSHOOT_BOOST)
-            else:
-                self._pid_controller.scale_integral(scale_factor)
-
-        # Update Ki via PIDGainsManager
-        self._gains_manager.set_gains(
-            PIDChangeReason.UNDERSHOOT_BOOST,
-            ki=new_ki,
-            metrics={
-                "reason": "physics_rate_underperformance",
-                "learned_rate": result["learned_rate"],
-                "expected_rate": result["expected_rate"],
-                "ratio": result["ratio"],
-                "observation_count": result["observation_count"],
-            },
-        )
-
-        # Update cumulative multiplier in undershoot detector (kept for logging/debug only)
-        adaptive_learner.undershoot_detector.cumulative_ki_multiplier *= suggested_boost
-        # Restart the auto-apply cooldown so an auto-apply cannot stack on this boost
-        adaptive_learner.mark_adjustment_applied()
-
-        _LOGGER.warning(
-            "%s: Physics rate check triggered Ki boost: learned=%.3f°C/h vs expected=%.3f°C/h "
-            "(%.0f%%). Ki: %.5f -> %.5f (%.0f%% increase)",
-            self.entity_id,
-            result["learned_rate"],
-            result["expected_rate"],
-            result["ratio"] * 100,
-            old_ki,
-            new_ki,
-            (suggested_boost - 1.0) * 100,
-        )
-
-        self.schedule_update_ha_state()
 
     async def _handle_validation_failure(self) -> None:
         """Handle validation failure by rolling back PID values.

@@ -366,6 +366,7 @@ async def async_setup_managers(thermostat: AdaptiveThermostat) -> None:
                     get_heat_below=lambda: lower_zone_heating(
                         thermostat.hass, thermostat._coordinator, thermostat.entity_id
                     ),
+                    get_output_saturated=lambda: thermostat._output_saturated,
                 )
                 # Add cycle_tracker to zone_data for state_attributes access
                 zone_data["cycle_tracker"] = thermostat._cycle_tracker

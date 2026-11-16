@@ -403,6 +403,7 @@ class CycleMetricsRecorder:
         outdoor_temp_history: list[tuple[datetime, float]],
         cycle_start_temp: float | None = None,
         heat_below_history: list[tuple[datetime, bool | None]] | None = None,
+        output_saturated: float | None = None,
     ) -> None:
         """Record metrics for the current cycle without resetting state.
 
@@ -418,6 +419,7 @@ class CycleMetricsRecorder:
             cycle_start_temp: Temperature at cycle start, captured explicitly to survive
                 deque truncation (H07). Falls back to temperature_history[0][1] if None.
             heat_below_history: (timestamp, zone on the floor below heating) samples, None where unknown
+            output_saturated: Share of samples with the output saturated, None when not sampled
         """
         # Validate cycle
         is_valid, reason = self._is_cycle_valid(cycle_start_time, temperature_history)
@@ -468,10 +470,14 @@ class CycleMetricsRecorder:
         # Calculate all 5 metrics
         # Overshoot: use filtered history to exclude dead time
         filtered_history = self._get_temperature_history_excluding_dead_time(temperature_history)
+        heating = (self._cycle_mode or self._get_hvac_mode()) == "heat"
         overshoot = calculate_overshoot(
             filtered_history if filtered_history else temperature_history,
             target_temp,
             transport_delay_seconds=transport_delay_seconds,
+            start_temp=start_temp if heating else None,
+            valve_close_time=self._last_valve_close(cycle_start_time) if heating else None,
+            logger=self._logger,
         )
         # Measured from the cycle's peak, not a settling window: the last valve close can be
         # missing, stale or later than the last sample, which put the cold start back in.
@@ -559,11 +565,8 @@ class CycleMetricsRecorder:
         if overshoot and overshoot > 0 and self._committed_heat_at_end > 0 and rise_time and rise_time > 0:
             from ..adaptive.cycle_analysis import calculate_overshoot_components
 
-            # Estimate heating rate from observed rise (°C/s)
-            if temperature_history:
-                peak_temp = max((t for _, t in temperature_history), default=target_temp)
-            else:
-                peak_temp = target_temp
+            # Same peak the overshoot was measured from; rise_time > 0 means the cycle started below target
+            peak_temp = target_temp + overshoot
             temp_rise = peak_temp - start_temp
             heating_rate = temp_rise / (rise_time * 60.0)  # rise_time is in minutes
 
@@ -607,6 +610,7 @@ class CycleMetricsRecorder:
             controllable_overshoot=controllable_overshoot,
             committed_overshoot=committed_overshoot_val,
             heat_below=calculate_heat_below(heat_below_history or [], cycle_start_time, dt_util.utcnow()),
+            output_saturated=output_saturated,
         )
 
         # Record metrics with adaptive learner (H08: pass mode to track cooling separately)
@@ -709,6 +713,15 @@ class CycleMetricsRecorder:
         # Store end_temp for next cycle's inter_cycle_drift calculation
         if end_temp is not None:
             self._prev_cycle_end_temp = end_temp
+
+    def _last_valve_close(self, cycle_start_time: datetime | None) -> datetime | None:
+        """Last valve close of this cycle, None when unknown, stale, or followed by a reopen."""
+        off = self._device_off_time
+        if off is None or cycle_start_time is None or off < cycle_start_time:
+            return None
+        if self._device_on_time is not None and self._device_on_time > off:
+            return None
+        return off
 
     def get_settling_window_minutes(self) -> int:
         """Get the settling window duration in minutes for the heating type.

@@ -57,15 +57,11 @@ class HeatingRateLearner:
 
     MAX_OBSERVATIONS_PER_BIN = 20
     MIN_OBSERVATIONS_FOR_RATE = 3
-    MIN_OBSERVATIONS_FOR_COMPARISON = 5
     MIN_OBSERVATION_RATE = 0.02  # Minimum heating rate (°C/h) to accept observations
-    UNDERPERFORMING_THRESHOLD = 0.6  # Below 60% of expected = underperforming
     PROGRESS_THRESHOLD = 0.1  # Minimum temp rise to count as progress
     STALL_CYCLES = 3  # Cycles without progress to declare stall
     OUTDOOR_RESET_THRESHOLD = 5.0  # degrees C change to reset counter
     SETPOINT_RESET_THRESHOLD = 1.0  # degrees C change to reset counter
-    DUTY_CAPACITY_THRESHOLD = 0.85  # above this = capacity limited
-    STALLS_FOR_BOOST = 2  # consecutive stalls before Ki boost
 
     # Fallback rates by heating type (degrees C per hour)
     FALLBACK_RATES: ClassVar[dict[str, float]] = {
@@ -245,10 +241,6 @@ class HeatingRateLearner:
         session = self._active_session
         self._active_session = None
 
-        # Store avg duty before clearing session
-        if session.cycle_duties:
-            self._last_session_avg_duty = sum(session.cycle_duties) / len(session.cycle_duties)
-
         # Discard if override interrupted
         if reason == "override":
             return None
@@ -356,55 +348,6 @@ class HeatingRateLearner:
         self._last_stall_outdoor = None
         self._last_stall_setpoint = None
 
-    def should_boost_ki(self) -> bool:
-        """Check if Ki should be boosted based on stall pattern."""
-        if self._stall_counter < self.STALLS_FOR_BOOST:
-            return False
-
-        if not hasattr(self, "_last_session_avg_duty"):
-            return False
-
-        return self._last_session_avg_duty < self.DUTY_CAPACITY_THRESHOLD
-
-    def acknowledge_ki_boost(self) -> None:
-        """Acknowledge that Ki boost was applied, reset counter."""
-        self._stall_counter = 0
-
-    def get_rate_ratio(self, current_rate: float, delta: float, outdoor_temp: float) -> float | None:
-        """Get ratio of current rate to expected rate.
-
-        Args:
-            current_rate: Current observed heating rate (C/h)
-            delta: Temperature delta for binning
-            outdoor_temp: Outdoor temp for binning
-
-        Returns:
-            Ratio (0.0-1.0+) if sufficient data, None otherwise
-        """
-        bin_key = self._get_bin_key(delta, outdoor_temp)
-        observations = self._bins[bin_key]
-
-        # Need minimum observations for reliable comparison
-        session_obs = [o for o in observations if o.source == "session"]
-        if len(session_obs) < self.MIN_OBSERVATIONS_FOR_COMPARISON:
-            return None
-
-        expected_rate = sum(o.rate for o in session_obs) / len(session_obs)
-        if expected_rate <= 0:
-            return None
-
-        return current_rate / expected_rate
-
-    def is_underperforming(self, current_rate: float, delta: float, outdoor_temp: float) -> bool:
-        """Check if current rate is significantly below expected.
-
-        Returns True if rate < 60% of expected AND we have sufficient data.
-        """
-        ratio = self.get_rate_ratio(current_rate, delta, outdoor_temp)
-        if ratio is None:
-            return False
-        return ratio < self.UNDERPERFORMING_THRESHOLD
-
     def _session_observations(self) -> list[HeatingRateObservation]:
         return [o for obs in self._bins.values() for o in obs if o.source == "session" and not o.stalled]
 
@@ -415,78 +358,6 @@ class HeatingRateLearner:
             return None
         mean = sum(o.rate for o in observations) / len(observations)
         return mean if mean > 0 else None
-
-    def check_physics_underperformance(
-        self,
-        tau: float | None = None,
-        area_m2: float | None = None,
-        max_power_w: float | None = None,
-        supply_temperature: float | None = None,
-    ) -> dict | None:
-        """Compare learned rate against physics-based expected rate.
-
-        This checks if the system is performing below what physics predicts
-        it should achieve, which can indicate:
-        - Undersized heating system
-        - Low supply temperature
-        - Poor heat transfer (blocked pipes, air in system)
-        - Building has more thermal mass than expected
-
-        Args:
-            tau: Thermal time constant in hours.
-            area_m2: Zone floor area in square meters.
-            max_power_w: Total heater power in watts.
-            supply_temperature: Supply water temperature in °C.
-
-        Returns:
-            Dict with comparison results, or None if insufficient learned data:
-                - learned_rate: Average learned rate (°C/h)
-                - expected_rate: Physics-based expected rate (°C/h)
-                - ratio: learned/expected (< 0.5 suggests problem)
-                - is_underperforming: True if rate < 50% of expected
-                - suggested_ki_boost: Suggested Ki multiplier (if underperforming)
-                - observation_count: Number of observations used
-        """
-        from .physics import calculate_expected_heating_rate
-
-        learned_rate = self.get_mean_session_rate()
-        if learned_rate is None:
-            return None
-
-        # Get physics-based expected rate
-        expected = calculate_expected_heating_rate(
-            heating_type=self._heating_type,
-            tau=tau,
-            area_m2=area_m2,
-            max_power_w=max_power_w,
-            supply_temperature=supply_temperature,
-        )
-
-        expected_rate = expected["baseline"]
-        ratio = learned_rate / expected_rate if expected_rate > 0 else 1.0
-
-        # Underperforming if < 50% of expected
-        is_underperforming = ratio < 0.5
-
-        # Calculate suggested Ki boost if underperforming
-        # Boost proportional to how far below expected: ratio 0.5 → 1.2x, ratio 0.25 → 1.4x
-        suggested_ki_boost = None
-        if is_underperforming:
-            # Inverse relationship: lower ratio = higher boost needed
-            # Clamped to 1.1x - 1.5x range
-            boost = 1.0 + (0.5 - ratio) * 0.8
-            suggested_ki_boost = round(max(1.1, min(1.5, boost)), 2)
-
-        return {
-            "learned_rate": round(learned_rate, 3),
-            "expected_rate": round(expected_rate, 3),
-            "expected_min": expected["min"],
-            "expected_max": expected["max"],
-            "ratio": round(ratio, 2),
-            "is_underperforming": is_underperforming,
-            "suggested_ki_boost": suggested_ki_boost,
-            "observation_count": len(self._session_observations()),
-        }
 
     def to_dict(self) -> dict:
         """Serialize learner state to dictionary."""

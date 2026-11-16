@@ -548,10 +548,10 @@ class AdaptiveLearner:
         self._validation.record_seasonal_shift()
 
     def update_undershoot_detector(
-        self, temp: float, setpoint: float, dt_seconds: float, cold_tolerance: float
+        self, temp: float, setpoint: float, dt_seconds: float, cold_tolerance: float, saturated: bool = False
     ) -> None:
         """Update real-time undershoot detector with current temperature reading."""
-        self._undershoot_detector.update_realtime(temp, setpoint, dt_seconds, cold_tolerance)
+        self._undershoot_detector.update_realtime(temp, setpoint, dt_seconds, cold_tolerance, saturated)
 
     def check_undershoot_adjustment(
         self,
@@ -559,40 +559,14 @@ class AdaptiveLearner:
         current_ki: float,
         pid_history: list[dict] | None = None,
         mode: HVACMode = None,
+        physics_ki: float | None = None,
     ) -> float | None:
         """Check if Ki needs boosting for persistent undershoot. Delegates to learning_coordinator."""
-        return _check_undershoot_adjustment(self, cycles_completed, current_ki, pid_history, mode)
+        return _check_undershoot_adjustment(self, cycles_completed, current_ki, pid_history, mode, physics_ki)
 
     def get_mean_heating_rate(self) -> float | None:
         """Mean learned session heating rate in °C/h, or None when not enough data."""
         return self._heating_rate_learner.get_mean_session_rate()
-
-    def check_physics_rate_underperformance(
-        self,
-        tau: float | None = None,
-        area_m2: float | None = None,
-        max_power_w: float | None = None,
-        supply_temperature: float | None = None,
-    ) -> dict | None:
-        """Check if learned heating rate is below physics-based expectations.
-
-        Returns a dict with comparison data if underperforming, None otherwise.
-        """
-        result = self._heating_rate_learner.check_physics_underperformance(
-            tau=tau, area_m2=area_m2, max_power_w=max_power_w, supply_temperature=supply_temperature
-        )
-        if result is None or not result.get("is_underperforming", False):
-            return None
-
-        _LOGGER.warning(
-            "Physics-based rate check: learned=%.3f°C/h, expected=%.3f°C/h (%.0f%% of expected). "
-            "System is underperforming - consider Ki boost of %.2fx",
-            result["learned_rate"],
-            result["expected_rate"],
-            result["ratio"] * 100,
-            result.get("suggested_ki_boost", 1.0),
-        )
-        return result
 
     @property
     def undershoot_detector(self) -> UndershootDetector:
