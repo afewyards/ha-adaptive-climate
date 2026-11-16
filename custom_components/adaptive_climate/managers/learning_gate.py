@@ -117,6 +117,13 @@ class LearningGateManager:
         else:
             return 0.0  # Collecting without data - suppressed
 
+    def relax_confidence(self, allowed_delta: float) -> float | None:
+        """Return the confidence at which ``allowed_delta`` from get_allowed_delta() is next raised.
+
+        None for 0.0, which is lifted by cycle count or the end of a disruption, not by confidence.
+        """
+        return {0.5: self._scaled_tier_1, 1.0: self._scaled_tier_2}.get(allowed_delta)
+
     def _is_environmentally_disrupted(self) -> bool:
         """Return True if an environmental disruption should suppress setback delta.
 

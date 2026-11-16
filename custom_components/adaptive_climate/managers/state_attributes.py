@@ -9,7 +9,7 @@ if TYPE_CHECKING:
 
 from homeassistant.util import dt as dt_util
 
-from .learning_profile import build_learning_profile
+from .learning_profile import build_learning_diagnosis, build_learning_profile
 from .settings_attributes import build_settings_attributes
 
 
@@ -278,6 +278,7 @@ def _add_learning_object(thermostat: SmartThermostat, attrs: dict[str, Any]) -> 
             getattr(thermostat, "_supply_temperature", None),
         )
     )
+    attrs["learning"].update(build_learning_diagnosis(thermostat, adaptive_learner))
 
 
 def _add_debug_object(thermostat: SmartThermostat, attrs: dict[str, Any]) -> None:

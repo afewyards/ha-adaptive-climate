@@ -57,6 +57,7 @@ from .managers import (
     TemperatureManager,
     CycleTrackerManager,
 )
+from .managers.learning_gate import LearningGateManager
 from .managers.pid_gains_manager import PIDGainsManager
 from .managers.events import (
     CycleEventDispatcher,
@@ -314,6 +315,7 @@ class AdaptiveThermostat(
 
         # Night setback controller (initialized in async_added_to_hass when hass is available)
         self._night_setback_controller: NightSetbackManager | None = None
+        self._learning_gate: LearningGateManager | None = None
 
         # Temperature manager (initialized in async_added_to_hass when hass is available)
         self._temperature_manager: TemperatureManager | None = None

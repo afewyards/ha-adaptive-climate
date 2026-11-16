@@ -2286,6 +2286,7 @@ def test_build_state_attributes_new_structure():
     adaptive_learner.get_convergence_confidence.return_value = 0.65
     adaptive_learner.cycle_history = []
     adaptive_learner.get_mean_heating_rate.return_value = None
+    adaptive_learner.undershoot_detector.cumulative_ki_multiplier = 1.0
     cycle_tracker = MagicMock()
     zone_data = {
         "adaptive_learner": adaptive_learner,
@@ -2302,6 +2303,7 @@ def test_build_state_attributes_new_structure():
 
     # No optional features
     thermostat._night_setback_controller = None
+    thermostat._learning_gate = None
     thermostat._contact_sensor_handler = None
     thermostat._humidity_detector = None
 
@@ -2387,6 +2389,7 @@ class TestStateAttributesNoSideEffects:
         thermostat._pid_controller.outdoor_temp_lagged = 5.0
         thermostat._gains_manager = None
         thermostat._night_setback_controller = None
+        thermostat._learning_gate = None
         thermostat._contact_sensor_handler = None
         thermostat._humidity_detector = None
         thermostat._heating_type = "convector"
@@ -2411,6 +2414,7 @@ class TestStateAttributesNoSideEffects:
         adaptive_learner.get_cycle_count.return_value = 10
         adaptive_learner.get_convergence_confidence.return_value = 0.5
         adaptive_learner._contribution_tracker = None
+        adaptive_learner.undershoot_detector.cumulative_ki_multiplier = 1.0
         cycle_tracker = MagicMock()
         cycle_tracker.get_state_name.return_value = "idle"
 

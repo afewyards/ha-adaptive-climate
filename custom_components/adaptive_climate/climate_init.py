@@ -196,6 +196,7 @@ async def async_setup_managers(thermostat: AdaptiveThermostat) -> None:
 
         # Update learning_gate with the night_setback_controller reference
         learning_gate._night_setback_controller = thermostat._night_setback_controller
+        thermostat._learning_gate = learning_gate
 
         _LOGGER.info("%s: Night setback controller initialized (preheat=%s)", thermostat.entity_id, preheat_enabled)
 

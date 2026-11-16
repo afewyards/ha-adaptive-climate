@@ -25,6 +25,9 @@
   document.body.className = q.get('theme') === 'light' ? 'light' : 'dark';
   const L = (o) => ({ state: 'heat', attributes: o });
   const z = (name, learning) => L({ friendly_name: name, learning });
+  const H = (day, kp, ki, kd, reason) => ({ timestamp: `2026-11-${day}T12:00:00+00:00`, kp, ki, kd, ke: 0, reason });
+  const HIST = [H('01', 1, 2, 3, 'restore'), H('02', 1, 2, 3, 'restore'), H('03', 1, 2.5, 3, 'undershoot_ki_boost'), H('04', 1, 3, 3, 'auto_apply'),
+    H('05', 1.2, 3, 3.4, 'physics_reset'), H('06', 1.2, 3.5, 3.4, 'undershoot_ki_boost'), H('07', 1.2, 4, 3.4, 'undershoot_ki_boost')];
   const states = {
     'climate.kitchen': z('Kitchen', { status: 'stable', confidence: 44, cycles: 81, heating_type: 'radiator', area_m2: 18, heating_rate: 0.9, heating_rate_expected: 1.5, overshoot: 0.1, overshoot_limit: 0.3, settling_time: 40, settling_time_limit: 60 }),
     'climate.bathroom': z('Bathroom', { status: 'collecting', confidence: 38, cycles: 18, heating_type: 'floor_hydronic', area_m2: 7, heating_rate: 0.9, heating_rate_expected: 1.1, overshoot: 0.7, overshoot_limit: 0.3, settling_time: 150, settling_time_limit: 90 }),
@@ -35,6 +38,11 @@
     'climate.xss': z('<img src=x onerror=alert(1)> & "Kitchen"', { status: 'stable', confidence: 50, cycles: 3 }),
     'climate.fast': z('Workshop', { status: 'tuned', confidence: 60, cycles: 1, heating_type: 'forced_air', area_m2: 30, heating_rate: 2.5, heating_rate_expected: 4, overshoot: 0.1, overshoot_limit: 0.3, settling_time: 40, settling_time_limit: 60 }),
     'sensor.other': L({ learning: { confidence: 1 } }),
+    'climate.gf': { state: 'heat', attributes: { friendly_name: 'GF', pid_history: { heating: HIST },
+      learning: { status: 'collecting', confidence: 0, cycles: 85, heating_rate: 0.2, heating_rate_expected: 1.2, overshoot: 0.12, overshoot_limit: 0.3, settling_time: 96, settling_time_limit: 120,
+        undershoot: 0.41, undershoot_limit: 0.2, recent: 'ppgppppgpppgpppppgpp', recent_fails: { undershoot: 13, overshoot: 2 },
+        gains: { kp: 0.52, ki: 11.63, kd: 1.39 }, gains_physics: { kp: 0.5, ki: 3.6, kd: 1.4 }, ki_boost_capped: true,
+        tune: { state: 'waiting', cycles_left: 10 }, setback_limit: 0.5, setback_until: 32 } } },
   };
   const only = (...ids) => Object.fromEntries(ids.map((i) => [i, states[i]]));
   const cases = {
@@ -43,6 +51,7 @@
     c: { cfg: { title: 'Custom title' }, st: {} },
     d: { cfg: {}, st: only('climate.xss') },
     e: { cfg: {}, st: only('climate.fast', 'climate.office') },
+    f: { cfg: {}, st: only('climate.gf', 'climate.kitchen') },
   };
   const cards = {};
   const out = document.getElementById('out');
@@ -50,7 +59,7 @@
     const row = document.createElement('div');
     row.className = 'row';
     for (const k of Object.keys(cases)) {
-      if (w === 330 && k !== 'a') continue;
+      if (w === 330 && k !== 'a' && k !== 'f') continue;
       const box = document.createElement('div');
       box.style.width = w + 'px';
       box.innerHTML = `<small>${k} @ ${w}</small>`;
@@ -61,6 +70,7 @@
       row.append(box);
       if (w === 400) cards[k] = card;
       if (w === 760 && k === 'a') cards.wide = card;
+      if (w === 760 && k === 'f') cards.wideF = card;
     }
     out.append(row);
   }
@@ -71,42 +81,43 @@
   const sortZones = API.sortZones;
   const P = (id) => API.zoneProfile(id, states[id]);
   const kitchen = P('climate.kitchen');
-  check(kitchen.bars[0].off === true && kitchen.reasons[0] === 'Heats at 60% of the expected rate.', 'rate-off zone');
+  check(kitchen.bars[0].key === 'rate' && kitchen.bars[0].off === true && kitchen.say === 'Heats at 60% of the expected rate', 'rate-off zone: ' + kitchen.say);
   const bed = P('climate.bedroom');
-  check(bed.bars[0].tick === null && bed.bars[0].off === false, 'expected 0: no tick, not off');
-  check(API.zoneProfile('x', z('X', { status: 'tuned', confidence: 1, heating_rate: 5, heating_rate_expected: 1 })).bars[0].frac === 1, 'value above scale clamps');
+  const bedRate = bed.bars.find((b) => b.key === 'rate');
+  check(bedRate.tick === null && bedRate.off === false, 'expected 0: no tick, not off');
+  check(API.zoneProfile('x', z('X', { status: 'tuned', confidence: 1, heating_rate: 5, heating_rate_expected: 1 })).bars.find((b) => b.key === 'rate').frac === 1, 'value above scale clamps');
   const sorted = sortZones(['climate.office', 'climate.bedroom', 'climate.kitchen', 'climate.bathroom', 'climate.living'].map(P)).map((p) => p.name);
   check(sorted.indexOf('Bathroom') < sorted.indexOf('Office') && sorted.indexOf('Kitchen') < sorted.indexOf('Office'), 'off before good: ' + sorted);
   check(sorted.indexOf('Office') < sorted.indexOf('Bedroom'), 'good: lower confidence first: ' + sorted);
   check(!cards.d.shadowRoot.querySelector('img'), 'no injected img');
   check(cards.d.shadowRoot.textContent.includes('<img src=x'), 'name shown as text');
   check(cards.b.shadowRoot.textContent.includes('Not available'), 'Not available rendered');
-  check(cards.b.shadowRoot.querySelector('.n').textContent === 'climate.missing', 'explicit order kept');
-  check(P('climate.living').reasons[0] === 'Still collecting' && P('climate.living').bars.length === 0, 'collecting');
+  check(cards.b.shadowRoot.querySelector('.name').textContent === 'climate.missing', 'explicit order kept');
+  check(P('climate.living').say === 'Still collecting' && !P('climate.living').bad, 'collecting');
   check(cards.c.shadowRoot.textContent.includes('No Adaptive Climate zones found.') && cards.c.shadowRoot.textContent.includes('Custom title'), 'empty + title');
   check(!cards.a.shadowRoot.textContent.includes('Dead') && cards.a.shadowRoot.querySelectorAll('.room').length === 5, 'discovery');
   const first = cards.a.shadowRoot.querySelector('.room');
   cards.a.hass = { states: { ...cases.a.st } };
   check(cards.a.shadowRoot.querySelector('.room') === first, 'same state objects: no re-render');
   check(cards.a.getCardSize() === 6, 'card size');
-  const sRight = (name) => [...cards.wide.shadowRoot.querySelectorAll('.room')].find((r) => r.querySelector('.n').firstChild.textContent === name).querySelector('.s').getBoundingClientRect().right;
+  const sRight = (name) => [...cards.wide.shadowRoot.querySelectorAll('.room')].find((r) => r.querySelector('.name').textContent === name).querySelector('.pct').getBoundingClientRect().right;
   check(Math.abs(sRight('Living room') - sRight('Office')) <= 1, 'wide: confidence right edges align ' + sRight('Living room') + ' vs ' + sRight('Office'));
   const Z = (o) => API.zoneProfile('x', z('X', { status: 'tuned', confidence: 1, ...o }), o.scale);
-  const at = (rate, expected) => Z({ heating_rate: rate, heating_rate_expected: expected });
+  const at = (rate, expected) => { const p = Z({ heating_rate: rate, heating_rate_expected: expected }); return { bars: [p.bars.find((b) => b.key === 'rate')], say: p.say }; };
   check(at(0.3, 0.4).bars[0].off === false, '0.3 vs 0.4 is exactly 75%: not off');
-  check(at(0.746 * 2, 2).bars[0].off === false && at(0.746 * 2, 2).bars[0].sub === '75%', '74.6% shows 75%, not off');
+  check(at(0.746 * 2, 2).bars[0].off === false && at(0.746 * 2, 2).say === 'On track', '74.6% shows 75%, not off');
   const p74 = at(0.74 * 2, 2);
-  check(p74.bars[0].off === true && p74.reasons[0] === 'Heats at 74% of the expected rate.', '74% off with reason: ' + p74.reasons[0]);
+  check(p74.bars[0].off === true && p74.say === 'Heats at 74% of the expected rate', '74% off with reason: ' + p74.say);
   check(API.rateScale([states['climate.kitchen'], states['climate.bathroom']]) === 2, 'slow zones keep scale 2');
   const fast = z('Fast', { status: 'tuned', confidence: 1, heating_rate: 2.5, heating_rate_expected: 4 });
   check(API.rateScale([fast, states['climate.kitchen']]) === 5, 'fast zone widens scale to 1.25 x 4');
   const fz = API.zoneProfile('x', fast, API.rateScale([fast]));
-  const fb = fz.bars[0];
-  check(fb.frac < fb.tick && fb.tick < 1 && fb.frac < 1 && fb.off && fz.reasons[0] === 'Heats at 63% of the expected rate.', 'forced air: ' + JSON.stringify(fb) + fz.reasons[0]);
+  const fb = fz.bars.find((b) => b.key === 'rate');
+  check(fb.frac < fb.tick && fb.tick < 1 && fb.frac < 1 && fb.off && fz.say === 'Heats at 63% of the expected rate', 'forced air: ' + JSON.stringify(fb) + fz.say);
   const entityCard = document.createElement('adaptive-climate-learning-card');
   entityCard.setConfig({ entities: [{ entity: 'climate.office' }, 'climate.dead'] });
   entityCard.hass = { states: only('climate.dead', 'climate.office') };
-  check(entityCard.shadowRoot.querySelector('.n').firstChild.textContent === 'Office' && !entityCard.shadowRoot.textContent.includes('[object'), 'entities accept {entity} objects and strings');
+  check(entityCard.shadowRoot.querySelector('.name').textContent === 'Office' && !entityCard.shadowRoot.textContent.includes('[object'), 'entities accept {entity} objects and strings');
   let threw = false;
   try { entityCard.setConfig({ entities: 'climate.office' }); } catch (e) { threw = /list/.test(e.message); }
   check(threw, 'entities string throws');
@@ -114,7 +125,106 @@
   one.setConfig({ entities: ['climate.o'] });
   one.hass = { states: { 'climate.o': z('O', { status: 'tuned', confidence: 5, cycles: 1 }) } };
   const oneText = one.shadowRoot.textContent;
-  check(oneText.includes('1 cycle') && !oneText.includes('1 cycles'), 'singular cycle: ' + oneText);
-  check(!cards.c.shadowRoot.textContent.includes('cycles'), 'no cycles total without zones');
+  check(oneText.includes('Tuned, 1 cycle.') && !oneText.includes('1 cycles'), 'singular cycle: ' + oneText);
+  check(!cards.c.shadowRoot.querySelector('.top span').textContent, 'no header count without zones');
+
+  // --- diagnosis view ---
+  const A = (o) => ({ status: 'collecting', confidence: 1, ...o });
+  const sent = (o, hist) => API.sentence(A(o), hist);
+  const hist = (...reasons) => reasons.map((r, i) => H(String(i + 1).padStart(2, '0'), 1, 1 + i, 1, r));
+  const d9 = new Date('2026-11-09T12:00:00+00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  check(sent({ tune: { state: 'checking' }, overshoot: 0.5, overshoot_limit: 0.3 }, [H('09', 1, 1, 1, 'auto_apply'), H('10', 1, 2, 1, 'undershoot_ki_boost')]) === `Checking a tune from ${d9}`, 'sentence: tune check beats off measurement');
+  check(sent({ tune: { state: 'checking' } }, []) === 'Checking a tune', 'sentence: tune check without auto-tune entry');
+  check(API.zoneProfile('x', { state: 'heat', attributes: { friendly_name: 'X', learning: A({ tune: { state: 'checking' }, overshoot: 0.5, overshoot_limit: 0.3 }) } }).bad === true, 'tune check keeps the amber dot');
+  check(sent({ undershoot: 0.41, undershoot_limit: 0.2 }) === 'Ends 0.4° below target', 'sentence: undershoot');
+  check(sent({ overshoot: 0.39, overshoot_limit: 0.3 }) === 'Overshoots by 0.39°', 'sentence: overshoot');
+  check(sent({ heating_rate: 0.61, heating_rate_expected: 1 }) === 'Heats at 61% of the expected rate', 'sentence: rate');
+  check(sent({ settling_time: 140, settling_time_limit: 90 }) === 'Takes 140 min to settle', 'sentence: settling');
+  check(sent({ undershoot: 0.25, undershoot_limit: 0.2, overshoot: 0.9, overshoot_limit: 0.3 }) === 'Overshoots by 0.9°', 'sentence: worst measurement wins');
+  check(sent({ undershoot: 0.1, undershoot_limit: 0.2, overshoot: 0.1, overshoot_limit: 0.3 }) === 'On track', 'sentence: on track');
+  check(sent({ cycles: 3 }) === 'Still collecting', 'sentence: still collecting');
+  check(API.zoneProfile('x', z('X', { status: 'idle', confidence: 3 })).strip === '', 'older backend: no strip');
+
+  check(API.factsLine(A({ cycles: 85, recent: 'ppgppppgpppgpppppgpp', recent_fails: { undershoot: 13, overshoot: 2 } })) === 'Collecting, 85 cycles. 4 of the last 20 were good; 13 ended too low.', 'facts: top failure');
+  check(API.factsLine(A({ cycles: 29, recent: 'gp', recent_fails: { overshoot: 1 } })).endsWith('1 of the last 2 were good; 1 overshot.'), 'facts: overshot');
+  check(API.factsLine(A({ recent: 'pp', recent_fails: { settling: 2 } })).includes('2 settled too slowly'), 'facts: settling');
+  check(API.factsLine(A({ recent: 'pp', recent_fails: { oscillation: 3 } })).includes('3 swung too much'), 'facts: oscillation');
+  check(API.factsLine(A({ recent: 'pp', recent_fails: { rise_time: 2 } })).includes('2 rose too slowly'), 'facts: rise time');
+  check(API.factsLine(A({ cycles: 39, recent: 'ggg' })) === 'Collecting, 39 cycles. 3 of the last 3 were good.', 'facts: all good');
+  check(API.factsLine(A({ cycles: 5 })) === 'Collecting, 5 cycles.', 'facts: older backend');
+
+  const T = (t) => API.tuneText(t);
+  check(T({ state: 'ready' }) === 'Tune check at the next cycle', 'tune: ready');
+  check(T({ state: 'waiting', cycles_left: 10 }) === 'Tune check after 10 more cycles', 'tune: waiting cycles');
+  check(T({ state: 'waiting', cycles_left: 1, hours_left: 40 }) === 'Tune check after 1 more cycle, not before 40 h', 'tune: waiting cycles and hours');
+  check(T({ state: 'waiting' }) === 'Tune check waiting', 'tune: waiting with neither');
+  check(T({ state: 'off', reason: 'no_baseline' }) === 'No tuning: no starting values yet', 'tune: no baseline');
+  const lastOf = (state, last) => API.timeline({ tune: { state, last } }, []).last;
+  check(lastOf('ready', 'converged') === 'Last check: the room is already on target' && lastOf('waiting', 'no_change') === 'Last check: the gains would not change', 'tune: last check words');
+  check(lastOf('ready', 'no_rules_triggered') === 'Last check: nothing to adjust' && lastOf('ready', 'insufficient_usable_data') === 'Last check: too few usable cycles' && lastOf('ready', 'odd_one') === 'Last check: odd one', 'tune: last check words, fallback');
+  check(['rate_limited', 'insufficient_data', 'gates_not_passed'].every((r) => lastOf('waiting', r) === null), 'tune: repeated reasons hidden');
+  const lastCard = document.createElement('adaptive-climate-learning-card');
+  lastCard.setConfig({ entities: ['climate.l'] });
+  lastCard.hass = { states: { 'climate.l': z('L', { status: 'collecting', confidence: 5, tune: { state: 'ready', last: 'converged' } }) } };
+  check(lastCard.shadowRoot.querySelector('.log li.sub').textContent.includes('Last check: the room is already on target'), 'DOM: last check line renders');
+  check(lastOf('ready') === null && lastOf('checking', 'converged') === null && lastOf('blocked', 'converged') === null, 'tune: no last line without last or in other states');
+  check(T({ state: 'waiting', hours_left: 14 }) === 'Tune check in 14 h', 'tune: waiting hours');
+  check(T({ state: 'checking', done: 2, of: 5 }) === 'Tune check running, 2 of 5 cycles', 'tune: checking');
+  check(T({ state: 'blocked', reason: 'seasonal_limit' }) === 'No tuning: seasonal tuning limit reached', 'tune: blocked');
+  check(T({ state: 'off', reason: 'no_room_size' }) === 'No tuning: no room size set', 'tune: off');
+  check(T({ state: 'blocked', reason: 'some_new_reason' }) === 'No tuning: some new reason', 'tune: unknown reason');
+  check(T(undefined) === null, 'tune: absent');
+
+  const tl = API.timeline({}, [H('01', 1.5, 2, 3, 'restore'), H('02', 1.5, 2, 3, 'restore'), H('03', 1.5, 2.5, 3, 'undershoot_ki_boost'), H('04', 1.6, 2.5, 3.2, 'weird_reason')]);
+  check(tl.next === null && tl.entries.length === 3, 'timeline: no-change entry skipped, no next without tune');
+  check(tl.entries[2].text === 'Kp 1.50, Ki 2.00, Kd 3.00' && tl.entries[2].why === 'restored at start', 'timeline: oldest lists all gains');
+  check(tl.entries[1].text === 'Ki 2.00 → 2.50' && tl.entries[1].why === 'undershoot boost', 'timeline: only changed gains');
+  check(tl.entries[0].text === 'Kp 1.50 → 1.60, Kd 3.00 → 3.20' && tl.entries[0].why === 'weird reason', 'timeline: newest first, unknown reason');
+  const allReasons = ['undershoot_ki_boost', 'auto_apply', 'rollback', 'physics_reset', 'physics_init', 'restore', 'manual_apply'];
+  check(API.timeline({}, hist(...allReasons)).entries.map((e) => e.why).join() === 'applied by hand,restored at start,set from physics,reset to physics,rolled back,auto-tune,undershoot boost', 'timeline: reason words');
+  check(API.timeline({ tune: { state: 'ready' } }, []).next === 'Tune check at the next cycle' && API.timeline({}, undefined).entries.length === 0, 'timeline: next entry, missing history');
+
+  check(API.holds({}) === '', 'holds: none');
+  check(API.holds({ ki_boost_capped: true }) === 'Ki boost is at its cap.', 'holds: cap');
+  check(API.holds({ tune: { state: 'checking' } }) === 'No Ki boost while the check runs.', 'holds: check');
+  check(API.holds({ setback_limit: 0 }) === 'Night setback off for now.' && API.holds({ setback_limit: 0, setback_until: 32 }) === 'Night setback off for now.', 'holds: setback off');
+  check(API.holds({ setback_limit: 0.5, setback_until: 32 }) === 'Night setback held at 0.5° until 32%.', 'holds: setback');
+  check(API.holds({ ki_boost_capped: true, tune: { state: 'checking' }, setback_limit: 0.5, setback_until: 32 }) === 'Ki boost is at its cap. No Ki boost while the check runs. Night setback held at 0.5° until 32%.', 'holds: all');
+
+  check(API.timeline({}, [H('01', 0.5, 0.0123, 1, 'restore'), H('02', 0.5, 0.0456, 1, 'undershoot_ki_boost'), H('03', 0.5, 11.6325, 1, 'undershoot_ki_boost')]).entries.map((e) => e.text).join('|') === 'Ki 0.0456 → 11.63|Ki 0.0123 → 0.0456|Kp 0.50, Ki 0.0123, Kd 1.00', 'timeline: Ki keeps 3 significant digits below 1');
+  check(API.gains({ gains: { kp: 0.5, ki: 0.0456, kd: 1 } })[1].text === '0.0456' && API.gains({ gains: { kp: 0.5, ki: 97.8393, kd: 1 } })[1].text === '97.84' && API.gains({ gains: { kp: 0.123, ki: 1, kd: 1 } })[0].text === '0.12', 'gains: Ki significant digits, Kp 2 dp');
+  const g = API.gains({ gains: { kp: 0.52, ki: 11.63, kd: 1.39 }, gains_physics: { kp: 0.5, ki: 3.6, kd: 0.9 } });
+  check(g.map((x) => x.text).join() === '0.52,11.63,1.39' && g[1].flag === '3.2× physics' && g[0].flag === '' && g[2].flag === '1.5× physics', 'gains: 2 dp and physics flag at 1.5x');
+  check(API.gains({ gains: { kp: 0.3, ki: 1, kd: 1 }, gains_physics: { kp: 0.6, ki: 1, kd: 1 } })[0].flag === '0.5× physics', 'gains: flag below physics');
+  check(API.gains({ gains: { kp: 5, ki: 1, kd: 1 } }).every((x) => !x.flag) && API.gains({}).length === 0, 'gains: no physics, no gains');
+
+  check(API.attention([P('climate.kitchen'), P('climate.office'), P('climate.dead')]) === '1 of 2 rooms need attention', 'attention count');
+  check(API.attention([P('climate.office')]) === 'All rooms on track', 'attention: all on track');
+
+  const fCard = cards.f.shadowRoot;
+  const gfRow = () => cards.f.shadowRoot.querySelector('.room button.row');
+  check(gfRow().tagName === 'BUTTON' && gfRow().getAttribute('aria-expanded') === 'false' && fCard.querySelector('.strip').getAttribute('aria-hidden') === 'true', 'row is a button, strip hidden');
+  check(fCard.querySelector('.room .strip').querySelectorAll('i').length === 20 && fCard.querySelectorAll('.room .strip i.p').length > 0, 'strip: 20 ticks with poor ones');
+  check(fCard.querySelector('.top span').textContent === '2 of 2 rooms need attention', 'header count in DOM');
+  gfRow().click();
+  check(gfRow().getAttribute('aria-expanded') === 'true' && fCard.querySelector('.room').classList.contains('open'), 'click opens');
+  const second = fCard.querySelectorAll('.room button.row')[1];
+  second.click();
+  check(second.getAttribute('aria-expanded') === 'true' && gfRow().getAttribute('aria-expanded') === 'false', 'one room open at a time');
+  gfRow().click();
+  check(fCard.querySelectorAll('.log li').length === 1 + 6 && fCard.querySelectorAll('.log li.old').length === 3, 'timeline: next + 6 changes, 3 shown');
+  const older = fCard.querySelector('.older');
+  check(older && older.tagName === 'BUTTON' && older.textContent === 'Show 3 older changes', 'show older button');
+  older.click();
+  check(fCard.activeElement === fCard.querySelector('.log li.old'), 'focus moves to first revealed entry');
+  check(fCard.querySelector('.log').classList.contains('all') && !fCard.querySelector('.older'), 'show older expands');
+  cards.f.hass = { states: { ...cases.f.st, 'climate.gf': { ...states['climate.gf'] } } };
+  const f2 = cards.f.shadowRoot;
+  check(f2.querySelector('.room button.row').getAttribute('aria-expanded') === 'true' && f2.querySelector('.log').classList.contains('all') && !f2.querySelector('.older'), 'open room and older state survive re-render');
+  check(f2.querySelector('.gains small').textContent === '3.2× physics' && f2.querySelector('.hold').textContent === 'Ki boost is at its cap. Night setback held at 0.5° until 32%.', 'gains flag and holds in DOM');
+  check(f2.querySelector('.pct .sr').textContent.trim() === 'confidence' && f2.querySelector('.m .sr').textContent.includes('limit'), 'screen reader text on confidence and measurements');
+  check(/over the limit/.test(f2.querySelector('.m .sr').textContent) && [...f2.querySelectorAll('.m .sr')].some((e) => /below expected/.test(e.textContent)) && !f2.querySelector('.log li.sub'), 'sr: off measurements announced; no last-check line without tune.last');
+  const wideRow = cards.wideF.shadowRoot.querySelector('.room button.row');
+  check(wideRow.getBoundingClientRect().height < 50, 'wide: closed room is one line ' + wideRow.getBoundingClientRect().height);
   document.getElementById('selfcheck').textContent = fails ? `FAIL ${fails}` : 'PASS';
 </script>

@@ -622,3 +622,15 @@ class TestCooldownState:
         learner.calculate_pid_adjustment(100.0, 0.01, 0.0)
         assert learner._last_adjustment_time is None
         assert learner._last_skip_reason == "insufficient_data"
+
+
+def test_naive_restored_timestamps_are_read_as_utc():
+    from datetime import datetime, timezone
+
+    data = AdaptiveLearner(heating_type=HeatingType.RADIATOR).to_dict()
+    data["last_adjustment_time"] = "2025-03-15T10:30:00"
+    data["last_seasonal_shift"] = "2025-03-15T11:30:00"
+    learner = AdaptiveLearner(heating_type=HeatingType.RADIATOR)
+    learner.restore_from_dict(data)
+    assert learner._last_adjustment_time == datetime(2025, 3, 15, 10, 30, tzinfo=timezone.utc)
+    assert learner._validation._last_seasonal_shift == datetime(2025, 3, 15, 11, 30, tzinfo=timezone.utc)

@@ -235,6 +235,29 @@ def calculate_pid_adjustment(
 # update_convergence_confidence — full implementation
 # ---------------------------------------------------------------------------
 
+STABLE_CONFIDENCE = 0.4 * 0.8
+
+
+def cycle_failures(learner: AdaptiveLearner, metrics: CycleMetrics, confidence: float) -> list[str]:
+    """Return the causes a heating cycle failed on at ``confidence``; an empty list is a good cycle."""
+    thresholds = learner._convergence_thresholds
+    is_recovery = metrics.starting_delta is not None and learner._weight_calculator.is_recovery_cycle(
+        metrics.starting_delta, confidence >= STABLE_CONFIDENCE
+    )
+    failed: list[str] = []
+    if metrics.undershoot is not None and metrics.undershoot > thresholds.get("undershoot_max", 0.2):
+        failed.append("undershoot")
+    if metrics.overshoot is not None and metrics.overshoot > thresholds["overshoot_max"]:
+        failed.append("overshoot")
+    if metrics.settling_time is not None and metrics.settling_time > thresholds["settling_time_max"]:
+        failed.append("settling")
+    if metrics.oscillations > thresholds["oscillations_max"]:
+        failed.append("oscillation")
+    # Recovery cycles are judged by undershoot: floors often end the cycle before rise_time is measured
+    if not is_recovery and metrics.rise_time is not None and metrics.rise_time > thresholds["rise_time_max"]:
+        failed.append("rise_time")
+    return failed
+
 
 def update_convergence_confidence(learner: AdaptiveLearner, metrics: CycleMetrics, mode: HVACMode = None) -> None:
     """Update convergence confidence based on cycle performance with weighted learning.
@@ -253,26 +276,10 @@ def update_convergence_confidence(learner: AdaptiveLearner, metrics: CycleMetric
     # Confidence lost to poor cycles or decay frees the matching maintenance allowance again
     learner._contribution_tracker.clamp_maintenance_contribution(current_confidence, mode)
 
-    thresholds = learner._convergence_thresholds
-    tier1_base = 0.4
-    is_stable = current_confidence >= (tier1_base * 0.8)
-    is_recovery = metrics.starting_delta is not None and learner._weight_calculator.is_recovery_cycle(
-        metrics.starting_delta, is_stable
-    )
-
-    # Recovery cycles are judged by undershoot: floors often end the cycle before rise_time is measured
-    rise_time_ok = is_recovery or metrics.rise_time is None or metrics.rise_time <= thresholds["rise_time_max"]
-
-    overshoot_too_high = metrics.overshoot is not None and metrics.overshoot > thresholds["overshoot_max"]
-    undershoot_too_high = metrics.undershoot is not None and metrics.undershoot > thresholds.get("undershoot_max", 0.2)
-
-    is_good_cycle = (
-        not overshoot_too_high
-        and not undershoot_too_high
-        and metrics.oscillations <= thresholds["oscillations_max"]
-        and (metrics.settling_time is None or metrics.settling_time <= thresholds["settling_time_max"])
-        and rise_time_ok
-    )
+    failed = cycle_failures(learner, metrics, current_confidence)
+    overshoot_too_high = "overshoot" in failed
+    undershoot_too_high = "undershoot" in failed
+    is_good_cycle = not failed
 
     # Determine cycle outcome
     if is_good_cycle:
@@ -287,7 +294,7 @@ def update_convergence_confidence(learner: AdaptiveLearner, metrics: CycleMetric
     # Calculate cycle weight
     weight = 1.0
     if metrics.starting_delta is not None:
-        is_stable_for_weight = current_confidence >= (tier1_base * 0.8)
+        is_stable_for_weight = current_confidence >= STABLE_CONFIDENCE
         weight = learner._weight_calculator.calculate_weight(
             starting_delta=metrics.starting_delta,
             is_stable=is_stable_for_weight,
@@ -306,7 +313,7 @@ def update_convergence_confidence(learner: AdaptiveLearner, metrics: CycleMetric
         is_recovery_known: bool | None = None
         is_maintenance = False
         if metrics.starting_delta is not None:
-            is_stable_check = current_confidence >= (tier1_base * 0.8)
+            is_stable_check = current_confidence >= STABLE_CONFIDENCE
             is_recovery_known = learner._weight_calculator.is_recovery_cycle(metrics.starting_delta, is_stable_check)
             is_maintenance = not is_recovery_known
 

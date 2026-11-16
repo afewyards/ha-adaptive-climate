@@ -1,7 +1,7 @@
 """Tests for phase-aware overshoot detection and zone adjustments in adaptive learning."""
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 from custom_components.adaptive_climate.adaptive.learning import (
@@ -2824,7 +2824,7 @@ class TestAdaptiveLearnerRestoration:
         learner = AdaptiveLearner()
 
         # Prepare data with timestamp (v10 format)
-        test_time = datetime(2024, 1, 15, 10, 30, 45)
+        test_time = datetime(2024, 1, 15, 10, 30, 45, tzinfo=timezone.utc)
         data = {
             "format_version": 10,
             "heating": {"cycle_history": [], "auto_apply_count": 0, "convergence_confidence": 0.0},
@@ -2874,7 +2874,7 @@ class TestAdaptiveLearnerRestoration:
         learner1._consecutive_converged_cycles = 5
         learner1._pid_converged_for_ke = True
         learner1._auto_apply_count = 3
-        learner1._last_adjustment_time = datetime(2024, 1, 15, 10, 30, 45)
+        learner1._last_adjustment_time = datetime(2024, 1, 15, 10, 30, 45, tzinfo=timezone.utc)
 
         # Serialize
         data = learner1.to_dict()
@@ -2888,7 +2888,7 @@ class TestAdaptiveLearnerRestoration:
         assert learner2._consecutive_converged_cycles == 5
         assert learner2._pid_converged_for_ke is True
         assert learner2._auto_apply_count == 3
-        assert learner2._last_adjustment_time == datetime(2024, 1, 15, 10, 30, 45)
+        assert learner2._last_adjustment_time == datetime(2024, 1, 15, 10, 30, 45, tzinfo=timezone.utc)
 
         # Verify cycle data
         cycle1 = learner2._cycle_history[0]

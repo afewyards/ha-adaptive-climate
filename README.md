@@ -70,7 +70,9 @@ For the best experience, use the [Adaptive Climate Card](https://github.com/afew
 
 ## Learning card
 
-The integration ships a small Lovelace card that shows what the system has learned about each zone: how fast it heats, how much it overshoots and how long it takes to settle, each against what was expected, plus how confident the system is. Zones that miss their targets are listed first, with the reason in words.
+The integration ships a small Lovelace card that shows what the system has learned about each zone. A closed room is one sentence (what is off, "Checking a tune from 9 Nov", "Still collecting" or "On track"), a strip of its last 20 cycles (tall is good, short amber is poor) and its confidence. Rooms that miss their targets are listed first and the header counts them.
+
+Click a room to open it: how many of the last cycles were good and why the others failed, undershoot, heating rate, overshoot and settling time against their limits, the current Kp, Ki and Kd (flagged when 1.5× or more away from the physics value), the last gain changes with a "next" line for the tuner, and what is holding back Ki boost or night setback. Only one room is open at a time.
 
 ```yaml
 type: custom:adaptive-climate-learning-card
