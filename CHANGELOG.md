@@ -1,6 +1,18 @@
 # CHANGELOG
 
 
+## v0.71.0 (2026-11-16)
+
+### Features
+
+- **learning**: Record whether the floor below was heating during a cycle
+  ([`25958c9`](https://github.com/afewyards/ha-adaptive-climate/commit/25958c98d916670f609fd054e10bcb17b39c186f))
+
+Each heating cycle stores the share of its duration during which a zone on the floor below was
+  heating. The learning card shows how overshoots line up with it. Measurement only: nothing that
+  judges or tunes reads it.
+
+
 ## v0.70.0 (2026-11-16)
 
 ### Features
