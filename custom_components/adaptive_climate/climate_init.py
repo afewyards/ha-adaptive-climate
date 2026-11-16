@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 from .adaptive.physics import calculate_initial_ke
 from .adaptive.ke_learning import KeLearner
 from .adaptive.preheat import PreheatLearner
+from .helpers.registry import lower_zone_heating
 from .managers import (
     ControlOutputManager,
     HeaterController,
@@ -362,6 +363,9 @@ async def async_setup_managers(thermostat: AdaptiveThermostat) -> None:
                     dispatcher=thermostat._cycle_dispatcher,
                     heating_type=thermostat._heating_type,
                     ke_manager=thermostat._ke_controller,  # M07: persist Ke observations
+                    get_heat_below=lambda: lower_zone_heating(
+                        thermostat.hass, thermostat._coordinator, thermostat.entity_id
+                    ),
                 )
                 # Add cycle_tracker to zone_data for state_attributes access
                 zone_data["cycle_tracker"] = thermostat._cycle_tracker

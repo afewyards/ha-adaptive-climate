@@ -42,7 +42,7 @@
       learning: { status: 'collecting', confidence: 0, cycles: 85, heating_rate: 0.2, heating_rate_expected: 1.2, overshoot: 0.12, overshoot_limit: 0.3, settling_time: 96, settling_time_limit: 120,
         undershoot: 0.41, undershoot_limit: 0.2, recent: 'ppgppppgpppgpppppgpp', recent_fails: { undershoot: 13, overshoot: 2 },
         gains: { kp: 0.52, ki: 11.63, kd: 1.39 }, gains_physics: { kp: 0.5, ki: 3.6, kd: 1.4 }, ki_boost_capped: true,
-        tune: { state: 'waiting', cycles_left: 10 }, setback_limit: 0.5, setback_until: 32 } } },
+        tune: { state: 'waiting', cycles_left: 10 }, setback_limit: 0.5, setback_until: 32, below: { over: 9, over_with: 7, rest: 11, rest_with: 3 } } } },
   };
   const only = (...ids) => Object.fromEntries(ids.map((i) => [i, states[i]]));
   const cases = {
@@ -153,6 +153,14 @@
   check(API.factsLine(A({ cycles: 39, recent: 'ggg' })) === 'Collecting, 39 cycles. 3 of the last 3 were good.', 'facts: all good');
   check(API.factsLine(A({ cycles: 5 })) === 'Collecting, 5 cycles.', 'facts: older backend');
 
+  const B = (below) => API.belowLine({ below });
+  check(B({ over: 9, over_with: 7, rest: 11, rest_with: 3 }) === '7 of 9 overshoots came while a room below was heating, against 3 of 11 other cycles.', 'below: with other cycles');
+  check(B({ over: 2, over_with: 1, rest: 0, rest_with: 0 }) === '1 of 2 overshoots came while a room below was heating.', 'below: no other cycles');
+  check(B({ over: 1, over_with: 1, rest: 1, rest_with: 0 }) === '1 of 1 overshoot came while a room below was heating, against 0 of 1 other cycle.', 'below: singular');
+  check(B({ over: 1, over_with: 0, rest: 9, rest_with: 1 }) === '0 of 1 overshoot came while a room below was heating, against 1 of 9 other cycles.', 'below: singular overshoot, plural cycles');
+  check(API.belowLine({}) === '' && B({ over: 0, over_with: 0, rest: 5, rest_with: 2 }) === '', 'below: absent key or no overshoot');
+  check(API.zoneProfile('x', z('X', { status: 'tuned', confidence: 1 })).below === '', 'below: older backend');
+
   const T = (t) => API.tuneText(t);
   check(T({ state: 'ready' }) === 'Tune check at the next cycle', 'tune: ready');
   check(T({ state: 'waiting', cycles_left: 10 }) === 'Tune check after 10 more cycles', 'tune: waiting cycles');
@@ -221,6 +229,7 @@
   cards.f.hass = { states: { ...cases.f.st, 'climate.gf': { ...states['climate.gf'] } } };
   const f2 = cards.f.shadowRoot;
   check(f2.querySelector('.room button.row').getAttribute('aria-expanded') === 'true' && f2.querySelector('.log').classList.contains('all') && !f2.querySelector('.older'), 'open room and older state survive re-render');
+  check(f2.querySelector('.room.open .facts + .facts').textContent === '7 of 9 overshoots came while a room below was heating, against 3 of 11 other cycles.' && f2.querySelectorAll('.facts + .facts').length === 1, 'DOM: below line under the facts line, only where there is one');
   check(f2.querySelector('.gains small').textContent === '3.2× physics' && f2.querySelector('.hold').textContent === 'Ki boost is at its cap. Night setback held at 0.5° until 32%.', 'gains flag and holds in DOM');
   check(f2.querySelector('.pct .sr').textContent.trim() === 'confidence' && f2.querySelector('.m .sr').textContent.includes('limit'), 'screen reader text on confidence and measurements');
   check(/over the limit/.test(f2.querySelector('.m .sr').textContent) && [...f2.querySelectorAll('.m .sr')].some((e) => /below expected/.test(e.textContent)) && !f2.querySelector('.log li.sub'), 'sr: off measurements announced; no last-check line without tune.last');

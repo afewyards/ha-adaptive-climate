@@ -288,6 +288,32 @@ class TestStartingDeltaSerialization:
         cycle = restored["heating_cycle_history"][0]
         assert cycle.starting_delta is None
 
+    def test_heat_below_round_trip_and_cycle_without_the_key(self):
+        learner = AdaptiveLearner(heating_type=HeatingType.FLOOR_HYDRONIC)
+        for heat_below in (0.42, None, 0.0):
+            learner.add_cycle_metrics(
+                CycleMetrics(
+                    overshoot=0.15,
+                    undershoot=0.08,
+                    settling_time=45.0,
+                    rise_time=30.0,
+                    starting_delta=0.8,
+                    heat_below=heat_below,
+                )
+            )
+        data = learner.to_dict()
+        stored = data["heating"]["cycle_history"]
+        assert [cycle["heat_below"] for cycle in stored] == [0.42, None, 0.0]
+        assert data["format_version"] == CURRENT_VERSION
+
+        del stored[0]["heat_below"]
+        restored = restore_learner_from_dict(data)
+        assert [cycle.heat_below for cycle in restored["heating_cycle_history"]] == [None, None, 0.0]
+
+        round_trip = AdaptiveLearner(heating_type=HeatingType.FLOOR_HYDRONIC)
+        round_trip.restore_from_dict(learner.to_dict())
+        assert [cycle.heat_below for cycle in round_trip.cycle_history] == [0.42, None, 0.0]
+
 
 class TestV9ToV10Migration:
     """Test migration from v9 to v10 format."""

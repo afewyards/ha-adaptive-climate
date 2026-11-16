@@ -45,6 +45,7 @@ Exposed via `extra_state_attributes`. Structure: flat restoration fields + group
         "settling_time_limit": 90,
         "recent": "ggpgpppgpppp",   # g good / p poor, oldest first
         "recent_fails": {"undershoot": 8, "rise_time": 2},
+        "below": {"over": 9, "over_with": 7, "rest": 11, "rest_with": 3},
         "gains": {"kp": 1.84, "ki": 8.2286, "kd": 0.63},
         "gains_physics": {"kp": 1.84, "ki": 5.7143, "kd": 0.63},
         "tune": {"state": "waiting", "cycles_left": 2, "last": "converged"},
@@ -88,12 +89,15 @@ Exposed via `extra_state_attributes`. Structure: flat restoration fields + group
 | `settling_time_limit` | min | Convergence limit for this heating type |
 | `recent` | - | One char per cycle, last 20, oldest first: `g` good, `p` poor |
 | `recent_fails` | count | Poor cycles in `recent` by cause (`undershoot`, `overshoot`, `settling`, `oscillation`, `rise_time`); a cycle counts once per failed cause; zero counts and an all-good strip leave it out |
+| `below` | count | Over the last 20 cycles that have a `heat_below` value: `over` failed on overshoot, `rest` the others, `over_with` / `rest_with` those where a room on the floor below was heating for 0.25 of the cycle or more; omitted when no cycle has a value |
 | `ki_boost_capped` | - | `true` when the cumulative undershoot Ki multiplier is at its 3.0× cap |
 | `gains` | - | `{kp, ki, kd}` in use now |
 | `gains_physics` | - | `{kp, ki, kd}` a `reset_pid_to_physics` would set now; omitted without `area_m2` |
 | `tune` | - | What heating auto-tune is waiting for (below); omitted in cooling mode |
 | `setback_limit` | °C | Night setback depth learning allows now, only when below the configured `delta`; omitted during a contact-sensor or humidity pause |
 | `setback_until` | % | Confidence at which that limit next relaxes; omitted for a 0° hold, which lifts at 3 cycles |
+
+Each heating cycle stores `heat_below`: the share of the cycle (0-1, 2 dp), from its start until its metrics are finalised, during which a room on the floor below was heating (coordinator demand in heat mode, sampled with each temperature update during the cycle). The floor below is the nearest lower floor level that has an Adaptive Climate zone; floors come from the entity's area and its floor level in Home Assistant. It is `null` when the zone's floor is unknown, no other zone sits lower, a lookup failed, or the cycle is older than this field. It is measurement only: it does not change how a cycle is judged or learned from.
 
 Good and poor use the confidence rule. Whether a cycle counts as a recovery (which skips the rise-time check) is decided with today's confidence, so an old cycle can read differently from how it was counted then.
 

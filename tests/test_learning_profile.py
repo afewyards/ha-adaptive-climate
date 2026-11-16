@@ -121,6 +121,28 @@ def test_recent_judges_recovery_with_todays_confidence():
     assert stable["recent"] == "p" and stable["recent_fails"] == {"rise_time": 1}
 
 
+def test_below_counts_overshoots_and_other_cycles_with_a_room_below_heating():
+    cycles = [
+        c(1.0, 10, heat_below=0.25),
+        c(1.0, 10, heat_below=0.24),
+        c(1.0, 10, undershoot=1.0, heat_below=0.0),
+        c(0.1, 10, undershoot=1.0, heat_below=0.5),
+        c(0.1, 10, heat_below=1.0),
+        c(0.1, 10, heat_below=0.0),
+        c(1.0, 10),
+    ]
+    assert profile(make_learner(cycles=cycles))["below"] == {"over": 3, "over_with": 1, "rest": 3, "rest_with": 2}
+
+
+def test_below_uses_the_last_20_cycles_with_a_value():
+    cycles = [c(1.0, 10, heat_below=1.0)] * 5 + [c(0.1, 10, heat_below=0.0)] * 20 + [c(1.0, 10)] * 3
+    assert profile(make_learner(cycles=cycles))["below"] == {"over": 0, "over_with": 0, "rest": 20, "rest_with": 0}
+
+
+def test_below_omitted_when_no_cycle_has_a_value():
+    assert "below" not in profile(make_learner(cycles=[c(1.0, 10), c(0.1, 10)]))
+
+
 def test_cycle_failures_matches_confidence_update():
     learner = make_learner()
     for metrics in (c(0.1, 20), c(0.5, 20), c(0.1, 20, undershoot=0.5), c(0.1, 20, rise_time=90)):

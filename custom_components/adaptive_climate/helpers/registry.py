@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ..coordinator import AdaptiveThermostatCoordinator
 
 try:
     from homeassistant.core import HomeAssistant
@@ -17,6 +22,8 @@ except ImportError:
     er = None  # type: ignore[assignment]
     ar = None  # type: ignore[assignment]
     fr = None  # type: ignore[assignment]
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def discover_zone_floors(hass: HomeAssistant, zone_entity_ids: list[str]) -> dict[str, int | None]:
@@ -83,3 +90,28 @@ def discover_zone_floors(hass: HomeAssistant, zone_entity_ids: list[str]) -> dic
 
     # Story 1.1, Step 8: Loop continues processing remaining zones after None case
     return result
+
+
+def lower_zone_heating(
+    hass: HomeAssistant, coordinator: AdaptiveThermostatCoordinator | None, entity_id: str
+) -> bool | None:
+    """Whether a zone on the nearest lower floor that has zones is heating; None when that cannot be known.
+
+    Never raises: a registry or coordinator failure gives None.
+    """
+    try:
+        if coordinator is None:
+            return None
+        zones = [zone.get("climate_entity_id") for zone in coordinator.get_all_zones().values()]
+        floors = discover_zone_floors(hass, [entity_id, *(zone for zone in zones if isinstance(zone, str))])
+        own = floors.get(entity_id)
+        below = [floor for floor in floors.values() if own is not None and floor is not None and floor < own]
+        if not below:
+            return None
+        nearest = max(below)
+        lower = {zone for zone, floor in floors.items() if floor == nearest}
+        heating = {zone.get("climate_entity_id") for zone in coordinator.get_active_zones("heat").values()}
+        return not lower.isdisjoint(heating)
+    except Exception:
+        _LOGGER.debug("%s: could not tell whether a zone below is heating", entity_id, exc_info=True)
+        return None
