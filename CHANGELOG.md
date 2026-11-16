@@ -1,6 +1,20 @@
 # CHANGELOG
 
 
+## v0.70.0 (2026-11-16)
+
+### Features
+
+- **card**: Show why a zone is where it is on the learning card
+  ([`068015e`](https://github.com/afewyards/ha-adaptive-climate/commit/068015e648b2b5d7ac82f6aebf1e5bde8ae67bc9))
+
+A closed room is one sentence, its last 20 cycle verdicts and the confidence. Opened, it shows the
+  measurements, gains against physics, the next tune check and the gain changes.
+
+The learning attribute gains undershoot, recent verdicts, gains, the tune state and the night
+  setback hold. A stored timestamp without a timezone is read as UTC.
+
+
 ## v0.69.1 (2026-11-15)
 
 ### Bug Fixes
