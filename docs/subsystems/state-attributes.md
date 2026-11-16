@@ -30,17 +30,26 @@ Exposed via `extra_state_attributes`. Structure: flat restoration fields + group
         ]
     },
     "learning": {
-        "status": "stable",         # idle | collecting | stable | tuned | optimized
-        "confidence": 45,           # 0-100%
+        "status": "collecting",     # idle | collecting | stable | tuned | optimized
+        "confidence": 30,           # 0-100%
         "cycles": 12,               # learned profile keys below are omitted when unknown
         "heating_type": "radiator",
         "area_m2": 18.0,
         "heating_rate": 0.91,
-        "heating_rate_expected": 1.2,
-        "overshoot": 0.2,
-        "overshoot_limit": 0.2,
+        "heating_rate_expected": 1.0,
+        "overshoot": 0.05,
+        "overshoot_limit": 0.25,
+        "undershoot": 0.29,
+        "undershoot_limit": 0.25,
         "settling_time": 30.0,
-        "settling_time_limit": 45.0
+        "settling_time_limit": 90,
+        "recent": "ggpgpppgpppp",   # g good / p poor, oldest first
+        "recent_fails": {"undershoot": 8, "rise_time": 2},
+        "gains": {"kp": 1.84, "ki": 8.2286, "kd": 0.63},
+        "gains_physics": {"kp": 1.84, "ki": 5.7143, "kd": 0.63},
+        "tune": {"state": "waiting", "cycles_left": 2, "last": "converged"},
+        "setback_limit": 0.5,
+        "setback_until": 36
     },
     "settings": {
         "changed": false,           # true when the zone has saved runtime edits
@@ -73,8 +82,34 @@ Exposed via `extra_state_attributes`. Structure: flat restoration fields + group
 | `heating_rate_expected` | °C/h | Physics-based baseline for this zone |
 | `overshoot` | °C | Mean overshoot over the last 20 cycles |
 | `overshoot_limit` | °C | Convergence limit for this heating type |
+| `undershoot` | °C | Mean undershoot over the last 20 cycles |
+| `undershoot_limit` | °C | Convergence limit for this heating type |
 | `settling_time` | min | Mean settling time over all stored cycles |
 | `settling_time_limit` | min | Convergence limit for this heating type |
+| `recent` | - | One char per cycle, last 20, oldest first: `g` good, `p` poor |
+| `recent_fails` | count | Poor cycles in `recent` by cause (`undershoot`, `overshoot`, `settling`, `oscillation`, `rise_time`); a cycle counts once per failed cause; zero counts and an all-good strip leave it out |
+| `ki_boost_capped` | - | `true` when the cumulative undershoot Ki multiplier is at its 3.0× cap |
+| `gains` | - | `{kp, ki, kd}` in use now |
+| `gains_physics` | - | `{kp, ki, kd}` a `reset_pid_to_physics` would set now; omitted without `area_m2` |
+| `tune` | - | What heating auto-tune is waiting for (below); omitted in cooling mode |
+| `setback_limit` | °C | Night setback depth learning allows now, only when below the configured `delta`; omitted during a contact-sensor or humidity pause |
+| `setback_until` | % | Confidence at which that limit next relaxes; omitted for a 0° hold, which lifts at 3 cycles |
+
+Good and poor use the confidence rule. Whether a cycle counts as a recovery (which skips the rise-time check) is decided with today's confidence, so an old cycle can read differently from how it was counted then.
+
+**`tune` states** (heating mode, read-only: building it never records a seasonal shift, starts validation or changes a counter):
+
+| `state` | Extra keys | Meaning |
+|---------|------------|---------|
+| `ready` | `last` | The next cycle runs the auto-tune check |
+| `waiting` | `cycles_left`, `hours_left`, `last` | Larger of cycles still missing for the minimum and cycles left in the cooldown; cooldown hours rounded up. Zero values are left out |
+| `checking` | `done`, `of` | Validating the last auto-tune, `done` of `of` cycles |
+| `blocked` | `reason` | `lifetime_limit`, `seasonal_limit`, `drift_limit` or `seasonal_shift` |
+| `off` | `reason` | `disabled` (`auto_apply_pid: false`), `no_room_size` (no `area_m2`) or `no_baseline` (area set, but no physics baseline was recorded) |
+
+`last` is why the most recent PID recommendation check gave no change, when there is one since the last restart: `gates_not_passed`, `rate_limited`, `insufficient_data`, `insufficient_usable_data`, `converged`, `no_rules_triggered` or `no_change`.
+
+`ready` does not rule out a block: the seasonal shift check runs only at the auto-tune check itself (it records the shift), so a room shown as `ready` can still be blocked for 7 days at its next cycle.
 
 **Learning status states:**
 - `idle` - Learning paused (contact_open, humidity_spike, or learning_grace active)

@@ -70,7 +70,7 @@ PreheatLearner (preheat.py):
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 import logging
 
@@ -500,6 +500,9 @@ def restore_learner_from_dict(data: dict[str, Any]) -> dict[str, Any]:
     if last_adj_time is not None and isinstance(last_adj_time, str):
         try:
             last_adjustment_time = datetime.fromisoformat(last_adj_time)
+            # Early versions stored a naive local time; read it as UTC so elapsed-time math works
+            if last_adjustment_time.tzinfo is None:
+                last_adjustment_time = last_adjustment_time.replace(tzinfo=timezone.utc)
         except (ValueError, TypeError):
             _LOGGER.warning("Could not parse last_adjustment_time: %s — using None", last_adj_time)
             last_adjustment_time = None
@@ -511,6 +514,8 @@ def restore_learner_from_dict(data: dict[str, Any]) -> dict[str, Any]:
     if last_seasonal_shift_raw is not None and isinstance(last_seasonal_shift_raw, str):
         try:
             last_seasonal_shift: datetime | None = datetime.fromisoformat(last_seasonal_shift_raw)
+            if last_seasonal_shift.tzinfo is None:
+                last_seasonal_shift = last_seasonal_shift.replace(tzinfo=timezone.utc)
         except (ValueError, TypeError):
             _LOGGER.warning(
                 "Could not parse last_seasonal_shift: %s — using None (auto-apply block reset)",

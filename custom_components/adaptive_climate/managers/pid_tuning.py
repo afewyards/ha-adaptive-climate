@@ -26,6 +26,30 @@ _LOGGER = logging.getLogger(__name__)
 DOMAIN = const.DOMAIN
 
 
+def calculate_physics_gains(state: PIDTuningManagerState) -> tuple[float, float, float, float] | None:
+    """Return (tau, kp, ki, kd) that a reset to physics would set now, or None without a room size."""
+    area_m2 = state._area_m2
+    if not area_m2:
+        return None
+    tau = calculate_thermal_time_constant(
+        volume_m3=area_m2 * state._ceiling_height,
+        window_area_m2=state._window_area_m2,
+        floor_area_m2=area_m2,
+        window_rating=state._window_rating,
+        floor_construction=state._floor_construction,
+        area_m2=area_m2,
+        heating_type=state.heating_type,
+    )
+    kp, ki, kd = calculate_initial_pid(
+        tau,
+        state.heating_type,
+        area_m2=area_m2,
+        max_power_w=state._max_power_w,
+        supply_temperature=state._supply_temperature,
+    )
+    return tau, kp, ki, kd
+
+
 class PIDTuningManager:
     """Manager for PID parameter tuning operations.
 
@@ -120,32 +144,16 @@ class PIDTuningManager:
         Calculates initial PID parameters based on room thermal properties
         using the Ziegler-Nichols method. Includes floor construction if configured.
         """
-        area_m2 = self._state._area_m2
-        if not area_m2:
+        physics = calculate_physics_gains(self._state)
+        if physics is None:
             _LOGGER.warning("%s: Cannot reset PID to physics - no area_m2 configured", self._state.entity_id)
             return
-
-        ceiling_height = self._state._ceiling_height
-        volume_m3 = area_m2 * ceiling_height
-        window_area_m2 = self._state._window_area_m2
+        tau, kp, ki, kd = physics
         window_rating = self._state._window_rating
         heating_type = self._state.heating_type
         floor_construction = self._state._floor_construction
-
-        tau = calculate_thermal_time_constant(
-            volume_m3=volume_m3,
-            window_area_m2=window_area_m2,
-            floor_area_m2=area_m2,
-            window_rating=window_rating,
-            floor_construction=floor_construction,
-            area_m2=area_m2,
-            heating_type=heating_type,
-        )
         max_power_w = self._state._max_power_w
         supply_temperature = self._state._supply_temperature
-        kp, ki, kd = calculate_initial_pid(
-            tau, heating_type, area_m2=area_m2, max_power_w=max_power_w, supply_temperature=supply_temperature
-        )
 
         # Clear integral to avoid wind-up from old tuning
         self._gains_manager.set_integral(0.0, PIDChangeReason.PHYSICS_RESET)

@@ -155,6 +155,22 @@ class ValidationManager:
         cooling_auto_apply_count: int,
         pid_history: list[dict[str, Any]],
     ) -> str | None:
+        """Return why a safety limit blocks auto-apply, or None when it is allowed."""
+        blocked = self.auto_apply_limit(
+            current_kp, current_ki, current_kd, heating_auto_apply_count, cooling_auto_apply_count, pid_history
+        )
+        return blocked[1] if blocked else None
+
+    def auto_apply_limit(
+        self,
+        current_kp: float,
+        current_ki: float,
+        current_kd: float,
+        heating_auto_apply_count: int,
+        cooling_auto_apply_count: int,
+        pid_history: list[dict[str, Any]],
+        warn: bool = True,
+    ) -> tuple[str, str] | None:
         """Check if auto-apply is allowed based on safety limits.
 
         Performs four safety checks before allowing auto-apply:
@@ -170,17 +186,19 @@ class ValidationManager:
             heating_auto_apply_count: Number of heating mode auto-applies
             cooling_auto_apply_count: Number of cooling mode auto-applies
             pid_history: List of PID snapshot dictionaries
+            warn: Log malformed history timestamps as warnings; False logs them at debug level
 
         Returns:
-            None if all checks pass (OK to auto-apply),
-            Error message string if any check fails (blocked).
+            None if all checks pass (OK to auto-apply), else (reason, message) of the first failed check;
+            reason is one of lifetime_limit, seasonal_limit, drift_limit, seasonal_shift.
         """
         # Check 1: Lifetime limit (combined across all modes)
         total_auto_apply_count = heating_auto_apply_count + cooling_auto_apply_count
         if total_auto_apply_count >= MAX_AUTO_APPLIES_LIFETIME:
             return (
+                "lifetime_limit",
                 f"Lifetime limit reached: {total_auto_apply_count} auto-applies "
-                f"(max {MAX_AUTO_APPLIES_LIFETIME}). Manual review required."
+                f"(max {MAX_AUTO_APPLIES_LIFETIME}). Manual review required.",
             )
 
         # Check 2: Seasonal limit (auto-applies in last 90 days)
@@ -205,11 +223,14 @@ class ValidationManager:
                 if ts > cutoff:
                     recent_applies.append(entry)
             except (ValueError, TypeError):
-                _LOGGER.warning("Skipping malformed PID history timestamp: %r", ts_raw)
+                _LOGGER.log(
+                    logging.WARNING if warn else logging.DEBUG, "Skipping malformed PID history timestamp: %r", ts_raw
+                )
         if len(recent_applies) >= MAX_AUTO_APPLIES_PER_SEASON:
             return (
+                "seasonal_limit",
                 f"Seasonal limit reached: {len(recent_applies)} auto-applies in last 90 days "
-                f"(max {MAX_AUTO_APPLIES_PER_SEASON})."
+                f"(max {MAX_AUTO_APPLIES_PER_SEASON}).",
             )
 
         # Check 3: Drift limit (cumulative drift from physics baseline)
@@ -217,8 +238,9 @@ class ValidationManager:
         max_drift = MAX_CUMULATIVE_DRIFT_PCT / 100.0
         if drift_pct > max_drift:
             return (
+                "drift_limit",
                 f"Cumulative drift limit exceeded: {drift_pct * 100:.1f}% drift from physics baseline "
-                f"(max {MAX_CUMULATIVE_DRIFT_PCT}%). Consider reset_pid_to_physics service."
+                f"(max {MAX_CUMULATIVE_DRIFT_PCT}%). Consider reset_pid_to_physics service.",
             )
 
         # Check 4: Seasonal shift block (cooldown after weather regime change)
@@ -227,8 +249,9 @@ class ValidationManager:
             if days_since_shift < SEASONAL_SHIFT_BLOCK_DAYS:
                 days_remaining = SEASONAL_SHIFT_BLOCK_DAYS - days_since_shift
                 return (
+                    "seasonal_shift",
                     f"Seasonal shift block active: {days_remaining:.1f} days remaining "
-                    f"(of {SEASONAL_SHIFT_BLOCK_DAYS} day cooldown after weather regime change)."
+                    f"(of {SEASONAL_SHIFT_BLOCK_DAYS} day cooldown after weather regime change).",
                 )
 
         # All checks passed
