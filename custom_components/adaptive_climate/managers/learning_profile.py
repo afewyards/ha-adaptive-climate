@@ -22,12 +22,14 @@ from ..helpers.hvac_mode import get_hvac_cool_mode
 from .pid_tuning import calculate_physics_gains
 
 if TYPE_CHECKING:
+    from ..adaptive.cycle_analysis import CycleMetrics
     from ..adaptive.learning import AdaptiveLearner
     from ..climate import AdaptiveThermostat
 
 _LOGGER = logging.getLogger(__name__)
 
 RECENT_CYCLES = 20
+HEAT_BELOW_SHARE = 0.25
 
 _diagnosis_failed: set[str] = set()
 
@@ -80,10 +82,25 @@ def build_learning_profile(
         fails = Counter(cause for failed in failures for cause in failed)
         if fails:
             profile["recent_fails"] = dict(fails)
+        below = _heat_below(learner, [c for c in history if c.heat_below is not None][-RECENT_CYCLES:], confidence)
+        if below is not None:
+            profile["below"] = below
 
     if learner.undershoot_detector.cumulative_ki_multiplier >= MAX_UNDERSHOOT_KI_MULTIPLIER:
         profile["ki_boost_capped"] = True
     return profile
+
+
+def _heat_below(learner: AdaptiveLearner, cycles: list[CycleMetrics], confidence: float) -> dict[str, int] | None:
+    if not cycles:
+        return None
+    below = dict.fromkeys(("over", "over_with", "rest", "rest_with"), 0)
+    for cycle in cycles:
+        group = "over" if "overshoot" in cycle_failures(learner, cycle, confidence) else "rest"
+        below[group] += 1
+        if (cycle.heat_below or 0) >= HEAT_BELOW_SHARE:
+            below[f"{group}_with"] += 1
+    return below
 
 
 def _gains(kp: float, ki: float, kd: float) -> dict[str, float]:

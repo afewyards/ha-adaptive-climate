@@ -316,6 +316,7 @@ class CycleMetrics:
         controllable_overshoot: float | None = None,
         committed_overshoot: float | None = None,
         starting_delta: float | None = None,
+        heat_below: float | None = None,
     ):
         """
         Initialize cycle metrics.
@@ -342,6 +343,7 @@ class CycleMetrics:
             controllable_overshoot: Overshoot that could have been prevented in °C
             committed_overshoot: Overshoot from in-flight heat (unavoidable) in °C
             starting_delta: Temperature delta at cycle start (target - actual) in °C
+            heat_below: Fraction of the cycle (0-1) a zone on the floor below was heating, None when unknown
         """
         self.overshoot = overshoot
         self.undershoot = undershoot
@@ -364,6 +366,7 @@ class CycleMetrics:
         self.controllable_overshoot = controllable_overshoot
         self.committed_overshoot = committed_overshoot
         self.starting_delta = starting_delta
+        self.heat_below = heat_below
 
     @property
     def is_disturbed(self) -> bool:
@@ -653,6 +656,23 @@ def calculate_settling_mae(
     # Calculate mean absolute error from target
     errors = [abs(temp - target_temp) for temp in settling_temps]
     return sum(errors) / len(errors)
+
+
+def calculate_heat_below(
+    samples: list[tuple[datetime, bool | None]], start: datetime | None, end: datetime
+) -> float | None:
+    """Fraction of ``start``..``end`` (2 dp) a zone below was heating; None when any sample is unknown.
+
+    Each sample holds until the next one; the first also covers the time from ``start``.
+    """
+    if start is None or not samples or any(heating is None for _, heating in samples):
+        return None
+    total = (end - start).total_seconds()
+    if total <= 0:
+        return None
+    edges = [start, *(timestamp for timestamp, _ in samples[1:]), end]
+    heated = sum((edges[i + 1] - edges[i]).total_seconds() for i, (_, heating) in enumerate(samples) if heating)
+    return round(min(max(heated / total, 0.0), 1.0), 2)
 
 
 def calculate_overshoot_components(

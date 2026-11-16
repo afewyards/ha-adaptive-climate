@@ -164,6 +164,13 @@ function factsLine(a) {
   return [head, tail].filter(Boolean).map((s) => `${s}.`).join(' ');
 }
 
+function belowLine(a) {
+  const b = a.below && typeof a.below === 'object' ? a.below : {};
+  if (!(num(b.over) >= 1)) return '';
+  const rest = num(b.rest) > 0 ? `, against ${num(b.rest_with) ?? 0} of ${b.rest} other ${b.rest === 1 ? 'cycle' : 'cycles'}` : '';
+  return `${num(b.over_with) ?? 0} of ${b.over} ${b.over === 1 ? 'overshoot' : 'overshoots'} came while a room below was heating${rest}.`;
+}
+
 function holds(a) {
   const out = [];
   if (a.ki_boost_capped === true) out.push('Ki boost is at its cap.');
@@ -209,6 +216,7 @@ function zoneProfile(id, stateObj, rate = SCALE.rate) {
     bad: bars.some((b) => b.off),
     strip: typeof a.recent === 'string' ? a.recent.slice(-20) : '',
     facts: factsLine(a),
+    below: belowLine(a),
     bars,
     gains: gains(a),
     log: timeline(a, history),
@@ -260,6 +268,7 @@ const STYLE = `
 .room.open .more { display: block; }
 .room.open .row { padding-bottom: 6px; }
 .facts { font-size: 12.5px; color: var(--secondary-text-color); margin: 0 0 12px; }
+.facts + .facts { margin-top: -8px; }
 .m { display: grid; grid-template-columns: 82px 62px minmax(0, 1fr); gap: 7px 10px; align-items: center; font-size: 13px; }
 .m .k { color: var(--secondary-text-color); }
 .m .off { font-weight: 600; }
@@ -428,6 +437,7 @@ class AdaptiveClimateLearningCard extends HTMLElement {
 
     const more = el('div', 'more');
     if (z.facts) more.append(el('p', 'facts', z.facts));
+    if (z.below) more.append(el('p', 'facts', z.below));
     const m = el('div', 'm');
     z.bars.forEach((b) => {
       const track = el('div', b.off ? 'track off' : 'track');
@@ -497,7 +507,7 @@ class AdaptiveClimateLearningCard extends HTMLElement {
   }
 }
 
-window.AdaptiveClimateLearningCard = { zoneProfile, sortZones, rateScale, sentence, factsLine, timeline, tuneText, holds, gains, attention };
+window.AdaptiveClimateLearningCard = { zoneProfile, sortZones, rateScale, sentence, factsLine, belowLine, timeline, tuneText, holds, gains, attention };
 if (!customElements.get(TAG)) customElements.define(TAG, AdaptiveClimateLearningCard);
 window.customCards = window.customCards || [];
 if (!window.customCards.some((c) => c.type === TAG)) {

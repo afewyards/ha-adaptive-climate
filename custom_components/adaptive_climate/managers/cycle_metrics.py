@@ -402,6 +402,7 @@ class CycleMetricsRecorder:
         temperature_history: list[tuple[datetime, float]],
         outdoor_temp_history: list[tuple[datetime, float]],
         cycle_start_temp: float | None = None,
+        heat_below_history: list[tuple[datetime, bool | None]] | None = None,
     ) -> None:
         """Record metrics for the current cycle without resetting state.
 
@@ -416,6 +417,7 @@ class CycleMetricsRecorder:
             outdoor_temp_history: List of (timestamp, outdoor_temp) samples
             cycle_start_temp: Temperature at cycle start, captured explicitly to survive
                 deque truncation (H07). Falls back to temperature_history[0][1] if None.
+            heat_below_history: (timestamp, zone on the floor below heating) samples, None where unknown
         """
         # Validate cycle
         is_valid, reason = self._is_cycle_valid(cycle_start_time, temperature_history)
@@ -439,6 +441,7 @@ class CycleMetricsRecorder:
             count_oscillations,
             calculate_rise_time,
             calculate_settling_mae,
+            calculate_heat_below,
         )
         from ..adaptive.disturbance_detector import DisturbanceDetector
 
@@ -603,6 +606,7 @@ class CycleMetricsRecorder:
             starting_delta=starting_delta,
             controllable_overshoot=controllable_overshoot,
             committed_overshoot=committed_overshoot_val,
+            heat_below=calculate_heat_below(heat_below_history or [], cycle_start_time, dt_util.utcnow()),
         )
 
         # Record metrics with adaptive learner (H08: pass mode to track cooling separately)
