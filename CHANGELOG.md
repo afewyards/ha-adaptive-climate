@@ -1,6 +1,21 @@
 # CHANGELOG
 
 
+## v0.71.1 (2026-11-16)
+
+### Bug Fixes
+
+- **learning**: Boost Ki and count overshoot only for what the controller caused
+  ([`3a1fcb0`](https://github.com/afewyards/ha-adaptive-climate/commit/3a1fcb0aec83a6acef2722c7ab4adaf85a624d4b))
+
+The undershoot detector now measures against the effective target, adds no debt while the output is
+  saturated, and never counts a cycle that reached target. The 3x cap is also checked against
+  freshly computed physics. The heating-rate boost path is removed.
+
+Heating overshoot is measured from the start temperature when a cycle starts above target, and peaks
+  that come after the room has fallen 0.2 degrees from its post-valve-close peak are ignored.
+
+
 ## v0.71.0 (2026-11-16)
 
 ### Features
