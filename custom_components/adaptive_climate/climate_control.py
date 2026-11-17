@@ -435,7 +435,7 @@ class ClimateControlMixin:
 
         # Update open/closed times in case PID mode changed
         self._heater_controller.update_open_closed_times(
-            self._effective_min_on_seconds,
+            self._min_open_time.seconds,
             self._min_closed_time.seconds,
         )
 
@@ -483,7 +483,7 @@ class ClimateControlMixin:
 
         # Update open/closed times in case PID mode changed
         self._heater_controller.update_open_closed_times(
-            self._effective_min_on_seconds,
+            self._min_open_time.seconds,
             self._min_closed_time.seconds,
         )
         await self._heater_controller.async_pwm_switch(

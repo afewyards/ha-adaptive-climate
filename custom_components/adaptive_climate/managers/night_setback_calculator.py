@@ -84,6 +84,7 @@ class NightSetbackCalculator:
         self._preheat_learner = preheat_learner
         self._preheat_enabled = preheat_enabled
         self._manifold_transport_delay = manifold_transport_delay
+        self._last_logged: tuple[Any, ...] | None = None
 
     @property
     def is_configured(self) -> bool:
@@ -306,11 +307,6 @@ class NightSetbackCalculator:
                         deadline_time = dt_time(hour, minute)
                         if deadline_time < end_time:
                             end_time = deadline_time
-                            _LOGGER.debug(
-                                "%s: Using recovery_deadline %s (earlier than dynamic end time)",
-                                self._entity_id,
-                                deadline_str,
-                            )
                     except (ValueError, AttributeError):
                         _LOGGER.error(
                             "%s: Invalid recovery_deadline %r — expected HH:MM, ignoring",
@@ -330,20 +326,17 @@ class NightSetbackCalculator:
             if weather:
                 info["weather_condition"] = weather
 
-            _LOGGER.debug(
-                "%s: Night setback check: current=%s, start=%s, end=%s, in_night=%s, target=%s, delta=%s",
-                self._entity_id,
-                current_time_only,
-                start_time,
-                end_time,
-                in_night_period,
-                target_temp,
-                self._night_setback_config["delta"],
-            )
+            logged = (start_time, end_time, in_night_period, target_temp, self._night_setback_config["delta"])
+            if logged != self._last_logged:
+                self._last_logged = logged
+                _LOGGER.debug(
+                    "%s: Night setback check: start=%s, end=%s, in_night=%s, target=%s, delta=%s",
+                    self._entity_id,
+                    *logged,
+                )
 
             if in_night_period:
                 effective_target = target_temp - self._night_setback_config["delta"]
-                _LOGGER.debug("%s: Night setback active, effective_target=%s", self._entity_id, effective_target)
 
         info["night_setback_active"] = in_night_period
 

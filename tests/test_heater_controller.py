@@ -1,7 +1,7 @@
 """Tests for HeaterController manager."""
 
 from datetime import datetime
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
@@ -3110,3 +3110,49 @@ class TestCommandVerify:
         assert calls == ["turn_on"] * 3
         assert not scheduled
         assert len([r for r in caplog.records if r.levelname == "ERROR"]) == 1
+
+
+class TestEffectiveMinOpenTransportDelay:
+    """Transport delay must be counted once in the effective minimum open time."""
+
+    @pytest.mark.asyncio
+    async def test_climate_does_not_pre_add_transport_delay(self, mock_hass, mock_thermostat):
+        from datetime import timedelta
+
+        from custom_components.adaptive_climate.climate_control import ClimateControlMixin
+        from custom_components.adaptive_climate.climate_state_setters import ClimateStateSettersMixin
+
+        controller = HeaterController(
+            hass=mock_hass,
+            thermostat=mock_thermostat,
+            heater_entity_id=["switch.heater"],
+            cooler_entity_id=None,
+            demand_switch_entity_id=None,
+            heater_polarity_invert=False,
+            pwm=0,
+            difference=100.0,
+            min_open_time=1320.0,
+            min_closed_time=300.0,
+            valve_actuation_time=240.0,
+        )
+        controller.set_transport_delay(8 * 60)
+
+        class Host(ClimateControlMixin, ClimateStateSettersMixin):
+            entity_id = "climate.test"
+            hvac_mode = MockHVACMode.HEAT
+            _heater_controller = controller
+            _min_open_time = timedelta(seconds=1320)
+            _min_closed_time = timedelta(seconds=300)
+            _transport_delay_minutes = 8
+            _control_output = 50.0
+            _time_changed = 0.0
+            _force_on = False
+            _force_off = False
+
+            def __getattr__(self, name):
+                return MagicMock()
+
+        with patch.object(controller, "async_pwm_switch", new=AsyncMock()):
+            await Host().pwm_switch()
+
+        assert controller.effective_min_open_time == 1320 + 240 + 480

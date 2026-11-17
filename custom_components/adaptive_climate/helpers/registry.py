@@ -69,7 +69,7 @@ def discover_zone_floors(hass: HomeAssistant, zone_entity_ids: list[str]) -> dic
             continue
 
         # Step 3: Get area entry
-        area_entry = area_registry.async_get(entity_entry.area_id)
+        area_entry = area_registry.async_get_area(entity_entry.area_id)
         if area_entry is None:
             result[entity_id] = None
             continue
@@ -80,7 +80,7 @@ def discover_zone_floors(hass: HomeAssistant, zone_entity_ids: list[str]) -> dic
             continue
 
         # Step 5: Get floor entry
-        floor_entry = floor_registry.async_get(area_entry.floor_id)
+        floor_entry = floor_registry.async_get_floor(area_entry.floor_id)
         if floor_entry is None:
             result[entity_id] = None
             continue
