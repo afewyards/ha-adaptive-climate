@@ -257,15 +257,6 @@ class ClimateStateSettersMixin:
         self._last_heater_error = self._heater_controller.last_heater_error
         return result
 
-    @property
-    def _effective_min_on_seconds(self) -> int:
-        """Minimum open time including manifold transport delay."""
-        base = self._min_open_time.seconds
-        if self._transport_delay_minutes and self._transport_delay_minutes > 0:
-            # C02: _transport_delay_minutes is in minutes; convert to seconds here.
-            base += int(self._transport_delay_minutes * 60)
-        return base
-
     async def _async_heater_turn_off(self, force=False, _effective_mode: HVACMode | None = None):
         """Turn heater toggleable device off.
 
@@ -285,7 +276,7 @@ class ClimateStateSettersMixin:
 
         # Update open/closed times in case PID mode changed
         self._heater_controller.update_open_closed_times(
-            self._effective_min_on_seconds,
+            self._min_open_time.seconds,
             self._min_closed_time.seconds,
         )
         await self._heater_controller.async_turn_off(

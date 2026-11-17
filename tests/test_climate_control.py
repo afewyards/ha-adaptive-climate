@@ -48,7 +48,9 @@ class _MinimalControlStub:
         self._heater_controller = hc
 
         # Required attributes
-        self._effective_min_on_seconds = 300
+        min_open = MagicMock()
+        min_open.seconds = 300
+        self._min_open_time = min_open
         min_closed = MagicMock()
         min_closed.seconds = 300
         self._min_closed_time = min_closed
