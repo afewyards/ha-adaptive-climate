@@ -70,7 +70,7 @@ class TestDiscoverZoneFloors:
         area_entry_2.floor_id = "floor_2"
 
         area_registry = MagicMock()
-        area_registry.async_get = lambda area_id: {
+        area_registry.async_get_area = lambda area_id: {
             "area_living_room": area_entry_1,
             "area_bedroom": area_entry_2,
         }.get(area_id)
@@ -83,7 +83,7 @@ class TestDiscoverZoneFloors:
         floor_entry_2.level = 1
 
         floor_registry = MagicMock()
-        floor_registry.async_get = lambda floor_id: {
+        floor_registry.async_get_floor = lambda floor_id: {
             "floor_1": floor_entry_1,
             "floor_2": floor_entry_2,
         }.get(floor_id)
@@ -127,7 +127,7 @@ class TestDiscoverZoneFloors:
         area_entry_2.floor_id = "floor_2"
 
         area_registry = MagicMock()
-        area_registry.async_get = lambda area_id: {
+        area_registry.async_get_area = lambda area_id: {
             "area_bedroom": area_entry_2,
         }.get(area_id)
         mock_ar.async_get.return_value = area_registry
@@ -137,7 +137,7 @@ class TestDiscoverZoneFloors:
         floor_entry_2.level = 1
 
         floor_registry = MagicMock()
-        floor_registry.async_get = lambda floor_id: {
+        floor_registry.async_get_floor = lambda floor_id: {
             "floor_2": floor_entry_2,
         }.get(floor_id)
         mock_fr.async_get.return_value = floor_registry
@@ -182,7 +182,7 @@ class TestDiscoverZoneFloors:
         area_entry_2.floor_id = "floor_2"
 
         area_registry = MagicMock()
-        area_registry.async_get = lambda area_id: {
+        area_registry.async_get_area = lambda area_id: {
             "area_living_room": area_entry_1,
             "area_bedroom": area_entry_2,
         }.get(area_id)
@@ -193,7 +193,7 @@ class TestDiscoverZoneFloors:
         floor_entry_2.level = 1
 
         floor_registry = MagicMock()
-        floor_registry.async_get = lambda floor_id: {
+        floor_registry.async_get_floor = lambda floor_id: {
             "floor_2": floor_entry_2,
         }.get(floor_id)
         mock_fr.async_get.return_value = floor_registry
@@ -246,7 +246,7 @@ class TestDiscoverZoneFloors:
         area_entry_4.floor_id = "floor_2"
 
         area_registry = MagicMock()
-        area_registry.async_get = lambda area_id: {
+        area_registry.async_get_area = lambda area_id: {
             "area_living_room": area_entry_1,
             "area_bedroom": area_entry_3,
             "area_office": area_entry_4,
@@ -260,7 +260,7 @@ class TestDiscoverZoneFloors:
         floor_entry_2.level = 2
 
         floor_registry = MagicMock()
-        floor_registry.async_get = lambda floor_id: {
+        floor_registry.async_get_floor = lambda floor_id: {
             "floor_1": floor_entry_1,
             "floor_2": floor_entry_2,
         }.get(floor_id)
