@@ -514,3 +514,20 @@ class TestNightSetbackCalculatorTimezone:
             effective_target, in_night_period, info = calculator.calculate_night_setback_adjustment(local_time)
             assert in_night_period is True, f"Failed for {tz_name} at 11:00 PM"
             assert effective_target == 17.5, f"Failed for {tz_name} - wrong effective_target"
+
+
+class TestNightSetbackCheckLogging:
+    def test_check_logged_only_when_result_changes(self, caplog):
+        calc = TestNightSetbackCalculatorPreheat().create_calculator()
+        calc.get_sunrise_time = Mock(return_value=None)
+        calc.get_sunset_time = Mock(return_value=None)
+
+        def check_lines():
+            return [r for r in caplog.records if "Night setback check" in r.message]
+
+        with caplog.at_level("DEBUG"):
+            for minute in (0, 1, 2):
+                calc.calculate_night_setback_adjustment(datetime(2024, 1, 15, 23, minute))
+            assert len(check_lines()) == 1
+            calc.calculate_night_setback_adjustment(datetime(2024, 1, 15, 12, 0))
+            assert len(check_lines()) == 2
