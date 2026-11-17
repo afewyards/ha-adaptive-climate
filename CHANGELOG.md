@@ -1,6 +1,20 @@
 # CHANGELOG
 
 
+## v0.71.2 (2026-11-17)
+
+### Bug Fixes
+
+- **registry**: Look up area and floor through the registry getters
+  ([`76aa981`](https://github.com/afewyards/ha-adaptive-climate/commit/76aa98152c43047e9bd330cdc20cda276902f924))
+
+- **setback**: Log the night setback check only when it changes
+  ([`fdc1a16`](https://github.com/afewyards/ha-adaptive-climate/commit/fdc1a16991de3b7aa4c400d4aaaacaf385c3b939))
+
+- **valve**: Count transport delay once in the minimum open time
+  ([`d7fc489`](https://github.com/afewyards/ha-adaptive-climate/commit/d7fc4895215f993f63ca52b96d08eca45c4a7a8c))
+
+
 ## v0.71.1 (2026-11-16)
 
 ### Bug Fixes
